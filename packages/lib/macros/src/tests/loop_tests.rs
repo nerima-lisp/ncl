@@ -124,3 +124,135 @@ fn parses_list_and_vector_iteration_clauses() -> Result<(), ObjectError> {
     assert_eq!(ast.clauses.len(), 3);
     Ok(())
 }
+
+#[test]
+fn parses_hash_key_iteration_with_using_value() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let being = symbol(&mut ctx, &runtime, "BEING")?;
+    let each = symbol(&mut ctx, &runtime, "EACH")?;
+    let hash_key = symbol(&mut ctx, &runtime, "HASH-KEY")?;
+    let hash_value = symbol(&mut ctx, &runtime, "HASH-VALUE")?;
+    let of = symbol(&mut ctx, &runtime, "OF")?;
+    let using_word = symbol(&mut ctx, &runtime, "USING")?;
+    let using = list(&mut ctx, &runtime, &[hash_value, value])?;
+    let ast = parse_loop(
+        &mut ctx,
+        &[
+            for_word, key, being, each, hash_key, of, table, using_word, using,
+        ],
+    )?;
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [LoopClause::Hash(HashClause {
+            variable,
+            kind: HashIterationKind::Key,
+            table: parsed_table,
+            using: Some((HashIterationKind::Value, parsed_value)),
+        })] if *variable == key && *parsed_table == table && *parsed_value == value
+    ));
+    let the = symbol(&mut ctx, &runtime, "THE")?;
+    let hash_values = symbol(&mut ctx, &runtime, "HASH-VALUES")?;
+    let value_ast = parse_loop(
+        &mut ctx,
+        &[for_word, value, being, the, hash_values, of, table],
+    )?;
+    assert!(matches!(
+        value_ast.clauses.as_slice(),
+        [LoopClause::Hash(HashClause {
+            kind: HashIterationKind::Value,
+            using: None,
+            ..
+        })]
+    ));
+    Ok(())
+}
+
+#[test]
+fn hash_iteration_rejects_malformed_and_same_kind_using_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let being = symbol(&mut ctx, &runtime, "BEING")?;
+    let hash_key = symbol(&mut ctx, &runtime, "HASH-KEY")?;
+    let hash_value = symbol(&mut ctx, &runtime, "HASH-VALUE")?;
+    let of = symbol(&mut ctx, &runtime, "OF")?;
+    let using_word = symbol(&mut ctx, &runtime, "USING")?;
+    let using_key = list(&mut ctx, &runtime, &[hash_key, value])?;
+
+    assert_eq!(
+        parse_loop(&mut ctx, &[for_word, key, being, hash_key, table]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        parse_loop(
+            &mut ctx,
+            &[
+                for_word, key, being, hash_key, of, table, using_word, using_key,
+            ],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    let using_value = list(&mut ctx, &runtime, &[hash_value, key])?;
+    assert_eq!(
+        parse_loop(
+            &mut ctx,
+            &[
+                for_word,
+                value,
+                being,
+                hash_value,
+                of,
+                table,
+                using_word,
+                using_value,
+            ],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let do_form = list(&mut ctx, &runtime, &[key, value])?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::Hash(HashClause {
+                    variable: key,
+                    kind: HashIterationKind::Key,
+                    table,
+                    using: Some((HashIterationKind::Value, value)),
+                }),
+                LoopClause::Do(vec![do_form]),
+            ],
+        },
+    )?;
+    let let_form = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, let_form[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let maphash = elements(&mut ctx, progn[1])?;
+    assert_eq!(maphash[0], symbol(&mut ctx, &runtime, "MAPHASH")?);
+    assert_eq!(maphash[2], table);
+    let lambda = elements(&mut ctx, maphash[1])?;
+    assert_eq!(lambda[0], symbol(&mut ctx, &runtime, "LAMBDA")?);
+    assert_eq!(elements(&mut ctx, lambda[1])?, vec![key, value]);
+    assert_eq!(
+        elements(&mut ctx, lambda[2])?[0],
+        symbol(&mut ctx, &runtime, "TAGBODY")?
+    );
+    Ok(())
+}

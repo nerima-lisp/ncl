@@ -1,8 +1,10 @@
+use super::accumulator::expand_accumulator;
 use super::clause::HeldLoopClause;
+use super::hash::wrap_hash_iteration;
 use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
 use super::{
-    AccumulatorKind, HashIterationKind, LimitDirection, LoopAst, LoopClause, ObjectError, Result,
-    Runtime, StepDirection, ThreadContext, Word, symbol_name,
+    AccumulatorKind, LimitDirection, LoopAst, LoopClause, ObjectError, Result, Runtime,
+    StepDirection, ThreadContext, Word, symbol_name,
 };
 
 /// Expand a parsed LOOP AST into portable CL primitive forms.
@@ -394,118 +396,19 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 form: value,
                 variable,
             } => {
-                let accumulator = match variable {
-                    Some(variable) => variable,
-                    None => held_fresh_symbol(ctx, runtime, &mut held)?,
-                };
-                if !initialized_accumulators
-                    .iter()
-                    .any(|index| held.get(*index) == held.get(accumulator))
-                {
-                    initialized_accumulators.push(accumulator);
-                    let init = match kind {
-                        AccumulatorKind::Count | AccumulatorKind::Sum => Word::fixnum(0),
-                        AccumulatorKind::Collect
-                        | AccumulatorKind::Append
-                        | AccumulatorKind::Nconc
-                        | AccumulatorKind::Maximize
-                        | AccumulatorKind::Minimize => Word::NIL,
-                    };
-                    let init_index = held.len();
-                    held.push(init);
-                    bindings.push(held_list(
-                        ctx,
-                        runtime,
-                        &mut held,
-                        &[accumulator, init_index],
-                    )?);
-                }
+                let (accumulator, kind) = expand_accumulator(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    kind,
+                    value,
+                    variable,
+                    &mut bindings,
+                    &mut body,
+                    &mut initialized_accumulators,
+                )?;
                 result = accumulator;
                 result_kind = Some(kind);
-                match kind {
-                    AccumulatorKind::Collect => {
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "PUSH",
-                            &[value, accumulator],
-                        )?);
-                    }
-                    AccumulatorKind::Append => {
-                        let appended =
-                            held_form(ctx, runtime, &mut held, "APPEND", &[accumulator, value])?;
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "SETQ",
-                            &[accumulator, appended],
-                        )?);
-                    }
-                    AccumulatorKind::Nconc => {
-                        let concatenated =
-                            held_form(ctx, runtime, &mut held, "NCONC", &[accumulator, value])?;
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "SETQ",
-                            &[accumulator, concatenated],
-                        )?);
-                    }
-                    AccumulatorKind::Count => {
-                        let one = held.len();
-                        held.push(Word::fixnum(1));
-                        let increment =
-                            held_form(ctx, runtime, &mut held, "INCF", &[accumulator, one])?;
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "WHEN",
-                            &[value, increment],
-                        )?);
-                    }
-                    AccumulatorKind::Sum => {
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "INCF",
-                            &[accumulator, value],
-                        )?);
-                    }
-                    AccumulatorKind::Maximize | AccumulatorKind::Minimize => {
-                        let first = held_fresh_symbol(ctx, runtime, &mut held)?;
-                        let truth = held.len();
-                        held.push(Word::TRUE);
-                        bindings.push(held_list(ctx, runtime, &mut held, &[first, truth])?);
-                        let operator = if matches!(kind, AccumulatorKind::Maximize) {
-                            "MAX"
-                        } else {
-                            "MIN"
-                        };
-                        let selected =
-                            held_form(ctx, runtime, &mut held, operator, &[accumulator, value])?;
-                        let selected =
-                            held_form(ctx, runtime, &mut held, "SETQ", &[accumulator, selected])?;
-                        let set_first =
-                            held_form(ctx, runtime, &mut held, "SETQ", &[accumulator, value])?;
-                        let nil = held.len();
-                        held.push(Word::NIL);
-                        let clear_first =
-                            held_form(ctx, runtime, &mut held, "SETQ", &[first, nil])?;
-                        body.push(held_form(
-                            ctx,
-                            runtime,
-                            &mut held,
-                            "IF",
-                            &[first, set_first, selected],
-                        )?);
-                        body.push(clear_first);
-                    }
-                }
             }
         }
     }
@@ -539,25 +442,8 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
         tagbody.push(end);
         held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?
     };
-    let loop_body = if let Some((variable, kind, table, using)) = hash_iteration {
-        let (key_variable, value_variable) = if let Some((using_kind, using_variable)) = using {
-            if using_kind == HashIterationKind::Key {
-                (using_variable, variable)
-            } else {
-                (variable, using_variable)
-            }
-        } else {
-            let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
-            if kind == HashIterationKind::Key {
-                (variable, secondary)
-            } else {
-                (secondary, variable)
-            }
-        };
-        let parameter_indexes = vec![key_variable, value_variable];
-        let parameters = held_list(ctx, runtime, &mut held, &parameter_indexes)?;
-        let lambda = held_form(ctx, runtime, &mut held, "LAMBDA", &[parameters, loop_body])?;
-        held_form(ctx, runtime, &mut held, "MAPHASH", &[lambda, table])?
+    let loop_body = if let Some(iteration) = hash_iteration {
+        wrap_hash_iteration(ctx, runtime, &mut held, iteration, loop_body)?
     } else {
         loop_body
     };

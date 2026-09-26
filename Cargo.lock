@@ -167,6 +167,7 @@ version = "0.1.0"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
+ "ncl-ownership",
  "ncl-types",
 ]
 

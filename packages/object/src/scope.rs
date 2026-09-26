@@ -10,7 +10,7 @@ use ncl_sys::{RootToken, Word};
 
 use crate::ThreadContext;
 
-type Brand<'scope, T> = PhantomData<(&'scope (), fn() -> T)>;
+type Brand<'scope, T> = PhantomData<(core::cell::Cell<&'scope ()>, fn() -> T)>;
 
 /// A value which is not registered as a GC root.
 #[derive(Debug, Eq, PartialEq)]
@@ -79,7 +79,7 @@ pub struct HandleVec<'scope, T = Word> {
     handles: Vec<Handle<'scope, T>>,
 }
 
-impl<T> HandleVec<'_, T> {
+impl<'scope, T> HandleVec<'scope, T> {
     /// Return the number of handles.
     #[must_use]
     pub const fn len(&self) -> usize {
@@ -94,17 +94,17 @@ impl<T> HandleVec<'_, T> {
 
     /// Borrow the handles as a slice.
     #[must_use]
-    pub fn as_slice(&self) -> &[Handle<'_, T>] {
+    pub fn as_slice(&self) -> &[Handle<'scope, T>] {
         &self.handles
     }
 
     /// Iterate over the handles.
-    pub fn iter(&self) -> core::slice::Iter<'_, Handle<'_, T>> {
+    pub fn iter(&self) -> core::slice::Iter<'_, Handle<'scope, T>> {
         self.handles.iter()
     }
 
     /// Iterate over the handles by shared reference.
-    pub fn into_iter(&self) -> core::slice::Iter<'_, Handle<'_, T>> {
+    pub fn into_iter(&self) -> core::slice::Iter<'_, Handle<'scope, T>> {
         self.iter()
     }
 }
@@ -203,7 +203,7 @@ impl<'ctx> Scope<'ctx> {
 
     /// Read a rooted value after an allocation or collection.
     #[must_use]
-    pub fn get<T>(&self, handle: Handle<'_, T>) -> Local<'_, T> {
+    pub fn get<T>(&self, handle: Handle<'ctx, T>) -> Local<'_, T> {
         let word = self
             .slots
             .get(handle.index)
@@ -212,7 +212,7 @@ impl<'ctx> Scope<'ctx> {
     }
 
     /// Update a rooted value in its slot.
-    pub fn set<T>(&mut self, handle: Handle<'_, T>, value: Local<'_, T>) {
+    pub fn set<T>(&mut self, handle: Handle<'ctx, T>, value: Local<'_, T>) {
         if let Some(slot) = self.slots.get(handle.index) {
             slot.set(value.as_word());
         }
@@ -220,7 +220,10 @@ impl<'ctx> Scope<'ctx> {
 
     /// Read all values represented by a handle vector.
     #[must_use]
-    pub fn get_many<T>(&self, handles: &HandleVec<'ctx, T>) -> Vec<Local<'_, T>> {
+    pub fn get_many<'borrow, T>(
+        &'borrow self,
+        handles: &HandleVec<'ctx, T>,
+    ) -> Vec<Local<'borrow, T>> {
         handles.iter().map(|handle| self.get(*handle)).collect()
     }
 }

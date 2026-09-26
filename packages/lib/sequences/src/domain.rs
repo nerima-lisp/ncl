@@ -59,4 +59,7 @@ pub fn list_from(
 }
 
 pub mod filter;
+pub mod higher_order;
 pub mod list;
+pub mod order_sets;
+pub mod selection;

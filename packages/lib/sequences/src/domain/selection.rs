@@ -31,14 +31,13 @@ pub fn parse_options(
     let mut options = SelectionOptions::default();
     let mut index = 0;
     while index < args.len() {
-        let name = match classify_object(ctx, args[index]) {
-            ObjectRef::Symbol(symbol) => {
-                let name = ncl_object::symbol_name(ctx, symbol)?;
-                (0..ncl_object::string_length(ctx, name)?)
-                    .map(|i| ncl_object::string_ref(ctx, name, i))
-                    .collect::<Result<String, _>>()?
-            }
-            _ => String::new(),
+        let name = if let ObjectRef::Symbol(symbol) = classify_object(ctx, args[index]) {
+            let name = ncl_object::symbol_name(ctx, symbol)?;
+            (0..ncl_object::string_length(ctx, name)?)
+                .map(|i| ncl_object::string_ref(ctx, name, i))
+                .collect::<Result<String, _>>()?
+        } else {
+            String::new()
         };
         let keyword = name.to_ascii_uppercase();
         if matches!(
@@ -46,29 +45,27 @@ pub fn parse_options(
             "START" | "END" | "FROM-END" | "COUNT" | "KEY" | "TEST" | "TEST-NOT"
         ) {
             let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
-            match keyword.as_str() {
-                "START" => {
-                    options.start =
-                        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                            .map_err(|_| ObjectError::TypeError)?;
-                }
-                "END" => {
-                    options.end = Some(
-                        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                            .map_err(|_| ObjectError::TypeError)?,
-                    );
-                }
-                "FROM-END" => options.from_end = value != Word::NIL,
-                "COUNT" => {
-                    options.count = Some(
-                        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                            .map_err(|_| ObjectError::TypeError)?,
-                    );
-                }
-                "KEY" => options.key = Some(value),
-                "TEST" => options.test = Some(value),
-                "TEST-NOT" => options.test_not = Some(value),
-                _ => return Err(ObjectError::TypeError),
+            if keyword == "START" {
+                options.start = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                    .map_err(|_| ObjectError::TypeError)?;
+            } else if keyword == "END" {
+                options.end = Some(
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                        .map_err(|_| ObjectError::TypeError)?,
+                );
+            } else if keyword == "FROM-END" {
+                options.from_end = value != Word::NIL;
+            } else if keyword == "COUNT" {
+                options.count = Some(
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                        .map_err(|_| ObjectError::TypeError)?,
+                );
+            } else if keyword == "KEY" {
+                options.key = Some(value);
+            } else if keyword == "TEST" {
+                options.test = Some(value);
+            } else if keyword == "TEST-NOT" {
+                options.test_not = Some(value);
             }
             index += 2;
         } else {
@@ -138,8 +135,8 @@ fn call_one<C: FunctionCaller>(
         FunctionArguments::new(&[argument]),
         &mut values,
     );
-    let _ = pop_root(ctx, argument_root);
-    let _ = pop_root(ctx, designator_root);
+    pop_root(ctx, argument_root);
+    pop_root(ctx, designator_root);
     result
 }
 
@@ -442,13 +439,11 @@ pub fn object_sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, Obje
             word,
         ))));
     }
-    match classify_object(ctx, word) {
-        ObjectRef::String(value) => {
-            Ok(Sequence::String(ncl_object::StringObject::from_word(value)))
-        }
-        ObjectRef::SimpleVector(value) => {
-            Ok(Sequence::Vector(ncl_object::SimpleVector::from_word(value)))
-        }
-        _ => Err(ObjectError::TypeError),
+    if let ObjectRef::String(value) = classify_object(ctx, word) {
+        Ok(Sequence::String(ncl_object::StringObject::from_word(value)))
+    } else if let ObjectRef::SimpleVector(value) = classify_object(ctx, word) {
+        Ok(Sequence::Vector(ncl_object::SimpleVector::from_word(value)))
+    } else {
+        Err(ObjectError::TypeError)
     }
 }

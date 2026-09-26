@@ -1,6 +1,6 @@
 use super::{
-    allocate, layout, metadata_offset, with_roots, write, ArrayOptions, ObjectError, Runtime,
-    ThreadContext, Word,
+    ArrayOptions, ObjectError, Runtime, ThreadContext, Word, allocate, layout, metadata_offset,
+    with_roots, write,
 };
 
 /// Allocate a general, possibly displaced, multidimensional array.

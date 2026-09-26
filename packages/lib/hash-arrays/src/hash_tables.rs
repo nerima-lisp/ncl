@@ -2,9 +2,9 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    classify_object, make_double, pop_root, push_root, BuiltinArgs, BuiltinFunctionCaller,
-    BuiltinName, FunctionArguments, FunctionCaller, LambdaList, MultipleValues, ObjectError,
-    ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
+    BuiltinArgs, BuiltinFunctionCaller, BuiltinName, FunctionArguments, FunctionCaller, LambdaList,
+    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
+    ThreadContext, Word, classify_object, make_double, pop_root, push_root,
 };
 
 use super::{register_one, symbol_text};

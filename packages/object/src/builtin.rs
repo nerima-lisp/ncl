@@ -185,7 +185,7 @@ impl<'a> BuiltinArgs<'a> {
         }
     }
 
-    pub(crate) fn from_rooted(words: &'a [Word], rooted: &'a [RootSlot<'a>]) -> Self {
+    pub(crate) const fn from_rooted(words: &'a [Word], rooted: &'a [RootSlot<'a>]) -> Self {
         Self {
             words,
             rooted: Some(rooted),

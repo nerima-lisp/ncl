@@ -53,7 +53,7 @@ fn call_native(
         .map_or(0, |rest| rest.as_ptr() as usize as u64);
     let (result, count) = invoke_entry_with_function_address(
         entry,
-        ctx.thread_mut() as *mut ncl_sys::Thread,
+        std::ptr::from_mut(ctx.thread_mut()),
         function.as_word().bits(),
         args.len() as u64,
         registers,
@@ -67,7 +67,7 @@ fn call_native(
 }
 
 fn resolve_function(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     designator: FunctionDesignator,
 ) -> Result<FunctionObject, ObjectError> {
     match designator {
@@ -80,6 +80,7 @@ fn resolve_function(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::RuntimeFunctionCaller;
     use crate::Runtime;
@@ -147,8 +148,10 @@ mod tests {
                     .intern(&mut runtime.context, &runtime.object, "RUNTIME-CALL")
                     .ok()
             })
-            .map(|(symbol, _)| ncl_object::typed::Symbol::from_word(symbol))
-            .unwrap_or_else(|| panic!("test symbol was not interned"));
+            .map_or_else(
+                || panic!("test symbol was not interned"),
+                |(symbol, _)| ncl_object::typed::Symbol::from_word(symbol),
+            );
         let argument_words = [Word::fixnum(2), Word::fixnum(3)];
         let args = FunctionArguments::new(&argument_words);
         let mut caller = RuntimeFunctionCaller;

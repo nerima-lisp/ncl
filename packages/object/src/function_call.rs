@@ -132,7 +132,7 @@ fn call_native(
         .map_or(0, |rest| rest.as_ptr() as usize as u64);
     let (result, count) = invoke_entry_with_function_address(
         entry,
-        ctx.thread_mut() as *mut ncl_sys::Thread,
+        std::ptr::from_mut(ctx.thread_mut()),
         function.as_word().bits(),
         args.len() as u64,
         registers,

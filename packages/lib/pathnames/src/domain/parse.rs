@@ -20,9 +20,7 @@ pub fn parse_namestring(input: &str) -> Result<Pathname, PathnameError> {
 }
 
 fn split_prefix(input: &str, separator: char) -> Option<(&str, &str)> {
-    let index = input.find(separator)?;
-    let prefix = &input[..index];
-    let rest = &input[index + separator.len_utf8()..];
+    let (prefix, rest) = input.split_once(separator)?;
     (!prefix.is_empty()).then_some((prefix, rest))
 }
 

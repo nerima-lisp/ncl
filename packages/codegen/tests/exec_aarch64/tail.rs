@@ -132,10 +132,19 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
             &[Ty::Word],
         )
         .expect("decrement")[0];
+    // `lower_call` (shared by `OpKind::Call` and `Terminator::TailCall`)
+    // takes the tagged argument count as `args[0]`, exactly like every
+    // other direct call site in this codegen (see `fib.rs`); the callee
+    // still receives `self`/`next`/`remaining` in x1..x3 since its params
+    // are not named `argc` (see `initialize_arguments`).
+    let argc = builder.add_constant(Constant::Fixnum(3));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .expect("argc")[0];
     builder
         .terminate(Terminator::TailCall {
             function: recurse_self,
-            args: vec![recurse_self, recurse_next, next_remaining],
+            args: vec![argc, recurse_self, recurse_next, next_remaining],
         })
         .expect("mutual tail call");
     builder.finish()

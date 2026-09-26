@@ -4,10 +4,10 @@ use ncl_object::array::{
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
-    ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
     array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
     make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
+    ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
+    ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
 };
 
 use super::{register_one, symbol_text};
@@ -489,7 +489,11 @@ fn row_major_index(shape: &[usize], indices: &[Word]) -> Result<usize, ObjectErr
 }
 
 mod bit;
-use bit::*;
+use bit::{
+    bit_and_builtin, bit_andc1_builtin, bit_andc2_builtin, bit_builtin, bit_eqv_builtin,
+    bit_ior_builtin, bit_nand_builtin, bit_nor_builtin, bit_not_builtin, bit_orc1_builtin,
+    bit_orc2_builtin, bit_xor_builtin, sbit_builtin,
+};
 
 mod register;
 pub use register::register;

@@ -1,3 +1,5 @@
+//! Integration coverage for the registered sequence builtins.
+
 use std::collections::HashMap;
 
 use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word};

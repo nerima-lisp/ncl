@@ -28,6 +28,19 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
     Ok(pop_root(ctx, token))
 }
 
+/// Keep `value` rooted while `f` runs and copy the collector-updated value back
+/// into it afterwards.
+///
+/// The closure receives a [`RootSlot`] rather than a copied [`Word`]. Read the
+/// value from that slot inside the closure after any allocation or collection,
+/// because the collector may move the object and rewrite the slot in place.
+/// The root is removed after the closure returns, including when the closure
+/// returns an error.
+///
+/// # Errors
+/// Returns an error from registering the root or from the closure. When the
+/// closure returns an error, the root is still removed before that error is
+/// returned.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -44,6 +57,22 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+/// Keep every value in `values` rooted while `f` runs.
+///
+/// The closure receives one [`RootSlot`] for each input value. Read values from
+/// those slots inside the closure after any allocation or collection, because
+/// the collector may move objects and rewrite the slots in place. All roots
+/// are removed after the closure returns, including when the closure returns an
+/// error.
+///
+/// # Panics
+/// Panics if a root token cannot be removed in reverse stack order.
+///
+/// # Errors
+/// Returns an error from registering a root or from the closure. If registering
+/// a root fails, all roots registered so far are removed before the error is
+/// returned. If the closure returns an error, all roots are removed before
+/// that error is returned.
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],

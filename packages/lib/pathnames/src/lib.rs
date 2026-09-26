@@ -14,7 +14,7 @@ pub use domain::{
 };
 
 pub use fs::{
-    delete_file, directory, ensure_directories_exist, file_author, file_length,
-    file_write_date, probe_file, rename_file, truename, EnsureDirectoriesResult,
-    FsError, MetadataField, Operation, Pathname as FsPathname,
+    EnsureDirectoriesResult, FsError, MetadataField, Operation, Pathname as FsPathname,
+    delete_file, directory, ensure_directories_exist, file_author, file_length, file_write_date,
+    probe_file, rename_file, truename,
 };

@@ -1,6 +1,8 @@
 //! Token reading: symbol and number tokens, escapes, and package prefixes.
 
-use ncl_object::{Package, Runtime, StringObject, ThreadContext, Word, make_string};
+use ncl_object::{
+    Package, Runtime, StringObject, ThreadContext, Word, make_string, pop_root, push_root,
+};
 
 use crate::error::ReadError;
 use crate::number::parse_number;
@@ -297,14 +299,18 @@ impl PackageResolver for Runtime {
         current_package: Option<&crate::PackageName>,
     ) -> Result<Option<Word>, ReadError> {
         if let Some(current) = current_package
-            && let Some(package) = self.find_package(ctx, current.as_str())
+            && let Some(mut package) = self.find_package(ctx, current.as_str())
         {
-            let nickname = make_string(ctx, self, &name.as_str().chars().collect::<Vec<_>>())?;
-            let local = Package::from_word(package)
-                .resolve_local_nickname(ctx, StringObject::from_word(nickname))
-                .map(|package| package.map(Package::as_word))
-                .map_err(ReadError::from);
-            if let Some(package) = local? {
+            let package_token = push_root(ctx, &mut package);
+            let local = (|| {
+                let nickname = make_string(ctx, self, &name.as_str().chars().collect::<Vec<_>>())?;
+                Package::from_word(package)
+                    .resolve_local_nickname(ctx, StringObject::from_word(nickname))
+                    .map(|package| package.map(Package::as_word))
+            })();
+            let _ = pop_root(ctx, package_token);
+            let local = local.map_err(ReadError::from)?;
+            if let Some(package) = local {
                 return Ok(Some(package));
             }
         }
@@ -341,11 +347,15 @@ fn intern_symbol(
         }
     };
     let package_name_value = crate::PackageName::new(package_name.clone())?;
-    let package = resolver
+    let mut package = resolver
         .resolve_package(ctx, &package_name_value, opts.current_package())?
         .ok_or_else(|| ReadError::PackageNotFound(package_name.clone()))?;
-    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, &symbol_name)?;
-    Ok(symbol)
+    let package_token = push_root(ctx, &mut package);
+    let result = Package::from_word(package)
+        .intern(ctx, runtime, &symbol_name)
+        .map(|(symbol, _)| symbol);
+    let _ = pop_root(ctx, package_token);
+    result.map_err(ReadError::from)
 }
 
 /// Intern a reader-generated symbol in the `COMMON-LISP` package.
@@ -354,9 +364,13 @@ pub fn intern_common_lisp(
     runtime: &Runtime,
     name: &str,
 ) -> Result<Word, ReadError> {
-    let package = runtime
+    let mut package = runtime
         .find_package(ctx, "COMMON-LISP")
         .ok_or_else(|| ReadError::PackageNotFound("COMMON-LISP".to_owned()))?;
-    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, name)?;
-    Ok(symbol)
+    let package_token = push_root(ctx, &mut package);
+    let result = Package::from_word(package)
+        .intern(ctx, runtime, name)
+        .map(|(symbol, _)| symbol);
+    let _ = pop_root(ctx, package_token);
+    result.map_err(ReadError::from)
 }

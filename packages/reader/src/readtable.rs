@@ -194,15 +194,18 @@ pub fn standard_readtable(
     let mut syntax_word = make_simple_vector(ctx, runtime, &syntax)?;
     let syntax_token = push_root(ctx, &mut syntax_word);
     let dispatch = [Word::NIL; TABLE_SIZE];
-    let dispatch_word = make_simple_vector(ctx, runtime, &dispatch)?;
-    let object = make_readtable(
+    let mut dispatch_word = make_simple_vector(ctx, runtime, &dispatch)?;
+    let dispatch_token = push_root(ctx, &mut dispatch_word);
+    let result = make_readtable(
         ctx,
         runtime,
         syntax_word,
         dispatch_word,
         Word::fixnum(CASE_UPCASE),
-    )?;
+    );
+    let _ = pop_root(ctx, dispatch_token);
     let _ = pop_root(ctx, syntax_token);
+    let object = result?;
     Ok(Readtable::from_object(object))
 }
 
@@ -219,9 +222,12 @@ pub fn copy_readtable(
     let syntax_copy = copy_vector(ctx, runtime, readtable.syntax_table(ctx)?)?;
     let mut syntax_copy = syntax_copy;
     let syntax_token = push_root(ctx, &mut syntax_copy);
-    let dispatch_copy = copy_vector(ctx, runtime, readtable.dispatch_table(ctx)?)?;
-    let object = make_readtable(ctx, runtime, syntax_copy, dispatch_copy, case)?;
+    let mut dispatch_copy = copy_vector(ctx, runtime, readtable.dispatch_table(ctx)?)?;
+    let dispatch_token = push_root(ctx, &mut dispatch_copy);
+    let result = make_readtable(ctx, runtime, syntax_copy, dispatch_copy, case);
+    let _ = pop_root(ctx, dispatch_token);
     let _ = pop_root(ctx, syntax_token);
+    let object = result?;
     Ok(Readtable::from_object(object))
 }
 

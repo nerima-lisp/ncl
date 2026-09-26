@@ -11,6 +11,14 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 - Phase 3: `ncl-ir` 上の pass 群(inlining、escape analysis + stack allocation、GVN、SCCP、
   LICM)と、`ncl-codegen` の SSA ベースレジスタ割当。IR 型と ABI は不変。受入は cl-bench
   幾何平均が Phase 2 着地時の同機測定以下。
+
+`ncl-opt` の既定順序は direct-call inlining、GVN、SCCP である。GVN は支配木の順に
+純粋な式だけを共通化し、SCCP は Unknown/Constant/Overdefined 格子で到達辺を絞る。
+純粋性とメモリ効果の分類は `ncl-ir::Prim` の公開属性に集約する。fixnum 演算は checked
+計算だけを畳み込み、overflow は bignum 昇格のため保持する。`eq`/`eql` は同一 SSA 値の
+場合だけ畳み込む。GVN の car/cdr、slot、配列読み出しは store、破壊的 primitive、call、
+builtin、closure 作成の後で無効化する。各 pass は変換後に `verify()` を実行し、pass manager
+も各 invocation 後にモジュール全体を検証する。
 - Phase 4: `ncl-sys` collector の parallel marking / evacuation。STW は維持。frame header、
   SafepointMap、ABI は不変。remembered set と forwarding の並行安全化を伴う。受入は同一
   ヒープ負荷で停止時間中央値が直列版未満。

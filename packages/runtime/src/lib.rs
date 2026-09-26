@@ -6,8 +6,8 @@ mod load;
 use ncl_codegen::{RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    FunctionObject, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word,
-    symbol_function,
+    BuiltinIdentifier, BuiltinName, BuiltinPackage, FunctionObject, ObjectError, Package,
+    Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
 };
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code, invoke_entry,
@@ -178,7 +178,9 @@ impl Runtime {
         let entry = module.functions.pop().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
-        let abi = NativeAbi;
+        let abi = NativeAbi {
+            object: &self.object,
+        };
         let compiled = if cfg!(target_arch = "aarch64") {
             ncl_codegen::compile_function_aarch64(&entry, &abi)
         } else {
@@ -370,10 +372,22 @@ impl MacroCaller for RuntimeMacroCaller {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct NativeAbi;
-impl RuntimeAbi for NativeAbi {
+struct NativeAbi<'a> {
+    object: &'a ObjectRuntime,
+}
+impl RuntimeAbi for NativeAbi<'_> {
     fn builtin_address(&self, _name: &str) -> Option<u64> {
-        None
+        let name = match _name {
+            "+" => BuiltinName::new("+"),
+            "*" => BuiltinName::new("*"),
+            "CAR" => BuiltinName::new("CAR"),
+            "CONS" => BuiltinName::new("CONS"),
+            _ => return None,
+        };
+        self.object.builtin_address(BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            name,
+        ))
     }
     fn context_offset(&self, _field: &str) -> Option<i32> {
         None
@@ -388,7 +402,12 @@ impl RuntimeAbi for NativeAbi {
         };
         i32::try_from(offset).ok()
     }
-    fn runtime_address(&self, _function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
-        None
+    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+        match function {
+            RuntimeFunction::SafepointSlow => {
+                Some(ncl_sys::native_safepoint as *const () as u64)
+            }
+            _ => None,
+        }
     }
 }

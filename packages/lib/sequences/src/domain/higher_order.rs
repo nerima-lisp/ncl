@@ -146,7 +146,6 @@ pub fn map_into<C: FunctionCaller>(
             .chain(sources.iter().map(Vec::len))
             .min()
             .unwrap_or(0);
-        let callback = callback(ctx, **roots.get(1).ok_or(ObjectError::Layout)?)?;
         rooted_nested(ctx, &mut sources, |ctx, sources| {
             ncl_object::with_rooted_slice(ctx, &destination_values, |ctx, rooted_destination| {
                 for index in 0..length {
@@ -156,8 +155,14 @@ pub fn map_into<C: FunctionCaller>(
                         .collect::<Result<Vec<_>, _>>()?;
                     *rooted_destination
                         .get_mut(index)
-                        .ok_or(ObjectError::Layout)? =
-                        call(ctx, runtime, caller, callback, &args)?.0;
+                        .ok_or(ObjectError::Layout)? = call(
+                        ctx,
+                        runtime,
+                        caller,
+                        callback(ctx, **roots.get(1).ok_or(ObjectError::Layout)?)?,
+                        &args,
+                    )?
+                    .0;
                 }
                 let destination_sequence =
                     super::sequence_value(ctx, **roots.first().ok_or(ObjectError::Layout)?)?;

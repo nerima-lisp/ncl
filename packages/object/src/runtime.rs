@@ -2,8 +2,8 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    BuiltinImplementation, LispErrorConverter, ObjectError, PlaceExpander, ThreadContext, Word,
-    make_string, with_root,
+    make_string, with_root, BuiltinImplementation, LispErrorConverter, ObjectError, PlaceExpander,
+    ThreadContext, Word,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -132,10 +132,11 @@ impl Runtime {
         operator: Word,
         expander: PlaceExpander,
     ) -> Result<(), ObjectError> {
-        self.place_expanders
+        let mut expanders = self
+            .place_expanders
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .register(ctx, operator, expander)
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        expanders.register(ctx, operator, expander)
     }
 
     /// Look up a generalized-reference expander without invoking it.
@@ -147,10 +148,11 @@ impl Runtime {
         ctx: &ThreadContext,
         operator: Word,
     ) -> Result<Option<PlaceExpander>, ObjectError> {
-        self.place_expanders
+        let expanders = self
+            .place_expanders
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(ctx, operator)
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        expanders.get(ctx, operator)
     }
     /// Register a function object under a package and name.
     ///

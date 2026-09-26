@@ -1,8 +1,8 @@
 #![allow(missing_docs, clippy::missing_errors_doc)]
 #![allow(clippy::trivially_copy_pass_by_ref, clippy::chunks_exact_to_as_chunks)]
 
-use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
-use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
+use crate::{elements, fresh_symbol, list, symbol, PlaceRegistry, SetfExpansion};
+use ncl_object::{classify_object, ObjectError, ObjectRef, Runtime, ThreadContext, Word};
 
 fn form(
     ctx: &mut ThreadContext,
@@ -50,6 +50,9 @@ fn place(
     registry: &PlaceRegistry,
     place: Word,
 ) -> Result<SetfExpansion, ObjectError> {
+    if !registry.belongs_to(runtime) {
+        return Err(ObjectError::TypeError);
+    }
     if matches!(classify_object(ctx, place), ObjectRef::Symbol(_)) {
         let set = symbol(ctx, runtime, "SET")?;
         let store = fresh_symbol(ctx, runtime)?;
@@ -67,9 +70,20 @@ fn place(
     }
     let parts = elements(ctx, place)?;
     let (operator, arguments) = parts.split_first().ok_or(ObjectError::TypeError)?;
-    registry
-        .get(ctx, runtime, *operator)?
-        .ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)
+    let expansion = registry
+        .get(ctx, *operator)?
+        .ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)?;
+    validate_expansion(&expansion)?;
+    Ok(expansion)
+}
+
+fn validate_expansion(expansion: &SetfExpansion) -> Result<(), ObjectError> {
+    if expansion.temporary_variables.len() != expansion.value_forms.len()
+        || expansion.store_variables.len() != 1
+    {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(())
 }
 
 fn store_place(
@@ -78,9 +92,7 @@ fn store_place(
     expansion: &SetfExpansion,
     value: Word,
 ) -> Result<Word, ObjectError> {
-    if expansion.store_variables.len() != 1 {
-        return Err(ObjectError::TypeError);
-    }
+    validate_expansion(expansion)?;
     let store_binding = binding(ctx, runtime, expansion.store_variables[0], value)?;
     let body = wrap_let(ctx, runtime, "LET", &[store_binding], expansion.store_form)?;
     let mut bindings = Vec::with_capacity(expansion.temporary_variables.len());
@@ -345,8 +357,8 @@ pub fn expand_get_setf_expansion(
 mod tests {
     use super::*;
     use ncl_object::{Runtime, ThreadContext};
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     static PLACE_EXPANSIONS: AtomicUsize = AtomicUsize::new(0);
     static PLACE_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -387,8 +399,8 @@ mod tests {
         ctx.register(&runtime)?;
         let operator = symbol(&mut ctx, &runtime, "TEST-PLACE")?;
         let side_effect = symbol(&mut ctx, &runtime, "SIDE-EFFECT")?;
-        let registry = PlaceRegistry::new();
-        registry.define(&ctx, &runtime, operator, place_expander)?;
+        let registry = PlaceRegistry::new(&runtime);
+        registry.define(&ctx, operator, place_expander)?;
         let first = place_form(&mut ctx, &runtime, operator, side_effect)?;
         let second = place_form(&mut ctx, &runtime, operator, side_effect)?;
 
@@ -449,8 +461,8 @@ mod tests {
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)?;
         let operator = symbol(&mut ctx, &runtime, "ORDERED-PLACE")?;
-        let registry = PlaceRegistry::new();
-        registry.define(&ctx, &runtime, operator, place_expander)?;
+        let registry = PlaceRegistry::new(&runtime);
+        registry.define(&ctx, operator, place_expander)?;
         let first = place_form(&mut ctx, &runtime, operator, Word::fixnum(11))?;
         let second = place_form(&mut ctx, &runtime, operator, Word::fixnum(22))?;
 

@@ -3,35 +3,39 @@
 use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
 pub use ncl_object::{PlaceExpander, SetfExpansion};
 
-/// Handle for querying the place registry owned by a runtime.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct PlaceRegistry;
+/// Borrowed handle for the place registry owned by one runtime.
+#[derive(Clone, Copy, Debug)]
+pub struct PlaceRegistry<'runtime> {
+    runtime: &'runtime Runtime,
+}
 
-impl PlaceRegistry {
+impl<'runtime> PlaceRegistry<'runtime> {
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub const fn new(runtime: &'runtime Runtime) -> Self {
+        Self { runtime }
     }
 
     /// Register a compound-place expander in `runtime`.
     pub fn define(
         &self,
         ctx: &ThreadContext,
-        runtime: &Runtime,
         operator: Word,
         expander: PlaceExpander,
     ) -> Result<(), ObjectError> {
-        runtime.register_place_expander(ctx, operator, expander)
+        self.runtime.register_place_expander(ctx, operator, expander)
     }
 
     /// Read an expander. The runtime lock is released before callers invoke it.
     pub fn get(
         &self,
         ctx: &ThreadContext,
-        runtime: &Runtime,
         operator: Word,
     ) -> Result<Option<PlaceExpander>, ObjectError> {
-        runtime.place_expander(ctx, operator)
+        self.runtime.place_expander(ctx, operator)
+    }
+
+    pub(crate) fn belongs_to(&self, runtime: &Runtime) -> bool {
+        std::ptr::eq(self.runtime, runtime)
     }
 }
 
@@ -42,5 +46,5 @@ pub fn register_place(
     operator: Word,
     expander: PlaceExpander,
 ) -> Result<(), ObjectError> {
-    runtime.register_place_expander(ctx, operator, expander)
+    PlaceRegistry::new(runtime).define(ctx, operator, expander)
 }

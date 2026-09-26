@@ -2,11 +2,19 @@
 
 mod arithmetic;
 mod bitops;
+mod complex;
+mod constants;
+mod random;
+mod rational_float;
+mod remainder;
+mod rounding;
+mod transcendental;
 
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
-    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
+    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_special,
+    set_symbol_value,
 };
 
 fn install(
@@ -90,6 +98,94 @@ fn install_set(
     Ok(())
 }
 
+fn install_optional_set(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    entries: &[(&'static str, RustBuiltin)],
+) -> Result<(), ObjectError> {
+    const REQUIRED: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const OPTIONAL: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("DIVISOR"),
+        ty: ParameterType::Number,
+    }];
+    for &(name, callback) in entries {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::with_optional(REQUIRED, OPTIONAL),
+            convention: BuiltinConvention::Adapted,
+        };
+        runtime.register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(descriptor, callback),
+        )?;
+    }
+    Ok(())
+}
+
+fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    const ONE: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const TWO_FLOATS: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("FLOAT"),
+            ty: ParameterType::Number,
+        },
+        Parameter {
+            name: BuiltinName::new("SCALE"),
+            ty: ParameterType::Number,
+        },
+    ];
+    for (name, callback) in [
+        ("NUMERATOR", rational_float::numerator as RustBuiltin),
+        ("DENOMINATOR", rational_float::denominator as RustBuiltin),
+        ("RATIONAL", rational_float::rational as RustBuiltin),
+        ("FLOAT", rational_float::float as RustBuiltin),
+        ("DECODE-FLOAT", rational_float::decode_float as RustBuiltin),
+        (
+            "INTEGER-DECODE-FLOAT",
+            rational_float::integer_decode_float as RustBuiltin,
+        ),
+        ("FLOAT-DIGITS", rational_float::float_digits as RustBuiltin),
+        (
+            "FLOAT-PRECISION",
+            rational_float::float_precision as RustBuiltin,
+        ),
+        ("FLOAT-RADIX", rational_float::float_radix as RustBuiltin),
+    ] {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::fixed(ONE),
+            convention: BuiltinConvention::Direct(Arity::exact(1)),
+        };
+        runtime.register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(descriptor, callback),
+        )?;
+    }
+    let scale = Builtin {
+        lambda_list: LambdaList::fixed(TWO_FLOATS),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("SCALE-FLOAT")),
+        BuiltinImplementation::direct(scale, rational_float::scale_float),
+    )?;
+    install_optional_set(
+        runtime,
+        ctx,
+        &[
+            ("RATIONALIZE", rational_float::rationalize),
+            ("FLOAT-SIGN", rational_float::float_sign),
+        ],
+    )
+}
+
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
 ///
 /// # Errors
@@ -130,19 +226,54 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp),
             ("EVENP", 1, true, arithmetic::typed_dispatch_evenp),
             ("ODDP", 1, true, arithmetic::typed_dispatch_oddp),
-            ("FLOOR", 1, true, arithmetic::typed_dispatch_floor),
-            ("CEILING", 1, true, arithmetic::typed_dispatch_ceiling),
-            ("TRUNCATE", 1, true, arithmetic::typed_dispatch_truncate),
-            ("ROUND", 1, true, arithmetic::typed_dispatch_round),
-            ("FFLOOR", 1, true, arithmetic::typed_dispatch_ffloor),
-            ("FCEILING", 1, true, arithmetic::typed_dispatch_fceiling),
-            ("FTRUNCATE", 1, true, arithmetic::typed_dispatch_ftruncate),
-            ("FROUND", 1, true, arithmetic::typed_dispatch_fround),
-            ("MOD", 2, true, arithmetic::typed_dispatch_mod),
-            ("REM", 2, true, arithmetic::typed_dispatch_rem),
-            ("GCD", 0, false, arithmetic::typed_dispatch_gcd),
-            ("LCM", 0, false, arithmetic::typed_dispatch_lcm),
-            ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt),
+            ("MOD", 2, true, remainder::typed_mod),
+            ("REM", 2, true, remainder::typed_rem),
+            ("GCD", 0, false, remainder::typed_gcd),
+            ("LCM", 0, false, remainder::typed_lcm),
+            ("ISQRT", 1, true, remainder::typed_isqrt),
+            ("EXP", 1, true, transcendental::typed_exp),
+            ("EXPT", 2, true, transcendental::typed_expt),
+            ("SQRT", 1, true, transcendental::typed_sqrt),
+            ("SIN", 1, true, transcendental::typed_sin),
+            ("COS", 1, true, transcendental::typed_cos),
+            ("TAN", 1, true, transcendental::typed_tan),
+            ("ASIN", 1, true, transcendental::typed_asin),
+            ("ACOS", 1, true, transcendental::typed_acos),
+            ("SINH", 1, true, transcendental::typed_sinh),
+            ("COSH", 1, true, transcendental::typed_cosh),
+            ("TANH", 1, true, transcendental::typed_tanh),
+            ("ASINH", 1, true, transcendental::typed_asinh),
+            ("ACOSH", 1, true, transcendental::typed_acosh),
+            ("ATANH", 1, true, transcendental::typed_atanh),
+            ("COMPLEX", 2, true, complex::typed_complex),
+            ("CONJUGATE", 1, true, complex::typed_conjugate),
+            ("CIS", 1, true, complex::typed_cis),
+            ("PHASE", 1, true, complex::typed_phase),
+            ("REALPART", 1, true, complex::typed_realpart),
+            ("IMAGPART", 1, true, complex::typed_imagpart),
+        ],
+    )?;
+    install_rational_float(runtime, &mut ctx)?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[
+            ("LOG", transcendental::typed_log),
+            ("ATAN", transcendental::typed_atan),
+        ],
+    )?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[
+            ("FLOOR", rounding::typed_floor),
+            ("CEILING", rounding::typed_ceiling),
+            ("TRUNCATE", rounding::typed_truncate),
+            ("ROUND", rounding::typed_round),
+            ("FFLOOR", rounding::typed_ffloor),
+            ("FCEILING", rounding::typed_fceiling),
+            ("FTRUNCATE", rounding::typed_ftruncate),
+            ("FROUND", rounding::typed_fround),
         ],
     )?;
     install_set(
@@ -176,6 +307,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("BOOLE", 3, true, bitops::typed_boole),
         ],
     )?;
+    constants::register(&mut ctx, runtime)?;
+    random::register(&mut ctx, runtime)?;
     let package = runtime
         .find_package(&ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
@@ -188,6 +321,11 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             _ => Word::fixnum(i64::MIN >> 4),
         };
         set_symbol_value(&mut ctx, symbol, value)?;
+    }
+    for name in ["*", "+", "-", "/"] {
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
+        set_symbol_special(&mut ctx, symbol, true)?;
+        set_symbol_value(&mut ctx, symbol, Word::NIL)?;
     }
     for (name, value) in [
         ("BOOLE-CLR", bitops::BOOLE_CLR),

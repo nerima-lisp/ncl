@@ -28,12 +28,12 @@ pub(crate) struct PlaceExpanders {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct SymbolId(u64);
+pub(crate) struct SymbolId(Word);
 
 impl SymbolId {
     fn from_symbol(ctx: &ThreadContext, symbol: Word) -> Result<Self, ObjectError> {
         symbol_name(ctx, symbol)?;
-        Ok(Self(symbol.bits()))
+        Ok(Self(symbol))
     }
 }
 

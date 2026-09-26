@@ -338,6 +338,59 @@ fn mismatch_entry(
     values.clear();
     domain::selection::mismatch(ctx, runtime, &mut caller, &mut left, &mut right, options)
 }
+fn selection_transform_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    replacement: Option<Word>,
+) -> Result<Word, ObjectError> {
+    let (positional, options) = if replacement.is_some() {
+        selection_parse(ctx, args.as_slice().get(1..).ok_or(ObjectError::TypeError)?)?
+    } else {
+        selection_parse(ctx, args.as_slice())?
+    };
+    let object = *positional.first().ok_or(ObjectError::TypeError)?;
+    let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    let mut items = domain::selection::sequence_values(
+        ctx,
+        domain::selection::object_sequence(ctx, sequence)?,
+    )?;
+    let mut caller = BuiltinFunctionCaller;
+    let result = if let Some(replacement) = replacement {
+        domain::selection::substitute(
+            ctx,
+            runtime,
+            &mut caller,
+            &mut items,
+            replacement,
+            object,
+            options,
+        )?
+    } else {
+        domain::selection::remove(ctx, runtime, &mut caller, &mut items, object, options)?
+    };
+    values.clear();
+    let mut result = result;
+    domain::selection::list_from_values(ctx, runtime, &mut result)
+}
+fn remove_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_transform_entry(ctx, runtime, args, values, None)
+}
+fn substitute_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let replacement = args.required(0)?;
+    selection_transform_entry(ctx, runtime, args, values, Some(replacement))
+}
 fn hof_sequences(ctx: &ThreadContext, words: &[Word]) -> Result<Vec<Sequence>, ObjectError> {
     words
         .iter()
@@ -353,8 +406,13 @@ fn mapcar_entry(
     let function = args.required(0)?;
     callback_word(ctx, function)?;
     let mut caller = BuiltinFunctionCaller;
-    let result =
-        domain::higher_order::mapcar(ctx, runtime, function, &args.as_slice()[1..], &mut caller);
+    let result = domain::higher_order::mapcar(
+        ctx,
+        runtime,
+        function,
+        args.as_slice().get(1..).ok_or(ObjectError::TypeError)?,
+        &mut caller,
+    );
     values.clear();
     result
 }
@@ -367,8 +425,13 @@ fn mapc_entry(
     let function = args.required(0)?;
     callback_word(ctx, function)?;
     let mut caller = BuiltinFunctionCaller;
-    let result =
-        domain::higher_order::mapc(ctx, runtime, function, &args.as_slice()[1..], &mut caller);
+    let result = domain::higher_order::mapc(
+        ctx,
+        runtime,
+        function,
+        args.as_slice().get(1..).ok_or(ObjectError::TypeError)?,
+        &mut caller,
+    );
     values.clear();
     result
 }
@@ -381,7 +444,7 @@ fn map_entry(
     let destination = args.required(0)?;
     let function = args.required(1)?;
     callback_word(ctx, function)?;
-    let sequences = hof_sequences(ctx, &args.as_slice()[2..])?;
+    let sequences = hof_sequences(ctx, args.as_slice().get(2..).ok_or(ObjectError::TypeError)?)?;
     let result_type = if destination == Word::NIL {
         Sequence::List(ncl_object::List::Nil)
     } else {
@@ -402,7 +465,7 @@ fn predicate_entry(
 ) -> Result<Word, ObjectError> {
     let function = args.required(0)?;
     callback_word(ctx, function)?;
-    let sequences = hof_sequences(ctx, &args.as_slice()[1..])?;
+    let sequences = hof_sequences(ctx, args.as_slice().get(1..).ok_or(ObjectError::TypeError)?)?;
     let mut caller = BuiltinFunctionCaller;
     let result =
         domain::higher_order::predicate(ctx, runtime, kind, function, &sequences, &mut caller);
@@ -464,6 +527,238 @@ fn notevery_entry(
         values,
         domain::higher_order::Predicate::NotEvery,
     )
+}
+type ListMapOperation = fn(
+    &mut ThreadContext,
+    &Runtime,
+    Word,
+    &[Word],
+    &mut BuiltinFunctionCaller,
+) -> Result<Word, ObjectError>;
+fn list_map_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    operation: ListMapOperation,
+) -> Result<Word, ObjectError> {
+    let function = args.required(0)?;
+    callback_word(ctx, function)?;
+    let mut caller = BuiltinFunctionCaller;
+    let result = operation(ctx, runtime, function, &args.as_slice()[1..], &mut caller);
+    values.clear();
+    result
+}
+fn map_into_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let destination = args.required(0)?;
+    let function = args.required(1)?;
+    callback_word(ctx, function)?;
+    let sequences = hof_sequences(ctx, &args.as_slice()[2..])?;
+    let mut caller = BuiltinFunctionCaller;
+    let result = domain::higher_order::map_into(
+        ctx,
+        runtime,
+        destination,
+        function,
+        &sequences,
+        &mut caller,
+    );
+    values.clear();
+    result
+}
+fn reduce_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let function = args.required(0)?;
+    let sequence = sequence_arg(ctx, args.required(1)?)?;
+    callback_word(ctx, function)?;
+    let initial = args.get(2);
+    let mut caller = BuiltinFunctionCaller;
+    let result = domain::higher_order::reduce(
+        ctx,
+        runtime,
+        function,
+        sequence,
+        initial,
+        false,
+        &mut caller,
+    );
+    values.clear();
+    result
+}
+type OrderSetOperation = fn(
+    &mut ThreadContext,
+    &Runtime,
+    Word,
+    Word,
+    domain::order_sets::Options,
+) -> Result<Word, ObjectError>;
+fn order_set_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    operation: OrderSetOperation,
+) -> Result<Word, ObjectError> {
+    let (positional, options) = domain::order_sets::parse_options(ctx, args.as_slice(), 2)?;
+    let first = *positional.first().ok_or(ObjectError::TypeError)?;
+    let second = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    values.clear();
+    operation(ctx, runtime, first, second, options)
+}
+fn set_sort_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    stable: bool,
+) -> Result<Word, ObjectError> {
+    let (positional, options) = domain::order_sets::parse_options(ctx, args.as_slice(), 2)?;
+    let sequence = *positional.first().ok_or(ObjectError::TypeError)?;
+    let predicate = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    let result = domain::order_sets::sort(ctx, runtime, sequence, predicate, options.key, stable);
+    values.clear();
+    result
+}
+fn sort_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    set_sort_entry(ctx, runtime, args, values, false)
+}
+fn stable_sort_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    set_sort_entry(ctx, runtime, args, values, true)
+}
+fn union_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::union)
+}
+fn intersection_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::intersection)
+}
+fn set_difference_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(
+        ctx,
+        runtime,
+        args,
+        values,
+        domain::order_sets::set_difference,
+    )
+}
+fn set_exclusive_or_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(
+        ctx,
+        runtime,
+        args,
+        values,
+        domain::order_sets::set_exclusive_or,
+    )
+}
+fn subsetp_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::subsetp)
+}
+fn adjoin_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::adjoin)
+}
+fn assoc_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::assoc)
+}
+fn rassoc_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::rassoc)
+}
+fn member_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    order_set_entry(ctx, runtime, args, values, domain::order_sets::member)
+}
+fn maplist_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_map_entry(ctx, runtime, args, values, domain::higher_order::maplist)
+}
+fn mapl_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapl)
+}
+fn mapcan_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapcan)
+}
+fn mapcon_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapcon)
 }
 #[allow(clippy::too_many_lines)]
 /// Register the implemented list and sequence builtins.
@@ -581,11 +876,30 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("MISMATCH", mismatch_entry),
         ("MAPCAR", mapcar_entry),
         ("MAPC", mapc_entry),
+        ("MAPLIST", maplist_entry),
+        ("MAPL", mapl_entry),
+        ("MAPCAN", mapcan_entry),
+        ("MAPCON", mapcon_entry),
         ("MAP", map_entry),
+        ("MAP-INTO", map_into_entry),
+        ("REDUCE", reduce_entry),
         ("EVERY", every_entry),
         ("SOME", some_entry),
         ("NOTANY", notany_entry),
         ("NOTEVERY", notevery_entry),
+        ("REMOVE", remove_entry),
+        ("SUBSTITUTE", substitute_entry),
+        ("SORT", sort_entry),
+        ("STABLE-SORT", stable_sort_entry),
+        ("UNION", union_entry),
+        ("INTERSECTION", intersection_entry),
+        ("SET-DIFFERENCE", set_difference_entry),
+        ("SET-EXCLUSIVE-OR", set_exclusive_or_entry),
+        ("SUBSETP", subsetp_entry),
+        ("ADJOIN", adjoin_entry),
+        ("ASSOC", assoc_entry),
+        ("RASSOC", rassoc_entry),
+        ("MEMBER", member_entry),
     ] {
         register_adapted(runtime, &mut ctx, name, variadic, function)?;
     }

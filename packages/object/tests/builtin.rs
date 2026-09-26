@@ -61,6 +61,7 @@ const KEY_PARAMETERS: &[Parameter] = &[
     },
 ];
 
+#[allow(clippy::unnecessary_wraps)]
 fn arity_error_converter(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -68,7 +69,12 @@ fn arity_error_converter(
 ) -> Result<Word, ObjectError> {
     match error {
         LispError::ProgramError(ProgramError::WrongNumberOfArguments { minimum, maximum }) => {
-            Ok(Word::fixnum((minimum * 10 + maximum.unwrap_or(0)) as i64))
+            let encoded = minimum
+                .checked_mul(10)
+                .and_then(|value| value.checked_add(maximum.unwrap_or(0)))
+                .and_then(|value| i64::try_from(value).ok())
+                .ok_or(ObjectError::Layout)?;
+            Ok(Word::fixnum(encoded))
         }
         _ => panic!("unexpected Lisp error: {error:?}"),
     }

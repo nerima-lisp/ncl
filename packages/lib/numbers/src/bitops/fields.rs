@@ -36,10 +36,26 @@ pub fn byte_position(
 
 fn field(spec: Word, value: i128) -> Result<i128, ObjectError> {
     let (size, position) = byte_parts(spec)?;
-    if size >= 127 || position >= 127 {
+    if size > 127 || position > 127 {
         return Err(ObjectError::Layout);
     }
-    Ok((value >> position) & ((1_i128 << size) - 1))
+    let mask = if size == 127 {
+        i128::MAX
+    } else {
+        1_i128
+            .checked_shl(size)
+            .ok_or(ObjectError::Layout)?
+            .checked_sub(1)
+            .ok_or(ObjectError::Layout)?
+    };
+    Ok((value >> position) & mask)
+}
+
+fn shifted_field_mask(spec: Word) -> Result<i128, ObjectError> {
+    let (_, position) = byte_parts(spec)?;
+    field(spec, -1_i128)?
+        .checked_shl(position)
+        .ok_or(ObjectError::Layout)
 }
 
 pub fn ldb(
@@ -79,11 +95,10 @@ pub fn mask_field(
     let [spec, value] = args else {
         return Err(ObjectError::TypeError);
     };
-    let (_, position) = byte_parts(*spec)?;
     integer_word(
         ctx,
         runtime,
-        field(*spec, -1)? << position & integer(ctx, *value)?,
+        shifted_field_mask(*spec)? & integer(ctx, *value)?,
     )
 }
 
@@ -96,14 +111,12 @@ pub fn dpb(
     let [new_value, spec, old_value] = args else {
         return Err(ObjectError::TypeError);
     };
-    let (_, position) = byte_parts(*spec)?;
     let old = integer(ctx, *old_value)?;
-    let mask = field(*spec, -1)? << position;
-    integer_word(
-        ctx,
-        runtime,
-        (old & !mask) | ((integer(ctx, *new_value)? << position) & mask),
-    )
+    let mask = shifted_field_mask(*spec)?;
+    let new_value = integer(ctx, *new_value)?
+        .checked_shl(byte_parts(*spec)?.1)
+        .ok_or(ObjectError::Layout)?;
+    integer_word(ctx, runtime, (old & !mask) | (new_value & mask))
 }
 
 pub fn deposit_field(
@@ -115,8 +128,7 @@ pub fn deposit_field(
     let [new_value, spec, old_value] = args else {
         return Err(ObjectError::TypeError);
     };
-    let (_, position) = byte_parts(*spec)?;
-    let mask = field(*spec, -1)? << position;
+    let mask = shifted_field_mask(*spec)?;
     integer_word(
         ctx,
         runtime,

@@ -58,6 +58,7 @@ pub const OWNED_SYMBOLS: &[OwnedSymbol] = &[
     OwnedSymbol { package: "COMMON-LISP", name: "DEBUG", kinds: &[SymbolKind::Other] },
     OwnedSymbol { package: "COMMON-LISP", name: "DECLAIM", kinds: &[SymbolKind::Macro] },
     OwnedSymbol { package: "COMMON-LISP", name: "DECLARE", kinds: &[SymbolKind::Other] },
+    OwnedSymbol { package: "COMMON-LISP", name: "DECLARATION", kinds: &[SymbolKind::Other] },
     OwnedSymbol { package: "COMMON-LISP", name: "DEFCLASS", kinds: &[SymbolKind::Macro] },
     OwnedSymbol { package: "COMMON-LISP", name: "DEFGENERIC", kinds: &[SymbolKind::Macro] },
     OwnedSymbol { package: "COMMON-LISP", name: "DEFINE-CONDITION", kinds: &[SymbolKind::Macro] },

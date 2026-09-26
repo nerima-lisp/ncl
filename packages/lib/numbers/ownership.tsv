@@ -15,7 +15,6 @@ COMMON-LISP	>=	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownershi
 COMMON-LISP	ABS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ACOS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ACOSH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	ARITHMETIC-ERROR-OPERATION	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ASH	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
 COMMON-LISP	ASIN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ASINH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -43,12 +42,11 @@ COMMON-LISP	BYTE-POSITION	function	ncl-lib-numbers	1	no	numeric tower or numeric
 COMMON-LISP	BYTE-SIZE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	CEILING	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	CIS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	COMPLEX	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	COMPLEX	function	ncl-lib-numbers	1	no	numeric constructor; class is owned by CLOS
 COMMON-LISP	COMPLEXP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CONJUGATE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	COS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	COSH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	DECLARATION	other	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DECODE-FLOAT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DENOMINATOR	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DEPOSIT-FIELD	function	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -62,7 +60,7 @@ COMMON-LISP	EXP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	EXPT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FCEILING	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FFLOOR	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	FLOAT	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	FLOAT	function	ncl-lib-numbers	1	no	numeric conversion; type specifier is owned by the type system
 COMMON-LISP	FLOAT-DIGITS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-PRECISION	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-RADIX	function	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -137,7 +135,7 @@ COMMON-LISP	PI	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	PLUSP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RANDOM	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RANDOM-STATE-P	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	RATIONAL	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	RATIONAL	function	ncl-lib-numbers	1	no	numeric conversion; type specifier is owned by the type system
 COMMON-LISP	RATIONALIZE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RATIONALP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	REALP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
@@ -156,5 +154,4 @@ COMMON-LISP	SQRT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	TAN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	TANH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	TRUNCATE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	UPGRADED-ARRAY-ELEMENT-TYPE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ZEROP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule

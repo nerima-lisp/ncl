@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    HASH_TABLE_HIGH_WATER, HASH_TABLE_KV, HASH_TABLE_MARKER, HashMap, HashSet, VECTOR_DATA,
+    Weakness, Word, scan,
+};
 
 pub(super) struct WeakMarkContext<'a> {
     pub(super) state: &'a super::super::State,
@@ -17,7 +20,8 @@ impl WeakMarkContext<'_> {
                     continue;
                 }
                 if super::super::Heap::is_hash_table(self.state, index)
-                    && let Some(weakness) = super::super::Heap::hash_table_weakness(self.state, index)
+                    && let Some(weakness) =
+                        super::super::Heap::hash_table_weakness(self.state, index)
                 {
                     self.mark_table(index, weakness);
                     continue;
@@ -44,7 +48,8 @@ impl WeakMarkContext<'_> {
             let old_live_count = self.live.len();
             for index in pending {
                 if self.live.contains(&index)
-                    && let Some(weakness) = super::super::Heap::hash_table_weakness(self.state, index)
+                    && let Some(weakness) =
+                        super::super::Heap::hash_table_weakness(self.state, index)
                 {
                     self.mark_table(index, weakness);
                 }
@@ -98,7 +103,8 @@ impl WeakMarkContext<'_> {
             if Some(key) == marker {
                 continue;
             }
-            let value = Word::from_bits(self.state.objects[kv].words[VECTOR_DATA + position * 2 + 1]);
+            let value =
+                Word::from_bits(self.state.objects[kv].words[VECTOR_DATA + position * 2 + 1]);
             match weakness {
                 Weakness::Key => self.mark_value(value),
                 Weakness::Value => self.mark_value(key),
@@ -137,8 +143,9 @@ pub(super) fn referent_is_live(
     if is_immediate(value) {
         return true;
     }
-    super::super::Heap::find(state, value)
-        .is_some_and(|index| live.contains(&index) || (!full && state.objects[index].generation >= 2))
+    super::super::Heap::find(state, value).is_some_and(|index| {
+        live.contains(&index) || (!full && state.objects[index].generation >= 2)
+    })
 }
 
 fn is_immediate(value: Word) -> bool {

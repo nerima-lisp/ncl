@@ -23,7 +23,7 @@ fn call_with_gc_stress(
         .and_then(|word| FunctionObject::try_from(word).ok())
         .unwrap_or_else(|| panic!("missing builtin {name}"));
     ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(false);
+    ctx.set_strict_forwarding(true);
     runtime
         .call_builtin(ctx, function, args)
         .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
@@ -341,15 +341,7 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
     ctx.set_strict_forwarding(true);
 
     let source = ['a', 'B', ' ', 'C', 'D'];
-    let ranges = [
-        ("full", &[][..]),
-        ("start", &[start, Word::fixnum(1)][..]),
-        ("end", &[end, Word::fixnum(4)][..]),
-        (
-            "start-end",
-            &[start, Word::fixnum(1), end, Word::fixnum(4)][..],
-        ),
-    ];
+    let ranges = ["full", "start", "end", "start-end"];
     let cases = [
         ("STRING-UPCASE", ["AB CD", "aB CD", "AB CD", "aB CD"]),
         ("STRING-DOWNCASE", ["ab cd", "ab cd", "ab cD", "ab cD"]),
@@ -359,7 +351,14 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
         ("NSTRING-CAPITALIZE", ["Ab Cd", "aB Cd", "Ab CD", "aB CD"]),
     ];
     for (name, expected) in cases {
-        for ((range_name, range), expected) in ranges.iter().zip(expected) {
+        for (range_name, expected) in ranges.iter().zip(expected) {
+            let range = match *range_name {
+                "full" => Vec::new(),
+                "start" => vec![start, Word::fixnum(1)],
+                "end" => vec![end, Word::fixnum(4)],
+                "start-end" => vec![start, Word::fixnum(1), end, Word::fixnum(4)],
+                _ => unreachable!(),
+            };
             assert_case_result(
                 &runtime,
                 &mut ctx,
@@ -376,7 +375,7 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
                 } else {
                     Word::fixnum(5)
                 },
-                range,
+                &range,
             );
         }
     }

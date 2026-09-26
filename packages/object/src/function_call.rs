@@ -190,12 +190,11 @@ impl Runtime {
             } else {
                 original
             };
-            crate::with_roots(ctx, &adapted, |ctx, rooted_adapted| {
+            Ok(crate::with_roots(ctx, &adapted, |ctx, rooted_adapted| {
                 let callback_args: Vec<Word> = rooted_adapted.iter().map(|value| **value).collect();
                 let callback_args = crate::BuiltinArgs::from_rooted(&callback_args, rooted_adapted);
                 (implementation.function)(ctx, self, &callback_args, values)
-            })
-            .map(Ok)
+            }))
         })?;
         ctx.set_values(values.as_slice());
         if let Some(error) = ctx.take_pending_lisp_error()

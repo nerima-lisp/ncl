@@ -55,7 +55,11 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                     .and_then(|index| index.checked_mul(32))
                     .ok_or(ObjectError::TypeError)?;
                 result = result
-                    .checked_add(i128::from(limb).checked_shl(shift).ok_or(ObjectError::TypeError)?)
+                    .checked_add(
+                        i128::from(limb)
+                            .checked_shl(shift)
+                            .ok_or(ObjectError::TypeError)?,
+                    )
                     .ok_or(ObjectError::TypeError)?;
             }
             if ncl_object::bignum_sign(ctx, value)? {
@@ -373,7 +377,7 @@ pub fn float_sign(
         .get(1)
         .map(|v| float_value(ctx, v))
         .transpose()?
-        .map_or(1.0, |value| value);
+        .unwrap_or(1.0);
     values.clear();
     make_double(ctx, runtime, second.abs().copysign(first)).map(Into::into)
 }

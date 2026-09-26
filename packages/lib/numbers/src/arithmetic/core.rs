@@ -58,7 +58,11 @@ pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectErr
                     .and_then(|index| index.checked_mul(32))
                     .ok_or(ObjectError::TypeError)?;
                 magnitude = magnitude
-                    .checked_add(i128::from(limb).checked_shl(shift).ok_or(ObjectError::TypeError)?)
+                    .checked_add(
+                        i128::from(limb)
+                            .checked_shl(shift)
+                            .ok_or(ObjectError::TypeError)?,
+                    )
                     .ok_or(ObjectError::TypeError)?;
             }
             Ok(if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {

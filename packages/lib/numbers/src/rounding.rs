@@ -32,7 +32,7 @@ enum Number {
     Float(f64),
 }
 
-fn gcd(mut a: i128, mut b: i128) -> i128 {
+const fn gcd(mut a: i128, mut b: i128) -> i128 {
     a = a.saturating_abs();
     b = b.saturating_abs();
     while b != 0 {
@@ -41,7 +41,7 @@ fn gcd(mut a: i128, mut b: i128) -> i128 {
     a
 }
 
-fn ratio(numerator: i128, denominator: i128) -> Number {
+const fn ratio(numerator: i128, denominator: i128) -> Number {
     let sign = if denominator < 0 { -1 } else { 1 };
     let denominator = denominator.saturating_abs();
     let divisor = gcd(numerator, denominator);
@@ -72,7 +72,11 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                             .and_then(|index| index.checked_mul(32))
                             .ok_or(ObjectError::TypeError)?;
                         value
-                            .checked_add(i128::from(limb).checked_shl(shift).ok_or(ObjectError::TypeError)?)
+                            .checked_add(
+                                i128::from(limb)
+                                    .checked_shl(shift)
+                                    .ok_or(ObjectError::TypeError)?,
+                            )
                             .ok_or(ObjectError::TypeError)
                     })?;
             if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {

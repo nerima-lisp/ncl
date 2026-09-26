@@ -187,6 +187,17 @@ pub(crate) fn write_to_stream(
 ) -> Result<(), ObjectError> {
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;
+    if simple_vector_ref(ctx, state, 0)?.as_fixnum() == Some(super::FILE_OUTPUT) {
+        let path = super::file::text(ctx, simple_vector_ref(ctx, state, 2)?)?;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .map_err(|_| ObjectError::Layout)?;
+        std::io::Write::write_all(&mut file, character.encode_utf8(&mut [0; 4]).as_bytes())
+            .map_err(|_| ObjectError::Layout)?;
+        let count = position(ctx, state, POSITION)?;
+        return set_position(ctx, state, POSITION, count.saturating_add(1));
+    }
     match state_kind(ctx, state)? {
         Some(STRING_OUTPUT) => {
             let mut state = state;

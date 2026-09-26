@@ -59,6 +59,7 @@ pub(crate) fn open_adapter(
     {
         return Ok(Word::NIL);
     }
+    let path_word = args.required(0)?;
     let (data, interactive) = if direction == "INPUT" {
         let mut file = fs::File::open(&path).map_err(|_| ObjectError::Layout)?;
         let interactive = file.is_terminal();
@@ -76,7 +77,36 @@ pub(crate) fn open_adapter(
             return Err(ObjectError::TypeError);
         }
         let file = fs::File::create(&path).map_err(|_| ObjectError::Layout)?;
-        (Vec::new(), file.is_terminal())
+        let direction_word = option(ctx, args, "DIRECTION")?.unwrap_or(Word::NIL);
+        let format_word = option(ctx, args, "EXTERNAL-FORMAT")?.unwrap_or(Word::NIL);
+        return with_roots(
+            ctx,
+            &[path_word, direction_word, format_word],
+            |ctx, roots| {
+                let path = roots.first().ok_or(ObjectError::Layout)?;
+                let direction = roots.get(1).ok_or(ObjectError::Layout)?;
+                let format = roots.get(2).ok_or(ObjectError::Layout)?;
+                let state = make_simple_vector(
+                    ctx,
+                    runtime,
+                    &[Word::fixnum(super::FILE_OUTPUT), Word::fixnum(0), **path],
+                )?;
+                Ok(make_stream(
+                    ctx,
+                    runtime,
+                    **direction,
+                    Word::NIL,
+                    **format,
+                    state,
+                    if file.is_terminal() {
+                        Word::TRUE
+                    } else {
+                        Word::NIL
+                    },
+                )?
+                .into())
+            },
+        );
     } else if direction == "IO" {
         let mut file = fs::OpenOptions::new()
             .read(true)

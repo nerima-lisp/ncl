@@ -295,6 +295,9 @@ fn iso(
 
 /// Report whether a word addresses a heap object.
 fn is_heap(word: Word) -> bool {
+    if word.is_fixnum() || word.is_character() || word.is_unbound() {
+        return false;
+    }
     let tag = word.lowtag();
     if tag == LowTag::List as u8 {
         return word != Word::NIL;

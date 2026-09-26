@@ -84,8 +84,7 @@ impl HashTable {
         );
         let result = finish_root(ctx, rehash_threshold_token, result);
         let result = finish_root(ctx, rehash_size_token, result);
-        let result = finish_root(ctx, size_token, result);
-        result
+        finish_root(ctx, size_token, result)
     }
 }
 
@@ -254,7 +253,7 @@ pub(super) fn usize_to_f64(mut value: usize) -> f64 {
     result
 }
 
-pub(super) fn next_capacity(ctx: &ThreadContext, table: &HashTable) -> Result<usize, ObjectError> {
+pub(super) fn next_capacity(ctx: &ThreadContext, table: HashTable) -> Result<usize, ObjectError> {
     let capacity = table.capacity(ctx)?;
     let requested = match rehash_size_value(ctx, table.rehash_size(ctx)?)? {
         RehashSize::Add(amount) => capacity.checked_add(amount).ok_or(ObjectError::Layout)?,
@@ -293,9 +292,6 @@ fn float_ratio(value: f64) -> Result<(u128, u32), ObjectError> {
             0,
         ))
     } else {
-        Ok((
-            significand,
-            u32::try_from(exponent.unsigned_abs()).map_err(|_| ObjectError::Layout)?,
-        ))
+        Ok((significand, exponent.unsigned_abs()))
     }
 }

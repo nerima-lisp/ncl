@@ -72,8 +72,18 @@ fn install(
     let identifier = BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name));
     let implementation = BuiltinImplementation::direct(descriptor, callback);
     let implementation = match name {
-        "+" => implementation.with_entry(ncl_sys::native_add as *const () as usize),
-        "*" => implementation.with_entry(ncl_sys::native_mul as *const () as usize),
+        "+" => implementation.with_entry(
+            usize::try_from(
+                ncl_sys::function_address!(ncl_sys::native_add).map_err(|_| ObjectError::Layout)?,
+            )
+            .map_err(|_| ObjectError::Layout)?,
+        ),
+        "*" => implementation.with_entry(
+            usize::try_from(
+                ncl_sys::function_address!(ncl_sys::native_mul).map_err(|_| ObjectError::Layout)?,
+            )
+            .map_err(|_| ObjectError::Layout)?,
+        ),
         _ => implementation,
     };
     runtime

@@ -220,7 +220,7 @@ pub fn matching_indices<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     object: Word,
     options: SelectionOptions,
 ) -> Result<Vec<usize>, ObjectError> {
@@ -285,7 +285,7 @@ pub fn find<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     object: Word,
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
@@ -302,7 +302,7 @@ pub fn position<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     object: Word,
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
@@ -320,7 +320,7 @@ pub fn count<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     object: Word,
     mut options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
@@ -335,7 +335,7 @@ pub fn remove<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     object: Word,
     options: SelectionOptions,
 ) -> Result<Vec<Word>, ObjectError> {
@@ -381,8 +381,8 @@ pub fn search<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    left: &mut [Word],
-    right: &mut [Word],
+    left: &mut [Word],  // check-added-lines: allow(index) slice type
+    right: &mut [Word], // check-added-lines: allow(index) slice type
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, left, |ctx, left_roots| {
@@ -426,8 +426,8 @@ pub fn mismatch<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    left: &mut [Word],
-    right: &mut [Word],
+    left: &mut [Word],  // check-added-lines: allow(index) slice type
+    right: &mut [Word], // check-added-lines: allow(index) slice type
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, left, |ctx, left_roots| {
@@ -458,7 +458,7 @@ pub fn mismatch<C: FunctionCaller>(
 pub fn list_from_values(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
         let mut result = Word::NIL;

@@ -223,7 +223,7 @@ pub fn reduce<C: FunctionCaller>(
                         call(ctx, runtime, caller, callback, &args)?.0;
                     index += 1;
                 }
-                Ok(accumulator[0])
+                Ok(*accumulator.first().ok_or(ObjectError::Layout)?)
             })
         })
     })
@@ -410,7 +410,7 @@ fn flatten_results(
     runtime: &Runtime,
     results: &[Word],
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_rooted_slice(ctx, &results, |ctx, rooted_results| {
+    ncl_object::with_rooted_slice(ctx, results, |ctx, rooted_results| {
         let mut flattened = Vec::new();
         for result in rooted_results.iter().copied() {
             flattened.extend(values(ctx, super::sequence_value(ctx, result)?)?);

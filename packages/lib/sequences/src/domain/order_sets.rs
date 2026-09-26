@@ -1,5 +1,6 @@
 #[path = "order_sets_assoc.rs"]
 mod assoc;
+#[allow(unused_imports)]
 pub use assoc::{assoc, member, rassoc};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{

@@ -15,8 +15,6 @@ pub enum FormatError {
     InvalidParameter { directive: DirectiveKind },
     /// An integer directive received a non-integer object.
     NonInteger { directive: DirectiveKind },
-    /// The parsed directive is outside this executor's supported subset.
-    UnsupportedDirective { directive: DirectiveKind },
     /// The underlying printer or sink failed.
     Print(PrintError),
 }
@@ -33,9 +31,6 @@ impl std::fmt::Display for FormatError {
             Self::NonInteger { directive } => {
                 write!(formatter, "format: expected integer for ~{directive:?}")
             }
-            Self::UnsupportedDirective { directive } => {
-                write!(formatter, "format: unsupported directive ~{directive:?}")
-            }
             Self::Print(error) => write!(formatter, "format: {error}"),
         }
     }
@@ -45,7 +40,9 @@ impl std::error::Error for FormatError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Print(error) => Some(error),
-            _ => None,
+            Self::MissingArgument { .. }
+            | Self::InvalidParameter { .. }
+            | Self::NonInteger { .. } => None,
         }
     }
 }
@@ -65,8 +62,7 @@ impl From<PrintError> for FormatError {
 /// # Errors
 ///
 /// Returns [`FormatError`] when an argument is missing or has the wrong type,
-/// a directive parameter is invalid, a directive is outside the supported
-/// subset, or the printer cannot write to the sink.
+/// a directive parameter is invalid, or the printer cannot write to the sink.
 pub fn execute(
     control: &FormatControl,
     arguments: &[Word],
@@ -107,64 +103,92 @@ fn execute_directive(
     sink: &mut dyn CharSink,
     line_start: &mut bool,
 ) -> Result<(), FormatError> {
+    let mut state = ExecutionState {
+        arguments,
+        argument_index,
+        ctx,
+        runtime,
+        sink,
+        line_start,
+    };
     match directive.kind {
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X => {
-            let value =
-                arguments
-                    .get(*argument_index)
-                    .copied()
-                    .ok_or(FormatError::MissingArgument {
-                        directive: directive.kind,
-                    })?;
-            *argument_index += 1;
-            if matches!(
-                directive.kind,
-                DirectiveKind::D | DirectiveKind::B | DirectiveKind::O | DirectiveKind::X
-            ) && !is_integer(ctx, value)
-            {
-                return Err(FormatError::NonInteger {
-                    directive: directive.kind,
-                });
-            }
-            let options = match directive.kind {
-                DirectiveKind::A => PrintOptions::new().with_escape(false),
-                DirectiveKind::S => PrintOptions::new().with_escape(true).with_readably(true),
-                DirectiveKind::D => PrintOptions::new().with_base(10),
-                DirectiveKind::B => PrintOptions::new().with_base(2),
-                DirectiveKind::O => PrintOptions::new().with_base(8),
-                DirectiveKind::X => PrintOptions::new().with_base(16),
-                kind => return Err(FormatError::UnsupportedDirective { directive: kind }),
-            };
-            write(ctx, runtime, value, sink, &options)?;
-            *line_start = false;
+        DirectiveKind::A => execute_value_directive(
+            directive,
+            &mut state,
+            PrintOptions::new().with_escape(false),
+        )?,
+        DirectiveKind::S => execute_value_directive(
+            directive,
+            &mut state,
+            PrintOptions::new().with_escape(true).with_readably(true),
+        )?,
+        DirectiveKind::D => {
+            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(10))?;
+        }
+        DirectiveKind::B => {
+            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(2))?;
+        }
+        DirectiveKind::O => {
+            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(8))?;
+        }
+        DirectiveKind::X => {
+            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(16))?;
         }
         DirectiveKind::Percent => {
             let count = repeat_count(directive)?;
             for _ in 0..count {
-                sink.write_char('\n').map_err(FormatError::from)?;
+                state.sink.write_char('\n').map_err(FormatError::from)?;
             }
-            *line_start = count > 0;
+            *state.line_start = count > 0;
         }
         DirectiveKind::Ampersand => {
-            if !*line_start {
-                sink.write_char('\n').map_err(FormatError::from)?;
+            if !*state.line_start {
+                state.sink.write_char('\n').map_err(FormatError::from)?;
             }
-            *line_start = true;
+            *state.line_start = true;
         }
         DirectiveKind::Tilde => {
             let count = repeat_count(directive)?;
             for _ in 0..count {
-                sink.write_char('~').map_err(FormatError::from)?;
+                state.sink.write_char('~').map_err(FormatError::from)?;
             }
-            *line_start = false;
+            *state.line_start = false;
         }
-        kind => return Err(FormatError::UnsupportedDirective { directive: kind }),
     }
+    Ok(())
+}
+
+struct ExecutionState<'a> {
+    arguments: &'a [Word],
+    argument_index: &'a mut usize,
+    ctx: &'a mut ThreadContext,
+    runtime: &'a Runtime,
+    sink: &'a mut dyn CharSink,
+    line_start: &'a mut bool,
+}
+
+fn execute_value_directive(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    options: PrintOptions,
+) -> Result<(), FormatError> {
+    let value = state.arguments.get(*state.argument_index).copied().ok_or(
+        FormatError::MissingArgument {
+            directive: directive.kind,
+        },
+    )?;
+    *state.argument_index += 1;
+    if matches!(
+        directive.kind,
+        DirectiveKind::D | DirectiveKind::B | DirectiveKind::O | DirectiveKind::X
+    ) && !is_integer(state.ctx, value)
+    {
+        return Err(FormatError::NonInteger {
+            directive: directive.kind,
+        });
+    }
+    write(state.ctx, state.runtime, value, state.sink, &options)?;
+    *state.line_start = false;
     Ok(())
 }
 
@@ -176,9 +200,11 @@ fn repeat_count(directive: &Directive) -> Result<usize, FormatError> {
                 directive: directive.kind,
             })
         }
-        _ => Err(FormatError::InvalidParameter {
-            directive: directive.kind,
-        }),
+        Some(Parameter::Integer(_) | Parameter::Character(_) | Parameter::Relative) => {
+            Err(FormatError::InvalidParameter {
+                directive: directive.kind,
+            })
+        }
     }
 }
 

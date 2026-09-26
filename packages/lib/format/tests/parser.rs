@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::expect_used)]
 
-use ncl_lib_format::{ControlPart, DirectiveKind, Parameter, parse};
+use ncl_lib_format::{ControlPart, DirectiveKind, Parameter, UnsupportedDirectiveKind, parse};
 
 #[test]
 fn parses_literals_directives_and_parameters() {
@@ -51,7 +51,7 @@ fn parses_modifiers_and_relative_parameters() {
 
 #[test]
 fn parses_simple_directives_with_parameters_and_modifiers() {
-    let control = parse("~10,,'x:T~v@w~I").expect("valid control string");
+    let control = parse("~10,,'x:D~v@S~A").expect("valid control string");
     assert_eq!(
         control.parts,
         vec![
@@ -64,50 +64,75 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
                 ],
                 colon: true,
                 at_sign: false,
-                kind: DirectiveKind::T,
+                kind: DirectiveKind::D,
             }),
             ControlPart::Directive(ncl_lib_format::Directive {
                 parameters: vec![Parameter::Relative],
                 colon: false,
                 at_sign: true,
-                kind: DirectiveKind::W,
+                kind: DirectiveKind::S,
             }),
             ControlPart::Directive(ncl_lib_format::Directive {
                 parameters: Vec::new(),
                 colon: false,
                 at_sign: false,
-                kind: DirectiveKind::I,
+                kind: DirectiveKind::A,
             }),
         ]
     );
 }
 
 #[test]
-fn parses_simple_directives_case_insensitively() {
-    let control = parse("~t~w~i").expect("valid control string");
-    assert_eq!(
-        control.parts,
-        vec![
-            ControlPart::Directive(ncl_lib_format::Directive {
-                parameters: Vec::new(),
-                colon: false,
-                at_sign: false,
-                kind: DirectiveKind::T,
-            }),
-            ControlPart::Directive(ncl_lib_format::Directive {
-                parameters: Vec::new(),
-                colon: false,
-                at_sign: false,
-                kind: DirectiveKind::W,
-            }),
-            ControlPart::Directive(ncl_lib_format::Directive {
-                parameters: Vec::new(),
-                colon: false,
-                at_sign: false,
-                kind: DirectiveKind::I,
-            }),
-        ]
-    );
+fn rejects_unsupported_directives_case_insensitively() {
+    for (character, directive) in [
+        ('t', UnsupportedDirectiveKind::T),
+        ('w', UnsupportedDirectiveKind::W),
+        ('i', UnsupportedDirectiveKind::I),
+    ] {
+        assert_eq!(
+            parse(&format!("~{character}")),
+            Err(ncl_lib_format::ParseError {
+                offset: 1,
+                kind: ncl_lib_format::ParseErrorKind::UnsupportedDirective { directive },
+            })
+        );
+    }
+}
+
+#[test]
+fn rejects_all_other_typed_directives() {
+    let unsupported = [
+        ('R', UnsupportedDirectiveKind::R),
+        ('P', UnsupportedDirectiveKind::P),
+        ('C', UnsupportedDirectiveKind::C),
+        ('F', UnsupportedDirectiveKind::F),
+        ('E', UnsupportedDirectiveKind::E),
+        ('G', UnsupportedDirectiveKind::G),
+        ('$', UnsupportedDirectiveKind::Dollar),
+        ('|', UnsupportedDirectiveKind::Bar),
+        ('<', UnsupportedDirectiveKind::TildeOpen),
+        ('>', UnsupportedDirectiveKind::TildeClose),
+        ('[', UnsupportedDirectiveKind::BracketOpen),
+        (']', UnsupportedDirectiveKind::BracketClose),
+        ('{', UnsupportedDirectiveKind::BraceOpen),
+        ('}', UnsupportedDirectiveKind::BraceClose),
+        ('^', UnsupportedDirectiveKind::UpArrow),
+        ('*', UnsupportedDirectiveKind::Star),
+        ('?', UnsupportedDirectiveKind::Question),
+        ('(', UnsupportedDirectiveKind::ParenOpen),
+        (')', UnsupportedDirectiveKind::ParenClose),
+        (';', UnsupportedDirectiveKind::Semicolon),
+        ('/', UnsupportedDirectiveKind::Slash),
+    ];
+    for (character, directive) in unsupported {
+        assert_eq!(
+            parse(&format!("~{character}")),
+            Err(ncl_lib_format::ParseError {
+                offset: 1,
+                kind: ncl_lib_format::ParseErrorKind::UnsupportedDirective { directive },
+            })
+        );
+    }
 }
 
 #[test]

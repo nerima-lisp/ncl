@@ -40,6 +40,13 @@ pub enum DirectiveKind {
     B,
     O,
     X,
+    Percent,
+    Ampersand,
+    Tilde,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnsupportedDirectiveKind {
     R,
     P,
     C,
@@ -50,10 +57,7 @@ pub enum DirectiveKind {
     T,
     W,
     Dollar,
-    Percent,
-    Ampersand,
     Bar,
-    Tilde,
     TildeOpen,
     TildeClose,
     Star,
@@ -81,6 +85,7 @@ pub enum ParseErrorKind {
     InvalidParameter,
     MissingDirective,
     UnknownDirective,
+    UnsupportedDirective { directive: UnsupportedDirectiveKind },
 }
 
 /// Parse a FORMAT control string into typed parts.
@@ -175,13 +180,10 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                     continue;
                 }
                 'v' | 'V' => parameters.push(Parameter::Relative),
-                'a' | 'A' | 's' | 'S' | 'd' | 'D' | 'b' | 'B' | 'o' | 'O' | 'x' | 'X' | 'r'
-                | 'R' | 'p' | 'P' | 'c' | 'C' | 'f' | 'F' | 'e' | 'E' | 'g' | 'G' | '$' | '%'
-                | '&' | '|' | '~' | '<' | '>' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}'
-                | '^' | ';' | '/' | 'i' | 'I' | 't' | 'T' | 'w' | 'W' => {
-                    let kind = directive_kind(current).ok_or(ParseError {
+                other => {
+                    let kind = directive_kind(other).map_err(|kind| ParseError {
                         offset: index,
-                        kind: ParseErrorKind::UnknownDirective,
+                        kind,
                     })?;
                     parts.push(ControlPart::Directive(Directive {
                         parameters,
@@ -191,12 +193,6 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                     }));
                     index += 1;
                     break;
-                }
-                _ => {
-                    return Err(ParseError {
-                        offset: index,
-                        kind: ParseErrorKind::UnknownDirective,
-                    });
                 }
             }
             index += 1;
@@ -208,41 +204,89 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
     Ok(FormatControl { parts })
 }
 
-const fn directive_kind(value: char) -> Option<DirectiveKind> {
+const fn directive_kind(value: char) -> Result<DirectiveKind, ParseErrorKind> {
     match value.to_ascii_uppercase() {
-        'A' => Some(DirectiveKind::A),
-        'S' => Some(DirectiveKind::S),
-        'D' => Some(DirectiveKind::D),
-        'B' => Some(DirectiveKind::B),
-        'O' => Some(DirectiveKind::O),
-        'X' => Some(DirectiveKind::X),
-        'R' => Some(DirectiveKind::R),
-        'P' => Some(DirectiveKind::P),
-        'C' => Some(DirectiveKind::C),
-        'I' => Some(DirectiveKind::I),
-        'F' => Some(DirectiveKind::F),
-        'E' => Some(DirectiveKind::E),
-        'G' => Some(DirectiveKind::G),
-        'T' => Some(DirectiveKind::T),
-        'W' => Some(DirectiveKind::W),
-        '$' => Some(DirectiveKind::Dollar),
-        '%' => Some(DirectiveKind::Percent),
-        '&' => Some(DirectiveKind::Ampersand),
-        '|' => Some(DirectiveKind::Bar),
-        '~' => Some(DirectiveKind::Tilde),
-        '<' => Some(DirectiveKind::TildeOpen),
-        '>' => Some(DirectiveKind::TildeClose),
-        '*' => Some(DirectiveKind::Star),
-        '?' => Some(DirectiveKind::Question),
-        '(' => Some(DirectiveKind::ParenOpen),
-        ')' => Some(DirectiveKind::ParenClose),
-        '[' => Some(DirectiveKind::BracketOpen),
-        ']' => Some(DirectiveKind::BracketClose),
-        '{' => Some(DirectiveKind::BraceOpen),
-        '}' => Some(DirectiveKind::BraceClose),
-        '^' => Some(DirectiveKind::UpArrow),
-        ';' => Some(DirectiveKind::Semicolon),
-        '/' => Some(DirectiveKind::Slash),
-        _ => None,
+        'A' => Ok(DirectiveKind::A),
+        'S' => Ok(DirectiveKind::S),
+        'D' => Ok(DirectiveKind::D),
+        'B' => Ok(DirectiveKind::B),
+        'O' => Ok(DirectiveKind::O),
+        'X' => Ok(DirectiveKind::X),
+        '%' => Ok(DirectiveKind::Percent),
+        '&' => Ok(DirectiveKind::Ampersand),
+        '~' => Ok(DirectiveKind::Tilde),
+        'R' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::R,
+        }),
+        'P' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::P,
+        }),
+        'C' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::C,
+        }),
+        'I' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::I,
+        }),
+        'F' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::F,
+        }),
+        'E' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::E,
+        }),
+        'G' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::G,
+        }),
+        'T' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::T,
+        }),
+        'W' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::W,
+        }),
+        '$' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Dollar,
+        }),
+        '|' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Bar,
+        }),
+        '<' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::TildeOpen,
+        }),
+        '>' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::TildeClose,
+        }),
+        '*' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Star,
+        }),
+        '?' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Question,
+        }),
+        '(' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::ParenOpen,
+        }),
+        ')' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::ParenClose,
+        }),
+        '[' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::BracketOpen,
+        }),
+        ']' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::BracketClose,
+        }),
+        '{' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::BraceOpen,
+        }),
+        '}' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::BraceClose,
+        }),
+        '^' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::UpArrow,
+        }),
+        ';' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Semicolon,
+        }),
+        '/' => Err(ParseErrorKind::UnsupportedDirective {
+            directive: UnsupportedDirectiveKind::Slash,
+        }),
+        _other => Err(ParseErrorKind::UnknownDirective),
     }
 }

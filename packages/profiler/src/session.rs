@@ -57,7 +57,7 @@ pub struct ProfileSnapshot {
 impl ProfileSnapshot {
     /// Number of samples retained in this snapshot.
     #[must_use]
-    pub const fn sample_count(&self) -> u64 {
+    pub fn sample_count(&self) -> u64 {
         self.profile.sample_count()
     }
 

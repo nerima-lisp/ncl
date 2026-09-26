@@ -2,8 +2,8 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    make_string, with_root, BuiltinImplementation, LispErrorConverter, ObjectError, PlaceExpander,
-    ThreadContext, Word,
+    BuiltinImplementation, LispErrorConverter, ObjectError, PlaceExpander, ThreadContext, Word,
+    make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -31,6 +31,29 @@ pub struct RootedTable {
     slot: Box<Word>,
     _token: RootToken,
 }
+
+/// A runtime-owned word that remains a precise GC root for the runtime life.
+#[derive(Debug)]
+pub struct RootedWord {
+    slot: Box<Word>,
+    _token: RootToken,
+}
+
+impl RootedWord {
+    pub(crate) fn new(heap: &Heap, value: Word) -> Self {
+        let mut slot = Box::new(value);
+        let token = ncl_sys::push_heap_root(heap, &mut slot);
+        Self {
+            slot,
+            _token: token,
+        }
+    }
+
+    pub(crate) fn get(&self) -> Word {
+        *self.slot
+    }
+}
+
 impl Runtime {
     /// Create a runtime with the default heap policy.
     ///
@@ -138,6 +161,7 @@ impl Runtime {
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         expanders.register(&self.heap, operator, expander);
+        drop(expanders);
         Ok(())
     }
 

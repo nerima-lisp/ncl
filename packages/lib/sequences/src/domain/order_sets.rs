@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[path = "order_sets_assoc.rs"]
 mod assoc;
 #[allow(unused_imports)]

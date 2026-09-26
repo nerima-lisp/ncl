@@ -352,6 +352,9 @@ impl<'a> Capture<'a> {
 
 /// Report whether a word is a heap object the image can address by record.
 fn is_heap(word: Word) -> bool {
+    if word.is_fixnum() || word.is_character() || word.is_unbound() {
+        return false;
+    }
     let tag = word.lowtag();
     if tag == LowTag::List as u8 {
         return word != Word::NIL;

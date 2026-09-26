@@ -4,7 +4,7 @@
 
 `Word` は 64-bit tagged value で、NIL と T は静的に固定配置する。cons は header なしの `(car, cdr)` 2 語、header object は 1 語 header の後ろに payload を置く。bit 0..7 は widetag、bit 8..15 は GC flags、bit 16..63 は size/length とする。generation と pin は page metadata に置く。
 
-lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
+lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character は `(code << 4) | 1`、NIL は `1` で表す。function、instance、other-pointer はそれぞれ lowtag 3、5、7 を使う。unbound marker は文字コード領域外にある予約済み即値である。fixnum は bit 0 が 0、その他の即値は bit 0 が 1 である。
 
 symbol は value、function、plist、package、name、`tls_index: u32`、identity-hash slot、flags word を持つ。flags word は bit 0 special、bit 1 constant、bit 2 macro、bit 3 package-lock、残りを予約とする。cons 専用 page と header-object page は混在させず、pin は page attribute とする。
 
@@ -30,14 +30,16 @@ NIL を list lowtag として扱うことで list predicate を高速にし、sy
 
 | bit 1..3 | kind | payload |
 | --- | --- | --- |
-| 000 | character | Unicode scalar in bit 4..24 |
+| 000 | character or reserved immediate | Unicode scalar in bit 4..35; unbound is outside this range |
 | 001 | list pointer | aligned cons address, two words |
-| 010 | single-float | IEEE-754 binary32 in bit 4..35 |
+| 010 | reserved | not allocated |
 | 011 | function pointer | simple-fun or closure |
-| 100 | other-immediate | unbound marker and reserved immediates |
+| 100 | reserved | not allocated |
 | 101 | instance pointer | structure or CLOS instance |
 | 110 | reserved | must not be allocated |
 | 111 | other pointer | symbol, string, vector, number, package |
+
+`LowTag` は実際にポインタを識別する 1、3、5、7 だけを定義する。文字と unbound は `Word::is_character` と `Word::is_unbound` で判定し、偶数 lowtag は使わない。
 
 Fixnum uses bit 0 = 0, a signed 63-bit payload, and `most-positive-fixnum = 4611686018427387903`. `consp` checks the list lowtag and excludes NIL; `listp` checks NIL or that lowtag. `fixnump` checks bit 0. Character, single-float, and function predicates inspect their lowtag. `symbolp`, `stringp`, and `simple-vector-p` inspect the widetag after the other-pointer lowtag.
 

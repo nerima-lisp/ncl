@@ -26,7 +26,8 @@ pub(super) fn constant_value(
         Constant::Character(value) => Ok(abi.encode_character(*value)),
         Constant::SingleFloat(value) => Ok(i64::from(value.to_bits())),
         Constant::DoubleFloat(value) => Ok(i64::from_ne_bytes(value.to_bits().to_ne_bytes())),
-        Constant::Nil | Constant::Unbound => Ok(0),
+        Constant::Nil => Ok(abi.encode_nil()),
+        Constant::Unbound => Ok(abi.encode_unbound()),
         Constant::T => Ok(abi.encode_fixnum(1)),
         Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))

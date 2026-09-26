@@ -1,4 +1,4 @@
-use crate::{allocate, layout, with_roots, ObjectError, Runtime, ThreadContext};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -598,7 +598,7 @@ pub fn array_row_major_set(
 ) -> Result<(), ObjectError> {
     match ncl_sys::object_widetag(&ctx.thread, object) {
         Some(layout::widetag::SIMPLE_VECTOR) => {
-            return simple_vector_set(ctx, object, index, value)
+            return simple_vector_set(ctx, object, index, value);
         }
         Some(layout::widetag::SPECIALIZED_ARRAY) => {
             return specialized_array_set(ctx, object, index, value);

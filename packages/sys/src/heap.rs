@@ -44,6 +44,7 @@ impl Heap {
                 used: 0,
                 gc_epoch: 0,
                 objects: Vec::new(),
+                object_starts: HashMap::new(),
                 layouts: HashMap::new(),
                 threads: Vec::new(),
                 dirty_cards: HashSet::new(),
@@ -213,16 +214,17 @@ impl Heap {
         Ok(())
     }
     pub(crate) fn unregister_thread(&self, thread: &Thread) {
-        let mut state = self.lock_state();
         let pointer = std::ptr::from_ref(thread).cast_mut();
-        state.threads.retain(|item| *item != pointer);
-        drop(state);
         let mut stop_world = self
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         stop_world.parked.remove(&(pointer as usize));
         drop(stop_world);
+
+        let mut state = self.lock_state();
+        state.threads.retain(|item| *item != pointer);
+        drop(state);
         self.stop_world_ready.notify_all();
     }
     pub(crate) fn active_mutators(&self) -> usize {
@@ -306,6 +308,8 @@ impl Heap {
             return Err(StorageCondition::HeapAddressTooLow);
         }
         state.used += bytes;
+        let index = state.objects.len();
+        state.object_starts.insert(address, index);
         state.objects.push(Object {
             words: data,
             kind,
@@ -330,14 +334,9 @@ impl Heap {
     }
     fn find_raw(state: &State, value: Word) -> Option<usize> {
         let address = value.address();
-        state.objects.iter().position(|object| {
-            (object.alive || object.forwarded_to.is_some()) && {
-                let start = object.words.as_ptr() as usize;
-                address >= start
-                    && address < start + object.words.len() * 8
-                    && (address - start).is_multiple_of(8)
-            }
-        })
+        let &index = state.object_starts.get(&address)?;
+        let object = state.objects.get(index)?;
+        (object.alive || object.forwarded_to.is_some()).then_some(index)
     }
     fn find(state: &State, value: Word) -> Option<usize> {
         let mut index = Self::find_raw(state, value)?;

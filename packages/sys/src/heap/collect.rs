@@ -132,6 +132,7 @@ impl super::Heap {
                 }
             }
             moved.insert(old_address, new_address);
+            state.object_starts.insert(new_address, new_index);
             state.objects.push(copy);
             live.insert(new_index);
         }

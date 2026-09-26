@@ -3,7 +3,11 @@
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn ncl() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
@@ -15,9 +19,37 @@ fn path_str(path: &Path) -> &str {
 }
 
 fn output(command: &mut Command) -> Output {
-    match command.output() {
-        Ok(output) => output,
+    let child = match command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
         Err(error) => panic!("failed to run ncl: {error}"),
+    };
+    wait_with_timeout(child)
+}
+
+fn wait_with_timeout(mut child: Child) -> Output {
+    let deadline = Instant::now() + CHILD_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return match child.wait_with_output() {
+                    Ok(output) => output,
+                    Err(error) => panic!("failed to collect ncl output: {error}"),
+                };
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                if let Err(error) = child.kill() {
+                    panic!("ncl timed out and could not be killed: {error}");
+                }
+                let _ = child.wait();
+                panic!("ncl did not exit within {CHILD_TIMEOUT:?}");
+            }
+            Err(error) => panic!("failed to poll ncl: {error}"),
+        }
     }
 }
 
@@ -52,10 +84,7 @@ fn eval_load_script_and_repl_use_runtime() {
         panic!("failed to write REPL input: {error}");
     }
     drop(stdin);
-    let output = match repl.wait_with_output() {
-        Ok(output) => output,
-        Err(error) => panic!("failed to collect REPL output: {error}"),
-    };
+    let output = wait_with_timeout(repl);
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("44"));
 

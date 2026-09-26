@@ -1,8 +1,8 @@
 //! Hash-table builtin integration tests.
 
 use ncl_object::{
-    array_row_major_set, classify_object, make_array, make_specialized_array, ArrayElementType,
-    ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
+    Word, array_row_major_set, classify_object, make_array, make_specialized_array,
 };
 
 fn call(
@@ -49,9 +49,11 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
     );
 
     call(&runtime, &mut ctx, "CLRHASH", &[table])?;
-    assert!(call(&runtime, &mut ctx, "SXHASH", &[key])?
-        .as_fixnum()
-        .is_some());
+    assert!(
+        call(&runtime, &mut ctx, "SXHASH", &[key])?
+            .as_fixnum()
+            .is_some()
+    );
     let rehash_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
     assert!(matches!(
         classify_object(&ctx, rehash_size),

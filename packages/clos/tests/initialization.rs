@@ -5,8 +5,8 @@
 )]
 
 use ncl_object::{
-    make_simple_vector, pop_root, push_root, slot_ref, slot_set, FunctionObject, Instance, Package,
-    Runtime, ThreadContext, Word,
+    FunctionObject, Instance, Package, Runtime, ThreadContext, Word, make_simple_vector, pop_root,
+    push_root, slot_ref, slot_set,
 };
 
 #[path = "../src/initialization.rs"]

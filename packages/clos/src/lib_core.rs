@@ -341,17 +341,3 @@ fn class_name_builtin(
 ) -> Result<Word, ObjectError> {
     class_name(ctx, args.required(0)?)
 }
-
-fn install_class(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    name: &str,
-    superclass: Option<&str>,
-) -> Result<(), ObjectError> {
-    let name_word = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-    let supers = superclass
-        .and_then(|parent| runtime.class(ctx, parent))
-        .unwrap_or(Word::NIL);
-    let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
-    runtime.define_class(ctx, name, class)
-}

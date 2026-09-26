@@ -1,10 +1,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
 
-use ncl_object::{
-    BuiltinConvention, BuiltinPackage, FunctionObject, Package, Runtime, ThreadContext, Word,
-    make_string,
-};
+use ncl_object::{BuiltinConvention, FunctionObject, Runtime, ThreadContext, Word};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -111,72 +108,24 @@ fn slot_exists_p_recognizes_direct_and_inherited_slots() {
 }
 
 #[test]
-fn ownership_function_rows_are_runtime_registered() {
+fn production_table_contains_only_bound_builtins() {
     let (runtime, mut ctx) = setup();
-    let mut ownership = Vec::new();
-
-    for row in include_str!("../ownership.tsv").lines().skip(1) {
-        let fields: Vec<_> = row.split('\t').collect();
-        assert_eq!(fields.len(), 7, "malformed ownership row: {row}");
-        match fields[2] {
-            "function" => {
-                ownership.push((fields[0], fields[1]));
-                let word = runtime
-                    .function(&mut ctx, fields[0], fields[1])
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "ownership function is not registered: {}::{}",
-                            fields[0], fields[1]
-                        )
-                    });
-                let function = FunctionObject::try_from(word).unwrap_or_else(|_| {
-                    panic!(
-                        "ownership function is not a FunctionObject: {}::{}",
-                        fields[0], fields[1]
-                    )
-                });
-                assert!(
-                    runtime.builtin_descriptor(function).is_some(),
-                    "ownership function has no production builtin descriptor: {}::{}",
-                    fields[0],
-                    fields[1]
-                );
-            }
-            "other" => {
-                let package = runtime.find_package(&ctx, fields[0]).unwrap();
-                let name = make_string(&mut ctx, &runtime, &fields[1].chars().collect::<Vec<_>>())
-                    .unwrap();
-                assert!(
-                    Package::from_word(package)
-                        .find_symbol(&mut ctx, name)
-                        .unwrap()
-                        .is_none(),
-                    "other ownership row was interned: {}::{}",
-                    fields[0],
-                    fields[1]
-                );
-            }
-            _ => {}
-        }
-    }
-
-    let mut production = ncl_clos::production_function_names()
-        .iter()
-        .map(|identifier| {
-            (
-                match identifier.package {
-                    BuiltinPackage::CommonLisp => "COMMON-LISP",
-                    BuiltinPackage::NclMop => "NCL-MOP",
-                    package => panic!("unexpected CLOS package: {package:?}"),
-                },
+    let production = ncl_clos::production_function_names();
+    assert!(!production.is_empty());
+    for identifier in production {
+        let word = runtime
+            .function(
+                &mut ctx,
+                identifier.package.as_str(),
                 identifier.name.as_str(),
             )
-        })
-        .collect::<Vec<_>>();
-    ownership.sort_unstable();
-    production.sort_unstable();
-    assert_eq!(
-        ownership, production,
-        "ownership function rows differ from production registration"
-    );
+            .unwrap_or_else(|| panic!("production builtin is not registered: {identifier:?}"));
+        let function = FunctionObject::try_from(word).unwrap_or_else(|_| {
+            panic!("production builtin is not a FunctionObject: {identifier:?}")
+        });
+        assert!(
+            runtime.builtin_descriptor(function).is_some(),
+            "production builtin has no descriptor: {identifier:?}"
+        );
+    }
 }

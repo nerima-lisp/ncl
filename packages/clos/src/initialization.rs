@@ -1,11 +1,11 @@
 //! Typed adapters for the standard CLOS instance initialization protocol.
 
 use ncl_object::{
-    classify_object, make_instance as allocate_instance, simple_vector_length, simple_vector_ref,
-    slot_set, with_root, with_roots, Builtin, BuiltinArgs, BuiltinIdentifier,
-    BuiltinImplementation, BuiltinName, BuiltinPackage, Instance, LambdaList, LispError,
-    MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter, ParameterType, Runtime,
-    ThreadContext, Word,
+    Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
+    Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, classify_object,
+    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
+    with_root, with_roots,
 };
 
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
@@ -47,6 +47,9 @@ pub struct BuiltinDescriptor {
     pub builtin: Builtin,
     /// Rust callback used by `Runtime::register_builtin`.
     pub callback: ncl_object::RustBuiltin,
+    /// Additional packages that expose this same implementation.
+    #[allow(dead_code)]
+    pub aliases: &'static [BuiltinPackage],
 }
 
 /// Return the initialization callbacks owned by this module.
@@ -61,18 +64,21 @@ const BUILTINS: [BuiltinDescriptor; 3] = [
         name: BuiltinName::new("MAKE-INSTANCE"),
         builtin: MAKE_INSTANCE_BUILTIN,
         callback: make_instance_builtin,
+        aliases: &[BuiltinPackage::NclMop],
     },
     BuiltinDescriptor {
         package: BuiltinPackage::CommonLisp,
         name: BuiltinName::new("INITIALIZE-INSTANCE"),
         builtin: INITIALIZE_INSTANCE_BUILTIN,
         callback: initialize_instance_builtin,
+        aliases: &[],
     },
     BuiltinDescriptor {
         package: BuiltinPackage::CommonLisp,
         name: BuiltinName::new("SHARED-INITIALIZE"),
         builtin: SHARED_INITIALIZE_BUILTIN,
         callback: shared_initialize_builtin,
+        aliases: &[],
     },
 ];
 

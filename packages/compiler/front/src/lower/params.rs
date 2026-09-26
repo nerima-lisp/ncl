@@ -1,6 +1,6 @@
 //! Lambda parameter and capture binding for the IR v2 path.
 
-use ncl_ir::{Compare, Convert, OpKind, Param, Terminator, Ty, ValueId};
+use ncl_ir::{Compare, Constant, Convert, OpKind, Param, Terminator, Ty, ValueId};
 
 use crate::lambda_list::{LambdaList, ParamName};
 use crate::symbols::SymbolRef;
@@ -97,6 +97,71 @@ impl Context<'_> {
         Ok(())
     }
 
+    pub(super) fn bind_rest_and_keys(
+        &mut self,
+        f: &mut FunctionLowerer,
+        list: &LambdaList,
+    ) -> Result<(), LowerError> {
+        let rest = if list.rest.is_some() || !list.keys.is_empty() {
+            Some(Self::make_rest_list(f, list)?)
+        } else {
+            None
+        };
+        if !list.keys.is_empty() {
+            let rest = rest.ok_or_else(|| LowerError::Ir {
+                detail: "keyword parameters have no argument list".to_owned(),
+            })?;
+            let allow_other_keys = if list.allow_other_keys {
+                f.word_constant(Constant::T)?
+            } else {
+                f.nil()?
+            };
+            f.safepoint()?;
+            f.one(
+                OpKind::Builtin {
+                    name: "check-keywords".to_owned(),
+                    args: vec![rest, allow_other_keys],
+                },
+                Ty::Word,
+            )?;
+            for key in &list.keys {
+                let name = param_name(&key.name)?;
+                let keyword = f.symbol(&key.keyword)?;
+                f.safepoint()?;
+                let value = f.one(
+                    OpKind::Builtin {
+                        name: "keyword-value".to_owned(),
+                        args: vec![rest, keyword],
+                    },
+                    Ty::Word,
+                )?;
+                f.safepoint()?;
+                let supplied = f.one(
+                    OpKind::Builtin {
+                        name: "keyword-supplied-p".to_owned(),
+                        args: vec![rest, keyword],
+                    },
+                    Ty::Word,
+                )?;
+                let value = self.bind_keyword_default(f, key, value, supplied)?;
+                f.env().bind_variable(name, Slot::Value(value));
+                if let Some(supplied_p) = &key.supplied_p {
+                    f.env()
+                        .bind_variable(param_name(supplied_p)?, Slot::Value(supplied));
+                }
+            }
+        }
+        if let Some(rest_name) = &list.rest {
+            f.env().bind_variable(
+                param_name(rest_name)?,
+                Slot::Value(rest.ok_or_else(|| LowerError::Ir {
+                    detail: "rest parameter has no argument list".to_owned(),
+                })?),
+            );
+        }
+        Ok(())
+    }
+
     pub(super) fn bind_aux(
         &mut self,
         f: &mut FunctionLowerer,
@@ -112,21 +177,80 @@ impl Context<'_> {
         }
         Ok(())
     }
-}
 
-pub(super) const fn reject_lambda_list(list: &LambdaList) -> Result<(), LowerError> {
-    if list.rest.is_some() {
-        return Err(LowerError::UnsupportedLambdaList { feature: "&rest" });
+    fn make_rest_list(
+        f: &mut FunctionLowerer,
+        list: &LambdaList,
+    ) -> Result<ValueId, LowerError> {
+        let start = list.required.len() + list.optional.len();
+        let start = i64::try_from(start).map_err(|_| LowerError::Ir {
+            detail: "rest parameter index does not fit i64".to_owned(),
+        })?;
+        let start = f.fixnum(start)?;
+        let start = f.one(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: start,
+            },
+            Ty::Word,
+        )?;
+        let argc = f.one(OpKind::LoadArg { index: 0 }, Ty::Word)?;
+        f.safepoint()?;
+        f.one(
+            OpKind::Builtin {
+                name: "make-rest-list".to_owned(),
+                args: vec![argc, start],
+            },
+            Ty::Word,
+        )
     }
-    if !list.keys.is_empty() || list.allow_other_keys {
-        return Err(LowerError::UnsupportedLambdaList { feature: "&key" });
+
+    fn bind_keyword_default(
+        &mut self,
+        f: &mut FunctionLowerer,
+        key: &crate::lambda_list::KeyParam,
+        value: ValueId,
+        supplied: ValueId,
+    ) -> Result<ValueId, LowerError> {
+        let nil = f.nil()?;
+        let condition = f.one(
+            OpKind::Compare {
+                op: Compare::Ne,
+                left: supplied,
+                right: nil,
+            },
+            Ty::Bool,
+        )?;
+        let start = f.current_block();
+        let present = self.block(f, Vec::new());
+        let default = self.block(f, Vec::new());
+        let result = f.fresh_value();
+        let merge = self.block(f, vec![(Ty::Word, result)]);
+        f.position(start)?;
+        f.terminate(Terminator::Branch {
+            condition,
+            then_target: present,
+            then_args: Vec::new(),
+            else_target: default,
+            else_args: Vec::new(),
+        })?;
+        f.position(present)?;
+        f.terminate(Terminator::Jump {
+            target: merge,
+            args: vec![value],
+        })?;
+        f.position(default)?;
+        let default_value = match key.default.as_ref() {
+            Some(form) => self.lower_expr(f, form)?,
+            None => f.nil()?,
+        };
+        f.terminate(Terminator::Jump {
+            target: merge,
+            args: vec![default_value],
+        })?;
+        f.position(merge)?;
+        Ok(result)
     }
-    if list.whole.is_some() || list.environment.is_some() || list.body.is_some() {
-        return Err(LowerError::UnsupportedLambdaList {
-            feature: "macro lambda list keyword",
-        });
-    }
-    Ok(())
 }
 
 fn param_name(name: &ParamName) -> Result<SymbolRef, LowerError> {

@@ -1,4 +1,3 @@
-
 /// A method entity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Method {

@@ -1,17 +1,69 @@
 //! Public-surface tests for the platform and heap boundary.
 
 use ncl_sys::{
-    Condvar, Heap, HeapConfig, LowTag, Mutex, NativeState, ReferenceLayout, SafepointState,
-    Semaphore, Thread, TypeTag, WaitQueue, Weakness, Word, alloc, alloc_cons, alloc_large, collect,
-    enter_native, heap_epoch, leave_native, make_weak, object_widetag, pop_root,
-    publish_conservative_root, publish_safepoint, push_root, read_cons_word, read_object_word,
-    register_layout, register_root_set, register_thread, register_thread_with_thread,
-    request_safepoint, set_strict_forwarding, set_tlab, tlab_bump, weak_value, write_barrier,
-    write_cons_word, write_object_word,
+    Condvar, Heap, HeapConfig, LowTag, Mutex, NativeError, NativeOperation, NativeState,
+    OverflowSemantics, ReferenceLayout, SafepointState, Semaphore, Thread, TypeTag, WaitQueue,
+    Weakness, Word, alloc, alloc_cons, alloc_large, collect, enter_native, heap_epoch,
+    leave_native, make_weak, native_add, native_car, native_cons, native_mul, object_widetag,
+    pop_root, publish_conservative_root, publish_safepoint, push_root, read_cons_word,
+    read_object_word, register_layout, register_root_set, register_thread,
+    register_thread_with_thread, request_safepoint, set_strict_forwarding, set_tlab, tlab_bump,
+    weak_value, write_barrier, write_cons_word, write_object_word,
 };
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+
+#[test]
+fn direct_native_failures_keep_typed_side_channel() {
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 8,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert_eq!(register_thread(&heap, &mut thread), Ok(()));
+
+    let returned = native_add(&raw mut thread, Word::fixnum(7), Word::NIL);
+    assert_eq!(returned, Word::UNBOUND);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::TypeMismatch {
+            operation: NativeOperation::Add,
+            operand: 1,
+            ..
+        })
+    ));
+    let returned = native_mul(&raw mut thread, Word::fixnum(i64::MAX / 2), Word::fixnum(3));
+    assert_eq!(returned, Word::UNBOUND);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::Overflow {
+            operation: NativeOperation::Mul,
+            semantics: OverflowSemantics::ArithmeticFixnum,
+        })
+    ));
+    // SAFETY: the test passes a registered live thread and a valid pointer.
+    let returned = unsafe { native_car(&raw mut thread, Word::fixnum(7)) };
+    assert_eq!(returned, Word::UNBOUND);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::TypeMismatch {
+            operation: NativeOperation::Car,
+            ..
+        })
+    ));
+    // SAFETY: the test passes a registered live thread and a valid pointer.
+    let returned = unsafe { native_cons(&raw mut thread, Word::NIL, Word::NIL) };
+    assert_eq!(returned, Word::UNBOUND);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::Allocation {
+            operation: NativeOperation::Cons,
+            ..
+        })
+    ));
+    ncl_sys::unregister_thread(&thread);
+}
 
 #[test]
 fn word_boundaries_and_root_slot_are_observable() {

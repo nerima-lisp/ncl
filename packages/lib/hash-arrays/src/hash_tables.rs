@@ -296,7 +296,8 @@ fn sxhash_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let hash = ncl_object::hash_table::sxhash(args.required(0)?);
-    Ok(Word::fixnum((hash & (i64::MAX as u64)).cast_signed()))
+    let mask = u64::try_from(i64::MAX).map_err(|_| ObjectError::Layout)?;
+    Ok(Word::fixnum((hash & mask).cast_signed()))
 }
 
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {

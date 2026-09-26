@@ -127,8 +127,8 @@ impl super::Heap {
                 forwarded_to: None,
             };
             copy.generation = copy.survived.min(2);
-            let old_address = source.words.as_ptr() as usize;
-            let new_address = copy.words.as_ptr() as usize;
+            let old_address = source.words.as_ptr().addr();
+            let new_address = copy.words.as_ptr().addr();
             let new_index = state.objects.len();
             state.objects[index].forwarded_to = Some(new_index);
             state.objects[index].alive = false;

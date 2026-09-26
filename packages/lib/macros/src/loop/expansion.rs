@@ -1,8 +1,8 @@
 use super::clause::HeldLoopClause;
 use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
 use super::{
-    AccumulatorKind, LimitDirection, LoopAst, LoopClause, ObjectError, Result, Runtime,
-    StepDirection, ThreadContext, Word, symbol_name,
+    AccumulatorKind, HashIterationKind, LimitDirection, LoopAst, LoopClause, ObjectError, Result,
+    Runtime, StepDirection, ThreadContext, Word, symbol_name,
 };
 
 /// Expand a parsed LOOP AST into portable CL primitive forms.
@@ -50,6 +50,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 }
             }
             LoopClause::Hash(spec) => {
+                symbol_name(ctx, spec.variable)?;
                 let variable = held.len();
                 held.push(spec.variable);
                 let table = held.len();
@@ -202,6 +203,8 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     let mut result = nil;
     let mut result_kind = None;
     let mut initialized_accumulators = Vec::new();
+    let mut hash_iteration = None;
+    let mut has_iteration_driver = false;
 
     for clause in &clauses {
         match *clause {
@@ -215,6 +218,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 direction,
                 limit,
             } => {
+                has_iteration_driver = true;
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
                 let step = if spec_step.is_some() {
                     spec_step.ok_or(ObjectError::TypeError)?
@@ -264,42 +268,22 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 table,
                 using,
             } => {
-                let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
-                let (key_variable, value_variable) = match using {
-                    Some((using_kind, using_variable)) => {
-                        if using_kind == super::HashIterationKind::Key {
-                            (using_variable, variable)
-                        } else {
-                            (variable, using_variable)
-                        }
-                    }
-                    None => {
-                        if kind == super::HashIterationKind::Key {
-                            (variable, secondary)
-                        } else {
-                            (secondary, variable)
-                        }
-                    }
-                };
-                let parameters =
-                    held_list(ctx, runtime, &mut held, &[key_variable, value_variable])?;
-                let body_value = held.len();
-                held.push(Word::NIL);
-                let callback_form =
-                    held_form(ctx, runtime, &mut held, "LAMBDA", &[parameters, body_value])?;
-                body.push(held_form(
-                    ctx,
-                    runtime,
-                    &mut held,
-                    "MAPHASH",
-                    &[callback_form, table],
-                )?);
+                if hash_iteration.is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+                if using.is_some_and(|(_, using_variable)| {
+                    held.get(using_variable) == held.get(variable)
+                }) {
+                    return Err(ObjectError::TypeError);
+                }
+                hash_iteration = Some((variable, kind, table, using));
             }
             HeldLoopClause::EqualsThen {
                 variable,
                 init,
                 then,
             } => {
+                has_iteration_driver = true;
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
                 updates.extend([variable, then]);
             }
@@ -309,6 +293,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 on,
                 by,
             } => {
+                has_iteration_driver = true;
                 let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
                 let nil_index = held.len();
                 held.push(Word::NIL);
@@ -335,29 +320,17 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 updates.extend([cursor, next]);
             }
             HeldLoopClause::Across { variable, vector } => {
+                has_iteration_driver = true;
                 let index = held_fresh_symbol(ctx, runtime, &mut held)?;
-                let vector_binding = held_fresh_symbol(ctx, runtime, &mut held)?;
-                bindings.push(held_list(
-                    ctx,
-                    runtime,
-                    &mut held,
-                    &[vector_binding, vector],
-                )?);
                 let zero = held.len();
                 held.push(Word::fixnum(0));
                 let nil_index = held.len();
                 held.push(Word::NIL);
                 bindings.push(held_list(ctx, runtime, &mut held, &[index, zero])?);
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
-                let length = held_form(
-                    ctx,
-                    runtime,
-                    &mut held,
-                    "ARRAY-TOTAL-SIZE",
-                    &[vector_binding],
-                )?;
+                let length = held_form(ctx, runtime, &mut held, "ARRAY-TOTAL-SIZE", &[vector])?;
                 tests.push(held_form(ctx, runtime, &mut held, ">=", &[index, length])?);
-                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector_binding, index])?;
+                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector, index])?;
                 body.push(held_form(
                     ctx,
                     runtime,
@@ -373,6 +346,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 ]);
             }
             HeldLoopClause::Repeat(count) => {
+                has_iteration_driver = true;
                 let counter = held_fresh_symbol(ctx, runtime, &mut held)?;
                 bindings.push(held_list(ctx, runtime, &mut held, &[counter, count])?);
                 let zero = held.len();
@@ -523,31 +497,68 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
         }
     }
     let body = expand_body(ctx, runtime, &mut held, &body, end)?;
-    let stop = if tests.is_empty() {
-        let index = held.len();
-        held.push(Word::NIL);
-        index
+    let loop_body = if hash_iteration.is_some() && !has_iteration_driver {
+        let mut tagbody = vec![start];
+        if !tests.is_empty() {
+            let test = held_form(ctx, runtime, &mut held, "OR", &tests)?;
+            let go_end = held_form(ctx, runtime, &mut held, "GO", &[end])?;
+            tagbody.push(held_form(ctx, runtime, &mut held, "WHEN", &[test, go_end])?);
+        }
+        tagbody.extend(body);
+        tagbody.push(end);
+        held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?
     } else {
-        let test = held_form(ctx, runtime, &mut held, "OR", &tests)?;
-        let go_end = held_form(ctx, runtime, &mut held, "GO", &[end])?;
-        held_form(ctx, runtime, &mut held, "WHEN", &[test, go_end])?
+        let stop = if tests.is_empty() {
+            let index = held.len();
+            held.push(Word::NIL);
+            index
+        } else {
+            let test = held_form(ctx, runtime, &mut held, "OR", &tests)?;
+            let go_end = held_form(ctx, runtime, &mut held, "GO", &[end])?;
+            held_form(ctx, runtime, &mut held, "WHEN", &[test, go_end])?
+        };
+        let mut tagbody = vec![start, stop];
+        tagbody.extend(body);
+        if !updates.is_empty() {
+            tagbody.push(held_form(ctx, runtime, &mut held, "SETQ", &updates)?);
+        }
+        tagbody.push(held_form(ctx, runtime, &mut held, "GO", &[start])?);
+        tagbody.push(end);
+        held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?
     };
-    let mut tagbody = vec![start, stop];
-    tagbody.extend(body);
-    if !updates.is_empty() {
-        tagbody.push(held_form(ctx, runtime, &mut held, "SETQ", &updates)?);
-    }
-    tagbody.push(held_form(ctx, runtime, &mut held, "GO", &[start])?);
-    tagbody.push(end);
-    tagbody.extend(finally);
+    let loop_body = if let Some((variable, kind, table, using)) = hash_iteration {
+        let (key_variable, value_variable) = match using {
+            Some((using_kind, using_variable)) => {
+                if using_kind == HashIterationKind::Key {
+                    (using_variable, variable)
+                } else {
+                    (variable, using_variable)
+                }
+            }
+            None => {
+                let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
+                if kind == HashIterationKind::Key {
+                    (variable, secondary)
+                } else {
+                    (secondary, variable)
+                }
+            }
+        };
+        let parameters = held_list(ctx, runtime, &mut held, &[key_variable, value_variable])?;
+        let lambda = held_form(ctx, runtime, &mut held, "LAMBDA", &[parameters, loop_body])?;
+        held_form(ctx, runtime, &mut held, "MAPHASH", &[lambda, table])?
+    } else {
+        loop_body
+    };
     let value = if matches!(result_kind, Some(AccumulatorKind::Collect)) {
         held_form(ctx, runtime, &mut held, "NREVERSE", &[result])?
     } else {
         result
     };
-    let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
     let mut block_body = initially;
-    block_body.extend([tagbody, value]);
+    block_body.push(loop_body);
+    block_body.extend(finally);
+    block_body.push(value);
     let block_progn = held_form(ctx, runtime, &mut held, "PROGN", &block_body)?;
     let block = held_form(
         ctx,

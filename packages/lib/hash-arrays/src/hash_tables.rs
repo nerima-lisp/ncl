@@ -143,31 +143,54 @@ fn maphash_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let callback = FunctionDesignator::try_from_word(ctx, args.required(0)?)?;
-    let table = table(ctx, args.required(1)?)?;
-    let mut entries = Vec::new();
-    table.for_each_entry(ctx, |key, value| entries.push((key, value)))?;
-    for (key, value) in entries {
-        let mut callback_args = <[Word; 2]>::from((key, value));
-        let key_token = push_root(ctx, &mut callback_args[0]);
-        let value_token = push_root(ctx, &mut callback_args[1]);
-        let mut caller = BuiltinFunctionCaller;
-        let mut values = MultipleValues::new();
-        let result = caller.call_function(
-            ctx,
-            runtime,
-            callback,
-            FunctionArguments::new(&callback_args),
-            &mut values,
-        );
-        let value_popped = pop_root(ctx, value_token);
-        let key_popped = pop_root(ctx, key_token);
-        if !value_popped || !key_popped {
-            return Err(ObjectError::Layout);
+    let mut callback_word = args.required(0)?;
+    let callback_token = push_root(ctx, &mut callback_word);
+    let mut table_word = args.required(1)?;
+    let table_token = push_root(ctx, &mut table_word);
+    let result = (|| {
+        FunctionDesignator::try_from_word(ctx, callback_word)?;
+        let table = table(ctx, table_word)?;
+        let mut entries = Vec::new();
+        table.for_each_entry(ctx, |key, value| entries.push([key, value]))?;
+
+        let mut entry_tokens = Vec::with_capacity(entries.len() * 2);
+        for entry in &mut entries {
+            entry_tokens.push(push_root(ctx, &mut entry[0]));
+            entry_tokens.push(push_root(ctx, &mut entry[1]));
         }
-        result?;
+
+        let result = (|| {
+            for entry in &entries {
+                let callback = FunctionDesignator::try_from_word(ctx, callback_word)?;
+                let mut caller = BuiltinFunctionCaller;
+                let mut values = MultipleValues::new();
+                caller.call_function(
+                    ctx,
+                    runtime,
+                    callback,
+                    FunctionArguments::new(entry),
+                    &mut values,
+                )?;
+            }
+            Ok(nil())
+        })();
+
+        let roots_valid = entry_tokens.into_iter().rev().fold(true, |valid, token| {
+            let popped = pop_root(ctx, token);
+            valid && popped
+        });
+        if roots_valid {
+            result
+        } else {
+            Err(ObjectError::Layout)
+        }
+    })();
+    let table_popped = pop_root(ctx, table_token);
+    let callback_popped = pop_root(ctx, callback_token);
+    if !table_popped || !callback_popped {
+        return Err(ObjectError::Layout);
     }
-    Ok(nil())
+    result
 }
 
 fn hash_table_rehash_size_builtin(
@@ -176,8 +199,16 @@ fn hash_table_rehash_size_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    table(ctx, args.required(0)?)?;
-    Ok(make_double(ctx, runtime, 1.5)?.as_word())
+    let mut table_word = args.required(0)?;
+    let table_token = push_root(ctx, &mut table_word);
+    let result = (|| {
+        table(ctx, table_word)?;
+        Ok(make_double(ctx, runtime, 1.5)?.as_word())
+    })();
+    if !pop_root(ctx, table_token) {
+        return Err(ObjectError::Layout);
+    }
+    result
 }
 
 fn hash_table_rehash_threshold_builtin(
@@ -186,8 +217,16 @@ fn hash_table_rehash_threshold_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    table(ctx, args.required(0)?)?;
-    Ok(make_double(ctx, runtime, 0.75)?.as_word())
+    let mut table_word = args.required(0)?;
+    let table_token = push_root(ctx, &mut table_word);
+    let result = (|| {
+        table(ctx, table_word)?;
+        Ok(make_double(ctx, runtime, 0.75)?.as_word())
+    })();
+    if !pop_root(ctx, table_token) {
+        return Err(ObjectError::Layout);
+    }
+    result
 }
 
 fn hash_table_p_builtin(

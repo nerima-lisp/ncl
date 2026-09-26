@@ -25,6 +25,37 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
     }
 }
 
+fn load_heap_constant(
+    assembler: &mut Assembler,
+    index: ncl_ir::ConstantIndex,
+) -> Result<(), CodegenError> {
+    let offset = (ncl_object::function_offset::CODE + ncl_object::code_offset::CONSTANTS + 1)
+        .checked_mul(8)
+        .and_then(|base| base.checked_add(usize::try_from(index.0).ok()?.checked_mul(8)?))
+        .and_then(|value| i16::try_from(value).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(29)),
+                offset: 16,
+            },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset,
+            },
+        },
+    )
+}
+
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::Eq,
@@ -182,8 +213,19 @@ pub fn lower_op(
     match &op.kind {
         OpKind::Const { result: constant } => {
             let value = constant_table_entry(&function.constants, *constant)?;
-            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), constant_word(value, abi)?) {
-                emit(assembler, instruction)?;
+            if matches!(
+                value,
+                ncl_ir::Constant::Symbol { .. }
+                    | ncl_ir::Constant::Object(_)
+                    | ncl_ir::Constant::StringBytes(_)
+                    | ncl_ir::Constant::SingleFloat(_)
+                    | ncl_ir::Constant::DoubleFloat(_)
+            ) {
+                load_heap_constant(assembler, *constant)?;
+            } else {
+                for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), constant_word(value, abi)?) {
+                    emit(assembler, instruction)?;
+                }
             }
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(16))?;

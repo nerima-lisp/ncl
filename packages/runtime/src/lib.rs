@@ -7,11 +7,11 @@ mod native_error;
 
 pub use function_call::RuntimeFunctionCaller;
 
-use ncl_codegen::{RuntimeAbi, RuntimeFunction};
+use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    BuiltinIdentifier, BuiltinName, BuiltinPackage, FunctionObject, ObjectError, Package,
-    Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
+    BuiltinIdentifier, FunctionObject, ObjectError, Package, Runtime as ObjectRuntime,
+    ThreadContext, Word, symbol_function,
 };
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, NativeError, SafepointMap, SourceLocation, alloc_code,
@@ -403,37 +403,44 @@ struct NativeAbi<'a> {
     object: &'a ObjectRuntime,
 }
 impl RuntimeAbi for NativeAbi<'_> {
-    fn builtin_address(&self, name: &str) -> Option<u64> {
-        let name = match name {
-            "+" => BuiltinName::new("+"),
-            "*" => BuiltinName::new("*"),
-            "CAR" => BuiltinName::new("CAR"),
-            "CONS" => BuiltinName::new("CONS"),
-            _ => return None,
-        };
+    fn builtin_address(&self, identifier: BuiltinIdentifier) -> Result<u64, AbiError> {
         self.object
-            .builtin_address(BuiltinIdentifier::new(BuiltinPackage::CommonLisp, name))
+            .builtin_address(identifier)
+            .ok_or(AbiError::MissingBuiltin(identifier))
     }
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
-    }
-    fn field_offset(&self, field: ncl_codegen::ContextField) -> Option<i32> {
+    fn field_offset(&self, field: ncl_codegen::ContextField) -> Result<i32, AbiError> {
         let layout = thread_layout();
         let offset = match field {
             ncl_codegen::ContextField::TlabBump => layout.tlab_bump,
             ncl_codegen::ContextField::TlabLimit => layout.tlab_limit,
             ncl_codegen::ContextField::SafepointRequest => layout.safepoint_request,
-            ncl_codegen::ContextField::MultipleValueArea => layout.mv,
-            _ => return None,
+            ncl_codegen::ContextField::Pending
+            | ncl_codegen::ContextField::MultipleValueCount
+            | ncl_codegen::ContextField::MultipleValueArea
+            | ncl_codegen::ContextField::Handler
+            | ncl_codegen::ContextField::Cleanup
+            | ncl_codegen::ContextField::Catch => {
+                return Err(AbiError::UnsupportedContextField(field));
+            }
         };
-        i32::try_from(offset).ok()
+        i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
-    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         match function {
             RuntimeFunction::SafepointSlow => ncl_sys::function_address!(ncl_sys::native_safepoint)
                 .map_err(|error| RuntimeError::Native(error.to_string()))
-                .ok(),
-            _ => None,
+                .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::AllocateSlow
+            | RuntimeFunction::Unwind
+            | RuntimeFunction::Builtin
+            | RuntimeFunction::ConstantTable
+            | RuntimeFunction::MakeClosure
+            | RuntimeFunction::EnterCatch
+            | RuntimeFunction::EnterUnwindProtect
+            | RuntimeFunction::EnterProgv
+            | RuntimeFunction::LeaveCatch
+            | RuntimeFunction::LeaveUnwindProtect
+            | RuntimeFunction::LeaveProgv => Err(AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 }

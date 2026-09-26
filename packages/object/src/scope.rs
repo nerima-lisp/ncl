@@ -143,11 +143,6 @@ impl<'ctx> Scope<'ctx> {
         }
     }
 
-    /// Borrow the context for allocation and collection operations.
-    pub const fn ctx(&mut self) -> &mut ThreadContext {
-        self.ctx
-    }
-
     /// Collect the current thread while retaining every handle in this scope.
     ///
     /// # Errors
@@ -302,7 +297,7 @@ mod tests {
         let word = make_string(&mut ctx, &runtime, &['x'; 64]).expect("string");
         let mut scope = Scope::new(&mut ctx);
         let handle = scope.root::<crate::StringObject>(Local::from_word(word));
-        scope.ctx().collect(true).expect("collection");
+        scope.collect(true).expect("collection");
         assert_ne!(word, scope.get(handle).as_word());
     }
 
@@ -341,7 +336,7 @@ mod tests {
             handles: Vec::new(),
         };
         for _ in 0..40 {
-            let word = crate::make_string(scope.ctx(), &runtime, &['x'; 8]).expect("string");
+            let word = crate::make_string(scope.ctx, &runtime, &['x'; 8]).expect("string");
             values.push(&mut scope, Local::from_word(word));
         }
         scope.collect(true).expect("collection");
@@ -349,7 +344,7 @@ mod tests {
         assert!(values.iter().all(|handle| {
             let word = scope.get(*handle).as_word();
             matches!(
-                crate::classify_object(scope.ctx(), word),
+                crate::classify_object(scope.ctx, word),
                 crate::ObjectRef::String(_)
             )
         }));
@@ -368,6 +363,6 @@ mod tests {
         let cons = scope.make_cons(&runtime, car, cdr).expect("cons");
         scope.collect(true).expect("collection");
         let cons_word = cons.get(&scope).as_word();
-        assert_eq!(crate::car(scope.ctx(), cons_word), Ok(Word::fixnum(1)));
+        assert_eq!(crate::car(scope.ctx, cons_word), Ok(Word::fixnum(1)));
     }
 }

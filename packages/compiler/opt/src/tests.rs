@@ -1,7 +1,5 @@
-use crate::{
-    InlineDirectCalls, Module, PassManager,
-};
-use super::tests_support::{caller, leaf, Fixture};
+use super::tests_support::{Fixture, caller, leaf};
+use crate::{InlineDirectCalls, Module, PassManager};
 use ncl_ir::{Constant, ConstantIndex, FunctionId, Op, OpKind, Terminator, Ty, ValueId};
 
 #[test]

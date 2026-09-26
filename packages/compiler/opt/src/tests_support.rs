@@ -1,4 +1,6 @@
-use ncl_ir::{Constant, Function, FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty, ValueId};
+use ncl_ir::{
+    Constant, Function, FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty, ValueId,
+};
 use std::fmt::Debug;
 
 pub(crate) trait Fixture<T> {

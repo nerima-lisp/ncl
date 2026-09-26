@@ -144,7 +144,7 @@ impl DeadCodeElimination {
         }
     }
 
-    fn is_pure(kind: &OpKind) -> bool {
+    const fn is_pure(kind: &OpKind) -> bool {
         match kind {
             OpKind::Const { .. }
             | OpKind::Move { .. }

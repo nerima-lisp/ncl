@@ -316,6 +316,32 @@ fn lowers_lambda_to_function_entry_closure_and_closure_call() {
 }
 
 #[test]
+fn lowers_a_named_global_call_through_the_function_cell() {
+    let mut fx = Fixture::new();
+    let form = fx.form("GLOBAL-FUNCTION", &[Word::NIL]);
+
+    let expr = fx.expand(form).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::LoadField {
+            field,
+            ..
+        } if *field == ncl_object::symbol_offset::FUNCTION as u32
+    )));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::CallClosure { .. }
+    )));
+    assert!(!any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::Call { .. }
+    )));
+}
+
+#[test]
 fn lowers_catch_throw_with_a_handler_region() {
     let mut fx = Fixture::new();
     let catch = fx.cl("CATCH");

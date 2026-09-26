@@ -1,7 +1,7 @@
 use super::{
-    ENTRY, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate,
-    load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call, lower_runtime_builtin,
-    lower_safepoint, slot_mem_of, store_slot,
+    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call,
+    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
+    lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
@@ -29,6 +29,27 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
             "constant requires a runtime table".into(),
         )),
     }
+}
+
+fn load_heap_constant(
+    assembler: &mut Assembler,
+    index: ncl_ir::ConstantIndex,
+) -> Result<(), CodegenError> {
+    let offset = i32::try_from(
+        (ncl_object::function_offset::CODE + ncl_object::code_offset::CONSTANTS + 1)
+            .checked_mul(8)
+            .and_then(|base| base.checked_add(usize::try_from(index.0).ok()?.checked_mul(8)?))
+            .ok_or(CodegenError::FrameOverflow)?,
+    )
+    .map_err(|_| CodegenError::FrameOverflow)?;
+    emit(
+        assembler,
+        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
+    )?;
+    emit(
+        assembler,
+        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FUNCTION_OBJECT, offset)),
+    )
 }
 
 const fn compare_condition(op: Compare) -> Cond {
@@ -123,7 +144,18 @@ pub fn lower_op(
                 .constants
                 .get(constant.0 as usize)
                 .ok_or_else(|| CodegenError::Unsupported("constant index out of range".into()))?;
-            load_immediate(assembler, FUNCTION_OBJECT, constant_word(value, abi)?)?;
+            if matches!(
+                value,
+                ncl_ir::Constant::Symbol { .. }
+                    | ncl_ir::Constant::Object(_)
+                    | ncl_ir::Constant::StringBytes(_)
+                    | ncl_ir::Constant::SingleFloat(_)
+                    | ncl_ir::Constant::DoubleFloat(_)
+            ) {
+                load_heap_constant(assembler, *constant)?;
+            } else {
+                load_immediate(assembler, FUNCTION_OBJECT, constant_word(value, abi)?)?;
+            }
             if let Some(result) = result {
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }

@@ -128,7 +128,17 @@ impl Context<'_> {
         let (callee, closure) = match operator {
             Operator::Name(name) => match f.env().lookup_function(name) {
                 Some(entry) => (entry.callee, true),
-                None => (f.symbol(name)?, false),
+                None => {
+                    let symbol = f.symbol(name)?;
+                    let function = f.one(
+                        OpKind::LoadField {
+                            object: symbol,
+                            field: ncl_object::symbol_offset::FUNCTION as u32,
+                        },
+                        Ty::Word,
+                    )?;
+                    (function, true)
+                }
             },
             Operator::Lambda(lambda) => (self.lower_lambda_value(f, lambda)?, true),
         };

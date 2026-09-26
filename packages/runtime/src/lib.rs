@@ -3,6 +3,7 @@
 mod compile;
 mod function_call;
 mod load;
+mod native_error;
 
 pub use function_call::RuntimeFunctionCaller;
 
@@ -13,9 +14,12 @@ use ncl_object::{
     Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
 };
 use ncl_sys::{
-    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code, invoke_entry,
-    publish_code, register_code, thread_layout, write_code,
+    CodeObjectMetadata, CodePtr, NativeError, SafepointMap, SourceLocation, alloc_code,
+    invoke_entry, publish_code, register_code, thread_layout, write_code,
 };
+
+pub use native_error::NativeCondition;
+use native_error::native_failure;
 
 /// Errors raised while setting up or executing one compilation unit.
 #[derive(Debug)]
@@ -37,6 +41,13 @@ pub enum RuntimeError {
     Lower(ncl_compiler_front::LowerError),
     /// Code generation or executable-memory failure.
     Native(String),
+    /// A direct native entry failed and was returned through its typed side channel.
+    NativeFailure {
+        /// The original typed native failure.
+        error: NativeError,
+        /// The object or Lisp condition category exposed to the runtime.
+        condition: NativeCondition,
+    },
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -48,6 +59,9 @@ impl std::fmt::Display for RuntimeError {
             Self::Front(error) => write!(f, "front-end error: {error:?}"),
             Self::Lower(error) => write!(f, "lowering error: {error:?}"),
             Self::Native(error) => write!(f, "native error: {error}"),
+            Self::NativeFailure { error, condition } => {
+                write!(f, "native failure {error:?}: {condition:?}")
+            }
         }
     }
 }
@@ -213,6 +227,7 @@ impl Runtime {
             register_code(self.context.thread_mut(), &code, metadata)
                 .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         }
+        self.context.thread_mut().take_native_error();
         let (value, _) = invoke_entry(
             &code,
             compiled.entry_offset as usize,
@@ -221,6 +236,9 @@ impl Runtime {
             [0; 4],
             0,
         );
+        if let Some(error) = self.context.thread_mut().take_native_error() {
+            return Err(native_failure(error));
+        }
         self.code.push(code);
         Ok(Word::from_bits(value))
     }

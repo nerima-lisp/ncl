@@ -1,4 +1,4 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
+use crate::{allocate, layout, with_roots, ObjectError, Runtime, ThreadContext};
 use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -115,6 +115,10 @@ fn array_flags(ctx: &ThreadContext, object: Word, rank: usize) -> Result<u64, Ob
 }
 
 /// Return an array's element type.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for a non-array or malformed layout.
 pub fn array_element_type(
     ctx: &ThreadContext,
     object: Word,
@@ -134,12 +138,18 @@ pub fn array_element_type(
 }
 
 /// Return an array's displacement target and index offset.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for a non-array or malformed layout.
 pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, usize), ObjectError> {
     if ncl_sys::object_widetag(&ctx.thread, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
         return match ncl_sys::object_widetag(&ctx.thread, object) {
-            Some(layout::widetag::SIMPLE_VECTOR)
-            | Some(layout::widetag::SPECIALIZED_ARRAY)
-            | Some(layout::widetag::STRING) => Ok((Word::NIL, 0)),
+            Some(
+                layout::widetag::SIMPLE_VECTOR
+                | layout::widetag::SPECIALIZED_ARRAY
+                | layout::widetag::STRING,
+            ) => Ok((Word::NIL, 0)),
             _ => Err(ObjectError::TypeError),
         };
     }
@@ -165,18 +175,30 @@ pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, us
 }
 
 /// Return whether an array is adjustable.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for a non-array or malformed metadata.
 pub fn adjustable_array_p(ctx: &ThreadContext, object: Word) -> Result<bool, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     Ok(array_flags(ctx, object, rank)? & layout::array_offset::FLAG_ADJUSTABLE != 0)
 }
 
 /// Return whether an array has a fill pointer.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for a non-array or malformed metadata.
 pub fn array_has_fill_pointer_p(ctx: &ThreadContext, object: Word) -> Result<bool, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     Ok(array_flags(ctx, object, rank)? & layout::array_offset::FLAG_HAS_FILL_POINTER != 0)
 }
 
 /// Return an array's fill pointer.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an array without a fill pointer or malformed metadata.
 pub fn fill_pointer(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     if !array_has_fill_pointer_p(ctx, object)? {
@@ -191,6 +213,10 @@ pub fn fill_pointer(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectEr
 }
 
 /// Set an array's fill pointer.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an invalid array, value, or malformed metadata.
 pub fn set_fill_pointer(
     ctx: &mut ThreadContext,
     object: Word,
@@ -391,6 +417,10 @@ pub fn array_row_major_set(
 }
 
 /// Return a new array with the requested dimensions and the old contents copied.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an invalid array, dimensions, or allocation.
 pub fn adjust_array(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

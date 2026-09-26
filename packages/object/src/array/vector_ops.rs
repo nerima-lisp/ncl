@@ -1,6 +1,14 @@
-use super::*;
+use super::{
+    adjust_array, adjustable_array_p, array_dimensions, array_row_major_ref, array_row_major_set,
+    fill_pointer, layout, length, metadata_offset, set_fill_pointer, write, ObjectError, Runtime,
+    ThreadContext, Word,
+};
 
 /// Push an element into a vector with a fill pointer, returning its old pointer.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an invalid vector or malformed layout.
 pub fn vector_push(
     ctx: &mut ThreadContext,
     object: Word,
@@ -17,6 +25,10 @@ pub fn vector_push(
 }
 
 /// Push an element, extending the vector when its current capacity is exhausted.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an invalid vector, extension, or malformed layout.
 pub fn vector_push_extend(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -76,6 +88,10 @@ pub fn vector_push_extend(
 }
 
 /// Pop the most recently pushed element from a vector.
+///
+/// # Errors
+///
+/// Returns [`ObjectError`] for an invalid vector, empty fill pointer, or malformed layout.
 pub fn vector_pop(ctx: &mut ThreadContext, object: Word) -> Result<Word, ObjectError> {
     let pointer = fill_pointer(ctx, object)?;
     if pointer == 0 {

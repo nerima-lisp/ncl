@@ -1,10 +1,10 @@
 //! Builtin registration for standard macros and macroexpansion.
 
 use ncl_object::{
-    car, cdr, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word,
+    ParameterType, Runtime, ThreadContext, Word, car, cdr,
 };
 
 const FUNCTION: Parameter = Parameter {
@@ -31,35 +31,42 @@ fn call_designator(
     arguments: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let designator = match function_designator(ctx, designator) {
-        Ok(designator) => designator,
-        Err(error) => {
-            ctx.set_pending_lisp_error(LispError::TypeError {
-                datum: designator,
-                expected: ObjectType::Function,
-            });
-            return Err(error);
-        }
-    };
-    let mut caller = BuiltinFunctionCaller;
-    caller
-        .call_function(
-            ctx,
-            runtime,
-            designator,
-            FunctionArguments::new(arguments),
-            values,
-        )
-        .map_err(|error| {
-            if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
-                ctx.set_pending_lisp_error(LispError::CellError(
-                    ncl_object::CellError::UndefinedFunction,
-                ));
-                ObjectError::UndefinedFunction
-            } else {
-                error
+    let mut rooted = Vec::with_capacity(arguments.len() + 1);
+    rooted.push(designator);
+    rooted.extend_from_slice(arguments);
+    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
+        let designator_word = *rooted[0];
+        let designator = match function_designator(ctx, designator_word) {
+            Ok(designator) => designator,
+            Err(error) => {
+                ctx.set_pending_lisp_error(LispError::TypeError {
+                    datum: designator_word,
+                    expected: ObjectType::Function,
+                });
+                return Err(error);
             }
-        })
+        };
+        let arguments: Vec<Word> = rooted[1..].iter().map(|word| **word).collect();
+        let mut caller = BuiltinFunctionCaller;
+        caller
+            .call_function(
+                ctx,
+                runtime,
+                designator,
+                FunctionArguments::new(&arguments),
+                values,
+            )
+            .map_err(|error| {
+                if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
+                    ctx.set_pending_lisp_error(LispError::CellError(
+                        ncl_object::CellError::UndefinedFunction,
+                    ));
+                    ObjectError::UndefinedFunction
+                } else {
+                    error
+                }
+            })
+    })
 }
 
 fn funcall(
@@ -69,8 +76,10 @@ fn funcall(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let designator = args.required(0)?;
-    let arguments = &args.as_slice()[1..];
-    call_designator(ctx, runtime, designator, arguments, values)
+    let arguments: Vec<Word> = (1..args.len())
+        .filter_map(|index| args.get(index))
+        .collect();
+    call_designator(ctx, runtime, designator, &arguments, values)
 }
 
 fn append_list(
@@ -96,7 +105,9 @@ fn apply(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let designator = args.required(0)?;
-    let supplied = args.as_slice();
+    let supplied: Vec<Word> = (0..args.len())
+        .filter_map(|index| args.get(index))
+        .collect();
     let last = *supplied.last().ok_or(ObjectError::TypeError)?;
     let mut arguments = supplied[1..supplied.len() - 1].to_vec();
     append_list(ctx, last, &mut arguments)?;
@@ -135,7 +146,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ncl_object::{make_cons, Arity, Package};
+    use ncl_object::{Arity, Package, make_cons};
 
     fn add(
         _ctx: &mut ThreadContext,

@@ -2,8 +2,8 @@
 
 use crate::typed::{FunctionDesignator, LispError, ProgramError};
 use crate::{
-    function_entry, Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext,
-    Word,
+    Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
+    function_entry,
 };
 use ncl_sys::invoke_entry_with_function_address;
 
@@ -123,16 +123,20 @@ fn call_native(
         return Err(ObjectError::UndefinedFunction);
     }
     let mut registers = [0_u64; 4];
-    for (register, argument) in args.iter().enumerate() {
+    for (register, argument) in args.iter().take(4).enumerate() {
         registers[register] = argument.bits();
     }
+    let rest = args
+        .get(4..)
+        .filter(|rest| !rest.is_empty())
+        .map_or(0, |rest| rest.as_ptr() as usize as u64);
     let (result, count) = invoke_entry_with_function_address(
         entry,
         ctx.thread_mut() as *mut ncl_sys::Thread,
         function.as_word().bits(),
         args.len() as u64,
         registers,
-        0,
+        rest,
     );
     if count > 1 {
         return Err(ObjectError::TypeError);

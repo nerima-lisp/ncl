@@ -5,8 +5,8 @@
 use std::fs;
 
 use ncl_object::{
-    car, cdr, classify_object, make_cons, make_simple_vector, make_stream, make_string,
-    simple_vector_length, simple_vector_ref, simple_vector_set, stream_direction,
+    car, cdr, classify_object, make_cons, make_simple_vector, make_stream, make_string, pop_root,
+    push_root, simple_vector_length, simple_vector_ref, simple_vector_set, stream_direction,
     stream_element_type, stream_external_format, stream_state, string_length, string_ref,
     symbol_name, Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError,
@@ -17,6 +17,7 @@ const POSITION: usize = 1;
 const DATA: usize = 2;
 const STRING_INPUT: i64 = -1;
 const STRING_OUTPUT: i64 = -2;
+const CLOSED: i64 = -3;
 const CHARACTER_PARAMETER: Parameter = Parameter {
     name: BuiltinName::new("character"),
     ty: ParameterType::Any,
@@ -46,6 +47,16 @@ const STRING_PARAMETERS: &[Parameter] = &[
     },
     Parameter {
         name: BuiltinName::new("string"),
+        ty: ParameterType::Any,
+    },
+];
+const BYTE_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("byte"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("stream"),
         ty: ParameterType::Any,
     },
 ];
@@ -106,6 +117,24 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     )?;
     runtime.register_builtin(
         &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CLOSE")),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_rest(
+                    STREAM_PARAMETERS,
+                    Parameter {
+                        name: BuiltinName::new("options"),
+                        ty: ParameterType::Any,
+                    },
+                ),
+                convention: BuiltinConvention::Adapted,
+            },
+            close_adapter,
+            pass_arguments,
+        ),
+    )?;
+    runtime.register_builtin(
+        &mut ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new("FILE-STRING-LENGTH"),
@@ -118,10 +147,41 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             file_string_length_adapter,
         ),
     )?;
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("READ-BYTE")),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_rest(
+                    STREAM_PARAMETERS,
+                    Parameter {
+                        name: BuiltinName::new("options"),
+                        ty: ParameterType::Any,
+                    },
+                ),
+                convention: BuiltinConvention::Adapted,
+            },
+            read_byte_adapter,
+            pass_arguments,
+        ),
+    )?;
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("WRITE-BYTE")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(BYTE_PARAMETERS),
+                convention: BuiltinConvention::Direct(Arity::exact(2)),
+            },
+            write_byte_adapter,
+        ),
+    )?;
     for (name, function) in [
         ("STREAMP", streamp_adapter as _),
         ("INPUT-STREAM-P", input_stream_p_adapter as _),
         ("OUTPUT-STREAM-P", output_stream_p_adapter as _),
+        ("OPEN-STREAM-P", open_stream_p_adapter as _),
+        ("INTERACTIVE-STREAM-P", interactive_stream_p_adapter as _),
         ("STREAM-ELEMENT-TYPE", stream_element_type_adapter as _),
         (
             "STREAM-EXTERNAL-FORMAT",
@@ -303,6 +363,13 @@ fn state_kind(ctx: &ThreadContext, state: Word) -> Result<Option<i64>, ObjectErr
     Ok(first.filter(|value| *value == STRING_INPUT || *value == STRING_OUTPUT))
 }
 
+fn ensure_open(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
+    if simple_vector_ref(ctx, state, 0)?.as_fixnum() == Some(CLOSED) {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(())
+}
+
 fn position(ctx: &ThreadContext, state: Word, index: usize) -> Result<usize, ObjectError> {
     usize::try_from(
         simple_vector_ref(ctx, state, index)?
@@ -328,6 +395,7 @@ fn set_position(
 
 fn next_character(ctx: &mut ThreadContext, stream: Stream) -> Result<Option<char>, ObjectError> {
     let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
     if state_kind(ctx, state)?.is_some() {
         let pos = position(ctx, state, 1)?;
         let string = simple_vector_ref(ctx, state, 2)?;
@@ -446,13 +514,20 @@ fn write_to_stream(
     character: char,
 ) -> Result<(), ObjectError> {
     let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
     match state_kind(ctx, state)? {
         Some(STRING_OUTPUT) => {
-            let count = position(ctx, state, 1)?;
-            let list = simple_vector_ref(ctx, state, 2)?;
-            let next = make_cons(ctx, runtime, Word::character(u32::from(character)), list)?;
-            simple_vector_set(ctx, state, 2, next)?;
-            set_position(ctx, state, 1, count.saturating_add(1))
+            let mut state = state;
+            let token = push_root(ctx, &mut state);
+            let result = (|| {
+                let count = position(ctx, state, 1)?;
+                let list = simple_vector_ref(ctx, state, 2)?;
+                let next = make_cons(ctx, runtime, Word::character(u32::from(character)), list)?;
+                simple_vector_set(ctx, state, 2, next)?;
+                set_position(ctx, state, 1, count.saturating_add(1))
+            })();
+            let _ = pop_root(ctx, token);
+            result
         }
         Some(STRING_INPUT) => Err(ObjectError::TypeError),
         None => {
@@ -478,11 +553,63 @@ fn write_char_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let code = args.required(0)?.bits() >> 4;
-    let character = char::from_u32(u32::try_from(code).map_err(|_| ObjectError::TypeError)?)
-        .ok_or(ObjectError::TypeError)?;
+    let character = match classify_object(ctx, args.required(0)?) {
+        ObjectRef::Character(code) => char::from_u32(code).ok_or(ObjectError::TypeError)?,
+        _ => return Err(ObjectError::TypeError),
+    };
     write_to_stream(ctx, runtime, stream_from_args(args, 1)?, character)?;
     Ok(args.required(0)?)
+}
+
+fn read_byte_adapter(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let stream = stream_from_args(args, 0)?;
+    let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
+    if state_kind(ctx, state)?.is_some() {
+        return Err(ObjectError::TypeError);
+    }
+    let position = position(ctx, state, POSITION)?;
+    let length = simple_vector_length(ctx, state)?.saturating_sub(DATA);
+    if position >= length {
+        return Ok(args.get(1).unwrap_or(Word::NIL));
+    }
+    let byte = simple_vector_ref(ctx, state, DATA + position)?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?;
+    set_position(ctx, state, POSITION, position.saturating_add(1))?;
+    Ok(Word::fixnum(byte))
+}
+
+fn write_byte_adapter(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let byte = args
+        .required(0)?
+        .as_fixnum()
+        .ok_or(ObjectError::TypeError)?;
+    let byte = u8::try_from(byte).map_err(|_| ObjectError::TypeError)?;
+    let stream = stream_from_args(args, 1)?;
+    let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
+    if state_kind(ctx, state)?.is_some() {
+        return Err(ObjectError::TypeError);
+    }
+    let position = position(ctx, state, POSITION)?;
+    let slot = DATA.checked_add(position).ok_or(ObjectError::Layout)?;
+    if slot >= simple_vector_length(ctx, state)? {
+        return Err(ObjectError::TypeError);
+    }
+    simple_vector_set(ctx, state, slot, Word::fixnum(i64::from(byte)))?;
+    set_position(ctx, state, POSITION, position.saturating_add(1))?;
+    Ok(Word::fixnum(i64::from(byte)))
 }
 
 fn write_string_adapter(
@@ -733,6 +860,17 @@ fn open_adapter(
     .into())
 }
 
+fn close_adapter(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let state = stream_state(ctx, stream_from_args(args, 0)?)?;
+    simple_vector_set(ctx, state, 0, Word::fixnum(CLOSED))?;
+    Ok(Word::TRUE)
+}
+
 fn file_position_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -740,6 +878,7 @@ fn file_position_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let state = stream_state(ctx, Stream::from_word(args.required(0)?))?;
+    ensure_open(ctx, state)?;
     if let Some(position) = args.get(1) {
         let position = usize::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
@@ -763,6 +902,7 @@ fn file_length_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let state = stream_state(ctx, Stream::from_word(args.required(0)?))?;
+    ensure_open(ctx, state)?;
     Ok(Word::fixnum(
         i64::try_from(simple_vector_length(ctx, state)?.saturating_sub(DATA))
             .map_err(|_| ObjectError::Layout)?,
@@ -843,6 +983,29 @@ fn output_stream_p_adapter(
             Word::NIL
         },
     )
+}
+
+fn open_stream_p_adapter(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let state = stream_state(ctx, stream_from_args(args, 0)?)?;
+    if simple_vector_ref(ctx, state, 0)?.as_fixnum() == Some(CLOSED) {
+        Ok(Word::NIL)
+    } else {
+        Ok(Word::TRUE)
+    }
+}
+
+fn interactive_stream_p_adapter(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(Word::NIL)
 }
 
 fn stream_element_type_adapter(

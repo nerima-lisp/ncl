@@ -6,7 +6,8 @@
 
 use ncl_object::{
     Bignum, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs,
-    bignum_sign, classify_object, make_bignum_from_i128,
+    bignum_sign, classify_object, make_bignum_from_i128, make_ratio, ratio_denominator,
+    ratio_numerator,
 };
 
 const MAX_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
@@ -165,4 +166,52 @@ fn arithmetic_builtins_call_through_runtime() {
     assert_boolean(&runtime, &mut ctx, ">", &[bigger, big], true);
     assert_boolean(&runtime, &mut ctx, "<=", &[big, bigger], true);
     assert_boolean(&runtime, &mut ctx, ">=", &[bigger, big], true);
+}
+
+#[test]
+fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let ratio = make_ratio(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(1),
+        Word::fixnum(2),
+    )
+    .unwrap()
+    .into();
+    let real = ncl_object::make_double(&mut ctx, &runtime, 2.0)
+        .unwrap()
+        .into();
+    let imag = ncl_object::make_double(&mut ctx, &runtime, 3.0)
+        .unwrap()
+        .into();
+    let complex = ncl_object::make_complex(&mut ctx, &runtime, real, imag)
+        .unwrap()
+        .into();
+    let function = function(&runtime, &mut ctx, "+");
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut ratio = ratio;
+    let token = ncl_object::push_root(&mut ctx, &mut ratio);
+    let mut complex = complex;
+    let complex_token = ncl_object::push_root(&mut ctx, &mut complex);
+    let result = runtime
+        .call_builtin(&mut ctx, function, &[ratio, Word::fixnum(1)])
+        .unwrap();
+    let ObjectRef::Ratio(value) = classify_object(&ctx, result) else {
+        panic!("expected ratio result, got {:?}", classify_object(&ctx, result));
+    };
+    let ratio = ncl_object::Ratio::from_word(value);
+    assert_eq!(integer(&ctx, ratio_numerator(&ctx, ratio).unwrap()), 3);
+    assert_eq!(integer(&ctx, ratio_denominator(&ctx, ratio).unwrap()), 2);
+    let complex_result = runtime
+        .call_builtin(&mut ctx, function, &[complex, Word::fixnum(1)])
+        .unwrap();
+    assert!(matches!(
+        classify_object(&ctx, complex_result),
+        ObjectRef::Complex(_)
+    ));
+    assert!(ncl_object::pop_root(&mut ctx, complex_token));
+    assert!(ncl_object::pop_root(&mut ctx, token));
 }

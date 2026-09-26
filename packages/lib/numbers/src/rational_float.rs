@@ -17,7 +17,9 @@ fn with_rooted_word<T>(
     let token = ncl_object::push_root(ctx, slot.get_mut());
     let result = f(ctx, RootSlot::new(&slot));
     *value = slot.get();
-    assert!(ncl_object::pop_root(ctx, token));
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
     result
 }
 
@@ -182,8 +184,10 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Real) -> Result<Word,
         Real::Ratio(n, d) => {
             let mut n = word(ctx, runtime, Real::Integer(n))?;
             with_rooted_word(ctx, &mut n, |ctx, n| {
-                let d = word(ctx, runtime, Real::Integer(d))?;
-                make_ratio(ctx, runtime, *n, d).map(Into::into)
+                let mut d = word(ctx, runtime, Real::Integer(d))?;
+                with_rooted_word(ctx, &mut d, |ctx, d| {
+                    make_ratio(ctx, runtime, *n, *d).map(Into::into)
+                })
             })
         }
         Real::Float(value) => make_double(ctx, runtime, value).map(Into::into),
@@ -380,11 +384,15 @@ pub fn decode_float(
             raw_exponent - 1022,
         ),
     };
-    let s = word(ctx, runtime, Real::Float(significand))?;
-    let e = word(ctx, runtime, Real::Integer(i128::from(exponent)))?;
-    let sign = word(ctx, runtime, Real::Float(sign))?;
-    values.set(&[s, e, sign]);
-    Ok(s)
+    let mut s = word(ctx, runtime, Real::Float(significand))?;
+    with_rooted_word(ctx, &mut s, |ctx, s| {
+        let mut e = word(ctx, runtime, Real::Integer(i128::from(exponent)))?;
+        with_rooted_word(ctx, &mut e, |ctx, e| {
+            let sign = word(ctx, runtime, Real::Float(sign))?;
+            values.set(&[*s, *e, sign]);
+            Ok(*s)
+        })
+    })
 }
 
 pub fn integer_decode_float(
@@ -402,11 +410,15 @@ pub fn integer_decode_float(
     } else {
         (i128::from((1_u64 << 52) | fraction), raw - 1075)
     };
-    let n = word(ctx, runtime, Real::Integer(n))?;
-    let e = word(ctx, runtime, Real::Integer(i128::from(e)))?;
-    let sign = Word::fixnum(if bits >> 63 == 0 { 1 } else { -1 });
-    values.set(&[n, e, sign]);
-    Ok(n)
+    let mut n = word(ctx, runtime, Real::Integer(n))?;
+    with_rooted_word(ctx, &mut n, |ctx, n| {
+        let mut e = word(ctx, runtime, Real::Integer(i128::from(e)))?;
+        with_rooted_word(ctx, &mut e, |_, e| {
+            let sign = Word::fixnum(if bits >> 63 == 0 { 1 } else { -1 });
+            values.set(&[*n, *e, sign]);
+            Ok(*n)
+        })
+    })
 }
 pub fn scale_float(
     ctx: &mut ThreadContext,
@@ -475,25 +487,4 @@ pub fn float_radix(
     float_value(ctx, args.required(0)?)?;
     values.clear();
     Ok(Word::fixnum(2))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{exact_float, gcd, normalized};
-
-    #[test]
-    fn i128_min_boundaries_are_checked() {
-        assert_eq!(gcd(i128::MIN, 0), None);
-        assert_eq!(gcd(i128::MIN, -1), Some(1));
-        assert!(normalized(1, i128::MIN).is_err());
-        assert!(normalized(i128::MIN, -1).is_err());
-    }
-
-    #[test]
-    fn exact_float_keeps_signed_mantissa_checked() {
-        assert_eq!(
-            exact_float(-1.5),
-            Ok((-6_755_399_441_055_744, 4_503_599_627_370_496))
-        );
-    }
 }

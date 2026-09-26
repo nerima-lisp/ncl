@@ -312,9 +312,14 @@ pub fn byte(
         .map_err(|_| ObjectError::TypeError)?;
     let position = u32::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?)
         .map_err(|_| ObjectError::TypeError)?;
-    Ok(Word::from_bits(
-        (u64::from(position) << 32) | u64::from(size),
-    ))
+    let encoded = i64::from(position)
+        .checked_shl(32)
+        .and_then(|position| position.checked_add(i64::from(size)))
+        .ok_or(ObjectError::Layout)?;
+    let word = Word::fixnum(encoded);
+    (word.as_fixnum() == Some(encoded))
+        .then_some(word)
+        .ok_or(ObjectError::Layout)
 }
 
 #[cfg(test)]

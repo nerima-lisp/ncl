@@ -76,6 +76,36 @@ fn binary64_helpers_keep_explicit_boundaries() {
 }
 
 #[test]
+fn binary64_allocations_survive_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let mut value = make_double(&mut ctx, &runtime, 1.5).unwrap().into();
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let token = ncl_object::push_root(&mut ctx, &mut value);
+
+    let mut values = MultipleValues::new();
+    let decoded = rational_float::decode_float(
+        &mut ctx,
+        &runtime,
+        &BuiltinArgs::new(&[value]),
+        &mut values,
+    )
+    .unwrap();
+    assert_eq!(decoded, values.as_slice()[0]);
+    assert_eq!(values.as_slice()[1], Word::fixnum(1));
+
+    let decoded = rational_float::integer_decode_float(
+        &mut ctx,
+        &runtime,
+        &BuiltinArgs::new(&[value]),
+        &mut values,
+    )
+    .unwrap();
+    assert_eq!(decoded, values.as_slice()[0]);
+    assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
 fn complex_helpers_return_zero_imaginary_and_conjugate() {
     let (runtime, mut ctx) = setup();
     let real = make_double(&mut ctx, &runtime, 2.0).unwrap().into();

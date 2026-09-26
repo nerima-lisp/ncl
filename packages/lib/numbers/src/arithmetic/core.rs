@@ -1,11 +1,29 @@
 //! Numeric predicates and the core arithmetic callbacks.
 
+use core::cell::Cell;
+
 use ncl_object::Word;
 use ncl_object::{
     bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
     make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
     ratio_numerator, ObjectError, ObjectRef, Runtime, ThreadContext,
 };
+use ncl_sys::RootSlot;
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
+    result
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Number {
@@ -21,7 +39,7 @@ pub(super) fn gcd_i128(a: i128, b: i128) -> i128 {
     while ub != 0 {
         (ua, ub) = (ub, ua % ub);
     }
-    i128::try_from(ua).unwrap_or(0)
+    i128::try_from(ua).ok().map_or(0, i128::from)
 }
 
 pub(super) fn ratio(n: i128, d: i128) -> Number {
@@ -188,15 +206,23 @@ pub(super) fn word(
             if d == 0 {
                 return Err(ObjectError::TypeError);
             }
-            let n = word(ctx, runtime, Number::Integer(n))?;
-            let d = word(ctx, runtime, Number::Integer(d))?;
-            make_ratio(ctx, runtime, n, d).map(Into::into)
+            let mut n = word(ctx, runtime, Number::Integer(n))?;
+            with_root(ctx, &mut n, |ctx, n| {
+                let mut d = word(ctx, runtime, Number::Integer(d))?;
+                with_root(ctx, &mut d, |ctx, d| {
+                    make_ratio(ctx, runtime, *n, *d).map(Into::into)
+                })
+            })
         }
         Number::Float(value) => make_double(ctx, runtime, value).map(Into::into),
         Number::Complex(real, imag) => {
-            let r = word(ctx, runtime, Number::Float(real))?;
-            let i = word(ctx, runtime, Number::Float(imag))?;
-            make_complex(ctx, runtime, r, i).map(Into::into)
+            let mut r = word(ctx, runtime, Number::Float(real))?;
+            with_root(ctx, &mut r, |ctx, r| {
+                let mut i = word(ctx, runtime, Number::Float(imag))?;
+                with_root(ctx, &mut i, |ctx, i| {
+                    make_complex(ctx, runtime, *r, *i).map(Into::into)
+                })
+            })
         }
     }
 }

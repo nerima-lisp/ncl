@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    allocate, layout, length, read, with_roots, write, ObjectError, Runtime, ThreadContext, Word,
+};
 
 /// Allocate a string containing Unicode scalar values.
 ///

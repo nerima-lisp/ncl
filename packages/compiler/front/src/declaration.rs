@@ -74,6 +74,8 @@ pub enum Quality {
     Debug,
     /// `compilation-speed`.
     CompilationSpeed,
+    /// A quality name this front end does not interpret.
+    Unknown,
 }
 
 impl Quality {
@@ -211,8 +213,7 @@ fn optimize_qualities(literals: &[&Literal]) -> Result<Vec<OptimizeQuality>, Fro
                 return Err(malformed("optimize quality needs a name and a value"));
             };
             let quality = literal_symbol(quality)?;
-            let quality = Quality::from_name(&quality.name)
-                .ok_or_else(|| malformed("unknown optimization quality"))?;
+            let quality = Quality::from_name(&quality.name).unwrap_or(Quality::Unknown);
             let Literal::Number(crate::literal::NumberLiteral::Fixnum(value)) = value else {
                 return Err(malformed("optimization quality value is not an integer"));
             };

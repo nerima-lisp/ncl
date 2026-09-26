@@ -6,8 +6,8 @@ use ncl_object::package::{nil, truth};
 use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Parameter, ParameterType, Runtime, ThreadContext, Word,
-    array_row_major_ref, array_row_major_set, classify_object, make_array, make_cons,
-    simple_vector_ref,
+    array_row_major_ref, array_row_major_set, classify_object, make_array, make_cons, pop_root,
+    push_root, simple_vector_ref,
 };
 
 use super::{register_one, symbol_text};
@@ -325,12 +325,17 @@ fn array_dimensions_builtin(
 ) -> Result<Word, ObjectError> {
     let mut result = Word::NIL;
     for dimension in array_shape(ctx, args.required(0)?)?.into_iter().rev() {
-        result = make_cons(
+        let token = push_root(ctx, &mut result);
+        let next = make_cons(
             ctx,
             runtime,
             Word::fixnum(i64::try_from(dimension).map_err(|_| ObjectError::Layout)?),
             result,
-        )?;
+        );
+        if !pop_root(ctx, token) {
+            return Err(ObjectError::Layout);
+        }
+        result = next?;
     }
     Ok(result)
 }

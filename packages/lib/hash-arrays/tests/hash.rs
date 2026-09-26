@@ -3,8 +3,8 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
-    Word, array_row_major_set, classify_object, make_array, make_specialized_array, make_string,
-    pop_root, push_root,
+    Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, make_array,
+    make_specialized_array, make_string, pop_root, push_root,
 };
 
 fn call(
@@ -227,5 +227,117 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
         call(&runtime, &mut ctx, "SBIT", &[bits, Word::fixnum(0)])?,
         Word::fixnum(1)
     );
+    Ok(())
+}
+
+#[test]
+fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let mut array = make_array(
+        &mut ctx,
+        &runtime,
+        &[2, 3, 4],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let array_token = push_root(&mut ctx, &mut array);
+    let mut dimensions_function = runtime
+        .function(&mut ctx, "COMMON-LISP", "ARRAY-DIMENSIONS")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let dimensions_function_token = push_root(&mut ctx, &mut dimensions_function);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let dimensions = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(dimensions_function).map_err(|_| ObjectError::TypeError)?,
+        &[array],
+    )?;
+    assert_eq!(car(&mut ctx, dimensions)?, Word::fixnum(2));
+    let tail = cdr(&mut ctx, dimensions)?;
+    assert_eq!(car(&mut ctx, tail)?, Word::fixnum(3));
+    let tail = cdr(&mut ctx, tail)?;
+    assert_eq!(car(&mut ctx, tail)?, Word::fixnum(4));
+    assert_eq!(cdr(&mut ctx, tail)?, Word::NIL);
+
+    assert!(pop_root(&mut ctx, dimensions_function_token));
+    assert!(pop_root(&mut ctx, array_token));
+    Ok(())
+}
+
+#[test]
+fn bit_operations_preserve_inputs_and_results_across_gc() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let mut left = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(1), Word::fixnum(1)],
+    )?;
+    let left_token = push_root(&mut ctx, &mut left);
+    let mut right = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(1), Word::fixnum(0), Word::fixnum(1)],
+    )?;
+    let right_token = push_root(&mut ctx, &mut right);
+    let mut destination = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(0), Word::fixnum(0)],
+    )?;
+    let destination_token = push_root(&mut ctx, &mut destination);
+    let mut xor_function = runtime
+        .function(&mut ctx, "COMMON-LISP", "BIT-XOR")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let xor_function_token = push_root(&mut ctx, &mut xor_function);
+    let mut not_function = runtime
+        .function(&mut ctx, "COMMON-LISP", "BIT-NOT")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let not_function_token = push_root(&mut ctx, &mut not_function);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut xor = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(xor_function).map_err(|_| ObjectError::TypeError)?,
+        &[left, right, destination],
+    )?;
+    let xor_token = push_root(&mut ctx, &mut xor);
+    assert_eq!(array_row_major_ref(&ctx, xor, 0)?, Word::fixnum(1));
+    assert_eq!(array_row_major_ref(&ctx, xor, 1)?, Word::fixnum(1));
+    assert_eq!(array_row_major_ref(&ctx, xor, 2)?, Word::fixnum(0));
+
+    let not = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(not_function).map_err(|_| ObjectError::TypeError)?,
+        &[left],
+    )?;
+    assert_eq!(array_row_major_ref(&ctx, not, 0)?, Word::fixnum(1));
+    assert_eq!(array_row_major_ref(&ctx, not, 1)?, Word::fixnum(0));
+    assert_eq!(array_row_major_ref(&ctx, not, 2)?, Word::fixnum(0));
+
+    assert!(pop_root(&mut ctx, xor_token));
+    assert!(pop_root(&mut ctx, not_function_token));
+    assert!(pop_root(&mut ctx, xor_function_token));
+    assert!(pop_root(&mut ctx, destination_token));
+    assert!(pop_root(&mut ctx, right_token));
+    assert!(pop_root(&mut ctx, left_token));
     Ok(())
 }

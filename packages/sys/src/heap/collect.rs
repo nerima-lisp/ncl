@@ -282,82 +282,167 @@ impl super::Heap {
             if !state.objects[table].alive {
                 continue;
             }
-            let Some(weakness) = Self::hash_table_weakness(state, table) else {
-                continue;
-            };
-            let Some(kv) = state.objects[table]
-                .words
-                .get(HASH_TABLE_KV)
-                .copied()
-                .map(Word::from_bits)
-                .and_then(|value| Self::find(state, value))
+            let Some((weakness, kv, index_vector, marker, high_water)) =
+                Self::hash_table_cleanup_data(state, table)
             else {
                 continue;
             };
-            let Some(index_vector) = state.objects[table]
-                .words
-                .get(HASH_TABLE_INDEX)
-                .copied()
-                .map(Word::from_bits)
-                .and_then(|value| Self::find(state, value))
-            else {
-                continue;
-            };
-            let marker = state.objects[table].words[HASH_TABLE_MARKER];
-            let high_water = Word::from_bits(state.objects[table].words[HASH_TABLE_HIGH_WATER])
-                .as_fixnum()
-                .and_then(|value| usize::try_from(value).ok())
-                .unwrap_or(0);
             let mut removed = 0;
             for position in 0..high_water {
-                let key_offset = VECTOR_DATA + position * 2;
-                let Some(key_bits) = state.objects[kv].words.get(key_offset).copied() else {
-                    continue;
-                };
-                if key_bits == marker {
-                    continue;
-                }
-                let value_bits = state.objects[kv].words[key_offset + 1];
-                let key = Word::from_bits(key_bits);
-                let value = Word::from_bits(value_bits);
-                let key_live = weak_mark::referent_is_live(state, live, full, key);
-                let value_live = weak_mark::referent_is_live(state, live, full, value);
-                let remove = match weakness {
-                    Weakness::Key => !key_live,
-                    Weakness::Value => !value_live,
-                    Weakness::KeyAndValue => !key_live || !value_live,
-                    Weakness::KeyOrValue => !key_live && !value_live,
-                };
-                if remove {
-                    state.objects[index_vector].words[VECTOR_DATA + position] =
-                        Word::fixnum(TOMBSTONE).bits();
-                    state.objects[kv].words[key_offset] = marker;
-                    let next = Word::from_bits(state.objects[table].words[HASH_TABLE_FREE_HEAD]);
-                    state.objects[kv].words[key_offset + 1] = next.bits();
-                    let free_head = i64::try_from(position).unwrap_or(i64::MAX);
-                    state.objects[table].words[HASH_TABLE_FREE_HEAD] =
-                        Word::fixnum(free_head).bits();
-                    removed += 1;
-                } else {
-                    state.objects[kv].words[key_offset] =
-                        Self::relocated_address(state, moved, key)
-                            .map_or(key, |address| Self::relocated_word(key, address))
-                            .bits();
-                    state.objects[kv].words[key_offset + 1] =
-                        Self::relocated_address(state, moved, value)
-                            .map_or(value, |address| Self::relocated_word(value, address))
-                            .bits();
-                }
+                removed += usize::from(Self::clear_dead_hash_table_entry(
+                    state,
+                    (table, kv, index_vector, marker, weakness, position),
+                    moved,
+                    live,
+                    full,
+                ));
             }
-            if removed > 0 {
-                let count = Word::from_bits(state.objects[table].words[HASH_TABLE_COUNT])
-                    .as_fixnum()
-                    .and_then(|value| usize::try_from(value).ok())
-                    .unwrap_or(0);
-                let new_count = i64::try_from(count.saturating_sub(removed)).unwrap_or(0);
-                state.objects[table].words[HASH_TABLE_COUNT] = Word::fixnum(new_count).bits();
-            }
+            Self::decrement_hash_table_count(state, table, removed);
         }
+    }
+
+    fn hash_table_cleanup_data(
+        state: &super::State,
+        table: usize,
+    ) -> Option<(Weakness, usize, usize, u64, usize)> {
+        let weakness = Self::hash_table_weakness(state, table)?;
+        let kv = state.objects[table]
+            .words
+            .get(HASH_TABLE_KV)
+            .copied()
+            .map(Word::from_bits)
+            .and_then(|value| Self::find(state, value))?;
+        let index_vector = state.objects[table]
+            .words
+            .get(HASH_TABLE_INDEX)
+            .copied()
+            .map(Word::from_bits)
+            .and_then(|value| Self::find(state, value))?;
+        let marker = state.objects[table].words.get(HASH_TABLE_MARKER).copied()?;
+        let high_water = state.objects[table]
+            .words
+            .get(HASH_TABLE_HIGH_WATER)
+            .copied()
+            .map(Word::from_bits)
+            .and_then(Word::as_fixnum)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        Some((weakness, kv, index_vector, marker, high_water))
+    }
+
+    fn clear_dead_hash_table_entry(
+        state: &mut super::State,
+        entry: (usize, usize, usize, u64, Weakness, usize),
+        moved: &HashMap<usize, usize>,
+        live: &HashSet<usize>,
+        full: bool,
+    ) -> bool {
+        let (table, kv, index_vector, marker, weakness, position) = entry;
+        let key_offset = VECTOR_DATA + position * 2;
+        let Some(key_bits) = state.objects[kv].words.get(key_offset).copied() else {
+            return false;
+        };
+        if key_bits == marker {
+            return false;
+        }
+        let Some(value_bits) = state.objects[kv].words.get(key_offset + 1).copied() else {
+            return false;
+        };
+        let key = Word::from_bits(key_bits);
+        let value = Word::from_bits(value_bits);
+        let key_live = weak_mark::referent_is_live(state, live, full, key);
+        let value_live = weak_mark::referent_is_live(state, live, full, value);
+        let remove = match weakness {
+            Weakness::Key => !key_live,
+            Weakness::Value => !value_live,
+            Weakness::KeyAndValue => !key_live || !value_live,
+            Weakness::KeyOrValue => !key_live && !value_live,
+        };
+        if remove {
+            Self::remove_hash_table_entry(
+                state,
+                table,
+                kv,
+                index_vector,
+                marker,
+                key_offset,
+                position,
+            )
+        } else {
+            let relocated_key = Self::relocated_address(state, moved, key)
+                .map_or(key, |address| Self::relocated_word(key, address))
+                .bits();
+            let relocated_value = Self::relocated_address(state, moved, value)
+                .map_or(value, |address| Self::relocated_word(value, address))
+                .bits();
+            let Some(key_slot) = state.objects[kv].words.get_mut(key_offset) else {
+                return false;
+            };
+            *key_slot = relocated_key;
+            let Some(value_slot) = state.objects[kv].words.get_mut(key_offset + 1) else {
+                return false;
+            };
+            *value_slot = relocated_value;
+            false
+        }
+    }
+
+    fn remove_hash_table_entry(
+        state: &mut super::State,
+        table: usize,
+        kv: usize,
+        index_vector: usize,
+        marker: u64,
+        key_offset: usize,
+        position: usize,
+    ) -> bool {
+        let Some(free_head_bits) = state.objects[table]
+            .words
+            .get(HASH_TABLE_FREE_HEAD)
+            .copied()
+        else {
+            return false;
+        };
+        let next = Word::from_bits(free_head_bits);
+        let free_head = i64::try_from(position).unwrap_or(i64::MAX);
+        let Some(index_slot) = state.objects[index_vector]
+            .words
+            .get_mut(VECTOR_DATA + position)
+        else {
+            return false;
+        };
+        *index_slot = Word::fixnum(TOMBSTONE).bits();
+        let Some(key_slot) = state.objects[kv].words.get_mut(key_offset) else {
+            return false;
+        };
+        *key_slot = marker;
+        let Some(value_slot) = state.objects[kv].words.get_mut(key_offset + 1) else {
+            return false;
+        };
+        *value_slot = next.bits();
+        let Some(free_head_slot) = state.objects[table].words.get_mut(HASH_TABLE_FREE_HEAD) else {
+            return false;
+        };
+        *free_head_slot = Word::fixnum(free_head).bits();
+        true
+    }
+
+    fn decrement_hash_table_count(state: &mut super::State, table: usize, removed: usize) {
+        if removed == 0 {
+            return;
+        }
+        let Some(count_bits) = state.objects[table].words.get(HASH_TABLE_COUNT).copied() else {
+            return;
+        };
+        let count = Word::from_bits(count_bits)
+            .as_fixnum()
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let new_count = i64::try_from(count.saturating_sub(removed)).unwrap_or(0);
+        let Some(count_slot) = state.objects[table].words.get_mut(HASH_TABLE_COUNT) else {
+            return;
+        };
+        *count_slot = Word::fixnum(new_count).bits();
     }
 
     fn clear_dead_weak_and_collect(state: &mut super::State, live: &HashSet<usize>, full: bool) {

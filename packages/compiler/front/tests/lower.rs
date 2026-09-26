@@ -135,7 +135,8 @@ fn lowers_a_non_escaping_block_and_tagbody_to_jump() {
     assert!(lowered.entry.handler_regions.is_empty());
 }
 
-/// Rule: multiple values go through the variadic adapter and `SetMultipleValues`.
+/// Rule: multiple-value forms use the existing indirect-call path and
+/// `SetMultipleValues`; lowering must not emit an unimplemented adapter.
 #[test]
 fn lowers_multiple_value_forms_through_the_adapter() {
     let mut fx = Fixture::new();
@@ -166,9 +167,16 @@ fn lowers_multiple_value_forms_through_the_adapter() {
     assert!(
         any_op(&lowered.entry, |kind| matches!(
             kind,
+            OpKind::CallIndirect { args, .. } if args.len() == 3
+        )),
+        "multiple-value-call uses the existing indirect-call ABI"
+    );
+    assert!(
+        !any_op(&lowered.entry, |kind| matches!(
+            kind,
             OpKind::Builtin { name, .. } if name == "multiple-value-call"
         )),
-        "multiple-value-call uses the variadic adapter builtin"
+        "multiple-value-call does not emit an unsupported builtin"
     );
 }
 
@@ -239,7 +247,7 @@ fn lowers_a_rest_parameter_through_the_runtime_prologue() {
     assert_verifies(lambda_function);
     assert!(any_op(lambda_function, |kind| matches!(
         kind,
-        OpKind::Builtin { name, .. } if name == "make-rest-list"
+        OpKind::Builtin { name, args } if name == "make-rest-list" && args.len() == 2
     )));
 }
 

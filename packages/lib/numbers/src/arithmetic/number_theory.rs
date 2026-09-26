@@ -1,16 +1,13 @@
-#![allow(
-    dead_code,
-    reason = "legacy adapters retained while split numeric modules own registration"
-)]
-
 use super::{Number, ObjectError, Runtime, ThreadContext, Word, gcd_i128, integer, word};
 
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn gcd(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let value = args.iter().try_fold(0i128, |acc, arg| {
         Ok::<_, ObjectError>(gcd_i128(acc, integer(ctx, *arg)?))
     })?;
     word(ctx, runtime, Number::Integer(value))
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn lcm(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let value = args.iter().try_fold(1i128, |acc, arg| {
         let x = integer(ctx, *arg)?;
@@ -22,6 +19,7 @@ pub fn lcm(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     })?;
     word(ctx, runtime, Number::Integer(value.abs()))
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn isqrt(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

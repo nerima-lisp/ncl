@@ -15,6 +15,29 @@ use ncl_object::{
     symbol_plist, symbol_value,
 };
 
+fn with_rooted_words<T>(
+    ctx: &mut ThreadContext,
+    words: &mut [Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let tokens = words
+        .iter_mut()
+        .map(|word| ncl_object::push_root(ctx, word))
+        .collect::<Vec<_>>();
+    let result = f(ctx, words);
+    let mut cleanup_error = None;
+    for token in tokens.into_iter().rev() {
+        if !ncl_object::pop_root(ctx, token) {
+            cleanup_error = Some(ObjectError::Layout);
+        }
+    }
+    match (result, cleanup_error) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Some(error)) => Err(error),
+        (Ok(value), None) => Ok(value),
+    }
+}
+
 fn symbol(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if matches!(ncl_object::classify_object(ctx, word), ObjectRef::Symbol(_)) {
         Ok(word)
@@ -253,7 +276,10 @@ fn gensym(
         runtime,
         &format!("{prefix}{counter}").chars().collect::<Vec<_>>(),
     )?;
-    make_symbol(ctx, runtime, name)
+    let mut roots = [name];
+    with_rooted_words(ctx, &mut roots, |ctx, roots| {
+        make_symbol(ctx, runtime, roots[0])
+    })
 }
 
 fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<i64, ObjectError> {
@@ -305,8 +331,10 @@ fn gentemp(
     loop {
         let counter = next_gensym_counter(ctx, runtime)?;
         let name = format!("{prefix}{counter}");
-        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        if package.find_symbol(ctx, name_word)?.is_some() {
+        let mut roots = [make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?];
+        if with_rooted_words(ctx, &mut roots, |ctx, roots| {
+            Ok(package.find_symbol(ctx, roots[0])?.is_some())
+        })? {
             continue;
         }
         let (symbol, _) = package.intern(ctx, runtime, &name)?;

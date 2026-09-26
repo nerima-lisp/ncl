@@ -46,10 +46,17 @@ fn with_rooted_words<T>(
         .map(|word| ncl_object::push_root(ctx, word))
         .collect::<Vec<_>>();
     let result = f(ctx, words);
+    let mut cleanup_error = None;
     for token in tokens.into_iter().rev() {
-        assert!(ncl_object::pop_root(ctx, token));
+        if !ncl_object::pop_root(ctx, token) {
+            cleanup_error = Some(LispError::Object(ObjectError::Layout));
+        }
     }
-    result
+    match (result, cleanup_error) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Some(error)) => Err(error),
+        (Ok(value), None) => Ok(value),
+    }
 }
 
 impl FromLispArg for NicknameDesignator {
@@ -202,9 +209,13 @@ fn add_package_local_nickname_impl(
                 Package::from_word(roots[2]).set_local_nicknames(ctx, entries)?;
                 Ok(roots[0])
             });
-        assert!(ncl_object::pop_root(ctx, previous_token));
-        assert!(ncl_object::pop_root(ctx, entry_token));
-        result
+        let cleanup_ok = ncl_object::pop_root(ctx, previous_token)
+            && ncl_object::pop_root(ctx, entry_token);
+        if cleanup_ok {
+            result
+        } else {
+            Err(LispError::Object(ObjectError::Layout))
+        }
     })
 }
 

@@ -23,10 +23,17 @@ pub(super) fn with_rooted_words<T>(
         .map(|word| ncl_object::push_root(ctx, word))
         .collect::<Vec<_>>();
     let result = f(ctx, words);
+    let mut cleanup_error = None;
     for token in tokens.into_iter().rev() {
-        assert!(ncl_object::pop_root(ctx, token));
+        if !ncl_object::pop_root(ctx, token) {
+            cleanup_error = Some(ObjectError::Layout);
+        }
     }
-    result
+    match (result, cleanup_error) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Some(error)) => Err(error),
+        (Ok(value), None) => Ok(value),
+    }
 }
 
 const OBJECT: Parameter = Parameter {

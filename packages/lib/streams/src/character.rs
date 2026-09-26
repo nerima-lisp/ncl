@@ -139,7 +139,7 @@ pub(crate) fn unread_char_adapter(
     };
     let pos = position(ctx, state, index)?;
     if pos == 0 {
-        return Ok(fail(ctx, ObjectError::TypeError));
+        return Err(ObjectError::TypeError);
     }
     set_position(ctx, state, index, pos - 1)?;
     args.required(0)
@@ -227,9 +227,10 @@ pub(crate) fn write_char_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let character = match classify_object(ctx, args.required(0)?) {
-        ObjectRef::Character(code) => char::from_u32(code).ok_or(ObjectError::TypeError)?,
-        _ => return Err(ObjectError::TypeError),
+    let character = if let ObjectRef::Character(code) = classify_object(ctx, args.required(0)?) {
+        char::from_u32(code).ok_or(ObjectError::TypeError)?
+    } else {
+        return Err(ObjectError::TypeError);
     };
     write_to_stream(ctx, runtime, stream_from_args(args, 1)?, character)?;
     args.required(0)
@@ -442,9 +443,10 @@ pub(crate) fn get_output_stream_string_adapter(
     let mut characters = Vec::new();
     while list != Word::NIL {
         let value = car(ctx, list)?;
-        let character = match classify_object(ctx, value) {
-            ObjectRef::Character(code) => char::from_u32(code).ok_or(ObjectError::Layout)?,
-            _ => return Err(ObjectError::Layout),
+        let character = if let ObjectRef::Character(code) = classify_object(ctx, value) {
+            char::from_u32(code).ok_or(ObjectError::Layout)?
+        } else {
+            return Err(ObjectError::Layout);
         };
         characters.push(character);
         list = cdr(ctx, list)?;
@@ -453,9 +455,4 @@ pub(crate) fn get_output_stream_string_adapter(
     simple_vector_set(ctx, state, 1, Word::fixnum(0))?;
     simple_vector_set(ctx, state, 2, Word::NIL)?;
     make_string(ctx, runtime, &characters)
-}
-
-pub(crate) const fn fail(ctx: &mut ThreadContext, error: ObjectError) -> Word {
-    ctx.set_pending(error);
-    Word::UNBOUND
 }

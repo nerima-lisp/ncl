@@ -1,10 +1,20 @@
 use super::{LOCAL_NICKNAMES, LOCK, Package};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, ThreadContext};
+use crate::{
+    LispError, ObjectError, PackageError, StringObject, ThreadContext, string_length, string_ref,
+};
 use ncl_sys::Word;
 
 impl Package {
+    pub(crate) fn ensure_unlocked(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+        if self.is_locked(ctx)? {
+            ctx.set_pending_lisp_error(LispError::PackageError(PackageError::Locked));
+            return Err(ObjectError::TypeError);
+        }
+        Ok(())
+    }
+
     /// Validate a tagged word as a package reference.
     ///
     /// # Errors
@@ -50,6 +60,39 @@ impl Package {
     /// Returns a layout error when the package object is malformed.
     pub fn local_nicknames(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.as_word(), widetag::PACKAGE, LOCAL_NICKNAMES)
+    }
+
+    /// Resolve a package-local nickname from this package's association list.
+    ///
+    /// # Errors
+    /// Returns a layout or type error when the association list is malformed.
+    pub fn resolve_local_nickname(
+        self,
+        ctx: &ThreadContext,
+        nickname: StringObject,
+    ) -> Result<Option<Self>, ObjectError> {
+        let wanted = nickname.as_word();
+        let wanted_length = string_length(ctx, wanted)?;
+        let mut entries = self.local_nicknames(ctx)?;
+        while entries != Word::NIL {
+            let entry =
+                ncl_sys::read_cons_word(&ctx.thread, entries, 0).ok_or(ObjectError::Layout)?;
+            let next =
+                ncl_sys::read_cons_word(&ctx.thread, entries, 1).ok_or(ObjectError::Layout)?;
+            let entry_name =
+                ncl_sys::read_cons_word(&ctx.thread, entry, 0).ok_or(ObjectError::Layout)?;
+            if string_length(ctx, entry_name)? == wanted_length
+                && (0..wanted_length).all(|index| {
+                    string_ref(ctx, entry_name, index) == string_ref(ctx, wanted, index)
+                })
+            {
+                let package =
+                    ncl_sys::read_cons_word(&ctx.thread, entry, 1).ok_or(ObjectError::Layout)?;
+                return Self::try_from_word(ctx, package).map(Some);
+            }
+            entries = next;
+        }
+        Ok(None)
     }
 
     /// Replace the package-local nickname association list.

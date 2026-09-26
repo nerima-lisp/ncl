@@ -322,15 +322,28 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
             HeldLoopClause::Across { variable, vector } => {
                 has_iteration_driver = true;
                 let index = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let vector_binding = held_fresh_symbol(ctx, runtime, &mut held)?;
+                bindings.push(held_list(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &[vector_binding, vector],
+                )?);
                 let zero = held.len();
                 held.push(Word::fixnum(0));
                 let nil_index = held.len();
                 held.push(Word::NIL);
                 bindings.push(held_list(ctx, runtime, &mut held, &[index, zero])?);
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
-                let length = held_form(ctx, runtime, &mut held, "ARRAY-TOTAL-SIZE", &[vector])?;
+                let length = held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "ARRAY-TOTAL-SIZE",
+                    &[vector_binding],
+                )?;
                 tests.push(held_form(ctx, runtime, &mut held, ">=", &[index, length])?);
-                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector, index])?;
+                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector_binding, index])?;
                 body.push(held_form(
                     ctx,
                     runtime,
@@ -527,24 +540,22 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
         held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?
     };
     let loop_body = if let Some((variable, kind, table, using)) = hash_iteration {
-        let (key_variable, value_variable) = match using {
-            Some((using_kind, using_variable)) => {
-                if using_kind == HashIterationKind::Key {
-                    (using_variable, variable)
-                } else {
-                    (variable, using_variable)
-                }
+        let (key_variable, value_variable) = if let Some((using_kind, using_variable)) = using {
+            if using_kind == HashIterationKind::Key {
+                (using_variable, variable)
+            } else {
+                (variable, using_variable)
             }
-            None => {
-                let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
-                if kind == HashIterationKind::Key {
-                    (variable, secondary)
-                } else {
-                    (secondary, variable)
-                }
+        } else {
+            let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
+            if kind == HashIterationKind::Key {
+                (variable, secondary)
+            } else {
+                (secondary, variable)
             }
         };
-        let parameters = held_list(ctx, runtime, &mut held, &[key_variable, value_variable])?;
+        let parameter_indexes = vec![key_variable, value_variable];
+        let parameters = held_list(ctx, runtime, &mut held, &parameter_indexes)?;
         let lambda = held_form(ctx, runtime, &mut held, "LAMBDA", &[parameters, loop_body])?;
         held_form(ctx, runtime, &mut held, "MAPHASH", &[lambda, table])?
     } else {

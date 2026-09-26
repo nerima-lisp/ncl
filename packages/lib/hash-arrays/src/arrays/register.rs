@@ -1,6 +1,23 @@
-use super::*;
+use super::{
+    adjust_array_builtin, adjustable_array_p_builtin, aref_builtin, array_dimension_builtin,
+    array_dimensions_builtin, array_displacement_builtin, array_element_type_builtin,
+    array_has_fill_pointer_p_builtin, array_in_bounds_builtin, array_rank_builtin,
+    array_row_major_index_builtin, array_total_size_builtin, arrayp_builtin, bit_and_builtin,
+    bit_andc1_builtin, bit_andc2_builtin, bit_builtin, bit_eqv_builtin, bit_ior_builtin,
+    bit_nand_builtin, bit_nor_builtin, bit_not_builtin, bit_orc1_builtin, bit_orc2_builtin,
+    bit_xor_builtin, fill_pointer_builtin, make_array_builtin, register_one,
+    row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
+    vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin, vectorp_builtin,
+    LambdaList, ObjectError, Runtime, ThreadContext, ARRAY, DIMENSIONS, ELEMENT, EXTENSION, INDEX,
+    OPTIONS, RESULT, VALUE,
+};
 
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    register_arrays(runtime, ctx)?;
+    register_bits(runtime, ctx)
+}
+
+fn register_arrays(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
     register_one(
         runtime,
         ctx,
@@ -29,6 +46,14 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         LambdaList::fixed(&[ARRAY, INDEX]),
         svref_builtin,
     )?;
+    register_array_properties(runtime, ctx)?;
+    register_array_operations(runtime, ctx)
+}
+
+fn register_array_properties(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     register_one(
         runtime,
         ctx,
@@ -106,6 +131,13 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         LambdaList::fixed(&[ARRAY]),
         fill_pointer_builtin,
     )?;
+    Ok(())
+}
+
+fn register_array_operations(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     register_one(
         runtime,
         ctx,
@@ -155,6 +187,10 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         LambdaList::with_rest(&[ARRAY], INDEX),
         array_row_major_index_builtin,
     )?;
+    Ok(())
+}
+
+fn register_bits(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
     register_one(
         runtime,
         ctx,

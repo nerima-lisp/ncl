@@ -1,7 +1,10 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
 
-use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, make_string};
+use ncl_object::{
+    BuiltinConvention, BuiltinPackage, FunctionObject, Package, Runtime, ThreadContext, Word,
+    make_string,
+};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -39,6 +42,10 @@ fn slot_builtins_round_trip_and_reject_non_instances() {
     let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
     let slot_value = function(&runtime, &mut ctx, "SLOT-VALUE");
     let slot_set = function(&runtime, &mut ctx, "SLOT-VALUE-SET");
+    assert_eq!(
+        runtime.builtin_descriptor(slot_set).unwrap().convention,
+        BuiltinConvention::Direct(ncl_object::Arity::exact(3))
+    );
     assert_eq!(
         runtime.call_builtin(&mut ctx, slot_set, &[instance, Word::fixnum(0), Word::TRUE]),
         Ok(Word::TRUE)
@@ -106,17 +113,35 @@ fn slot_exists_p_recognizes_direct_and_inherited_slots() {
 #[test]
 fn ownership_function_rows_are_runtime_registered() {
     let (runtime, mut ctx) = setup();
+    let mut ownership = Vec::new();
 
     for row in include_str!("../ownership.tsv").lines().skip(1) {
         let fields: Vec<_> = row.split('\t').collect();
         assert_eq!(fields.len(), 7, "malformed ownership row: {row}");
         match fields[2] {
-            "function" => assert!(
-                runtime.function(&mut ctx, fields[0], fields[1]).is_some(),
-                "ownership function is not callable: {}::{}",
-                fields[0],
-                fields[1]
-            ),
+            "function" => {
+                ownership.push((fields[0], fields[1]));
+                let word = runtime
+                    .function(&mut ctx, fields[0], fields[1])
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "ownership function is not registered: {}::{}",
+                            fields[0], fields[1]
+                        )
+                    });
+                let function = FunctionObject::try_from(word).unwrap_or_else(|_| {
+                    panic!(
+                        "ownership function is not a FunctionObject: {}::{}",
+                        fields[0], fields[1]
+                    )
+                });
+                assert!(
+                    runtime.builtin_descriptor(function).is_some(),
+                    "ownership function has no production builtin descriptor: {}::{}",
+                    fields[0],
+                    fields[1]
+                );
+            }
             "other" => {
                 let package = runtime.find_package(&ctx, fields[0]).unwrap();
                 let name = make_string(&mut ctx, &runtime, &fields[1].chars().collect::<Vec<_>>())
@@ -134,4 +159,24 @@ fn ownership_function_rows_are_runtime_registered() {
             _ => {}
         }
     }
+
+    let mut production = ncl_clos::production_function_names()
+        .iter()
+        .map(|identifier| {
+            (
+                match identifier.package {
+                    BuiltinPackage::CommonLisp => "COMMON-LISP",
+                    BuiltinPackage::NclMop => "NCL-MOP",
+                    package => panic!("unexpected CLOS package: {package:?}"),
+                },
+                identifier.name.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    ownership.sort_unstable();
+    production.sort_unstable();
+    assert_eq!(
+        ownership, production,
+        "ownership function rows differ from production registration"
+    );
 }

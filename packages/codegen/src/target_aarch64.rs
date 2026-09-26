@@ -64,14 +64,23 @@ fn initialize_arguments(
     function: &Function,
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
+    let generated_lambda = function
+        .params
+        .first()
+        .is_some_and(|parameter| parameter.name == "argc");
     for (index, _parameter) in function.params.iter().enumerate() {
         let value = ncl_ir::ValueId(u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?);
-        if index < 4 {
+        let register_index = if generated_lambda {
+            index
+        } else {
+            index.saturating_add(1)
+        };
+        if register_index < 5 {
             store_value(
                 assembler,
                 allocation,
                 value,
-                Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+                Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?),
             )?;
         } else {
             emit(
@@ -80,7 +89,7 @@ fn initialize_arguments(
                     rt: Reg(16),
                     mem: MemOperand::Unscaled {
                         base: RegOrSp::Reg(Reg(5)),
-                        offset: i16::try_from((index - 4).saturating_mul(8))
+                        offset: i16::try_from((register_index - 5).saturating_mul(8))
                             .map_err(|_| CodegenError::FrameOverflow)?,
                     },
                 },
@@ -319,7 +328,7 @@ pub fn compile_function_aarch64(
                 )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
             }
-            Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
+            Terminator::CallReturn { function, args } => {
                 lower_call(&mut assembler, *function, args, &allocation)?;
                 emit(&mut assembler, Inst::Blr { rn: Reg(17) })?;
                 add_map(
@@ -354,6 +363,33 @@ pub fn compile_function_aarch64(
                     },
                 )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
+            }
+            Terminator::TailCall { function, args } => {
+                lower_call(&mut assembler, *function, args, &allocation)?;
+                if body_bytes > 0 {
+                    emit(
+                        &mut assembler,
+                        Inst::AddImm {
+                            rd: RegOrSp::Sp,
+                            rn: RegOrSp::Sp,
+                            imm: u16::try_from(body_bytes)
+                                .map_err(|_| CodegenError::FrameOverflow)?,
+                            shift: false,
+                        },
+                    )?;
+                }
+                emit(
+                    &mut assembler,
+                    Inst::Ldp {
+                        rt: Reg(29),
+                        rt2: Reg(30),
+                        mem: MemOperand::PostIndex {
+                            base: RegOrSp::Sp,
+                            offset: 32,
+                        },
+                    },
+                )?;
+                emit(&mut assembler, Inst::Br { rn: Reg(17) })?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Brk { imm: 0 })?;

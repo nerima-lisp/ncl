@@ -11,6 +11,7 @@ pub enum ObjectError {
     Unbound,
     UndefinedFunction,
     NonLocalExit,
+    RootStackCorrupted,
     Unsupported,
     PackageConflict,
 }

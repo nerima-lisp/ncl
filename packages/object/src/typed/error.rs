@@ -166,6 +166,7 @@ pub enum ObjectErrorKind {
     Unbound,
     UndefinedFunction,
     NonLocalExit,
+    RootStackCorrupted,
     Unsupported,
     PackageConflict,
 }
@@ -180,6 +181,7 @@ impl ObjectError {
             Self::Unbound => ObjectErrorKind::Unbound,
             Self::UndefinedFunction => ObjectErrorKind::UndefinedFunction,
             Self::NonLocalExit => ObjectErrorKind::NonLocalExit,
+            Self::RootStackCorrupted => ObjectErrorKind::RootStackCorrupted,
             Self::Unsupported => ObjectErrorKind::Unsupported,
             Self::PackageConflict => ObjectErrorKind::PackageConflict,
         }

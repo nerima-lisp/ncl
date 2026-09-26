@@ -2,8 +2,9 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext, Word, make_string,
-    with_root,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, LispErrorConverter, ObjectError, ObjectRef, Parameter,
+    ParameterType, ThreadContext, Word, car, cdr, classify_object, make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -30,6 +31,27 @@ pub struct RootedTable {
     slot: Box<Word>,
     _token: RootToken,
 }
+
+const KEYWORD_LIST: Parameter = Parameter {
+    name: BuiltinName::new("LIST"),
+    ty: ParameterType::Any,
+};
+const KEYWORD: Parameter = Parameter {
+    name: BuiltinName::new("KEYWORD"),
+    ty: ParameterType::Any,
+};
+const ALLOW_OTHER_KEYS: Parameter = Parameter {
+    name: BuiltinName::new("ALLOW-OTHER-KEYS"),
+    ty: ParameterType::Any,
+};
+const CHECK_KEYWORDS_DESCRIPTOR: Builtin = Builtin {
+    lambda_list: LambdaList::new(&[KEYWORD_LIST, ALLOW_OTHER_KEYS], &[], None, &[], false),
+    convention: BuiltinConvention::Direct(Arity::exact(2)),
+};
+const KEYWORD_VALUE_DESCRIPTOR: Builtin = Builtin {
+    lambda_list: LambdaList::new(&[KEYWORD_LIST, KEYWORD], &[], None, &[], false),
+    convention: BuiltinConvention::Direct(Arity::exact(2)),
+};
 impl Runtime {
     /// Create a runtime with the default heap policy.
     ///
@@ -75,7 +97,41 @@ impl Runtime {
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(&mut context, name)?;
         }
+        runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
+    }
+
+    /// Register the compiler's keyword-argument helper builtins.
+    ///
+    /// These helpers are object-runtime operations rather than user-facing
+    /// Common Lisp functions.  They are registered in `NCL-EXT` so the native
+    /// runtime and the safe builtin caller use the same implementation.
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or storage error.
+    pub fn register_keyword_builtins(&self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+        let registrations = [
+            (
+                BuiltinName::new("CHECK-KEYWORDS"),
+                BuiltinImplementation::direct(CHECK_KEYWORDS_DESCRIPTOR, check_keywords_builtin),
+            ),
+            (
+                BuiltinName::new("KEYWORD-VALUE"),
+                BuiltinImplementation::direct(KEYWORD_VALUE_DESCRIPTOR, keyword_value_builtin),
+            ),
+            (
+                BuiltinName::new("KEYWORD-SUPPLIED-P"),
+                BuiltinImplementation::direct(KEYWORD_VALUE_DESCRIPTOR, keyword_supplied_p_builtin),
+            ),
+        ];
+        for (name, implementation) in registrations {
+            self.register_builtin(
+                ctx,
+                BuiltinIdentifier::new(BuiltinPackage::NclExt, name),
+                implementation,
+            )?;
+        }
+        Ok(())
     }
     /// Register all object layouts supported by this layer.
     ///
@@ -168,4 +224,70 @@ impl Runtime {
             .as_ref()
             .copied()
     }
+}
+
+fn keyword_entries(ctx: &mut ThreadContext, list: Word) -> Result<Vec<(Word, Word)>, ObjectError> {
+    let mut entries = Vec::new();
+    let mut cursor = list;
+    while cursor != Word::NIL {
+        let key = car(ctx, cursor)?;
+        let tail = cdr(ctx, cursor)?;
+        if tail == Word::NIL {
+            return Err(ObjectError::TypeError);
+        }
+        let value = car(ctx, tail)?;
+        let next = cdr(ctx, tail)?;
+        if matches!(classify_object(ctx, key), ObjectRef::Symbol(_)) {
+            entries.push((key, value));
+        } else {
+            return Err(ObjectError::TypeError);
+        }
+        cursor = next;
+    }
+    Ok(entries)
+}
+
+fn check_keywords_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut crate::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let list = args.required(0)?;
+    let _allow_other_keys = args.required(1)?;
+    keyword_entries(ctx, list).map(|_| Word::NIL)
+}
+
+fn keyword_value_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut crate::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let list = args.required(0)?;
+    let keyword = args.required(1)?;
+    keyword_entries(ctx, list)?
+        .into_iter()
+        .find(|(candidate, _)| *candidate == keyword)
+        .map_or(Ok(Word::NIL), |(_, value)| Ok(value))
+}
+
+fn keyword_supplied_p_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut crate::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let list = args.required(0)?;
+    let keyword = args.required(1)?;
+    Ok(
+        if keyword_entries(ctx, list)?
+            .into_iter()
+            .any(|(candidate, _)| candidate == keyword)
+        {
+            Word::TRUE
+        } else {
+            Word::NIL
+        },
+    )
 }

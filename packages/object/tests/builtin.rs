@@ -1,10 +1,11 @@
 #![allow(missing_docs)]
 
+use ncl_object::package::Package;
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
-    LambdaList, MultipleValues, Parameter, ParameterType, Runtime, ThreadContext,
+    LambdaList, MultipleValues, Parameter, ParameterType, Runtime, ThreadContext, make_cons,
 };
 use ncl_sys::Word;
 
@@ -149,4 +150,47 @@ fn builtin_function_caller_preserves_multiple_values() {
     );
     assert_eq!(result, Ok(Word::fixnum(5)));
     assert_eq!(values.as_slice(), &[Word::fixnum(99), Word::fixnum(100)]);
+}
+
+#[test]
+fn runtime_registers_and_executes_keyword_builtins() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .unwrap_or_else(|| panic!("KEYWORD package missing"));
+    let (keyword, _) = Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "VALUE")
+        .unwrap_or_else(|error| panic!("intern keyword: {error:?}"));
+    let value = make_cons(&mut ctx, &runtime, Word::fixnum(42), Word::NIL)
+        .unwrap_or_else(|error| panic!("make value tail: {error:?}"));
+    let arguments = make_cons(&mut ctx, &runtime, keyword, value)
+        .unwrap_or_else(|error| panic!("make argument list: {error:?}"));
+
+    let value = runtime
+        .function(&mut ctx, "NCL-EXT", "KEYWORD-VALUE")
+        .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("KEYWORD-VALUE not registered"));
+    let supplied = runtime
+        .function(&mut ctx, "NCL-EXT", "KEYWORD-SUPPLIED-P")
+        .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("KEYWORD-SUPPLIED-P not registered"));
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, value, &[arguments, keyword]),
+        Ok(Word::fixnum(42))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, supplied, &[arguments, keyword]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, value, &[Word::NIL, keyword]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, supplied, &[Word::NIL, keyword]),
+        Ok(Word::NIL)
+    );
 }

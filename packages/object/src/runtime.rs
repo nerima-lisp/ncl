@@ -4,10 +4,9 @@ use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, LispError, LispErrorConverter, ObjectError, ObjectRef,
-    Parameter, ParameterType, ProgramError, ThreadContext, Word, car, cdr, classify_object,
-    make_cons, make_string, string_length, string_ref, symbol_name, symbol_package, with_root,
-    with_roots,
-    PlaceExpander,
+    Parameter, ParameterType, PlaceExpander, ProgramError, ThreadContext, Word, car, cdr,
+    classify_object, make_cons, make_string, string_length, string_ref, symbol_name,
+    symbol_package, with_root, with_roots,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;

@@ -1,7 +1,10 @@
 //! Evaluation, compilation, loading, and registration orchestration.
 
 mod compile;
+mod function_call;
 mod load;
+
+pub use function_call::RuntimeFunctionCaller;
 
 use ncl_codegen::{RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};

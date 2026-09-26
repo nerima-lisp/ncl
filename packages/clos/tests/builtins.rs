@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
 
-use ncl_object::{FunctionObject, Runtime, ThreadContext, Word};
+use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, make_string};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -101,4 +101,37 @@ fn slot_exists_p_recognizes_direct_and_inherited_slots() {
         runtime.call_builtin(&mut ctx, slot_exists, &[Word::NIL, inherited_name]),
         Err(ncl_object::ObjectError::TypeError)
     );
+}
+
+#[test]
+fn ownership_function_rows_are_runtime_registered() {
+    let (runtime, mut ctx) = setup();
+
+    for row in include_str!("../ownership.tsv").lines().skip(1) {
+        let fields: Vec<_> = row.split('\t').collect();
+        assert_eq!(fields.len(), 7, "malformed ownership row: {row}");
+        match fields[2] {
+            "function" => assert!(
+                runtime.function(&mut ctx, fields[0], fields[1]).is_some(),
+                "ownership function is not callable: {}::{}",
+                fields[0],
+                fields[1]
+            ),
+            "other" => {
+                let package = runtime.find_package(&ctx, fields[0]).unwrap();
+                let name = make_string(&mut ctx, &runtime, &fields[1].chars().collect::<Vec<_>>())
+                    .unwrap();
+                assert!(
+                    Package::from_word(package)
+                        .find_symbol(&mut ctx, name)
+                        .unwrap()
+                        .is_none(),
+                    "other ownership row was interned: {}::{}",
+                    fields[0],
+                    fields[1]
+                );
+            }
+            _ => {}
+        }
+    }
 }

@@ -4,7 +4,7 @@
 
 `Word` は 64-bit tagged value で、NIL と T は静的に固定配置する。cons は header なしの `(car, cdr)` 2 語、header object は 1 語 header の後ろに payload を置く。bit 0..7 は widetag、bit 8..15 は GC flags、bit 16..63 は size/length とする。generation と pin は page metadata に置く。
 
-lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character は `(code << 4) | 1`、NIL は `1` で表す。function、instance、other-pointer はそれぞれ lowtag 3、5、7 を使う。unbound marker は文字コード領域外にある予約済み即値である。fixnum は bit 0 が 0、その他の即値は bit 0 が 1 である。
+lowtag の契約は次のとおりである。`listp` は list lowtag を持つ値から文字と unbound の予約即値を除外し、`consp` はさらに NIL を除外する。`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character は `((code + 1) << 4) | 1`、NIL は `1` で表す。このため U+0000 も NIL と衝突せず、文字コードの復号は sys の `Word` API に集約する。function、instance、other-pointer はそれぞれ lowtag 3、5、7 を使う。unbound marker は文字コード領域外にある予約済み即値である。fixnum は bit 0 が 0、その他の即値は bit 0 が 1 である。
 
 symbol は value、function、plist、package、name、`tls_index: u32`、identity-hash slot、flags word を持つ。flags word は bit 0 special、bit 1 constant、bit 2 macro、bit 3 package-lock、残りを予約とする。cons 専用 page と header-object page は混在させず、pin は page attribute とする。
 
@@ -41,7 +41,9 @@ NIL を list lowtag として扱うことで list predicate を高速にし、sy
 
 `LowTag` は実際にポインタを識別する 1、3、5、7 だけを定義する。文字と unbound は `Word::is_character` と `Word::is_unbound` で判定し、偶数 lowtag は使わない。
 
-Fixnum uses bit 0 = 0, a signed 63-bit payload, and `most-positive-fixnum = 4611686018427387903`. `consp` checks the list lowtag and excludes NIL; `listp` checks NIL or that lowtag. `fixnump` checks bit 0. Character, single-float, and function predicates inspect their lowtag. `symbolp`, `stringp`, and `simple-vector-p` inspect the widetag after the other-pointer lowtag.
+文字の address 部は `(code + 1) << 4` であり、文字は address が 0 以上 `0x11_00000` 未満の範囲に限られる。moving heap は list lowtag のポインタと即値を区別できるよう、予約・割り当てる object address が常に `2^32` 以上であることを検査し、満たせない場合は型付き storage error で起動または割り当てを失敗させる。
+
+Fixnum uses bit 0 = 0, a signed 63-bit payload, and `most-positive-fixnum = 4611686018427387903`. `consp` checks the list lowtag and excludes NIL; `listp` checks the list lowtag while excluding the reserved character and unbound encodings. Character predicates use the `Word` decoder, which additionally checks NIL, the 32-bit address bound, and the Unicode scalar range. `fixnump` checks bit 0. `symbolp`, `stringp`, and `simple-vector-p` inspect the widetag after the other-pointer lowtag.
 
 | header bits | meaning |
 | --- | --- |

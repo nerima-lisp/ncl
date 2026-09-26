@@ -19,9 +19,7 @@ pub(crate) fn from_word(ctx: &ThreadContext, word: Word) -> Result<Value, TypeEr
     if let Some(value) = word.as_fixnum() {
         return Ok(Value::Integer(value));
     }
-    if word.is_character()
-        && let Ok(value) = u32::try_from(word.bits() >> 4)
-    {
+    if let Some(value) = word.as_character() {
         return Ok(Value::Character(value));
     }
     #[allow(clippy::wildcard_enum_match_arm)]

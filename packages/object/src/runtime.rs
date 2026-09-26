@@ -43,6 +43,7 @@ impl Runtime {
     /// # Errors
     /// Returns an allocation, layout, or thread-registration error.
     pub fn with_config(config: HeapConfig) -> Result<Self, ObjectError> {
+        Heap::validate_address_space().map_err(ObjectError::from)?;
         let runtime = Self {
             heap: Box::new(Heap::new(config)),
             functions: Mutex::new(None),

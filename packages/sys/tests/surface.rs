@@ -48,11 +48,21 @@ fn fixnums_and_characters_keep_distinct_word_contracts() {
     for value in [0, 65, 0x10_FFFF] {
         let word = Word::character(value);
         assert!(!word.is_fixnum());
-        assert_eq!(word.bits(), (u64::from(value) << 4) | 1);
+        assert_eq!(word.bits(), ((u64::from(value) + 1) << 4) | 1);
         assert_eq!(Word::from_bits(word.bits()), word);
-        assert_eq!(word.bits() >> 4, u64::from(value));
-        assert_eq!(word.is_character(), value != 0);
+        assert_eq!(word.as_character(), Some(value));
+        assert!(word.is_character());
     }
+}
+
+#[test]
+fn character_validation_rejects_non_characters() {
+    assert_eq!(Word::NIL.as_character(), None);
+    assert_eq!(Word::from_bits(1 << 32 | 1).as_character(), None);
+    assert_eq!(Word::character(0x10_FFFF + 1).as_character(), None);
+    assert!(!Word::character(0x10_FFFF + 1).is_character());
+    assert_eq!(Word::UNBOUND.as_character(), None);
+    assert!(!Word::from_bits(0x19).is_character());
 }
 
 #[test]
@@ -121,6 +131,7 @@ fn thread_state_transitions_and_root_stack_have_contracts() {
 
 #[test]
 fn heap_wrappers_cover_registration_allocation_and_access() {
+    assert_eq!(Heap::validate_address_space(), Ok(()));
     let heap = Heap::new(HeapConfig {
         dynamic_space_size: 16384,
         bytes_considered_between_gcs: 128,

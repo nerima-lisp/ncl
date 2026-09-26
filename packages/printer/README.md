@@ -69,14 +69,10 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
 
 ## Known gaps
 
-- **`classify_object` is unusable for headerless conses and characters**:
-  it reads a widetag from the first payload word, which a cons does not have,
-  and `Word::character` encodes `(scalar << 4) | 1`, whose `lowtag()` reads as
-  `List`, so `Word::is_character` never matches and `classify` reports a
-  character as a cons. The printer detects conses with `Word::is_cons` and
-  characters with the scalar bound in `print::character_code`. Needed fixes in
-  `ncl-sys`/`ncl-object`: make `character` encode the `Character` lowtag, or
-  make `classify_object` consult the lowtag before the widetag.
+- **`classify_object` is unusable for headerless conses**: it reads a widetag
+  from the first payload word, which a cons does not have. The printer detects
+  conses with `Word::is_cons` and characters with the sys word API before the
+  widetag path.
 - **Specialized and non-simple array length**: `ncl-object` exposes no length
   or rank accessor, so the printer probes `specialized_array_ref` for the
   length and uses `array_dimensions` for the rank. Needed additions:

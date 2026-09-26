@@ -40,9 +40,7 @@ pub fn classify(word: Word) -> ObjectRef {
     if word.is_unbound() {
         return ObjectRef::Immediate(word);
     }
-    if word.is_character()
-        && let Ok(value) = u32::try_from(word.bits() >> 4)
-    {
+    if let Some(value) = word.as_character() {
         return ObjectRef::Character(value);
     }
     match word.lowtag() {

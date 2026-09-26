@@ -12,6 +12,8 @@ pub const FIXNUM_TAG: u64 = 0;
 pub const CHARACTER_SHIFT: u32 = 4;
 /// Lowtag carried by an encoded character.
 pub const CHARACTER_TAG: u64 = 1;
+/// Largest Unicode scalar value accepted by the character representation.
+pub const CHARACTER_MAX: u32 = 0x10_FFFF;
 
 /// The lowtag carried by a tagged NCL value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,10 +61,10 @@ impl Word {
             None
         }
     }
-    /// Encode a character in bits 4..24.
+    /// Encode a character as `((code + 1) << 4) | 1`.
     #[must_use]
     pub const fn character(value: u32) -> Self {
-        Self(((value as u64) << CHARACTER_SHIFT) | CHARACTER_TAG)
+        Self((((value as u64) + 1) << CHARACTER_SHIFT) | CHARACTER_TAG)
     }
     /// Encode a pointer with a lowtag.
     #[must_use]
@@ -115,9 +117,31 @@ impl Word {
     /// Whether this is an immediate character.
     #[must_use]
     pub const fn is_character(self) -> bool {
-        self.lowtag() == LowTag::List as u8
-            && self.bits() != Self::NIL.bits()
-            && self.address() < (1_usize << 32)
+        self.as_character().is_some()
+    }
+    /// Decode a Unicode scalar value from an immediate character.
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the preceding scalar-range check bounds the value to u32"
+    )]
+    pub const fn as_character(self) -> Option<u32> {
+        if self.lowtag() != LowTag::List as u8
+            || self.bits() == Self::NIL.bits()
+            || self.bits() & ((1_u64 << CHARACTER_SHIFT) - 1) != CHARACTER_TAG
+            || self.address() >= (1_usize << 32)
+        {
+            return None;
+        }
+        let encoded = self.address() as u64 >> CHARACTER_SHIFT;
+        let Some(code) = encoded.checked_sub(1) else {
+            return None;
+        };
+        if code <= CHARACTER_MAX as u64 {
+            Some(code as u32)
+        } else {
+            None
+        }
     }
     /// Whether this is the reserved unbound immediate.
     #[must_use]

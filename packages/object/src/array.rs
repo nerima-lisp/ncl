@@ -152,8 +152,7 @@ pub fn string_ref(ctx: &ThreadContext, object: Word, index: usize) -> Result<cha
         layout::string_offset::DATA + index,
         layout::widetag::STRING,
     )?;
-    char::from_u32(u32::try_from(word.bits() >> 4).map_err(|_| ObjectError::Layout)?)
-        .ok_or(ObjectError::Layout)
+    char::from_u32(word.as_character().ok_or(ObjectError::Layout)?).ok_or(ObjectError::Layout)
 }
 
 /// Write a character into a string.

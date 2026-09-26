@@ -27,8 +27,8 @@ pub use invoke::{invoke_entry, invoke_entry_with_function};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{
-    CHARACTER_SHIFT, CHARACTER_TAG, FIXNUM_TAG, FIXNUM_TAG_BITS, LOWTAG_BITS, LOWTAG_MASK, LowTag,
-    Word,
+    CHARACTER_MAX, CHARACTER_SHIFT, CHARACTER_TAG, FIXNUM_TAG, FIXNUM_TAG_BITS, LOWTAG_BITS,
+    LOWTAG_MASK, LowTag, Word,
 };
 
 /// A borrowed precise-root slot whose value the collector may rewrite in place.

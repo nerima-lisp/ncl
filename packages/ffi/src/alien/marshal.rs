@@ -230,16 +230,12 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
 
 /// Decode a Lisp character into its Unicode scalar value.
 ///
-/// `Word::character` uses the character lowtag. A cons address is a heap
-/// pointer far above the Unicode scalar range, so the scalar bound separates
-/// the two; this mirrors `ncl-printer`'s `character_code`.
+/// The sys word API owns character classification. The encoded address stores
+/// `code + 1`, so decoding removes the tag offset after the character shift.
 fn character_value(value: Word) -> Result<u32, FfiError> {
-    const SCALAR_LIMIT: u64 = 1 << 25;
-    if value.lowtag() == LOWTAG_LIST && value != Word::NIL && value.bits() < SCALAR_LIMIT {
-        u32::try_from(value.bits() >> 4).map_err(|_| FfiError::TypeMismatch { type_name: "char" })
-    } else {
-        Err(FfiError::TypeMismatch { type_name: "char" })
-    }
+    value
+        .as_character()
+        .ok_or(FfiError::TypeMismatch { type_name: "char" })
 }
 
 /// Decode a Lisp value into an `f32`, accepting a single- or double-float.
@@ -276,7 +272,6 @@ fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
     })
 }
 
-const LOWTAG_LIST: u8 = 1;
 const LOWTAG_SINGLE_FLOAT: u8 = 2;
 
 #[allow(

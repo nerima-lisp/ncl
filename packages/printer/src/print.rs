@@ -196,9 +196,8 @@ impl<'a> Printer<'a> {
     )]
     fn print_inner(&mut self, object: Word) -> Result<(), PrintError> {
         // `classify_object` reads a widetag from the first payload word, which
-        // a headerless cons does not have, and `Word::character` encodes
-        // `(scalar << 4) | 1`, whose lowtag reads as `List`. Both are detected
-        // directly instead of through the widetag path.
+        // a headerless cons does not have. Characters are detected through the
+        // sys word API before the widetag path.
         if let Some(code) = character_code(object) {
             return self.print_character(code);
         }
@@ -233,18 +232,8 @@ impl<'a> Printer<'a> {
 }
 
 /// Decode an immediate character, or `None` for every other value.
-///
-/// `Word::character` encodes `(scalar << 4) | 1`, so `Word::lowtag()` reports
-/// `List` for a character and `Word::is_character` never matches it. A cons
-/// address is a heap pointer far above the Unicode scalar range, so the
-/// scalar bound separates the two.
-pub fn character_code(word: Word) -> Option<u32> {
-    const SCALAR_LIMIT: u64 = 1 << 25;
-    if word.lowtag() == 1 && word != Word::NIL && word.bits() < SCALAR_LIMIT {
-        u32::try_from(word.bits() >> 4).ok()
-    } else {
-        None
-    }
+pub const fn character_code(word: Word) -> Option<u32> {
+    word.as_character()
 }
 
 /// Render `object` into `sink` under `options`.

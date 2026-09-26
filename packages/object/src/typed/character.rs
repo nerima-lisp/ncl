@@ -15,14 +15,10 @@ impl Character {
     ///
     /// Returns a type error when the word is not a character.
     pub fn try_from_word(word: Word) -> Result<Self, TypeError> {
-        if word.is_character() {
-            Ok(Self(u32::try_from(word.bits() >> 4).unwrap_or(0)))
-        } else {
-            Err(TypeError {
-                datum: word,
-                expected: ObjectType::Character,
-            })
-        }
+        word.as_character().map(Self).ok_or(TypeError {
+            datum: word,
+            expected: ObjectType::Character,
+        })
     }
     #[must_use]
     pub const fn value(self) -> u32 {

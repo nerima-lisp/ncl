@@ -110,26 +110,23 @@ fn setf_pairs(
         return Err(ObjectError::TypeError);
     }
     if parallel {
-        let mut location_bindings = Vec::new();
-        let mut value_bindings = Vec::new();
+        let mut evaluation_bindings = Vec::new();
         let mut stores = Vec::new();
         for pair in arguments.chunks_exact(2) {
             let expansion = place(ctx, runtime, registry, pair[0])?;
-            let mut location = Vec::new();
             for (variable, value_form) in expansion
                 .temporary_variables
                 .iter()
                 .copied()
                 .zip(expansion.value_forms.iter().copied())
             {
-                location.push(binding(ctx, runtime, variable, value_form)?);
+                evaluation_bindings.push(binding(ctx, runtime, variable, value_form)?);
             }
-            location_bindings.extend(location);
             if expansion.store_variables.len() != 1 {
                 return Err(ObjectError::Unsupported);
             }
             let value_variable = fresh_symbol(ctx, runtime)?;
-            value_bindings.push(binding(ctx, runtime, value_variable, pair[1])?);
+            evaluation_bindings.push(binding(ctx, runtime, value_variable, pair[1])?);
             stores.push((expansion, value_variable));
         }
         let mut store_forms = Vec::new();
@@ -137,11 +134,10 @@ fn setf_pairs(
             store_forms.push(store_place(ctx, runtime, &expansion, value_variable)?);
         }
         let body = sequence(ctx, runtime, &store_forms)?;
-        let body = wrap_let(ctx, runtime, "LET*", &value_bindings, body)?;
-        if location_bindings.is_empty() {
+        if evaluation_bindings.is_empty() {
             Ok(body)
         } else {
-            wrap_let(ctx, runtime, "LET*", &location_bindings, body)
+            wrap_let(ctx, runtime, "LET*", &evaluation_bindings, body)
         }
     } else {
         let mut forms = Vec::new();
@@ -345,12 +341,15 @@ pub fn expand_get_setf_expansion(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ncl_object::{Runtime, ThreadContext};
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static PLACE_EXPANSIONS: AtomicUsize = AtomicUsize::new(0);
+    static PLACE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn place_expander(
         ctx: &mut ThreadContext,
@@ -382,6 +381,7 @@ mod tests {
 
     #[test]
     fn place_subforms_are_expanded_once_per_place() -> Result<(), ObjectError> {
+        let _guard = PLACE_TEST_LOCK.lock().unwrap();
         let runtime = Runtime::new()?;
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)?;
@@ -439,6 +439,36 @@ mod tests {
         PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
         expand_pop(&mut ctx, &runtime, &registry, &[first])?;
         assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn psetf_keeps_each_place_and_value_in_source_order() -> Result<(), ObjectError> {
+        let _guard = PLACE_TEST_LOCK.lock().unwrap();
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let operator = symbol(&mut ctx, &runtime, "ORDERED-PLACE")?;
+        let registry = PlaceRegistry::new();
+        registry.define(&ctx, &runtime, operator, place_expander)?;
+        let first = place_form(&mut ctx, &runtime, operator, Word::fixnum(11))?;
+        let second = place_form(&mut ctx, &runtime, operator, Word::fixnum(22))?;
+
+        let expansion = expand_psetf(
+            &mut ctx,
+            &runtime,
+            &registry,
+            &[first, Word::fixnum(1), second, Word::fixnum(2)],
+        )?;
+        let outer = elements(&mut ctx, expansion)?;
+        assert_eq!(outer.len(), 3);
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET*")?);
+        let bindings = elements(&mut ctx, outer[1])?;
+        assert_eq!(bindings.len(), 4);
+        assert_eq!(elements(&mut ctx, bindings[0])?[1], Word::fixnum(11));
+        assert_eq!(elements(&mut ctx, bindings[1])?[1], Word::fixnum(1));
+        assert_eq!(elements(&mut ctx, bindings[2])?[1], Word::fixnum(22));
+        assert_eq!(elements(&mut ctx, bindings[3])?[1], Word::fixnum(2));
         Ok(())
     }
 }

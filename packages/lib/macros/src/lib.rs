@@ -46,15 +46,6 @@ type LegacyBuiltin = fn(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError>;
 
-fn identity(
-    _runtime: &Runtime,
-    _ctx: &mut ThreadContext,
-    args: &[Word],
-    _values: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    expansion_arg(args)
-}
-
 fn call_legacy(
     callback: LegacyBuiltin,
     ctx: &mut ThreadContext,
@@ -228,70 +219,70 @@ adapters!
      shiftf_adapter => shiftf_callback,
      rotatef_adapter => rotatef_callback);
 
-fn callback_for(name: &str) -> ncl_object::RustBuiltin {
+fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
     match name {
-        "SETF" => setf_adapter,
-        "PSETF" => psetf_adapter,
-        "INCF" => incf_adapter,
-        "DECF" => decf_adapter,
-        "PUSH" => push_adapter,
-        "PUSHNEW" => pushnew_adapter,
-        "POP" => pop_adapter,
-        "REMF" => remf_adapter,
-        "SHIFTF" => shiftf_adapter,
-        "ROTATEF" => rotatef_adapter,
-        "DEFUN" => defining::defun_adapter,
-        "DEFMACRO" => defining::defmacro_adapter,
-        "DEFVAR" => defining::defvar_adapter,
-        "DEFPARAMETER" => defining::defparameter_adapter,
-        "DEFCONSTANT" => defining::defconstant_adapter,
-        "DEFINE-SYMBOL-MACRO" => defining::define_symbol_macro_adapter,
-        "DEFINE-COMPILER-MACRO" => defining::define_compiler_macro_adapter,
-        "DEFSETF" => defining::defsetf_adapter,
-        "DEFINE-SETF-EXPANDER" => defining::define_setf_expander_adapter,
-        "WHEN" => control::expand_when_adapter,
-        "UNLESS" => control::expand_unless_adapter,
-        "AND" => control::expand_and_adapter,
-        "OR" => control::expand_or_adapter,
-        "COND" => control::expand_cond_adapter,
-        "CASE" => control::expand_case_adapter,
-        "ECASE" => control::expand_ecase_adapter,
-        "CCASE" => control::expand_ccase_adapter,
-        "TYPECASE" => control::expand_typecase_adapter,
-        "ETYPECASE" => control::expand_etypecase_adapter,
-        "CTYPECASE" => control::expand_ctypecase_adapter,
-        "PROG" => control::expand_prog_adapter,
-        "PROG*" => control::expand_prog_star_adapter,
-        "PROG1" => control::expand_prog1_adapter,
-        "PROG2" => control::expand_prog2_adapter,
-        "RETURN" => control::expand_return_adapter,
-        "NTH-VALUE" => control::expand_nth_value_adapter,
-        "DO" => control::expand_do_adapter,
-        "DO*" => control::expand_do_star_adapter,
-        _ => identity_adapter,
+        "SETF" => Some(setf_adapter),
+        "PSETF" => Some(psetf_adapter),
+        "INCF" => Some(incf_adapter),
+        "DECF" => Some(decf_adapter),
+        "PUSH" => Some(push_adapter),
+        "PUSHNEW" => Some(pushnew_adapter),
+        "POP" => Some(pop_adapter),
+        "REMF" => Some(remf_adapter),
+        "SHIFTF" => Some(shiftf_adapter),
+        "ROTATEF" => Some(rotatef_adapter),
+        "DEFUN" => Some(defining::defun_adapter),
+        "DEFMACRO" => Some(defining::defmacro_adapter),
+        "DEFVAR" => Some(defining::defvar_adapter),
+        "DEFPARAMETER" => Some(defining::defparameter_adapter),
+        "DEFCONSTANT" => Some(defining::defconstant_adapter),
+        "DEFINE-SYMBOL-MACRO" => Some(defining::define_symbol_macro_adapter),
+        "DEFINE-COMPILER-MACRO" => Some(defining::define_compiler_macro_adapter),
+        "DEFSETF" => Some(defining::defsetf_adapter),
+        "DEFINE-SETF-EXPANDER" => Some(defining::define_setf_expander_adapter),
+        "WHEN" => Some(control::expand_when_adapter),
+        "UNLESS" => Some(control::expand_unless_adapter),
+        "AND" => Some(control::expand_and_adapter),
+        "OR" => Some(control::expand_or_adapter),
+        "COND" => Some(control::expand_cond_adapter),
+        "CASE" => Some(control::expand_case_adapter),
+        "ECASE" => Some(control::expand_ecase_adapter),
+        "CCASE" => Some(control::expand_ccase_adapter),
+        "TYPECASE" => Some(control::expand_typecase_adapter),
+        "ETYPECASE" => Some(control::expand_etypecase_adapter),
+        "CTYPECASE" => Some(control::expand_ctypecase_adapter),
+        "PROG" => Some(control::expand_prog_adapter),
+        "PROG*" => Some(control::expand_prog_star_adapter),
+        "PROG1" => Some(control::expand_prog1_adapter),
+        "PROG2" => Some(control::expand_prog2_adapter),
+        "RETURN" => Some(control::expand_return_adapter),
+        "NTH-VALUE" => Some(control::expand_nth_value_adapter),
+        "DO" => Some(control::expand_do_adapter),
+        "DO*" => Some(control::expand_do_star_adapter),
+        _ => None,
     }
-}
-
-fn identity_adapter(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    call_legacy(identity, ctx, runtime, args, values)
 }
 
 /// Register the symbols owned by this crate.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
+    for &name in OWNED_MACROS {
+        let symbol = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
+            .intern(&mut ctx, runtime, name)?
+            .0;
+        set_symbol_macro(&mut ctx, symbol, true)?;
+    }
     for &name in MACROS {
+        let Some(callback) = callback_for(name) else {
+            continue;
+        };
         let implementation = BuiltinImplementation::adapted(
             Builtin {
                 lambda_list: MACRO_LAMBDA_LIST,
                 convention: BuiltinConvention::Adapted,
             },
-            callback_for(name),
+            callback,
             |args| {
                 Ok((0..args.len())
                     .filter_map(|index| args.get(index))
@@ -303,16 +294,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
             implementation,
         )?;
-        let symbol = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
-            .intern(&mut ctx, runtime, name)?
-            .0;
-        set_symbol_macro(&mut ctx, symbol, true)?;
         let _ = function;
-    }
-    for &name in FUNCTIONS {
-        if name != "GET-SETF-EXPANSION" {
-            runtime.define_function(&mut ctx, CL, name, Word::UNBOUND)?;
-        }
     }
     runtime.register_builtin(
         &mut ctx,
@@ -337,6 +319,45 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 const MACROS: &[&str] = &[
+    "AND",
+    "CASE",
+    "CCASE",
+    "COND",
+    "CTYPECASE",
+    "DECF",
+    "DEFCONSTANT",
+    "DEFINE-COMPILER-MACRO",
+    "DEFINE-SETF-EXPANDER",
+    "DEFINE-SYMBOL-MACRO",
+    "DEFMACRO",
+    "DEFUN",
+    "DEFPARAMETER",
+    "DEFSETF",
+    "DEFVAR",
+    "DO",
+    "DO*",
+    "ECASE",
+    "ETYPECASE",
+    "INCF",
+    "NTH-VALUE",
+    "OR",
+    "POP",
+    "PROG",
+    "PROG*",
+    "PROG1",
+    "PROG2",
+    "PSETF",
+    "PUSH",
+    "PUSHNEW",
+    "REMF",
+    "RETURN",
+    "SETF",
+    "TYPECASE",
+    "UNLESS",
+    "WHEN",
+];
+
+const OWNED_MACROS: &[&str] = &[
     "AND",
     "ASSERT",
     "CALL-METHOD",
@@ -415,30 +436,6 @@ const MACROS: &[&str] = &[
     "WITH-SLOTS",
 ];
 
-const FUNCTIONS: &[&str] = &[
-    "APPLY",
-    "COMPILED-FUNCTION-P",
-    "COMPILER-MACRO-FUNCTION",
-    "COMPLEMENT",
-    "CONSTANTLY",
-    "CONSTANTP",
-    "FDEFINITION",
-    "FUNCALL",
-    "FUNCTION-LAMBDA-EXPRESSION",
-    "FUNCTIONP",
-    "GET-SETF-EXPANSION",
-    "IDENTITY",
-    "MACRO-FUNCTION",
-    "MACROEXPAND",
-    "MACROEXPAND-1",
-    "NOT",
-    "REPLACE",
-    "SPECIAL-OPERATOR-P",
-    "VALUES",
-    "VALUES-LIST",
-    "WARN",
-];
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -460,6 +457,17 @@ mod tests {
             ncl_object::symbol_function(&ctx, symbol).expect("function cell"),
             Word::UNBOUND
         );
+        for name in MACROS {
+            let symbol = Package::from_word(package)
+                .intern(&mut ctx, &runtime, name)
+                .expect(name)
+                .0;
+            assert_ne!(
+                ncl_object::symbol_function(&ctx, symbol).expect(name),
+                Word::UNBOUND,
+                "registered macro {name} has an unbound function cell"
+            );
+        }
 
         for name in ["DEFUN", "DEFMACRO", "DEFVAR", "DEFPARAMETER", "DEFCONSTANT"] {
             let symbol = Package::from_word(package)
@@ -473,8 +481,10 @@ mod tests {
             .expect("*MACROEXPAND-HOOK*")
             .0;
         assert!(ncl_object::symbol_is_special(&ctx, hook).expect("special flag"));
-        for name in ["MACRO-FUNCTION", "MACROEXPAND", "MACROEXPAND-1"] {
-            assert!(runtime.function(&mut ctx, CL, name).is_some(), "{name}");
-        }
+        assert!(
+            runtime
+                .function(&mut ctx, CL, "GET-SETF-EXPANSION")
+                .is_some()
+        );
     }
 }

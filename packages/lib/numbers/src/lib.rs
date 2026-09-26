@@ -2,11 +2,19 @@
 
 mod arithmetic;
 mod bitops;
+mod complex;
+mod constants;
+mod random;
+mod rational_float;
+mod remainder;
+mod rounding;
+mod transcendental;
 
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
-    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
+    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_special,
+    set_symbol_value,
 };
 
 #[derive(Clone, Copy)]
@@ -25,6 +33,9 @@ impl NativeEntry {
         usize::try_from(address).map_err(|_| ObjectError::Layout)
     }
 }
+
+pub(crate) const MOST_POSITIVE_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
+pub(crate) const MOST_NEGATIVE_FIXNUM: i64 = i64::MIN >> ncl_sys::FIXNUM_TAG_BITS;
 
 fn install(
     runtime: &Runtime,
@@ -109,6 +120,94 @@ fn install_set(
     Ok(())
 }
 
+fn install_optional_set(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    entries: &[(&'static str, RustBuiltin)],
+) -> Result<(), ObjectError> {
+    const REQUIRED: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const OPTIONAL: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("DIVISOR"),
+        ty: ParameterType::Number,
+    }];
+    for &(name, callback) in entries {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::with_optional(REQUIRED, OPTIONAL),
+            convention: BuiltinConvention::Adapted,
+        };
+        runtime.register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(descriptor, callback),
+        )?;
+    }
+    Ok(())
+}
+
+fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    const ONE: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const TWO_FLOATS: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("FLOAT"),
+            ty: ParameterType::Number,
+        },
+        Parameter {
+            name: BuiltinName::new("SCALE"),
+            ty: ParameterType::Number,
+        },
+    ];
+    for (name, callback) in [
+        ("NUMERATOR", rational_float::numerator as RustBuiltin),
+        ("DENOMINATOR", rational_float::denominator as RustBuiltin),
+        ("RATIONAL", rational_float::rational as RustBuiltin),
+        ("FLOAT", rational_float::float as RustBuiltin),
+        ("DECODE-FLOAT", rational_float::decode_float as RustBuiltin),
+        (
+            "INTEGER-DECODE-FLOAT",
+            rational_float::integer_decode_float as RustBuiltin,
+        ),
+        ("FLOAT-DIGITS", rational_float::float_digits as RustBuiltin),
+        (
+            "FLOAT-PRECISION",
+            rational_float::float_precision as RustBuiltin,
+        ),
+        ("FLOAT-RADIX", rational_float::float_radix as RustBuiltin),
+    ] {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::fixed(ONE),
+            convention: BuiltinConvention::Direct(Arity::exact(1)),
+        };
+        runtime.register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(descriptor, callback),
+        )?;
+    }
+    let scale = Builtin {
+        lambda_list: LambdaList::fixed(TWO_FLOATS),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("SCALE-FLOAT")),
+        BuiltinImplementation::direct(scale, rational_float::scale_float),
+    )?;
+    install_optional_set(
+        runtime,
+        ctx,
+        &[
+            ("RATIONALIZE", rational_float::rationalize),
+            ("FLOAT-SIGN", rational_float::float_sign),
+        ],
+    )
+}
+
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
 ///
 /// # Errors
@@ -122,139 +221,118 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         runtime,
         &mut ctx,
         &[
-            ("NUMBERP", 1, true, arithmetic::typed_dispatch_numberp, None),
-            (
-                "INTEGERP",
-                1,
-                true,
-                arithmetic::typed_dispatch_integerp,
-                None,
-            ),
-            (
-                "RATIONALP",
-                1,
-                true,
-                arithmetic::typed_dispatch_rationalp,
-                None,
-            ),
-            ("FLOATP", 1, true, arithmetic::typed_dispatch_floatp, None),
-            ("REALP", 1, true, arithmetic::typed_dispatch_realp, None),
-            (
-                "COMPLEXP",
-                1,
-                true,
-                arithmetic::typed_dispatch_complexp,
-                None,
-            ),
-            (
-                "+",
-                0,
-                false,
-                arithmetic::typed_dispatch_add,
-                Some(NativeEntry::Add),
-            ),
-            ("-", 0, false, arithmetic::typed_dispatch_sub, None),
-            (
-                "*",
-                0,
-                false,
-                arithmetic::typed_dispatch_mul,
-                Some(NativeEntry::Mul),
-            ),
-            ("/", 0, false, arithmetic::typed_dispatch_div, None),
-            ("=", 0, false, arithmetic::typed_dispatch_equal, None),
-            ("/=", 0, false, arithmetic::typed_dispatch_not_equal, None),
-            ("<", 0, false, arithmetic::typed_dispatch_less, None),
-            (">", 0, false, arithmetic::typed_dispatch_greater, None),
-            ("<=", 0, false, arithmetic::typed_dispatch_less_equal, None),
-            (
-                ">=",
-                0,
-                false,
-                arithmetic::typed_dispatch_greater_equal,
-                None,
-            ),
-            ("MAX", 0, false, arithmetic::typed_dispatch_max, None),
-            ("MIN", 0, false, arithmetic::typed_dispatch_min, None),
-            ("1+", 1, true, arithmetic::typed_dispatch_one_plus, None),
-            ("1-", 1, true, arithmetic::typed_dispatch_one_minus, None),
-            ("ABS", 1, true, arithmetic::typed_dispatch_abs, None),
-            ("SIGNUM", 1, true, arithmetic::typed_dispatch_signum, None),
-            ("ZEROP", 1, true, arithmetic::typed_dispatch_zerop, None),
-            ("PLUSP", 1, true, arithmetic::typed_dispatch_plusp, None),
-            ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp, None),
-            ("EVENP", 1, true, arithmetic::typed_dispatch_evenp, None),
-            ("ODDP", 1, true, arithmetic::typed_dispatch_oddp, None),
-            ("FLOOR", 1, true, arithmetic::typed_dispatch_floor, None),
-            ("CEILING", 1, true, arithmetic::typed_dispatch_ceiling, None),
-            (
-                "TRUNCATE",
-                1,
-                true,
-                arithmetic::typed_dispatch_truncate,
-                None,
-            ),
-            ("ROUND", 1, true, arithmetic::typed_dispatch_round, None),
-            ("FFLOOR", 1, true, arithmetic::typed_dispatch_ffloor, None),
-            (
-                "FCEILING",
-                1,
-                true,
-                arithmetic::typed_dispatch_fceiling,
-                None,
-            ),
-            (
-                "FTRUNCATE",
-                1,
-                true,
-                arithmetic::typed_dispatch_ftruncate,
-                None,
-            ),
-            ("FROUND", 1, true, arithmetic::typed_dispatch_fround, None),
-            ("MOD", 2, true, arithmetic::typed_dispatch_mod, None),
-            ("REM", 2, true, arithmetic::typed_dispatch_rem, None),
-            ("GCD", 0, false, arithmetic::typed_dispatch_gcd, None),
-            ("LCM", 0, false, arithmetic::typed_dispatch_lcm, None),
-            ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt, None),
+            ("NUMBERP", 1, true, arithmetic::typed_numberp),
+            ("INTEGERP", 1, true, arithmetic::typed_integerp),
+            ("RATIONALP", 1, true, arithmetic::typed_rationalp),
+            ("FLOATP", 1, true, arithmetic::typed_floatp),
+            ("REALP", 1, true, arithmetic::typed_realp),
+            ("COMPLEXP", 1, true, arithmetic::typed_complexp),
+            ("+", 0, false, arithmetic::typed_add, Some(NativeEntry::Add)),
+            ("-", 0, false, arithmetic::typed_sub),
+            ("*", 0, false, arithmetic::typed_mul, Some(NativeEntry::Mul)),
+            ("/", 0, false, arithmetic::typed_div),
+            ("=", 0, false, arithmetic::typed_equal),
+            ("EQ", 2, true, arithmetic::typed_eq),
+            ("EQL", 2, true, arithmetic::typed_eql),
+            ("/=", 0, false, arithmetic::typed_not_equal),
+            ("<", 0, false, arithmetic::typed_less),
+            (">", 0, false, arithmetic::typed_greater),
+            ("<=", 0, false, arithmetic::typed_less_equal),
+            (">=", 0, false, arithmetic::typed_greater_equal),
+            ("MAX", 0, false, arithmetic::typed_max),
+            ("MIN", 0, false, arithmetic::typed_min),
+            ("1+", 1, true, arithmetic::typed_one_plus),
+            ("1-", 1, true, arithmetic::typed_one_minus),
+            ("ABS", 1, true, arithmetic::typed_abs),
+            ("SIGNUM", 1, true, arithmetic::typed_signum),
+            ("ZEROP", 1, true, arithmetic::typed_zerop),
+            ("PLUSP", 1, true, arithmetic::typed_plusp),
+            ("MINUSP", 1, true, arithmetic::typed_minusp),
+            ("EVENP", 1, true, arithmetic::typed_evenp),
+            ("ODDP", 1, true, arithmetic::typed_oddp),
+            ("MOD", 2, true, remainder::typed_mod),
+            ("REM", 2, true, remainder::typed_rem),
+            ("GCD", 0, false, remainder::typed_gcd),
+            ("LCM", 0, false, remainder::typed_lcm),
+            ("ISQRT", 1, true, remainder::typed_isqrt),
+            ("EXP", 1, true, transcendental::typed_exp),
+            ("EXPT", 2, true, transcendental::typed_expt),
+            ("SQRT", 1, true, transcendental::typed_sqrt),
+            ("SIN", 1, true, transcendental::typed_sin),
+            ("COS", 1, true, transcendental::typed_cos),
+            ("TAN", 1, true, transcendental::typed_tan),
+            ("ASIN", 1, true, transcendental::typed_asin),
+            ("ACOS", 1, true, transcendental::typed_acos),
+            ("SINH", 1, true, transcendental::typed_sinh),
+            ("COSH", 1, true, transcendental::typed_cosh),
+            ("TANH", 1, true, transcendental::typed_tanh),
+            ("ASINH", 1, true, transcendental::typed_asinh),
+            ("ACOSH", 1, true, transcendental::typed_acosh),
+            ("ATANH", 1, true, transcendental::typed_atanh),
+            ("COMPLEX", 2, true, complex::typed_complex),
+            ("CONJUGATE", 1, true, complex::typed_conjugate),
+            ("CIS", 1, true, complex::typed_cis),
+            ("PHASE", 1, true, complex::typed_phase),
+            ("REALPART", 1, true, complex::typed_realpart),
+            ("IMAGPART", 1, true, complex::typed_imagpart),
+        ],
+    )?;
+    install_rational_float(runtime, &mut ctx)?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[
+            ("LOG", transcendental::typed_log),
+            ("ATAN", transcendental::typed_atan),
+        ],
+    )?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[
+            ("FLOOR", rounding::typed_floor),
+            ("CEILING", rounding::typed_ceiling),
+            ("TRUNCATE", rounding::typed_truncate),
+            ("ROUND", rounding::typed_round),
+            ("FFLOOR", rounding::typed_ffloor),
+            ("FCEILING", rounding::typed_fceiling),
+            ("FTRUNCATE", rounding::typed_ftruncate),
+            ("FROUND", rounding::typed_fround),
         ],
     )?;
     install_set(
         runtime,
         &mut ctx,
         &[
-            ("LOGAND", 0, false, bitops::typed_logand, None),
-            ("LOGIOR", 0, false, bitops::typed_logior, None),
-            ("LOGXOR", 0, false, bitops::typed_logxor, None),
-            ("LOGNOT", 1, true, bitops::typed_lognot, None),
-            ("LOGEQV", 0, false, bitops::typed_logeqv, None),
-            ("LOGNAND", 2, true, bitops::typed_lognand, None),
-            ("LOGNOR", 2, true, bitops::typed_lognor, None),
-            ("LOGANDC1", 2, true, bitops::typed_logandc1, None),
-            ("LOGANDC2", 2, true, bitops::typed_logandc2, None),
-            ("LOGORC1", 2, true, bitops::typed_logorc1, None),
-            ("LOGORC2", 2, true, bitops::typed_logorc2, None),
-            ("LOGTEST", 2, true, bitops::typed_logtest, None),
-            ("LOGBITP", 2, true, bitops::typed_logbitp, None),
-            ("LOGCOUNT", 1, true, bitops::typed_logcount, None),
-            (
-                "INTEGER-LENGTH",
-                1,
-                true,
-                bitops::typed_integer_length,
-                None,
-            ),
-            ("ASH", 2, true, bitops::typed_ash, None),
-            ("BYTE", 2, true, bitops::typed_byte, None),
-            ("BYTE-SIZE", 1, true, bitops::typed_byte_size, None),
-            ("BYTE-POSITION", 1, true, bitops::typed_byte_position, None),
-            ("LDB", 2, true, bitops::typed_ldb, None),
-            ("DPB", 3, true, bitops::typed_dpb, None),
-            ("LDB-TEST", 2, true, bitops::typed_ldb_test, None),
-            ("MASK-FIELD", 2, true, bitops::typed_mask_field, None),
-            ("DEPOSIT-FIELD", 3, true, bitops::typed_deposit_field, None),
-            ("BOOLE", 3, true, bitops::typed_boole, None),
+            ("LOGAND", 0, false, bitops::typed_logand),
+            ("LOGIOR", 0, false, bitops::typed_logior),
+            ("LOGXOR", 0, false, bitops::typed_logxor),
+            ("LOGNOT", 1, true, bitops::typed_lognot),
+            ("LOGEQV", 0, false, bitops::typed_logeqv),
+            ("LOGNAND", 2, true, bitops::typed_lognand),
+            ("LOGNOR", 2, true, bitops::typed_lognor),
+            ("LOGANDC1", 2, true, bitops::typed_logandc1),
+            ("LOGANDC2", 2, true, bitops::typed_logandc2),
+            ("LOGORC1", 2, true, bitops::typed_logorc1),
+            ("LOGORC2", 2, true, bitops::typed_logorc2),
+            ("LOGTEST", 2, true, bitops::typed_logtest),
+            ("LOGBITP", 2, true, bitops::typed_logbitp),
+            ("LOGCOUNT", 1, true, bitops::typed_logcount),
+            ("INTEGER-LENGTH", 1, true, bitops::typed_integer_length),
+            ("ASH", 2, true, bitops::typed_ash),
+            ("BYTE", 2, true, bitops::typed_byte),
+            ("BYTE-SIZE", 1, true, bitops::typed_byte_size),
+            ("BYTE-POSITION", 1, true, bitops::typed_byte_position),
+            ("LDB", 2, true, bitops::typed_ldb),
+            ("DPB", 3, true, bitops::typed_dpb),
+            ("LDB-TEST", 2, true, bitops::typed_ldb_test),
+            ("MASK-FIELD", 2, true, bitops::typed_mask_field),
+            ("DEPOSIT-FIELD", 3, true, bitops::typed_deposit_field),
+            ("BOOLE", 3, true, bitops::typed_boole),
         ],
     )?;
+    constants::register(&mut ctx, runtime)?;
+    random::register(&mut ctx, runtime)?;
     let package = runtime
         .find_package(&ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
@@ -263,10 +341,15 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         set_symbol_constant(&mut ctx, symbol, true)?;
         let value = match name {
             "PI" => make_double(&mut ctx, runtime, std::f64::consts::PI)?.into(),
-            "MOST-POSITIVE-FIXNUM" => Word::fixnum(i64::MAX >> 4),
-            _ => Word::fixnum(i64::MIN >> 4),
+            "MOST-POSITIVE-FIXNUM" => Word::fixnum(MOST_POSITIVE_FIXNUM),
+            _ => Word::fixnum(MOST_NEGATIVE_FIXNUM),
         };
         set_symbol_value(&mut ctx, symbol, value)?;
+    }
+    for name in ["*", "+", "-", "/"] {
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
+        set_symbol_special(&mut ctx, symbol, true)?;
+        set_symbol_value(&mut ctx, symbol, Word::NIL)?;
     }
     for (name, value) in [
         ("BOOLE-CLR", bitops::BOOLE_CLR),

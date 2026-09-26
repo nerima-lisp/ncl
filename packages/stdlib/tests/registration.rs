@@ -15,6 +15,7 @@ fn register_all_registers_clos() {
     ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
 
     assert!(runtime.class(&mut ctx, "CLASS").is_some());
+    assert!(runtime.function(&mut ctx, "COMMON-LISP", "FLOOR").is_some());
 }
 
 #[test]

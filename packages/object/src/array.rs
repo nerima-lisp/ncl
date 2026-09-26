@@ -1,5 +1,5 @@
 use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
-use crate::{specialized_array_ref, specialized_array_set};
+use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
@@ -391,12 +391,47 @@ pub fn array_element_type(
     ctx: &ThreadContext,
     object: Word,
 ) -> Result<ArrayElementType, ObjectError> {
-    ArrayElementType::from_word(read(
+    match ncl_sys::object_widetag(&ctx.thread, object) {
+        Some(layout::widetag::NON_SIMPLE_ARRAY) => ArrayElementType::from_word(read(
+            ctx,
+            object,
+            layout::array_offset::ELEMENT_TYPE,
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?),
+        Some(layout::widetag::SPECIALIZED_ARRAY) => specialized_array_element_type(ctx, object),
+        Some(layout::widetag::SIMPLE_VECTOR) => Ok(ArrayElementType::T),
+        Some(layout::widetag::STRING) => Ok(ArrayElementType::Character),
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+/// Return an array's displacement target and index offset.
+pub fn array_displacement(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<(Word, usize), ObjectError> {
+    if ncl_sys::object_widetag(&ctx.thread, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
+        return Err(ObjectError::TypeError);
+    }
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    let target = read(
         ctx,
         object,
-        layout::array_offset::ELEMENT_TYPE,
+        metadata_offset(rank, 1),
         layout::widetag::NON_SIMPLE_ARRAY,
-    )?)
+    )?;
+    let offset = usize::try_from(
+        read(
+            ctx,
+            object,
+            metadata_offset(rank, 2),
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?,
+    )
+    .map_err(|_| ObjectError::Layout)?;
+    Ok((target, offset))
 }
 
 /// Return whether an array is adjustable.
@@ -453,6 +488,15 @@ pub fn set_fill_pointer(
 ///
 /// Returns [`ObjectError`] for a non-array or malformed metadata.
 pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>, ObjectError> {
+    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::SIMPLE_VECTOR) {
+        return Ok(vec![simple_vector_length(ctx, object)?]);
+    }
+    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::STRING) {
+        return Ok(vec![string_length(ctx, object)?]);
+    }
+    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::SPECIALIZED_ARRAY) {
+        return Ok(vec![length(ctx, object, layout::widetag::SPECIALIZED_ARRAY, 1)?]);
+    }
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     (0..rank)
         .map(|index| {
@@ -476,6 +520,17 @@ pub fn array_row_major_ref(
     object: Word,
     index: usize,
 ) -> Result<Word, ObjectError> {
+    match ncl_sys::object_widetag(&ctx.thread, object) {
+        Some(layout::widetag::SIMPLE_VECTOR) => return simple_vector_ref(ctx, object, index),
+        Some(layout::widetag::SPECIALIZED_ARRAY) => {
+            return specialized_array_ref(ctx, object, index);
+        }
+        Some(layout::widetag::STRING) => {
+            return string_ref(ctx, object, index).map(|value| Word::character(u32::from(value)));
+        }
+        Some(layout::widetag::NON_SIMPLE_ARRAY) => {}
+        _ => return Err(ObjectError::TypeError),
+    }
     let dimensions = array_dimensions(ctx, object)?;
     let total = dimensions
         .iter()
@@ -527,6 +582,20 @@ pub fn array_row_major_set(
     index: usize,
     value: Word,
 ) -> Result<(), ObjectError> {
+    match ncl_sys::object_widetag(&ctx.thread, object) {
+        Some(layout::widetag::SIMPLE_VECTOR) => return simple_vector_set(ctx, object, index, value),
+        Some(layout::widetag::SPECIALIZED_ARRAY) => {
+            return specialized_array_set(ctx, object, index, value);
+        }
+        Some(layout::widetag::STRING) => {
+            let code = value.bits() >> 4;
+            let character = char::from_u32(u32::try_from(code).map_err(|_| ObjectError::TypeError)?)
+                .ok_or(ObjectError::TypeError)?;
+            return string_set(ctx, object, index, character);
+        }
+        Some(layout::widetag::NON_SIMPLE_ARRAY) => {}
+        _ => return Err(ObjectError::TypeError),
+    }
     let dimensions = array_dimensions(ctx, object)?;
     let total = dimensions
         .iter()

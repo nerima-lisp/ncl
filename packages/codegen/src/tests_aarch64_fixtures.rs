@@ -75,7 +75,12 @@ fn golden_aarch64_builtin_decodes() {
         }
 
         fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
-            Err(crate::AbiError::UnsupportedContextField(field))
+            if field == ContextField::MultipleValueArea {
+                i32::try_from(ncl_sys::thread_layout().mv)
+                    .map_err(|_| crate::AbiError::UnsupportedContextField(field))
+            } else {
+                Err(crate::AbiError::UnsupportedContextField(field))
+            }
         }
 
         fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {

@@ -139,13 +139,16 @@ pub fn alloc_cons(
 /// This is the native-entry boundary used by generated code. The caller must
 /// pass a registered thread pointer that remains valid for the duration of the
 /// call; the generated entry owns that condition through its pinned context.
-pub extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) -> Word {
+///
+/// # Safety
+/// The thread pointer must be non-null and point to a registered live thread.
+pub unsafe extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) -> Word {
     if thread.is_null() {
         return Word::UNBOUND;
     }
     // SAFETY: generated code passes the pinned, registered Thread pointer.
     let thread = unsafe { &mut *thread };
-    let Some(heap) = thread.heap().map(|heap| heap as *const Heap) else {
+    let Some(heap) = thread.heap().map(std::ptr::from_ref::<Heap>) else {
         return Word::UNBOUND;
     };
     // SAFETY: the heap pointer is owned by the registered thread for this call.
@@ -153,7 +156,10 @@ pub extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) -> Word
 }
 
 /// Return the car of a cons cell through the native-entry boundary.
-pub extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
+///
+/// # Safety
+/// The thread pointer must be non-null and point to a registered live thread.
+pub unsafe extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
     if thread.is_null() {
         return Word::UNBOUND;
     }
@@ -169,25 +175,52 @@ pub extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
 }
 
 /// Add two fixnums through the native-entry boundary.
-pub extern "C" fn native_add(thread: *mut Thread, left: Word, right: Word) -> Word {
-    let _ = thread;
+pub extern "C" fn native_add(_thread: *mut Thread, left: Word, right: Word) -> Word {
     match (left.as_fixnum(), right.as_fixnum()) {
-        (Some(left), Some(right)) => Word::fixnum(left + right),
+        (Some(left), Some(right)) => left.checked_add(right).map_or(Word::UNBOUND, |value| {
+            let word = Word::fixnum(value);
+            if word.as_fixnum() == Some(value) {
+                word
+            } else {
+                Word::UNBOUND
+            }
+        }),
         _ => Word::UNBOUND,
     }
 }
 
 /// Multiply two fixnums through the native-entry boundary.
-pub extern "C" fn native_mul(thread: *mut Thread, left: Word, right: Word) -> Word {
-    let _ = thread;
+pub extern "C" fn native_mul(_thread: *mut Thread, left: Word, right: Word) -> Word {
     match (left.as_fixnum(), right.as_fixnum()) {
-        (Some(left), Some(right)) => Word::fixnum(left * right),
+        (Some(left), Some(right)) => left.checked_mul(right).map_or(Word::UNBOUND, |value| {
+            let word = Word::fixnum(value);
+            if word.as_fixnum() == Some(value) {
+                word
+            } else {
+                Word::UNBOUND
+            }
+        }),
         _ => Word::UNBOUND,
     }
 }
 
-/// Native safepoint entry for the initial runtime lane.
-pub extern "C" fn native_safepoint(_thread: *mut Thread, _frame: *mut u8, _pc: usize) {}
+/// Capture the generated frame and service a cooperative safepoint request.
+///
+/// # Safety
+/// The thread pointer must be non-null and the frame and PC must describe the
+/// live generated frame at a registered safepoint map.
+pub unsafe extern "C" fn native_safepoint(thread: *mut Thread, frame: *mut u8, pc: usize) {
+    if thread.is_null() {
+        return;
+    }
+    // SAFETY: generated code passes the registered thread and its live frame.
+    let thread = unsafe { &mut *thread };
+    thread.capture_native_frame(frame as usize, pc);
+    thread.enter_native();
+    collect(thread, false);
+    thread.leave_native();
+    thread.clear_safepoint_request();
+}
 
 /// Read a payload word from a live object.
 pub fn read_word(heap: &Heap, object: Word, slot: usize) -> Option<Word> {

@@ -18,5 +18,7 @@ timeouts and signal termination remain harness failures.
 
 The upstream sources are not vendored. ansi-test is pinned to
 `ca06bd919661af162c67407c9d994e881870bdb3`, and cl-bench is pinned to
-`553fbcdf88d2ca4e340a0cdf02679055f3279c8f`; both are fetched from the
-ansi-test GitLab project. The license files remain in the temporary checkout.
+`553fbcdf88d2ca4e340a0cdf02679055f3279c8f`; the harness retries the
+ansi-test GitLab project before falling back to matching GitHub mirrors. Each
+checkout is verified against its exact commit before use. The license files
+remain in the temporary checkout.

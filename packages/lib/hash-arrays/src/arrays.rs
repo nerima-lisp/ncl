@@ -5,12 +5,15 @@ use ncl_object::array::{
 use ncl_object::package::{nil, truth};
 use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
-    ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
-    array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
-    make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
+    ObjectError, ObjectRef, Parameter, ParameterType, Runtime, ThreadContext, Word,
+    array_row_major_ref, array_row_major_set, classify_object, make_array, make_cons,
+    simple_vector_ref,
 };
 
 use super::{register_one, symbol_text};
+use helpers::{array_element_type_symbol, array_shape, list_values};
+
+mod helpers;
 
 const ARRAY: Parameter = Parameter {
     name: BuiltinName::new("ARRAY"),
@@ -44,46 +47,6 @@ const VALUE: Parameter = Parameter {
     name: BuiltinName::new("VALUE"),
     ty: ParameterType::Any,
 };
-
-fn array_element_type_symbol(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    element_type: ArrayElementType,
-) -> Result<Word, ObjectError> {
-    let name = match element_type {
-        ArrayElementType::T => "T",
-        ArrayElementType::Bit => "BIT",
-        ArrayElementType::Character => "CHARACTER",
-        ArrayElementType::BaseChar => "BASE-CHAR",
-        ArrayElementType::Fixnum => "FIXNUM",
-        ArrayElementType::Signed => "SIGNED-BYTE",
-        ArrayElementType::Unsigned => "UNSIGNED-BYTE",
-        ArrayElementType::SingleFloat => "SINGLE-FLOAT",
-        ArrayElementType::DoubleFloat => "DOUBLE-FLOAT",
-    };
-    let package = runtime
-        .find_package(ctx, "COMMON-LISP")
-        .ok_or(ObjectError::PackageConflict)?;
-    Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
-}
-
-fn list_values(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
-    let mut values = Vec::new();
-    while list != Word::NIL {
-        values.push(car(ctx, list)?);
-        list = cdr(ctx, list)?;
-    }
-    Ok(values)
-}
-
-fn array_shape(ctx: &ThreadContext, value: Word) -> Result<Vec<usize>, ObjectError> {
-    match classify_object(ctx, value) {
-        ObjectRef::SimpleVector(vector) => Ok(vec![simple_vector_length(ctx, vector)?]),
-        ObjectRef::String(string) => Ok(vec![string_length(ctx, string)?]),
-        ObjectRef::Array(_) | ObjectRef::SpecializedArray(_) => array_dimensions(ctx, value),
-        _ => Err(ObjectError::TypeError),
-    }
-}
 
 fn make_array_builtin(
     ctx: &mut ThreadContext,

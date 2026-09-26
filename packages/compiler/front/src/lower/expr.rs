@@ -111,6 +111,18 @@ impl Context<'_> {
             .iter()
             .map(|argument| self.lower_expr(f, argument))
             .collect::<Result<Vec<_>, _>>()?;
+        if let Operator::Name(name) = operator
+            && matches!(name.name.as_str(), "+" | "*" | "CAR" | "CONS")
+        {
+            f.safepoint()?;
+            return f.one(
+                OpKind::Builtin {
+                    name: name.name.clone(),
+                    args: values,
+                },
+                Ty::Word,
+            );
+        }
         let (callee, closure) = match operator {
             Operator::Name(name) => match f.env().lookup_function(name) {
                 Some(entry) => (entry.callee, true),

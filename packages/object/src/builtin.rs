@@ -384,6 +384,10 @@ impl Runtime {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .insert(*function_word, implementation);
+                self.builtin_addresses
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(identifier, implementation.entry);
                 FunctionObject::try_from(*function_word)
             })
         })

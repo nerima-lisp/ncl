@@ -2,8 +2,8 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext, Word, make_string,
-    with_root,
+    BuiltinIdentifier, BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext,
+    Word, make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -21,6 +21,7 @@ pub struct Runtime {
     pub(crate) next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
@@ -53,6 +54,7 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
+            builtin_addresses: Mutex::new(HashMap::new()),
             lisp_error_converter: Mutex::new(None),
         };
         runtime.register_layouts()?;
@@ -142,6 +144,17 @@ impl Runtime {
         let key = make_string(ctx, self, &key.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.functions).ok()?;
         HashTable::from_word(table).get(ctx, key).ok().flatten()
+    }
+
+    /// Return the native entry registered for a typed builtin identifier.
+    #[must_use]
+    pub fn builtin_address(&self, identifier: BuiltinIdentifier) -> Option<u64> {
+        self.builtin_addresses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&identifier)
+            .copied()
+            .and_then(|entry| u64::try_from(entry).ok())
     }
     pub(crate) fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
         registry

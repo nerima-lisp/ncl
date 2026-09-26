@@ -138,48 +138,5 @@ pub fn invoke_entry_with_function_address(
     (value, count)
 }
 
-/// Invoke published native code using the NCL entry convention.
-///
-/// This target has no native transition yet, so the call is a placeholder.
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-pub const fn invoke_entry(
-    _code: &CodePtr,
-    _entry_offset: usize,
-    _ctx: *mut Thread,
-    _argc: u64,
-    _arguments: [u64; 4],
-    _rest: u64,
-) -> (u64, u64) {
-    (0, 0)
-}
-
-/// Invoke published native code with an explicit callee function object.
-///
-/// This target has no native transition yet, so the call is a placeholder.
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-pub const fn invoke_entry_with_function(
-    _code: &CodePtr,
-    _entry_offset: usize,
-    _ctx: *mut Thread,
-    _function_object: u64,
-    _argc: u64,
-    _arguments: [u64; 4],
-    _rest: u64,
-) -> (u64, u64) {
-    (0, 0)
-}
-
-/// Invoke a published native entry address with an explicit callee function object.
-///
-/// This target has no native transition yet, so the call is a placeholder.
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-pub const fn invoke_entry_with_function_address(
-    _entry: usize,
-    _ctx: *mut Thread,
-    _function_object: u64,
-    _argc: u64,
-    _arguments: [u64; 4],
-    _rest: u64,
-) -> (u64, u64) {
-    (0, 0)
-}
+compile_error!("native invocation is only implemented for aarch64 and x86_64");

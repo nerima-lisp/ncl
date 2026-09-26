@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
@@ -9,7 +8,6 @@ use ncl_object::{
     set_symbol_value, simple_vector_ref, string_ref, symbol_name, symbol_value,
 };
 use ncl_sys::Word;
-
 #[test]
 fn classify_and_allocate() {
     assert_eq!(classify(Word::fixnum(-2)), ObjectRef::Fixnum(-2));
@@ -21,7 +19,6 @@ fn classify_and_allocate() {
     let cons = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
     assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(1)));
 }
-
 #[test]
 fn symbols_and_bindings() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -36,7 +33,6 @@ fn symbols_and_bindings() {
     ctx.bind(1, Word::fixnum(2));
     assert_eq!(ctx.unbind(1), Ok(Word::fixnum(2)));
 }
-
 #[test]
 fn builtin_metadata_expands() {
     builtin!(TEST_BUILTIN, 2);
@@ -45,24 +41,29 @@ fn builtin_metadata_expands() {
         Some(ncl_object::Arity::exact(2))
     );
 }
-
 #[test]
-fn builtin_abi_expands_for_fixed_and_variadic_forms() {
-    builtin!(TEST_ABI, 2, "a b", test_direct, test_variadic);
-    let direct: extern "C" fn(*mut ThreadContext, Word, Word) -> Word = test_direct;
-    let variadic: extern "C" fn(
-        *mut ThreadContext,
-        usize,
-        *const Word,
-        *mut ncl_object::MultipleValues,
-    ) -> ncl_object::NclStatus = test_variadic;
+fn builtin_metadata_expands_with_lambda_list() {
+    builtin!(
+        TEST_ABI,
+        1,
+        ncl_object::LambdaList::new(
+            &[ncl_object::Parameter {
+                name: ncl_object::BuiltinName::new("A"),
+                ty: ncl_object::ParameterType::Any,
+            }],
+            &[],
+            None,
+            &[],
+            false,
+        )
+    );
     assert_eq!(
         TEST_ABI.convention.arity(),
-        Some(ncl_object::Arity::exact(2))
+        Some(ncl_object::Arity::exact(1))
     );
     const { assert!(TEST_ABI.convention.direct()) };
-    assert_eq!(TEST_ABI.lambda_list.as_str(), "a b");
-    let _ = (direct, variadic);
+    assert!(TEST_ABI.lambda_list.is_direct());
+    assert_eq!(TEST_ABI.lambda_list.min_arity(), 1);
 }
 
 #[test]
@@ -122,7 +123,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .unwrap_or_else(|error| panic!("Package allocation failed: {error:?}"));
     let mut package_word = package.as_word();
     let package_token = ncl_object::push_root(&mut ctx, &mut package_word);
-    let package = Package::from(package_word);
+    let package = Package::from_word(package_word);
     let interned = package
         .intern(&mut ctx, &runtime, "SAME")
         .map_or(Word::NIL, |pair| pair.0);
@@ -145,7 +146,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     let mut table_word = table.as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
     assert!(
-        HashTable::from(table_word)
+        HashTable::from_word(table_word)
             .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
             .is_ok()
     );
@@ -155,10 +156,10 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     assert_eq!(runtime.widetag(roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
     assert_eq!(
-        HashTable::from(table_word).get(&mut ctx, table_key),
+        HashTable::from_word(table_word).get(&mut ctx, table_key),
         Ok(Some(Word::fixnum(99)))
     );
-    let package = Package::from(package_word);
+    let package = Package::from_word(package_word);
     assert_eq!(
         package
             .intern(&mut ctx, &runtime, "SAME")
@@ -168,7 +169,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
     assert!(ctx.collect(true).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
-    let table = HashTable::from(table_word);
+    let table = HashTable::from_word(table_word);
     assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
     assert_eq!(ctx.weak_value(weak), Word::NIL);
     assert!(ncl_object::pop_root(&mut ctx, table_token));
@@ -216,7 +217,6 @@ fn specialized_arrays_validate_element_type() {
         ObjectRef::SpecializedArray(array)
     );
 }
-
 #[test]
 fn non_simple_arrays_store_dimensions_and_row_major_values() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -241,7 +241,6 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
     assert_eq!(array_row_major_ref(&ctx, array, 3), Ok(Word::fixnum(8)));
     assert_eq!(classify_object(&ctx, array), ObjectRef::Array(array));
 }
-
 #[test]
 fn non_simple_array_references_survive_minor_and_full_gc() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -291,7 +290,6 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
     let value = array_row_major_ref(&ctx, rank_three_root, 0).unwrap_or(Word::NIL);
     assert_eq!(string_ref(&ctx, value, 0), Ok('x'));
 }
-
 #[test]
 #[allow(clippy::too_many_lines)]
 fn remaining_object_kinds_round_trip() {
@@ -326,19 +324,19 @@ fn remaining_object_kinds_round_trip() {
         Ok(Word::fixnum(2))
     );
     let instance = ncl_object::make_instance(&mut ctx, &runtime, Word::NIL, &[Word::fixnum(3)])
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Instance::from_word(Word::NIL));
     assert_eq!(ncl_object::slot_ref(&ctx, instance, 0), Ok(Word::fixnum(3)));
     assert!(ncl_object::slot_set(&mut ctx, instance, 0, Word::fixnum(4)).is_ok());
     let bignum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -0x1_0000_0001)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Bignum::from_word(Word::NIL));
     assert_eq!(ncl_object::bignum_limbs(&ctx, bignum), Ok(vec![1, 1]));
-    let double =
-        ncl_object::make_double(&mut ctx, &runtime, 1.25).unwrap_or_else(|_| Word::NIL.into());
+    let double = ncl_object::make_double(&mut ctx, &runtime, 1.25)
+        .unwrap_or_else(|_| ncl_object::DoubleFloat::from_word(Word::NIL));
     assert_eq!(ncl_object::double_value(&ctx, double), Ok(1.25));
     let code = ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, bignum.into(), name, vector)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::CodeObject::from_word(Word::NIL));
     let simple_fun = ncl_object::make_simple_fun(&mut ctx, &runtime, 8, name, specialized, code)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Function::from_word(Word::NIL));
     let function = ncl_object::make_closure(
         &mut ctx,
         &runtime,
@@ -348,7 +346,7 @@ fn remaining_object_kinds_round_trip() {
         code,
         &[instance.into(), bignum.into(), double.into()],
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Function::from_word(Word::NIL));
     assert_eq!(ncl_object::function_entry(&ctx, function), Ok(7));
     assert_eq!(
         ncl_object::closure_ref(&ctx, function, 0),
@@ -371,12 +369,12 @@ fn remaining_object_kinds_round_trip() {
         Word::fixnum(9),
         Word::NIL,
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Stream::from_word(Word::NIL));
     assert_eq!(ncl_object::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
     let ratio = ncl_object::make_ratio(&mut ctx, &runtime, bignum.into(), double.into())
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Ratio::from_word(Word::NIL));
     let complex = ncl_object::make_complex(&mut ctx, &runtime, ratio.into(), bignum.into())
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Complex::from_word(Word::NIL));
     let readtable = ncl_object::make_readtable(
         &mut ctx,
         &runtime,
@@ -384,7 +382,7 @@ fn remaining_object_kinds_round_trip() {
         ratio.into(),
         Word::fixnum(2),
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Readtable::from_word(Word::NIL));
     let mut roots = [
         structure,
         instance.into(),
@@ -414,7 +412,7 @@ fn remaining_object_kinds_round_trip() {
     assert_eq!(classify_object(&ctx, roots[2]), ObjectRef::Bignum(roots[2]));
     assert!(ctx.collect(true).is_ok());
     assert_eq!(
-        ncl_object::bignum_limbs(&ctx, roots[2].into()),
+        ncl_object::bignum_limbs(&ctx, ncl_object::Bignum::from_word(roots[2])),
         Ok(vec![1, 1])
     );
     assert_eq!(
@@ -426,38 +424,39 @@ fn remaining_object_kinds_round_trip() {
         Ok(Word::fixnum(2))
     );
     assert_eq!(
-        ncl_object::slot_ref(&ctx, roots[1].into(), 0),
+        ncl_object::slot_ref(&ctx, ncl_object::Instance::from_word(roots[1]), 0),
         Ok(Word::fixnum(4))
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 0),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 0),
         Ok(roots[1])
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 1),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 1),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 2),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 2),
         Ok(roots[3])
     );
     assert_eq!(
-        ncl_object::code_entry(&ctx, roots[4].into()),
+        ncl_object::code_entry(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(Word::fixnum(7))
     );
     assert_eq!(
-        ncl_object::code_size(&ctx, roots[4].into()),
+        ncl_object::code_size(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(Word::fixnum(4))
     );
     assert_eq!(
-        ncl_object::code_constants(&ctx, roots[4].into()),
+        ncl_object::code_constants(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::code_stack_map(&ctx, roots[4].into()),
+        ncl_object::code_stack_map(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(roots[10])
     );
-    assert_eq!(ncl_object::code_debug(&ctx, roots[4].into()), Ok(roots[12]));
+    let code4 = ncl_object::CodeObject::from_word(roots[4]);
+    assert_eq!(ncl_object::code_debug(&ctx, code4), Ok(roots[12]));
     assert_eq!(string_ref(&ctx, roots[10], 3), Ok('E'));
     assert_eq!(symbol_name(&ctx, roots[11]), Ok(roots[10]));
     assert_eq!(simple_vector_ref(&ctx, roots[12], 1), Ok(Word::fixnum(22)));
@@ -465,22 +464,24 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::specialized_array_ref(&ctx, roots[13], 1),
         Ok(Word::fixnum(32))
     );
-    assert_eq!(ncl_object::function_entry(&ctx, roots[14].into()), Ok(8));
-    assert_eq!(ncl_object::double_value(&ctx, roots[3].into()), Ok(1.25));
+    let function14 = ncl_object::Function::from_word(roots[14]);
+    assert_eq!(ncl_object::function_entry(&ctx, function14), Ok(8));
+    let double3 = ncl_object::DoubleFloat::from_word(roots[3]);
+    assert_eq!(ncl_object::double_value(&ctx, double3), Ok(1.25));
     assert_eq!(
-        ncl_object::ratio_numerator(&ctx, roots[7].into()),
+        ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(roots[7])),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::complex_real(&ctx, roots[8].into()),
+        ncl_object::complex_real(&ctx, ncl_object::Complex::from_word(roots[8])),
         Ok(roots[7])
     );
     assert_eq!(
-        ncl_object::readtable_syntax(&ctx, roots[9].into()),
+        ncl_object::readtable_syntax(&ctx, ncl_object::Readtable::from_word(roots[9])),
         Ok(roots[8])
     );
     assert_eq!(
-        ncl_object::stream_state(&ctx, roots[6].into()),
+        ncl_object::stream_state(&ctx, ncl_object::Stream::from_word(roots[6])),
         Ok(Word::fixnum(9))
     );
     for token in tokens.into_iter().rev() {

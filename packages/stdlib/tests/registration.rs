@@ -37,3 +37,17 @@ fn register_all_registers_hash_arrays() {
             .is_some()
     );
 }
+
+#[test]
+fn register_all_registers_strings() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
+    assert!(runtime.function(&mut ctx, "COMMON-LISP", "CHAR").is_some());
+    assert!(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "STRING=")
+            .is_some()
+    );
+}

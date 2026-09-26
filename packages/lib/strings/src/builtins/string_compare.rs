@@ -3,16 +3,100 @@ fn string_compare_builtin(
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
-    predicate: fn(std::cmp::Ordering) -> bool,
+    comparison: StringComparison,
     fold: bool,
 ) -> Result<Word, ObjectError> {
-    let left = string_compare(ctx, args, fold)?;
-    let right = string_compare_word(ctx, args.required(1)?, fold)?;
-    Ok(if predicate(left.as_slice().cmp(right.as_slice())) {
-        Word::TRUE
+    let (left, right) = string_compare_values(ctx, args, fold)?;
+    let ordering = left.as_slice().cmp(right.as_slice());
+    let index = left
+        .iter()
+        .zip(&right)
+        .position(|(left, right)| left != right)
+        .unwrap_or_else(|| left.len().min(right.len()));
+    let result = match comparison {
+        StringComparison::Equal => ordering == std::cmp::Ordering::Equal,
+        StringComparison::NotEqual => ordering != std::cmp::Ordering::Equal,
+        StringComparison::Less => ordering == std::cmp::Ordering::Less,
+        StringComparison::Greater => ordering == std::cmp::Ordering::Greater,
+        StringComparison::NotGreater => ordering != std::cmp::Ordering::Greater,
+        StringComparison::NotLess => ordering != std::cmp::Ordering::Less,
+    };
+    if !result {
+        return Ok(Word::NIL);
+    }
+    if matches!(comparison, StringComparison::Equal | StringComparison::NotGreater | StringComparison::NotLess)
+    {
+        Ok(Word::TRUE)
     } else {
-        Word::NIL
-    })
+        Ok(Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::TypeError)?))
+    }
+}
+
+#[derive(Clone, Copy)]
+enum StringComparison {
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    NotGreater,
+    NotLess,
+}
+
+fn string_compare_values(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+    fold: bool,
+) -> Result<(Vec<char>, Vec<char>), ObjectError> {
+    let left_value = args.required(0)?;
+    let right_value = args.required(1)?;
+    let left_chars = string_chars(ctx, left_value)?;
+    let right_chars = string_chars(ctx, right_value)?;
+    let mut left_start = 0;
+    let mut left_end = left_chars.len();
+    let mut right_start = 0;
+    let mut right_end = right_chars.len();
+    let words = args.as_slice();
+    let mut index = 2;
+    while index < words.len() {
+        let name = keyword_name(ctx, words[index])?;
+        let value = words.get(index + 1).ok_or(ObjectError::TypeError)?;
+        let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+            .map_err(|_| ObjectError::TypeError)?;
+        match name.as_str() {
+            "START" | "START1" => left_start = number,
+            "END" | "END1" => left_end = number,
+            "START2" => right_start = number,
+            "END2" => right_end = number,
+            _ => return Err(ObjectError::TypeError),
+        }
+        index += 2;
+    }
+    if left_start > left_end
+        || left_end > left_chars.len()
+        || right_start > right_end
+        || right_end > right_chars.len()
+    {
+        return Err(ObjectError::TypeError);
+    }
+    let left = if fold {
+        left_chars[left_start..left_end]
+            .iter()
+            .copied()
+            .flat_map(char::to_lowercase)
+            .collect()
+    } else {
+        left_chars[left_start..left_end].to_vec()
+    };
+    let right = if fold {
+        right_chars[right_start..right_end]
+            .iter()
+            .copied()
+            .flat_map(char::to_lowercase)
+            .collect()
+    } else {
+        right_chars[right_start..right_end].to_vec()
+    };
+    Ok((left, right))
 }
 
 fn string_equal_builtin(
@@ -26,7 +110,7 @@ fn string_equal_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Equal,
+        StringComparison::Equal,
         false,
     )
 }
@@ -41,7 +125,7 @@ fn string_not_equal_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Equal,
+        StringComparison::NotEqual,
         false,
     )
 }
@@ -56,7 +140,7 @@ fn string_less_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Less,
+        StringComparison::Less,
         false,
     )
 }
@@ -71,7 +155,7 @@ fn string_greater_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Greater,
+        StringComparison::Greater,
         false,
     )
 }
@@ -86,7 +170,7 @@ fn string_not_greater_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Greater,
+        StringComparison::NotGreater,
         false,
     )
 }
@@ -101,7 +185,7 @@ fn string_not_less_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Less,
+        StringComparison::NotLess,
         false,
     )
 }
@@ -116,7 +200,7 @@ fn string_equal_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Equal,
+        StringComparison::Equal,
         true,
     )
 }
@@ -131,7 +215,7 @@ fn string_not_equal_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Equal,
+        StringComparison::NotEqual,
         true,
     )
 }
@@ -146,7 +230,7 @@ fn string_less_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Less,
+        StringComparison::Less,
         true,
     )
 }
@@ -161,7 +245,7 @@ fn string_greater_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering == std::cmp::Ordering::Greater,
+        StringComparison::Greater,
         true,
     )
 }
@@ -176,7 +260,7 @@ fn string_not_greater_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Greater,
+        StringComparison::NotGreater,
         true,
     )
 }
@@ -191,7 +275,7 @@ fn string_not_less_ci_builtin(
         runtime,
         args,
         values,
-        |ordering| ordering != std::cmp::Ordering::Less,
+        StringComparison::NotLess,
         true,
     )
 }
@@ -202,11 +286,13 @@ fn string_case_builtin(
     args: &BuiltinArgs<'_>,
     upper: bool,
 ) -> Result<Word, ObjectError> {
-    let chars = string_chars(ctx, args.required(0)?)?;
+    let value = args.required(0)?;
+    let chars = string_chars(ctx, value)?;
+    let (start, end) = string_range(ctx, args, 1, chars.len(), &["START"], &["END"])?;
     make_result_string(
         ctx,
         runtime,
-        chars.into_iter().flat_map(|c| {
+        chars[start..end].iter().copied().flat_map(|c| {
             if upper {
                 c.to_uppercase().collect::<Vec<_>>()
             } else {
@@ -240,10 +326,15 @@ fn string_capitalize_builtin(
 ) -> Result<Word, ObjectError> {
     let mut start = true;
     let chars = string_chars(ctx, args.required(0)?)?;
+    let (range_start, range_end) =
+        string_range(ctx, args, 1, chars.len(), &["START"], &["END"])?;
     make_result_string(
         ctx,
         runtime,
-        chars.into_iter().flat_map(|character| {
+        chars[range_start..range_end]
+            .iter()
+            .copied()
+            .flat_map(|character| {
             let mapped = if start {
                 character.to_uppercase().collect::<Vec<_>>()
             } else {
@@ -251,7 +342,7 @@ fn string_capitalize_builtin(
             };
             start = !character.is_alphanumeric();
             mapped
-        }),
+            }),
     )
 }
 

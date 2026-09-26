@@ -36,6 +36,22 @@ struct NicknameDesignator(Word);
 #[derive(Clone, Copy)]
 struct PackageDesignatorArg(PackageDesignator);
 
+fn with_rooted_words<T>(
+    ctx: &mut ThreadContext,
+    words: &mut [Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, LispError>,
+) -> Result<T, LispError> {
+    let tokens = words
+        .iter_mut()
+        .map(|word| ncl_object::push_root(ctx, word))
+        .collect::<Vec<_>>();
+    let result = f(ctx, words);
+    for token in tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(ctx, token));
+    }
+    result
+}
+
 impl FromLispArg for NicknameDesignator {
     fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
         match ncl_object::classify_object(ctx, word) {
@@ -168,14 +184,28 @@ fn add_package_local_nickname_impl(
     let nickname = designator_string(ctx, nickname)?;
     let package = package_designator(ctx, runtime, package)?;
     let target = package_designator(ctx, runtime, target)?;
-    ensure_unlocked(ctx, package)?;
-    if package.resolve_local_nickname(ctx, nickname)?.is_some() {
-        return Err(LispError::PackageError(PackageError::Conflict));
-    }
-    let entry = ncl_object::make_cons(ctx, runtime, nickname.as_word(), target.as_word())?;
-    let entries = ncl_object::make_cons(ctx, runtime, entry, package.local_nicknames(ctx)?)?;
-    package.set_local_nicknames(ctx, entries)?;
-    Ok(nickname.as_word())
+    let mut roots = [nickname.as_word(), target.as_word(), package.as_word()];
+    with_rooted_words(ctx, &mut roots, |ctx, roots| {
+        let nickname = StringObject::from_word(roots[0]);
+        let package = Package::from_word(roots[2]);
+        ensure_unlocked(ctx, package)?;
+        if package.resolve_local_nickname(ctx, nickname)?.is_some() {
+            return Err(LispError::PackageError(PackageError::Conflict));
+        }
+        let mut entry = ncl_object::make_cons(ctx, runtime, roots[0], roots[1])?;
+        let entry_token = ncl_object::push_root(ctx, &mut entry);
+        let mut previous = package.local_nicknames(ctx)?;
+        let previous_token = ncl_object::push_root(ctx, &mut previous);
+        let result = ncl_object::make_cons(ctx, runtime, entry, previous)
+            .map_err(LispError::from)
+            .and_then(|entries| {
+                package.set_local_nicknames(ctx, entries)?;
+                Ok(roots[0])
+            });
+        assert!(ncl_object::pop_root(ctx, previous_token));
+        assert!(ncl_object::pop_root(ctx, entry_token));
+        result
+    })
 }
 
 fn remove_package_local_nickname_impl(

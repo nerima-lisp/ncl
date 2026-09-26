@@ -124,3 +124,118 @@ fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
     assert_eq!(list_items(&mut ctx, found)?, vec![symbol]);
     Ok(())
 }
+
+#[test]
+fn package_operations_survive_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut package = runtime.ensure_package(&mut ctx, "N25-STRESS-PACKAGE")?;
+    let package_token = ncl_object::push_root(&mut ctx, &mut package);
+    let mut used = runtime.ensure_package(&mut ctx, "N25-STRESS-USED")?;
+    let used_token = ncl_object::push_root(&mut ctx, &mut used);
+    let (symbol, status) = Package::from_word(package).intern(&mut ctx, &runtime, "STRESSED")?;
+    assert_eq!(status, ncl_object::FindStatus::Internal);
+    let mut symbol = symbol;
+    let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol);
+    let export_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &['S', 'T', 'R', 'E', 'S', 'S', 'E', 'D'],
+    )?;
+    Package::from_word(package).export(&mut ctx, &runtime, export_name)?;
+    Package::from_word(package).use_package(&mut ctx, &runtime, used)?;
+    let lookup = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &['S', 'T', 'R', 'E', 'S', 'S', 'E', 'D'],
+    )?;
+    assert_eq!(
+        Package::from_word(package).find_symbol(&mut ctx, lookup)?,
+        Some((symbol, ncl_object::FindStatus::External))
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, symbol_token));
+    assert!(ncl_object::pop_root(&mut ctx, used_token));
+    assert!(ncl_object::pop_root(&mut ctx, package_token));
+    Ok(())
+}
+
+#[test]
+fn package_introspection_lists_survive_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let mut package = runtime.ensure_package(&mut ctx, "N25-STRESS-INTROSPECTION")?;
+    let package_token = ncl_object::push_root(&mut ctx, &mut package);
+    let symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "VISIBLE")?
+        .0;
+    let mut symbol = symbol;
+    let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol);
+    let export_name =
+        ncl_object::make_string(&mut ctx, &runtime, &['V', 'I', 'S', 'I', 'B', 'L', 'E'])?;
+    Package::from_word(package).export(&mut ctx, &runtime, export_name)?;
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut values = MultipleValues::new();
+    let all_packages = list_all_packages(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values)?;
+    let mut all_packages = all_packages;
+    let all_packages_result_token = ncl_object::push_root(&mut ctx, &mut all_packages);
+    assert!(list_items(&mut ctx, all_packages)?.contains(&package));
+
+    let mut name =
+        ncl_object::make_string(&mut ctx, &runtime, &['V', 'I', 'S', 'I', 'B', 'L', 'E'])?;
+    let name_token = ncl_object::push_root(&mut ctx, &mut name);
+    let found = find_all_symbols(&mut ctx, &runtime, &BuiltinArgs::new(&[name]), &mut values)?;
+    let mut found = found;
+    let found_token = ncl_object::push_root(&mut ctx, &mut found);
+    assert_eq!(list_items(&mut ctx, found)?, vec![symbol]);
+
+    assert!(ncl_object::pop_root(&mut ctx, found_token));
+    assert!(ncl_object::pop_root(&mut ctx, name_token));
+    assert!(ncl_object::pop_root(&mut ctx, all_packages_result_token));
+    assert!(ncl_object::pop_root(&mut ctx, symbol_token));
+    assert!(ncl_object::pop_root(&mut ctx, package_token));
+    Ok(())
+}
+
+#[test]
+fn package_local_nickname_resolution_survives_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let mut owner = runtime.ensure_package(&mut ctx, "N25-STRESS-PLN-OWNER")?;
+    let owner_token = ncl_object::push_root(&mut ctx, &mut owner);
+    let mut target = runtime.ensure_package(&mut ctx, "N25-STRESS-PLN-TARGET")?;
+    let target_token = ncl_object::push_root(&mut ctx, &mut target);
+    let mut nickname = ncl_object::make_string(&mut ctx, &runtime, &['L', 'O', 'C', 'A', 'L'])?;
+    let nickname_token = ncl_object::push_root(&mut ctx, &mut nickname);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut entry = ncl_object::make_cons(&mut ctx, &runtime, nickname, target)?;
+    let entry_token = ncl_object::push_root(&mut ctx, &mut entry);
+    let mut entries = ncl_object::make_cons(&mut ctx, &runtime, entry, Word::NIL)?;
+    let entries_token = ncl_object::push_root(&mut ctx, &mut entries);
+    Package::from_word(owner).set_local_nicknames(&mut ctx, entries)?;
+    assert_eq!(
+        Package::from_word(owner)
+            .resolve_local_nickname(&ctx, StringObject::from_word(nickname),)?,
+        Some(Package::from_word(target))
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, entries_token));
+    assert!(ncl_object::pop_root(&mut ctx, entry_token));
+    assert!(ncl_object::pop_root(&mut ctx, nickname_token));
+    assert!(ncl_object::pop_root(&mut ctx, target_token));
+    assert!(ncl_object::pop_root(&mut ctx, owner_token));
+    Ok(())
+}

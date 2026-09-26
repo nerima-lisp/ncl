@@ -178,10 +178,7 @@ impl Context<'_> {
         Ok(())
     }
 
-    fn make_rest_list(
-        f: &mut FunctionLowerer,
-        list: &LambdaList,
-    ) -> Result<ValueId, LowerError> {
+    fn make_rest_list(f: &mut FunctionLowerer, list: &LambdaList) -> Result<ValueId, LowerError> {
         let start = list.required.len() + list.optional.len();
         let start = i64::try_from(start).map_err(|_| LowerError::Ir {
             detail: "rest parameter index does not fit i64".to_owned(),

@@ -1,6 +1,8 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
-use crate::{ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
+use crate::{
+    AllocationTarget, ContextField, RuntimeAbi, RuntimeFunction, allocate, compile_function_aarch64,
+};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn decoded_text(bytes: [u8; 4], label: &str) -> String {
@@ -262,6 +264,73 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() {
     );
     assert!(!instructions.iter().any(|text| text == "ret x30"));
     assert!(compiled.safepoint_maps.is_empty());
+}
+
+#[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
+fn golden_aarch64_parallel_copy_swaps_register_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(32),
+        "parallel-copy-swap",
+        vec![
+            ncl_ir::Param {
+                name: "self".into(),
+                ty: Ty::Address,
+            },
+            ncl_ir::Param {
+                name: "next".into(),
+                ty: Ty::Address,
+            },
+        ],
+        vec![Ty::Address, Ty::Address],
+    );
+    let swapped_self = builder.fresh_value();
+    let swapped_next = builder.fresh_value();
+    let destination = builder.create_block(vec![
+        (Ty::Address, swapped_self),
+        (Ty::Address, swapped_next),
+    ]);
+    builder.position_at(ncl_ir::BlockId(0)).expect("entry block");
+    builder
+        .terminate(Terminator::Jump {
+            target: destination,
+            args: vec![ncl_ir::ValueId(1), ncl_ir::ValueId(0)],
+        })
+        .expect("swap jump");
+    builder.position_at(destination).expect("destination block");
+    builder
+        .terminate(Terminator::Return {
+            values: vec![swapped_self, swapped_next],
+        })
+        .expect("swap return");
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::AArch64);
+    assert_ne!(
+        allocation.location(ncl_ir::ValueId(1)),
+        allocation.location(swapped_self),
+        "next must be copied to self's destination"
+    );
+    assert_ne!(
+        allocation.location(ncl_ir::ValueId(0)),
+        allocation.location(swapped_next),
+        "self must be copied to next's destination"
+    );
+
+    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi)
+        .expect("AArch64 parallel copy lowering");
+    let instructions = compiled
+        .code
+        .chunks_exact(4)
+        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode parallel copy"))
+        .collect::<Vec<_>>();
+    assert!(
+        instructions.iter().any(|text| text == "sub sp, sp, #16"),
+        "parallel copy must reserve temporary stack space: {instructions:?}"
+    );
+    assert!(
+        instructions.iter().any(|text| text == "add sp, sp, #16"),
+        "parallel copy must release temporary stack space: {instructions:?}"
+    );
 }
 
 #[test]

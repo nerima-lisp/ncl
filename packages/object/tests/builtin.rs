@@ -194,3 +194,63 @@ fn runtime_registers_and_executes_keyword_builtins() {
         Ok(Word::NIL)
     );
 }
+
+#[test]
+fn keyword_checker_applies_lambda_and_call_allow_other_keys_rules() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .unwrap_or_else(|| panic!("KEYWORD package missing"));
+    let (known, _) = Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "KNOWN")
+        .unwrap_or_else(|error| panic!("intern known keyword: {error:?}"));
+    let (unknown, _) = Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "UNKNOWN")
+        .unwrap_or_else(|error| panic!("intern unknown keyword: {error:?}"));
+    let (allow, _) = Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "ALLOW-OTHER-KEYS")
+        .unwrap_or_else(|error| panic!("intern allow keyword: {error:?}"));
+    let checker = runtime
+        .function(&mut ctx, "NCL-EXT", "CHECK-KEYWORDS")
+        .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("CHECK-KEYWORDS not registered"));
+    let known_value = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL)
+        .unwrap_or_else(|error| panic!("make known value: {error:?}"));
+    let known_arguments = make_cons(&mut ctx, &runtime, known, known_value)
+        .unwrap_or_else(|error| panic!("make known arguments: {error:?}"));
+    let unknown_value = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)
+        .unwrap_or_else(|error| panic!("make unknown value: {error:?}"));
+    let unknown_arguments = make_cons(&mut ctx, &runtime, unknown, unknown_value)
+        .unwrap_or_else(|error| panic!("make unknown arguments: {error:?}"));
+    let allow_value = make_cons(&mut ctx, &runtime, Word::TRUE, unknown_arguments)
+        .unwrap_or_else(|error| panic!("make allow value: {error:?}"));
+    let allow_arguments = make_cons(&mut ctx, &runtime, allow, allow_value)
+        .unwrap_or_else(|error| panic!("make allow arguments: {error:?}"));
+    let allow_and_unknown = allow_arguments;
+    let odd_arguments = make_cons(&mut ctx, &runtime, known, Word::NIL)
+        .unwrap_or_else(|error| panic!("make odd arguments: {error:?}"));
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, checker, &[known_arguments, Word::NIL, known]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, checker, &[unknown_arguments, Word::NIL, known]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, checker, &[unknown_arguments, Word::TRUE, known]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, checker, &[allow_and_unknown, Word::NIL, known]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, checker, &[odd_arguments, Word::NIL, known]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}

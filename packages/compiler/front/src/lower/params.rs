@@ -116,11 +116,15 @@ impl Context<'_> {
             } else {
                 f.nil()?
             };
+            let mut check_arguments = vec![rest, allow_other_keys];
+            for key in &list.keys {
+                check_arguments.push(f.symbol(&key.keyword)?);
+            }
             f.safepoint()?;
             f.one(
                 OpKind::Builtin {
                     name: "check-keywords".to_owned(),
-                    args: vec![rest, allow_other_keys],
+                    args: check_arguments,
                 },
                 Ty::Word,
             )?;

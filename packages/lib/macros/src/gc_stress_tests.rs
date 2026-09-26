@@ -3,89 +3,133 @@ use super::*;
 #[test]
 #[allow(clippy::too_many_lines)]
 fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<(), ObjectError> {
-    fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -> Result<Word, ObjectError> {
-        let operator = symbol(ctx, runtime, name)?;
-        let mut values = Vec::with_capacity(args.len() + 1);
-        values.push(operator);
-        values.extend_from_slice(args);
-        list(ctx, runtime, &values)
+    fn form(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: &str,
+        args: &[Word],
+    ) -> Result<Word, ObjectError> {
+        let mut operator = symbol(ctx, runtime, name)?;
+        ncl_object::with_root(ctx, &mut operator, |ctx, operator| {
+            let mut values = Vec::with_capacity(args.len() + 1);
+            values.push(*operator);
+            values.extend_from_slice(args);
+            list(ctx, runtime, &values)
+        })
     }
 
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     register(&runtime)?;
     ctx.register(&runtime)?;
-    let x = symbol(&mut ctx, &runtime, "X")?;
-    let y = symbol(&mut ctx, &runtime, "Y")?;
-    let t = symbol(&mut ctx, &runtime, "T")?;
+    ctx.set_strict_forwarding(true);
+
+    let mut roots = Vec::new();
+    macro_rules! root {
+        ($value:expr) => {
+            roots.push(ncl_object::push_root(&mut ctx, $value));
+        };
+    }
+
+    let mut x = symbol(&mut ctx, &runtime, "X")?;
+    root!(&mut x);
+    let mut y = symbol(&mut ctx, &runtime, "Y")?;
+    root!(&mut y);
+    let mut t = symbol(&mut ctx, &runtime, "T")?;
+    root!(&mut t);
     let one = Word::fixnum(1);
-    let clause_keys = list(&mut ctx, &runtime, &[one])?;
-    let clause = list(&mut ctx, &runtime, &[clause_keys, t])?;
-    let type_clause = list(&mut ctx, &runtime, &[t, t])?;
-    let do_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0), one])?;
-    let do_variables = list(&mut ctx, &runtime, &[do_variable])?;
-    let do_end = list(&mut ctx, &runtime, &[t, x])?;
-    let prog_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0)])?;
-    let prog_variables = list(&mut ctx, &runtime, &[prog_variable])?;
+    let mut clause_keys = list(&mut ctx, &runtime, &[one])?;
+    root!(&mut clause_keys);
+    let mut clause = list(&mut ctx, &runtime, &[clause_keys, t])?;
+    root!(&mut clause);
+    let mut type_clause = list(&mut ctx, &runtime, &[t, t])?;
+    root!(&mut type_clause);
+    let mut do_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0), one])?;
+    root!(&mut do_variable);
+    let mut do_variables = list(&mut ctx, &runtime, &[do_variable])?;
+    root!(&mut do_variables);
+    let mut do_end = list(&mut ctx, &runtime, &[t, x])?;
+    root!(&mut do_end);
+    let mut prog_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0)])?;
+    root!(&mut prog_variable);
+    let mut prog_variables = list(&mut ctx, &runtime, &[prog_variable])?;
+    root!(&mut prog_variables);
     let nil = Word::NIL;
-    let cases = [
-        ("AND", form(&mut ctx, &runtime, "AND", &[t, x])?),
-        ("CASE", form(&mut ctx, &runtime, "CASE", &[x, clause])?),
-        ("CCASE", form(&mut ctx, &runtime, "CCASE", &[x, clause])?),
-        ("COND", form(&mut ctx, &runtime, "COND", &[clause])?),
-        ("CTYPECASE", form(&mut ctx, &runtime, "CTYPECASE", &[x, type_clause])?),
-        ("DECF", form(&mut ctx, &runtime, "DECF", &[x, one])?),
-        ("DEFCONSTANT", form(&mut ctx, &runtime, "DEFCONSTANT", &[x, one])?),
-        ("DEFINE-COMPILER-MACRO", form(&mut ctx, &runtime, "DEFMACRO", &[x, nil, t])?),
-        ("DEFINE-SETF-EXPANDER", form(&mut ctx, &runtime, "DEFSETF", &[x, y])?),
-        ("DEFINE-SYMBOL-MACRO", form(&mut ctx, &runtime, "DEFINE-SYMBOL-MACRO", &[x, one])?),
-        ("DEFMACRO", form(&mut ctx, &runtime, "DEFMACRO", &[x, nil, t])?),
-        ("DEFUN", form(&mut ctx, &runtime, "DEFUN", &[x, nil, t])?),
-        ("DEFPARAMETER", form(&mut ctx, &runtime, "DEFPARAMETER", &[x, one])?),
-        ("DEFSETF", form(&mut ctx, &runtime, "DEFSETF", &[x, y])?),
-        ("DEFVAR", form(&mut ctx, &runtime, "DEFVAR", &[x, one])?),
-        ("DO", form(&mut ctx, &runtime, "DO", &[do_variables, do_end, x])?),
-        ("DO*", form(&mut ctx, &runtime, "DO*", &[do_variables, do_end, x])?),
-        ("ECASE", form(&mut ctx, &runtime, "ECASE", &[x, clause])?),
-        ("ETYPECASE", form(&mut ctx, &runtime, "ETYPECASE", &[x, type_clause])?),
-        ("INCF", form(&mut ctx, &runtime, "INCF", &[x, one])?),
-        ("NTH-VALUE", form(&mut ctx, &runtime, "NTH-VALUE", &[Word::fixnum(0), x])?),
-        ("OR", form(&mut ctx, &runtime, "OR", &[x, y])?),
-        ("POP", form(&mut ctx, &runtime, "POP", &[x])?),
-        ("PROG", form(&mut ctx, &runtime, "PROG", &[prog_variables, x])?),
-        ("PROG*", form(&mut ctx, &runtime, "PROG*", &[prog_variables, x])?),
-        ("PROG1", form(&mut ctx, &runtime, "PROG1", &[x, y])?),
-        ("PROG2", form(&mut ctx, &runtime, "PROG2", &[x, y])?),
-        ("PSETF", form(&mut ctx, &runtime, "PSETF", &[x, one])?),
-        ("PUSH", form(&mut ctx, &runtime, "PUSH", &[one, x])?),
-        ("PUSHNEW", form(&mut ctx, &runtime, "PUSHNEW", &[one, x])?),
-        ("REMF", form(&mut ctx, &runtime, "REMF", &[x, y])?),
-        ("RETURN", form(&mut ctx, &runtime, "RETURN", &[x])?),
-        ("SETF", form(&mut ctx, &runtime, "SETF", &[x, one])?),
-        ("TYPECASE", form(&mut ctx, &runtime, "TYPECASE", &[x, type_clause])?),
-        ("UNLESS", form(&mut ctx, &runtime, "UNLESS", &[x, y])?),
-        ("WHEN", form(&mut ctx, &runtime, "WHEN", &[x, y])?),
-    ];
+    let mut cases: Vec<(&str, Box<Word>)> = Vec::with_capacity(MACROS.len());
+    macro_rules! case {
+        ($name:literal, $operator:literal, [$($arg:expr),* $(,)?]) => {{
+            let input = form(&mut ctx, &runtime, $operator, &[$($arg),*])?;
+            cases.push(($name, Box::new(input)));
+            let case_slot = cases.last_mut().ok_or(ObjectError::TypeError)?.1.as_mut();
+            root!(case_slot);
+        }};
+    }
+    case!("AND", "AND", [t, x]);
+    case!("CASE", "CASE", [x, clause]);
+    case!("CCASE", "CCASE", [x, clause]);
+    case!("COND", "COND", [clause]);
+    case!("CTYPECASE", "CTYPECASE", [x, type_clause]);
+    case!("DECF", "DECF", [x, one]);
+    case!("DEFCONSTANT", "DEFCONSTANT", [x, one]);
+    case!("DEFINE-COMPILER-MACRO", "DEFMACRO", [x, nil, t]);
+    case!("DEFINE-SETF-EXPANDER", "DEFSETF", [x, y]);
+    case!("DEFINE-SYMBOL-MACRO", "DEFINE-SYMBOL-MACRO", [x, one]);
+    case!("DEFMACRO", "DEFMACRO", [x, nil, t]);
+    case!("DEFUN", "DEFUN", [x, nil, t]);
+    case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
+    case!("DEFSETF", "DEFSETF", [x, y]);
+    case!("DEFVAR", "DEFVAR", [x, one]);
+    case!("DO", "DO", [do_variables, do_end, x]);
+    case!("DO*", "DO*", [do_variables, do_end, x]);
+    case!("ECASE", "ECASE", [x, clause]);
+    case!("ETYPECASE", "ETYPECASE", [x, type_clause]);
+    case!("INCF", "INCF", [x, one]);
+    case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
+    case!("OR", "OR", [x, y]);
+    case!("POP", "POP", [x]);
+    case!("PROG", "PROG", [prog_variables, x]);
+    case!("PROG*", "PROG*", [prog_variables, x]);
+    case!("PROG1", "PROG1", [x, y]);
+    case!("PROG2", "PROG2", [x, y]);
+    case!("PSETF", "PSETF", [x, one]);
+    case!("PUSH", "PUSH", [one, x]);
+    case!("PUSHNEW", "PUSHNEW", [one, x]);
+    case!("REMF", "REMF", [x, y]);
+    case!("RETURN", "RETURN", [x]);
+    case!("SETF", "SETF", [x, one]);
+    case!("TYPECASE", "TYPECASE", [x, type_clause]);
+    case!("UNLESS", "UNLESS", [x, y]);
+    case!("WHEN", "WHEN", [x, y]);
     assert_eq!(cases.len(), MACROS.len());
     ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(true);
-    let case_words = cases.map(|(_, input)| input);
-    ncl_object::with_roots(&mut ctx, &case_words, |ctx, roots| {
+    let case_words: Vec<_> = cases.iter().map(|(_, input)| **input).collect();
+    let result = ncl_object::with_roots(&mut ctx, &case_words, |ctx, roots| {
         for ((name, _), input_root) in cases.iter().zip(roots) {
             let mut values = ncl_object::MultipleValues::new();
             let arg_words = [**input_root];
             let args = ncl_object::BuiltinArgs::new(&arg_words);
             let expanded = callback_for(name).ok_or(ObjectError::UndefinedFunction)?(
-                ctx, &runtime, &args, &mut values,
+                ctx,
+                &runtime,
+                &args,
+                &mut values,
             )?;
             let mut expanded = expanded;
             let expanded_before_gc = expanded;
             let expanded_root = ncl_object::push_root(ctx, &mut expanded);
             ctx.collect(true)?;
-            assert_ne!(expanded, expanded_before_gc, "{name} result did not relocate");
-            assert!(!elements(ctx, expanded).unwrap_or_default().is_empty(), "{name}");
+            assert_ne!(
+                expanded, expanded_before_gc,
+                "{name} result did not relocate"
+            );
+            let expanded_elements = elements(ctx, expanded)?;
+            assert!(!expanded_elements.is_empty(), "{name}");
             assert!(ncl_object::pop_root(ctx, expanded_root));
         }
         Ok(())
-    })
+    });
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+    result
 }

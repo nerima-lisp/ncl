@@ -11,11 +11,13 @@ fn form(
     args: &[Word],
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let operator = symbol(ctx, runtime, name)?;
-        let mut values = Vec::with_capacity(roots.len() + 1);
-        values.push(operator);
-        values.extend(roots.iter().map(|value| **value));
-        list(ctx, runtime, &values)
+        let mut operator = symbol(ctx, runtime, name)?;
+        ncl_object::with_root(ctx, &mut operator, |ctx, operator| {
+            let mut values = Vec::with_capacity(roots.len() + 1);
+            values.push(*operator);
+            values.extend(roots.iter().map(|value| **value));
+            list(ctx, runtime, &values)
+        })
     })
 }
 
@@ -25,7 +27,13 @@ fn binding(
     variable: Word,
     value: Word,
 ) -> Result<Word, ObjectError> {
-    list(ctx, runtime, &[variable, value])
+    ncl_object::with_roots(ctx, &[variable, value], |ctx, roots| {
+        list(
+            ctx,
+            runtime,
+            &roots.iter().map(|root| **root).collect::<Vec<_>>(),
+        )
+    })
 }
 
 fn wrap_let(
@@ -35,10 +43,19 @@ fn wrap_let(
     bindings: &[Word],
     body: Word,
 ) -> Result<Word, ObjectError> {
-    let bindings = list(ctx, runtime, bindings)?;
-    form(ctx, runtime, name, &[bindings, body])
+    ncl_object::with_roots(ctx, bindings, |ctx, roots| {
+        ncl_object::with_root(ctx, &mut body.clone(), |ctx, body| {
+            let bindings = list(
+                ctx,
+                runtime,
+                &roots.iter().map(|root| **root).collect::<Vec<_>>(),
+            )?;
+            form(ctx, runtime, name, &[bindings, *body])
+        })
+    })
 }
 
+use crate::setf_support::with_expansion_roots;
 fn sequence(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -97,23 +114,24 @@ fn store_place(
     expansion: &SetfExpansion,
     value: Word,
 ) -> Result<Word, ObjectError> {
-    validate_expansion(expansion)?;
-    let store_binding = binding(ctx, runtime, expansion.store_variables[0], value)?;
-    let body = wrap_let(ctx, runtime, "LET", &[store_binding], expansion.store_form)?;
-    let mut bindings = Vec::with_capacity(expansion.temporary_variables.len());
-    for (variable, value_form) in expansion
-        .temporary_variables
-        .iter()
-        .copied()
-        .zip(expansion.value_forms.iter().copied())
-    {
-        bindings.push(binding(ctx, runtime, variable, value_form)?);
-    }
-    if bindings.is_empty() {
-        Ok(body)
-    } else {
-        wrap_let(ctx, runtime, "LET*", &bindings, body)
-    }
+    with_expansion_roots(
+        ctx,
+        expansion,
+        |ctx, temporary, values, stores, store_form, _| {
+            let store_variable = *stores.first().ok_or(ObjectError::TypeError)?;
+            let store_binding = binding(ctx, runtime, store_variable, value)?;
+            let body = wrap_let(ctx, runtime, "LET", &[store_binding], store_form)?;
+            let mut bindings = Vec::with_capacity(temporary.len());
+            for (variable, value_form) in temporary.iter().copied().zip(values.iter().copied()) {
+                bindings.push(binding(ctx, runtime, variable, value_form)?);
+            }
+            if bindings.is_empty() {
+                Ok(body)
+            } else {
+                wrap_let(ctx, runtime, "LET*", &bindings, body)
+            }
+        },
+    )
 }
 
 fn setf_pairs(
@@ -130,7 +148,9 @@ fn setf_pairs(
         let mut evaluation_bindings = Vec::new();
         let mut stores = Vec::new();
         for pair in arguments.chunks_exact(2) {
-            let expansion = place(ctx, runtime, registry, pair[0])?;
+            let place_word = pair.first().copied().ok_or(ObjectError::TypeError)?;
+            let value = pair.get(1).copied().ok_or(ObjectError::TypeError)?;
+            let expansion = place(ctx, runtime, registry, place_word)?;
             for (variable, value_form) in expansion
                 .temporary_variables
                 .iter()
@@ -143,7 +163,7 @@ fn setf_pairs(
                 return Err(ObjectError::TypeError);
             }
             let value_variable = fresh_symbol(ctx, runtime)?;
-            evaluation_bindings.push(binding(ctx, runtime, value_variable, pair[1])?);
+            evaluation_bindings.push(binding(ctx, runtime, value_variable, value)?);
             stores.push((expansion, value_variable));
         }
         let mut store_forms = Vec::new();
@@ -159,8 +179,10 @@ fn setf_pairs(
     } else {
         let mut forms = Vec::new();
         for pair in arguments.chunks_exact(2) {
-            let expansion = place(ctx, runtime, registry, pair[0])?;
-            forms.push(store_place(ctx, runtime, &expansion, pair[1])?);
+            let place_word = pair.first().copied().ok_or(ObjectError::TypeError)?;
+            let value = pair.get(1).copied().ok_or(ObjectError::TypeError)?;
+            let expansion = place(ctx, runtime, registry, place_word)?;
+            forms.push(store_place(ctx, runtime, &expansion, value)?);
         }
         sequence(ctx, runtime, &forms)
     }
@@ -229,7 +251,8 @@ pub fn expand_push(
     let operator = if new_only { "ADJOIN" } else { "CONS" };
     let mut values = vec![item, expansion.access_form];
     if new_only {
-        values.extend_from_slice(&arguments[2..]);
+        let options = arguments.get(2..).ok_or(ObjectError::TypeError)?;
+        values.extend_from_slice(options);
     }
     let value = form(ctx, runtime, operator, &values)?;
     store_place(ctx, runtime, &expansion, value)
@@ -294,7 +317,8 @@ fn rotate_like(
     let mut expansions = Vec::new();
     let mut bindings = Vec::new();
     let mut old_values = Vec::new();
-    for place_word in &arguments[..place_count] {
+    let place_arguments = arguments.get(..place_count).ok_or(ObjectError::TypeError)?;
+    for place_word in place_arguments {
         let expansion = place(ctx, runtime, registry, *place_word)?;
         let old = fresh_symbol(ctx, runtime)?;
         for (variable, value_form) in expansion
@@ -312,15 +336,22 @@ fn rotate_like(
     let mut stores = Vec::new();
     for index in 0..place_count {
         let source = if index + 1 < place_count {
-            old_values[index + 1]
+            old_values
+                .get(index + 1)
+                .copied()
+                .ok_or(ObjectError::TypeError)?
         } else if rotate {
-            old_values[0]
+            old_values.first().copied().ok_or(ObjectError::TypeError)?
         } else {
-            arguments[place_count]
+            arguments
+                .get(place_count)
+                .copied()
+                .ok_or(ObjectError::TypeError)?
         };
-        stores.push(store_place(ctx, runtime, &expansions[index], source)?);
+        let expansion = expansions.get(index).ok_or(ObjectError::TypeError)?;
+        stores.push(store_place(ctx, runtime, expansion, source)?);
     }
-    stores.push(old_values[0]);
+    stores.push(old_values.first().copied().ok_or(ObjectError::TypeError)?);
     let body = sequence(ctx, runtime, &stores)?;
     wrap_let(ctx, runtime, "LET*", &bindings, body)
 }
@@ -334,15 +365,39 @@ pub fn expand_remf(
     if arguments.len() < 2 {
         return Err(ObjectError::TypeError);
     }
-    let expansion = place(ctx, runtime, registry, arguments[0])?;
-    let mut property_list = fresh_symbol(ctx, runtime)?;
-    ncl_object::with_root(ctx, &mut property_list, |ctx, property_list| {
-        let removed = form(ctx, runtime, "REMF", &[*property_list, arguments[1]])?;
-        let store = store_place(ctx, runtime, &expansion, *property_list)?;
-        let body = form(ctx, runtime, "IF", &[removed, store, Word::NIL])?;
-        let property_binding = binding(ctx, runtime, *property_list, expansion.access_form)?;
-        wrap_let(ctx, runtime, "LET", &[property_binding], body)
-    })
+    let place_word = arguments.first().copied().ok_or(ObjectError::TypeError)?;
+    let property = arguments.get(1).copied().ok_or(ObjectError::TypeError)?;
+    let expansion = place(ctx, runtime, registry, place_word)?;
+    with_expansion_roots(
+        ctx,
+        &expansion,
+        |ctx, temporary_variables, value_forms, store_variables, store_form, access_form| {
+            let rooted_expansion = SetfExpansion {
+                temporary_variables: temporary_variables.to_vec(),
+                value_forms: value_forms.to_vec(),
+                store_variables: store_variables.to_vec(),
+                store_form,
+                access_form,
+            };
+            let mut access_form = access_form;
+            ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                let mut property_list = fresh_symbol(ctx, runtime)?;
+                ncl_object::with_root(ctx, &mut property_list, |ctx, property_list| {
+                    let mut removed = form(ctx, runtime, "REMF", &[*property_list, property])?;
+                    ncl_object::with_root(ctx, &mut removed, |ctx, removed| {
+                        let mut store =
+                            store_place(ctx, runtime, &rooted_expansion, *property_list)?;
+                        ncl_object::with_root(ctx, &mut store, |ctx, store| {
+                            let body = form(ctx, runtime, "IF", &[*removed, *store, Word::NIL])?;
+                            let property_binding =
+                                binding(ctx, runtime, *property_list, *access_form)?;
+                            wrap_let(ctx, runtime, "LET", &[property_binding], body)
+                        })
+                    })
+                })
+            })
+        },
+    )
 }
 
 pub fn expand_get_setf_expansion(
@@ -352,144 +407,71 @@ pub fn expand_get_setf_expansion(
     place_word: Word,
 ) -> Result<Vec<Word>, ObjectError> {
     let expansion = place(ctx, runtime, registry, place_word)?;
-    Ok(vec![
-        list(ctx, runtime, &expansion.temporary_variables)?,
-        list(ctx, runtime, &expansion.value_forms)?,
-        list(ctx, runtime, &expansion.store_variables)?,
-        expansion.store_form,
-        expansion.access_form,
-    ])
+    let temporary_len = expansion.temporary_variables.len();
+    let value_len = expansion.value_forms.len();
+    let store_len = expansion.store_variables.len();
+    let mut values = Vec::with_capacity(temporary_len + value_len + store_len + 2);
+    values.extend_from_slice(&expansion.temporary_variables);
+    values.extend_from_slice(&expansion.value_forms);
+    values.extend_from_slice(&expansion.store_variables);
+    values.push(expansion.store_form);
+    values.push(expansion.access_form);
+    ncl_object::with_roots(ctx, &values, |ctx, roots| {
+        let temporary_values = roots
+            .get(..temporary_len)
+            .ok_or(ObjectError::TypeError)?
+            .iter()
+            .map(|value| **value)
+            .collect::<Vec<_>>();
+        let value_values = roots
+            .get(temporary_len..temporary_len + value_len)
+            .ok_or(ObjectError::TypeError)?
+            .iter()
+            .map(|value| **value)
+            .collect::<Vec<_>>();
+        let store_values = roots
+            .get(temporary_len + value_len..temporary_len + value_len + store_len)
+            .ok_or(ObjectError::TypeError)?
+            .iter()
+            .map(|value| **value)
+            .collect::<Vec<_>>();
+        let store_form = roots
+            .get(temporary_len + value_len + store_len)
+            .map(|value| **value)
+            .ok_or(ObjectError::TypeError)?;
+        let access_form = roots
+            .get(temporary_len + value_len + store_len + 1)
+            .map(|value| **value)
+            .ok_or(ObjectError::TypeError)?;
+        ncl_object::with_roots(ctx, &[store_form, access_form], |ctx, fixed_roots| {
+            let mut temporary_variables = list(ctx, runtime, &temporary_values)?;
+            ncl_object::with_root(ctx, &mut temporary_variables, |ctx, temporary_variables| {
+                let mut value_forms = list(ctx, runtime, &value_values)?;
+                ncl_object::with_root(ctx, &mut value_forms, |ctx, value_forms| {
+                    let mut store_variables = list(ctx, runtime, &store_values)?;
+                    ncl_object::with_root(ctx, &mut store_variables, |_, store_variables| {
+                        let store_form = fixed_roots
+                            .first()
+                            .map(|value| **value)
+                            .ok_or(ObjectError::TypeError)?;
+                        let access_form = fixed_roots
+                            .get(1)
+                            .map(|value| **value)
+                            .ok_or(ObjectError::TypeError)?;
+                        Ok(vec![
+                            *temporary_variables,
+                            *value_forms,
+                            *store_variables,
+                            store_form,
+                            access_form,
+                        ])
+                    })
+                })
+            })
+        })
+    })
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-    use ncl_object::{Runtime, ThreadContext};
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static PLACE_EXPANSIONS: AtomicUsize = AtomicUsize::new(0);
-    static PLACE_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn place_expander(
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        arguments: &[Word],
-    ) -> Result<SetfExpansion, ObjectError> {
-        PLACE_EXPANSIONS.fetch_add(1, Ordering::Relaxed);
-        let value = arguments.first().copied().ok_or(ObjectError::TypeError)?;
-        let temporary = fresh_symbol(ctx, runtime)?;
-        let store = fresh_symbol(ctx, runtime)?;
-        let set = symbol(ctx, runtime, "SET")?;
-        Ok(SetfExpansion {
-            temporary_variables: vec![temporary],
-            value_forms: vec![value],
-            store_variables: vec![store],
-            store_form: list(ctx, runtime, &[set, store, temporary])?,
-            access_form: temporary,
-        })
-    }
-
-    fn place_form(
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        operator: Word,
-        value: Word,
-    ) -> Result<Word, ObjectError> {
-        list(ctx, runtime, &[operator, value])
-    }
-
-    #[test]
-    fn place_subforms_are_expanded_once_per_place() -> Result<(), ObjectError> {
-        let _guard = PLACE_TEST_LOCK.lock().unwrap();
-        let runtime = Runtime::new()?;
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)?;
-        let operator = symbol(&mut ctx, &runtime, "TEST-PLACE")?;
-        let side_effect = symbol(&mut ctx, &runtime, "SIDE-EFFECT")?;
-        let registry = PlaceRegistry::new(&runtime);
-        registry.define(&ctx, operator, place_expander)?;
-        let first = place_form(&mut ctx, &runtime, operator, side_effect)?;
-        let second = place_form(&mut ctx, &runtime, operator, side_effect)?;
-
-        PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-        expand_psetf(&mut ctx, &runtime, &registry, &[first, Word::fixnum(1)])?;
-        assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 1);
-
-        PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-        expand_shiftf(
-            &mut ctx,
-            &runtime,
-            &registry,
-            &[first, second, Word::fixnum(1)],
-        )?;
-        assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 2);
-
-        PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-        expand_rotatef(&mut ctx, &runtime, &registry, &[first, second])?;
-        assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 2);
-
-        for expand in [
-            expand_incf
-                as fn(
-                    &mut ThreadContext,
-                    &Runtime,
-                    &PlaceRegistry,
-                    &[Word],
-                ) -> Result<Word, ObjectError>,
-            expand_decf,
-        ] {
-            PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-            expand(&mut ctx, &runtime, &registry, &[first])?;
-            assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 1);
-        }
-
-        for new_only in [false, true] {
-            PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-            expand_push(
-                &mut ctx,
-                &runtime,
-                &registry,
-                &[Word::fixnum(1), first],
-                new_only,
-            )?;
-            assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 1);
-        }
-
-        PLACE_EXPANSIONS.store(0, Ordering::Relaxed);
-        expand_pop(&mut ctx, &runtime, &registry, &[first])?;
-        assert_eq!(PLACE_EXPANSIONS.load(Ordering::Relaxed), 1);
-        Ok(())
-    }
-
-    #[test]
-    fn psetf_keeps_each_place_and_value_in_source_order() -> Result<(), ObjectError> {
-        let _guard = PLACE_TEST_LOCK.lock().unwrap();
-        let runtime = Runtime::new()?;
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)?;
-        let operator = symbol(&mut ctx, &runtime, "ORDERED-PLACE")?;
-        let registry = PlaceRegistry::new(&runtime);
-        registry.define(&ctx, operator, place_expander)?;
-        let first = place_form(&mut ctx, &runtime, operator, Word::fixnum(11))?;
-        let second = place_form(&mut ctx, &runtime, operator, Word::fixnum(22))?;
-
-        let expansion = expand_psetf(
-            &mut ctx,
-            &runtime,
-            &registry,
-            &[first, Word::fixnum(1), second, Word::fixnum(2)],
-        )?;
-        let outer = elements(&mut ctx, expansion)?;
-        assert_eq!(outer.len(), 3);
-        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET*")?);
-        let bindings = elements(&mut ctx, outer[1])?;
-        assert_eq!(bindings.len(), 4);
-        assert_eq!(elements(&mut ctx, bindings[0])?[1], Word::fixnum(11));
-        assert_eq!(elements(&mut ctx, bindings[1])?[1], Word::fixnum(1));
-        assert_eq!(elements(&mut ctx, bindings[2])?[1], Word::fixnum(22));
-        assert_eq!(elements(&mut ctx, bindings[3])?[1], Word::fixnum(2));
-        Ok(())
-    }
-}
+#[path = "setf_tests.rs"]
+mod tests;

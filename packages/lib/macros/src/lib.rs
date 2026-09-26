@@ -8,6 +8,7 @@ mod form;
 mod functions;
 mod place;
 mod setf;
+mod setf_support;
 
 pub use form::{elements, fresh_symbol, list, symbol};
 pub use place::{PlaceExpander, PlaceRegistry, SetfExpansion, register_place};
@@ -477,7 +478,6 @@ mod tests {
                 "registered macro {name} has an unbound function cell"
             );
         }
-
         for name in ["DEFUN", "DEFMACRO", "DEFVAR", "DEFPARAMETER", "DEFCONSTANT"] {
             let symbol = Package::from_word(package)
                 .intern(&mut ctx, &runtime, name)

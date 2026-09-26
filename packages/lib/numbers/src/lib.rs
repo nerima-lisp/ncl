@@ -359,22 +359,22 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             set_symbol_value(ctx, symbol, Word::NIL)?;
         }
         for (name, value) in [
-            ("BOOLE-CLR", bitops::BOOLE_CLR, None),
-            ("BOOLE-1", bitops::BOOLE_1, None),
-            ("BOOLE-2", bitops::BOOLE_2, None),
-            ("BOOLE-C1", bitops::BOOLE_C1, None),
-            ("BOOLE-C2", bitops::BOOLE_C2, None),
-            ("BOOLE-AND", bitops::BOOLE_AND, None),
-            ("BOOLE-IOR", bitops::BOOLE_IOR, None),
-            ("BOOLE-XOR", bitops::BOOLE_XOR, None),
-            ("BOOLE-EQV", bitops::BOOLE_EQV, None),
-            ("BOOLE-NAND", bitops::BOOLE_NAND, None),
-            ("BOOLE-NOR", bitops::BOOLE_NOR, None),
-            ("BOOLE-ANDC1", bitops::BOOLE_ANDC1, None),
-            ("BOOLE-ANDC2", bitops::BOOLE_ANDC2, None),
-            ("BOOLE-ORC1", bitops::BOOLE_ORC1, None),
-            ("BOOLE-ORC2", bitops::BOOLE_ORC2, None),
-            ("BOOLE-SET", bitops::BOOLE_SET, None),
+            ("BOOLE-CLR", bitops::BOOLE_CLR),
+            ("BOOLE-1", bitops::BOOLE_1),
+            ("BOOLE-2", bitops::BOOLE_2),
+            ("BOOLE-C1", bitops::BOOLE_C1),
+            ("BOOLE-C2", bitops::BOOLE_C2),
+            ("BOOLE-AND", bitops::BOOLE_AND),
+            ("BOOLE-IOR", bitops::BOOLE_IOR),
+            ("BOOLE-XOR", bitops::BOOLE_XOR),
+            ("BOOLE-EQV", bitops::BOOLE_EQV),
+            ("BOOLE-NAND", bitops::BOOLE_NAND),
+            ("BOOLE-NOR", bitops::BOOLE_NOR),
+            ("BOOLE-ANDC1", bitops::BOOLE_ANDC1),
+            ("BOOLE-ANDC2", bitops::BOOLE_ANDC2),
+            ("BOOLE-ORC1", bitops::BOOLE_ORC1),
+            ("BOOLE-ORC2", bitops::BOOLE_ORC2),
+            ("BOOLE-SET", bitops::BOOLE_SET),
         ] {
             let (symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
             set_symbol_constant(ctx, symbol, true)?;

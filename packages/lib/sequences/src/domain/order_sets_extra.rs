@@ -1,5 +1,5 @@
 use super::{
-    Options, list_from, matches, rooted_nested, sequence_values, set_operation, with_options,
+    Options, list_from, matches, scoped_rows, sequence_values, set_operation, with_options,
 };
 use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
 
@@ -11,10 +11,10 @@ pub fn intersection(
     opts: Options,
 ) -> Result<Word, ObjectError> {
     let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
+    scoped_rows(ctx, &mut rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
-            let result = vec![Word::NIL; rows.first().map_or(0, Vec::len)];
-            ncl_object::with_rooted_slice(ctx, &result, |ctx, result| {
+            let mut result = vec![Word::NIL; rows.first().map_or(0, Vec::len)];
+            {
                 let mut result_len = 0;
                 for value in rows.first().ok_or(ObjectError::Layout)? {
                     let mut found = false;
@@ -41,7 +41,7 @@ pub fn intersection(
                     runtime,
                     result.get(..result_len).ok_or(ObjectError::Layout)?,
                 )
-            })
+            }
         })
     })
 }
@@ -74,7 +74,7 @@ pub fn subsetp(
     opts: Options,
 ) -> Result<Word, ObjectError> {
     let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
+    scoped_rows(ctx, &mut rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             for value in rows.first().ok_or(ObjectError::Layout)? {
                 let mut found = false;
@@ -101,7 +101,7 @@ pub fn adjoin(
     opts: Options,
 ) -> Result<Word, ObjectError> {
     let mut rows = vec![vec![item], sequence_values(ctx, list)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
+    scoped_rows(ctx, &mut rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             let item = *rows
                 .first()
@@ -120,9 +120,7 @@ pub fn adjoin(
             let mut values = Vec::with_capacity(rows.get(1).map_or(0, Vec::len) + 1);
             values.push(item);
             values.extend(rows.get(1).ok_or(ObjectError::Layout)?.iter().copied());
-            ncl_object::with_rooted_slice(ctx, &values, |ctx, values| {
-                list_from(ctx, runtime, values)
-            })
+            list_from(ctx, runtime, &values)
         })
     })
 }

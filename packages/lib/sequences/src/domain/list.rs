@@ -1,26 +1,20 @@
 use ncl_object::{
-    LispError, List, ObjectError, ObjectRef, Runtime, Sequence, ThreadContext, Word,
-    car as object_car, cdr as object_cdr, make_cons, make_simple_vector, make_string,
-    rplaca as object_rplaca, rplacd as object_rplacd, simple_vector_length, simple_vector_ref,
-    string_length, string_ref,
+    Handle, LispError, List, Local, ObjectError, ObjectRef, Runtime, Scope, Sequence,
+    ThreadContext, Word, car as object_car, cdr as object_cdr, rplaca as object_rplaca,
+    rplacd as object_rplacd, simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
 
 fn make_cons_rooted(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    mut car: Word,
-    mut cdr: Word,
+    car: Word,
+    cdr: Word,
 ) -> Result<Word, ObjectError> {
-    let first_token = ncl_object::push_root(ctx, &mut car);
-    let second_token = ncl_object::push_root(ctx, &mut cdr);
-    let result = make_cons(ctx, runtime, car, cdr);
-    let second_root_error =
-        (!ncl_object::pop_root(ctx, second_token)).then_some(ObjectError::Layout);
-    let first_root_error = (!ncl_object::pop_root(ctx, first_token)).then_some(ObjectError::Layout);
-    if let Some(error) = second_root_error.or(first_root_error) {
-        return Err(error);
-    }
-    result
+    let mut scope = Scope::new(ctx);
+    let car = scope.root(Local::from_word(car));
+    let cdr = scope.root(Local::from_word(cdr));
+    let result = scope.make_cons(runtime, car, cdr)?;
+    Ok(scope.get(result).as_word())
 }
 
 fn list_word(value: List) -> Word {
@@ -124,19 +118,24 @@ pub fn concatenate(
     match name.as_str() {
         "NIL" => Ok(Word::NIL),
         "LIST" => super::list_from(ctx, runtime, &values).map_err(LispError::from),
-        "VECTOR" => sequence_result(
-            ctx,
-            runtime,
-            Sequence::Vector(ncl_object::SimpleVector::from_word(Word::NIL)),
-            &values,
-        )
-        .map_err(LispError::from),
+        "VECTOR" => {
+            let mut scope = Scope::new(ctx);
+            let result = sequence_result_scope(
+                &mut scope,
+                runtime,
+                Sequence::Vector(ncl_object::SimpleVector::from_word(Word::NIL)),
+                &values,
+            )?;
+            Ok(scope.get(result).as_word())
+        }
         "STRING" => {
             let chars = values
                 .iter()
                 .map(|value| character(*value))
                 .collect::<Result<Vec<_>, _>>()?;
-            make_string(ctx, runtime, &chars).map_err(LispError::from)
+            let mut scope = Scope::new(ctx);
+            let result = scope.make_string(runtime, &chars)?;
+            Ok(scope.get(result).as_word())
         }
         _ => Err(LispError::TypeError {
             datum: destination_type,
@@ -322,31 +321,40 @@ fn sequence_values(ctx: &mut ThreadContext, value: Sequence) -> Result<Vec<Word>
         }
     }
 }
+#[cfg(test)]
 fn sequence_result(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     value: Sequence,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let result = sequence_result_scope(&mut scope, runtime, value, values)?;
+    Ok(result.get(&scope).as_word())
+}
+
+fn sequence_result_scope<'ctx>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    value: Sequence,
+    values: &[Word],
+) -> Result<Handle<'ctx>, ObjectError> {
     match value {
-        Sequence::List(_) => super::list_from(ctx, runtime, values),
+        Sequence::List(_) => super::list_from_scope(scope, runtime, values),
         Sequence::Vector(_) => {
-            let mut values = values.to_vec();
-            let tokens = values
-                .iter_mut()
-                .map(|value| ncl_object::push_root(ctx, value))
+            let locals = values
+                .iter()
+                .copied()
+                .map(Local::from_word)
                 .collect::<Vec<_>>();
-            let result = make_simple_vector(ctx, runtime, &values);
-            let root_error = tokens.into_iter().rev().find_map(|token| {
-                (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout)
-            });
-            root_error.map_or(result, Err)
+            let handles = scope.root_many(&locals);
+            scope.make_simple_vector(runtime, &handles)
         }
         Sequence::String(_) => values
             .iter()
             .map(|value| character(*value))
             .collect::<Result<Vec<_>, _>>()
-            .and_then(|chars| make_string(ctx, runtime, &chars)),
+            .and_then(|chars| scope.make_string(runtime, &chars)),
     }
 }
 
@@ -386,11 +394,10 @@ fn sequence_copy(
     value: Sequence,
 ) -> Result<Word, ObjectError> {
     let values = sequence_values(ctx, value)?;
-    let mut source = sequence_word(value);
-    let token = ncl_object::push_root(ctx, &mut source);
-    let result = sequence_result(ctx, runtime, value, &values);
-    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
-    root_error.map_or(result, Err)
+    let mut scope = Scope::new(ctx);
+    let _source = scope.root::<Word>(Local::from_word(sequence_word(value)));
+    let result = sequence_result_scope(&mut scope, runtime, value, &values)?;
+    Ok(scope.get(result).as_word())
 }
 fn sequence_reverse(
     ctx: &mut ThreadContext,
@@ -399,11 +406,10 @@ fn sequence_reverse(
 ) -> Result<Word, ObjectError> {
     let mut values = sequence_values(ctx, value)?;
     values.reverse();
-    let mut source = sequence_word(value);
-    let token = ncl_object::push_root(ctx, &mut source);
-    let result = sequence_result(ctx, runtime, value, &values);
-    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
-    root_error.map_or(result, Err)
+    let mut scope = Scope::new(ctx);
+    let _source = scope.root::<Word>(Local::from_word(sequence_word(value)));
+    let result = sequence_result_scope(&mut scope, runtime, value, &values)?;
+    Ok(scope.get(result).as_word())
 }
 fn sequence_subseq(
     ctx: &mut ThreadContext,
@@ -423,11 +429,10 @@ fn sequence_subseq(
     if start > end || end > values.len() {
         return Err(ObjectError::TypeError);
     }
-    let mut source = sequence_word(value);
-    let token = ncl_object::push_root(ctx, &mut source);
-    let result = sequence_result(ctx, runtime, value, &values[start..end]);
-    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
-    root_error.map_or(result, Err)
+    let mut scope = Scope::new(ctx);
+    let _source = scope.root::<Word>(Local::from_word(sequence_word(value)));
+    let result = sequence_result_scope(&mut scope, runtime, value, &values[start..end])?;
+    Ok(scope.get(result).as_word())
 }
 fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, ObjectError> {
     match value {

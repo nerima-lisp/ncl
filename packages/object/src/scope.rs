@@ -151,6 +151,106 @@ impl<'ctx> Scope<'ctx> {
         self.ctx.collect(full)
     }
 
+    /// Borrow the underlying context for non-allocating object operations.
+    ///
+    /// Allocation should use the typed methods on this scope so that values
+    /// which survive the operation remain represented by handles.
+    #[must_use]
+    pub const fn context(&self) -> &ThreadContext {
+        self.ctx
+    }
+
+    /// Borrow the underlying context for an object operation that mutates an
+    /// existing object without allocating a new rooted value.
+    pub const fn context_mut(&mut self) -> &mut ThreadContext {
+        self.ctx
+    }
+
+    /// Allocate a string and retain the result in this scope.
+    ///
+    /// # Errors
+    /// Returns the allocation or layout error reported by the object layer.
+    pub fn make_string(
+        &mut self,
+        runtime: &crate::Runtime,
+        values: &[char],
+    ) -> Result<Handle<'ctx>, crate::ObjectError> {
+        let word = crate::make_string(self.ctx, runtime, values)?;
+        Ok(self.root(Local::from_word(word)))
+    }
+
+    /// Allocate a simple vector from handles and retain the result in this
+    /// scope.
+    ///
+    /// # Errors
+    /// Returns the allocation or layout error reported by the object layer.
+    pub fn make_simple_vector(
+        &mut self,
+        runtime: &crate::Runtime,
+        values: &HandleVec<'ctx>,
+    ) -> Result<Handle<'ctx>, crate::ObjectError> {
+        let words = values
+            .iter()
+            .map(|handle| self.get(*handle).as_word())
+            .collect::<Vec<_>>();
+        let word = crate::make_simple_vector(self.ctx, runtime, &words)?;
+        Ok(self.root(Local::from_word(word)))
+    }
+
+    /// Read a cons car through a handle.
+    ///
+    /// # Errors
+    /// Returns a type or storage error when the handle does not contain a cons.
+    pub fn car<'borrow>(
+        &'borrow self,
+        value: Handle<'ctx>,
+    ) -> Result<Local<'borrow>, crate::ObjectError> {
+        crate::car(self.ctx, self.get(value).as_word()).map(Local::from_word)
+    }
+
+    /// Read a cons cdr through a handle.
+    ///
+    /// # Errors
+    /// Returns a type or storage error when the handle does not contain a cons.
+    pub fn cdr<'borrow>(
+        &'borrow self,
+        value: Handle<'ctx>,
+    ) -> Result<Local<'borrow>, crate::ObjectError> {
+        crate::cdr(self.ctx, self.get(value).as_word()).map(Local::from_word)
+    }
+
+    /// Call a Lisp function represented by a rooted handle.
+    ///
+    /// The temporary ABI words are backed by handles for the whole call, and
+    /// the returned value is rooted before this method returns.
+    ///
+    /// # Errors
+    /// Returns an object or callback error from function designator conversion
+    /// or invocation.
+    pub fn call_function<C: crate::FunctionCaller>(
+        &mut self,
+        runtime: &crate::Runtime,
+        designator: Handle<'ctx>,
+        args: &HandleVec<'ctx>,
+        caller: &mut C,
+        values: &mut crate::MultipleValues,
+    ) -> Result<Handle<'ctx>, crate::ObjectError> {
+        let designator_word = designator.get(self).as_word();
+        let function = crate::FunctionDesignator::try_from_word(self.ctx, designator_word)?;
+        let words = args
+            .iter()
+            .map(|handle| handle.get(self).as_word())
+            .collect::<Vec<_>>();
+        let result = caller.call_function(
+            self.ctx,
+            runtime,
+            function,
+            crate::FunctionArguments::new(&words),
+            values,
+        )?;
+        Ok(self.root(Local::from_word(result)))
+    }
+
     /// Build a cons cell while keeping its arguments rooted in this scope.
     ///
     /// # Errors

@@ -373,7 +373,7 @@ impl KeywordEntriesError {
 }
 
 fn keyword_entries(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     list: Word,
 ) -> Result<Vec<(Word, Word)>, KeywordEntriesError> {
     let mut entries = Vec::new();

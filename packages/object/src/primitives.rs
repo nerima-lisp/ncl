@@ -81,7 +81,7 @@ pub fn make_symbol(
 /// # Errors
 ///
 /// Returns a type or storage error when the word is not a cons.
-pub fn car(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
+pub fn car(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if word == Word::NIL {
         return Ok(Word::NIL);
     }
@@ -96,7 +96,7 @@ pub fn car(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
 /// # Errors
 ///
 /// Returns a type or storage error when the word is not a cons.
-pub fn cdr(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
+pub fn cdr(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if word == Word::NIL {
         return Ok(Word::NIL);
     }

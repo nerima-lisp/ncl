@@ -1,8 +1,8 @@
 //! Basic destructive sequence updates.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinImplementation, BuiltinName, LambdaList,
-    MultipleValues, ObjectError, ObjectRef, Parameter, ParameterType, Runtime, Sequence,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinImplementation, BuiltinName, LambdaList, Local,
+    MultipleValues, ObjectError, ObjectRef, Parameter, ParameterType, Runtime, Scope, Sequence,
     ThreadContext, Word,
 };
 
@@ -212,7 +212,10 @@ fn fill_entry(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    entry_callback(ctx, runtime, args, values, false)
+    let mut scope = Scope::new(ctx);
+    let result = entry_callback(scope.context_mut(), runtime, args, values, false)?;
+    let result_handle = scope.root::<Word>(Local::from_word(result));
+    Ok(scope.get(result_handle).as_word())
 }
 
 fn replace_entry(
@@ -221,7 +224,10 @@ fn replace_entry(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    entry_callback(ctx, runtime, args, values, true)
+    let mut scope = Scope::new(ctx);
+    let result = entry_callback(scope.context_mut(), runtime, args, values, true)?;
+    let result_handle = scope.root::<Word>(Local::from_word(result));
+    Ok(scope.get(result_handle).as_word())
 }
 
 #[allow(clippy::unnecessary_wraps)]

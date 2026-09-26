@@ -1,6 +1,6 @@
 use ncl_object::{
-    List, ObjectError, ObjectRef, Runtime, Sequence, ThreadContext, Word, classify_object,
-    make_cons,
+    Handle, List, Local, ObjectError, ObjectRef, Runtime, Scope, Sequence, ThreadContext, Word,
+    classify_object,
 };
 
 pub fn sequence_value(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
@@ -28,34 +28,27 @@ pub fn list_from(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut values = values.to_vec();
-    let value_tokens = values
-        .iter_mut()
-        .map(|value| ncl_object::push_root(ctx, value))
+    let mut scope = Scope::new(ctx);
+    let result = list_from_scope(&mut scope, runtime, values)?;
+    Ok(scope.get(result).as_word())
+}
+
+pub(crate) fn list_from_scope<'ctx>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Handle<'ctx>, ObjectError> {
+    let locals = values
+        .iter()
+        .copied()
+        .map(Local::from_word)
         .collect::<Vec<_>>();
-    let mut result = Word::NIL;
-    let result_token = ncl_object::push_root(ctx, &mut result);
-    for &value in values.iter().rev() {
-        match make_cons(ctx, runtime, value, result) {
-            Ok(next) => result = next,
-            Err(error) => {
-                ncl_object::pop_root(ctx, result_token);
-                for token in value_tokens.into_iter().rev() {
-                    ncl_object::pop_root(ctx, token);
-                }
-                return Err(error);
-            }
-        }
+    let handles = scope.root_many(&locals);
+    let mut result = scope.root(Local::from_word(Word::NIL));
+    for value in handles.iter().rev() {
+        result = scope.make_cons(runtime, *value, result)?;
     }
-    let result_root_error =
-        (!ncl_object::pop_root(ctx, result_token)).then_some(ObjectError::Layout);
-    let value_root_error = value_tokens
-        .into_iter()
-        .rev()
-        .find_map(|token| (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout));
-    result_root_error
-        .or(value_root_error)
-        .map_or(Ok(result), Err)
+    Ok(result)
 }
 
 pub mod filter;

@@ -70,7 +70,7 @@ pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
 };
-pub(crate) use roots::{finish_root, with_root, with_roots};
+pub use roots::{finish_root, with_root, with_roots};
 pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use runtime::Runtime;
 pub use specialized_array::{

@@ -10,8 +10,5 @@ ncl-object = { path = "../../object" }
 ncl-types = { path = "../../types" }
 ncl-conditions = { path = "../../conditions" }
 
-[dev-dependencies]
-ncl-ownership = { path = "../../ownership" }
-
 [lints]
 workspace = true

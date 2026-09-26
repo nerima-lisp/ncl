@@ -49,8 +49,7 @@ fn rooted<T>(
         .map(|word| push_root(ctx, word))
         .collect::<Vec<_>>();
     let result = f(ctx, words);
-    let roots_valid = tokens.into_iter().rev().all(|token| pop_root(ctx, token));
-    let _ = roots_valid;
+    tokens.into_iter().rev().all(|token| pop_root(ctx, token));
     result
 }
 
@@ -326,7 +325,7 @@ pub fn mapc<C: FunctionCaller>(
     lists: &[Word],
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
-    let _ = list_map(ctx, runtime, function, lists, caller, false)?;
+    list_map(ctx, runtime, function, lists, caller, false)?;
     lists.first().copied().ok_or(ObjectError::TypeError)
 }
 
@@ -348,7 +347,7 @@ pub fn mapl<C: FunctionCaller>(
     lists: &[Word],
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
-    let _ = list_map(ctx, runtime, function, lists, caller, true)?;
+    list_map(ctx, runtime, function, lists, caller, true)?;
     lists.first().copied().ok_or(ObjectError::TypeError)
 }
 

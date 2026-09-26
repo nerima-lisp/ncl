@@ -54,6 +54,20 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut prog_variable);
     let mut prog_variables = list(&mut ctx, &runtime, &[prog_variable])?;
     root!(&mut prog_variables);
+    let mut destructuring_lambda_list = list(&mut ctx, &runtime, &[x])?;
+    root!(&mut destructuring_lambda_list);
+    let mut dolist_spec = list(&mut ctx, &runtime, &[x, Word::NIL])?;
+    root!(&mut dolist_spec);
+    let mut dotimes_spec = list(&mut ctx, &runtime, &[x, one])?;
+    root!(&mut dotimes_spec);
+    let mut for_keyword = symbol(&mut ctx, &runtime, "FOR")?;
+    root!(&mut for_keyword);
+    let mut from_keyword = symbol(&mut ctx, &runtime, "FROM")?;
+    root!(&mut from_keyword);
+    let mut to_keyword = symbol(&mut ctx, &runtime, "TO")?;
+    root!(&mut to_keyword);
+    let mut do_keyword = symbol(&mut ctx, &runtime, "DO")?;
+    root!(&mut do_keyword);
     let nil = Word::NIL;
     let mut cases: Vec<(&str, Box<Word>)> = Vec::with_capacity(MACROS.len());
     macro_rules! case {
@@ -79,11 +93,15 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
     case!("DEFSETF", "DEFSETF", [x, y]);
     case!("DEFVAR", "DEFVAR", [x, one]);
+    case!("DESTRUCTURING-BIND", "DESTRUCTURING-BIND", [destructuring_lambda_list, x, x]);
     case!("DO", "DO", [do_variables, do_end, x]);
     case!("DO*", "DO*", [do_variables, do_end, x]);
+    case!("DOLIST", "DOLIST", [dolist_spec, x]);
+    case!("DOTIMES", "DOTIMES", [dotimes_spec, x]);
     case!("ECASE", "ECASE", [x, clause]);
     case!("ETYPECASE", "ETYPECASE", [x, type_clause]);
     case!("INCF", "INCF", [x, one]);
+    case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
     case!("OR", "OR", [x, y]);
     case!("POP", "POP", [x]);

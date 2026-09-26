@@ -2,8 +2,8 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, car, make_cons,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Parameter, ParameterType,
+    Runtime, ThreadContext, Word, car, make_cons,
 };
 
 /// Frozen order for standard-library and extension registration.

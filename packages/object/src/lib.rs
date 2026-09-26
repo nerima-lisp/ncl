@@ -24,6 +24,7 @@ mod readtable;
 mod registry_extensions;
 mod roots;
 mod runtime;
+pub mod scope;
 mod specialized_array;
 mod stream;
 mod structure;
@@ -76,6 +77,7 @@ pub(crate) use roots::finish_root;
 pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use roots::{with_root, with_rooted_slice, with_roots};
 pub use runtime::Runtime;
+pub use scope::{Handle, HandleVec, Local, Scope};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,

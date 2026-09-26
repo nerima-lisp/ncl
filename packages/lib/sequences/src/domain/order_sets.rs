@@ -1,4 +1,6 @@
-#![allow(dead_code)]
+#[path = "order_sets_assoc.rs"]
+mod assoc;
+pub use assoc::{assoc, member, rassoc};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     BuiltinFunctionCaller, FunctionArguments, FunctionCaller, MultipleValues, ObjectError,
@@ -28,7 +30,6 @@ fn list_from(
         Err(ObjectError::Layout)
     }
 }
-
 fn rooted_nested<T>(
     ctx: &mut ThreadContext,
     words: &mut [Vec<Word>],
@@ -314,6 +315,7 @@ pub fn sort(
         }
     })
 }
+#[allow(dead_code)]
 pub fn stable_sort(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -496,71 +498,4 @@ pub fn adjoin(
     let mut values = vec![item];
     values.extend(tail);
     list_from(ctx, runtime, &values)
-}
-fn assoc_like(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    item: Word,
-    alist: Word,
-    opts: Options,
-    reverse: bool,
-) -> Result<Word, ObjectError> {
-    let mut cursor = alist;
-    while cursor != Word::NIL {
-        if !cursor.is_cons() {
-            return Err(ObjectError::TypeError);
-        }
-        let pair = car(ctx, cursor)?;
-        if !pair.is_cons() {
-            return Err(ObjectError::TypeError);
-        }
-        let value = if reverse {
-            cdr(ctx, pair)?
-        } else {
-            car(ctx, pair)?
-        };
-        if matches(ctx, runtime, item, value, opts)? {
-            return Ok(pair);
-        }
-        cursor = cdr(ctx, cursor)?;
-    }
-    Ok(Word::NIL)
-}
-pub fn assoc(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    item: Word,
-    alist: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    assoc_like(ctx, runtime, item, alist, opts, false)
-}
-pub fn rassoc(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    item: Word,
-    alist: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    assoc_like(ctx, runtime, item, alist, opts, true)
-}
-pub fn member(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    item: Word,
-    list: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    let mut cursor = list;
-    while cursor != Word::NIL {
-        if !cursor.is_cons() {
-            return Err(ObjectError::TypeError);
-        }
-        let value = car(ctx, cursor)?;
-        if matches(ctx, runtime, item, value, opts)? {
-            return Ok(cursor);
-        }
-        cursor = cdr(ctx, cursor)?;
-    }
-    Ok(Word::NIL)
 }

@@ -4,7 +4,10 @@
     reason = "tests assert on initialization protocol"
 )]
 
-use ncl_object::{FunctionObject, Runtime, ThreadContext, Word, make_simple_vector};
+use ncl_object::{
+    FunctionObject, Instance, Runtime, ThreadContext, Word, make_simple_vector, pop_root,
+    push_root, slot_ref, slot_set,
+};
 
 #[path = "../src/initialization.rs"]
 mod initialization;
@@ -60,6 +63,89 @@ fn make_instance_applies_initargs_and_initialize_instance_returns_instance() {
             .unwrap(),
         Word::NIL
     );
+}
+
+#[test]
+fn initialization_paths_survive_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let key = Word::fixnum(71);
+    let mut class = class_with_slots(&mut ctx, &runtime, &[key]);
+    let class_token = push_root(&mut ctx, &mut class);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let mut make_word = make.as_word();
+    let make_token = push_root(&mut ctx, &mut make_word);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let instance = runtime
+        .call_builtin(
+            &mut ctx,
+            FunctionObject::try_from(make_word).unwrap(),
+            &[class, key, Word::TRUE],
+        )
+        .unwrap();
+    let mut instance = instance;
+    let instance_token = push_root(&mut ctx, &mut instance);
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::TRUE)
+    );
+    slot_set(&mut ctx, Instance::from_word(instance), 0, Word::NIL).unwrap();
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::NIL)
+    );
+    assert!(pop_root(&mut ctx, instance_token));
+    assert!(pop_root(&mut ctx, make_token));
+    assert!(pop_root(&mut ctx, class_token));
+}
+
+#[test]
+fn shared_initialize_survives_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let key = Word::fixnum(72);
+    let class = class_with_slots(&mut ctx, &runtime, &[key]);
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+    let shared = function(&runtime, &mut ctx, "COMMON-LISP", "SHARED-INITIALIZE");
+    let mut instance_word = instance;
+    let instance_token = push_root(&mut ctx, &mut instance_word);
+    let mut shared_word = shared.as_word();
+    let shared_token = push_root(&mut ctx, &mut shared_word);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    assert_eq!(
+        runtime
+            .call_builtin(
+                &mut ctx,
+                FunctionObject::try_from(shared_word).unwrap(),
+                &[instance_word, key, Word::TRUE],
+            )
+            .unwrap(),
+        instance_word
+    );
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance_word), 0),
+        Ok(Word::TRUE)
+    );
+    assert!(pop_root(&mut ctx, shared_token));
+    assert!(pop_root(&mut ctx, instance_token));
+}
+
+#[test]
+fn class_definition_survives_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(73)]);
+    let mut class_word = class;
+    let class_token = push_root(&mut ctx, &mut class_word);
+    let instance =
+        ncl_clos::make_instance(&mut ctx, &runtime, class_word, &[Word::UNBOUND]).unwrap();
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::UNBOUND)
+    );
+    assert!(pop_root(&mut ctx, class_token));
 }
 
 #[test]

@@ -6,8 +6,8 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, string_length,
-    string_ref, symbol_name,
+    MultipleValues, ObjectError, Runtime, ThreadContext, Word, string_length, string_ref,
+    symbol_name,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -36,6 +36,7 @@ pub enum LimitDirection {
     UpTo,
     Below,
     DownTo,
+    Above,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +55,21 @@ pub enum LoopClause {
         init: Word,
     },
     For(ForClause),
+    EqualsThen {
+        variable: Word,
+        init: Word,
+        then: Word,
+    },
+    In {
+        variable: Word,
+        sequence: Word,
+        on: bool,
+        by: Option<Word>,
+    },
+    Across {
+        variable: Word,
+        vector: Word,
+    },
     Repeat(Word),
     While(Word),
     Until(Word),
@@ -74,8 +90,12 @@ pub struct LoopAst {
     pub clauses: Vec<LoopClause>,
 }
 
+mod callback;
+mod clause;
 mod expansion;
+mod held;
 mod parser;
+pub use callback::expand_loop_callback;
 #[allow(unused_imports)]
-pub use expansion::{expand_loop_ast, expand_loop_callback};
+pub use expansion::expand_loop_ast;
 pub use parser::parse_loop;

@@ -403,5 +403,14 @@ mod gvn_tests;
 #[path = "sccp_tests.rs"]
 mod sccp_tests;
 #[cfg(test)]
+#[path = "tests_support.rs"]
+mod tests_support;
+#[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "remap_tests.rs"]
+mod remap_tests;
+#[cfg(test)]
+#[path = "manager_tests.rs"]
+mod manager_tests;

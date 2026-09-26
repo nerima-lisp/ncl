@@ -11,7 +11,7 @@ mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
     RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate, load_slot, lower_call,
-    lower_op, move_args, slots,
+    lower_op, move_args, slots, store_return_values,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -80,17 +80,9 @@ fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::Ret)
 }
 
-/// Tears down the current frame and transfers to an indirect callee.
-///
-/// The caller return address is moved below a fresh two-word header area so
-/// the callee prologue sees the same layout as a regular indirect call.
 fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
-    // At this point `rsp` points at the return address of the current frame.
-    // Move it below the callee's two-word header reservation and preserve the
-    // callee function object immediately above it. The callee prologue then
-    // observes the same stack layout as after a regular call.
     emit(assembler, Inst::MovRM(RETURN_VALUE, Mem::base(Reg::Rsp, 0)))?;
     emit(
         assembler,
@@ -307,6 +299,7 @@ pub fn compile_function_x86_64(
                 }
             }
             Terminator::Return { values } => {
+                store_return_values(&mut assembler, &value_slots, values, abi)?;
                 if let Some(value) = values.first() {
                     load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
                 } else {
@@ -331,8 +324,6 @@ pub fn compile_function_x86_64(
             }
             Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
-                // A tail transfer has no return PC in this frame, so there is
-                // no new caller safepoint map or unwind point to register.
                 emit_tail_transfer(&mut assembler)?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {

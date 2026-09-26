@@ -28,19 +28,10 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
     Ok(pop_root(ctx, token))
 }
 
-/// Keep `value` rooted while `f` runs and copy the collector-updated value back
-/// into it afterwards.
-///
-/// The closure receives a [`RootSlot`] rather than a copied [`Word`]. Read the
-/// value from that slot inside the closure after any allocation or collection,
-/// because the collector may move the object and rewrite the slot in place.
-/// The root is removed after the closure returns, including when the closure
-/// returns an error.
+/// Run a callback while keeping one heap word precisely rooted.
 ///
 /// # Errors
-/// Returns an error from registering the root or from the closure. When the
-/// closure returns an error, the root is still removed before that error is
-/// returned.
+/// Returns the callback's object-layer error.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -57,22 +48,11 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
-/// Keep every value in `values` rooted while `f` runs.
-///
-/// The closure receives one [`RootSlot`] for each input value. Read values from
-/// those slots inside the closure after any allocation or collection, because
-/// the collector may move objects and rewrite the slots in place. All roots
-/// are removed after the closure returns, including when the closure returns an
-/// error.
-///
-/// # Panics
-/// Panics if a root token cannot be removed in reverse stack order.
+/// Run a callback while keeping a sequence of heap words precisely rooted.
 ///
 /// # Errors
-/// Returns an error from registering a root or from the closure. If registering
-/// a root fails, all roots registered so far are removed before the error is
-/// returned. If the closure returns an error, all roots are removed before
-/// that error is returned.
+/// Returns a root-stack or callback error.
+///
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
@@ -85,7 +65,9 @@ pub fn with_roots<T>(
             Ok(token) => tokens.push(token),
             Err(error) => {
                 for token in tokens.into_iter().rev() {
-                    assert!(try_pop_root(ctx, token).is_ok_and(|popped| popped));
+                    if !try_pop_root(ctx, token).is_ok_and(|popped| popped) {
+                        return Err(ObjectError::RootStackCorrupted);
+                    }
                 }
                 return Err(error);
             }
@@ -94,22 +76,48 @@ pub fn with_roots<T>(
     let slots: Vec<RootSlot<'_>> = cells.iter().map(RootSlot::new).collect();
     let result = f(ctx, &slots);
     for token in tokens.into_iter().rev() {
-        assert!(try_pop_root(ctx, token).unwrap_or(false));
+        if !try_pop_root(ctx, token).is_ok_and(|popped| popped) {
+            return Err(ObjectError::RootStackCorrupted);
+        }
+    }
+    result
+}
+
+/// Run a callback with a contiguous mutable word slice registered as roots.
+///
+/// The slice allocation is kept alive and its elements remain mutable for the
+/// complete callback, so a native caller may safely pass a pointer into it as
+/// the rest-argument area.
+///
+/// # Errors
+/// Returns an object-layer error from the callback.
+///
+pub fn with_rooted_slice<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut rooted = values.to_vec();
+    let token = ncl_sys::register_root_set(&mut ctx.thread, &mut rooted);
+    let result = f(ctx, &mut rooted);
+    if !ncl_sys::pop_root(&mut ctx.thread, token) {
+        return Err(ObjectError::RootStackCorrupted);
     }
     result
 }
 
 /// Pop a root and return the callback result.
 ///
-/// # Panics
-/// Panics if the root token is not at the top of the root stack.
 pub fn finish_root<T>(
     ctx: &mut ThreadContext,
     token: RootToken,
     result: Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    assert!(pop_root(ctx, token), "root token popped out of stack order");
-    result
+    if pop_root(ctx, token) {
+        result
+    } else {
+        Err(ObjectError::RootStackCorrupted)
+    }
 }
 
 #[cfg(test)]

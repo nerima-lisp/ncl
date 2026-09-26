@@ -41,7 +41,7 @@ pub use thread::{
 impl RootToken {
     /// Construct a token covering a contiguous span of root slots.
     #[must_use]
-    pub const fn spanning(index: usize, count: usize) -> Self {
+    pub(crate) const fn spanning(index: usize, count: usize) -> Self {
         Self { index, count }
     }
 }
@@ -55,7 +55,7 @@ impl Thread {
     }
 
     /// Pop a contiguous span of the most recently pushed roots.
-    pub fn pop_root_span(&mut self, token: RootToken) -> bool {
+    pub(crate) fn pop_root_span(&mut self, token: RootToken) -> bool {
         token
             .index
             .checked_add(token.count)
@@ -65,7 +65,7 @@ impl Thread {
 
     /// Return the number of currently registered precise roots.
     #[must_use]
-    pub const fn root_len(&self) -> usize {
+    pub(crate) const fn root_len(&self) -> usize {
         self.roots.len()
     }
 }
@@ -362,11 +362,6 @@ pub fn push_root(thread: &mut Thread, value: &mut Word) -> RootToken {
 /// Remove the most recent precise root.
 pub fn pop_root(thread: &mut Thread, token: RootToken) -> bool {
     thread.pop_root(token)
-}
-
-/// Remove a contiguous span of precise roots.
-pub fn pop_root_span(thread: &mut Thread, token: RootToken) -> bool {
-    thread.pop_root_span(token)
 }
 
 /// Record a reference store for the generational collector.

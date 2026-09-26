@@ -180,16 +180,6 @@ fn thread_state_transitions_and_root_stack_have_contracts() {
     assert!(pop_root(&mut thread, first_token));
     assert!(!pop_root(&mut thread, first_token));
 
-    let root_base = thread.root_len();
-    let first_cell = std::cell::Cell::new(Word::fixnum(3));
-    let second_cell = std::cell::Cell::new(Word::fixnum(4));
-    thread.push_root_cell(&first_cell);
-    thread.push_root_cell(&second_cell);
-    assert_eq!(thread.root_len(), root_base + 2);
-    assert!(!thread.pop_root_span(ncl_sys::RootToken::spanning(root_base, 1)));
-    assert!(thread.pop_root_span(ncl_sys::RootToken::spanning(root_base, 2)));
-    assert_eq!(thread.root_len(), root_base);
-
     publish_conservative_root(&mut thread, Word::TRUE);
     thread.request_poll();
     assert_eq!(thread.safepoint_state(), SafepointState::PollRequested);

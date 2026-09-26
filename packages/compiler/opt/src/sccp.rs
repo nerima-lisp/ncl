@@ -409,7 +409,9 @@ impl FunctionPass for Sccp {
             else {
                 continue;
             };
-            let block = function.blocks[block_index].clone();
+            let Some(block) = function.blocks.get(block_index).cloned() else {
+                continue;
+            };
             for (index, parameter) in block.params.iter().enumerate() {
                 let merged = incoming
                     .get(&block_id)

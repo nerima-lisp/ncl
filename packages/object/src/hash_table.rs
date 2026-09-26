@@ -223,11 +223,11 @@ impl HashTable {
             let occupied_exceeded = occupied.checked_add(1).ok_or(ObjectError::Layout)? >= capacity;
             if threshold_exceeded || occupied_exceeded {
                 let next_capacity = if threshold_exceeded {
-                    next_capacity(ctx, &table)?
+                    next_capacity(ctx, table)?
                 } else if count < capacity / 2 {
                     capacity
                 } else {
-                    next_capacity(ctx, &table)?
+                    next_capacity(ctx, table)?
                 };
                 table.resize(ctx, runtime, next_capacity)?;
                 table = Self::from_word(table_word);

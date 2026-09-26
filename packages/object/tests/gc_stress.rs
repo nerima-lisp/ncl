@@ -2,13 +2,13 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car,
-    code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
-    function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
-    make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
-    make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
-    set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_element_type,
-    stream_external_format, stream_implementation, stream_state, symbol_name,
+    car, cdr, code_constants, code_debug, code_stack_map, complex_imag, complex_real,
+    function_code, function_lambda_list, function_name, make_array, make_closure, make_code_object,
+    make_complex, make_cons, make_instance, make_ratio, make_readtable, make_simple_fun,
+    make_simple_vector, make_stream, make_string, make_structure, make_symbol, ratio_denominator,
+    ratio_numerator, set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref,
+    stream_element_type, stream_external_format, stream_implementation, stream_state, symbol_name,
+    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word,
 };
 
 fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
@@ -32,6 +32,69 @@ fn assert_registry_entries(ctx: &mut ThreadContext, runtime: &Runtime, symbol: W
         runtime.function(ctx, "NCL", "STRESS-FUNCTION"),
         Some(symbol)
     );
+}
+
+#[test]
+fn make_rest_list_builtin_survives_gc_stress_and_strict_forwarding() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let mut first =
+        make_string(&mut ctx, &runtime, &['A']).unwrap_or_else(|error| panic!("first: {error:?}"));
+    let first_token = ncl_object::push_root(&mut ctx, &mut first);
+    let mut second =
+        make_string(&mut ctx, &runtime, &['B']).unwrap_or_else(|error| panic!("second: {error:?}"));
+    let second_token = ncl_object::push_root(&mut ctx, &mut second);
+    let mut third =
+        make_string(&mut ctx, &runtime, &['C']).unwrap_or_else(|error| panic!("third: {error:?}"));
+    let third_token = ncl_object::push_root(&mut ctx, &mut third);
+
+    let function = runtime
+        .function(&mut ctx, "NCL-EXT", "MAKE-REST-LIST")
+        .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("MAKE-REST-LIST not registered"));
+    let descriptor = runtime
+        .builtin_descriptor(function)
+        .unwrap_or_else(|| panic!("MAKE-REST-LIST descriptor missing"));
+    assert_eq!(descriptor.lambda_list.required.len(), 2);
+    assert_eq!(
+        descriptor.lambda_list.required[0].ty,
+        ncl_object::ParameterType::Fixnum
+    );
+    assert_eq!(
+        descriptor.lambda_list.required[1].ty,
+        ncl_object::ParameterType::Fixnum
+    );
+    assert!(descriptor.lambda_list.rest.is_some());
+
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let list = runtime
+        .call_builtin(
+            &mut ctx,
+            function,
+            &[Word::fixnum(3), Word::fixnum(1), first, second, third],
+        )
+        .unwrap_or_else(|error| panic!("make rest list: {error:?}"));
+    let first_result =
+        car(&mut ctx, list).unwrap_or_else(|error| panic!("first result: {error:?}"));
+    assert_eq!(ncl_object::string_ref(&ctx, first_result, 0), Ok('B'));
+    let tail = cdr(&mut ctx, list).unwrap_or_else(|error| panic!("first tail: {error:?}"));
+    let second_result =
+        car(&mut ctx, tail).unwrap_or_else(|error| panic!("second result: {error:?}"));
+    assert_eq!(ncl_object::string_ref(&ctx, second_result, 0), Ok('C'));
+    assert_eq!(
+        cdr(&mut ctx, tail),
+        Ok(Word::NIL),
+        "rest list has an unexpected tail"
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, third_token));
+    assert!(ncl_object::pop_root(&mut ctx, second_token));
+    assert!(ncl_object::pop_root(&mut ctx, first_token));
 }
 
 #[test]

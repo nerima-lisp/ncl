@@ -2,10 +2,11 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, LispError, LispErrorConverter, ObjectError, ObjectRef,
-    Parameter, ParameterType, ProgramError, ThreadContext, Word, car, cdr, classify_object,
-    make_string, string_length, string_ref, symbol_name, symbol_package, with_root,
+    car, cdr, classify_object, make_cons, make_string, string_length, string_ref, symbol_name,
+    symbol_package, with_root, with_roots, Arity, Builtin, BuiltinArgs, BuiltinConvention,
+    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, LispError,
+    LispErrorConverter, ObjectError, ObjectRef, Parameter, ParameterType, ProgramError,
+    ThreadContext, Word,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -58,6 +59,24 @@ const CHECK_KEYWORDS_DESCRIPTOR: Builtin = Builtin {
         false,
     ),
     convention: BuiltinConvention::Direct(Arity::exact(2)),
+};
+const REST_LIST_REQUIRED: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("ARGC"),
+        ty: ParameterType::Fixnum,
+    },
+    Parameter {
+        name: BuiltinName::new("START"),
+        ty: ParameterType::Fixnum,
+    },
+];
+const REST_LIST_VALUE: Parameter = Parameter {
+    name: BuiltinName::new("VALUE"),
+    ty: ParameterType::Any,
+};
+const MAKE_REST_LIST_DESCRIPTOR: Builtin = Builtin {
+    lambda_list: LambdaList::with_rest(REST_LIST_REQUIRED, REST_LIST_VALUE),
+    convention: BuiltinConvention::Adapted,
 };
 const KEYWORD_VALUE_DESCRIPTOR: Builtin = Builtin {
     lambda_list: LambdaList::new(&[KEYWORD_LIST, KEYWORD], &[], None, &[], false),
@@ -122,6 +141,10 @@ impl Runtime {
     /// Returns an allocation, layout, or storage error.
     pub fn register_keyword_builtins(&self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
         let registrations = [
+            (
+                BuiltinName::new("MAKE-REST-LIST"),
+                BuiltinImplementation::direct(MAKE_REST_LIST_DESCRIPTOR, make_rest_list_builtin),
+            ),
             (
                 BuiltinName::new("CHECK-KEYWORDS"),
                 BuiltinImplementation::direct(CHECK_KEYWORDS_DESCRIPTOR, check_keywords_builtin),
@@ -235,6 +258,38 @@ impl Runtime {
             .as_ref()
             .copied()
     }
+}
+
+fn make_rest_list_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut crate::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let argc = args
+        .required(0)?
+        .as_fixnum()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(ObjectError::TypeError)?;
+    let start = args
+        .required(1)?
+        .as_fixnum()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(ObjectError::TypeError)?;
+    let values = args.as_slice().get(2..).ok_or(ObjectError::TypeError)?;
+    if start > argc || argc > values.len() {
+        return Err(ObjectError::TypeError);
+    }
+    with_roots(ctx, &values[..argc], |ctx, values| {
+        let mut list = Word::NIL;
+        with_root(ctx, &mut list, |ctx, list| {
+            let mut list_word = *list;
+            for value in values[start..].iter().rev() {
+                list_word = make_cons(ctx, runtime, **value, list_word)?;
+            }
+            Ok(list_word)
+        })
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

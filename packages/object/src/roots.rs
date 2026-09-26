@@ -53,8 +53,6 @@ pub fn with_root<T>(
 /// # Errors
 /// Returns a root-stack or callback error.
 ///
-/// # Panics
-/// Panics if the root stack is corrupted and a registered root cannot be popped.
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
@@ -67,7 +65,9 @@ pub fn with_roots<T>(
             Ok(token) => tokens.push(token),
             Err(error) => {
                 for token in tokens.into_iter().rev() {
-                    assert!(try_pop_root(ctx, token).is_ok_and(|popped| popped));
+                    if !try_pop_root(ctx, token).is_ok_and(|popped| popped) {
+                        return Err(ObjectError::RootStackCorrupted);
+                    }
                 }
                 return Err(error);
             }
@@ -76,7 +76,9 @@ pub fn with_roots<T>(
     let slots: Vec<RootSlot<'_>> = cells.iter().map(RootSlot::new).collect();
     let result = f(ctx, &slots);
     for token in tokens.into_iter().rev() {
-        assert!(try_pop_root(ctx, token).unwrap_or(false));
+        if !try_pop_root(ctx, token).is_ok_and(|popped| popped) {
+            return Err(ObjectError::RootStackCorrupted);
+        }
     }
     result
 }
@@ -90,8 +92,6 @@ pub fn with_roots<T>(
 /// # Errors
 /// Returns an object-layer error from the callback.
 ///
-/// # Panics
-/// Panics if the root stack is corrupted while removing the registered slice.
 pub fn with_rooted_slice<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
@@ -100,21 +100,24 @@ pub fn with_rooted_slice<T>(
     let mut rooted = values.to_vec();
     let token = ncl_sys::register_root_set(&mut ctx.thread, &mut rooted);
     let result = f(ctx, &mut rooted);
-    assert!(ncl_sys::pop_root(&mut ctx.thread, token));
+    if !ncl_sys::pop_root(&mut ctx.thread, token) {
+        return Err(ObjectError::RootStackCorrupted);
+    }
     result
 }
 
 /// Pop a root and return the callback result.
 ///
-/// # Panics
-/// Panics if the root token is not at the top of the root stack.
 pub fn finish_root<T>(
     ctx: &mut ThreadContext,
     token: RootToken,
     result: Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    assert!(pop_root(ctx, token), "root token popped out of stack order");
-    result
+    if pop_root(ctx, token) {
+        result
+    } else {
+        Err(ObjectError::RootStackCorrupted)
+    }
 }
 
 #[cfg(test)]

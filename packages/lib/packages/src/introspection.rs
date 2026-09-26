@@ -13,7 +13,7 @@ use ncl_object::{
     slot_ref, symbol_name,
 };
 
-pub(super) fn with_rooted_words<T>(
+fn with_rooted_words<T>(
     ctx: &mut ThreadContext,
     words: &mut [Word],
     f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
@@ -30,8 +30,7 @@ pub(super) fn with_rooted_words<T>(
         }
     }
     match (result, cleanup_error) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Some(error)) => Err(error),
+        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
         (Ok(value), None) => Ok(value),
     }
 }

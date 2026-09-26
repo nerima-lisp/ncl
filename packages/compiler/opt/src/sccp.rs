@@ -2,8 +2,7 @@
 
 use super::{FunctionPass, Module, PassError, PassResult};
 use ncl_ir::{
-    BlockId, Compare, Constant, ConstantIndex, Convert, Function, Op, OpKind, Prim, Terminator, Ty,
-    ValueId,
+    BlockId, Compare, Constant, ConstantIndex, Function, Op, OpKind, Prim, Terminator, Ty, ValueId,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -114,11 +113,7 @@ impl Sccp {
             {
                 State::Constant(*result)
             }
-            OpKind::Move { value }
-            | OpKind::Convert {
-                op: Convert::I64ToWord | Convert::WordToI64,
-                value,
-            } => states.get(value).copied().unwrap_or(State::Unknown),
+            OpKind::Move { value } => states.get(value).copied().unwrap_or(State::Unknown),
             OpKind::Prim { op, args, .. } => match (op, args.as_slice()) {
                 (Prim::FixnumAdd, [left, right]) => {
                     Self::binary_fixnum(function, states, *left, *right, i64::checked_add)

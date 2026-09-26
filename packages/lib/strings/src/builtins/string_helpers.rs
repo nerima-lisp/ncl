@@ -143,11 +143,10 @@ fn string_range(
 ) -> Result<(usize, usize), ObjectError> {
     let mut start = 0;
     let mut end = length;
-    let words = args.as_slice();
     let mut index = option_start;
-    while index < words.len() {
-        let name = keyword_name(ctx, *words.get(index).ok_or(ObjectError::TypeError)?)?;
-        let value = words.get(index + 1).ok_or(ObjectError::TypeError)?;
+    while index < args.len() {
+        let name = keyword_name(ctx, args.required(index)?)?;
+        let value = args.required(index + 1)?;
         let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
         if start_names.contains(&name.as_str()) {

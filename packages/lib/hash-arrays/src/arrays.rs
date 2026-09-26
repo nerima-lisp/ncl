@@ -68,7 +68,7 @@ fn make_array_builtin(
     let mut displaced_to = None;
     let mut displaced_index_offset = 0;
     let options = &args.as_slice()[1..];
-    if options.len() % 2 != 0 {
+    if !options.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
     for pair in options.as_chunks::<2>().0 {

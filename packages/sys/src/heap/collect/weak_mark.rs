@@ -102,8 +102,14 @@ impl WeakMarkContext<'_> {
             if Some(key) == marker {
                 continue;
             }
-            let value =
-                Word::from_bits(self.state.objects[kv].words[VECTOR_DATA + position * 2 + 1]);
+            let Some(value) = self.state.objects[kv]
+                .words
+                .get(VECTOR_DATA + position * 2 + 1)
+                .copied()
+                .map(Word::from_bits)
+            else {
+                continue;
+            };
             match weakness {
                 Weakness::Key => self.mark_value(value),
                 Weakness::Value => self.mark_value(key),

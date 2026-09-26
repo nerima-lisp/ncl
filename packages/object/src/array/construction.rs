@@ -59,7 +59,7 @@ pub fn make_array(
     }
     let rank = dimensions.len();
     let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
-        total.checked_mul(2).unwrap_or(total)
+        total.checked_mul(2).ok_or(ObjectError::Layout)?
     } else {
         total
     };
@@ -127,4 +127,33 @@ pub fn make_array(
         }
         Ok(object)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::make_array;
+    use crate::{ArrayElementType, ArrayOptions, ObjectError, Runtime, ThreadContext, Word};
+
+    #[test]
+    fn capacity_overflow_is_reported_as_layout_error() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+        let result = make_array(
+            &mut ctx,
+            &runtime,
+            &[usize::MAX / 2 + 1],
+            ArrayOptions {
+                element_type: ArrayElementType::T,
+                initial_element: Word::NIL,
+                adjustable: true,
+                fill_pointer: Some(0),
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        );
+        assert_eq!(result, Err(ObjectError::Layout));
+    }
 }

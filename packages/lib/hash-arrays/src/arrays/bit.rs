@@ -1,8 +1,26 @@
 use super::{
     ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
     ThreadContext, Word, array_element_type, array_row_major_ref, array_row_major_set, array_shape,
-    classify_object, make_array, row_major_index,
+    classify_object, make_array, pop_root, push_root, row_major_index,
 };
+
+fn with_word_roots<T>(
+    ctx: &mut ThreadContext,
+    values: &mut [Word],
+    f: impl FnOnce(&mut ThreadContext, &[Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let tokens = values
+        .iter_mut()
+        .map(|value| push_root(ctx, value))
+        .collect::<Vec<_>>();
+    let result = f(ctx, values);
+    for token in tokens.into_iter().rev() {
+        if !pop_root(ctx, token) {
+            return Err(ObjectError::Layout);
+        }
+    }
+    result
+}
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {
     match array_row_major_ref(ctx, array, index)?.as_fixnum() {
@@ -48,32 +66,42 @@ fn bit_binary_builtin(
     args: &BuiltinArgs<'_>,
     op: fn(u8, u8) -> u8,
 ) -> Result<Word, ObjectError> {
-    let left = args.required(0)?;
-    let right = args.required(1)?;
-    let dimensions = array_shape(ctx, left)?;
-    if array_element_type(ctx, left)? != ArrayElementType::Bit
-        || array_element_type(ctx, right)? != ArrayElementType::Bit
-        || array_shape(ctx, right)? != dimensions
-    {
-        return Err(ObjectError::TypeError);
-    }
-    let result = bit_result(ctx, runtime, &dimensions, args.get(2))?;
-    let total = dimensions
-        .iter()
-        .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
-        .ok_or(ObjectError::Layout)?;
-    for index in 0..total {
-        array_row_major_set(
-            ctx,
-            result,
-            index,
-            Word::fixnum(i64::from(op(
-                bit_value(ctx, left, index)?,
-                bit_value(ctx, right, index)?,
-            ))),
-        )?;
-    }
-    Ok(result)
+    let mut roots = [
+        args.required(0)?,
+        args.required(1)?,
+        args.get(2).unwrap_or(Word::NIL),
+    ];
+    let has_result = args.get(2).is_some();
+    with_word_roots(ctx, &mut roots, |ctx, roots| {
+        let left = roots[0];
+        let right = roots[1];
+        let dimensions = array_shape(ctx, left)?;
+        if array_element_type(ctx, left)? != ArrayElementType::Bit
+            || array_element_type(ctx, right)? != ArrayElementType::Bit
+            || array_shape(ctx, right)? != dimensions
+        {
+            return Err(ObjectError::TypeError);
+        }
+        let mut result = bit_result(ctx, runtime, &dimensions, has_result.then_some(roots[2]))?;
+        with_word_roots(ctx, std::slice::from_mut(&mut result), |ctx, result| {
+            let total = dimensions
+                .iter()
+                .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
+                .ok_or(ObjectError::Layout)?;
+            for index in 0..total {
+                array_row_major_set(
+                    ctx,
+                    result[0],
+                    index,
+                    Word::fixnum(i64::from(op(
+                        bit_value(ctx, roots[0], index)?,
+                        bit_value(ctx, roots[1], index)?,
+                    ))),
+                )?;
+            }
+            Ok(result[0])
+        })
+    })
 }
 
 pub(super) fn bit_not_builtin(
@@ -82,21 +110,27 @@ pub(super) fn bit_not_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let source = args.required(0)?;
-    let dimensions = array_shape(ctx, source)?;
-    if array_element_type(ctx, source)? != ArrayElementType::Bit {
-        return Err(ObjectError::TypeError);
-    }
-    let result = bit_result(ctx, runtime, &dimensions, args.get(1))?;
-    let total = dimensions
-        .iter()
-        .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
-        .ok_or(ObjectError::Layout)?;
-    for index in 0..total {
-        let value = bit_value(ctx, source, index)?;
-        array_row_major_set(ctx, result, index, Word::fixnum(i64::from(1 - value)))?;
-    }
-    Ok(result)
+    let mut roots = [args.required(0)?, args.get(1).unwrap_or(Word::NIL)];
+    let has_result = args.get(1).is_some();
+    with_word_roots(ctx, &mut roots, |ctx, roots| {
+        let source = roots[0];
+        let dimensions = array_shape(ctx, source)?;
+        if array_element_type(ctx, source)? != ArrayElementType::Bit {
+            return Err(ObjectError::TypeError);
+        }
+        let mut result = bit_result(ctx, runtime, &dimensions, has_result.then_some(roots[1]))?;
+        with_word_roots(ctx, std::slice::from_mut(&mut result), |ctx, result| {
+            let total = dimensions
+                .iter()
+                .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
+                .ok_or(ObjectError::Layout)?;
+            for index in 0..total {
+                let value = bit_value(ctx, roots[0], index)?;
+                array_row_major_set(ctx, result[0], index, Word::fixnum(i64::from(1 - value)))?;
+            }
+            Ok(result[0])
+        })
+    })
 }
 
 pub(super) fn bit_builtin(

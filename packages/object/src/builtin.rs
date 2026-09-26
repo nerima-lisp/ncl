@@ -3,7 +3,7 @@
 use crate::{
     ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun, with_root,
 };
-use ncl_sys::Word;
+use ncl_sys::{RootSlot, Word};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
@@ -173,12 +173,23 @@ impl FunctionObject {
 #[derive(Clone, Copy, Debug)]
 pub struct BuiltinArgs<'a> {
     words: &'a [Word],
+    rooted: Option<&'a [RootSlot<'a>]>,
 }
 
 impl<'a> BuiltinArgs<'a> {
     #[must_use]
     pub const fn new(words: &'a [Word]) -> Self {
-        Self { words }
+        Self {
+            words,
+            rooted: None,
+        }
+    }
+
+    pub(crate) fn from_rooted(words: &'a [Word], rooted: &'a [RootSlot<'a>]) -> Self {
+        Self {
+            words,
+            rooted: Some(rooted),
+        }
     }
 
     #[must_use]
@@ -193,7 +204,9 @@ impl<'a> BuiltinArgs<'a> {
 
     #[must_use]
     pub fn get(self, index: usize) -> Option<Word> {
-        self.words.get(index).copied()
+        self.rooted
+            .and_then(|rooted| rooted.get(index).map(|value| **value))
+            .or_else(|| self.words.get(index).copied())
     }
 
     /// Return a required argument.

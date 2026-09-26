@@ -36,11 +36,22 @@ fn binding(ctx: &mut ThreadContext, runtime: &Runtime, name: Word, value: Word) 
 }
 
 fn bindings(ctx: &mut ThreadContext, runtime: &Runtime, pairs: &[(Word, Word)]) -> Result {
-    let mut result = Vec::with_capacity(pairs.len());
-    for &(name, value) in pairs {
-        result.push(binding(ctx, runtime, name, value)?);
-    }
-    list(ctx, runtime, &result)
+    let values = pairs
+        .iter()
+        .flat_map(|&(name, value)| std::iter::once(name).chain(std::iter::once(value)))
+        .collect::<Vec<_>>();
+    ncl_object::with_roots(ctx, &values, |ctx, roots| {
+        let mut result = Vec::with_capacity(pairs.len());
+        for index in 0..pairs.len() {
+            let value = ncl_object::with_roots(ctx, &result, |ctx, _result_roots| {
+                let name = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
+                let value = **roots.get(index * 2 + 1).ok_or(ObjectError::TypeError)?;
+                binding(ctx, runtime, name, value)
+            })?;
+            result.push(value);
+        }
+        list(ctx, runtime, &result)
+    })
 }
 
 fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
@@ -85,41 +96,91 @@ fn cond(ctx: &mut ThreadContext, runtime: &Runtime, clauses: &[Word]) -> Result 
     let yes = if values.len() == 1 {
         test
     } else {
-        progn(ctx, runtime, &values[1..])?
+        progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?
     };
-    let no = cond(ctx, runtime, &clauses[1..])?;
+    let no = cond(
+        ctx,
+        runtime,
+        clauses.get(1..).ok_or(ObjectError::TypeError)?,
+    )?;
     form(ctx, runtime, "IF", &[test, yes, no])
 }
 
 fn case(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let value = values.first().copied().ok_or(ObjectError::TypeError)?;
-    let temporary = fresh_symbol(ctx, runtime)?;
-    let let_bindings = bindings(ctx, runtime, &[(temporary, value)])?;
-    let mut branches = Word::NIL;
-    for clause in values[1..].iter().rev().copied() {
-        let parts = elements(ctx, clause)?;
-        let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        let body = progn(ctx, runtime, &parts[1..])?;
-        let key_values = elements(ctx, keys)?;
-        let mut tests = Vec::with_capacity(key_values.len());
-        for key in key_values {
-            let quote = form(ctx, runtime, "QUOTE", &[key])?;
-            tests.push(form(ctx, runtime, "EQL", &[temporary, quote])?);
-        }
-        let test = or(ctx, runtime, &tests)?;
-        branches = form(ctx, runtime, "IF", &[test, body, branches])?;
-    }
-    form(ctx, runtime, "LET", &[let_bindings, branches])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let value = roots.first().copied().ok_or(ObjectError::TypeError)?;
+        let mut temporary = fresh_symbol(ctx, runtime)?;
+        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
+            ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
+                let mut branches = Word::NIL;
+                for clause in roots.get(1..).ok_or(ObjectError::TypeError)?.iter().rev() {
+                    let parts = elements(ctx, **clause)?;
+                    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+                        let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
+                        let body_values = parts
+                            .get(1..)
+                            .ok_or(ObjectError::TypeError)?
+                            .iter()
+                            .map(|part| **part)
+                            .collect::<Vec<_>>();
+                        let mut body = progn(ctx, runtime, &body_values)?;
+                        ncl_object::with_root(ctx, &mut body, |ctx, body| {
+                            let key_values = elements(ctx, *keys)?;
+                            ncl_object::with_roots(ctx, &key_values, |ctx, key_values| {
+                                let mut tests = Vec::with_capacity(key_values.len());
+                                for key in key_values {
+                                    let quote = form(ctx, runtime, "QUOTE", &[**key])?;
+                                    tests.push(form(ctx, runtime, "EQL", &[*temporary, quote])?);
+                                }
+                                ncl_object::with_roots(ctx, &tests, |ctx, tests| {
+                                    let test_values =
+                                        tests.iter().map(|test| **test).collect::<Vec<_>>();
+                                    let mut test = or(ctx, runtime, &test_values)?;
+                                    ncl_object::with_root(ctx, &mut test, |ctx, test| {
+                                        branches = ncl_object::with_root(
+                                            ctx,
+                                            &mut branches,
+                                            |ctx, branches| {
+                                                form(ctx, runtime, "IF", &[*test, *body, *branches])
+                                            },
+                                        )?;
+                                        Ok(())
+                                    })
+                                })
+                            })
+                        })
+                    })?;
+                }
+                ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
+                    form(ctx, runtime, "LET", &[*let_bindings, *branches])
+                })
+            })
+        })
+    })
 }
 
 fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let first = values.first().copied().ok_or(ObjectError::TypeError)?;
-    let temporary = fresh_symbol(ctx, runtime)?;
-    let let_bindings = bindings(ctx, runtime, &[(temporary, first)])?;
-    let mut body = values[1..].to_vec();
-    body.push(temporary);
-    let body = progn(ctx, runtime, &body)?;
-    form(ctx, runtime, "LET", &[let_bindings, body])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let first = roots.first().copied().ok_or(ObjectError::TypeError)?;
+        let mut temporary = fresh_symbol(ctx, runtime)?;
+        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *first)])?;
+            ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
+                let mut body = roots
+                    .get(1..)
+                    .ok_or(ObjectError::TypeError)?
+                    .iter()
+                    .map(|value| **value)
+                    .collect::<Vec<_>>();
+                body.push(*temporary);
+                let mut body = progn(ctx, runtime, &body)?;
+                ncl_object::with_root(ctx, &mut body, |ctx, body| {
+                    form(ctx, runtime, "LET", &[*let_bindings, *body])
+                })
+            })
+        })
+    })
 }
 
 fn typecase(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], errorp: bool) -> Result {
@@ -127,10 +188,10 @@ fn typecase(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], errorp:
     let temporary = fresh_symbol(ctx, runtime)?;
     let mut branches = Vec::with_capacity(values.len().saturating_sub(1));
     let mut types = Vec::with_capacity(values.len().saturating_sub(1));
-    for clause in &values[1..] {
+    for clause in values.get(1..).ok_or(ObjectError::TypeError)? {
         let parts = elements(ctx, *clause)?;
         let type_specifier = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        let body = progn(ctx, runtime, &parts[1..])?;
+        let body = progn(ctx, runtime, parts.get(1..).ok_or(ObjectError::TypeError)?)?;
         let quoted_type = form(ctx, runtime, "QUOTE", &[type_specifier])?;
         let type_test = form(ctx, runtime, "TYPEP", &[temporary, quoted_type])?;
         branches.push((type_test, body));
@@ -223,7 +284,7 @@ fn do_macro(
     let go_end = form(ctx, runtime, "GO", &[end_tag])?;
     let exit = form(ctx, runtime, "IF", &[end_test, go_end])?;
     let mut tagbody = vec![loop_tag, exit];
-    tagbody.extend_from_slice(&values[2..]);
+    tagbody.extend_from_slice(values.get(2..).ok_or(ObjectError::TypeError)?);
     if !updates.is_empty() {
         tagbody.push(form(
             ctx,
@@ -235,7 +296,11 @@ fn do_macro(
     tagbody.push(form(ctx, runtime, "GO", &[loop_tag])?);
     tagbody.push(end_tag);
     let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
-    let results = progn(ctx, runtime, &end_clause[1..])?;
+    let results = progn(
+        ctx,
+        runtime,
+        end_clause.get(1..).ok_or(ObjectError::TypeError)?,
+    )?;
     let initial_bindings = bindings(ctx, runtime, &initial)?;
     let binding_operator = if sequential { "LET*" } else { "LET" };
     let body = form(
@@ -269,7 +334,12 @@ fn prog_macro(
         let initial = parts.get(1).copied().unwrap_or(Word::NIL);
         bindings.push(binding(ctx, runtime, name, initial)?);
     }
-    let tagbody = form(ctx, runtime, "TAGBODY", &values[1..])?;
+    let tagbody = form(
+        ctx,
+        runtime,
+        "TAGBODY",
+        values.get(1..).ok_or(ObjectError::TypeError)?,
+    )?;
     let binding_form = if sequential { "LET*" } else { "LET" };
     let binding_list = list(ctx, runtime, &bindings)?;
     let body = form(ctx, runtime, binding_form, &[binding_list, tagbody])?;
@@ -280,12 +350,12 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
     match kind {
         Kind::When => {
             let test = values.first().copied().ok_or(ObjectError::TypeError)?;
-            let body = progn(ctx, runtime, &values[1..])?;
+            let body = progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
             form(ctx, runtime, "IF", &[test, body, Word::NIL])
         }
         Kind::Unless => {
             let test = values.first().copied().ok_or(ObjectError::TypeError)?;
-            let body = progn(ctx, runtime, &values[1..])?;
+            let body = progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
             form(ctx, runtime, "IF", &[test, Word::NIL, body])
         }
         Kind::And => and(ctx, runtime, values),
@@ -295,7 +365,7 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
         Kind::Prog1 => prog1(ctx, runtime, values),
         Kind::Prog2 => {
             let first = values.first().copied().ok_or(ObjectError::TypeError)?;
-            let rest = prog1(ctx, runtime, &values[1..])?;
+            let rest = prog1(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
             form(ctx, runtime, "PROGN", &[first, rest])
         }
         Kind::Return => {

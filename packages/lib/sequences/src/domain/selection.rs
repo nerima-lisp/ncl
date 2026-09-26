@@ -354,7 +354,7 @@ pub fn substitute<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
     replacement: Word,
     object: Word,
     options: SelectionOptions,

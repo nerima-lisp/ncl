@@ -58,7 +58,7 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
     publish_code(&mut caller_code).expect("caller code publication");
 
     let mut thread = Thread::new();
-    let value = abi.encode_fixnum(37) as u64;
+    let value = Word::fixnum(37).bits();
     let result = invoke_entry(
         &caller_code,
         caller.entry_offset as usize,

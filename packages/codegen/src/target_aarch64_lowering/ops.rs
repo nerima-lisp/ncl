@@ -418,9 +418,9 @@ pub fn move_args(
     }
 
     let overlapping = moves.iter().any(|(argument, _)| {
-        moves.iter().any(|(_, parameter)| {
-            allocation.location(*argument) == allocation.location(*parameter)
-        })
+        moves
+            .iter()
+            .any(|(_, parameter)| allocation.location(*argument) == allocation.location(*parameter))
     });
     if overlapping {
         // Stage all sources before writing any destination. This preserves a
@@ -431,8 +431,8 @@ pub fn move_args(
             .and_then(|bytes| bytes.checked_add(15))
             .map(|bytes| bytes & !15)
             .ok_or(CodegenError::FrameOverflow)?;
-        let temporary_bytes = u16::try_from(temporary_bytes)
-            .map_err(|_| CodegenError::FrameOverflow)?;
+        let temporary_bytes =
+            u16::try_from(temporary_bytes).map_err(|_| CodegenError::FrameOverflow)?;
         emit(
             assembler,
             Inst::SubImm {
@@ -444,8 +444,8 @@ pub fn move_args(
         )?;
         for (index, (argument, _)) in moves.iter().enumerate() {
             load_value(assembler, allocation, *argument, Reg(16))?;
-            let offset = i16::try_from(index.saturating_mul(8))
-                .map_err(|_| CodegenError::FrameOverflow)?;
+            let offset =
+                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
                 Inst::Str {
@@ -458,8 +458,8 @@ pub fn move_args(
             )?;
         }
         for (index, (_, parameter)) in moves.iter().enumerate() {
-            let offset = i16::try_from(index.saturating_mul(8))
-                .map_err(|_| CodegenError::FrameOverflow)?;
+            let offset =
+                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
                 Inst::Ldr {

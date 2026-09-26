@@ -252,7 +252,7 @@ pub fn compile_function_aarch64(
                 else_target,
                 else_args,
             } => {
-                load_value(&mut assembler, &allocation, *condition, Reg(16))?;
+                load_value(&mut assembler, &allocation, *condition, Reg(5))?;
                 let then_block = function
                     .blocks
                     .iter()
@@ -262,7 +262,7 @@ pub fn compile_function_aarch64(
                 emit(
                     &mut assembler,
                     Inst::Cbnz {
-                        rt: Reg(16),
+                        rt: Reg(5),
                         label: labels[then_target],
                     },
                 )?;

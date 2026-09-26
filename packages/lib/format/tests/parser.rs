@@ -50,6 +50,67 @@ fn parses_modifiers_and_relative_parameters() {
 }
 
 #[test]
+fn parses_simple_directives_with_parameters_and_modifiers() {
+    let control = parse("~10,,'x:T~v@w~I").expect("valid control string");
+    assert_eq!(
+        control.parts,
+        vec![
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: vec![
+                    Parameter::Integer(10),
+                    Parameter::Unsupplied,
+                    Parameter::Unsupplied,
+                    Parameter::Character('x')
+                ],
+                colon: true,
+                at_sign: false,
+                kind: DirectiveKind::T,
+            }),
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: vec![Parameter::Relative],
+                colon: false,
+                at_sign: true,
+                kind: DirectiveKind::W,
+            }),
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: Vec::new(),
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::I,
+            }),
+        ]
+    );
+}
+
+#[test]
+fn parses_simple_directives_case_insensitively() {
+    let control = parse("~t~w~i").expect("valid control string");
+    assert_eq!(
+        control.parts,
+        vec![
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: Vec::new(),
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::T,
+            }),
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: Vec::new(),
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::W,
+            }),
+            ControlPart::Directive(ncl_lib_format::Directive {
+                parameters: Vec::new(),
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::I,
+            }),
+        ]
+    );
+}
+
+#[test]
 fn rejects_incomplete_and_unknown_directives() {
     assert_eq!(
         parse("abc~"),
@@ -65,4 +126,13 @@ fn rejects_incomplete_and_unknown_directives() {
             kind: ncl_lib_format::ParseErrorKind::UnknownDirective
         })
     );
+}
+
+#[test]
+fn rejects_truncated_parameters_without_panicking() {
+    for input in ["~'", "~+", "~-", "~10,"] {
+        let result = std::panic::catch_unwind(|| ncl_lib_format::parse(input));
+        let result = result.expect("parser must return an error instead of panicking");
+        assert!(result.is_err(), "{input:?} should be rejected");
+    }
 }

@@ -43,9 +43,12 @@ pub enum DirectiveKind {
     R,
     P,
     C,
+    I,
     F,
     E,
     G,
+    T,
+    W,
     Dollar,
     Percent,
     Ampersand,
@@ -93,8 +96,12 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
     let mut literal = String::new();
     let mut index = 0;
     while index < chars.len() {
-        if chars[index] != '~' {
-            literal.push(chars[index]);
+        let current = chars.get(index).copied().ok_or(ParseError {
+            offset: index,
+            kind: ParseErrorKind::MissingDirective,
+        })?;
+        if current != '~' {
+            literal.push(current);
             index += 1;
             continue;
         }
@@ -107,13 +114,11 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
         let mut colon = false;
         let mut at_sign = false;
         loop {
-            if index >= chars.len() {
-                return Err(ParseError {
-                    offset: start,
-                    kind: ParseErrorKind::UnterminatedDirective,
-                });
-            }
-            match chars[index] {
+            let current = chars.get(index).copied().ok_or(ParseError {
+                offset: start,
+                kind: ParseErrorKind::UnterminatedDirective,
+            })?;
+            match current {
                 ':' => colon = true,
                 '@' => at_sign = true,
                 ',' => parameters.push(Parameter::Unsupplied),
@@ -126,13 +131,20 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                     parameters.push(Parameter::Character(value));
                 }
                 '+' | '-' | '0'..='9' => {
-                    let sign = if chars[index] == '-' { -1 } else { 1 };
-                    if chars[index] == '+' || chars[index] == '-' {
+                    let sign = if current == '-' { -1 } else { 1 };
+                    if current == '+' || current == '-' {
                         index += 1;
                     }
                     let digit_start = index;
-                    while index < chars.len() && chars[index].is_ascii_digit() {
-                        index += 1;
+                    while chars
+                        .get(index)
+                        .copied()
+                        .is_some_and(|digit| digit.is_ascii_digit())
+                    {
+                        index = index.checked_add(1).ok_or(ParseError {
+                            offset: digit_start,
+                            kind: ParseErrorKind::InvalidParameter,
+                        })?;
                     }
                     if digit_start == index {
                         return Err(ParseError {
@@ -141,7 +153,7 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                         });
                     }
                     let mut value: i64 = 0;
-                    for digit in &chars[digit_start..index] {
+                    for digit in chars.iter().skip(digit_start).take(index - digit_start) {
                         let digit = digit.to_digit(10).ok_or(ParseError {
                             offset: digit_start,
                             kind: ParseErrorKind::InvalidParameter,
@@ -166,8 +178,8 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                 'a' | 'A' | 's' | 'S' | 'd' | 'D' | 'b' | 'B' | 'o' | 'O' | 'x' | 'X' | 'r'
                 | 'R' | 'p' | 'P' | 'c' | 'C' | 'f' | 'F' | 'e' | 'E' | 'g' | 'G' | '$' | '%'
                 | '&' | '|' | '~' | '<' | '>' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}'
-                | '^' | ';' | '/' => {
-                    let kind = directive_kind(chars[index]).ok_or(ParseError {
+                | '^' | ';' | '/' | 'i' | 'I' | 't' | 'T' | 'w' | 'W' => {
+                    let kind = directive_kind(current).ok_or(ParseError {
                         offset: index,
                         kind: ParseErrorKind::UnknownDirective,
                     })?;
@@ -207,9 +219,12 @@ const fn directive_kind(value: char) -> Option<DirectiveKind> {
         'R' => Some(DirectiveKind::R),
         'P' => Some(DirectiveKind::P),
         'C' => Some(DirectiveKind::C),
+        'I' => Some(DirectiveKind::I),
         'F' => Some(DirectiveKind::F),
         'E' => Some(DirectiveKind::E),
         'G' => Some(DirectiveKind::G),
+        'T' => Some(DirectiveKind::T),
+        'W' => Some(DirectiveKind::W),
         '$' => Some(DirectiveKind::Dollar),
         '%' => Some(DirectiveKind::Percent),
         '&' => Some(DirectiveKind::Ampersand),

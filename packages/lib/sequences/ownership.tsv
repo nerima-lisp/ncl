@@ -124,6 +124,7 @@ COMMON-LISP	REMOVE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsys
 COMMON-LISP	REST	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	REVAPPEND	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REVERSE	function	ncl-lib-sequences	1	no	sequence/list operation
+COMMON-LISP	REPLACE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	RPLACA	function	ncl-lib-sequences	1	yes	sequence/list operation
 COMMON-LISP	RPLACD	function	ncl-lib-sequences	1	yes	sequence/list operation
 COMMON-LISP	SEARCH	function	ncl-lib-sequences	1	no	sequence/list operation

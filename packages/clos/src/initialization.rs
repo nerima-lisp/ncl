@@ -5,6 +5,7 @@ use ncl_object::{
     Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
     ParameterType, Runtime, ThreadContext, Word, classify_object,
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
+    with_root, with_roots,
 };
 
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
@@ -179,17 +180,24 @@ fn make_instance_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let class = args.required(0)?;
-    let initargs = InitArgList::parse(
-        args.as_slice()
-            .get(1..)
-            .ok_or_else(|| type_error(ctx, class, ObjectType::SimpleVector))?,
-    )?;
+    let mut class = args.required(0)?;
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(ctx, class, ObjectType::SimpleVector))?
+        .to_vec();
     let slots = class_slots(ctx, class)?;
-    let instance = allocate_instance(ctx, runtime, class, &vec![Word::UNBOUND; slots.len()])?;
-    initialize_slots(ctx, instance, class, &initargs)?;
-    values.clear();
-    Ok(instance.as_word())
+    with_root(ctx, &mut class, |ctx, class| {
+        with_roots(ctx, &initarg_words, |ctx, initarg_words| {
+            let instance =
+                allocate_instance(ctx, runtime, *class, &vec![Word::UNBOUND; slots.len()])?;
+            let initargs =
+                InitArgList::parse(&initarg_words.iter().map(|word| **word).collect::<Vec<_>>())?;
+            initialize_slots(ctx, instance, *class, &initargs)?;
+            values.clear();
+            Ok(instance.as_word())
+        })
+    })
 }
 
 fn initialize_instance_builtin(

@@ -23,6 +23,7 @@ PACKAGES = {
     "NCL-OS",
     "NCL-EXT",
     "NCL-SYS",
+    "NCL-PROFILER",
 }
 
 

@@ -1,10 +1,13 @@
 //! Common Lisp package introspection and mutation builtins.
 
+#[path = "package_management.rs"]
+mod package_management;
+
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FindStatus, LambdaList, MultipleValues, ObjectError, ObjectRef, Package,
-    Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
-    symbol_name,
+    BuiltinPackage, FindStatus, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
+    Package, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
+    slot_ref, symbol_name,
 };
 
 const OBJECT: Parameter = Parameter {
@@ -28,8 +31,7 @@ const ONE_OBJECT: &[Parameter] = &[OBJECT];
 const NAME_PACKAGE: &[Parameter] = &[NAME, PACKAGE];
 const SYMBOLS_PACKAGE: &[Parameter] = &[SYMBOLS, PACKAGE];
 const PACKAGE_PACKAGE: &[Parameter] = &[PACKAGE, PACKAGE];
-
-fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
+pub fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::String(_) => Ok(StringObject::from_word(word)),
         ObjectRef::Symbol(symbol) => Ok(StringObject::from_word(symbol_name(ctx, symbol)?)),
@@ -37,7 +39,7 @@ fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, Ob
     }
 }
 
-fn package_designator(
+pub fn package_designator(
     ctx: &ThreadContext,
     runtime: &Runtime,
     word: Word,
@@ -56,7 +58,7 @@ fn package_designator(
         .ok_or(ObjectError::TypeError)
 }
 
-fn package_arg(
+pub fn package_arg(
     ctx: &ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -65,7 +67,7 @@ fn package_arg(
     package_designator(ctx, runtime, args.required(index)?)
 }
 
-fn list_items(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
+pub fn list_items(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
     while list != Word::NIL {
         result.push(ncl_object::car(ctx, list)?);
@@ -131,6 +133,83 @@ fn package_shadowing_symbols(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     Package::try_from_word(ctx, args.required(0)?)?.shadowing_symbols(ctx)
+}
+
+fn package_use_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    package_arg(ctx, runtime, args, 0)?.use_list(ctx)
+}
+
+fn package_used_by_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    package_arg(ctx, runtime, args, 0)?.used_by_list(ctx)
+}
+
+fn list_all_packages(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    runtime
+        .all_packages(ctx)?
+        .into_iter()
+        .rev()
+        .try_fold(Word::NIL, |list, package| {
+            ncl_object::make_cons(ctx, runtime, package, list)
+        })
+}
+
+fn find_all_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = string_designator(ctx, args.required(0)?).map(StringObject::as_word)?;
+    let name_length = ncl_object::string_length(ctx, name)?;
+    let mut candidates = Vec::new();
+    for package in runtime.all_packages(ctx)? {
+        Package::from_word(package).for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
+    }
+    let mut symbols = Vec::new();
+    for symbol in candidates {
+        if symbols.contains(&symbol) {
+            continue;
+        }
+        let symbol_name = symbol_name(ctx, symbol)?;
+        if ncl_object::string_length(ctx, symbol_name)? == name_length
+            && (0..name_length).all(|index| {
+                ncl_object::string_ref(ctx, symbol_name, index)
+                    == ncl_object::string_ref(ctx, name, index)
+            })
+        {
+            symbols.push(symbol);
+        }
+    }
+    symbols
+        .into_iter()
+        .rev()
+        .try_fold(Word::NIL, |list, symbol| {
+            ncl_object::make_cons(ctx, runtime, symbol, list)
+        })
+}
+
+fn package_error_package(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    slot_ref(ctx, Instance::from_word(args.required(0)?), 0)
 }
 
 fn packagep(
@@ -322,7 +401,12 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ONE_PACKAGE,
             package_shadowing_symbols,
         ),
+        ("PACKAGE-USE-LIST", ONE_PACKAGE, package_use_list),
+        ("PACKAGE-USED-BY-LIST", ONE_PACKAGE, package_used_by_list),
         ("PACKAGEP", ONE_OBJECT, packagep),
+        ("LIST-ALL-PACKAGES", &[][..], list_all_packages),
+        ("FIND-ALL-SYMBOLS", &[NAME][..], find_all_symbols),
+        ("PACKAGE-ERROR-PACKAGE", ONE_OBJECT, package_error_package),
         ("FIND-SYMBOL", NAME_PACKAGE, find_symbol),
         ("INTERN", NAME_PACKAGE, intern),
         ("EXPORT", SYMBOLS_PACKAGE, export),
@@ -332,6 +416,16 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("SHADOW", SYMBOLS_PACKAGE, shadow),
         ("USE-PACKAGE", PACKAGE_PACKAGE, use_package),
         ("UNUSE-PACKAGE", PACKAGE_PACKAGE, unuse_package),
+        (
+            "DELETE-PACKAGE",
+            ONE_PACKAGE,
+            package_management::delete_package,
+        ),
+        (
+            "SHADOWING-IMPORT",
+            SYMBOLS_PACKAGE,
+            package_management::shadowing_import,
+        ),
     ] {
         runtime.register_builtin(
             &mut ctx,
@@ -339,63 +433,40 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinImplementation::direct(descriptor(params), function),
         )?;
     }
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-PACKAGE")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::with_rest(
+                    &[NAME],
+                    package_management::MAKE_PACKAGE_OPTIONS,
+                ),
+                convention: BuiltinConvention::Adapted,
+            },
+            package_management::make_package,
+        ),
+    )?;
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("RENAME-PACKAGE"),
+        ),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::with_optional(
+                    package_management::RENAME_PACKAGE_PARAMETERS,
+                    &[package_management::NEW_NICKNAMES],
+                ),
+                convention: BuiltinConvention::Adapted,
+            },
+            package_management::rename_package,
+        ),
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ncl_object::FunctionObject;
-
-    #[test]
-    fn introspection_and_mutation_round_trip() {
-        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)
-            .unwrap_or_else(|error| panic!("thread: {error:?}"));
-        register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
-        let package = runtime
-            .ensure_package(&mut ctx, "N25-INTROSPECTION")
-            .unwrap_or_else(|error| panic!("package: {error:?}"));
-        let function = |ctx: &mut ThreadContext, name| {
-            FunctionObject::try_from(
-                runtime
-                    .function(ctx, "COMMON-LISP", name)
-                    .unwrap_or_else(|| panic!("{name}")),
-            )
-            .unwrap_or_else(|error| panic!("function: {error:?}"))
-        };
-        let name = ncl_object::make_string(&mut ctx, &runtime, &['A'])
-            .unwrap_or_else(|error| panic!("name: {error:?}"));
-        let intern = function(&mut ctx, "INTERN");
-        let symbol = runtime
-            .call_builtin(&mut ctx, intern, &[name, package])
-            .unwrap_or_else(|error| panic!("intern: {error:?}"));
-        assert_eq!(ctx.values().len(), 2);
-        let package_name = function(&mut ctx, "PACKAGE-NAME");
-        assert_eq!(
-            runtime.call_builtin(&mut ctx, package_name, &[package]),
-            Ok(ncl_object::Package::from_word(package)
-                .name(&ctx)
-                .unwrap_or_else(|error| panic!("name: {error:?}")))
-        );
-        let packagep = function(&mut ctx, "PACKAGEP");
-        assert_eq!(
-            runtime.call_builtin(&mut ctx, packagep, &[package]),
-            Ok(Word::TRUE)
-        );
-        let export = function(&mut ctx, "EXPORT");
-        let symbols = ncl_object::make_cons(&mut ctx, &runtime, symbol, Word::NIL)
-            .unwrap_or_else(|error| panic!("list: {error:?}"));
-        assert_eq!(
-            runtime.call_builtin(&mut ctx, export, &[symbols, package]),
-            Ok(Word::TRUE)
-        );
-        let find = function(&mut ctx, "FIND-SYMBOL");
-        assert_eq!(
-            runtime.call_builtin(&mut ctx, find, &[name, package]),
-            Ok(symbol)
-        );
-        assert_eq!(ctx.values().len(), 2);
-    }
-}
+#[path = "tests/introspection.rs"]
+mod tests;

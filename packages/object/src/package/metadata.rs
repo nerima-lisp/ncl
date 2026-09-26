@@ -104,6 +104,7 @@ impl Package {
         ctx: &mut ThreadContext,
         nicknames: Word,
     ) -> Result<(), ObjectError> {
+        self.ensure_unlocked(ctx)?;
         put(ctx, self.as_word(), LOCAL_NICKNAMES, nicknames)
     }
 }

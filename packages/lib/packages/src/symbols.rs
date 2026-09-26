@@ -1,51 +1,19 @@
 //! Common Lisp symbol and symbol-cell builtins.
 
+#[path = "make_symbol.rs"]
+mod make_symbol;
+#[path = "predicates.rs"]
+mod predicates;
+#[path = "symbol_registration.rs"]
+mod symbol_registration;
+
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
     ParameterType, Runtime, ThreadContext, Word, car, cdr, make_string, make_symbol,
-    set_symbol_value, symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
+    set_symbol_special, set_symbol_value, symbol_function, symbol_name, symbol_package,
+    symbol_plist, symbol_value,
 };
-
-const SYMBOL: Parameter = Parameter {
-    name: BuiltinName::new("SYMBOL"),
-    ty: ParameterType::Any,
-};
-const VALUE: Parameter = Parameter {
-    name: BuiltinName::new("VALUE"),
-    ty: ParameterType::Any,
-};
-const OBJECT: Parameter = Parameter {
-    name: BuiltinName::new("OBJECT"),
-    ty: ParameterType::Any,
-};
-const INDICATOR: Parameter = Parameter {
-    name: BuiltinName::new("INDICATOR"),
-    ty: ParameterType::Any,
-};
-const DEFAULT: Parameter = Parameter {
-    name: BuiltinName::new("DEFAULT"),
-    ty: ParameterType::Any,
-};
-const PREFIX: Parameter = Parameter {
-    name: BuiltinName::new("PREFIX"),
-    ty: ParameterType::Any,
-};
-const COPY_PROPERTIES: Parameter = Parameter {
-    name: BuiltinName::new("COPY-PROPERTIES"),
-    ty: ParameterType::Any,
-};
-const PACKAGE_PARAM: Parameter = Parameter {
-    name: BuiltinName::new("PACKAGE"),
-    ty: ParameterType::Any,
-};
-const COPY_REQUIRED: &[Parameter] = &[SYMBOL];
-const COPY_OPTIONAL: &[Parameter] = &[COPY_PROPERTIES];
-const SYMBOL_INDICATOR: &[Parameter] = &[SYMBOL, INDICATOR];
-const SYMBOL_INDICATOR_DEFAULT: &[Parameter] = &[DEFAULT];
-const SYMBOL_OBJECT: &[Parameter] = &[OBJECT];
-const PREFIX_OPTIONAL: &[Parameter] = &[PREFIX];
-const GENTEMP_OPTIONAL: &[Parameter] = &[PREFIX, PACKAGE_PARAM];
 
 fn symbol(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if matches!(ncl_object::classify_object(ctx, word), ObjectRef::Symbol(_)) {
@@ -55,7 +23,7 @@ fn symbol(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     }
 }
 
-fn text(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+pub fn text(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
     let word = match ncl_object::classify_object(ctx, word) {
         ObjectRef::String(_) => word,
         ObjectRef::Symbol(_) => symbol_name(ctx, word)?,
@@ -76,17 +44,13 @@ fn symbol_arg(ctx: &ThreadContext, args: &BuiltinArgs<'_>) -> Result<Word, Objec
     symbol(ctx, args.required(0)?)
 }
 
-const fn bool_word(value: bool) -> Word {
-    if value { Word::TRUE } else { Word::NIL }
-}
-
 fn boundp(
     ctx: &mut ThreadContext,
     _: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(bool_word(
+    Ok(predicates::bool_word(
         symbol_value(ctx, symbol_arg(ctx, args)?)? != Word::UNBOUND,
     ))
 }
@@ -97,7 +61,7 @@ fn fboundp(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(bool_word(
+    Ok(predicates::bool_word(
         symbol_function(ctx, symbol_arg(ctx, args)?)? != Word::UNBOUND,
     ))
 }
@@ -225,18 +189,6 @@ fn symbol_value_builtin(
     symbol_value(ctx, symbol_arg(ctx, args)?)
 }
 
-fn symbolp(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    Ok(bool_word(matches!(
-        ncl_object::classify_object(ctx, args.required(0)?),
-        ObjectRef::Symbol(_)
-    )))
-}
-
 fn get(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -295,17 +247,28 @@ fn gensym(
         .map(|word| text(ctx, word))
         .transpose()?
         .unwrap_or_else(|| "G".to_owned());
-    let ncl = runtime.ensure_package(ctx, "NCL")?;
-    let generated = Package::from_word(ncl).gensym(ctx, runtime)?;
-    let suffix = text(ctx, symbol_name(ctx, generated)?)?;
+    let counter = next_gensym_counter(ctx, runtime)?;
     let name = make_string(
         ctx,
         runtime,
-        &format!("{prefix}{}", suffix.strip_prefix('G').unwrap_or(&suffix))
-            .chars()
-            .collect::<Vec<_>>(),
+        &format!("{prefix}{counter}").chars().collect::<Vec<_>>(),
     )?;
     make_symbol(ctx, runtime, name)
+}
+
+fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<i64, ObjectError> {
+    let common = Package::from_word(
+        runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?,
+    );
+    let (counter_symbol, _) = common.intern(ctx, runtime, "*GENSYM-COUNTER*")?;
+    let counter = symbol_value(ctx, counter_symbol)?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?;
+    let next = counter.checked_add(1).ok_or(ObjectError::Layout)?;
+    set_symbol_value(ctx, counter_symbol, Word::fixnum(next))?;
+    Ok(counter)
 }
 
 fn package_arg(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<Package, ObjectError> {
@@ -340,9 +303,8 @@ fn gentemp(
     };
     let package = package_arg(ctx, runtime, package_word)?;
     loop {
-        let generated = package.gensym(ctx, runtime)?;
-        let suffix = text(ctx, symbol_name(ctx, generated)?)?;
-        let name = format!("{prefix}{}", suffix.strip_prefix('G').unwrap_or(&suffix));
+        let counter = next_gensym_counter(ctx, runtime)?;
+        let name = format!("{prefix}{counter}");
         let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         if package.find_symbol(ctx, name_word)?.is_some() {
             continue;
@@ -352,138 +314,9 @@ fn gentemp(
     }
 }
 
-const fn descriptor(required: &'static [Parameter], optional: &'static [Parameter]) -> Builtin {
-    Builtin {
-        lambda_list: LambdaList::with_optional(required, optional),
-        convention: ncl_object::BuiltinConvention::Adapted,
-    }
-}
-
 /// Register Common Lisp symbol builtins.
-#[allow(clippy::too_many_lines)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
-    let mut ctx = ThreadContext::new();
-    ctx.register(runtime)?;
-    let one = LambdaList::fixed(&[SYMBOL]);
-    let two = LambdaList::fixed(&[SYMBOL, VALUE]);
-    let entries: &[(&str, Builtin, ncl_object::RustBuiltin)] = &[
-        (
-            "BOUNDP",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            boundp,
-        ),
-        (
-            "FBOUNDP",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            fboundp,
-        ),
-        (
-            "COPY-SYMBOL",
-            descriptor(COPY_REQUIRED, COPY_OPTIONAL),
-            copy_symbol,
-        ),
-        (
-            "FMAKUNBOUND",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            fmakunbound,
-        ),
-        (
-            "MAKUNBOUND",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            makunbound,
-        ),
-        (
-            "SET",
-            Builtin {
-                lambda_list: two,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(2)),
-            },
-            set,
-        ),
-        (
-            "SYMBOL-FUNCTION",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbol_function_builtin,
-        ),
-        (
-            "SYMBOL-NAME",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbol_name_builtin,
-        ),
-        (
-            "SYMBOL-PACKAGE",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbol_package_builtin,
-        ),
-        (
-            "SYMBOL-PLIST",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbol_plist_builtin,
-        ),
-        (
-            "SYMBOL-VALUE",
-            Builtin {
-                lambda_list: one,
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbol_value_builtin,
-        ),
-        (
-            "SYMBOLP",
-            Builtin {
-                lambda_list: LambdaList::fixed(SYMBOL_OBJECT),
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
-            },
-            symbolp,
-        ),
-        (
-            "GET",
-            descriptor(SYMBOL_INDICATOR, SYMBOL_INDICATOR_DEFAULT),
-            get,
-        ),
-        (
-            "REMPROP",
-            Builtin {
-                lambda_list: LambdaList::fixed(SYMBOL_INDICATOR),
-                convention: ncl_object::BuiltinConvention::Direct(Arity::exact(2)),
-            },
-            remprop,
-        ),
-        ("GENSYM", descriptor(&[], PREFIX_OPTIONAL), gensym),
-        ("GENTEMP", descriptor(&[], GENTEMP_OPTIONAL), gentemp),
-    ];
-    for (name, descriptor, function) in entries {
-        runtime.register_builtin(
-            &mut ctx,
-            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
-            BuiltinImplementation::direct(*descriptor, *function),
-        )?;
-    }
-    Ok(())
+    symbol_registration::register(runtime)
 }
 
 #[cfg(test)]

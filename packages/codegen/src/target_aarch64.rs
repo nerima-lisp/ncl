@@ -279,6 +279,39 @@ pub fn compile_function_aarch64(
                 )?;
             }
             Terminator::Return { values } => {
+                if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
+                    return Err(CodegenError::MultipleValueAreaOverflow {
+                        count: values.len(),
+                        capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
+                    });
+                }
+                let area_offset = abi
+                    .field_offset(crate::ContextField::MultipleValueArea)
+                    .ok_or_else(|| {
+                        CodegenError::Unsupported(
+                            "context offset is unavailable: MultipleValueArea".into(),
+                        )
+                    })?;
+                for (index, value) in values.iter().copied().enumerate() {
+                    let byte_offset = i32::try_from(index)
+                        .ok()
+                        .and_then(|index| index.checked_mul(8))
+                        .and_then(|index| area_offset.checked_add(index))
+                        .ok_or(CodegenError::FrameOverflow)?;
+                    load_value(&mut assembler, &allocation, value, Reg(16))?;
+                    emit(
+                        &mut assembler,
+                        Inst::Str {
+                            rt: Reg(16),
+                            mem: MemOperand::Unsigned {
+                                base: RegOrSp::Reg(Reg(21)),
+                                offset: u16::try_from(byte_offset)
+                                    .map_err(|_| CodegenError::FrameOverflow)?,
+                                scale: 8,
+                            },
+                        },
+                    )?;
+                }
                 if let Some(value) = values.first() {
                     load_value(&mut assembler, &allocation, *value, Reg(0))?;
                 } else {

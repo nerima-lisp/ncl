@@ -27,14 +27,16 @@ impl FunctionCaller for RuntimeFunctionCaller {
             return Ok(result);
         }
 
-        call_native(ctx, function, args.as_slice(), values)
+        ncl_object::with_rooted_slice(ctx, args.as_slice(), |ctx, rooted_args| {
+            call_native(ctx, function, rooted_args, values)
+        })
     }
 }
 
 fn call_native(
     ctx: &mut ThreadContext,
     function: FunctionObject,
-    args: &[Word],
+    args: &mut [Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let function = Function::from_word(function.as_word());
@@ -47,23 +49,39 @@ fn call_native(
     for (register, argument) in args.iter().take(4).enumerate() {
         registers[register] = argument.bits();
     }
+    let argument_count = u64::try_from(args.len()).map_err(|_| ObjectError::Layout)?;
     let rest = args
-        .get(4..)
+        .get_mut(4..)
         .filter(|rest| !rest.is_empty())
-        .map_or(0, |rest| rest.as_ptr() as usize as u64);
+        .map_or(Ok(0), |rest| {
+            u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
+        })?;
     let (result, count) = invoke_entry_with_function_address(
         entry,
         std::ptr::from_mut(ctx.thread_mut()),
         function.as_word().bits(),
-        args.len() as u64,
+        argument_count,
         registers,
         rest,
     );
+    let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     values.clear();
-    if count > 1 {
-        return Err(ObjectError::TypeError);
+    match count {
+        0 => Ok(Word::NIL),
+        1 => {
+            let value = Word::from_bits(result);
+            values.set(&[value]);
+            Ok(value)
+        }
+        count => {
+            let area = ctx.thread_mut().multiple_values();
+            if area.len() < count {
+                return Err(ObjectError::Layout);
+            }
+            values.set(&area[..count]);
+            Ok(Word::from_bits(result))
+        }
     }
-    Ok(Word::from_bits(result))
 }
 
 fn resolve_function(
@@ -236,6 +254,6 @@ mod tests {
             ),
             Ok(Word::fixnum(42))
         );
-        assert!(values.is_empty());
+        assert_eq!(values.as_slice(), &[Word::fixnum(42)]);
     }
 }

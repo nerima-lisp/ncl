@@ -393,6 +393,7 @@ impl RuntimeAbi for NativeAbi {
             ncl_codegen::ContextField::TlabBump => layout.tlab_bump,
             ncl_codegen::ContextField::TlabLimit => layout.tlab_limit,
             ncl_codegen::ContextField::SafepointRequest => layout.safepoint_request,
+            ncl_codegen::ContextField::MultipleValueArea => layout.mv,
             _ => return None,
         };
         i32::try_from(offset).ok()

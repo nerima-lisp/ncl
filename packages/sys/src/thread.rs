@@ -1,6 +1,9 @@
 use crate::word::Word;
 use std::ptr;
 
+/// Number of words in the machine-visible multiple-value return area.
+pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
+
 /// Native transition state.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,7 +57,7 @@ pub struct Thread {
     pub(crate) conservative_roots: Vec<Word>,
     pub(crate) tlab_bump: usize,
     pub(crate) tlab_limit: usize,
-    pub(crate) mv: Vec<Word>,
+    pub(crate) mv: [Word; MULTIPLE_VALUE_AREA_WORDS],
     pub(crate) handler: usize,
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
@@ -126,7 +129,7 @@ impl Thread {
             conservative_roots: Vec::new(),
             tlab_bump: 0,
             tlab_limit: 0,
-            mv: Vec::new(),
+            mv: [Word::NIL; MULTIPLE_VALUE_AREA_WORDS],
             handler: 0,
             cleanup: 0,
             catch: 0,
@@ -160,6 +163,12 @@ impl Thread {
     pub fn pop_root(&mut self, token: RootToken) -> bool {
         token.index + token.count == self.roots.len()
             && (0..token.count).all(|_| self.roots.pop().is_some())
+    }
+
+    /// Return the native ABI multiple-value area.
+    #[must_use]
+    pub const fn multiple_values(&self) -> &[Word] {
+        &self.mv
     }
     /// Publish a word found by conservative stack or register scanning.
     pub fn publish_conservative_root(&mut self, value: Word) {
@@ -461,9 +470,12 @@ mod tests {
             assert_eq!(offset % 8, 0);
             assert_eq!(size, 8);
         }
-        // `mv` is a Vec descriptor, not a generated-code scalar word field.
+        // `mv` is a fixed machine-visible word area.
         assert_eq!(layout.mv % 8, 0);
-        assert_ne!(std::mem::size_of::<Vec<Word>>(), 8);
+        assert_eq!(
+            std::mem::size_of::<[Word; MULTIPLE_VALUE_AREA_WORDS]>(),
+            MULTIPLE_VALUE_AREA_WORDS * 8
+        );
     }
 
     #[test]

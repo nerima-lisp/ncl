@@ -268,7 +268,7 @@ pub fn register_runtime_support(
     for (builtin, callback, params) in builtins {
         let (package, builtin_name) = (*builtin)
             .split_once("::")
-            .map_or(("COMMON-LISP", *builtin), |parts| parts);
+            .unwrap_or(("COMMON-LISP", *builtin));
         let package = match package {
             "COMMON-LISP" => CL,
             "NCL" => BuiltinPackage::NclExt,

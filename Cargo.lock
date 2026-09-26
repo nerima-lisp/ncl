@@ -292,6 +292,7 @@ dependencies = [
  "ncl-image",
  "ncl-ir",
  "ncl-object",
+ "ncl-objfile",
  "ncl-opt",
  "ncl-reader",
  "ncl-stdlib",

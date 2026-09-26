@@ -68,6 +68,15 @@ fn eval_load_script_and_repl_use_runtime() {
     assert!(load.status.success());
     assert_eq!(String::from_utf8_lossy(&load.stdout).trim(), "43");
 
+    let compile_file = output(ncl().args(["--compile-file", path_str(&path)]));
+    assert!(compile_file.status.success());
+    assert_eq!(String::from_utf8_lossy(&compile_file.stdout).trim(), "43");
+    let fasl = path.with_extension("fasl");
+    assert!(fasl.is_file());
+    let load_fasl = output(ncl().args(["--load", path_str(&fasl)]));
+    assert!(load_fasl.status.success());
+    assert_eq!(String::from_utf8_lossy(&load_fasl.stdout).trim(), "43");
+
     let script = output(ncl().args(["--script", path_str(&path)]));
     assert!(script.status.success());
     assert!(script.stdout.is_empty());
@@ -84,9 +93,61 @@ fn eval_load_script_and_repl_use_runtime() {
         panic!("failed to write REPL input: {error}");
     }
     drop(stdin);
-    let output = wait_with_timeout(repl);
+    let repl_output = wait_with_timeout(repl);
+    assert!(repl_output.status.success());
+    assert!(String::from_utf8_lossy(&repl_output.stdout).contains("44"));
+
+    let extra = output(ncl().args(["--eval", "42", "unexpected"]));
+    assert_eq!(extra.status.code(), Some(2));
+
+    if let Err(error) = fs::remove_file(path) {
+        panic!("source file cleanup failed: {error}");
+    }
+    if let Err(error) = fs::remove_file(fasl) {
+        panic!("FASL file cleanup failed: {error}");
+    }
+}
+
+#[test]
+fn repl_continues_forms_and_errors() {
+    let mut repl = match ncl()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(repl) => repl,
+        Err(error) => panic!("failed to start ncl REPL: {error}"),
+    };
+    let Some(mut stdin) = repl.stdin.take() else {
+        panic!("REPL stdin unavailable");
+    };
+    if let Err(error) = stdin.write_all(b"(\n42)\n)\n7\n") {
+        panic!("failed to write REPL input: {error}");
+    }
+    drop(stdin);
+
+    let output = match repl.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => panic!("failed to collect REPL output: {error}"),
+    };
     assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("44"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains('7'));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ncl:"));
+}
+
+#[test]
+fn cli_rejects_extra_arguments_for_file_modes() {
+    let path = std::env::temp_dir().join(format!("ncl-cli-extra-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(&path, "1") {
+        panic!("source file creation failed: {error}");
+    }
+
+    for mode in ["--load", "--script", "--compile-file"] {
+        let result = output(ncl().args([mode, path_str(&path), "unexpected"]));
+        assert_eq!(result.status.code(), Some(2), "mode {mode}");
+    }
 
     if let Err(error) = fs::remove_file(path) {
         panic!("source file cleanup failed: {error}");

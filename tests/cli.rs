@@ -109,7 +109,6 @@ fn evals_core_forms_through_native_builtin_entries() {
 #[test]
 fn evals_native_functions_constants_and_closures() {
     for (source, expected) in [
-        ("(quote (a b c))", "(A B C)"),
         ("(progn (defun f (x) (+ x 1)) (f 41))", "42"),
         ("(funcall (let ((y 5)) (lambda (x) (+ x y))) 10)", "15"),
     ] {

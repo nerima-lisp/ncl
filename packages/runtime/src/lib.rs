@@ -301,7 +301,19 @@ impl Runtime {
     fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
         for constant in &function.constants {
-            let value = support::resolve_constant(&mut self.context, &self.object, constant, &values)?;
+            let value = match constant {
+                ncl_ir::Constant::FunctionEntry(id) => {
+                    let entry = self
+                        .functions
+                        .get(&id.0)
+                        .ok_or_else(|| RuntimeError::Native(format!("function entry {} is unavailable", id.0)))?
+                        .entry;
+                    Word::fixnum(i64::try_from(entry).map_err(|_| {
+                        RuntimeError::Native("function entry does not fit fixnum".to_owned())
+                    })?)
+                }
+                _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?,
+            };
             values.push(value);
         }
         make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into)

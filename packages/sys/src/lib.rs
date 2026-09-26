@@ -49,6 +49,10 @@ pub fn with_native_context<T, R>(
 }
 
 /// Replace the opaque context installed for synchronous native execution.
+///
+/// Returns the previous context so a caller can restore it, which must not
+/// be silently discarded.
+#[must_use]
 pub fn replace_native_context(
     thread: std::ptr::NonNull<Thread>,
     context: Option<std::ptr::NonNull<()>>,

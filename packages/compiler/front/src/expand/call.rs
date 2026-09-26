@@ -120,12 +120,13 @@ impl<'a> FormExpander<'a> {
             });
         }
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
-            let package = self.runtime.find_package(self.ctx, "COMMON-LISP").ok_or(
-                FrontError::MacroExpansion {
+            let package = self
+                .runtime
+                .find_package(self.ctx, "COMMON-LISP")
+                .ok_or_else(|| FrontError::MacroExpansion {
                     name: name.clone(),
                     detail: "COMMON-LISP package is not present".to_owned(),
-                },
-            )?;
+                })?;
             let (symbol, _) = Package::from_word(package)
                 .intern(self.ctx, self.runtime, &name.name)
                 .map_err(|error| FrontError::MacroExpansion {

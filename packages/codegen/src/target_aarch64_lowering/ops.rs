@@ -227,7 +227,7 @@ pub fn lower_op(
             }
         }
         OpKind::Prim { op, args, .. } => {
-            primitives::lower_prim(assembler, op, args, result, allocation)?
+            primitives::lower_prim(assembler, op, args, result, allocation)?;
         }
         OpKind::Compare { op, left, right } => {
             load_value(assembler, allocation, *left, Reg(16))?;

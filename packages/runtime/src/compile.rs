@@ -1,3 +1,8 @@
+// This module's declaration-driven optimization-level resolution is public
+// API for a future caller (selecting a pipeline from `(optimize ...)`
+// declarations) that has not landed yet; nothing in this crate calls it yet.
+#![allow(dead_code)]
+
 use std::path::Path;
 
 use crate::{Runtime, RuntimeError};

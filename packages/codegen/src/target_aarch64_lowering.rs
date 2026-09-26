@@ -142,19 +142,22 @@ pub(super) fn store_value(
     }
 }
 
+// `argc`/`args` mirror the calling convention's own argument-count/argument-
+// list naming; that pairing is clearer here than any alternative spelling.
+#[allow(clippy::similar_names)]
 pub(super) fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
     args: &[ValueId],
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
-    let Some((argc, arguments)) = args.split_first() else {
+    let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
         return Err(CodegenError::Unsupported(
             "calls require a tagged argc argument".into(),
         ));
     };
-    if arguments.len() > 4 {
+    if rest.len() > 4 {
         return Err(CodegenError::Unsupported(
             "AArch64 calls support at most four register arguments".into(),
         ));
@@ -176,7 +179,7 @@ pub(super) fn lower_call(
         },
     )?;
     load_value(assembler, allocation, *argc, Reg(0))?;
-    for (index, argument) in arguments.iter().enumerate() {
+    for (index, argument) in rest.iter().enumerate() {
         let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
         load_value(assembler, allocation, *argument, register)?;
     }

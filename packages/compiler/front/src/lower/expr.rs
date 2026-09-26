@@ -114,68 +114,30 @@ impl Context<'_> {
             .iter()
             .map(|argument| self.lower_expr(f, argument))
             .collect::<Result<Vec<_>, _>>()?;
-        if let Operator::Name(name) = operator {
-            if name.name.eq_ignore_ascii_case("FUNCALL") {
-                let Some((&callee, call_arguments)) = values.split_first() else {
-                    return Err(LowerError::Ir {
-                        detail: "funcall requires a function designator".to_owned(),
-                    });
-                };
-                let argc = Self::argc(f, call_arguments.len())?;
-                let mut args = vec![argc];
-                args.extend_from_slice(call_arguments);
-                f.safepoint()?;
-                return f.one(
-                    OpKind::CallClosure {
-                        closure: callee,
-                        args,
-                    },
-                    Ty::Word,
-                );
-            }
-        }
-        if let Operator::Name(name) = operator {
-            let field = if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE")
-                && values.len() == 1
-            {
-                Some((ncl_object::symbol_offset::VALUE, false))
-            } else if name.name == "set-symbol-value" && values.len() == 2 {
-                Some((ncl_object::symbol_offset::VALUE, true))
-            } else if (name.is_named("COMMON-LISP", "NCL::FDEFINITION-SET")
-                || name.is_named("NCL", "FDEFINITION-SET")
-                || name.is_named("NCL-EXT", "FDEFINITION-SET"))
-                && values.len() == 2
-            {
-                Some((ncl_object::symbol_offset::FUNCTION, true))
-            } else {
-                None
+        if let Operator::Name(name) = operator
+            && name.name.eq_ignore_ascii_case("FUNCALL")
+        {
+            let Some((&callee, call_arguments)) = values.split_first() else {
+                return Err(LowerError::Ir {
+                    detail: "funcall requires a function designator".to_owned(),
+                });
             };
-            if let Some((field, store)) = field {
-                let field = u32::try_from(field).map_err(|_| LowerError::Ir {
-                    detail: "symbol cell offset does not fit u32".to_owned(),
-                })?;
-                let object = values.first().copied().ok_or_else(|| LowerError::Ir {
-                    detail: "symbol cell operation requires a symbol".to_owned(),
-                })?;
-                if store {
-                    let value = values.get(1).copied().ok_or_else(|| LowerError::Ir {
-                        detail: "symbol cell store requires a value".to_owned(),
-                    })?;
-                    f.none(OpKind::StoreField {
-                        object,
-                        field,
-                        value,
-                    })?;
-                    return Ok(value);
-                }
-                return f.one(
-                    OpKind::LoadField {
-                        object,
-                        field,
-                    },
-                    Ty::Word,
-                );
-            }
+            let argc = Self::argc(f, call_arguments.len())?;
+            let mut call_args = vec![argc];
+            call_args.extend_from_slice(call_arguments);
+            f.safepoint()?;
+            return f.one(
+                OpKind::CallClosure {
+                    closure: callee,
+                    args: call_args,
+                },
+                Ty::Word,
+            );
+        }
+        if let Operator::Name(name) = operator
+            && let Some(result) = Self::lower_symbol_cell_call(f, name, &values)?
+        {
+            return Ok(result);
         }
         if let Operator::Name(name) = operator
             && ((matches!(name.name.as_str(), "+" | "*" | "-" | "<") && values.len() == 2)
@@ -234,6 +196,54 @@ impl Context<'_> {
                 Ty::Word,
             )
         }
+    }
+
+    /// Lower a call to `symbol-value`, `set-symbol-value`, or
+    /// `fdefinition-set` into a direct symbol-cell load or store.
+    ///
+    /// Returns `Ok(None)` when `name`/`values` do not match one of those
+    /// three forms, so the caller falls through to ordinary call lowering.
+    fn lower_symbol_cell_call(
+        f: &mut FunctionLowerer,
+        name: &SymbolRef,
+        values: &[ValueId],
+    ) -> Result<Option<ValueId>, LowerError> {
+        let field =
+            if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE") && values.len() == 1 {
+                Some((ncl_object::symbol_offset::VALUE, false))
+            } else if name.name == "set-symbol-value" && values.len() == 2 {
+                Some((ncl_object::symbol_offset::VALUE, true))
+            } else if (name.is_named("COMMON-LISP", "NCL::FDEFINITION-SET")
+                || name.is_named("NCL", "FDEFINITION-SET")
+                || name.is_named("NCL-EXT", "FDEFINITION-SET"))
+                && values.len() == 2
+            {
+                Some((ncl_object::symbol_offset::FUNCTION, true))
+            } else {
+                None
+            };
+        let Some((field, store)) = field else {
+            return Ok(None);
+        };
+        let field = u32::try_from(field).map_err(|_| LowerError::Ir {
+            detail: "symbol cell offset does not fit u32".to_owned(),
+        })?;
+        let object = values.first().copied().ok_or_else(|| LowerError::Ir {
+            detail: "symbol cell operation requires a symbol".to_owned(),
+        })?;
+        if store {
+            let value = values.get(1).copied().ok_or_else(|| LowerError::Ir {
+                detail: "symbol cell store requires a value".to_owned(),
+            })?;
+            f.none(OpKind::StoreField {
+                object,
+                field,
+                value,
+            })?;
+            return Ok(Some(value));
+        }
+        f.one(OpKind::LoadField { object, field }, Ty::Word)
+            .map(Some)
     }
 
     fn argc(f: &mut FunctionLowerer, count: usize) -> Result<ValueId, LowerError> {

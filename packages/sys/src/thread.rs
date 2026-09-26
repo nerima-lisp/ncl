@@ -304,7 +304,7 @@ impl Thread {
         std::mem::replace(&mut self.native_context, context)
     }
     pub(crate) fn with_native_context<T, R>(
-        &mut self,
+        &self,
         callback: impl FnOnce(&mut T) -> R,
     ) -> Option<R> {
         let context = self.native_context?;

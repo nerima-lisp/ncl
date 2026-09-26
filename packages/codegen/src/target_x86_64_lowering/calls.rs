@@ -1,23 +1,26 @@
 use super::{
-    emit, load_slot, ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, ValueSlots,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, ValueSlots, emit, load_slot,
 };
 use crate::CodegenError;
 use ncl_asm_x86_64::{Assembler, Inst, Mem, Shift};
 use ncl_ir::ValueId;
 
+// `argc`/`args` mirror the calling convention's own argument-count/argument-
+// list naming; that pairing is clearer here than any alternative spelling.
+#[allow(clippy::similar_names)]
 pub fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
     args: &[ValueId],
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
-    let Some((argc, arguments)) = args.split_first() else {
+    let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported(
             "calls require a tagged argc argument".into(),
         ));
     };
-    if arguments.len() > ARGUMENT_REGISTERS.len() {
+    if rest.len() > ARGUMENT_REGISTERS.len() {
         // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported(
             "x86-64 calls support at most four register arguments".into(),
@@ -26,7 +29,7 @@ pub fn lower_call(
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
-    for (index, argument) in arguments.iter().enumerate() {
+    for (index, argument) in rest.iter().enumerate() {
         load_slot(
             assembler,
             slots,
@@ -39,6 +42,9 @@ pub fn lower_call(
     Ok(())
 }
 
+// `argc`/`args` mirror the calling convention's own argument-count/argument-
+// list naming; that pairing is clearer here than any alternative spelling.
+#[allow(clippy::similar_names)]
 pub fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
@@ -46,7 +52,7 @@ pub fn lower_closure_call(
     capture_count: usize,
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
-    let Some((argc, arguments)) = args.split_first() else {
+    let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported(
             "closure calls require a tagged argc argument".into(),
@@ -85,7 +91,7 @@ pub fn lower_closure_call(
             ),
         )?;
     }
-    for (index, argument) in arguments.iter().enumerate() {
+    for (index, argument) in rest.iter().enumerate() {
         load_slot(
             assembler,
             slots,

@@ -240,6 +240,10 @@ fn right_shift_immediates(amount: u8) -> (u32, u32) {
     (u32::from(amount), 63)
 }
 
+// `immr`/`imms` are the AArch64 ISA's own field names for a bitfield
+// instruction's rotate and size immediates; keeping them matches the
+// reference manual, so the similar-names lint is not useful here.
+#[allow(clippy::similar_names)]
 fn bit_shift(
     base: u32,
     rd: Reg,

@@ -110,6 +110,144 @@ fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result 
     form(ctx, runtime, "LET", &[let_bindings, body])
 }
 
+fn typecase(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], errorp: bool) -> Result {
+    let value = values.first().copied().ok_or(ObjectError::TypeError)?;
+    let temporary = fresh_symbol(ctx, runtime)?;
+    let mut branches = Vec::with_capacity(values.len().saturating_sub(1));
+    let mut types = Vec::with_capacity(values.len().saturating_sub(1));
+    for clause in &values[1..] {
+        let parts = elements(ctx, *clause)?;
+        let type_specifier = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        let body = progn(ctx, runtime, &parts[1..])?;
+        let quoted_type = form(ctx, runtime, "QUOTE", &[type_specifier])?;
+        let type_test = form(ctx, runtime, "TYPEP", &[temporary, quoted_type])?;
+        branches.push((type_test, body));
+        types.push(type_specifier);
+    }
+    let fallback = if errorp {
+        let mut expected_types = vec![symbol(ctx, runtime, "OR")?];
+        expected_types.extend(types);
+        let expected_type = list(ctx, runtime, &expected_types)?;
+        let expected = form(ctx, runtime, "QUOTE", &[expected_type])?;
+        let type_error = symbol(ctx, runtime, "TYPE-ERROR")?;
+        let error_type = form(ctx, runtime, "QUOTE", &[type_error])?;
+        let datum = symbol(ctx, runtime, ":DATUM")?;
+        let expected_type = symbol(ctx, runtime, ":EXPECTED-TYPE")?;
+        form(
+            ctx,
+            runtime,
+            "ERROR",
+            &[error_type, datum, temporary, expected_type, expected],
+        )?
+    } else {
+        Word::NIL
+    };
+    let mut branch = fallback;
+    for (test, body) in branches.into_iter().rev() {
+        branch = form(ctx, runtime, "IF", &[test, body, branch])?;
+    }
+    let let_bindings = bindings(ctx, runtime, &[(temporary, value)])?;
+    form(ctx, runtime, "LET", &[let_bindings, branch])
+}
+
+fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+    let index = usize::try_from(
+        values
+            .first()
+            .and_then(|value| value.as_fixnum())
+            .filter(|index| *index >= 0)
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    let form_value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
+    let mut lambda_list = Vec::with_capacity(index + 4);
+    lambda_list.push(symbol(ctx, runtime, "&OPTIONAL")?);
+    let mut selected = Word::NIL;
+    for position in 0..=index {
+        let variable = fresh_symbol(ctx, runtime)?;
+        if position == index {
+            selected = variable;
+        }
+        lambda_list.push(variable);
+    }
+    lambda_list.push(symbol(ctx, runtime, "&REST")?);
+    lambda_list.push(fresh_symbol(ctx, runtime)?);
+    let lambda_list = list(ctx, runtime, &lambda_list)?;
+    let lambda = form(ctx, runtime, "LAMBDA", &[lambda_list, selected])?;
+    form(ctx, runtime, "MULTIPLE-VALUE-CALL", &[lambda, form_value])
+}
+
+fn do_macro(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+    sequential: bool,
+) -> Result {
+    let variable_specs = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let end_clause = elements(ctx, values.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+    let end_test = end_clause.first().copied().ok_or(ObjectError::TypeError)?;
+    let mut initial = Vec::with_capacity(variable_specs.len());
+    let mut updates = Vec::with_capacity(variable_specs.len() * 2);
+    for spec in variable_specs {
+        let parts = elements(ctx, spec).unwrap_or_else(|_| vec![spec]);
+        let variable = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        let init = parts.get(1).copied().unwrap_or(Word::NIL);
+        initial.push((variable, init));
+        if let Some(step) = parts.get(2).copied() {
+            updates.push(variable);
+            updates.push(step);
+        }
+    }
+    let loop_tag = fresh_symbol(ctx, runtime)?;
+    let end_tag = fresh_symbol(ctx, runtime)?;
+    let go_end = form(ctx, runtime, "GO", &[end_tag])?;
+    let exit = form(ctx, runtime, "IF", &[end_test, go_end])?;
+    let mut tagbody = vec![loop_tag, exit];
+    tagbody.extend_from_slice(&values[2..]);
+    if !updates.is_empty() {
+        tagbody.push(form(
+            ctx,
+            runtime,
+            if sequential { "SETQ" } else { "PSETQ" },
+            &updates,
+        )?);
+    }
+    tagbody.push(form(ctx, runtime, "GO", &[loop_tag])?);
+    tagbody.push(end_tag);
+    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
+    let results = progn(ctx, runtime, &end_clause[1..])?;
+    let initial_bindings = bindings(ctx, runtime, &initial)?;
+    let binding_operator = if sequential { "LET*" } else { "LET" };
+    let body = form(
+        ctx,
+        runtime,
+        binding_operator,
+        &[initial_bindings, tagbody, results],
+    )?;
+    form(ctx, runtime, "BLOCK", &[Word::NIL, body])
+}
+
+fn prog_macro(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+    sequential: bool,
+) -> Result {
+    let variables = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let mut bindings = Vec::with_capacity(variables.len());
+    for variable in variables {
+        let parts = elements(ctx, variable).unwrap_or_else(|_| vec![variable]);
+        let name = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        let initial = parts.get(1).copied().unwrap_or(Word::NIL);
+        bindings.push(binding(ctx, runtime, name, initial)?);
+    }
+    let tagbody = form(ctx, runtime, "TAGBODY", &values[1..])?;
+    let binding_form = if sequential { "LET*" } else { "LET" };
+    let binding_list = list(ctx, runtime, &bindings)?;
+    let body = form(ctx, runtime, binding_form, &[binding_list, tagbody])?;
+    form(ctx, runtime, "BLOCK", &[Word::NIL, body])
+}
+
 fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind) -> Result {
     match kind {
         Kind::When => {
@@ -136,13 +274,13 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
             let value = values.first().copied().unwrap_or(Word::NIL);
             form(ctx, runtime, "RETURN-FROM", &[Word::NIL, value])
         }
-        Kind::NthValue
-        | Kind::Typecase
-        | Kind::Etypecase
-        | Kind::Prog
-        | Kind::ProgStar
-        | Kind::Do
-        | Kind::DoStar => Err(ObjectError::Unsupported),
+        Kind::Typecase => typecase(ctx, runtime, values, false),
+        Kind::Etypecase => typecase(ctx, runtime, values, true),
+        Kind::NthValue => nth_value(ctx, runtime, values),
+        Kind::Do => do_macro(ctx, runtime, values, false),
+        Kind::DoStar => do_macro(ctx, runtime, values, true),
+        Kind::Prog => prog_macro(ctx, runtime, values, false),
+        Kind::ProgStar => prog_macro(ctx, runtime, values, true),
     }
 }
 

@@ -138,8 +138,7 @@ fn visit_expr(expr: &Expr, profile: &mut OptimizationProfile) {
             }
         }
         Expr::ReturnFrom {
-            value: Some(value),
-            ..
+            value: Some(value), ..
         } => visit_expr(value, profile),
         Expr::Tagbody(items) => {
             for item in items {

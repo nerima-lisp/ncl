@@ -9,6 +9,7 @@ license.workspace = true
 ncl-object = { path = "../object" }
 
 [dev-dependencies]
+ncl-lib-packages = { path = "../lib/packages" }
 ncl-ownership = { path = "../ownership" }
 
 [lints.rust]

@@ -276,6 +276,7 @@ dependencies = [
 name = "ncl-reader"
 version = "0.1.0"
 dependencies = [
+ "ncl-lib-packages",
  "ncl-object",
  "ncl-ownership",
 ]

@@ -2,13 +2,13 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    car, cdr, code_constants, code_debug, code_stack_map, complex_imag, complex_real,
-    function_code, function_lambda_list, function_name, make_array, make_closure, make_code_object,
-    make_complex, make_cons, make_instance, make_ratio, make_readtable, make_simple_fun,
-    make_simple_vector, make_stream, make_string, make_structure, make_symbol, ratio_denominator,
-    ratio_numerator, set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref,
-    stream_element_type, stream_external_format, stream_implementation, stream_state, symbol_name,
-    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word,
+    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car, cdr,
+    code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
+    function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
+    make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
+    make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
+    set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_element_type,
+    stream_external_format, stream_implementation, stream_state, symbol_name,
 };
 
 fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {

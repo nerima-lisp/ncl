@@ -1,6 +1,8 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
-use ncl_ir::{Convert, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{
+    Convert, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId,
+};
 
 use crate::ast::Expr;
 use crate::symbols::SymbolRef;
@@ -153,13 +155,13 @@ impl Context<'_> {
             },
             Ty::Word,
         )?;
-        let mut args = vec![argc];
-        args.extend(values);
+        let mut call_args = vec![argc];
+        call_args.extend(values);
         f.safepoint()?;
         f.one(
             OpKind::CallIndirect {
                 callee,
-                args,
+                args: call_args,
             },
             Ty::Word,
         )

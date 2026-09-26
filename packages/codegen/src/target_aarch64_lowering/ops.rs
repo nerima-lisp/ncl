@@ -1,6 +1,6 @@
 use super::{
-    emit, load_value, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_runtime_builtin, lower_safepoint, store_value,
+    constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
+    lower_closure_call, lower_runtime_builtin, lower_safepoint, store_value,
 };
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
@@ -23,23 +23,6 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
             "constant requires a runtime table".into(),
         )),
     }
-}
-
-fn constant_table_entry<'a>(
-    constants: &'a [ncl_ir::Constant],
-    index: ncl_ir::ConstantIndex,
-) -> Result<&'a ncl_ir::Constant, CodegenError> {
-    let raw_index = index.0;
-    let index = usize::try_from(raw_index).map_err(|_| CodegenError::InvalidConstantIndex {
-        index: raw_index,
-        length: constants.len(),
-    })?;
-    constants
-        .get(index)
-        .ok_or(CodegenError::InvalidConstantIndex {
-            index: raw_index,
-            length: constants.len(),
-        })
 }
 
 const fn compare_condition(op: Compare) -> Cond {

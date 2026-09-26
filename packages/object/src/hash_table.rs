@@ -9,7 +9,9 @@ mod equality;
 mod options;
 mod support;
 use equality::{equal, hash_key};
-use options::{next_capacity, rehash_threshold_value, usize_to_f64};
+use options::{
+    next_capacity_from_value, refresh_forwarded_field, rehash_threshold_value, usize_to_f64,
+};
 pub use support::sxhash;
 use support::{decode_test, decode_weakness, probe};
 
@@ -217,17 +219,19 @@ impl HashTable {
             let capacity = table.read_usize(ctx, CAPACITY)?;
             let count = table.count(ctx)?;
             let occupied = table.read_usize(ctx, OCCUPIED)?;
-            let threshold = rehash_threshold_value(ctx, table.rehash_threshold(ctx)?)?;
+            let rehash_size = refresh_forwarded_field(ctx, runtime, table, REHASH_SIZE)?;
+            let rehash_threshold = refresh_forwarded_field(ctx, runtime, table, REHASH_THRESHOLD)?;
+            let threshold = rehash_threshold_value(ctx, rehash_threshold)?;
             let next_count = count.checked_add(1).ok_or(ObjectError::Layout)?;
             let threshold_exceeded = usize_to_f64(next_count) > usize_to_f64(capacity) * threshold;
             let occupied_exceeded = occupied.checked_add(1).ok_or(ObjectError::Layout)? >= capacity;
             if threshold_exceeded || occupied_exceeded {
                 let next_capacity = if threshold_exceeded {
-                    next_capacity(ctx, table)?
+                    next_capacity_from_value(ctx, table, rehash_size)?
                 } else if count < capacity / 2 {
                     capacity
                 } else {
-                    next_capacity(ctx, table)?
+                    next_capacity_from_value(ctx, table, rehash_size)?
                 };
                 table.resize(ctx, runtime, next_capacity)?;
                 table = Self::from_word(table_word);
@@ -388,53 +392,63 @@ impl HashTable {
         let mut table_word = self.0;
         let table_token = crate::push_root(ctx, &mut table_word);
         let result = (|| {
-            let kv_words = capacity.checked_mul(2).ok_or(ObjectError::Layout)?;
-            let mut new_kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; kv_words])?;
-            let kv_token = crate::push_root(ctx, &mut new_kv);
+            let mut rehash_size = get(ctx, table_word, widetag::HASH_TABLE, REHASH_SIZE)?;
+            let rehash_size_token = crate::push_root(ctx, &mut rehash_size);
+            let mut rehash_threshold = get(ctx, table_word, widetag::HASH_TABLE, REHASH_THRESHOLD)?;
+            let rehash_threshold_token = crate::push_root(ctx, &mut rehash_threshold);
             let result = (|| {
-                let mut new_index =
-                    make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
-                let index_token = crate::push_root(ctx, &mut new_index);
+                let kv_words = capacity.checked_mul(2).ok_or(ObjectError::Layout)?;
+                let mut new_kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; kv_words])?;
+                let kv_token = crate::push_root(ctx, &mut new_kv);
                 let result = (|| {
-                    let table = Self::from_word(table_word);
-                    let marker = get(ctx, table_word, widetag::HASH_TABLE, MARKER)?;
-                    let old_kv = get(ctx, table_word, widetag::HASH_TABLE, KV)?;
-                    let old_high_water = table.read_usize(ctx, HIGH_WATER)?;
-                    let test = table.test(ctx)?;
-                    for position in 0..kv_words {
-                        simple_vector_set(ctx, new_kv, position, marker)?;
-                    }
-                    let mut new_position = 0;
-                    for position in 0..old_high_water {
-                        let key = simple_vector_ref(ctx, old_kv, position * 2)?;
-                        if key != marker {
-                            let value = simple_vector_ref(ctx, old_kv, position * 2 + 1)?;
-                            let slot = Self::find_slot(
-                                ctx,
-                                new_index,
-                                new_kv,
-                                key,
-                                hash_key(ctx, test, key)?,
-                                test,
-                            )?;
-                            simple_vector_set(ctx, new_index, slot, fix(new_position)?)?;
-                            simple_vector_set(ctx, new_kv, new_position * 2, key)?;
-                            simple_vector_set(ctx, new_kv, new_position * 2 + 1, value)?;
-                            new_position += 1;
+                    let mut new_index =
+                        make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
+                    let index_token = crate::push_root(ctx, &mut new_index);
+                    let result = (|| {
+                        let table = Self::from_word(table_word);
+                        let marker = get(ctx, table_word, widetag::HASH_TABLE, MARKER)?;
+                        let old_kv = get(ctx, table_word, widetag::HASH_TABLE, KV)?;
+                        let old_high_water = table.read_usize(ctx, HIGH_WATER)?;
+                        let test = table.test(ctx)?;
+                        for position in 0..kv_words {
+                            simple_vector_set(ctx, new_kv, position, marker)?;
                         }
-                    }
-                    put(ctx, table_word, KV, new_kv)?;
-                    put(ctx, table_word, INDEX, new_index)?;
-                    put(ctx, table_word, CAPACITY, fix(capacity)?)?;
-                    put(ctx, table_word, COUNT, fix(new_position)?)?;
-                    put(ctx, table_word, FREE_HEAD, Word::fixnum(EMPTY))?;
-                    put(ctx, table_word, HIGH_WATER, fix(new_position)?)?;
-                    put(ctx, table_word, OCCUPIED, fix(new_position)?)?;
-                    Ok(())
+                        let mut new_position = 0;
+                        for position in 0..old_high_water {
+                            let key = simple_vector_ref(ctx, old_kv, position * 2)?;
+                            if key != marker {
+                                let value = simple_vector_ref(ctx, old_kv, position * 2 + 1)?;
+                                let slot = Self::find_slot(
+                                    ctx,
+                                    new_index,
+                                    new_kv,
+                                    key,
+                                    hash_key(ctx, test, key)?,
+                                    test,
+                                )?;
+                                simple_vector_set(ctx, new_index, slot, fix(new_position)?)?;
+                                simple_vector_set(ctx, new_kv, new_position * 2, key)?;
+                                simple_vector_set(ctx, new_kv, new_position * 2 + 1, value)?;
+                                new_position += 1;
+                            }
+                        }
+                        put(ctx, table_word, KV, new_kv)?;
+                        put(ctx, table_word, INDEX, new_index)?;
+                        put(ctx, table_word, CAPACITY, fix(capacity)?)?;
+                        put(ctx, table_word, COUNT, fix(new_position)?)?;
+                        put(ctx, table_word, FREE_HEAD, Word::fixnum(EMPTY))?;
+                        put(ctx, table_word, HIGH_WATER, fix(new_position)?)?;
+                        put(ctx, table_word, OCCUPIED, fix(new_position)?)?;
+                        put(ctx, table_word, REHASH_SIZE, rehash_size)?;
+                        put(ctx, table_word, REHASH_THRESHOLD, rehash_threshold)?;
+                        Ok(())
+                    })();
+                    finish_root(ctx, index_token, result)
                 })();
-                finish_root(ctx, index_token, result)
+                finish_root(ctx, kv_token, result)
             })();
-            finish_root(ctx, kv_token, result)
+            let result = finish_root(ctx, rehash_threshold_token, result);
+            finish_root(ctx, rehash_size_token, result)
         })();
         finish_root(ctx, table_token, result)
     }

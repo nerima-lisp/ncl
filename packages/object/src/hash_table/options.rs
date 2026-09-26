@@ -1,13 +1,32 @@
 use super::{HashTable, HashTest, Weakness};
+use crate::object_access::{get, put};
 use crate::{
     Bignum, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, bignum_limbs, bignum_sign,
     classify_object, double_value, finish_root, make_double, ratio_denominator, ratio_numerator,
+    widetag,
 };
 use ncl_sys::Word;
 
 const DEFAULT_CAPACITY: usize = 8;
 const DEFAULT_REHASH_SIZE: f64 = 1.5;
 const DEFAULT_REHASH_THRESHOLD: f64 = 0.75;
+
+pub(super) fn refresh_forwarded_field(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    table: HashTable,
+    slot: usize,
+) -> Result<Word, ObjectError> {
+    let value = get(ctx, table.as_word(), widetag::HASH_TABLE, slot)?;
+    let forwarded = runtime
+        .heap
+        .forwarded_word(value)
+        .ok_or(ObjectError::Layout)?;
+    if forwarded != value {
+        put(ctx, table.as_word(), slot, forwarded)?;
+    }
+    Ok(forwarded)
+}
 
 #[derive(Clone, Copy, Debug)]
 enum RehashSize {
@@ -257,9 +276,13 @@ pub(super) fn usize_to_f64(mut value: usize) -> f64 {
     result
 }
 
-pub(super) fn next_capacity(ctx: &ThreadContext, table: HashTable) -> Result<usize, ObjectError> {
+pub(super) fn next_capacity_from_value(
+    ctx: &ThreadContext,
+    table: HashTable,
+    rehash_size: Word,
+) -> Result<usize, ObjectError> {
     let capacity = table.capacity(ctx)?;
-    let requested = match rehash_size_value(ctx, table.rehash_size(ctx)?)? {
+    let requested = match rehash_size_value(ctx, rehash_size)? {
         RehashSize::Add(amount) => capacity.checked_add(amount).ok_or(ObjectError::Layout)?,
         RehashSize::Multiply(factor) => scaled_capacity(capacity, factor)?,
     };

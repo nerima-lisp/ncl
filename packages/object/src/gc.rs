@@ -13,7 +13,7 @@ use crate::{
 fn hash_table_layout() -> ncl_sys::ReferenceLayout {
     ncl_sys::ReferenceLayout {
         reference_words: reference_words(&[REHASH_SIZE, REHASH_THRESHOLD, MARKER, KV, INDEX]),
-        boxed_from: Some(REHASH_SIZE + 1),
+        boxed_from: Some(MARKER + 1),
     }
 }
 
@@ -116,7 +116,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                     widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
-                    widetag::HASH_TABLE => Some(REHASH_SIZE + 1),
+                    widetag::HASH_TABLE => Some(MARKER + 1),
                     widetag::PACKAGE => Some(crate::package::NAME + 1),
                     _ => None,
                 },
@@ -179,7 +179,7 @@ mod tests {
             package_layout().reference_words,
             reference_words(&crate::package::reference_words())
         );
-        assert_eq!(hash_table_layout().boxed_from, Some(REHASH_SIZE + 1));
+        assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
         assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
     }
 }

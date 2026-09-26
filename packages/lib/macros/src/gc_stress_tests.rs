@@ -12,6 +12,9 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
     let x = symbol(&mut ctx, &runtime, "X")?;
     let y = symbol(&mut ctx, &runtime, "Y")?;
     let z = symbol(&mut ctx, &runtime, "Z")?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
     let do_form = list(&mut ctx, &runtime, &[x])?;
     let initial_form = list(&mut ctx, &runtime, &[y])?;
     let final_form = list(&mut ctx, &runtime, &[z])?;
@@ -28,6 +31,12 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
                 step: Some(Word::fixnum(1)),
                 direction: Some(r#loop::StepDirection::UpFrom),
                 limit: Some((r#loop::LimitDirection::Below, Word::fixnum(2))),
+            }),
+            r#loop::LoopClause::Hash(r#loop::HashClause {
+                variable: key,
+                kind: r#loop::HashIterationKind::Key,
+                table,
+                using: Some((r#loop::HashIterationKind::Value, value)),
             }),
             r#loop::LoopClause::Repeat(Word::fixnum(1)),
             r#loop::LoopClause::While(x),

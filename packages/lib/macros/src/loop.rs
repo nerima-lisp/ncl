@@ -105,9 +105,11 @@ pub struct LoopAst {
     pub clauses: Vec<LoopClause>,
 }
 
+mod accumulator;
 mod callback;
 mod clause;
 mod expansion;
+mod hash;
 mod held;
 mod parser;
 pub use callback::expand_loop_callback;

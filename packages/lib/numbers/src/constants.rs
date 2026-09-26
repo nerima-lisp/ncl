@@ -1,9 +1,26 @@
 //! Common Lisp numeric constants owned by the numbers library.
 
+use core::cell::Cell;
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, make_double, set_symbol_constant,
     set_symbol_value,
 };
+use ncl_sys::RootSlot;
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
+    result
+}
 
 fn set_constant(
     ctx: &mut ThreadContext,
@@ -24,8 +41,10 @@ fn set_float_constant(
     name: &'static str,
     value: f64,
 ) -> Result<(), ObjectError> {
-    let value = make_double(ctx, runtime, value)?.into();
-    set_constant(ctx, runtime, package, name, value)
+    let mut value: Word = make_double(ctx, runtime, value)?.into();
+    with_root(ctx, &mut value, |ctx, value| {
+        set_constant(ctx, runtime, package, name, *value)
+    })
 }
 
 /// Register implementation-independent numeric constants supported by NCL.

@@ -1,9 +1,9 @@
 //! Rational and binary64 numeric builtins.
 
 use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, double_value, make_bignum_from_i128, make_double, make_ratio,
-    ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
-    Runtime, ThreadContext, Word,
+    ratio_denominator, ratio_numerator,
 };
 use ncl_sys::RootSlot;
 use std::cell::Cell;
@@ -23,21 +23,20 @@ fn with_rooted_word<T>(
     result
 }
 
+#[allow(clippy::map_or_identity)]
 fn integer_to_f64(value: i128) -> f64 {
     let magnitude = value.unsigned_abs();
-    let limb =
-        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
+    let limb = |shift| {
+        f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).map_or(0, |v| v))
+    };
     let result =
         limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
-    if value.is_negative() {
-        -result
-    } else {
-        result
-    }
+    if value.is_negative() { -result } else { result }
 }
+#[allow(clippy::map_or_identity)]
 fn u64_to_f64(value: u64) -> f64 {
-    f64::from(u32::try_from(value >> 32).unwrap_or(0)) * 2_f64.powi(32)
-        + f64::from(u32::try_from(value & u64::from(u32::MAX)).unwrap_or(0))
+    f64::from(u32::try_from(value >> 32).map_or(0, |v| v)) * 2_f64.powi(32)
+        + f64::from(u32::try_from(value & u64::from(u32::MAX)).map_or(0, |v| v))
 }
 fn float_to_i128(value: f64) -> Option<i128> {
     const I128_MIN: f64 = -170_141_183_460_469_231_731_687_303_715_884_105_728.0;
@@ -436,6 +435,7 @@ pub fn scale_float(
     values.clear();
     make_double(ctx, runtime, value * 2_f64.powi(scale)).map(Into::into)
 }
+#[allow(clippy::manual_unwrap_or, clippy::option_if_let_else)]
 pub fn float_sign(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -443,11 +443,10 @@ pub fn float_sign(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let first = float_value(ctx, args.required(0)?)?;
-    let second = args
-        .get(1)
-        .map(|v| float_value(ctx, v))
-        .transpose()?
-        .unwrap_or(1.0);
+    let second = match args.get(1).map(|v| float_value(ctx, v)).transpose()? {
+        Some(value) => value,
+        None => 1.0,
+    };
     values.clear();
     make_double(ctx, runtime, second.abs().copysign(first)).map(Into::into)
 }

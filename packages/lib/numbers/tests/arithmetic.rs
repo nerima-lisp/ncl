@@ -171,14 +171,9 @@ fn arithmetic_builtins_call_through_runtime() {
 #[test]
 fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     let (runtime, mut ctx) = setup();
-    let ratio = make_ratio(
-        &mut ctx,
-        &runtime,
-        Word::fixnum(1),
-        Word::fixnum(2),
-    )
-    .unwrap()
-    .into();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .into();
     let real = ncl_object::make_double(&mut ctx, &runtime, 2.0)
         .unwrap()
         .into();
@@ -200,7 +195,10 @@ fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
         .call_builtin(&mut ctx, function, &[ratio, Word::fixnum(1)])
         .unwrap();
     let ObjectRef::Ratio(value) = classify_object(&ctx, result) else {
-        panic!("expected ratio result, got {:?}", classify_object(&ctx, result));
+        panic!(
+            "expected ratio result, got {:?}",
+            classify_object(&ctx, result)
+        );
     };
     let ratio = ncl_object::Ratio::from_word(value);
     assert_eq!(integer(&ctx, ratio_numerator(&ctx, ratio).unwrap()), 3);

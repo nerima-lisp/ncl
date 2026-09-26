@@ -7,7 +7,7 @@ pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let ns = args_numbers(ctx, args)?;
     let value = ns.into_iter().try_fold(Number::Integer(0), |value, next| {
         checked_integer_pair(value, next, i128::checked_add)?;
-        Ok::<_, ObjectError>(add_pair(value, next))
+        add_pair(value, next)
     })?;
     word(ctx, runtime, value)
 }
@@ -16,11 +16,11 @@ pub fn sub(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let first = *ns.first().ok_or(ObjectError::TypeError)?;
     let value = if ns.len() == 1 {
         checked_integer_pair(Number::Integer(0), first, i128::checked_sub)?;
-        sub_pair(Number::Integer(0), first)
+        sub_pair(Number::Integer(0), first)?
     } else {
         ns.iter().copied().skip(1).try_fold(first, |value, next| {
             checked_integer_pair(value, next, i128::checked_sub)?;
-            Ok::<_, ObjectError>(sub_pair(value, next))
+            sub_pair(value, next)
         })?
     };
     word(ctx, runtime, value)
@@ -29,7 +29,7 @@ pub fn mul(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let ns = args_numbers(ctx, args)?;
     let value = ns.into_iter().try_fold(Number::Integer(1), |value, next| {
         checked_integer_pair(value, next, i128::checked_mul)?;
-        Ok::<_, ObjectError>(mul_pair(value, next))
+        mul_pair(value, next)
     })?;
     word(ctx, runtime, value)
 }
@@ -89,7 +89,9 @@ pub(super) fn abs_number(value: Number) -> Result<Number, ObjectError> {
         Number::Integer(value) => Ok(Number::Integer(
             value.checked_abs().ok_or(ObjectError::TypeError)?,
         )),
-        Number::Ratio(n, d) => Ok(ratio(n.checked_abs().ok_or(ObjectError::TypeError)?, d)),
+        Number::Ratio(n, d) => {
+            ratio(n.checked_abs().ok_or(ObjectError::TypeError)?, d).ok_or(ObjectError::TypeError)
+        }
         Number::Float(value) => Ok(Number::Float(value.abs())),
     }
 }

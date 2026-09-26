@@ -1,4 +1,4 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
+use crate::{allocate, layout, with_roots, ObjectError, Runtime, ThreadContext};
 use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -405,12 +405,14 @@ pub fn array_element_type(
 }
 
 /// Return an array's displacement target and index offset.
-pub fn array_displacement(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<(Word, usize), ObjectError> {
+pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, usize), ObjectError> {
     if ncl_sys::object_widetag(&ctx.thread, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
-        return Err(ObjectError::TypeError);
+        return match ncl_sys::object_widetag(&ctx.thread, object) {
+            Some(layout::widetag::SIMPLE_VECTOR)
+            | Some(layout::widetag::SPECIALIZED_ARRAY)
+            | Some(layout::widetag::STRING) => Ok((Word::NIL, 0)),
+            _ => Err(ObjectError::TypeError),
+        };
     }
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     let target = read(
@@ -440,10 +442,7 @@ pub fn adjustable_array_p(ctx: &ThreadContext, object: Word) -> Result<bool, Obj
 }
 
 /// Return whether an array has a fill pointer.
-pub fn array_has_fill_pointer_p(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<bool, ObjectError> {
+pub fn array_has_fill_pointer_p(ctx: &ThreadContext, object: Word) -> Result<bool, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     Ok(array_flags(ctx, object, rank)? & layout::array_offset::FLAG_HAS_FILL_POINTER != 0)
 }
@@ -454,7 +453,12 @@ pub fn fill_pointer(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectEr
     if !array_has_fill_pointer_p(ctx, object)? {
         return Err(ObjectError::TypeError);
     }
-    length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(rank, 0))
+    length(
+        ctx,
+        object,
+        layout::widetag::NON_SIMPLE_ARRAY,
+        metadata_offset(rank, 0),
+    )
 }
 
 /// Set an array's fill pointer.
@@ -467,7 +471,12 @@ pub fn set_fill_pointer(
     if !array_has_fill_pointer_p(ctx, object)? || rank != 1 {
         return Err(ObjectError::TypeError);
     }
-    let capacity = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(rank, 4))?;
+    let capacity = length(
+        ctx,
+        object,
+        layout::widetag::NON_SIMPLE_ARRAY,
+        metadata_offset(rank, 4),
+    )?;
     if value > capacity {
         return Err(ObjectError::TypeError);
     }
@@ -494,7 +503,12 @@ pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>,
         return Ok(vec![string_length(ctx, object)?]);
     }
     if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::SPECIALIZED_ARRAY) {
-        return Ok(vec![length(ctx, object, layout::widetag::SPECIALIZED_ARRAY, 1)?]);
+        return Ok(vec![length(
+            ctx,
+            object,
+            layout::widetag::SPECIALIZED_ARRAY,
+            1,
+        )?]);
     }
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     (0..rank)
@@ -582,14 +596,17 @@ pub fn array_row_major_set(
     value: Word,
 ) -> Result<(), ObjectError> {
     match ncl_sys::object_widetag(&ctx.thread, object) {
-        Some(layout::widetag::SIMPLE_VECTOR) => return simple_vector_set(ctx, object, index, value),
+        Some(layout::widetag::SIMPLE_VECTOR) => {
+            return simple_vector_set(ctx, object, index, value)
+        }
         Some(layout::widetag::SPECIALIZED_ARRAY) => {
             return specialized_array_set(ctx, object, index, value);
         }
         Some(layout::widetag::STRING) => {
             let code = value.bits() >> 4;
-            let character = char::from_u32(u32::try_from(code).map_err(|_| ObjectError::TypeError)?)
-                .ok_or(ObjectError::TypeError)?;
+            let character =
+                char::from_u32(u32::try_from(code).map_err(|_| ObjectError::TypeError)?)
+                    .ok_or(ObjectError::TypeError)?;
             return string_set(ctx, object, index, character);
         }
         Some(layout::widetag::NON_SIMPLE_ARRAY) => {}
@@ -652,7 +669,9 @@ pub fn adjust_array(
     dimensions: &[usize],
     initial_element: Word,
 ) -> Result<Word, ObjectError> {
-    if !adjustable_array_p(ctx, object)? || array_has_fill_pointer_p(ctx, object)? && dimensions.len() != 1 {
+    if !adjustable_array_p(ctx, object)?
+        || array_has_fill_pointer_p(ctx, object)? && dimensions.len() != 1
+    {
         return Err(ObjectError::TypeError);
     }
     let old_dimensions = array_dimensions(ctx, object)?;
@@ -664,7 +683,9 @@ pub fn adjust_array(
         .iter()
         .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
         .ok_or(ObjectError::Layout)?;
-    let fill = array_has_fill_pointer_p(ctx, object)?.then(|| fill_pointer(ctx, object)).transpose()?;
+    let fill = array_has_fill_pointer_p(ctx, object)?
+        .then(|| fill_pointer(ctx, object))
+        .transpose()?;
     with_roots(ctx, &[object, initial_element], |ctx, rooted| {
         let adjusted = make_array(
             ctx,
@@ -723,14 +744,39 @@ pub fn vector_push_extend(
         return Err(ObjectError::TypeError);
     }
     let pointer = fill_pointer(ctx, object)?;
-    let capacity = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(1, 4))?;
+    let capacity = length(
+        ctx,
+        object,
+        layout::widetag::NON_SIMPLE_ARRAY,
+        metadata_offset(1, 4),
+    )?;
     if pointer < capacity {
-        write(ctx, object, metadata_offset(1, 5) + pointer, value, layout::widetag::NON_SIMPLE_ARRAY)?;
-        write(ctx, object, metadata_offset(1, 0), Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?), layout::widetag::NON_SIMPLE_ARRAY)?;
-        write(ctx, object, 2, Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?), layout::widetag::NON_SIMPLE_ARRAY)?;
+        write(
+            ctx,
+            object,
+            metadata_offset(1, 5) + pointer,
+            value,
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?;
+        write(
+            ctx,
+            object,
+            metadata_offset(1, 0),
+            Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?),
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?;
+        write(
+            ctx,
+            object,
+            2,
+            Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?),
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?;
         return Ok((pointer, object));
     }
-    let new_length = dimensions[0].checked_add(extension).ok_or(ObjectError::Layout)?;
+    let new_length = dimensions[0]
+        .checked_add(extension)
+        .ok_or(ObjectError::Layout)?;
     let adjusted = adjust_array(ctx, runtime, object, &[new_length], Word::NIL)?;
     let index = fill_pointer(ctx, adjusted)?;
     array_row_major_set(ctx, adjusted, index, value)?;

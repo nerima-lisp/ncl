@@ -1,6 +1,6 @@
 //! Token reading: symbol and number tokens, escapes, and package prefixes.
 
-use ncl_object::{Package, Runtime, ThreadContext, Word};
+use ncl_object::{Package, Runtime, StringObject, ThreadContext, Word, make_string};
 
 use crate::error::ReadError;
 use crate::number::parse_number;
@@ -281,12 +281,34 @@ const fn fold_char(ch: char, case: ReadtableCase) -> char {
 
 /// Package lookup boundary for token interpretation.
 trait PackageResolver {
-    fn resolve_package(&self, ctx: &ThreadContext, name: &crate::PackageName) -> Option<Word>;
+    fn resolve_package(
+        &self,
+        ctx: &mut ThreadContext,
+        name: &crate::PackageName,
+        current_package: Option<&crate::PackageName>,
+    ) -> Result<Option<Word>, ReadError>;
 }
 
 impl PackageResolver for Runtime {
-    fn resolve_package(&self, ctx: &ThreadContext, name: &crate::PackageName) -> Option<Word> {
-        self.find_package(ctx, name.as_str())
+    fn resolve_package(
+        &self,
+        ctx: &mut ThreadContext,
+        name: &crate::PackageName,
+        current_package: Option<&crate::PackageName>,
+    ) -> Result<Option<Word>, ReadError> {
+        if let Some(current) = current_package
+            && let Some(package) = self.find_package(ctx, current.as_str())
+        {
+            let nickname = make_string(ctx, self, &name.as_str().chars().collect::<Vec<_>>())?;
+            let local = Package::from_word(package)
+                .resolve_local_nickname(ctx, StringObject::from_word(nickname))
+                .map(|package| package.map(Package::as_word))
+                .map_err(ReadError::from);
+            if let Some(package) = local? {
+                return Ok(Some(package));
+            }
+        }
+        Ok(self.find_package(ctx, name.as_str()))
     }
 }
 
@@ -313,14 +335,14 @@ fn intern_symbol(
             let name = token.fold_name(parts.package(), case);
             let package_name = crate::PackageName::new(name.clone())?;
             let package = resolver
-                .resolve_package(ctx, &package_name)
+                .resolve_package(ctx, &package_name, opts.current_package())?
                 .ok_or_else(|| ReadError::PackageNotFound(name.clone()))?;
             return Ok(package);
         }
     };
     let package_name_value = crate::PackageName::new(package_name.clone())?;
     let package = resolver
-        .resolve_package(ctx, &package_name_value)
+        .resolve_package(ctx, &package_name_value, opts.current_package())?
         .ok_or_else(|| ReadError::PackageNotFound(package_name.clone()))?;
     let (symbol, _) = Package::from_word(package).intern(ctx, runtime, &symbol_name)?;
     Ok(symbol)

@@ -116,6 +116,7 @@ impl Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut nickname = nickname;
             crate::with_root(ctx, &mut nickname, |ctx, nickname| {
                 let mut names = get(ctx, *package, widetag::PACKAGE, NICKNAMES)?;
@@ -182,6 +183,7 @@ impl Package {
     ) -> Result<(Word, FindStatus), ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut name_word, |ctx, name_word| {
                 if let Some(found) = Self::from_word(*package).find_symbol(ctx, *name_word)? {
@@ -218,6 +220,7 @@ impl Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let internal =
@@ -264,6 +267,7 @@ impl Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let external =
@@ -296,6 +300,7 @@ impl Package {
     ) -> Result<(), ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = symbol;
@@ -367,7 +372,6 @@ pub const fn truth() -> Word {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn unintern_does_not_remove_external_when_internal_matches() {
         let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

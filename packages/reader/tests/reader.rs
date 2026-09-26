@@ -4,8 +4,8 @@
 //! readtable case, package prefixes, errors, and feature evaluation.
 
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify, classify_object, string_length,
-    string_ref, symbol_name,
+    ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify, classify_object,
+    make_cons, make_string, string_length, string_ref, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, ReadtableCase, read, read_from_string};
 
@@ -149,6 +149,42 @@ fn reads_keyword_symbols() {
         .map(|i| string_ref(&ctx, pkg_name, i).unwrap())
         .collect();
     assert_eq!(pkg_name, "KEYWORD");
+}
+
+#[test]
+fn current_package_local_nickname_resolves_before_global_lookup() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut current = runtime.ensure_package(&mut ctx, "CURRENT").unwrap();
+    let current_token = ncl_object::push_root(&mut ctx, &mut current);
+    let mut target = runtime.ensure_package(&mut ctx, "TARGET").unwrap();
+    let target_token = ncl_object::push_root(&mut ctx, &mut target);
+    let mut global = runtime.ensure_package(&mut ctx, "GLOBAL").unwrap();
+    let global_token = ncl_object::push_root(&mut ctx, &mut global);
+    let nickname = make_string(&mut ctx, &runtime, &['L', 'O', 'C', 'A', 'L']).unwrap();
+    let entry = make_cons(&mut ctx, &runtime, nickname, target).unwrap();
+    let local_nicknames = make_cons(&mut ctx, &runtime, entry, Word::NIL).unwrap();
+    Package::from_word(current)
+        .set_local_nicknames(&mut ctx, local_nicknames)
+        .unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_current_package("CURRENT").unwrap();
+    assert_eq!(runtime.find_package(&ctx, "GLOBAL"), Some(global));
+
+    let symbol = read_from_string(&mut ctx, &runtime, "LOCAL:ITEM", &opts)
+        .unwrap()
+        .unwrap();
+    assert_eq!(symbol_package(&ctx, symbol).unwrap(), target);
+    assert_eq!(name_of(&ctx, symbol), "ITEM");
+
+    let symbol = read_from_string(&mut ctx, &runtime, "GLOBAL:ITEM", &opts)
+        .unwrap()
+        .unwrap();
+    assert_eq!(symbol_package(&ctx, symbol).unwrap(), global);
+    assert!(ncl_object::pop_root(&mut ctx, global_token));
+    assert!(ncl_object::pop_root(&mut ctx, target_token));
+    assert!(ncl_object::pop_root(&mut ctx, current_token));
 }
 
 #[test]

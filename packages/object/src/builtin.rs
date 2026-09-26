@@ -352,7 +352,33 @@ pub struct BuiltinImplementation {
     pub keyword_adapter: Option<KeywordAdapter>,
 }
 
+#[derive(Debug)]
+pub struct BuiltinEntry {
+    pub(crate) function: Box<Word>,
+    pub(crate) implementation: BuiltinImplementation,
+    pub(crate) _token: ncl_sys::RootToken,
+}
+
 impl Runtime {
+    /// Record the native entry used by generated code for an existing builtin.
+    pub fn register_builtin_address(&self, identifier: BuiltinIdentifier, address: usize) {
+        self.builtin_addresses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(identifier, address);
+    }
+
+    /// Return the native entry registered for a typed builtin identifier.
+    #[must_use]
+    pub fn builtin_address(&self, identifier: BuiltinIdentifier) -> Option<u64> {
+        self.builtin_addresses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&identifier)
+            .copied()
+            .and_then(|entry| u64::try_from(entry).ok())
+    }
+
     /// Register a safe Rust builtin and install its function object in a symbol cell.
     ///
     /// # Errors
@@ -398,7 +424,7 @@ impl Runtime {
                 self.builtins
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(crate::runtime::BuiltinEntry {
+                    .push(BuiltinEntry {
                         function: rooted_function,
                         implementation,
                         _token: token,
@@ -429,11 +455,12 @@ impl Runtime {
     /// Return the descriptor installed for a function object.
     #[must_use]
     pub fn builtin_descriptor(&self, function: FunctionObject) -> Option<Builtin> {
+        let function_word = self.heap.forwarded_word(function.as_word())?;
         self.builtins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
-            .find(|entry| *entry.function == function.as_word())
+            .find(|entry| *entry.function == function_word)
             .map(|entry| entry.implementation.descriptor)
     }
 }

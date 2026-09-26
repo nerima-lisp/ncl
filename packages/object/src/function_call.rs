@@ -175,13 +175,17 @@ impl Runtime {
         rooted_values.push(function.as_word());
         rooted_values.extend_from_slice(args);
         let result = crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
-            let function_word = *rooted_values[0];
+            let function_word = self
+                .heap
+                .forwarded_word(*rooted_values[0])
+                .ok_or(ObjectError::Unbound)?;
             let implementation = self
                 .builtins
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(&function_word)
-                .copied()
+                .iter()
+                .find(|entry| *entry.function == function_word)
+                .map(|entry| entry.implementation)
                 .ok_or(ObjectError::Unbound)?;
             if rooted_values.len() - 1 < implementation.descriptor.lambda_list.min_arity()
                 || implementation

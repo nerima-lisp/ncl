@@ -102,43 +102,49 @@ fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
 fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     for row in include_str!("../ownership.tsv").lines().skip(1) {
         let fields: Vec<_> = row.split('\t').collect();
-        if fields.len() < 3 {
-            continue;
+        if fields.len() != 7 {
+            return Err(ObjectError::TypeError);
         }
-        let package = runtime.ensure_package(ctx, fields[0])?;
-        Package::from_word(package).intern(ctx, runtime, fields[1])?;
-        if fields[2] == "class" {
-            if runtime.class(ctx, fields[1]).is_none() {
-                install_class(ctx, runtime, fields[1], Some("T"))?;
+        match fields[0] {
+            COMMON_LISP | NCL_MOP => {}
+            _ => return Err(ObjectError::TypeError),
+        }
+
+        match fields[2] {
+            "class" | "special-operator+class" | "constant+class" => {
+                let package = runtime.ensure_package(ctx, fields[0])?;
+                Package::from_word(package).intern(ctx, runtime, fields[1])?;
+                if runtime.class(ctx, fields[1]).is_none() {
+                    install_class(ctx, runtime, fields[1], Some("T"))?;
+                }
             }
-            continue;
-        }
-        if fields[2] != "function" {
-            continue;
-        }
-        let arity = match fields[1] {
-            "SLOT-VALUE" | "SLOT-MAKUNBOUND" | "SLOT-BOUNDP" | "SLOT-EXISTS-P" | "SLOT-UNBOUND" => {
-                2
+            "other" => {}
+            "function" => {
+                let package = runtime.ensure_package(ctx, fields[0])?;
+                Package::from_word(package).intern(ctx, runtime, fields[1])?;
+                let binding: Option<(u8, ncl_object::RustBuiltin)> = match (fields[0], fields[1]) {
+                    (COMMON_LISP, "SLOT-BOUNDP") => Some((2, slot_boundp_builtin)),
+                    (COMMON_LISP, "SLOT-EXISTS-P") => Some((2, slot_exists_builtin)),
+                    (COMMON_LISP, "SLOT-MAKUNBOUND") => Some((2, slot_makunbound_builtin)),
+                    (COMMON_LISP, "SLOT-VALUE") => Some((2, slot_value_builtin)),
+                    (COMMON_LISP, "CLASS-OF") => Some((1, class_of_builtin)),
+                    (COMMON_LISP, "CLASS-NAME") | (NCL_MOP, "CLASS-NAME") => {
+                        Some((1, class_name_builtin))
+                    }
+                    _ if is_registered_elsewhere(fields[0], fields[1]) => None,
+                    _ => return Err(ObjectError::TypeError),
+                };
+                if let Some((arity, callback)) = binding {
+                    let builtin_package = match fields[0] {
+                        COMMON_LISP => BuiltinPackage::CommonLisp,
+                        NCL_MOP => BuiltinPackage::NclMop,
+                        _ => return Err(ObjectError::TypeError),
+                    };
+                    bind(ctx, runtime, builtin_package, fields[1], arity, callback)?;
+                }
             }
-            "SLOT-MISSING" => 4,
-            "CLASS-OF" | "CLASS-NAME" => 1,
-            _ => 0,
-        };
-        let callback = match fields[1] {
-            "SLOT-MAKUNBOUND" => slot_makunbound_builtin,
-            "SLOT-BOUNDP" => slot_boundp_builtin,
-            "SLOT-EXISTS-P" => slot_exists_builtin,
-            "SLOT-VALUE" => slot_value_builtin,
-            "CLASS-OF" => class_of_builtin,
-            "CLASS-NAME" => class_name_builtin,
-            _ => continue,
-        };
-        let package = if fields[0] == NCL_MOP {
-            BuiltinPackage::NclMop
-        } else {
-            BuiltinPackage::CommonLisp
-        };
-        bind(ctx, runtime, package, fields[1], arity, callback)?;
+            _ => return Err(ObjectError::TypeError),
+        }
     }
     bind(
         ctx,
@@ -147,6 +153,25 @@ fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<
         "SLOT-VALUE-SET",
         3,
         slot_set_builtin,
+    )
+}
+
+fn is_registered_elsewhere(package: &str, name: &str) -> bool {
+    matches!(
+        (package, name),
+        (COMMON_LISP, "MAKE-INSTANCE")
+            | (COMMON_LISP, "INITIALIZE-INSTANCE")
+            | (COMMON_LISP, "SHARED-INITIALIZE")
+            | (NCL_MOP, "MAKE-INSTANCE")
+            | (NCL_MOP, "CLASS-DIRECT-SLOTS")
+            | (NCL_MOP, "CLASS-PRECEDENCE-LIST")
+            | (NCL_MOP, "CLASS-SLOTS")
+            | (NCL_MOP, "SLOT-DEFINITION-NAME")
+            | (NCL_MOP, "SLOT-DEFINITION-LOCATION")
+            | (NCL_MOP, "SLOT-VALUE-USING-CLASS")
+            | (NCL_MOP, "SLOT-BOUNDP-USING-CLASS")
+            | (NCL_MOP, "SLOT-MAKUNBOUND-USING-CLASS")
+            | (NCL_MOP, "EQL-SPECIALIZER-OBJECT")
     )
 }
 
@@ -160,7 +185,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     runtime.ensure_package(&mut ctx, NCL_MOP)?;
     register_classes(&mut ctx, runtime)?;
-    register_owned_symbols(&mut ctx, runtime)?;
     for descriptor in mop::builtin_descriptors() {
         runtime.register_builtin(
             &mut ctx,
@@ -169,5 +193,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         )?;
     }
     initialization::register_initialization_builtins(runtime)?;
+    register_owned_symbols(&mut ctx, runtime)?;
     Ok(())
 }

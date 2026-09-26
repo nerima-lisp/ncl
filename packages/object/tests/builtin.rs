@@ -120,6 +120,39 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
 }
 
 #[test]
+fn builtin_registry_follows_function_relocation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    let mut function_word = function.as_word();
+    let token = ncl_object::push_root(&mut ctx, &mut function_word);
+    ctx.collect(true)
+        .unwrap_or_else(|error| panic!("collection: {error:?}"));
+    let relocated = ncl_object::FunctionObject::try_from(function_word)
+        .unwrap_or_else(|error| panic!("relocated function: {error:?}"));
+    assert_eq!(runtime.builtin_descriptor(relocated), Some(descriptor));
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, relocated, &[Word::fixnum(2), Word::fixnum(3)]),
+        Ok(Word::fixnum(5))
+    );
+    assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
 fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

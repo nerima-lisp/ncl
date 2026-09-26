@@ -1,6 +1,13 @@
+//! Native builtins require a non-null pointer to a registered live thread.
+//!
+//! A failed operation reports its only error through `Thread`'s
+//! `NativeError` side channel and returns `Word::NIL` as its value. `NIL` is
+//! therefore not an error payload and must not be replaced with `UNBOUND`.
+
 use crate::{
     Heap, NativeError, NativeOperation, OverflowSemantics, Thread, Word, collect, read_cons_word,
 };
+use std::ptr::NonNull;
 
 /// Allocate a cons cell through the heap already associated with `thread`.
 ///
@@ -9,18 +16,16 @@ use crate::{
 /// call; the generated entry owns that condition through its pinned context.
 ///
 /// # Safety
-/// The thread pointer must be non-null and point to a registered live thread.
-pub unsafe extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) -> Word {
-    if thread.is_null() {
-        return Word::UNBOUND;
-    }
-    // SAFETY: generated code passes the pinned, registered Thread pointer.
-    let thread = unsafe { &mut *thread };
+/// `thread` must point to a registered live thread and remain valid for the
+/// duration of the call.
+pub unsafe extern "C" fn native_cons(mut thread: NonNull<Thread>, car: Word, cdr: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
     let Some(heap) = thread.heap().map(std::ptr::from_ref::<Heap>) else {
         thread.set_native_error(NativeError::ThreadNotRegistered {
             operation: NativeOperation::Cons,
         });
-        return Word::UNBOUND;
+        return Word::NIL;
     };
     // SAFETY: the heap pointer is owned by the registered thread for this call.
     match unsafe { (&*heap).alloc_cons(thread, car, cdr) } {
@@ -30,7 +35,7 @@ pub unsafe extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) 
                 operation: NativeOperation::Cons,
                 condition,
             });
-            Word::UNBOUND
+            Word::NIL
         }
     }
 }
@@ -38,19 +43,18 @@ pub unsafe extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) 
 /// Return the car of a cons cell through the native-entry boundary.
 ///
 /// # Safety
-/// The thread pointer must be non-null and point to a registered live thread.
+/// `thread` must point to a registered live thread and remain valid for the
+/// duration of the call.
 #[allow(clippy::option_if_let_else, clippy::single_match_else)]
-pub unsafe extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
-    if thread.is_null() {
-        return Word::UNBOUND;
-    }
-    // SAFETY: generated code passes the pinned, registered Thread pointer.
-    let thread = unsafe { &mut *thread };
+#[must_use]
+pub unsafe extern "C" fn native_car(mut thread: NonNull<Thread>, value: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
     if thread.heap().is_none() {
         thread.set_native_error(NativeError::ThreadNotRegistered {
             operation: NativeOperation::Car,
         });
-        return Word::UNBOUND;
+        return Word::NIL;
     }
     if value == Word::NIL {
         return Word::NIL;
@@ -61,7 +65,7 @@ pub unsafe extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
             operand: 0,
             value,
         });
-        return Word::UNBOUND;
+        return Word::NIL;
     }
     match read_cons_word(thread, value, 0) {
         Some(value) => value,
@@ -70,23 +74,21 @@ pub unsafe extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
                 operation: NativeOperation::Car,
                 value,
             });
-            Word::UNBOUND
+            Word::NIL
         }
     }
 }
 
 /// Add two fixnums through the native-entry boundary.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn native_add(thread: *mut Thread, left: Word, right: Word) -> Word {
-    // SAFETY: the caller contract permits a null pointer and otherwise requires a live Thread.
-    let Some(thread) = (unsafe { thread.as_mut() }) else {
-        return Word::UNBOUND;
-    };
+#[must_use]
+pub extern "C" fn native_add(mut thread: NonNull<Thread>, left: Word, right: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
     if thread.heap().is_none() {
         thread.set_native_error(NativeError::ThreadNotRegistered {
             operation: NativeOperation::Add,
         });
-        return Word::UNBOUND;
+        return Word::NIL;
     }
     if let (Some(left), Some(right)) = (left.as_fixnum(), right.as_fixnum()) {
         if let Some(value) = left.checked_add(right) {
@@ -111,21 +113,19 @@ pub extern "C" fn native_add(thread: *mut Thread, left: Word, right: Word) -> Wo
             value,
         });
     }
-    Word::UNBOUND
+    Word::NIL
 }
 
 /// Multiply two fixnums through the native-entry boundary.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn native_mul(thread: *mut Thread, left: Word, right: Word) -> Word {
-    // SAFETY: the caller contract permits a null pointer and otherwise requires a live Thread.
-    let Some(thread) = (unsafe { thread.as_mut() }) else {
-        return Word::UNBOUND;
-    };
+#[must_use]
+pub extern "C" fn native_mul(mut thread: NonNull<Thread>, left: Word, right: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
     if thread.heap().is_none() {
         thread.set_native_error(NativeError::ThreadNotRegistered {
             operation: NativeOperation::Mul,
         });
-        return Word::UNBOUND;
+        return Word::NIL;
     }
     if let (Some(left), Some(right)) = (left.as_fixnum(), right.as_fixnum()) {
         if let Some(value) = left.checked_mul(right) {
@@ -150,20 +150,17 @@ pub extern "C" fn native_mul(thread: *mut Thread, left: Word, right: Word) -> Wo
             value,
         });
     }
-    Word::UNBOUND
+    Word::NIL
 }
 
 /// Capture the generated frame and service a cooperative safepoint request.
 ///
 /// # Safety
-/// The thread pointer must be non-null and the frame and PC must describe the
-/// live generated frame at a registered safepoint map.
-pub unsafe extern "C" fn native_safepoint(thread: *mut Thread, frame: *mut u8, pc: usize) {
-    if thread.is_null() {
-        return;
-    }
-    // SAFETY: generated code passes the registered thread and its live frame.
-    let thread = unsafe { &mut *thread };
+/// `thread` must point to a registered live thread. `frame` and `pc` must
+/// describe the live generated frame at a registered safepoint map.
+pub unsafe extern "C" fn native_safepoint(mut thread: NonNull<Thread>, frame: *mut u8, pc: usize) {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
     thread.capture_native_frame(frame.addr(), pc);
     thread.enter_native();
     collect(thread, false);

@@ -1,16 +1,20 @@
-use super::*;
+use super::StreamKind;
+use ncl_object::{
+    BuiltinArgs, ObjectError, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
+    string_length, string_ref, symbol_name, with_roots,
+};
 
-pub(crate) fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+pub fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
     (0..string_length(ctx, value)?)
         .map(|index| string_ref(ctx, value, index))
         .collect()
 }
 
-pub(crate) fn symbol_text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+pub fn symbol_text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
     text(ctx, symbol_name(ctx, value)?)
 }
 
-pub(crate) fn option(
+pub fn option(
     ctx: &ThreadContext,
     args: &BuiltinArgs<'_>,
     keyword: &str,
@@ -28,7 +32,7 @@ pub(crate) fn option(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ExistsPolicy {
+pub enum ExistsPolicy {
     Error,
     Nil,
     Append,
@@ -37,13 +41,16 @@ pub(crate) enum ExistsPolicy {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MissingPolicy {
+pub enum MissingPolicy {
     Error,
     Nil,
     Create,
 }
 
-pub(crate) fn exists_policy(ctx: &ThreadContext, args: &BuiltinArgs<'_>) -> Result<ExistsPolicy, ObjectError> {
+pub fn exists_policy(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+) -> Result<ExistsPolicy, ObjectError> {
     let value = match option(ctx, args, "IF-EXISTS")? {
         Some(value) => symbol_text(ctx, value)?,
         None => return Ok(ExistsPolicy::Supersede),
@@ -66,7 +73,7 @@ pub(crate) fn exists_policy(ctx: &ThreadContext, args: &BuiltinArgs<'_>) -> Resu
     }
 }
 
-pub(crate) fn missing_policy(
+pub fn missing_policy(
     ctx: &ThreadContext,
     args: &BuiltinArgs<'_>,
     default: MissingPolicy,
@@ -86,7 +93,7 @@ pub(crate) fn missing_policy(
     }
 }
 
-pub(crate) fn direction_word(
+pub fn direction_word(
     ctx: &ThreadContext,
     args: &BuiltinArgs<'_>,
 ) -> Result<(Word, String), ObjectError> {
@@ -99,21 +106,33 @@ pub(crate) fn direction_word(
     Ok((word, direction))
 }
 
-pub(crate) fn format_word(ctx: &ThreadContext, args: &BuiltinArgs<'_>) -> Result<Word, ObjectError> {
+pub fn format_word(ctx: &ThreadContext, args: &BuiltinArgs<'_>) -> Result<Word, ObjectError> {
     option(ctx, args, "EXTERNAL-FORMAT")?.map_or(Ok(Word::NIL), Ok)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn make_file_stream(
+#[derive(Clone, Copy)]
+pub struct FileStreamSpec {
+    pub path: Word,
+    pub direction: Word,
+    pub format: Word,
+    pub kind: StreamKind,
+    pub position: usize,
+    pub implementation: Word,
+}
+
+pub fn make_file_stream(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    path: Word,
-    direction: Word,
-    format: Word,
-    kind: StreamKind,
-    position: usize,
-    implementation: Word,
+    spec: FileStreamSpec,
 ) -> Result<Word, ObjectError> {
+    let FileStreamSpec {
+        path,
+        direction,
+        format,
+        kind,
+        position,
+        implementation,
+    } = spec;
     with_roots(
         ctx,
         &[path, direction, format, implementation],

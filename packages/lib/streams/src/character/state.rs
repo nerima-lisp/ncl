@@ -1,9 +1,12 @@
-use super::*;
+use super::{
+    BuiltinArgs, CLOSED, ObjectError, Runtime, STRING_INPUT, STRING_OUTPUT, Stream, ThreadContext,
+    Word, simple_vector_ref, simple_vector_set,
+};
 
 const FILE_IO: i64 = -5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum StreamKind {
+pub enum StreamKind {
     Data,
     StringInput,
     StringOutput,
@@ -33,20 +36,17 @@ impl StreamKind {
     }
 }
 
-pub(crate) fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+pub fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     (0..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::TypeError))
         .collect()
 }
 
-pub(crate) fn stream_from_args(
-    args: &BuiltinArgs<'_>,
-    index: usize,
-) -> Result<Stream, ObjectError> {
+pub fn stream_from_args(args: &BuiltinArgs<'_>, index: usize) -> Result<Stream, ObjectError> {
     Ok(Stream::from_word(args.required(index)?))
 }
 
-pub(crate) fn stream_or_default(
+pub fn stream_or_default(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -59,7 +59,7 @@ pub(crate) fn stream_or_default(
     }
 }
 
-pub(crate) fn state_kind(ctx: &ThreadContext, state: Word) -> Result<StreamKind, ObjectError> {
+pub fn state_kind(ctx: &ThreadContext, state: Word) -> Result<StreamKind, ObjectError> {
     match simple_vector_ref(ctx, state, 0)?.as_fixnum() {
         Some(0) => Ok(StreamKind::Data),
         Some(value) if value == STRING_INPUT => Ok(StreamKind::StringInput),
@@ -80,18 +80,14 @@ const fn invalid_stream_kind(_value: i64) -> Result<StreamKind, ObjectError> {
     Err(ObjectError::Layout)
 }
 
-pub(crate) fn ensure_open(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
+pub fn ensure_open(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
     if simple_vector_ref(ctx, state, 0)?.as_fixnum() == Some(CLOSED) {
         return Err(ObjectError::TypeError);
     }
     Ok(())
 }
 
-pub(crate) fn position(
-    ctx: &ThreadContext,
-    state: Word,
-    index: usize,
-) -> Result<usize, ObjectError> {
+pub fn position(ctx: &ThreadContext, state: Word, index: usize) -> Result<usize, ObjectError> {
     usize::try_from(
         simple_vector_ref(ctx, state, index)?
             .as_fixnum()
@@ -100,7 +96,7 @@ pub(crate) fn position(
     .map_err(|_| ObjectError::Layout)
 }
 
-pub(crate) fn set_position(
+pub fn set_position(
     ctx: &mut ThreadContext,
     state: Word,
     index: usize,

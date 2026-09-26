@@ -1,6 +1,25 @@
-use super::*;
+use super::{
+    BuiltinArgs, CLOSED, DATA, ExistsPolicy, FileStreamSpec, MissingPolicy, MultipleValues,
+    ObjectError, ObjectRef, POSITION, Runtime, Stream, StreamKind, ThreadContext, Word,
+    classify_object, direction_word, ensure_open, exists_policy, file_path, flush_file_stream,
+    format_word, make_file_stream, missing_policy, simple_vector_ref, simple_vector_set,
+    state_kind, stream_element_type, stream_external_format, stream_from_args, stream_state,
+    symbol_text, text,
+};
+use ncl_object::{make_simple_vector, make_stream, simple_vector_length, stream_direction};
+use std::fs;
+use std::io::{IsTerminal, Read};
 
-pub(crate) fn open_adapter(
+#[derive(Clone, Copy)]
+struct OpenFileSpec<'a> {
+    path_word: Word,
+    direction: Word,
+    format: Word,
+    path: &'a str,
+    exists: bool,
+}
+
+pub fn open_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -12,114 +31,183 @@ pub(crate) fn open_adapter(
     let exists = fs::metadata(&path).is_ok();
     let format = format_word(ctx, args)?;
     if direction.eq_ignore_ascii_case("INPUT") {
-        let missing = missing_policy(ctx, args, MissingPolicy::Error)?;
-        if !exists {
-            match missing {
-                MissingPolicy::Nil => return Ok(Word::NIL),
-                MissingPolicy::Error => return Err(ObjectError::Layout),
-                MissingPolicy::Create => {
-                    fs::File::create(&path).map_err(|_| ObjectError::Layout)?;
-                }
-            }
-        }
-        let mut file = fs::File::open(&path).map_err(|_| ObjectError::Layout)?;
-        let interactive = file.is_terminal();
-        let mut data = Vec::new();
-        if !interactive {
-            file.read_to_end(&mut data)
-                .map_err(|_| ObjectError::Layout)?;
-        }
-        let state_values = std::iter::once(Word::fixnum(StreamKind::Data.code()))
-            .chain(std::iter::once(Word::fixnum(0)))
-            .chain(data.into_iter().map(|byte| Word::fixnum(i64::from(byte))))
-            .collect::<Vec<_>>();
-        let state = make_simple_vector(ctx, runtime, &state_values)?;
-        return Ok(make_stream(
-            ctx,
-            runtime,
-            direction_word,
-            Word::NIL,
-            format,
-            state,
-            if interactive { Word::TRUE } else { Word::NIL },
-        )?
-        .into());
+        return open_input_adapter(ctx, runtime, args, direction_word, format, &path, exists);
     }
     if direction.eq_ignore_ascii_case("OUTPUT") {
-        let missing = missing_policy(ctx, args, MissingPolicy::Create)?;
-        if !exists {
-            match missing {
-                MissingPolicy::Nil => return Ok(Word::NIL),
-                MissingPolicy::Error => return Err(ObjectError::Layout),
-                MissingPolicy::Create => {}
-            }
-        }
-        let policy = exists_policy(ctx, args)?;
-        if exists && policy == ExistsPolicy::Error {
-            return Err(ObjectError::TypeError);
-        }
-        if exists && policy == ExistsPolicy::Nil {
-            return Ok(Word::NIL);
-        }
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true);
-        let position = if policy == ExistsPolicy::Append {
-            options.append(true);
-            fs::metadata(&path).map_err(|_| ObjectError::Layout)?.len()
-        } else {
-            if policy == ExistsPolicy::Supersede {
-                options.truncate(true);
-            }
-            0
-        };
-        let file = options.open(&path).map_err(|_| ObjectError::Layout)?;
-        let interactive = file.is_terminal();
-        drop(file);
-        return make_file_stream(
+        return open_output_adapter(
             ctx,
             runtime,
-            path_word,
-            direction_word,
-            format,
-            StreamKind::FileOutput,
-            usize::try_from(position).map_err(|_| ObjectError::Layout)?,
-            if interactive { Word::TRUE } else { Word::NIL },
+            args,
+            OpenFileSpec {
+                path_word,
+                direction: direction_word,
+                format,
+                path: &path,
+                exists,
+            },
         );
     }
     if direction.eq_ignore_ascii_case("IO") {
-        let missing = missing_policy(ctx, args, MissingPolicy::Error)?;
-        if !exists {
-            match missing {
-                MissingPolicy::Nil => return Ok(Word::NIL),
-                MissingPolicy::Error => return Err(ObjectError::Layout),
-                MissingPolicy::Create => {
-                    fs::File::create(&path).map_err(|_| ObjectError::Layout)?;
-                }
-            }
-        }
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&path)
-            .map_err(|_| ObjectError::Layout)?;
-        let interactive = file.is_terminal();
-        drop(file);
-        return make_file_stream(
+        return open_io_adapter(
             ctx,
             runtime,
-            path_word,
-            direction_word,
-            format,
-            StreamKind::FileIo,
-            0,
-            if interactive { Word::TRUE } else { Word::NIL },
+            args,
+            OpenFileSpec {
+                path_word,
+                direction: direction_word,
+                format,
+                path: &path,
+                exists,
+            },
         );
     }
     Err(ObjectError::TypeError)
 }
 
+fn open_input_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    direction: Word,
+    format: Word,
+    path: &str,
+    exists: bool,
+) -> Result<Word, ObjectError> {
+    let missing = missing_policy(ctx, args, MissingPolicy::Error)?;
+    if !exists {
+        match missing {
+            MissingPolicy::Nil => return Ok(Word::NIL),
+            MissingPolicy::Error => return Err(ObjectError::Layout),
+            MissingPolicy::Create => {
+                fs::File::create(path).map_err(|_| ObjectError::Layout)?;
+            }
+        }
+    }
+    let mut file = fs::File::open(path).map_err(|_| ObjectError::Layout)?;
+    let interactive = file.is_terminal();
+    let mut data = Vec::new();
+    if !interactive {
+        file.read_to_end(&mut data)
+            .map_err(|_| ObjectError::Layout)?;
+    }
+    let state_values = std::iter::once(Word::fixnum(StreamKind::Data.code()))
+        .chain(std::iter::once(Word::fixnum(0)))
+        .chain(data.into_iter().map(|byte| Word::fixnum(i64::from(byte))))
+        .collect::<Vec<_>>();
+    let state = make_simple_vector(ctx, runtime, &state_values)?;
+    Ok(make_stream(
+        ctx,
+        runtime,
+        direction,
+        Word::NIL,
+        format,
+        state,
+        if interactive { Word::TRUE } else { Word::NIL },
+    )?
+    .into())
+}
 
-pub(crate) fn close_adapter(
+fn open_output_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    spec: OpenFileSpec<'_>,
+) -> Result<Word, ObjectError> {
+    let OpenFileSpec {
+        path_word,
+        direction,
+        format,
+        path,
+        exists,
+    } = spec;
+    let missing = missing_policy(ctx, args, MissingPolicy::Create)?;
+    if !exists {
+        match missing {
+            MissingPolicy::Nil => return Ok(Word::NIL),
+            MissingPolicy::Error => return Err(ObjectError::Layout),
+            MissingPolicy::Create => {}
+        }
+    }
+    let policy = exists_policy(ctx, args)?;
+    if exists && policy == ExistsPolicy::Error {
+        return Err(ObjectError::TypeError);
+    }
+    if exists && policy == ExistsPolicy::Nil {
+        return Ok(Word::NIL);
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true);
+    let position = if policy == ExistsPolicy::Append {
+        options.append(true);
+        fs::metadata(path).map_err(|_| ObjectError::Layout)?.len()
+    } else {
+        if policy == ExistsPolicy::Supersede {
+            options.truncate(true);
+        }
+        0
+    };
+    let file = options.open(path).map_err(|_| ObjectError::Layout)?;
+    let interactive = file.is_terminal();
+    drop(file);
+    make_file_stream(
+        ctx,
+        runtime,
+        FileStreamSpec {
+            path: path_word,
+            direction,
+            format,
+            kind: StreamKind::FileOutput,
+            position: usize::try_from(position).map_err(|_| ObjectError::Layout)?,
+            implementation: if interactive { Word::TRUE } else { Word::NIL },
+        },
+    )
+}
+
+fn open_io_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    spec: OpenFileSpec<'_>,
+) -> Result<Word, ObjectError> {
+    let OpenFileSpec {
+        path_word,
+        direction,
+        format,
+        path,
+        exists,
+    } = spec;
+    let missing = missing_policy(ctx, args, MissingPolicy::Error)?;
+    if !exists {
+        match missing {
+            MissingPolicy::Nil => return Ok(Word::NIL),
+            MissingPolicy::Error => return Err(ObjectError::Layout),
+            MissingPolicy::Create => {
+                fs::File::create(path).map_err(|_| ObjectError::Layout)?;
+            }
+        }
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|_| ObjectError::Layout)?;
+    let interactive = file.is_terminal();
+    drop(file);
+    make_file_stream(
+        ctx,
+        runtime,
+        FileStreamSpec {
+            path: path_word,
+            direction,
+            format,
+            kind: StreamKind::FileIo,
+            position: 0,
+            implementation: if interactive { Word::TRUE } else { Word::NIL },
+        },
+    )
+}
+
+pub fn close_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -132,7 +220,7 @@ pub(crate) fn close_adapter(
     Ok(Word::TRUE)
 }
 
-pub(crate) fn file_position_adapter(
+pub fn file_position_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -160,7 +248,7 @@ pub(crate) fn file_position_adapter(
     simple_vector_ref(ctx, state, POSITION)
 }
 
-pub(crate) fn file_length_adapter(
+pub fn file_length_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -185,7 +273,7 @@ pub(crate) fn file_length_adapter(
     ))
 }
 
-pub(crate) fn file_string_length_adapter(
+pub fn file_string_length_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -200,7 +288,7 @@ pub(crate) fn file_string_length_adapter(
     ))
 }
 
-pub(crate) fn streamp_adapter(
+pub fn streamp_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -218,7 +306,7 @@ pub(crate) fn streamp_adapter(
     )
 }
 
-pub(crate) fn stream_direction_matches(
+pub fn stream_direction_matches(
     ctx: &ThreadContext,
     stream: Word,
     expected: &str,
@@ -231,7 +319,7 @@ pub(crate) fn stream_direction_matches(
     Ok(direction.eq_ignore_ascii_case(expected) || direction.eq_ignore_ascii_case("IO"))
 }
 
-pub(crate) fn input_stream_p_adapter(
+pub fn input_stream_p_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -246,7 +334,7 @@ pub(crate) fn input_stream_p_adapter(
     )
 }
 
-pub(crate) fn output_stream_p_adapter(
+pub fn output_stream_p_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -261,7 +349,7 @@ pub(crate) fn output_stream_p_adapter(
     )
 }
 
-pub(crate) fn open_stream_p_adapter(
+pub fn open_stream_p_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -275,7 +363,7 @@ pub(crate) fn open_stream_p_adapter(
     }
 }
 
-pub(crate) fn interactive_stream_p_adapter(
+pub fn interactive_stream_p_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -289,7 +377,7 @@ pub(crate) fn interactive_stream_p_adapter(
     })
 }
 
-pub(crate) fn stream_element_type_adapter(
+pub fn stream_element_type_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -298,7 +386,7 @@ pub(crate) fn stream_element_type_adapter(
     stream_element_type(ctx, Stream::from_word(args.required(0)?))
 }
 
-pub(crate) fn stream_external_format_adapter(
+pub fn stream_external_format_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,

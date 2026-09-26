@@ -1,6 +1,12 @@
-use super::*;
+use super::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, Stream, StreamKind,
+    ThreadContext, Word, classify_object, ensure_open, make_cons, pop_root, position, push_root,
+    set_position, simple_vector_length, simple_vector_ref, simple_vector_set, state_kind,
+    stream_or_default, stream_state,
+};
+use crate::{DATA, POSITION};
 
-pub(crate) fn write_to_stream(
+pub fn write_to_stream(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     stream: Stream,
@@ -65,7 +71,7 @@ pub(crate) fn write_to_stream(
     Ok(())
 }
 
-pub(crate) fn write_char_adapter(
+pub fn write_char_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -81,7 +87,7 @@ pub(crate) fn write_char_adapter(
     args.required(0)
 }
 
-pub(crate) fn write_byte_adapter(
+pub fn write_byte_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -116,7 +122,7 @@ pub(crate) fn write_byte_adapter(
     args.required(0)
 }
 
-pub(crate) fn finish_output_adapter(
+pub fn finish_output_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,

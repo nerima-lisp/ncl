@@ -1,6 +1,11 @@
-use super::*;
+use super::{
+    BuiltinArgs, DATA, MultipleValues, ObjectError, POSITION, Runtime, Stream, StreamKind,
+    ThreadContext, Word, ensure_open, make_string, position, set_position, simple_vector_length,
+    simple_vector_ref, state_kind, stream_from_args, stream_or_default, stream_state,
+    string_length, string_ref,
+};
 
-pub(crate) fn next_character(
+pub fn next_character(
     ctx: &mut ThreadContext,
     stream: Stream,
 ) -> Result<Option<char>, ObjectError> {
@@ -76,7 +81,7 @@ pub(crate) fn next_character(
     Ok(Some(character))
 }
 
-pub(crate) fn peek_character(
+pub fn peek_character(
     ctx: &mut ThreadContext,
     stream: Stream,
 ) -> Result<Option<char>, ObjectError> {
@@ -104,7 +109,7 @@ pub(crate) fn peek_character(
     Ok(result)
 }
 
-pub(crate) fn read_char_adapter(
+pub fn read_char_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -117,7 +122,7 @@ pub(crate) fn read_char_adapter(
     )
 }
 
-pub(crate) fn unread_char_adapter(
+pub fn unread_char_adapter(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -150,7 +155,7 @@ pub(crate) fn unread_char_adapter(
     args.required(0)
 }
 
-pub(crate) fn peek_char_adapter(
+pub fn peek_char_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -168,7 +173,7 @@ pub(crate) fn peek_char_adapter(
     )
 }
 
-pub(crate) fn read_line_adapter(
+pub fn read_line_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -189,8 +194,7 @@ pub(crate) fn read_line_adapter(
     Ok(line)
 }
 
-
-pub(crate) fn read_byte_adapter(
+pub fn read_byte_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,

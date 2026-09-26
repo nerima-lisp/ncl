@@ -1,8 +1,12 @@
+use crate::character::{
+    StreamKind, ensure_open, position, set_position, state_kind, stream_from_args,
+};
 use crate::{CLOSED, DATA, POSITION};
-use crate::character::{ensure_open, position, set_position, state_kind, stream_from_args, StreamKind};
-use ncl_object::*;
-use std::fs;
-use std::io::{IsTerminal, Read, Seek, SeekFrom, Write};
+use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, Stream, ThreadContext, Word,
+    classify_object, simple_vector_ref, simple_vector_set, stream_element_type,
+    stream_external_format, stream_state,
+};
 
 mod adapters;
 mod core;

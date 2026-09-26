@@ -1,6 +1,13 @@
-use super::*;
+use super::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Runtime, STRING_INPUT,
+    STRING_OUTPUT, Stream, StreamKind, ThreadContext, Word, car, cdr, classify_object,
+    make_simple_vector, make_stream, make_string, peek_character, simple_vector_ref,
+    simple_vector_set, state_kind, stream_from_args, stream_or_default, string_length, string_ref,
+    with_root, write_to_stream,
+};
+use ncl_object::{stream_state, with_roots};
 
-pub(crate) fn write_string_adapter(
+pub fn write_string_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -34,7 +41,7 @@ pub(crate) fn write_string_adapter(
     })
 }
 
-pub(crate) fn write_line_adapter(
+pub fn write_line_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -70,7 +77,7 @@ pub(crate) fn write_line_adapter(
     })
 }
 
-pub(crate) fn terpri_adapter(
+pub fn terpri_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -81,7 +88,7 @@ pub(crate) fn terpri_adapter(
     Ok(Word::NIL)
 }
 
-pub(crate) fn fresh_line_adapter(
+pub fn fresh_line_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -95,7 +102,7 @@ pub(crate) fn fresh_line_adapter(
     Ok(Word::TRUE)
 }
 
-pub(crate) fn make_string_input_adapter(
+pub fn make_string_input_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -142,7 +149,7 @@ pub(crate) fn make_string_input_adapter(
     })
 }
 
-pub(crate) fn make_string_output_adapter(
+pub fn make_string_output_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     _args: &BuiltinArgs<'_>,
@@ -169,7 +176,7 @@ pub(crate) fn make_string_output_adapter(
     })
 }
 
-pub(crate) fn get_output_stream_string_adapter(
+pub fn get_output_stream_string_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,

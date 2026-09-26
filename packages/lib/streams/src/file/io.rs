@@ -1,14 +1,16 @@
-use super::*;
+use super::{
+    ObjectError, POSITION, StreamKind, ThreadContext, Word, ensure_open, position, set_position,
+    state_kind, text,
+};
+use ncl_object::simple_vector_ref;
+use std::fs;
+use std::io::{Read, Seek, SeekFrom, Write};
 
-pub(crate) fn file_path(ctx: &ThreadContext, state: Word) -> Result<String, ObjectError> {
+pub fn file_path(ctx: &ThreadContext, state: Word) -> Result<String, ObjectError> {
     text(ctx, simple_vector_ref(ctx, state, 2)?)
 }
 
-pub(crate) fn write_bytes(
-    ctx: &mut ThreadContext,
-    state: Word,
-    bytes: &[u8],
-) -> Result<(), ObjectError> {
+pub fn write_bytes(ctx: &mut ThreadContext, state: Word, bytes: &[u8]) -> Result<(), ObjectError> {
     ensure_open(ctx, state)?;
     let kind = state_kind(ctx, state)?;
     let path = file_path(ctx, state)?;
@@ -30,7 +32,7 @@ pub(crate) fn write_bytes(
     set_position(ctx, state, POSITION, position.saturating_add(bytes.len()))
 }
 
-pub(crate) fn read_file_byte(
+pub fn read_file_byte(
     ctx: &ThreadContext,
     state: Word,
     position: usize,
@@ -52,7 +54,7 @@ pub(crate) fn read_file_byte(
     }
 }
 
-pub(crate) fn flush_file_stream(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
+pub fn flush_file_stream(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
     let kind = state_kind(ctx, state)?;
     if kind != StreamKind::FileOutput && kind != StreamKind::FileIo {
         return Ok(());

@@ -169,6 +169,7 @@ impl PassManager {
         self.add_function_pass(InlineDirectCalls::default());
         self.add_function_pass(GlobalValueNumbering);
         self.add_function_pass(Sccp);
+        self.add_function_pass(DeadCodeElimination);
     }
 
     /// Runs all passes until unchanged or until the configured limit.
@@ -396,6 +397,11 @@ mod gvn;
 pub use gvn::GlobalValueNumbering;
 mod sccp;
 pub use sccp::Sccp;
+mod dce;
+pub use dce::DeadCodeElimination;
+#[cfg(test)]
+#[path = "dce_tests.rs"]
+mod dce_tests;
 #[cfg(test)]
 #[path = "gvn_tests.rs"]
 mod gvn_tests;

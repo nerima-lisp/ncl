@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "legacy adapters retained while split numeric modules own registration"
+)]
+
 use super::{Number, ObjectError, Runtime, ThreadContext, Word, gcd_i128, integer, word};
 
 pub fn gcd(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {

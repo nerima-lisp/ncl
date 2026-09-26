@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "legacy adapters retained while split numeric modules own registration"
+)]
+
 use super::{MultipleValues, Number, ObjectError, Runtime, ThreadContext, Word, number, word};
 
 const fn round_pair(value: f64, mode: u8) -> f64 {

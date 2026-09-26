@@ -2,27 +2,16 @@
 
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    code_entry, code_size, function_code, function_entry, symbol_function, Function,
-    FunctionArguments, FunctionCaller, FunctionObject, MultipleValues, ObjectError,
-    Runtime as ObjectRuntime, ThreadContext, Word,
+    Function, FunctionArguments, FunctionCaller, FunctionObject, MultipleValues, ObjectError,
+    Runtime as ObjectRuntime, ThreadContext, Word, function_entry, symbol_function,
 };
-use ncl_sys::{invoke_entry_with_function, CodePtr};
+use ncl_sys::invoke_entry_with_function_address;
 
 /// Calls registered Rust builtins and published native simple-funs.
 #[derive(Debug, Default)]
-pub struct RuntimeFunctionCaller<'a> {
-    code: &'a [CodePtr],
-}
+pub struct RuntimeFunctionCaller;
 
-impl<'a> RuntimeFunctionCaller<'a> {
-    /// Create a caller backed by code allocations owned by an outer runtime.
-    #[must_use]
-    pub const fn new(code: &'a [CodePtr]) -> Self {
-        Self { code }
-    }
-}
-
-impl FunctionCaller for RuntimeFunctionCaller<'_> {
+impl FunctionCaller for RuntimeFunctionCaller {
     fn call_function(
         &mut self,
         ctx: &mut ThreadContext,
@@ -38,66 +27,43 @@ impl FunctionCaller for RuntimeFunctionCaller<'_> {
             return Ok(result);
         }
 
-        self.call_native(ctx, function, args.as_slice(), values)
+        call_native(ctx, function, args.as_slice(), values)
     }
 }
 
-impl RuntimeFunctionCaller<'_> {
-    fn call_native(
-        &self,
-        ctx: &mut ThreadContext,
-        function: FunctionObject,
-        args: &[Word],
-        values: &mut MultipleValues,
-    ) -> Result<Word, ObjectError> {
-        let function = Function::from_word(function.as_word());
-        let code = function_code(ctx, function)?;
-        let entry = function_entry(ctx, function)?;
-        let code_start = code_entry(ctx, code)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?;
-        let code_size = code_size(ctx, code)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?;
-        if entry == 0 || code_start < 0 || code_size < 0 {
-            return Err(ObjectError::TypeError);
-        }
-        let code = self
-            .code
-            .iter()
-            .find(|code| entry >= code.address() && entry - code.address() < code.len())
-            .ok_or(ObjectError::TypeError)?;
-        let entry_offset = entry - code.address();
-        if code_start > i64::try_from(code.len()).map_err(|_| ObjectError::Layout)?
-            || code_size > i64::try_from(code.len()).map_err(|_| ObjectError::Layout)?
-            || entry_offset != usize::try_from(code_start).map_err(|_| ObjectError::Layout)?
-        {
-            return Err(ObjectError::Layout);
-        }
-
-        let mut registers = [0_u64; 4];
-        for (register, argument) in args.iter().take(4).enumerate() {
-            registers[register] = argument.bits();
-        }
-        let rest = args
-            .get(4..)
-            .filter(|rest| !rest.is_empty())
-            .map_or(0, |rest| rest.as_ptr() as usize as u64);
-        let (result, count) = invoke_entry_with_function(
-            code,
-            entry_offset,
-            ctx.thread_mut() as *mut ncl_sys::Thread,
-            function.as_word().bits(),
-            args.len() as u64,
-            registers,
-            rest,
-        );
-        values.clear();
-        if count > 1 {
-            return Err(ObjectError::TypeError);
-        }
-        Ok(Word::from_bits(result))
+fn call_native(
+    ctx: &mut ThreadContext,
+    function: FunctionObject,
+    args: &[Word],
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let function = Function::from_word(function.as_word());
+    let entry = function_entry(ctx, function)?;
+    if entry == 0 {
+        return Err(ObjectError::Layout);
     }
+
+    let mut registers = [0_u64; 4];
+    for (register, argument) in args.iter().take(4).enumerate() {
+        registers[register] = argument.bits();
+    }
+    let rest = args
+        .get(4..)
+        .filter(|rest| !rest.is_empty())
+        .map_or(0, |rest| rest.as_ptr() as usize as u64);
+    let (result, count) = invoke_entry_with_function_address(
+        entry,
+        ctx.thread_mut() as *mut ncl_sys::Thread,
+        function.as_word().bits(),
+        args.len() as u64,
+        registers,
+        rest,
+    );
+    values.clear();
+    if count > 1 {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(Word::from_bits(result))
 }
 
 fn resolve_function(
@@ -119,9 +85,9 @@ mod tests {
     use crate::Runtime;
     use ncl_object::typed::FunctionDesignator;
     use ncl_object::{
-        make_closure, make_code_object, Arity, Builtin, BuiltinArgs, BuiltinConvention,
-        BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments,
-        FunctionCaller, LambdaList, MultipleValues, Package, Parameter, ParameterType, Word,
+        Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+        BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller, LambdaList, MultipleValues,
+        Package, Parameter, ParameterType, Word, make_closure, make_code_object,
     };
 
     const TEST_ID: BuiltinIdentifier =
@@ -185,7 +151,7 @@ mod tests {
             .unwrap_or_else(|| panic!("test symbol was not interned"));
         let argument_words = [Word::fixnum(2), Word::fixnum(3)];
         let args = FunctionArguments::new(&argument_words);
-        let mut caller = RuntimeFunctionCaller::new(&runtime.code);
+        let mut caller = RuntimeFunctionCaller;
 
         let mut values = MultipleValues::new();
         assert_eq!(
@@ -254,7 +220,7 @@ mod tests {
         .unwrap_or_else(|error| panic!("closure: {error:?}"));
         let function = ncl_object::FunctionObject::try_from(closure.as_word())
             .unwrap_or_else(|error| panic!("function object: {error:?}"));
-        let mut caller = RuntimeFunctionCaller::new(&runtime.code);
+        let mut caller = RuntimeFunctionCaller;
         let mut values = MultipleValues::new();
 
         assert_eq!(

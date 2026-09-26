@@ -12,6 +12,10 @@ const HASH_TABLE_INDEX: usize = 11;
 const VECTOR_DATA: usize = 2;
 const TOMBSTONE: i64 = -2;
 
+#[path = "collect/weak_mark.rs"]
+mod weak_mark;
+use weak_mark::{WeakMarkContext, referent_is_live};
+
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
@@ -81,66 +85,15 @@ impl super::Heap {
                 stack.push(index);
             }
         }
-        loop {
-            while let Some(index) = stack.pop() {
-                if !live.insert(index) {
-                    continue;
-                }
-                if Self::is_hash_table(&state, index)
-                    && let Some(weakness) = Self::hash_table_weakness(&state, index)
-                {
-                    Self::mark_weak_hash_table(
-                        &state,
-                        index,
-                        weakness,
-                        full,
-                        &live,
-                        &mut weak_kv,
-                        &mut pending_weak_tables,
-                        &mut stack,
-                    );
-                    continue;
-                }
-                if weak_kv.contains_key(&index) {
-                    continue;
-                }
-                for slot in scan::layout(&state, index) {
-                    if state.objects[index].weak.is_some() && slot == 1 {
-                        continue;
-                    }
-                    if let Some(value) = state.objects[index]
-                        .words
-                        .get(slot)
-                        .copied()
-                        .map(Word::from_bits)
-                        && let Some(next) = Self::find(&state, value)
-                    {
-                        stack.push(next);
-                    }
-                }
-            }
-            let pending = std::mem::take(&mut pending_weak_tables);
-            let old_live_count = live.len();
-            for index in pending {
-                if live.contains(&index)
-                    && let Some(weakness) = Self::hash_table_weakness(&state, index)
-                {
-                    Self::mark_weak_hash_table(
-                        &state,
-                        index,
-                        weakness,
-                        full,
-                        &live,
-                        &mut weak_kv,
-                        &mut pending_weak_tables,
-                        &mut stack,
-                    );
-                }
-            }
-            if stack.is_empty() && live.len() == old_live_count {
-                break;
-            }
-        }
+        let mut mark = WeakMarkContext {
+            state: &state,
+            full,
+            live: &mut live,
+            stack: &mut stack,
+            weak_kv: &mut weak_kv,
+            pending: &mut pending_weak_tables,
+        };
+        mark.drain();
         let moved = Self::move_live_objects(&mut state, &mut live);
         let hooks = Self::finish_collection(&mut state, &root_slots, &moved, &live, full);
         drop(state);
@@ -290,119 +243,12 @@ impl super::Heap {
         )
         .as_fixnum()
         {
-            Some(0) => None,
             Some(1) => Some(Weakness::Key),
             Some(2) => Some(Weakness::Value),
             Some(3) => Some(Weakness::KeyAndValue),
             Some(4) => Some(Weakness::KeyOrValue),
             _ => None,
         }
-    }
-
-    fn mark_weak_hash_table(
-        state: &super::State,
-        table: usize,
-        weakness: Weakness,
-        full: bool,
-        live: &HashSet<usize>,
-        weak_kv: &mut HashMap<usize, Weakness>,
-        pending: &mut Vec<usize>,
-        stack: &mut Vec<usize>,
-    ) {
-        let words = &state.objects[table].words;
-        for slot in scan::layout(state, table) {
-            if slot == HASH_TABLE_KV {
-                continue;
-            }
-            if let Some(next) = words
-                .get(slot)
-                .copied()
-                .map(Word::from_bits)
-                .and_then(|value| Self::find(state, value))
-            {
-                stack.push(next);
-            }
-        }
-        let Some(kv) = words
-            .get(HASH_TABLE_KV)
-            .copied()
-            .map(Word::from_bits)
-            .and_then(|value| Self::find(state, value))
-        else {
-            return;
-        };
-        weak_kv.insert(kv, weakness);
-        stack.push(kv);
-        let marker = words.get(HASH_TABLE_MARKER).copied().map(Word::from_bits);
-        let high_water = words
-            .get(HASH_TABLE_HIGH_WATER)
-            .copied()
-            .map(Word::from_bits)
-            .and_then(|word| word.as_fixnum())
-            .and_then(|value| usize::try_from(value).ok())
-            .map_or(0, |value| value);
-        for position in 0..high_water {
-            let Some(key) = state.objects[kv]
-                .words
-                .get(VECTOR_DATA + position * 2)
-                .copied()
-                .map(Word::from_bits)
-            else {
-                continue;
-            };
-            if Some(key) == marker {
-                continue;
-            }
-            let value = state.objects[kv].words[VECTOR_DATA + position * 2 + 1];
-            let value = Word::from_bits(value);
-            match weakness {
-                Weakness::Key => Self::mark_value(state, value, stack),
-                Weakness::Value => Self::mark_value(state, key, stack),
-                Weakness::KeyAndValue => {}
-                Weakness::KeyOrValue => {
-                    let key_live = Self::referent_is_live(state, live, full, key);
-                    let value_live = Self::referent_is_live(state, live, full, value);
-                    if key_live || value_live {
-                        Self::mark_value(state, key, stack);
-                        Self::mark_value(state, value, stack);
-                    } else {
-                        pending.push(table);
-                    }
-                }
-            }
-        }
-    }
-
-    fn mark_value(state: &super::State, value: Word, stack: &mut Vec<usize>) {
-        if let Some(index) = Self::find(state, value) {
-            stack.push(index);
-        }
-    }
-
-    fn referent_is_live(
-        state: &super::State,
-        live: &HashSet<usize>,
-        full: bool,
-        value: Word,
-    ) -> bool {
-        if Self::is_immediate(value) {
-            return true;
-        }
-        Self::find(state, value).is_some_and(|index| {
-            live.contains(&index) || (!full && state.objects[index].generation >= 2)
-        })
-    }
-
-    fn is_immediate(value: Word) -> bool {
-        value.is_fixnum()
-            || value == Word::NIL
-            || value == Word::TRUE
-            || matches!(
-                value.lowtag(),
-                tag if tag == LowTag::Character as u8
-                    || tag == LowTag::SingleFloat as u8
-                    || tag == LowTag::OtherImmediate as u8
-            )
     }
 
     fn weak_kv_indices(state: &super::State, live: &HashSet<usize>) -> HashMap<usize, Weakness> {
@@ -462,7 +308,7 @@ impl super::Heap {
             let high_water = Word::from_bits(state.objects[table].words[HASH_TABLE_HIGH_WATER])
                 .as_fixnum()
                 .and_then(|value| usize::try_from(value).ok())
-                .map_or(0, |value| value);
+                .unwrap_or(0);
             let mut removed = 0;
             for position in 0..high_water {
                 let key_offset = VECTOR_DATA + position * 2;
@@ -475,8 +321,8 @@ impl super::Heap {
                 let value_bits = state.objects[kv].words[key_offset + 1];
                 let key = Word::from_bits(key_bits);
                 let value = Word::from_bits(value_bits);
-                let key_live = Self::referent_is_live(state, live, full, key);
-                let value_live = Self::referent_is_live(state, live, full, value);
+                let key_live = referent_is_live(state, live, full, key);
+                let value_live = referent_is_live(state, live, full, value);
                 let remove = match weakness {
                     Weakness::Key => !key_live,
                     Weakness::Value => !value_live,
@@ -489,7 +335,7 @@ impl super::Heap {
                     state.objects[kv].words[key_offset] = marker;
                     let next = Word::from_bits(state.objects[table].words[HASH_TABLE_FREE_HEAD]);
                     state.objects[kv].words[key_offset + 1] = next.bits();
-                    let free_head = i64::try_from(position).map_or(i64::MAX, |value| value);
+                    let free_head = i64::try_from(position).unwrap_or(i64::MAX);
                     state.objects[table].words[HASH_TABLE_FREE_HEAD] =
                         Word::fixnum(free_head).bits();
                     removed += 1;
@@ -509,8 +355,7 @@ impl super::Heap {
                     .as_fixnum()
                     .and_then(|value| usize::try_from(value).ok())
                     .unwrap_or(0);
-                let new_count =
-                    i64::try_from(count.saturating_sub(removed)).map_or(0, |value| value);
+                let new_count = i64::try_from(count.saturating_sub(removed)).unwrap_or(0);
                 state.objects[table].words[HASH_TABLE_COUNT] = Word::fixnum(new_count).bits();
             }
         }

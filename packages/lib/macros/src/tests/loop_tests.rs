@@ -25,7 +25,7 @@ fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> 
         collect,
         x,
     ];
-    let ast = parse_loop(&ctx, &input)?;
+    let ast = parse_loop(&mut ctx, &input)?;
     assert!(matches!(ast.clauses[0], LoopClause::For(ForClause { .. })));
     assert!(matches!(
         ast.clauses[1],
@@ -89,7 +89,7 @@ fn parses_arithmetic_boundaries_and_equals_then() -> Result<(), ObjectError> {
     let equals = symbol(&mut ctx, &runtime, "=")?;
     let then = symbol(&mut ctx, &runtime, "THEN")?;
     let ast = parse_loop(
-        &ctx,
+        &mut ctx,
         &[for_word, x, equals, Word::fixnum(1), then, Word::fixnum(2)],
     )?;
     assert!(matches!(ast.clauses[0], LoopClause::EqualsThen { .. }));
@@ -117,7 +117,7 @@ fn parses_list_and_vector_iteration_clauses() -> Result<(), ObjectError> {
         symbol(&mut ctx, &runtime, "ACROSS")?,
         symbol(&mut ctx, &runtime, "VECTOR")?,
     ];
-    let ast = parse_loop(&ctx, &input)?;
+    let ast = parse_loop(&mut ctx, &input)?;
     assert!(matches!(ast.clauses[0], LoopClause::In { on: false, .. }));
     assert!(matches!(ast.clauses[1], LoopClause::In { on: true, .. }));
     assert!(matches!(ast.clauses[2], LoopClause::Across { .. }));

@@ -1,5 +1,38 @@
-use crate::SetfExpansion;
-use ncl_object::{ObjectError, ThreadContext, Word};
+use crate::{PlaceRegistry, SetfExpansion, expand_get_setf_expansion, list};
+use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+
+pub fn expansion_values(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    expansion: &SetfExpansion,
+) -> Result<[Word; 5], ObjectError> {
+    with_expansion_roots(
+        ctx,
+        expansion,
+        |ctx, temporary, value_forms, store, store_form, access_form| {
+            let mut temporary = list(ctx, runtime, temporary)?;
+            ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+                let mut value_forms = list(ctx, runtime, value_forms)?;
+                ncl_object::with_root(ctx, &mut value_forms, |ctx, value_forms| {
+                    let mut store = list(ctx, runtime, store)?;
+                    ncl_object::with_root(ctx, &mut store, |_, store| {
+                        Ok([*temporary, *value_forms, *store, store_form, access_form])
+                    })
+                })
+            })
+        },
+    )
+}
+
+pub fn get_setf_expansion_values(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    place_word: Word,
+) -> Result<[Word; 5], ObjectError> {
+    let expansion =
+        expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(runtime), place_word)?;
+    expansion_values(ctx, runtime, &expansion)
+}
 
 pub fn with_expansion_roots<T>(
     ctx: &mut ThreadContext,

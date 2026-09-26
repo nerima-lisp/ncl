@@ -76,9 +76,13 @@ fn progn_with_definition(
     name: Word,
     operation: Word,
 ) -> Result<Word, ObjectError> {
-    let progn = symbol(ctx, runtime, "PROGN")?;
-    let quoted_name = quote(ctx, runtime, name)?;
-    list(ctx, runtime, &[progn, operation, quoted_name])
+    ncl_object::with_roots(ctx, &[name, operation], |ctx, roots| {
+        let name = **roots.first().ok_or(ObjectError::TypeError)?;
+        let operation = **roots.get(1).ok_or(ObjectError::TypeError)?;
+        let progn = symbol(ctx, runtime, "PROGN")?;
+        let quoted_name = quote(ctx, runtime, name)?;
+        list(ctx, runtime, &[progn, operation, quoted_name])
+    })
 }
 
 fn function_definition(
@@ -89,17 +93,61 @@ fn function_definition(
     lambda_list: Word,
     body: &[Word],
 ) -> Result<Word, ObjectError> {
-    let lambda_symbol = symbol(ctx, runtime, "LAMBDA")?;
-    let lambda = list(ctx, runtime, &[lambda_symbol, lambda_list])?;
-    let lambda = append(ctx, runtime, lambda, body)?;
-    let function_symbol = symbol(ctx, runtime, "FUNCTION")?;
-    let function = list(ctx, runtime, &[function_symbol, lambda])?;
-    let accessor_symbol = symbol(ctx, runtime, accessor)?;
-    let quoted_name = quote(ctx, runtime, name)?;
-    let place = list(ctx, runtime, &[accessor_symbol, quoted_name])?;
-    let setf_symbol = symbol(ctx, runtime, "SETF")?;
-    let operation = list(ctx, runtime, &[setf_symbol, place, function])?;
-    progn_with_definition(ctx, runtime, name, operation)
+    ncl_object::with_roots(ctx, &[name, lambda_list], |ctx, roots| {
+        let name = **roots.first().ok_or(ObjectError::TypeError)?;
+        let lambda_list = **roots.get(1).ok_or(ObjectError::TypeError)?;
+        let mut lambda_symbol = symbol(ctx, runtime, "LAMBDA")?;
+        ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
+            let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list])?;
+            ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
+                let mut lambda = append(ctx, runtime, *lambda, body)?;
+                ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
+                    let mut function_symbol = symbol(ctx, runtime, "FUNCTION")?;
+                    ncl_object::with_root(ctx, &mut function_symbol, |ctx, function_symbol| {
+                        let mut function = list(ctx, runtime, &[*function_symbol, *lambda])?;
+                        ncl_object::with_root(ctx, &mut function, |ctx, function| {
+                            let mut accessor_symbol = symbol(ctx, runtime, accessor)?;
+                            ncl_object::with_root(
+                                ctx,
+                                &mut accessor_symbol,
+                                |ctx, accessor_symbol| {
+                                    let mut quoted_name = quote(ctx, runtime, name)?;
+                                    ncl_object::with_root(
+                                        ctx,
+                                        &mut quoted_name,
+                                        |ctx, quoted_name| {
+                                            let mut place = list(
+                                                ctx,
+                                                runtime,
+                                                &[*accessor_symbol, *quoted_name],
+                                            )?;
+                                            ncl_object::with_root(ctx, &mut place, |ctx, place| {
+                                                let mut setf_symbol = symbol(ctx, runtime, "SETF")?;
+                                                ncl_object::with_root(
+                                                    ctx,
+                                                    &mut setf_symbol,
+                                                    |ctx, setf_symbol| {
+                                                        let operation = list(
+                                                            ctx,
+                                                            runtime,
+                                                            &[*setf_symbol, *place, *function],
+                                                        )?;
+                                                        progn_with_definition(
+                                                            ctx, runtime, name, operation,
+                                                        )
+                                                    },
+                                                )
+                                            })
+                                        },
+                                    )
+                                },
+                            )
+                        })
+                    })
+                })
+            })
+        })
+    })
 }
 
 fn property_definition(
@@ -109,13 +157,28 @@ fn property_definition(
     property: &str,
     value: Word,
 ) -> Result<Word, ObjectError> {
-    let get_symbol = symbol(ctx, runtime, "GET")?;
-    let quoted_name = quote(ctx, runtime, name)?;
-    let property_symbol = symbol(ctx, runtime, property)?;
-    let place = list(ctx, runtime, &[get_symbol, quoted_name, property_symbol])?;
-    let setf_symbol = symbol(ctx, runtime, "SETF")?;
-    let operation = list(ctx, runtime, &[setf_symbol, place, value])?;
-    progn_with_definition(ctx, runtime, name, operation)
+    ncl_object::with_roots(ctx, &[name, value], |ctx, roots| {
+        let name = **roots.first().ok_or(ObjectError::TypeError)?;
+        let value = **roots.get(1).ok_or(ObjectError::TypeError)?;
+        let mut get_symbol = symbol(ctx, runtime, "GET")?;
+        ncl_object::with_root(ctx, &mut get_symbol, |ctx, get_symbol| {
+            let mut quoted_name = quote(ctx, runtime, name)?;
+            ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
+                let mut property_symbol = symbol(ctx, runtime, property)?;
+                ncl_object::with_root(ctx, &mut property_symbol, |ctx, property_symbol| {
+                    let mut place =
+                        list(ctx, runtime, &[*get_symbol, *quoted_name, *property_symbol])?;
+                    ncl_object::with_root(ctx, &mut place, |ctx, place| {
+                        let mut setf_symbol = symbol(ctx, runtime, "SETF")?;
+                        ncl_object::with_root(ctx, &mut setf_symbol, |ctx, setf_symbol| {
+                            let operation = list(ctx, runtime, &[*setf_symbol, *place, value])?;
+                            progn_with_definition(ctx, runtime, name, operation)
+                        })
+                    })
+                })
+            })
+        })
+    })
 }
 
 fn append(
@@ -140,11 +203,15 @@ fn defun(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ensure_form_operator(ctx, runtime, &parts, "DEFUN")?;
-    let name = ensure_symbol(ctx, required(&parts, 1)?)?;
-    let lambda_list = required(&parts, 2)?;
-    ensure_list(ctx, lambda_list)?;
-    function_definition(ctx, runtime, name, "FDEFINITION", lambda_list, &parts[3..])
+    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+        ensure_form_operator(ctx, runtime, &parts, "DEFUN")?;
+        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        let lambda_list = parts.get(2).copied().ok_or(ObjectError::TypeError)?;
+        ensure_list(ctx, lambda_list)?;
+        let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
+        function_definition(ctx, runtime, name, "FDEFINITION", lambda_list, body)
+    })
 }
 
 fn defmacro(
@@ -164,11 +231,15 @@ fn defmacro_like(
     accessor: &str,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ensure_form_operator(ctx, runtime, &parts, "DEFMACRO")?;
-    let name = ensure_symbol(ctx, required(&parts, 1)?)?;
-    let lambda_list = required(&parts, 2)?;
-    ensure_list(ctx, lambda_list)?;
-    function_definition(ctx, runtime, name, accessor, lambda_list, &parts[3..])
+    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+        ensure_form_operator(ctx, runtime, &parts, "DEFMACRO")?;
+        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        let lambda_list = parts.get(2).copied().ok_or(ObjectError::TypeError)?;
+        ensure_list(ctx, lambda_list)?;
+        let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
+        function_definition(ctx, runtime, name, accessor, lambda_list, body)
+    })
 }
 
 fn variable_definition(
@@ -180,25 +251,45 @@ fn variable_definition(
     operator: &str,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ensure_form_operator(ctx, runtime, &parts, operator)?;
-    let name = ensure_symbol(ctx, required(&parts, 1)?)?;
-    set_symbol_special(ctx, name, true)?;
-    if constant {
-        set_symbol_constant(ctx, name, true)?;
-    }
-    let value = parts.get(2).copied().unwrap_or(Word::NIL);
-    let setq_symbol = symbol(ctx, runtime, "SETQ")?;
-    let setq = list(ctx, runtime, &[setq_symbol, name, value])?;
-    let operation = if always || constant {
-        setq
-    } else {
-        let unless_symbol = symbol(ctx, runtime, "UNLESS")?;
-        let boundp_symbol = symbol(ctx, runtime, "BOUNDP")?;
-        let quoted_name = quote(ctx, runtime, name)?;
-        let boundp = list(ctx, runtime, &[boundp_symbol, quoted_name])?;
-        list(ctx, runtime, &[unless_symbol, boundp, setq])?
-    };
-    progn_with_definition(ctx, runtime, name, operation)
+    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+        ensure_form_operator(ctx, runtime, &parts, operator)?;
+        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        set_symbol_special(ctx, name, true)?;
+        if constant {
+            set_symbol_constant(ctx, name, true)?;
+        }
+        let value = parts.get(2).copied().unwrap_or(Word::NIL);
+        ncl_object::with_roots(ctx, &[name, value], |ctx, roots| {
+            let name = **roots.first().ok_or(ObjectError::TypeError)?;
+            let value = **roots.get(1).ok_or(ObjectError::TypeError)?;
+            let mut setq_symbol = symbol(ctx, runtime, "SETQ")?;
+            ncl_object::with_root(ctx, &mut setq_symbol, |ctx, setq_symbol| {
+                let mut setq = list(ctx, runtime, &[*setq_symbol, name, value])?;
+                ncl_object::with_root(ctx, &mut setq, |ctx, setq| {
+                    let operation = if always || constant {
+                        *setq
+                    } else {
+                        let mut unless_symbol = symbol(ctx, runtime, "UNLESS")?;
+                        ncl_object::with_root(ctx, &mut unless_symbol, |ctx, unless_symbol| {
+                            let mut boundp_symbol = symbol(ctx, runtime, "BOUNDP")?;
+                            ncl_object::with_root(ctx, &mut boundp_symbol, |ctx, boundp_symbol| {
+                                let mut quoted_name = quote(ctx, runtime, name)?;
+                                ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
+                                    let mut boundp =
+                                        list(ctx, runtime, &[*boundp_symbol, *quoted_name])?;
+                                    ncl_object::with_root(ctx, &mut boundp, |ctx, boundp| {
+                                        list(ctx, runtime, &[*unless_symbol, *boundp, *setq])
+                                    })
+                                })
+                            })
+                        })?
+                    };
+                    progn_with_definition(ctx, runtime, name, operation)
+                })
+            })
+        })
+    })
 }
 
 fn defvar(
@@ -235,10 +326,13 @@ fn define_symbol_macro(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ensure_form_operator(ctx, runtime, &parts, "DEFINE-SYMBOL-MACRO")?;
-    let name = ensure_symbol(ctx, required(&parts, 1)?)?;
-    let expansion = required(&parts, 2)?;
-    property_definition(ctx, runtime, name, "SYMBOL-MACRO", expansion)
+    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+        ensure_form_operator(ctx, runtime, &parts, "DEFINE-SYMBOL-MACRO")?;
+        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        let expansion = parts.get(2).copied().ok_or(ObjectError::TypeError)?;
+        property_definition(ctx, runtime, name, "SYMBOL-MACRO", expansion)
+    })
 }
 
 fn define_compiler_macro(
@@ -257,13 +351,24 @@ fn defsetf(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ensure_form_operator(ctx, runtime, &parts, "DEFSETF")?;
-    let name = ensure_symbol(ctx, required(&parts, 1)?)?;
-    required(&parts, 2)?;
-    let quote_symbol = symbol(ctx, runtime, "QUOTE")?;
-    let definition = list(ctx, runtime, &parts[2..])?;
-    let value = list(ctx, runtime, &[quote_symbol, definition])?;
-    property_definition(ctx, runtime, name, DEFINITION_PROPERTY, value)
+    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
+        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+        ensure_form_operator(ctx, runtime, &parts, "DEFSETF")?;
+        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        let definitions = parts.get(2..).ok_or(ObjectError::TypeError)?;
+        if definitions.is_empty() {
+            return Err(ObjectError::TypeError);
+        }
+        let definitions = definitions.to_vec();
+        let mut quote_symbol = symbol(ctx, runtime, "QUOTE")?;
+        ncl_object::with_root(ctx, &mut quote_symbol, |ctx, quote_symbol| {
+            let mut definition = list(ctx, runtime, &definitions)?;
+            ncl_object::with_root(ctx, &mut definition, |ctx, definition| {
+                let value = list(ctx, runtime, &[*quote_symbol, *definition])?;
+                property_definition(ctx, runtime, name, DEFINITION_PROPERTY, value)
+            })
+        })
+    })
 }
 
 fn define_setf_expander(
@@ -302,137 +407,5 @@ adapters! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
-        let runtime = Runtime::new()?;
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)?;
-        Ok((runtime, ctx))
-    }
-
-    fn call(
-        runtime: &Runtime,
-        ctx: &mut ThreadContext,
-        name: &str,
-        form: Word,
-    ) -> Result<Word, ObjectError> {
-        let mut values = ncl_object::MultipleValues::new();
-        callback_for(name).ok_or(ObjectError::UndefinedFunction)?(
-            runtime,
-            ctx,
-            &[form],
-            &mut values,
-        )
-    }
-
-    #[test]
-    fn definition_expansions_have_a_progn_and_quoted_name() -> Result<(), ObjectError> {
-        let (runtime, mut ctx) = fixture()?;
-        let name = symbol(&mut ctx, &runtime, "X")?;
-        let operator = symbol(&mut ctx, &runtime, "DEFVAR")?;
-        let form = list(&mut ctx, &runtime, &[operator, name])?;
-        let expanded = call(&runtime, &mut ctx, "DEFVAR", form)?;
-        let parts = elements(&mut ctx, expanded)?;
-        assert_eq!(parts.len(), 3);
-        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "PROGN")?);
-        let result = elements(&mut ctx, parts[2])?;
-        assert_eq!(result[0], symbol(&mut ctx, &runtime, "QUOTE")?);
-        assert_eq!(result[1], name);
-        Ok(())
-    }
-
-    #[test]
-    fn function_definitions_preserve_lambda_body() -> Result<(), ObjectError> {
-        let (runtime, mut ctx) = fixture()?;
-        let name = symbol(&mut ctx, &runtime, "F")?;
-        let body = symbol(&mut ctx, &runtime, "BODY")?;
-        let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
-        let form = list(&mut ctx, &runtime, &[operator, name, Word::NIL, body])?;
-        let expanded = call(&runtime, &mut ctx, "DEFUN", form)?;
-        let expanded_parts = elements(&mut ctx, expanded)?;
-        let setf = elements(&mut ctx, expanded_parts[1])?;
-        assert_eq!(setf[0], symbol(&mut ctx, &runtime, "SETF")?);
-        let place = elements(&mut ctx, setf[1])?;
-        assert_eq!(place[0], symbol(&mut ctx, &runtime, "FDEFINITION")?);
-        let function = elements(&mut ctx, setf[2])?;
-        let lambda = elements(&mut ctx, function[1])?;
-        assert_eq!(lambda[1], Word::NIL);
-        assert_eq!(lambda[2], body);
-        Ok(())
-    }
-
-    #[test]
-    fn malformed_definition_is_rejected() -> Result<(), ObjectError> {
-        let (runtime, mut ctx) = fixture()?;
-        let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
-        let form = list(&mut ctx, &runtime, &[operator])?;
-        let mut values = ncl_object::MultipleValues::new();
-        assert_eq!(
-            defun(&runtime, &mut ctx, &[form], &mut values),
-            Err(ObjectError::TypeError)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn malformed_lambda_list_is_rejected() -> Result<(), ObjectError> {
-        let (runtime, mut ctx) = fixture()?;
-        let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
-        let name = symbol(&mut ctx, &runtime, "F")?;
-        let bad_lambda_list = symbol(&mut ctx, &runtime, "ARGS")?;
-        let form = list(&mut ctx, &runtime, &[operator, name, bad_lambda_list])?;
-        let mut values = ncl_object::MultipleValues::new();
-        assert_eq!(
-            defun(&runtime, &mut ctx, &[form], &mut values),
-            Err(ObjectError::TypeError)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn macro_and_setf_definitions_target_runtime_places() -> Result<(), ObjectError> {
-        let (runtime, mut ctx) = fixture()?;
-        let name = symbol(&mut ctx, &runtime, "M")?;
-        let body = symbol(&mut ctx, &runtime, "BODY")?;
-
-        let defmacro = symbol(&mut ctx, &runtime, "DEFMACRO")?;
-        let macro_form = list(&mut ctx, &runtime, &[defmacro, name, Word::NIL, body])?;
-        let macro_expansion = call(&runtime, &mut ctx, "DEFMACRO", macro_form)?;
-        let macro_parts = elements(&mut ctx, macro_expansion)?;
-        let macro_setf = elements(&mut ctx, macro_parts[1])?;
-        let macro_place = elements(&mut ctx, macro_setf[1])?;
-        assert_eq!(
-            macro_place[0],
-            symbol(&mut ctx, &runtime, "MACRO-FUNCTION")?
-        );
-
-        let defsetf = symbol(&mut ctx, &runtime, "DEFSETF")?;
-        let accessor = symbol(&mut ctx, &runtime, "ACCESSOR")?;
-        let updater = symbol(&mut ctx, &runtime, "UPDATER")?;
-        let setf_form = list(&mut ctx, &runtime, &[defsetf, accessor, updater])?;
-        let setf_expansion = call(&runtime, &mut ctx, "DEFSETF", setf_form)?;
-        let setf_parts = elements(&mut ctx, setf_expansion)?;
-        let setf_operation = elements(&mut ctx, setf_parts[1])?;
-        let get_place = elements(&mut ctx, setf_operation[1])?;
-        assert_eq!(get_place[0], symbol(&mut ctx, &runtime, "GET")?);
-        Ok(())
-    }
-
-    #[test]
-    fn callback_registry_covers_requested_definers() {
-        for name in [
-            "DEFUN",
-            "DEFMACRO",
-            "DEFVAR",
-            "DEFPARAMETER",
-            "DEFCONSTANT",
-            "DEFINE-SYMBOL-MACRO",
-            "DEFINE-COMPILER-MACRO",
-            "DEFSETF",
-            "DEFINE-SETF-EXPANDER",
-        ] {
-            assert!(callback_for(name).is_some(), "{name}");
-        }
-    }
-}
+#[path = "defining_tests.rs"]
+mod tests;

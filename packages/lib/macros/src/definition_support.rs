@@ -137,10 +137,10 @@ fn set_get_builtin(
     }
     let old_plist = symbol_plist(ctx, name)?;
     ncl_object::with_roots(ctx, &[name, property, value, old_plist], |ctx, roots| {
-        let name = *roots[0];
-        let property = *roots[1];
-        let value = *roots[2];
-        let old_plist = *roots[3];
+        let name = **roots.first().ok_or(ObjectError::TypeError)?;
+        let property = **roots.get(1).ok_or(ObjectError::TypeError)?;
+        let value = **roots.get(2).ok_or(ObjectError::TypeError)?;
+        let old_plist = **roots.get(3).ok_or(ObjectError::TypeError)?;
         let value_cell = make_cons(ctx, runtime, value, Word::NIL)?;
         let entry = make_cons(ctx, runtime, property, value_cell)?;
         let next = make_cons(ctx, runtime, entry, old_plist)?;
@@ -156,8 +156,9 @@ fn place_form(
     args: &[Word],
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, args, |ctx, args| {
+        let value = args.first().copied().ok_or(ObjectError::TypeError)?;
         let operator = symbol(ctx, runtime, operator)?;
-        list(ctx, runtime, &[operator, *args[0]])
+        list(ctx, runtime, &[operator, *value])
     })
 }
 
@@ -174,9 +175,11 @@ fn fdefinition_place(
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let mut store_form = list(ctx, runtime, &[*store, *roots[0], *variable])?;
+                let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                let mut store_form = list(ctx, runtime, &[*store, first, *variable])?;
                 ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let access_form = place_form(ctx, runtime, "FDEFINITION", &[*roots[0]])?;
+                    let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                    let access_form = place_form(ctx, runtime, "FDEFINITION", &[first])?;
                     Ok(ncl_object::SetfExpansion {
                         temporary_variables: Vec::new(),
                         value_forms: Vec::new(),
@@ -203,9 +206,11 @@ fn macro_function_place(
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let mut store_form = list(ctx, runtime, &[*store, *roots[0], *variable])?;
+                let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                let mut store_form = list(ctx, runtime, &[*store, first, *variable])?;
                 ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let access_form = place_form(ctx, runtime, "MACRO-FUNCTION", &[*roots[0]])?;
+                    let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                    let access_form = place_form(ctx, runtime, "MACRO-FUNCTION", &[first])?;
                     Ok(ncl_object::SetfExpansion {
                         temporary_variables: Vec::new(),
                         value_forms: Vec::new(),
@@ -232,12 +237,15 @@ fn get_place(
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let mut store_form =
-                    list(ctx, runtime, &[*store, *roots[0], *roots[1], *variable])?;
+                let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                let second = **roots.get(1).ok_or(ObjectError::TypeError)?;
+                let mut store_form = list(ctx, runtime, &[*store, first, second, *variable])?;
                 ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
                     let mut get = symbol(ctx, runtime, "GET")?;
                     ncl_object::with_root(ctx, &mut get, |ctx, get| {
-                        let access_form = list(ctx, runtime, &[*get, *roots[0], *roots[1]])?;
+                        let first = **roots.first().ok_or(ObjectError::TypeError)?;
+                        let second = **roots.get(1).ok_or(ObjectError::TypeError)?;
+                        let access_form = list(ctx, runtime, &[*get, first, second])?;
                         Ok(ncl_object::SetfExpansion {
                             temporary_variables: Vec::new(),
                             value_forms: Vec::new(),

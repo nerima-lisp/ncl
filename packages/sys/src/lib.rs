@@ -134,6 +134,61 @@ pub fn alloc_cons(
     heap.alloc_cons(thread, car, cdr)
 }
 
+/// Allocate a cons cell through the heap already associated with `thread`.
+///
+/// This is the native-entry boundary used by generated code. The caller must
+/// pass a registered thread pointer that remains valid for the duration of the
+/// call; the generated entry owns that condition through its pinned context.
+pub extern "C" fn native_cons(thread: *mut Thread, car: Word, cdr: Word) -> Word {
+    if thread.is_null() {
+        return Word::UNBOUND;
+    }
+    // SAFETY: generated code passes the pinned, registered Thread pointer.
+    let thread = unsafe { &mut *thread };
+    let Some(heap) = thread.heap().map(|heap| heap as *const Heap) else {
+        return Word::UNBOUND;
+    };
+    // SAFETY: the heap pointer is owned by the registered thread for this call.
+    unsafe { (&*heap).alloc_cons(thread, car, cdr) }.unwrap_or(Word::UNBOUND)
+}
+
+/// Return the car of a cons cell through the native-entry boundary.
+pub extern "C" fn native_car(thread: *mut Thread, value: Word) -> Word {
+    if thread.is_null() {
+        return Word::UNBOUND;
+    }
+    // SAFETY: generated code passes the pinned, registered Thread pointer.
+    let thread = unsafe { &*thread };
+    if value == Word::NIL {
+        return Word::NIL;
+    }
+    if !value.is_cons() {
+        return Word::UNBOUND;
+    }
+    read_cons_word(thread, value, 0).unwrap_or(Word::UNBOUND)
+}
+
+/// Add two fixnums through the native-entry boundary.
+pub extern "C" fn native_add(thread: *mut Thread, left: Word, right: Word) -> Word {
+    let _ = thread;
+    match (left.as_fixnum(), right.as_fixnum()) {
+        (Some(left), Some(right)) => Word::fixnum(left + right),
+        _ => Word::UNBOUND,
+    }
+}
+
+/// Multiply two fixnums through the native-entry boundary.
+pub extern "C" fn native_mul(thread: *mut Thread, left: Word, right: Word) -> Word {
+    let _ = thread;
+    match (left.as_fixnum(), right.as_fixnum()) {
+        (Some(left), Some(right)) => Word::fixnum(left * right),
+        _ => Word::UNBOUND,
+    }
+}
+
+/// Native safepoint entry for the initial runtime lane.
+pub extern "C" fn native_safepoint(_thread: *mut Thread, _frame: *mut u8, _pc: usize) {}
+
 /// Read a payload word from a live object.
 pub fn read_word(heap: &Heap, object: Word, slot: usize) -> Option<Word> {
     heap.read_word(object, slot + 1)

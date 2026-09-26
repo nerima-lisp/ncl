@@ -70,12 +70,14 @@ fn install(
         }
     };
     let identifier = BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name));
+    let implementation = BuiltinImplementation::direct(descriptor, callback);
+    let implementation = match name {
+        "+" => implementation.with_entry(ncl_sys::native_add as *const () as usize),
+        "*" => implementation.with_entry(ncl_sys::native_mul as *const () as usize),
+        _ => implementation,
+    };
     runtime
-        .register_builtin(
-            ctx,
-            identifier,
-            BuiltinImplementation::direct(descriptor, callback),
-        )
+        .register_builtin(ctx, identifier, implementation)
         .map(|_| ())
 }
 

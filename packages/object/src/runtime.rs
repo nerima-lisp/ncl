@@ -24,6 +24,7 @@ pub struct Runtime {
     pub(crate) next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
     pub(crate) place_expanders: Mutex<crate::place::PlaceExpanders>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
 }
@@ -128,6 +129,7 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
+            builtin_addresses: Mutex::new(HashMap::new()),
             place_expanders: Mutex::new(crate::place::PlaceExpanders::default()),
             lisp_error_converter: Mutex::new(None),
         };
@@ -227,6 +229,17 @@ impl Runtime {
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
+    }
+
+    /// Return the native entry registered for a typed builtin identifier.
+    #[must_use]
+    pub fn builtin_address(&self, identifier: BuiltinIdentifier) -> Option<u64> {
+        self.builtin_addresses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&identifier)
+            .copied()
+            .and_then(|entry| u64::try_from(entry).ok())
     }
 
     /// Register a generalized-reference expander owned by this runtime.

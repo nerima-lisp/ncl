@@ -30,7 +30,7 @@ pub fn make_string(
             ctx,
             object,
             layout::string_offset::DATA + index,
-            Word::character(value as u32),
+            Word::character(u32::from(value)),
             layout::widetag::STRING,
         )?;
     }
@@ -90,7 +90,7 @@ pub fn string_set(
         ctx,
         object,
         layout::string_offset::DATA + index,
-        Word::character(value as u32),
+        Word::character(u32::from(value)),
         layout::widetag::STRING,
     )
 }

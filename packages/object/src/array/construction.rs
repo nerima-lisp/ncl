@@ -3,6 +3,20 @@ use super::{
     metadata_offset, validate_element, with_roots, write,
 };
 
+const fn element_type_code(element_type: ArrayElementType) -> i64 {
+    match element_type {
+        ArrayElementType::T => 0,
+        ArrayElementType::Bit => 1,
+        ArrayElementType::Character => 2,
+        ArrayElementType::BaseChar => 3,
+        ArrayElementType::Fixnum => 4,
+        ArrayElementType::Signed => 5,
+        ArrayElementType::Unsigned => 6,
+        ArrayElementType::SingleFloat => 7,
+        ArrayElementType::DoubleFloat => 8,
+    }
+}
+
 /// Allocate a general, possibly displaced, multidimensional array.
 ///
 /// # Errors
@@ -36,12 +50,12 @@ pub fn make_array(
         return Err(ObjectError::Layout);
     }
     validate_element(element_type, initial_element)?;
-    if let Some(target) = displaced_to {
-        if let Ok(target_type) = super::array_element_type(ctx, target) {
-            if element_type != ArrayElementType::T && element_type != target_type {
-                return Err(ObjectError::TypeError);
-            }
-        }
+    if let Some(target) = displaced_to
+        && let Ok(target_type) = super::array_element_type(ctx, target)
+        && element_type != ArrayElementType::T
+        && element_type != target_type
+    {
+        return Err(ObjectError::TypeError);
     }
     let rank = dimensions.len();
     let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
@@ -64,7 +78,7 @@ pub fn make_array(
         let write_meta = |ctx: &mut ThreadContext, slot: usize, value: Word| {
             write(ctx, object, slot, value, layout::widetag::NON_SIMPLE_ARRAY)
         };
-        write_meta(ctx, 0, Word::fixnum(i64::from(element_type as u8)))?;
+        write_meta(ctx, 0, Word::fixnum(element_type_code(element_type)))?;
         write_meta(
             ctx,
             1,

@@ -1,8 +1,10 @@
 //! Hash-table builtin integration tests.
 
+use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
-    Word, array_row_major_set, classify_object, make_array, make_specialized_array,
+    Word, array_row_major_set, classify_object, make_array, make_specialized_array, make_string,
+    pop_root, push_root,
 };
 
 fn call(
@@ -64,6 +66,41 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
         classify_object(&ctx, rehash_threshold),
         ObjectRef::DoubleFloat(_)
     ));
+    Ok(())
+}
+
+#[test]
+fn hash_builtins_retain_heap_words_under_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)?.as_word();
+    let table_token = push_root(&mut ctx, &mut table);
+    let mut key = make_string(&mut ctx, &runtime, &['K', 'E', 'Y'])?;
+    let key_token = push_root(&mut ctx, &mut key);
+    let mut value = make_string(&mut ctx, &runtime, &['V', 'A', 'L', 'U', 'E'])?;
+    let value_token = push_root(&mut ctx, &mut value);
+
+    HashTable::from_word(table).insert(&mut ctx, &runtime, key, value)?;
+    let gethash = runtime
+        .function(&mut ctx, "COMMON-LISP", "GETHASH")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            FunctionObject::try_from(gethash).map_err(|_| ObjectError::TypeError)?,
+            &[key, table],
+        )?,
+        value
+    );
+    assert_eq!(ctx.values(), &[value, Word::TRUE]);
+
+    assert!(pop_root(&mut ctx, value_token));
+    assert!(pop_root(&mut ctx, key_token));
+    assert!(pop_root(&mut ctx, table_token));
     Ok(())
 }
 

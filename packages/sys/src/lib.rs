@@ -3,6 +3,7 @@
 
 mod code;
 mod codegen;
+mod function_address;
 mod heap;
 mod heap_state;
 mod heap_types;
@@ -21,6 +22,7 @@ pub use code::{
     scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers, write_code,
 };
 pub use codegen::{set_tlab, tlab_bump};
+pub use function_address::{FunctionAddressError, function_address};
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,

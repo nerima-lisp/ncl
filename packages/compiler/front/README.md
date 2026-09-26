@@ -44,7 +44,7 @@ and `sb-sys:nlx-protect`.
 
 ## Registration and ownership
 
-`register(&Runtime)` interns the 151 Phase 1 symbols the ownership table assigns
+`register(&Runtime)` interns the 152 Phase 1 symbols the ownership table assigns
 to this crate, creates `SB-EXT` and `SB-SYS`, and sets the `macro`, `constant`,
 and `special` flag bits. It is idempotent and is what `ncl-stdlib` calls in
 dependency order.

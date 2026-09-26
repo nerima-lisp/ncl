@@ -108,10 +108,10 @@ fn make_hash_table_builtin(
         )?
         .as_word())
     })();
-    let roots_valid = root_tokens
-        .into_iter()
-        .rev()
-        .fold(true, |valid, token| valid && pop_root(ctx, token));
+    let mut roots_valid = true;
+    for token in root_tokens.into_iter().rev() {
+        roots_valid = pop_root(ctx, token) && roots_valid;
+    }
     if roots_valid {
         result
     } else {

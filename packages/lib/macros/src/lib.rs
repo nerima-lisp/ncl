@@ -89,7 +89,7 @@ fn setf_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_setf(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    expand_setf(ctx, runtime, &PlaceRegistry::new(runtime), &arguments)
 }
 
 fn psetf_callback(
@@ -100,7 +100,7 @@ fn psetf_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_psetf(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    expand_psetf(ctx, runtime, &PlaceRegistry::new(runtime), &arguments)
 }
 
 fn call_macro(
@@ -112,7 +112,7 @@ fn call_macro(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    expand(ctx, runtime, &PlaceRegistry::new(runtime), &arguments)
 }
 
 fn incf_callback(
@@ -139,7 +139,7 @@ fn push_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_push(ctx, runtime, &PlaceRegistry::new(), &arguments, false)
+    expand_push(ctx, runtime, &PlaceRegistry::new(runtime), &arguments, false)
 }
 fn pushnew_callback(
     runtime: &Runtime,
@@ -149,7 +149,7 @@ fn pushnew_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_push(ctx, runtime, &PlaceRegistry::new(), &arguments, true)
+    expand_push(ctx, runtime, &PlaceRegistry::new(runtime), &arguments, true)
 }
 fn pop_callback(
     runtime: &Runtime,
@@ -190,7 +190,7 @@ fn get_setf_expansion_callback(
     values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let place_word = expansion_arg(args)?;
-    let expansion = expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(), place_word)?;
+    let expansion = expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(runtime), place_word)?;
     values.set(&expansion);
     Ok(expansion[4])
 }

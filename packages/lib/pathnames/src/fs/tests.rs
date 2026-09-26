@@ -26,7 +26,11 @@ fn file_lifecycle_and_directory_listing() {
     let root = TempDirectory::new();
     let root = Pathname::new(root.0.clone()).expect("non-empty temp path");
     let nested = Pathname::new(root.as_path().join("nested")).expect("nested path");
-    assert!(ensure_directories_exist(&nested).expect("create nested").created);
+    assert!(
+        ensure_directories_exist(&nested)
+            .expect("create nested")
+            .created
+    );
 
     let source = Pathname::new(nested.as_path().join("source.txt")).expect("source path");
     fs::write(source.as_path(), b"hello").expect("write source");
@@ -50,7 +54,11 @@ fn missing_path_and_existing_directory_are_typed() {
     let root = Pathname::new(root.0.clone()).expect("non-empty temp path");
     let missing = Pathname::new(root.as_path().join("missing")).expect("missing path");
     assert_eq!(probe_file(&missing).expect("probe missing"), None);
-    assert!(!ensure_directories_exist(&root).expect("existing directory").created);
+    assert!(
+        !ensure_directories_exist(&root)
+            .expect("existing directory")
+            .created
+    );
     assert!(matches!(
         Pathname::new(PathBuf::new()),
         Err(FsError::InvalidPath)

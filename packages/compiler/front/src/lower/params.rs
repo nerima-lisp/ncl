@@ -116,18 +116,20 @@ impl Context<'_> {
             } else {
                 f.nil()?
             };
-            let mut check_arguments = vec![rest, allow_other_keys];
-            for key in &list.keys {
-                check_arguments.push(f.symbol(&key.keyword)?);
+            for keys in list.keys.chunks(2) {
+                let mut check_arguments = vec![rest, allow_other_keys];
+                for key in keys {
+                    check_arguments.push(f.symbol(&key.keyword)?);
+                }
+                f.safepoint()?;
+                f.one(
+                    OpKind::Builtin {
+                        name: "check-keywords".to_owned(),
+                        args: check_arguments,
+                    },
+                    Ty::Word,
+                )?;
             }
-            f.safepoint()?;
-            f.one(
-                OpKind::Builtin {
-                    name: "check-keywords".to_owned(),
-                    args: check_arguments,
-                },
-                Ty::Word,
-            )?;
             for key in &list.keys {
                 let name = param_name(&key.name)?;
                 let keyword = f.symbol(&key.keyword)?;

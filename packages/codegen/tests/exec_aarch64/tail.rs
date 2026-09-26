@@ -99,7 +99,9 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
         (Ty::Address, recurse_next),
         (Ty::Word, recurse_remaining),
     ]);
-    builder.position_at(ncl_ir::BlockId(0)).expect("entry block");
+    builder
+        .position_at(ncl_ir::BlockId(0))
+        .expect("entry block");
     builder
         .terminate(Terminator::Branch {
             condition: done,
@@ -146,7 +148,9 @@ fn executes_one_million_mutual_tail_calls_under_gc_stress() {
     TAIL_GC_COLLECTIONS.store(0, Ordering::SeqCst);
     let runtime = ncl_object::Runtime::new().expect("runtime");
     let mut object_context = ncl_object::ThreadContext::new();
-    object_context.register(&runtime).expect("register object context");
+    object_context
+        .register(&runtime)
+        .expect("register object context");
     ncl_sys::enter_native(object_context.thread_mut());
     let mut thread = Thread::new();
     ncl_sys::register_thread_with_thread(object_context.thread_mut(), &mut thread)
@@ -154,17 +158,9 @@ fn executes_one_million_mutual_tail_calls_under_gc_stress() {
 
     let abi = BuiltinAbi;
     let first_ir = build_mutual_tail_function(101, "mutual-tail-a");
-    let first = compile_function_aarch64(
-        &first_ir,
-        &abi,
-    )
-    .expect("first lowering");
+    let first = compile_function_aarch64(&first_ir, &abi).expect("first lowering");
     let second_ir = build_mutual_tail_function(102, "mutual-tail-b");
-    let second = compile_function_aarch64(
-        &second_ir,
-        &abi,
-    )
-    .expect("second lowering");
+    let second = compile_function_aarch64(&second_ir, &abi).expect("second lowering");
     let mut first_code = alloc_code(first.code.len()).expect("first code allocation");
     write_code(&mut first_code, 0, &first.code).expect("first code write");
     publish_code(&mut first_code).expect("first code publication");
@@ -184,16 +180,19 @@ fn executes_one_million_mutual_tail_calls_under_gc_stress() {
         [
             first_code.address() as u64,
             second_code.address() as u64,
-            abi.encode_fixnum(1_000_000) as u64,
+            Word::fixnum(1_000_000).bits(),
             0,
         ],
         0,
     );
     TAIL_GC_STRESS.store(false, Ordering::SeqCst);
     ncl_sys::unregister_thread(&thread);
-    assert_eq!(result, (abi.encode_fixnum(0) as u64, 1));
+    assert_eq!(result, (Word::fixnum(0).bits(), 1));
     let polls = TAIL_GC_POLLS.load(Ordering::SeqCst);
     let collections = TAIL_GC_COLLECTIONS.load(Ordering::SeqCst);
     assert!(polls >= 1_000_000);
-    assert!(collections >= 2, "expected repeated full GC, got {collections}");
+    assert!(
+        collections >= 2,
+        "expected repeated full GC, got {collections}"
+    );
 }

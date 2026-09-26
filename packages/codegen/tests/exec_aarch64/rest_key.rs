@@ -51,7 +51,7 @@ fn generated_lambda_loads_rest_after_four_declared_arguments() {
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
-    let rest = [abi.encode_fixnum(50) as u64, abi.encode_fixnum(60) as u64];
+    let rest = [Word::fixnum(50).bits(), Word::fixnum(60).bits()];
     let mut thread = Thread::new();
     let (value, count) = invoke_entry(
         &code,
@@ -59,13 +59,13 @@ fn generated_lambda_loads_rest_after_four_declared_arguments() {
         &mut thread,
         6,
         [
-            abi.encode_fixnum(10) as u64,
-            abi.encode_fixnum(20) as u64,
-            abi.encode_fixnum(30) as u64,
-            abi.encode_fixnum(40) as u64,
+            Word::fixnum(10).bits(),
+            Word::fixnum(20).bits(),
+            Word::fixnum(30).bits(),
+            Word::fixnum(40).bits(),
         ],
         rest.as_ptr() as u64,
     );
-    assert_eq!(value, abi.encode_fixnum(60) as u64);
+    assert_eq!(value, Word::fixnum(60).bits());
     assert_eq!(count, 1);
 }

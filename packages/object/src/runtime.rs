@@ -3,9 +3,9 @@
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, LispError, LispErrorConverter, ObjectError,
-    ObjectRef, Parameter, ParameterType, ProgramError, ThreadContext, Word, car, cdr,
-    classify_object, make_string, string_length, string_ref, symbol_name, symbol_package, with_root,
+    BuiltinName, BuiltinPackage, LambdaList, LispError, LispErrorConverter, ObjectError, ObjectRef,
+    Parameter, ParameterType, ProgramError, ThreadContext, Word, car, cdr, classify_object,
+    make_string, string_length, string_ref, symbol_name, symbol_package, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -244,7 +244,7 @@ enum KeywordEntriesError {
 }
 
 impl KeywordEntriesError {
-    const fn object_error(self) -> ObjectError {
+    const fn object_error() -> ObjectError {
         ObjectError::TypeError
     }
 }
@@ -305,12 +305,10 @@ fn check_keywords_builtin(
     let entries = match keyword_entries(ctx, list) {
         Ok(entries) => entries,
         Err(KeywordEntriesError::Odd) => {
-            ctx.set_pending_lisp_error(LispError::ProgramError(
-                ProgramError::OddKeywordArguments,
-            ));
+            ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::OddKeywordArguments));
             return Err(ObjectError::TypeError);
         }
-        Err(error) => return Err(error.object_error()),
+        Err(_error) => return Err(KeywordEntriesError::object_error()),
     };
     let mut call_allows_other_keys = false;
     for (keyword, value) in &entries {
@@ -339,7 +337,7 @@ fn keyword_value_builtin(
     let list = args.required(0)?;
     let keyword = args.required(1)?;
     keyword_entries(ctx, list)
-        .map_err(KeywordEntriesError::object_error)?
+        .map_err(|_| KeywordEntriesError::object_error())?
         .into_iter()
         .find(|(candidate, _)| *candidate == keyword)
         .map_or(Ok(Word::NIL), |(_, value)| Ok(value))
@@ -355,7 +353,7 @@ fn keyword_supplied_p_builtin(
     let keyword = args.required(1)?;
     Ok(
         if keyword_entries(ctx, list)
-            .map_err(KeywordEntriesError::object_error)?
+            .map_err(|_| KeywordEntriesError::object_error())?
             .into_iter()
             .any(|(candidate, _)| candidate == keyword)
         {

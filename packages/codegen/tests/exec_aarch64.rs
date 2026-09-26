@@ -48,10 +48,21 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
     let tail_gc_stress = TAIL_GC_STRESS.load(Ordering::SeqCst);
     let periodic_tail_collection = tail_gc_stress
         && (TAIL_GC_POLLS.fetch_add(1, Ordering::SeqCst) + 1)
-            % TAIL_GC_COLLECTION_INTERVAL
-            == 0;
+            .is_multiple_of(TAIL_GC_COLLECTION_INTERVAL);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) || periodic_tail_collection {
         ctx.capture_native_frame(frame_fp, return_pc);
+        if !tail_gc_stress {
+            FRAME_WORD_BEFORE.store(
+                ctx.frame_word(2)
+                    .expect("captured frame function object")
+                    .bits(),
+                Ordering::SeqCst,
+            );
+            FRAME_LOCAL_BEFORE.store(
+                ctx.frame_word(4).expect("captured live local").bits(),
+                Ordering::SeqCst,
+            );
+        }
         ctx.clear_safepoint_request();
         ctx.enter_native();
         ncl_sys::collect(ctx, true);
@@ -67,6 +78,12 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
                 .last_written_frame_word(2)
                 .expect("written-back frame function object");
             FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
+            FRAME_LOCAL_AFTER.store(
+                ctx.last_written_frame_word(4)
+                    .expect("written-back live local")
+                    .bits(),
+                Ordering::SeqCst,
+            );
             assert!(ctx.frame_word(2).is_none());
             println!(
                 "frame word 2: before=0x{:x}, after=0x{:x}",

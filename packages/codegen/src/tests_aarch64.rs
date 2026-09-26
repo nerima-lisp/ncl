@@ -290,19 +290,28 @@ fn golden_aarch64_parallel_copy_swaps_register_arguments() {
         (Ty::Address, swapped_self),
         (Ty::Address, swapped_next),
     ]);
-    builder.position_at(ncl_ir::BlockId(0)).expect("entry block");
-    builder
-        .terminate(Terminator::Jump {
-            target: destination,
-            args: vec![ncl_ir::ValueId(1), ncl_ir::ValueId(0)],
-        })
-        .expect("swap jump");
-    builder.position_at(destination).expect("destination block");
-    builder
-        .terminate(Terminator::Return {
-            values: vec![swapped_self, swapped_next],
-        })
-        .expect("swap return");
+    let positioned = builder.position_at(ncl_ir::BlockId(0));
+    assert!(positioned.is_ok(), "entry block: {positioned:?}");
+    let Ok(()) = positioned else {
+        return;
+    };
+    let terminated = builder.terminate(Terminator::Jump {
+        target: destination,
+        args: vec![ncl_ir::ValueId(1), ncl_ir::ValueId(0)],
+    });
+    assert!(terminated.is_ok(), "swap jump: {terminated:?}");
+    let positioned = builder.position_at(destination);
+    assert!(positioned.is_ok(), "destination block: {positioned:?}");
+    let Ok(()) = positioned else {
+        return;
+    };
+    let terminated = builder.terminate(Terminator::Return {
+        values: vec![swapped_self, swapped_next],
+    });
+    assert!(terminated.is_ok(), "swap return: {terminated:?}");
+    if terminated.is_err() {
+        return;
+    }
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::AArch64);
     assert_ne!(
@@ -316,8 +325,14 @@ fn golden_aarch64_parallel_copy_swaps_register_arguments() {
         "self must be copied to next's destination"
     );
 
-    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi)
-        .expect("AArch64 parallel copy lowering");
+    let compiled_result = compile_function_aarch64(&function, &Aarch64FixtureAbi);
+    assert!(
+        compiled_result.is_ok(),
+        "AArch64 parallel copy lowering: {compiled_result:?}"
+    );
+    let Ok(compiled) = compiled_result else {
+        return;
+    };
     let instructions = compiled
         .code
         .chunks_exact(4)

@@ -18,6 +18,7 @@ mod number;
 mod object_access;
 mod object_error;
 pub mod package;
+pub mod place;
 mod primitives;
 mod readtable;
 mod registry_extensions;
@@ -65,6 +66,7 @@ pub use number::{
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
 pub use object_error::ObjectError;
 pub use package::{FindStatus, Package};
+pub use place::{PlaceExpander, SetfExpansion};
 pub use primitives::{allocate, car, cdr, make_cons, make_symbol};
 pub use readtable::readtable_slot;
 pub use readtable::{

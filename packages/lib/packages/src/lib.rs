@@ -103,7 +103,7 @@ fn unlock_package(
 }
 
 fn designator_string(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     designator: NicknameDesignator,
 ) -> Result<StringObject, LispError> {
     let word = match ncl_object::classify_object(ctx, designator.0) {
@@ -206,7 +206,7 @@ fn remove_package_local_nickname_impl(
 }
 
 fn package_local_nicknames_impl(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     runtime: &Runtime,
     package: PackageDesignatorArg,
 ) -> Result<Word, LispError> {

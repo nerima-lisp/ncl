@@ -157,6 +157,10 @@ impl super::Package {
     }
 
     /// Remove a nickname from this package.
+    ///
+    /// # Errors
+    /// Returns a package error when this package is locked, or a layout error
+    /// when the nickname list is malformed.
     pub fn remove_nickname(
         self,
         ctx: &mut ThreadContext,

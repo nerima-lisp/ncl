@@ -69,13 +69,13 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
         classify_object(&ctx, rehash_threshold),
         ObjectRef::DoubleFloat(_)
     ));
-    assert_eq!(
-        double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_size))?,
-        1.5
+    assert!(
+        (double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_size))? - 1.5).abs()
+            < f64::EPSILON
     );
-    assert_eq!(
-        double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_threshold))?,
-        0.75
+    assert!(
+        (double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_threshold))? - 0.75).abs()
+            < f64::EPSILON
     );
     Ok(())
 }

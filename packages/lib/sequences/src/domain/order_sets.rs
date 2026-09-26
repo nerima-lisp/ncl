@@ -28,6 +28,22 @@ fn list_from(
         Err(ObjectError::Layout)
     }
 }
+
+fn rooted_nested<T>(
+    ctx: &mut ThreadContext,
+    words: &mut [Vec<Word>],
+    f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
+) -> T {
+    let mut tokens = Vec::new();
+    for row in words.iter_mut() {
+        for word in row {
+            tokens.push(push_root(ctx, word));
+        }
+    }
+    let result = f(ctx, words);
+    tokens.into_iter().rev().all(|token| pop_root(ctx, token));
+    result
+}
 #[derive(Clone, Copy)]
 pub struct Options {
     pub key: Word,
@@ -65,7 +81,10 @@ fn options(
     };
     let mut i = 0;
     while i < args.len() {
-        let name = symbol_name(ctx, args[i]).ok();
+        let name = match classify_object(ctx, args[i]) {
+            ObjectRef::Symbol(_) => Some(symbol_name(ctx, args[i])?),
+            _ => None,
+        };
         let keyword = name.as_deref().map(str::to_ascii_uppercase);
         if matches!(keyword.as_deref(), Some("KEY" | "TEST" | "TEST-NOT")) {
             let value = *args.get(i + 1).ok_or(ObjectError::TypeError)?;
@@ -218,52 +237,82 @@ pub fn sort(
     stable: bool,
 ) -> Result<Word, ObjectError> {
     let mut values = sequence_values(ctx, sequence)?;
-    let roots = values
-        .iter_mut()
-        .map(|word| push_root(ctx, word))
-        .collect::<Vec<_>>();
-    let result = (|| {
-        let key_values = if key_fn == Word::NIL {
-            values.clone()
-        } else {
-            values
-                .iter()
-                .map(|&value| key(ctx, runtime, key_fn, value))
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        let mut order: Vec<usize> = Vec::with_capacity(values.len());
-        for index in 0..values.len() {
-            let mut position = order.len();
-            for (offset, &other) in order.iter().enumerate() {
-                if compare(
-                    ctx,
-                    runtime,
-                    predicate,
-                    key_values[index],
-                    key_values[other],
-                )? {
-                    position = offset;
-                    break;
-                }
-            }
-            if !stable && position < order.len() && key_values[index] == key_values[order[position]]
+    let function_roots = [sequence, predicate, key_fn];
+    ncl_object::with_roots(ctx, &function_roots, |ctx, function_roots| {
+        let roots = values
+            .iter_mut()
+            .map(|word| push_root(ctx, word))
+            .collect::<Vec<_>>();
+        let result = (|| {
+            let mut key_values = if **function_roots.get(2).ok_or(ObjectError::Layout)? == Word::NIL
             {
-                position += 1;
+                values.clone()
+            } else {
+                values
+                    .iter()
+                    .map(|&value| {
+                        key(
+                            ctx,
+                            runtime,
+                            **function_roots.get(2).ok_or(ObjectError::Layout)?,
+                            value,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let key_tokens = key_values
+                .iter_mut()
+                .map(|word| push_root(ctx, word))
+                .collect::<Vec<_>>();
+            let mut order: Vec<usize> = Vec::with_capacity(values.len());
+            for index in 0..values.len() {
+                let mut position = order.len();
+                for (offset, &other) in order.iter().enumerate() {
+                    if compare(
+                        ctx,
+                        runtime,
+                        **function_roots.get(1).ok_or(ObjectError::Layout)?,
+                        key_values[index],
+                        key_values[other],
+                    )? {
+                        position = offset;
+                        break;
+                    }
+                }
+                if !stable
+                    && position < order.len()
+                    && key_values[index] == key_values[order[position]]
+                {
+                    position += 1;
+                }
+                order.insert(position, index);
             }
-            order.insert(position, index);
+            let sorted = order.into_iter().map(|i| values[i]).collect::<Vec<_>>();
+            for (i, value) in sorted.into_iter().enumerate() {
+                set_sequence_value(
+                    ctx,
+                    **function_roots.first().ok_or(ObjectError::Layout)?,
+                    i,
+                    value,
+                )?;
+            }
+            let valid = key_tokens
+                .into_iter()
+                .rev()
+                .all(|token| pop_root(ctx, token));
+            if valid {
+                Ok(**function_roots.first().ok_or(ObjectError::Layout)?)
+            } else {
+                Err(ObjectError::Layout)
+            }
+        })();
+        let valid = roots.into_iter().rev().all(|token| pop_root(ctx, token));
+        if valid {
+            result
+        } else {
+            Err(ObjectError::Layout)
         }
-        let sorted = order.into_iter().map(|i| values[i]).collect::<Vec<_>>();
-        for (i, value) in sorted.into_iter().enumerate() {
-            set_sequence_value(ctx, sequence, i, value)?;
-        }
-        Ok(sequence)
-    })();
-    let valid = roots.into_iter().rev().all(|token| pop_root(ctx, token));
-    if valid {
-        result
-    } else {
-        Err(ObjectError::Layout)
-    }
+    })
 }
 pub fn stable_sort(
     ctx: &mut ThreadContext,
@@ -283,48 +332,70 @@ fn set_operation(
     exclusive: bool,
     difference: bool,
 ) -> Result<Word, ObjectError> {
-    let left = sequence_values(ctx, first)?;
-    let right = sequence_values(ctx, second)?;
-    let mut result = Vec::new();
-    let candidates = if difference {
-        left.clone()
-    } else {
-        left.iter().chain(right.iter()).copied().collect()
-    };
-    for value in candidates {
-        let mut in_left = false;
-        for candidate in &left {
-            if matches(ctx, runtime, value, *candidate, opts)? {
-                in_left = true;
-                break;
-            }
-        }
-        let mut in_right = false;
-        for candidate in &right {
-            if matches(ctx, runtime, value, *candidate, opts)? {
-                in_right = true;
-                break;
-            }
-        }
-        let include = if difference {
-            in_left && !in_right
-        } else if exclusive {
-            in_left != in_right
+    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
+    rooted_nested(ctx, &mut rows, |ctx, rows| {
+        let mut result = Vec::new();
+        let mut result_roots = Vec::new();
+        let candidates = if difference {
+            (0..rows.first().map_or(0, Vec::len))
+                .map(|index| (0, index))
+                .collect::<Vec<_>>()
         } else {
-            true
+            rows.iter()
+                .enumerate()
+                .flat_map(|(row, values)| (0..values.len()).map(move |index| (row, index)))
+                .collect()
         };
-        let mut duplicate = false;
-        for candidate in &result {
-            if matches(ctx, runtime, value, *candidate, opts)? {
-                duplicate = true;
-                break;
+        for (candidate_row, candidate_index) in candidates {
+            let value = *rows
+                .get(candidate_row)
+                .and_then(|row| row.get(candidate_index))
+                .ok_or(ObjectError::Layout)?;
+            let mut in_left = false;
+            for candidate in rows.first().ok_or(ObjectError::Layout)? {
+                if matches(ctx, runtime, value, *candidate, opts)? {
+                    in_left = true;
+                    break;
+                }
+            }
+            let mut in_right = false;
+            for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
+                if matches(ctx, runtime, value, *candidate, opts)? {
+                    in_right = true;
+                    break;
+                }
+            }
+            let include = if difference {
+                in_left && !in_right
+            } else if exclusive {
+                in_left != in_right
+            } else {
+                true
+            };
+            let mut duplicate = false;
+            for candidate in &result {
+                if matches(ctx, runtime, value, *candidate, opts)? {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if include && !duplicate {
+                let mut rooted_value = value;
+                result_roots.push(push_root(ctx, &mut rooted_value));
+                result.push(rooted_value);
             }
         }
-        if include && !duplicate {
-            result.push(value);
+        let output = list_from(ctx, runtime, &result);
+        if result_roots
+            .into_iter()
+            .rev()
+            .all(|token| pop_root(ctx, token))
+        {
+            output
+        } else {
+            Err(ObjectError::Layout)
         }
-    }
-    list_from(ctx, runtime, &result)
+    })
 }
 pub fn union(
     ctx: &mut ThreadContext,

@@ -30,7 +30,7 @@ pub enum ReadError {
     /// An integer is too large to represent in this build.
     NumberOutOfRange,
     /// A single-float was requested but is not representable by the object layer.
-    UnsupportedFloatFormat(char),
+    FloatFormatUnavailable(char),
     /// `#.` appeared while `*read-eval*` is false.
     ReadEvalDisabled,
     /// `#.` appeared while `*read-eval*` is true but no evaluator is available.
@@ -71,8 +71,8 @@ impl std::fmt::Display for ReadError {
             Self::InvalidDigit(digit) => write!(f, "invalid digit for base: {digit}"),
             Self::InvalidNumber(token) => write!(f, "invalid number token: {token}"),
             Self::NumberOutOfRange => f.write_str("number out of range"),
-            Self::UnsupportedFloatFormat(marker) => {
-                write!(f, "unsupported float format marker: {marker}")
+            Self::FloatFormatUnavailable(marker) => {
+                write!(f, "float format is unavailable: {marker}")
             }
             Self::ReadEvalDisabled => f.write_str("#. requires *read-eval* to be true"),
             Self::ReadEvalUnavailable => f.write_str("#. has no evaluator available"),

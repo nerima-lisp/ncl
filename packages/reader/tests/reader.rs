@@ -360,7 +360,7 @@ fn single_float_marker_is_rejected() {
     let error = read_from_string(&mut ctx, &runtime, "1.5f0", &opts).unwrap_err();
     assert!(matches!(
         error,
-        ncl_reader::ReadError::UnsupportedFloatFormat(_)
+        ncl_reader::ReadError::FloatFormatUnavailable(_)
     ));
     let word = read_from_string(&mut ctx, &runtime, "1.5d0", &opts)
         .unwrap()

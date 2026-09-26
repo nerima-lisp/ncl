@@ -204,6 +204,8 @@ impl Runtime {
             ncl_codegen::compile_function_x86_64(&entry, &abi)
         }
         .map_err(|error| RuntimeError::Native(error.to_string()))?;
+        let entry_offset = usize::try_from(compiled.entry_offset)
+            .map_err(|_| RuntimeError::Native("entry offset does not fit usize".to_owned()))?;
         let mut code = alloc_code(compiled.code.len())
             .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         write_code(&mut code, 0, &compiled.code)
@@ -213,7 +215,7 @@ impl Runtime {
         let safepoint_map = SafepointMap::decode(&maps, compiled.safepoint_maps.len())
             .map_err(|error| RuntimeError::Native(error.to_owned()))?;
         let metadata = CodeObjectMetadata {
-            entry_offset: compiled.entry_offset as usize,
+            entry_offset,
             size: compiled.code.len(),
             frame_words: u16::try_from(compiled.frame_size / 8)
                 .map_err(|_| RuntimeError::Native("frame is too large".to_owned()))?,
@@ -228,14 +230,7 @@ impl Runtime {
                 .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         }
         self.context.thread_mut().take_native_error();
-        let (value, _) = invoke_entry(
-            &code,
-            compiled.entry_offset as usize,
-            self.context.thread_mut(),
-            0,
-            [0; 4],
-            0,
-        );
+        let (value, _) = invoke_entry(&code, entry_offset, self.context.thread_mut(), 0, [0; 4], 0);
         if let Some(error) = self.context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }

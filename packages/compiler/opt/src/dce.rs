@@ -153,7 +153,19 @@ impl DeadCodeElimination {
             | OpKind::LoadArg { .. }
             | OpKind::Compare { .. }
             | OpKind::Convert { .. } => true,
-            OpKind::Prim { op, condition, .. } => condition.is_none() && op.is_pure(),
+            OpKind::Prim { op, condition, .. } => {
+                condition.is_none()
+                    && matches!(
+                        op,
+                        ncl_ir::Prim::FixnumLt
+                            | ncl_ir::Prim::FixnumLe
+                            | ncl_ir::Prim::FixnumEq
+                            | ncl_ir::Prim::Eq
+                            | ncl_ir::Prim::Eql
+                            | ncl_ir::Prim::Typep
+                            | ncl_ir::Prim::CharacterPredicate(_)
+                    )
+            }
             OpKind::Store { .. }
             | OpKind::StoreField { .. }
             | OpKind::Alloc { .. }

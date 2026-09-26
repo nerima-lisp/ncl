@@ -1,9 +1,5 @@
 use super::*;
 
-const fn key_word(value: i64) -> Word {
-    Word::fixnum(value)
-}
-
 #[test]
 fn equalp_recurses_with_case_folding_through_cons_keys() {
     let (runtime, mut ctx) = setup();

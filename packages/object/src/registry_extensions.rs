@@ -126,9 +126,8 @@ impl Runtime {
                     .is_some();
                 while nicknames != Word::NIL {
                     let next = crate::with_root(ctx, &mut nicknames, |ctx, nicknames_slot| {
-                        let mut nickname =
-                            ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 0)
-                                .ok_or(ObjectError::Layout)?;
+                        let mut nickname = ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 0)
+                            .ok_or(ObjectError::Layout)?;
                         crate::with_root(ctx, &mut nickname, |ctx, nickname| {
                             removed |= HashTable::from_word(table)
                                 .remove(ctx, self, *nickname)?

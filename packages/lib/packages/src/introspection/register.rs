@@ -1,4 +1,12 @@
-use super::*;
+use super::{
+    Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LambdaList, NAME, NAME_PACKAGE, ONE_OBJECT, ONE_PACKAGE, ObjectError,
+    PACKAGE_PACKAGE, Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols,
+    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
+    package_management, package_name, package_nicknames, package_shadowing_symbols,
+    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
+    use_package,
+};
 
 const fn descriptor(required: &'static [Parameter]) -> Builtin {
     Builtin {

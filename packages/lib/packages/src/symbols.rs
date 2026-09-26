@@ -32,8 +32,7 @@ fn with_rooted_words<T>(
         }
     }
     match (result, cleanup_error) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Some(error)) => Err(error),
+        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
         (Ok(value), None) => Ok(value),
     }
 }
@@ -331,7 +330,11 @@ fn gentemp(
     loop {
         let counter = next_gensym_counter(ctx, runtime)?;
         let name = format!("{prefix}{counter}");
-        let mut roots = [make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?];
+        let mut roots = [make_string(
+            ctx,
+            runtime,
+            &name.chars().collect::<Vec<_>>(),
+        )?];
         if with_rooted_words(ctx, &mut roots, |ctx, roots| {
             Ok(package.find_symbol(ctx, roots[0])?.is_some())
         })? {

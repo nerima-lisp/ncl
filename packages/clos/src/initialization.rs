@@ -1,11 +1,11 @@
 //! Typed adapters for the standard CLOS instance initialization protocol.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object,
-    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
-    with_root, with_roots,
+    classify_object, make_instance as allocate_instance, simple_vector_length, simple_vector_ref,
+    slot_set, with_root, with_roots, Builtin, BuiltinArgs, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, Instance, LambdaList, LispError,
+    MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter, ParameterType, Runtime,
+    ThreadContext, Word,
 };
 
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
@@ -77,14 +77,11 @@ const BUILTINS: [BuiltinDescriptor; 3] = [
 ];
 
 #[derive(Clone, Copy)]
-struct InitArgKey(u64);
-
-#[derive(Clone, Copy)]
 struct InitArgValue(Word);
 
 #[derive(Clone, Copy)]
 struct InitArg {
-    key: InitArgKey,
+    key: Word,
     value: InitArgValue,
 }
 
@@ -101,17 +98,17 @@ impl InitArgList {
         let values = pairs
             .iter()
             .map(|pair| InitArg {
-                key: InitArgKey(pair[0].bits()),
+                key: pair[0],
                 value: InitArgValue(pair[1]),
             })
             .collect();
         Ok(Self { values })
     }
 
-    fn value_for(&self, key: InitArgKey) -> Option<InitArgValue> {
+    fn value_for(&self, key: Word) -> Option<InitArgValue> {
         self.values
             .iter()
-            .find(|argument| argument.key.0 == key.0)
+            .find(|argument| argument.key == key)
             .map(|argument| argument.value)
     }
 }
@@ -167,7 +164,7 @@ fn initialize_slots(
         } else {
             slot
         };
-        if let Some(value) = initargs.value_for(InitArgKey(key.bits())) {
+        if let Some(value) = initargs.value_for(key) {
             slot_set(ctx, instance, index, value.0)?;
         }
     }

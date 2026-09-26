@@ -1,39 +1,39 @@
 package	symbol	kind	crate	phase	direct-expansion	notes
-COMMON-LISP	ADD-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	ALLOCATE-INSTANCE	other	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	ADD-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ALLOCATE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	BUILT-IN-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	CALL-NEXT-METHOD	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	CHANGE-CLASS	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHANGE-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	CLASS-NAME	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	CLASS-OF	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	COMPUTE-APPLICABLE-METHODS	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	COPY-STRUCTURE	other	ncl-clos	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	DESCRIBE	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	DESCRIBE-OBJECT	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	DOCUMENTATION	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	ENSURE-GENERIC-FUNCTION	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	FIND-CLASS	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	FIND-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPUTE-APPLICABLE-METHODS	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	COPY-STRUCTURE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DESCRIBE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	DESCRIBE-OBJECT	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	DOCUMENTATION	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	ENSURE-GENERIC-FUNCTION	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	FIND-CLASS	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	FIND-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	INITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	MAKE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	MAKE-INSTANCES-OBSOLETE	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-INSTANCES-OBSOLETE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	METHOD	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	METHOD-COMBINATION	class	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	METHOD-QUALIFIERS	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	METHOD-QUALIFIERS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NEXT-METHOD-P	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	NO-APPLICABLE-METHOD	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	NO-NEXT-METHOD	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	REINITIALIZE-INSTANCE	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	REMOVE-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NO-APPLICABLE-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	NO-NEXT-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	REINITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	REMOVE-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SHARED-INITIALIZE	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-BOUNDP	function	ncl-clos	1	yes	CLOS/class/slot surface
 COMMON-LISP	SLOT-EXISTS-P	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-MAKUNBOUND	function	ncl-clos	1	yes	CLOS/class/slot surface
-COMMON-LISP	SLOT-MISSING	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	SLOT-UNBOUND	other	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-MISSING	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-UNBOUND	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-VALUE	function	ncl-clos	1	yes	CLOS/class/slot surface
 COMMON-LISP	STANDARD-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STANDARD-GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
@@ -42,107 +42,107 @@ COMMON-LISP	STANDARD-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STRUCTURE	other	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	STRUCTURE-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STRUCTURE-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	other	ncl-clos	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	other	ncl-clos	1	no	reclassified by subsystem ownership rule
-NCL-MOP	ACCESSOR-METHOD-SLOT-DEFINITION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ADD-DEPENDENT	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ADD-DIRECT-METHOD	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ADD-DIRECT-SUBCLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ADD-METHOD	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ALLOCATE-INSTANCE	other	ncl-clos	1	no	NCL-MOP AMOP surface
+COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+NCL-MOP	ACCESSOR-METHOD-SLOT-DEFINITION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ADD-DEPENDENT	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ADD-DIRECT-METHOD	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ADD-DIRECT-SUBCLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ADD-METHOD	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ALLOCATE-INSTANCE	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	BUILT-IN-CLASS	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	CLASS	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-DEFAULT-INITARGS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-DIRECT-DEFAULT-INITARGS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-DEFAULT-INITARGS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-DIRECT-DEFAULT-INITARGS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	CLASS-DIRECT-SLOTS	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-DIRECT-SUBCLASSES	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-DIRECT-SUPERCLASSES	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-FINALIZED-P	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-DIRECT-SUBCLASSES	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-DIRECT-SUPERCLASSES	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-FINALIZED-P	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	CLASS-NAME	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	CLASS-PRECEDENCE-LIST	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	CLASS-PROTOTYPE	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	CLASS-PROTOTYPE	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	CLASS-SLOTS	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-APPLICABLE-METHODS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-APPLICABLE-METHODS-USING-CLASSES	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-CLASS-PRECEDENCE-LIST	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-DEFAULT-INITARGS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-DISCRIMINATING-FUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-EFFECTIVE-METHOD	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-EFFECTIVE-SLOT-DEFINITION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	COMPUTE-SLOTS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-APPLICABLE-METHODS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-APPLICABLE-METHODS-USING-CLASSES	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-CLASS-PRECEDENCE-LIST	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-DEFAULT-INITARGS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-DISCRIMINATING-FUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-EFFECTIVE-METHOD	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-EFFECTIVE-SLOT-DEFINITION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	COMPUTE-SLOTS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	DIRECT-SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	DIRECT-SLOT-DEFINITION-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	DIRECT-SLOT-DEFINITION-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	EFFECTIVE-SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	EFFECTIVE-SLOT-DEFINITION-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ENSURE-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ENSURE-CLASS-USING-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ENSURE-GENERIC-FUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	ENSURE-GENERIC-FUNCTION-USING-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	EFFECTIVE-SLOT-DEFINITION-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ENSURE-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ENSURE-CLASS-USING-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ENSURE-GENERIC-FUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	ENSURE-GENERIC-FUNCTION-USING-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	EQL-SPECIALIZER	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	EQL-SPECIALIZER-OBJECT	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	EXTRACT-LAMBDA-LIST	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	EXTRACT-SPECIALIZER-NAMES	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	FINALIZE-INHERITANCE	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	FIND-METHOD-COMBINATION	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	EXTRACT-LAMBDA-LIST	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	EXTRACT-SPECIALIZER-NAMES	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	FINALIZE-INHERITANCE	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	FIND-METHOD-COMBINATION	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	FORWARD-REFERENCED-CLASS	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	FUNCALLABLE-STANDARD-CLASS	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	FUNCALLABLE-STANDARD-INSTANCE-ACCESS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	FUNCALLABLE-STANDARD-INSTANCE-ACCESS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	FUNCALLABLE-STANDARD-OBJECT	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	FUNCTION	special-operator+class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	GENERIC-FUNCTION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-ARGUMENT-PRECEDENCE-ORDER	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-DECLARATIONS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-LAMBDA-LIST	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-METHOD-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-METHOD-COMBINATION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-METHODS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	GENERIC-FUNCTION-NAME	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	INTERN-EQL-SPECIALIZER	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-ARGUMENT-PRECEDENCE-ORDER	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-DECLARATIONS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-LAMBDA-LIST	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-METHOD-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-METHOD-COMBINATION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-METHODS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	GENERIC-FUNCTION-NAME	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	INTERN-EQL-SPECIALIZER	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	MAKE-INSTANCE	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	MAKE-METHOD-LAMBDA	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	MAP-DEPENDENTS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	MAKE-METHOD-LAMBDA	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	MAP-DEPENDENTS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	METAOBJECT	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	METHOD	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	METHOD-COMBINATION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	METHOD-FUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	METHOD-GENERIC-FUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	METHOD-LAMBDA-LIST	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	METHOD-QUALIFIERS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	METHOD-SPECIALIZERS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	READER-METHOD-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	REMOVE-DEPENDENT	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	REMOVE-DIRECT-METHOD	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	REMOVE-DIRECT-SUBCLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	REMOVE-METHOD	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SET-FUNCALLABLE-INSTANCE-FUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	METHOD-FUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	METHOD-GENERIC-FUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	METHOD-LAMBDA-LIST	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	METHOD-QUALIFIERS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	METHOD-SPECIALIZERS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	READER-METHOD-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	REMOVE-DEPENDENT	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	REMOVE-DIRECT-METHOD	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	REMOVE-DIRECT-SUBCLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	REMOVE-METHOD	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SET-FUNCALLABLE-INSTANCE-FUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-BOUNDP-USING-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-ALLOCATION	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-INITARGS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-INITFORM	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-INITFUNCTION	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-ALLOCATION	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-INITARGS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-INITFORM	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-INITFUNCTION	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-DEFINITION-LOCATION	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-DEFINITION-NAME	function	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-READERS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-TYPE	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SLOT-DEFINITION-WRITERS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-READERS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-TYPE	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SLOT-DEFINITION-WRITERS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-MAKUNBOUND-USING-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SLOT-VALUE-USING-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	SPECIALIZER	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SPECIALIZER-DIRECT-GENERIC-FUNCTIONS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	SPECIALIZER-DIRECT-METHODS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SPECIALIZER-DIRECT-GENERIC-FUNCTIONS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	SPECIALIZER-DIRECT-METHODS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-ACCESSOR-METHOD	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-CLASS	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-DIRECT-SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-EFFECTIVE-SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-GENERIC-FUNCTION	class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	STANDARD-INSTANCE-ACCESS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	STANDARD-INSTANCE-ACCESS	function	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-METHOD	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-OBJECT	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-READER-METHOD	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-SLOT-DEFINITION	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	STANDARD-WRITER-METHOD	class	ncl-clos	1	no	NCL-MOP AMOP surface
 NCL-MOP	T	constant+class	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	UPDATE-DEPENDENT	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	VALIDATE-SUPERCLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
-NCL-MOP	WRITER-METHOD-CLASS	other	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	UPDATE-DEPENDENT	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	VALIDATE-SUPERCLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface
+NCL-MOP	WRITER-METHOD-CLASS	function	ncl-clos	1	no	NCL-MOP AMOP surface

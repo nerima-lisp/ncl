@@ -107,8 +107,7 @@ fn package_local_nickname_builtins_round_trip() {
     assert_eq!(
         runtime.call_builtin(
             &mut ctx,
-            FunctionObject::try_from(remove)
-                .unwrap_or_else(|error| panic!("remove fn: {error:?}")),
+            FunctionObject::try_from(remove).unwrap_or_else(|error| panic!("remove fn: {error:?}")),
             &[nickname, package],
         ),
         Ok(Word::TRUE)
@@ -147,9 +146,8 @@ fn package_local_nickname_builtins_reject_locked_package() {
     let remove = runtime
         .function(&mut ctx, "NCL-EXT", "REMOVE-PACKAGE-LOCAL-NICKNAME")
         .unwrap_or_else(|| panic!("remove"));
-    let function = |word| {
-        FunctionObject::try_from(word).unwrap_or_else(|error| panic!("function: {error:?}"))
-    };
+    let function =
+        |word| FunctionObject::try_from(word).unwrap_or_else(|error| panic!("function: {error:?}"));
 
     assert_eq!(
         runtime.call_builtin(&mut ctx, function(lock), &[package]),

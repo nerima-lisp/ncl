@@ -6,11 +6,19 @@ use ncl_object::{
     make_ratio, ratio_denominator, ratio_numerator,
 };
 
-const fn integer_to_f64(value: i128) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
-    }
+#[allow(clippy::map_or_identity)]
+fn integer_to_f64(value: i128) -> Result<f64, ObjectError> {
+    let magnitude = value.unsigned_abs();
+    let limb = |shift| {
+        f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).map_or(0, |v| v))
+    };
+    let result =
+        limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
+    let result = if value.is_negative() { -result } else { result };
+    result
+        .is_finite()
+        .then_some(result)
+        .ok_or(ObjectError::TypeError)
 }
 
 #[derive(Clone, Copy)]
@@ -103,11 +111,11 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
         _ => Err(ObjectError::TypeError),
     }
 }
-fn as_float(value: Number) -> f64 {
+fn as_float(value: Number) -> Result<f64, ObjectError> {
     match value {
         Number::Integer(value) => integer_to_f64(value),
-        Number::Ratio(n, d) => integer_to_f64(n) / integer_to_f64(d),
-        Number::Float(value) => value,
+        Number::Ratio(n, d) => Ok(integer_to_f64(n)? / integer_to_f64(d)?),
+        Number::Float(value) => Ok(value),
     }
 }
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Word, ObjectError> {
@@ -172,8 +180,8 @@ fn remainder(
     if let Some(value) = exact_remainder(value, divisor, floor) {
         return word(ctx, runtime, value);
     }
-    let value_float = as_float(value);
-    let divisor_float = as_float(divisor);
+    let value_float = as_float(value)?;
+    let divisor_float = as_float(divisor)?;
     if divisor_float == 0.0 {
         return Err(ObjectError::TypeError);
     }

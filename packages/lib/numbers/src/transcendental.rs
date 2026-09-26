@@ -3,9 +3,9 @@
 use core::cell::Cell;
 
 use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
-    make_complex, make_double, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues,
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    make_complex, make_double, ratio_denominator, ratio_numerator,
 };
 use ncl_sys::RootSlot;
 
@@ -131,8 +131,10 @@ fn output(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<W
         Number::Complex(real, imag) => {
             let mut real = make_double(ctx, runtime, real)?.into();
             with_root(ctx, &mut real, |ctx, real| {
-                let imag = make_double(ctx, runtime, imag)?.into();
-                make_complex(ctx, runtime, *real, imag).map(Into::into)
+                let mut imag = make_double(ctx, runtime, imag)?.into();
+                with_root(ctx, &mut imag, |ctx, imag| {
+                    make_complex(ctx, runtime, *real, *imag).map(Into::into)
+                })
             })
         }
     }

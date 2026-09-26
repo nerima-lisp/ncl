@@ -1,9 +1,9 @@
 //! Common Lisp rounding builtins.
 
 use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
-    make_ratio, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    make_ratio, ratio_denominator, ratio_numerator,
 };
 use ncl_sys::RootSlot;
 use std::cell::Cell;
@@ -17,21 +17,21 @@ fn with_rooted_word<T>(
     let token = ncl_object::push_root(ctx, slot.get_mut());
     let result = f(ctx, RootSlot::new(&slot));
     *value = slot.get();
-    assert!(ncl_object::pop_root(ctx, token));
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
     result
 }
 
+#[allow(clippy::map_or_identity)]
 fn integer_to_f64(value: i128) -> f64 {
     let magnitude = value.unsigned_abs();
-    let limb =
-        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
+    let limb = |shift| {
+        f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).map_or(0, |v| v))
+    };
     let result =
         limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
-    if value.is_negative() {
-        -result
-    } else {
-        result
-    }
+    if value.is_negative() { -result } else { result }
 }
 
 const HALF: f64 = 0.5;

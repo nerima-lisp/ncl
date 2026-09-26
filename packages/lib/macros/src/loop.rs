@@ -48,6 +48,20 @@ pub struct ForClause {
     pub limit: Option<(LimitDirection, Word)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HashIterationKind {
+    Key,
+    Value,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HashClause {
+    pub variable: Word,
+    pub kind: HashIterationKind,
+    pub table: Word,
+    pub using: Option<(HashIterationKind, Word)>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoopClause {
     With {
@@ -55,6 +69,7 @@ pub enum LoopClause {
         init: Word,
     },
     For(ForClause),
+    Hash(HashClause),
     EqualsThen {
         variable: Word,
         init: Word,

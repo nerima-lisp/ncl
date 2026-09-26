@@ -1,6 +1,7 @@
 use super::{
-    AccumulatorKind, ForClause, LimitDirection, LoopAst, LoopClause, ObjectError, Result,
-    StepDirection, ThreadContext, Word, string_length, string_ref, symbol_name,
+    AccumulatorKind, ForClause, HashClause, HashIterationKind, LimitDirection, LoopAst, LoopClause,
+    ObjectError, Result, StepDirection, ThreadContext, Word, elements, string_length, string_ref,
+    symbol_name,
 };
 fn word_name(ctx: &ThreadContext, word: Word) -> Result<String> {
     let name = symbol_name(ctx, word)?;
@@ -48,7 +49,10 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "ACROSS"
                 | "BEING"
                 | "THE"
+                | "EACH"
+                | "HASH-KEY"
                 | "HASH-KEYS"
+                | "HASH-VALUE"
                 | "HASH-VALUES"
                 | "OF"
                 | "USING"
@@ -205,9 +209,64 @@ fn parse_sequence_for(
     })
 }
 
+fn hash_kind(name: &str) -> Option<HashIterationKind> {
+    match name {
+        "HASH-KEY" | "HASH-KEYS" => Some(HashIterationKind::Key),
+        "HASH-VALUE" | "HASH-VALUES" => Some(HashIterationKind::Value),
+        _ => None,
+    }
+}
+
+fn parse_hash_for(
+    ctx: &mut ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+) -> Result<LoopClause> {
+    symbol_name(ctx, variable)?;
+    if input.get(*cursor).is_some_and(
+        |word| matches!(word_name(ctx, *word), Ok(name) if name == "EACH" || name == "THE"),
+    ) {
+        *cursor += 1;
+    }
+    let kind_name = word_name(ctx, required(input, cursor)?)?;
+    let kind = hash_kind(&kind_name).ok_or(ObjectError::TypeError)?;
+    let of = word_name(ctx, required(input, cursor)?)?;
+    if of != "OF" {
+        return Err(ObjectError::TypeError);
+    }
+    let table = required(input, cursor)?;
+    let using = if input
+        .get(*cursor)
+        .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "USING"))
+    {
+        *cursor += 1;
+        let specification = elements(ctx, required(input, cursor)?)?;
+        if specification.len() != 2 {
+            return Err(ObjectError::TypeError);
+        }
+        let using_name = word_name(ctx, specification[0])?;
+        let using_kind = hash_kind(&using_name).ok_or(ObjectError::TypeError)?;
+        let using_variable = specification[1];
+        symbol_name(ctx, using_variable)?;
+        if using_kind == kind {
+            return Err(ObjectError::TypeError);
+        }
+        Some((using_kind, using_variable))
+    } else {
+        None
+    };
+    Ok(LoopClause::Hash(HashClause {
+        variable,
+        kind,
+        table,
+        using,
+    }))
+}
+
 /// Parse the body of a LOOP form (the operator itself is not included).
 #[allow(clippy::too_many_lines)]
-pub fn parse_loop(ctx: &ThreadContext, input: &[Word]) -> Result<LoopAst> {
+pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
     let mut cursor = 0;
     let mut name = None;
     let mut clauses = Vec::new();
@@ -262,7 +321,10 @@ pub fn parse_loop(ctx: &ThreadContext, input: &[Word]) -> Result<LoopAst> {
                         });
                         symbol_name(ctx, variable)?;
                     }
-                    "BEING" => return Err(ObjectError::TypeError),
+                    "BEING" => {
+                        cursor += 2;
+                        clauses.push(parse_hash_for(ctx, input, &mut cursor, variable)?);
+                    }
                     "=" | "FROM" | "UPFROM" | "DOWNFROM" | "BY" | "THEN" | "TO" | "UPTO"
                     | "BELOW" | "DOWNTO" | "ABOVE" => {
                         clauses.push(parse_for(ctx, input, &mut cursor)?);

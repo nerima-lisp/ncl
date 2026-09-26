@@ -32,7 +32,7 @@ fn list_from(
 }
 fn rooted_nested<T>(
     ctx: &mut ThreadContext,
-    words: &mut [Vec<Word>],
+    words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
     f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
 ) -> T {
     let mut tokens = Vec::new();
@@ -99,9 +99,13 @@ fn options(
     };
     let mut i = 0;
     while i < args.len() {
-        let name = match classify_object(ctx, args[i]) {
-            ObjectRef::Symbol(_) => Some(symbol_name(ctx, args[i])?),
-            _ => None,
+        let name = if matches!(
+            classify_object(ctx, *args.get(i).ok_or(ObjectError::Layout)?),
+            ObjectRef::Symbol(_)
+        ) {
+            Some(symbol_name(ctx, *args.get(i).ok_or(ObjectError::Layout)?)?)
+        } else {
+            None
         };
         let keyword = name.as_deref().map(str::to_ascii_uppercase);
         if matches!(keyword.as_deref(), Some("KEY" | "TEST" | "TEST-NOT")) {
@@ -115,7 +119,7 @@ fn options(
             }
             i += 2;
         } else {
-            positional.push(args[i]);
+            positional.push(*args.get(i).ok_or(ObjectError::Layout)?);
             i += 1;
         }
     }
@@ -434,7 +438,11 @@ fn set_operation(
                         result_len += 1;
                     }
                 }
-                list_from(ctx, runtime, &result[..result_len])
+                list_from(
+                    ctx,
+                    runtime,
+                    result.get(..result_len).ok_or(ObjectError::Layout)?,
+                )
             })
         })
     })
@@ -495,7 +503,11 @@ pub fn intersection(
                         }
                     }
                 }
-                list_from(ctx, runtime, &result[..result_len])
+                list_from(
+                    ctx,
+                    runtime,
+                    result.get(..result_len).ok_or(ObjectError::Layout)?,
+                )
             })
         })
     })

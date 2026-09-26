@@ -63,6 +63,7 @@ fn string_value(ctx: &ThreadContext, string: Word) -> String {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assert_case_result(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -94,7 +95,6 @@ fn assert_case_result(
     assert!(ncl_object::pop_root(ctx, result_token));
     assert!(ncl_object::pop_root(ctx, input_token));
 }
-
 #[test]
 fn generated_unicode_categories_cover_scalar_boundaries() {
     assert_eq!(general_category('A' as u32), Some("Lu"));

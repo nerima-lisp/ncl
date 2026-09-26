@@ -272,15 +272,6 @@ impl RuntimeAbi for X86_64Abi {
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))
     }
-
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
-        let layout = ncl_sys::thread_layout();
-        let offset = match field {
-            ContextField::MultipleValueArea => layout.mv,
-            _ => return None,
-        };
-        i32::try_from(offset).ok()
-    }
 }
 
 /// `AArch64` ABI policy used by native execution tests and embedders.
@@ -296,14 +287,5 @@ impl RuntimeAbi for Aarch64Abi {
     }
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))
-    }
-
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
-        let layout = ncl_sys::thread_layout();
-        let offset = match field {
-            ContextField::MultipleValueArea => layout.mv,
-            _ => return None,
-        };
-        i32::try_from(offset).ok()
     }
 }

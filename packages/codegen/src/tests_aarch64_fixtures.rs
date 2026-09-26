@@ -81,12 +81,6 @@ fn golden_aarch64_builtin_decodes() {
         fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
             Err(crate::AbiError::UnsupportedRuntimeFunction(function))
         }
-
-        fn field_offset(&self, field: ContextField) -> Option<i32> {
-            (field == ContextField::MultipleValueArea)
-                .then(|| i32::try_from(ncl_sys::thread_layout().mv).ok())
-                .flatten()
-        }
     }
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(23),

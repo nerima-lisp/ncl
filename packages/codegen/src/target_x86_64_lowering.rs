@@ -306,9 +306,7 @@ pub(super) fn store_return_values(
     }
     let base = abi
         .field_offset(ContextField::MultipleValueArea)
-        .ok_or_else(|| {
-            CodegenError::Unsupported("context offset is unavailable: MultipleValueArea".into())
-        })?;
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
     for (index, value) in values.iter().copied().enumerate() {
         let byte_offset = i32::try_from(index)
             .ok()

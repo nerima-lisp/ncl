@@ -69,7 +69,7 @@ fn place(
     let (operator, arguments) = parts.split_first().ok_or(ObjectError::TypeError)?;
     registry
         .get(ctx, runtime, *operator)?
-        .ok_or(ObjectError::Unsupported)?(ctx, runtime, arguments)
+        .ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)
 }
 
 fn store_place(
@@ -79,7 +79,7 @@ fn store_place(
     value: Word,
 ) -> Result<Word, ObjectError> {
     if expansion.store_variables.len() != 1 {
-        return Err(ObjectError::Unsupported);
+        return Err(ObjectError::TypeError);
     }
     let store_binding = binding(ctx, runtime, expansion.store_variables[0], value)?;
     let body = wrap_let(ctx, runtime, "LET", &[store_binding], expansion.store_form)?;
@@ -123,7 +123,7 @@ fn setf_pairs(
                 evaluation_bindings.push(binding(ctx, runtime, variable, value_form)?);
             }
             if expansion.store_variables.len() != 1 {
-                return Err(ObjectError::Unsupported);
+                return Err(ObjectError::TypeError);
             }
             let value_variable = fresh_symbol(ctx, runtime)?;
             evaluation_bindings.push(binding(ctx, runtime, value_variable, pair[1])?);

@@ -151,6 +151,18 @@ pub trait RuntimeAbi {
     fn encode_fixnum(&self, value: i64) -> i64;
     /// Encodes a character as a machine word.
     fn encode_character(&self, value: u32) -> i64;
+    /// Encodes the canonical NIL value from the runtime value ABI.
+    fn encode_nil(&self) -> i64 {
+        1
+    }
+    /// Encodes the canonical UNBOUND value from the runtime value ABI.
+    fn encode_unbound(&self) -> i64 {
+        4
+    }
+    /// Encodes the canonical true value from the runtime value ABI.
+    fn encode_true(&self) -> i64 {
+        7
+    }
     /// Returns the address of a runtime symbol.
     fn builtin_address(&self, name: &str) -> Option<u64>;
     /// Returns the address of a named builtin through the typed ABI boundary.

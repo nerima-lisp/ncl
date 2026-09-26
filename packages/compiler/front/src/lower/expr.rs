@@ -112,7 +112,9 @@ impl Context<'_> {
             .map(|argument| self.lower_expr(f, argument))
             .collect::<Result<Vec<_>, _>>()?;
         if let Operator::Name(name) = operator
-            && matches!(name.name.as_str(), "+" | "*" | "CAR" | "CONS")
+            && ((matches!(name.name.as_str(), "+" | "*") && values.len() == 2)
+                || (name.name == "CAR" && values.len() == 1)
+                || (name.name == "CONS" && values.len() == 2))
         {
             f.safepoint()?;
             return f.one(

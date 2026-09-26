@@ -210,10 +210,12 @@ fn parse_sequence_for(
 }
 
 fn hash_kind(name: &str) -> Option<HashIterationKind> {
-    match name {
-        "HASH-KEY" | "HASH-KEYS" => Some(HashIterationKind::Key),
-        "HASH-VALUE" | "HASH-VALUES" => Some(HashIterationKind::Value),
-        _ => None,
+    if name == "HASH-KEY" || name == "HASH-KEYS" {
+        Some(HashIterationKind::Key)
+    } else if name == "HASH-VALUE" || name == "HASH-VALUES" {
+        Some(HashIterationKind::Value)
+    } else {
+        None
     }
 }
 
@@ -245,9 +247,18 @@ fn parse_hash_for(
         if specification.len() != 2 {
             return Err(ObjectError::TypeError);
         }
-        let using_name = word_name(ctx, specification[0])?;
+        let using_name = word_name(
+            ctx,
+            specification
+                .first()
+                .copied()
+                .ok_or(ObjectError::TypeError)?,
+        )?;
         let using_kind = hash_kind(&using_name).ok_or(ObjectError::TypeError)?;
-        let using_variable = specification[1];
+        let using_variable = specification
+            .get(1)
+            .copied()
+            .ok_or(ObjectError::TypeError)?;
         symbol_name(ctx, using_variable)?;
         if using_kind == kind {
             return Err(ObjectError::TypeError);

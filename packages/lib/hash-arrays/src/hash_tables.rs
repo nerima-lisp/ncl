@@ -84,16 +84,17 @@ fn make_hash_table_builtin(
         if !rooted_args.len().is_multiple_of(2) {
             return Err(ObjectError::TypeError);
         }
-        for pair in rooted_args.as_chunks::<2>().0 {
-            match symbol_text(ctx, pair[0])?
+        for &[key, value] in rooted_args.as_chunks::<2>().0 {
+            match symbol_text(ctx, key)?
                 .to_ascii_uppercase()
                 .trim_start_matches(':')
             {
-                "TEST" => test = decode_test(ctx, pair[1])?,
-                "WEAKNESS" => weak = decode_weakness(ctx, pair[1])?,
-                "SIZE" => size = pair[1],
-                "REHASH-SIZE" => rehash_size = Some(pair[1]),
-                "REHASH-THRESHOLD" => rehash_threshold = Some(pair[1]),
+                "TEST" => test = decode_test(ctx, value)?,
+                "WEAKNESS" => weak = decode_weakness(ctx, value)?,
+                "SIZE" => size = value,
+                "REHASH-SIZE" => rehash_size = Some(value),
+                "REHASH-THRESHOLD" => rehash_threshold = Some(value),
+                // check-added-lines: allow(wildcard) unknown keyword names are rejected explicitly.
                 _ => return Err(ObjectError::TypeError),
             }
         }

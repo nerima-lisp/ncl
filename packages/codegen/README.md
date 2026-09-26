@@ -37,8 +37,8 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
 - `alloc_slow` receives `(ctx, words)` and returns an untagged address. The
   fast path advances `Thread`'s TLAB bump by `words * 8` and returns the old
   bump address.
-- The AArch64 test ABI is named `Aarch64Abi`; fixnum encoding remains the
-  shared `value << 3` representation.
+- The AArch64 test ABI is named `Aarch64Abi`; generated values use the single
+  encoding contract provided by `ncl_sys::Word`.
 - Safepoint maps for allocation and polling point immediately after the slow
   path `blr`. The decoder tests inspect those emitted instructions.
 - The prologue spills every declared argument into the argument area below

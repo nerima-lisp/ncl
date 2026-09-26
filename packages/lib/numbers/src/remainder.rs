@@ -1,9 +1,9 @@
 //! Common Lisp remainder, divisor, and integer-root builtins.
 
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
-    make_ratio, ratio_denominator, ratio_numerator,
+    make_ratio, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError,
+    ObjectRef, Runtime, ThreadContext, Word,
 };
 
 const fn integer_to_f64(value: i128) -> f64 {
@@ -20,24 +20,30 @@ enum Number {
     Float(f64),
 }
 
-const fn gcd(mut a: i128, mut b: i128) -> i128 {
-    a = a.saturating_abs();
-    b = b.saturating_abs();
-    while b != 0 {
-        (a, b) = (b, a % b);
+fn gcd(a: i128, b: i128) -> Option<i128> {
+    let mut ua = a.unsigned_abs();
+    let mut ub = b.unsigned_abs();
+    while ub != 0 {
+        (ua, ub) = (ub, ua % ub);
     }
-    a
+    i128::try_from(ua).ok()
 }
-const fn ratio(numerator: i128, denominator: i128) -> Number {
+fn ratio(numerator: i128, denominator: i128) -> Option<Number> {
+    if denominator == 0 {
+        return None;
+    }
+    if numerator == 0 {
+        return Some(Number::Integer(0));
+    }
     let sign = if denominator < 0 { -1 } else { 1 };
-    let denominator = denominator.saturating_abs();
-    let divisor = gcd(numerator, denominator);
-    let numerator = numerator / divisor * sign;
-    let denominator = denominator / divisor;
+    let denominator = denominator.checked_abs()?;
+    let divisor = gcd(numerator, denominator)?;
+    let numerator = numerator.checked_div(divisor)?.checked_mul(sign)?;
+    let denominator = denominator.checked_div(divisor)?;
     if denominator == 1 {
-        Number::Integer(numerator)
+        Some(Number::Integer(numerator))
     } else {
-        Number::Ratio(numerator, denominator)
+        Some(Number::Ratio(numerator, denominator))
     }
 }
 
@@ -53,23 +59,27 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                 limbs
                     .into_iter()
                     .enumerate()
-                    .try_fold(0i128, |value, (index, limb)| {
+                    .try_fold(0u128, |value, (index, limb)| {
                         let shift = u32::try_from(index)
                             .ok()
                             .and_then(|index| index.checked_mul(32))
                             .ok_or(ObjectError::TypeError)?;
-                        value
-                            .checked_add(
-                                i128::from(limb)
-                                    .checked_shl(shift)
-                                    .ok_or(ObjectError::TypeError)?,
-                            )
+                        u128::from(limb)
+                            .checked_shl(shift)
+                            .and_then(|limb| value.checked_add(limb))
                             .ok_or(ObjectError::TypeError)
                     })?;
             if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {
-                magnitude.checked_neg().ok_or(ObjectError::TypeError)
+                if magnitude == (1u128 << 127) {
+                    Ok(i128::MIN)
+                } else {
+                    i128::try_from(magnitude)
+                        .ok()
+                        .and_then(i128::checked_neg)
+                        .ok_or(ObjectError::TypeError)
+                }
             } else {
-                Ok(magnitude)
+                i128::try_from(magnitude).map_err(|_| ObjectError::TypeError)
             }
         }
         _ => Err(ObjectError::TypeError),
@@ -80,10 +90,11 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Number::Integer(integer(ctx, word)?)),
         ObjectRef::Ratio(value) => {
             let object = ncl_object::Ratio::from_word(value);
-            Ok(ratio(
+            ratio(
                 integer(ctx, ratio_numerator(ctx, object)?)?,
                 integer(ctx, ratio_denominator(ctx, object)?)?,
-            ))
+            )
+            .ok_or(ObjectError::TypeError)
         }
         ObjectRef::DoubleFloat(value) => Ok(Number::Float(double_value(
             ctx,
@@ -129,18 +140,19 @@ fn exact_remainder(value: Number, divisor: Number, floor: bool) -> Option<Number
     }
     let numerator = value_n.checked_mul(divisor_d)?;
     let denominator = value_d.checked_mul(divisor_n)?;
-    let sign = denominator.signum();
-    let numerator = numerator.checked_mul(sign)?;
-    let denominator = denominator.checked_abs()?;
-    let quotient = if floor {
-        numerator.div_euclid(denominator)
-    } else {
-        numerator / denominator
+    let quotient = numerator.checked_div(denominator);
+    let remainder = match quotient {
+        Some(mut quotient) => {
+            let remainder = numerator.checked_rem(denominator)?;
+            if floor && remainder != 0 && numerator.is_negative() != denominator.is_negative() {
+                quotient = quotient.checked_sub(1)?;
+            }
+            numerator.checked_sub(quotient.checked_mul(denominator)?)?
+        }
+        None if numerator == i128::MIN && denominator == -1 => 0,
+        None => return None,
     };
-    let remainder = value_n
-        .checked_mul(divisor_d)?
-        .checked_sub(quotient.checked_mul(value_d.checked_mul(divisor_n)?)?)?;
-    Some(ratio(remainder, value_d.checked_mul(divisor_d)?))
+    ratio(remainder, value_d.checked_mul(divisor_d)?)
 }
 fn remainder(
     ctx: &mut ThreadContext,
@@ -193,7 +205,7 @@ pub fn typed_gcd(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.as_slice().iter().try_fold(0i128, |value, arg| {
-        Ok::<_, ObjectError>(gcd(value, integer(ctx, *arg)?))
+        gcd(value, integer(ctx, *arg)?).ok_or(ObjectError::TypeError)
     })?;
     word(ctx, runtime, Number::Integer(value))
 }
@@ -209,7 +221,7 @@ pub fn typed_lcm(
             Ok(0)
         } else {
             value
-                .checked_div(gcd(value, next))
+                .checked_div(gcd(value, next).ok_or(ObjectError::TypeError)?)
                 .and_then(|value| value.checked_mul(next.checked_abs()?))
                 .ok_or(ObjectError::TypeError)
         }
@@ -244,4 +256,29 @@ pub fn typed_isqrt(
         return Err(ObjectError::TypeError);
     }
     word(ctx, runtime, Number::Integer(integer_sqrt(value)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{exact_remainder, gcd, ratio, Number};
+
+    #[test]
+    fn i128_min_boundaries_are_checked() {
+        assert_eq!(gcd(i128::MIN, 0), None);
+        assert_eq!(gcd(i128::MIN, -1), Some(1));
+        assert!(matches!(ratio(1, i128::MIN), None));
+        assert!(matches!(ratio(i128::MIN, -1), None));
+    }
+
+    #[test]
+    fn remainder_handles_division_overflow_without_panicking() {
+        assert!(matches!(
+            exact_remainder(Number::Integer(i128::MIN), Number::Integer(-1), false),
+            Some(Number::Integer(0))
+        ));
+        assert!(matches!(
+            exact_remainder(Number::Integer(i128::MIN), Number::Integer(-1), true),
+            Some(Number::Integer(0))
+        ));
+    }
 }

@@ -15,23 +15,39 @@ pub(super) enum Number {
     Complex(f64, f64),
 }
 
-pub(super) const fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
-    a = a.abs();
-    b = b.abs();
-    while b != 0 {
-        (a, b) = (b, a % b);
+pub(super) fn gcd_i128(a: i128, b: i128) -> i128 {
+    let mut ua = a.unsigned_abs();
+    let mut ub = b.unsigned_abs();
+    while ub != 0 {
+        (ua, ub) = (ub, ua % ub);
     }
-    a
+    match i128::try_from(ua) {
+        Ok(value) => value,
+        Err(_) => 0,
+    }
 }
 
-pub(super) const fn ratio(n: i128, d: i128) -> Number {
+pub(super) fn ratio(n: i128, d: i128) -> Number {
     if d == 0 {
         return Number::Ratio(n, d);
     }
     let sign = if d < 0 { -1 } else { 1 };
     let g = gcd_i128(n, d);
-    let n = n / g * sign;
-    let d = d.abs() / g;
+    if g == 0 {
+        return Number::Ratio(0, 0);
+    }
+    let Some(n) = n.checked_div(g) else {
+        return Number::Ratio(0, 0);
+    };
+    let Some(n) = n.checked_mul(sign) else {
+        return Number::Ratio(0, 0);
+    };
+    let Some(d) = d.checked_abs() else {
+        return Number::Ratio(0, 0);
+    };
+    let Some(d) = d.checked_div(g) else {
+        return Number::Ratio(0, 0);
+    };
     if d == 1 {
         Number::Integer(n)
     } else {
@@ -51,7 +67,7 @@ pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectErr
             if limbs.len() > 4 {
                 return Err(ObjectError::TypeError);
             }
-            let mut magnitude = 0i128;
+            let mut magnitude = 0u128;
             for (index, limb) in limbs.into_iter().enumerate() {
                 let shift = u32::try_from(index)
                     .ok()
@@ -59,17 +75,24 @@ pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectErr
                     .ok_or(ObjectError::TypeError)?;
                 magnitude = magnitude
                     .checked_add(
-                        i128::from(limb)
+                        u128::from(limb)
                             .checked_shl(shift)
                             .ok_or(ObjectError::TypeError)?,
                     )
                     .ok_or(ObjectError::TypeError)?;
             }
-            Ok(if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {
-                -magnitude
+            if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {
+                if magnitude == 1_u128 << 127 {
+                    Ok(i128::MIN)
+                } else {
+                    i128::try_from(magnitude)
+                        .ok()
+                        .and_then(|magnitude| magnitude.checked_neg())
+                        .ok_or(ObjectError::TypeError)
+                }
             } else {
-                magnitude
-            })
+                i128::try_from(magnitude).map_err(|_| ObjectError::TypeError)
+            }
         }
         _ => Err(ObjectError::TypeError),
     }
@@ -138,6 +161,9 @@ pub(super) fn word(
             .map(Word::fixnum)
             .or_else(|_| make_bignum_from_i128(ctx, runtime, value).map(Into::into)),
         Number::Ratio(n, d) => {
+            if d == 0 {
+                return Err(ObjectError::TypeError);
+            }
             let n = word(ctx, runtime, Number::Integer(n))?;
             let d = word(ctx, runtime, Number::Integer(d))?;
             make_ratio(ctx, runtime, n, d).map(Into::into)
@@ -155,13 +181,39 @@ pub(super) fn real_pair(
     a: Number,
     b: Number,
     op: impl Fn(f64, f64) -> f64,
-    iop: impl Fn(i128, i128) -> i128,
+    iop: impl Fn(i128, i128) -> Option<i128>,
 ) -> Number {
+    if matches!(a, Number::Ratio(_, 0)) || matches!(b, Number::Ratio(_, 0)) {
+        return Number::Ratio(0, 0);
+    }
     match (a, b) {
-        (Number::Integer(x), Number::Integer(y)) => Number::Integer(iop(x, y)),
-        (Number::Ratio(x, xd), Number::Ratio(y, yd)) => ratio(iop(x * yd, y * xd), xd * yd),
-        (Number::Ratio(x, xd), Number::Integer(y)) => ratio(iop(x, y * xd), xd),
-        (Number::Integer(x), Number::Ratio(y, yd)) => ratio(iop(x * yd, y), yd),
+        (Number::Integer(x), Number::Integer(y)) => {
+            iop(x, y).map_or(Number::Ratio(0, 0), Number::Integer)
+        }
+        (Number::Ratio(x, xd), Number::Ratio(y, yd)) => {
+            let Some(left) = x.checked_mul(yd) else {
+                return Number::Ratio(0, 0);
+            };
+            let Some(right) = y.checked_mul(xd) else {
+                return Number::Ratio(0, 0);
+            };
+            let Some(denominator) = xd.checked_mul(yd) else {
+                return Number::Ratio(0, 0);
+            };
+            iop(left, right).map_or(Number::Ratio(0, 0), |value| ratio(value, denominator))
+        }
+        (Number::Ratio(x, xd), Number::Integer(y)) => {
+            let Some(right) = y.checked_mul(xd) else {
+                return Number::Ratio(0, 0);
+            };
+            iop(x, right).map_or(Number::Ratio(0, 0), |value| ratio(value, xd))
+        }
+        (Number::Integer(x), Number::Ratio(y, yd)) => {
+            let Some(left) = x.checked_mul(yd) else {
+                return Number::Ratio(0, 0);
+            };
+            iop(left, y).map_or(Number::Ratio(0, 0), |value| ratio(value, yd))
+        }
         (x, y) => Number::Float(op(x.to_f64(), y.to_f64())),
     }
 }
@@ -176,7 +228,7 @@ pub(super) fn add_pair(a: Number, b: Number) -> Number {
     if let Number::Complex(br, bi) = b {
         return Number::Complex(a.to_f64() + br, bi);
     }
-    real_pair(a, b, |x, y| x + y, |x, y| x + y)
+    real_pair(a, b, |x, y| x + y, i128::checked_add)
 }
 pub(super) fn sub_pair(a: Number, b: Number) -> Number {
     if let (Number::Complex(ar, ai), Number::Complex(br, bi)) = (a, b) {
@@ -188,7 +240,7 @@ pub(super) fn sub_pair(a: Number, b: Number) -> Number {
     if let Number::Complex(br, bi) = b {
         return Number::Complex(a.to_f64() - br, -bi);
     }
-    real_pair(a, b, |x, y| x - y, |x, y| x - y)
+    real_pair(a, b, |x, y| x - y, i128::checked_sub)
 }
 #[allow(clippy::suboptimal_flops)]
 pub(super) fn mul_pair(a: Number, b: Number) -> Number {
@@ -203,10 +255,13 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Number {
         let x = a.to_f64();
         return Number::Complex(x * br, x * bi);
     }
-    real_pair(a, b, |x, y| x * y, |x, y| x * y)
+    real_pair(a, b, |x, y| x * y, i128::checked_mul)
 }
 #[allow(clippy::suboptimal_flops)]
 pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
+    if matches!(a, Number::Ratio(_, 0)) || matches!(b, Number::Ratio(_, 0)) {
+        return Err(ObjectError::TypeError);
+    }
     if b.to_f64() == 0.0 {
         return Err(ObjectError::TypeError);
     }

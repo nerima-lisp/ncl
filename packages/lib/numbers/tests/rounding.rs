@@ -35,7 +35,11 @@ fn integer(ctx: &ThreadContext, word: Word) -> i128 {
                     value | (i128::from(limb) << (index * 32))
                 });
             if ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(value)).unwrap() {
-                -magnitude
+                if magnitude == (1_i128 << 127) {
+                    i128::MIN
+                } else {
+                    -magnitude
+                }
             } else {
                 magnitude
             }
@@ -114,4 +118,36 @@ fn rounding_rejects_zero_divisor() {
         ),
         Err(ObjectError::TypeError)
     );
+}
+
+#[test]
+fn rounding_preserves_i128_min_without_negation_overflow() {
+    let (runtime, mut ctx) = setup();
+    let min = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    let one = Word::fixnum(1);
+
+    for name in ["FLOOR", "CEILING", "TRUNCATE", "ROUND"] {
+        let result = call(&runtime, &mut ctx, name, &[min, one]).unwrap();
+        assert_eq!(integer(&ctx, result), i128::MIN, "{name} quotient");
+        assert_eq!(integer(&ctx, ctx.values()[1]), 0, "{name} remainder");
+    }
+}
+
+#[test]
+fn rounding_reports_unrepresentable_i128_min_negation() {
+    let (runtime, mut ctx) = setup();
+    let min = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    let minus_one = Word::fixnum(-1);
+
+    for name in ["FLOOR", "CEILING", "TRUNCATE", "ROUND"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[min, minus_one]),
+            Err(ObjectError::TypeError),
+            "{name} result",
+        );
+    }
 }

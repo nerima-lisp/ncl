@@ -70,31 +70,6 @@ fn next_word(ctx: &mut ThreadContext, state: Word) -> Result<u64, ObjectError> {
     u64::try_from(next).map_err(|_| ObjectError::TypeError)
 }
 
-fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
-    match classify_object(ctx, value) {
-        ObjectRef::Fixnum(value) => Ok(i128::from(value)),
-        ObjectRef::Bignum(value) => {
-            let bignum = ncl_object::Bignum::from_word(value);
-            let magnitude = ncl_object::bignum_limbs(ctx, bignum)?
-                .into_iter()
-                .enumerate()
-                .try_fold(
-                    0_i128,
-                    |value, (index, limb)| -> Result<i128, ObjectError> {
-                        let shift = index.checked_mul(32).ok_or(ObjectError::Layout)?;
-                        Ok(value | (i128::from(limb) << shift))
-                    },
-                )?;
-            Ok(if ncl_object::bignum_sign(ctx, bignum)? {
-                -magnitude
-            } else {
-                magnitude
-            })
-        }
-        _ => Err(ObjectError::TypeError),
-    }
-}
-
 fn random_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -125,7 +100,7 @@ fn random_builtin(
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
-            let bound = integer(ctx, limit)?;
+            let bound = crate::bitops::integer(ctx, limit)?;
             if bound <= 0 {
                 return Err(ObjectError::TypeError);
             }

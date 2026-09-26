@@ -1,5 +1,5 @@
-use super::{Options, matches};
-use ncl_object::{ObjectError, Runtime, ThreadContext, Word, car, cdr, pop_root, push_root};
+use super::{Options, matches, with_scope};
+use ncl_object::{Local, ObjectError, Runtime, ThreadContext, Word};
 
 fn assoc_like(
     ctx: &mut ThreadContext,
@@ -9,53 +9,47 @@ fn assoc_like(
     opts: Options,
     reverse: bool,
 ) -> Result<Word, ObjectError> {
-    let rooted = [item, alist, opts.key, opts.test, opts.test_not];
-    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
-        let mut cursor = **rooted.get(1).ok_or(ObjectError::Layout)?;
-        let cursor_root = push_root(ctx, &mut cursor);
-        let result = (|| {
-            while cursor != Word::NIL {
-                if !cursor.is_cons() {
-                    return Err(ObjectError::TypeError);
-                }
-                let mut pair = car(ctx, cursor)?;
-                let found = ncl_object::with_root(ctx, &mut pair, |ctx, pair| {
-                    if !pair.is_cons() {
-                        return Err(ObjectError::TypeError);
-                    }
-                    let value = if reverse {
-                        cdr(ctx, *pair)?
-                    } else {
-                        car(ctx, *pair)?
-                    };
-                    let options = Options {
-                        key: **rooted.get(2).ok_or(ObjectError::Layout)?,
-                        test: **rooted.get(3).ok_or(ObjectError::Layout)?,
-                        test_not: **rooted.get(4).ok_or(ObjectError::Layout)?,
-                    };
-                    if matches(
-                        ctx,
-                        runtime,
-                        **rooted.first().ok_or(ObjectError::Layout)?,
-                        value,
-                        options,
-                    )? {
-                        return Ok(Some(*pair));
-                    }
-                    Ok(None)
-                })?;
-                if let Some(pair) = found {
-                    return Ok(pair);
-                }
-                cursor = cdr(ctx, cursor)?;
+    let root_values = [item, alist, opts.key, opts.test, opts.test_not];
+    with_scope(ctx, &root_values, |scope, handles| {
+        let item = scope
+            .get(*handles.iter().next().ok_or(ObjectError::Layout)?)
+            .as_word();
+        let cursor = scope.root(Local::from_word(
+            scope
+                .get(*handles.iter().nth(1).ok_or(ObjectError::Layout)?)
+                .as_word(),
+        ));
+        while scope.get(cursor).as_word() != Word::NIL {
+            if !scope.get(cursor).as_word().is_cons() {
+                return Err(ObjectError::TypeError);
             }
-            Ok(Word::NIL)
-        })();
-        if pop_root(ctx, cursor_root) {
-            result
-        } else {
-            Err(ObjectError::Layout)
+            let pair = scope.root(Local::from_word(scope.car(cursor)?.as_word()));
+            if !scope.get(pair).as_word().is_cons() {
+                return Err(ObjectError::TypeError);
+            }
+            let value = if reverse {
+                scope.cdr(pair)?.as_word()
+            } else {
+                scope.car(pair)?.as_word()
+            };
+            let options = Options {
+                key: scope
+                    .get(*handles.iter().nth(2).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+                test: scope
+                    .get(*handles.iter().nth(3).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+                test_not: scope
+                    .get(*handles.iter().nth(4).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+            };
+            if matches(scope.context_mut(), runtime, item, value, options)? {
+                return Ok(scope.get(pair).as_word());
+            }
+            let next = scope.cdr(cursor)?.as_word();
+            scope.set(cursor, Local::from_word(next));
         }
+        Ok(Word::NIL)
     })
 }
 
@@ -86,38 +80,38 @@ pub fn member(
     list: Word,
     opts: Options,
 ) -> Result<Word, ObjectError> {
-    let rooted = [item, list, opts.key, opts.test, opts.test_not];
-    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
-        let mut cursor = **rooted.get(1).ok_or(ObjectError::Layout)?;
-        let cursor_root = push_root(ctx, &mut cursor);
-        let result = (|| {
-            while cursor != Word::NIL {
-                if !cursor.is_cons() {
-                    return Err(ObjectError::TypeError);
-                }
-                let value = car(ctx, cursor)?;
-                let options = Options {
-                    key: **rooted.get(2).ok_or(ObjectError::Layout)?,
-                    test: **rooted.get(3).ok_or(ObjectError::Layout)?,
-                    test_not: **rooted.get(4).ok_or(ObjectError::Layout)?,
-                };
-                if matches(
-                    ctx,
-                    runtime,
-                    **rooted.first().ok_or(ObjectError::Layout)?,
-                    value,
-                    options,
-                )? {
-                    return Ok(cursor);
-                }
-                cursor = cdr(ctx, cursor)?;
+    let root_values = [item, list, opts.key, opts.test, opts.test_not];
+    with_scope(ctx, &root_values, |scope, handles| {
+        let item = scope
+            .get(*handles.iter().next().ok_or(ObjectError::Layout)?)
+            .as_word();
+        let cursor = scope.root(Local::from_word(
+            scope
+                .get(*handles.iter().nth(1).ok_or(ObjectError::Layout)?)
+                .as_word(),
+        ));
+        while scope.get(cursor).as_word() != Word::NIL {
+            if !scope.get(cursor).as_word().is_cons() {
+                return Err(ObjectError::TypeError);
             }
-            Ok(Word::NIL)
-        })();
-        if pop_root(ctx, cursor_root) {
-            result
-        } else {
-            Err(ObjectError::Layout)
+            let value = scope.car(cursor)?.as_word();
+            let options = Options {
+                key: scope
+                    .get(*handles.iter().nth(2).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+                test: scope
+                    .get(*handles.iter().nth(3).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+                test_not: scope
+                    .get(*handles.iter().nth(4).ok_or(ObjectError::Layout)?)
+                    .as_word(),
+            };
+            if matches(scope.context_mut(), runtime, item, value, options)? {
+                return Ok(scope.get(cursor).as_word());
+            }
+            let next = scope.cdr(cursor)?.as_word();
+            scope.set(cursor, Local::from_word(next));
         }
+        Ok(Word::NIL)
     })
 }

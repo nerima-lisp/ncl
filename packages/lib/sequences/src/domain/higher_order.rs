@@ -3,10 +3,41 @@
 #![allow(dead_code)]
 
 use ncl_object::{
-    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, List,
-    MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word, make_simple_vector,
-    pop_root, push_root, simple_vector_length, simple_vector_ref,
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, HandleVec, List,
+    Local, MultipleValues, ObjectError, Runtime, Scope, Sequence, ThreadContext, Word,
+    make_simple_vector, simple_vector_length, simple_vector_ref,
 };
+
+fn scope_roots<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &[Word]) -> T,
+) -> T {
+    let mut scope = Scope::new(ctx);
+    let locals = values
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let handles: HandleVec<'_> = scope.root_many(&locals);
+    let rooted = handles
+        .iter()
+        .map(|handle| scope.get(*handle).as_word())
+        .collect::<Vec<_>>();
+    f(scope.context_mut(), &rooted)
+}
+
+fn scope_rooted_slice<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T,
+) -> T {
+    let mut rooted = values.to_vec();
+    let roots = rooted.clone();
+    scope_roots(ctx, &roots, |ctx, _| f(ctx, &mut rooted))
+}
+
+use core::ops::Range;
 
 fn list_word(list: List) -> Word {
     match list {
@@ -39,20 +70,38 @@ fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, Obje
     }
 }
 
+struct RootedNested<'a> {
+    values: &'a mut [Word],
+    ranges: Vec<Range<usize>>,
+}
+
+impl RootedNested<'_> {
+    fn iter(&self) -> impl Iterator<Item = &[Word]> {
+        self.ranges.iter().map(|range| &self.values[range.clone()])
+    }
+}
+
 fn rooted_nested<T>(
     ctx: &mut ThreadContext,
-    words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
-    f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
-) -> T {
-    let mut tokens = Vec::new();
-    for row in words.iter_mut() {
-        for word in row {
-            tokens.push(push_root(ctx, word));
-        }
+    words: &[Vec<Word>], // check-added-lines: allow(index) slice type
+    f: impl FnOnce(&mut ThreadContext, RootedNested<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut flat = Vec::new();
+    let mut ranges = Vec::with_capacity(words.len());
+    for row in words {
+        let start = flat.len();
+        flat.extend(row);
+        ranges.push(start..flat.len());
     }
-    let result = f(ctx, words);
-    tokens.into_iter().rev().all(|token| pop_root(ctx, token));
-    result
+    scope_rooted_slice(ctx, &flat, |ctx, rooted| {
+        f(
+            ctx,
+            RootedNested {
+                values: rooted,
+                ranges,
+            },
+        )
+    })
 }
 
 fn sequence_result(
@@ -61,7 +110,7 @@ fn sequence_result(
     result_type: Sequence,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_rooted_slice(ctx, values, |ctx, rooted_values| match result_type {
+    scope_rooted_slice(ctx, values, |ctx, rooted_values| match result_type {
         Sequence::List(_) => super::list_from(ctx, runtime, rooted_values),
         Sequence::Vector(_) => make_simple_vector(ctx, runtime, rooted_values),
         Sequence::String(_) => Err(ObjectError::TypeError),
@@ -101,16 +150,16 @@ pub fn map<C: FunctionCaller>(
 ) -> Result<Word, ObjectError> {
     let callback_word = function;
     let callback_roots = [callback_word];
-    ncl_object::with_roots(ctx, &callback_roots, |ctx, rooted_callback| {
-        let callback = callback(ctx, **rooted_callback.first().ok_or(ObjectError::Layout)?)?;
-        let mut sources = sequences
+    scope_roots(ctx, &callback_roots, |ctx, rooted_callback| {
+        let callback = callback(ctx, *rooted_callback.first().ok_or(ObjectError::Layout)?)?;
+        let sources = sequences
             .iter()
             .map(|sequence| values(ctx, *sequence))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sources.iter().map(Vec::len).min().unwrap_or(0);
-        rooted_nested(ctx, &mut sources, |ctx, sources| {
+        Ok(rooted_nested(ctx, &sources, |ctx, sources| {
             let result = vec![Word::NIL; length];
-            ncl_object::with_rooted_slice(ctx, &result, |ctx, rooted_result| {
+            scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
                 for (index, value) in rooted_result.iter_mut().enumerate() {
                     let args = sources
                         .iter()
@@ -120,7 +169,7 @@ pub fn map<C: FunctionCaller>(
                 }
                 sequence_result(ctx, runtime, result_type, rooted_result)
             })
-        })
+        })?)
     })
 }
 
@@ -134,11 +183,11 @@ pub fn map_into<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let roots = [destination, function];
-    ncl_object::with_roots(ctx, &roots, |ctx, roots| {
+    scope_roots(ctx, &roots, |ctx, roots| {
         let destination_sequence =
-            super::sequence_value(ctx, **roots.first().ok_or(ObjectError::Layout)?)?;
+            super::sequence_value(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
         let destination_values = values(ctx, destination_sequence)?;
-        let mut sources = sequences
+        let sources = sequences
             .iter()
             .map(|sequence| values(ctx, *sequence))
             .collect::<Result<Vec<_>, _>>()?;
@@ -146,8 +195,8 @@ pub fn map_into<C: FunctionCaller>(
             .chain(sources.iter().map(Vec::len))
             .min()
             .unwrap_or(0);
-        rooted_nested(ctx, &mut sources, |ctx, sources| {
-            ncl_object::with_rooted_slice(ctx, &destination_values, |ctx, rooted_destination| {
+        Ok(rooted_nested(ctx, &sources, |ctx, sources| {
+            scope_rooted_slice(ctx, &destination_values, |ctx, rooted_destination| {
                 for index in 0..length {
                     let args = sources
                         .iter()
@@ -159,13 +208,13 @@ pub fn map_into<C: FunctionCaller>(
                         ctx,
                         runtime,
                         caller,
-                        callback(ctx, **roots.get(1).ok_or(ObjectError::Layout)?)?,
+                        callback(ctx, *roots.get(1).ok_or(ObjectError::Layout)?)?,
                         &args,
                     )?
                     .0;
                 }
                 let destination_sequence =
-                    super::sequence_value(ctx, **roots.first().ok_or(ObjectError::Layout)?)?;
+                    super::sequence_value(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
                 match destination_sequence {
                     Sequence::List(list) => {
                         let mut cursor = list_word(list);
@@ -184,9 +233,9 @@ pub fn map_into<C: FunctionCaller>(
                     }
                     Sequence::String(_) => return Err(ObjectError::TypeError),
                 }
-                Ok(**roots.first().ok_or(ObjectError::Layout)?)
+                Ok(*roots.first().ok_or(ObjectError::Layout)?)
             })
-        })
+        })?)
     })
 }
 
@@ -201,24 +250,24 @@ pub fn reduce<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let roots = [function, initial.unwrap_or(Word::NIL)];
-    ncl_object::with_roots(ctx, &roots, |ctx, roots| {
+    scope_roots(ctx, &roots, |ctx, roots| {
         let mut items = values(ctx, sequence)?;
         if from_end {
             items.reverse();
         }
-        let callback = callback(ctx, **roots.first().ok_or(ObjectError::Layout)?)?;
+        let callback = callback(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
         let mut index = 0;
         let accumulator = if initial.is_some() {
-            **roots.get(1).ok_or(ObjectError::Layout)?
+            *roots.get(1).ok_or(ObjectError::Layout)?
         } else {
             *items.first().ok_or(ObjectError::TypeError)?
         };
         if initial.is_none() {
             index = 1;
         }
-        ncl_object::with_rooted_slice(ctx, &items, |ctx, items| {
+        scope_rooted_slice(ctx, &items, |ctx, items| {
             let accumulator_root = [accumulator];
-            ncl_object::with_rooted_slice(ctx, &accumulator_root, |ctx, accumulator| {
+            scope_rooted_slice(ctx, &accumulator_root, |ctx, accumulator| {
                 while index < items.len() {
                     let args = [
                         *accumulator.first().ok_or(ObjectError::Layout)?,
@@ -244,14 +293,14 @@ pub fn predicate<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let callback_root = [function];
-    ncl_object::with_roots(ctx, &callback_root, |ctx, root| {
-        let callback = callback(ctx, **root.first().ok_or(ObjectError::Layout)?)?;
-        let mut source_values = sequences
+    scope_roots(ctx, &callback_root, |ctx, root| {
+        let callback = callback(ctx, *root.first().ok_or(ObjectError::Layout)?)?;
+        let source_values = sequences
             .iter()
             .map(|sequence| values(ctx, *sequence))
             .collect::<Result<Vec<_>, _>>()?;
-        rooted_nested(ctx, &mut source_values, |ctx, source_values| {
-            let length = source_values.iter().map(Vec::len).min().unwrap_or(0);
+        Ok(rooted_nested(ctx, &source_values, |ctx, source_values| {
+            let length = source_values.iter().map(<[Word]>::len).min().unwrap_or(0);
             let mut result = matches!(kind, Predicate::Every | Predicate::NotAny);
             for index in 0..length {
                 let args = source_values
@@ -270,7 +319,7 @@ pub fn predicate<C: FunctionCaller>(
                 }
             }
             Ok(if result { Word::TRUE } else { Word::NIL })
-        })
+        })?)
     })
 }
 
@@ -291,28 +340,28 @@ fn list_map<C: FunctionCaller>(
     tails: bool,
 ) -> Result<Vec<Word>, ObjectError> {
     let list_roots = lists.to_vec();
-    ncl_object::with_roots(ctx, &list_roots, |ctx, lists| {
+    scope_roots(ctx, &list_roots, |ctx, lists| {
         let function_root = [function];
-        ncl_object::with_roots(ctx, &function_root, |ctx, function_root| {
+        scope_roots(ctx, &function_root, |ctx, function_root| {
             let sequences = lists
                 .iter()
-                .map(|list| super::sequence_value(ctx, **list))
+                .map(|list| super::sequence_value(ctx, *list))
                 .collect::<Result<Vec<_>, _>>()?;
-            let mut sources = sequences
+            let sources = sequences
                 .iter()
                 .map(|sequence| values(ctx, *sequence))
                 .collect::<Result<Vec<_>, _>>()?;
             let length = sources.iter().map(Vec::len).min().unwrap_or(0);
-            rooted_nested(ctx, &mut sources, |ctx, sources| {
+            Ok(rooted_nested(ctx, &sources, |ctx, sources| {
                 let result = vec![Word::NIL; length];
-                ncl_object::with_rooted_slice(ctx, &result, |ctx, rooted_result| {
+                scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
                     let callback =
-                        callback(ctx, **function_root.first().ok_or(ObjectError::Layout)?)?;
+                        callback(ctx, *function_root.first().ok_or(ObjectError::Layout)?)?;
                     for (index, value) in rooted_result.iter_mut().enumerate() {
                         let args = if tails {
                             lists
                                 .iter()
-                                .map(|list| nth_tail(ctx, **list, index))
+                                .map(|list| nth_tail(ctx, *list, index))
                                 .collect::<Result<Vec<_>, _>>()?
                         } else {
                             sources
@@ -324,7 +373,7 @@ fn list_map<C: FunctionCaller>(
                     }
                     Ok(rooted_result.to_vec())
                 })
-            })
+            })?)
         })
     })
 }
@@ -355,9 +404,9 @@ pub fn mapc<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let list_roots = lists.to_vec();
-    ncl_object::with_roots(ctx, &list_roots, |ctx, rooted_lists| {
+    scope_roots(ctx, &list_roots, |ctx, rooted_lists| {
         list_map(ctx, runtime, function, lists, caller, false)?;
-        Ok(**rooted_lists.first().ok_or(ObjectError::TypeError)?)
+        Ok(*rooted_lists.first().ok_or(ObjectError::TypeError)?)
     })
 }
 
@@ -369,7 +418,7 @@ pub fn maplist<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let result = list_map(ctx, runtime, function, lists, caller, true)?;
-    ncl_object::with_rooted_slice(ctx, &result, |ctx, rooted_result| {
+    scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
         super::list_from(ctx, runtime, rooted_result)
     })
 }
@@ -382,9 +431,9 @@ pub fn mapl<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let list_roots = lists.to_vec();
-    ncl_object::with_roots(ctx, &list_roots, |ctx, rooted_lists| {
+    scope_roots(ctx, &list_roots, |ctx, rooted_lists| {
         list_map(ctx, runtime, function, lists, caller, true)?;
-        Ok(**rooted_lists.first().ok_or(ObjectError::TypeError)?)
+        Ok(*rooted_lists.first().ok_or(ObjectError::TypeError)?)
     })
 }
 
@@ -415,12 +464,12 @@ fn flatten_results(
     runtime: &Runtime,
     results: &[Word],
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_rooted_slice(ctx, results, |ctx, rooted_results| {
+    scope_rooted_slice(ctx, results, |ctx, rooted_results| {
         let mut flattened = Vec::new();
         for result in rooted_results.iter().copied() {
             flattened.extend(values(ctx, super::sequence_value(ctx, result)?)?);
         }
-        ncl_object::with_rooted_slice(ctx, &flattened, |ctx, rooted_flattened| {
+        scope_rooted_slice(ctx, &flattened, |ctx, rooted_flattened| {
             super::list_from(ctx, runtime, rooted_flattened)
         })
     })

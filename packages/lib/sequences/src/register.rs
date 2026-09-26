@@ -4,8 +4,9 @@ mod register_extra;
 use crate::domain;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
-    BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum, LambdaList, List, MultipleValues,
-    ObjectError, Parameter, ParameterType, Runtime, Sequence, ThreadContext, Word,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum, LambdaList, List, Local,
+    MultipleValues, ObjectError, Parameter, ParameterType, Runtime, Scope, Sequence, ThreadContext,
+    Word,
 };
 use register_extra::{
     adjoin_entry, assoc_entry, every_entry, intersection_entry, map_entry, map_into_entry,
@@ -52,17 +53,20 @@ fn direct_descriptor(required: &'static [Parameter]) -> Builtin {
 fn identity(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }
-fn finish<T>(
+fn finish(
     ctx: &mut ThreadContext,
     values: &mut MultipleValues,
-    result: Result<T, ncl_object::LispError>,
-) -> Result<T, ObjectError> {
-    result
+    result: Result<Word, ncl_object::LispError>,
+) -> Result<Word, ObjectError> {
+    let result = result
         .map_err(|error| {
             ctx.set_pending_lisp_error(error);
             ObjectError::TypeError
         })
-        .inspect(|_| values.clear())
+        .inspect(|_| values.clear())?;
+    let mut scope = Scope::new(ctx);
+    let result_handle = scope.root::<Word>(Local::from_word(result));
+    Ok(scope.get(result_handle).as_word())
 }
 fn sequence_arg(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
     domain::sequence_value(ctx, word)
@@ -261,20 +265,28 @@ fn selection_entry(
     operation: SelectionOperation,
 ) -> Result<Word, ObjectError> {
     let (positional, options) = domain::selection::parse_options(ctx, args.as_slice())?;
-    let mut sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
-    let sequence_root = ncl_object::push_root(ctx, &mut sequence);
+    let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    let mut scope = Scope::new(ctx);
+    let sequence_handle = scope.root::<Word>(Local::from_word(sequence));
     let result = (|| {
-        let sequence_value = domain::selection::object_sequence(ctx, sequence)?;
-        let mut items = domain::selection::sequence_values(ctx, sequence_value)?;
+        let sequence = scope.get(sequence_handle).as_word();
+        let sequence_value = domain::selection::object_sequence(scope.context(), sequence)?;
+        let mut items = domain::selection::sequence_values(scope.context_mut(), sequence_value)?;
         let object = *positional.first().ok_or(ObjectError::TypeError)?;
         let mut caller = BuiltinFunctionCaller;
-        operation(ctx, runtime, &mut caller, &mut items, object, options)
+        operation(
+            scope.context_mut(),
+            runtime,
+            &mut caller,
+            &mut items,
+            object,
+            options,
+        )
     })();
-    if !ncl_object::pop_root(ctx, sequence_root) {
-        return Err(ObjectError::Layout);
-    }
+    let result = result?;
+    let result_handle = scope.root::<Word>(Local::from_word(result));
     values.clear();
-    result
+    Ok(scope.get(result_handle).as_word())
 }
 fn find_entry(
     ctx: &mut ThreadContext,

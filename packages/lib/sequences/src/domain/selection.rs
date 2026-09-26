@@ -7,10 +7,39 @@
 //! move every object in the sequence.
 
 use ncl_object::{
-    FunctionArguments, FunctionCaller, FunctionDesignator, List, MultipleValues, ObjectError,
-    ObjectRef, Runtime, Sequence, ThreadContext, Word, car, cdr, classify_object, make_cons,
-    pop_root, push_root, simple_vector_length, simple_vector_ref, string_length, string_ref,
+    FunctionArguments, FunctionCaller, FunctionDesignator, HandleVec, List, Local, MultipleValues,
+    ObjectError, ObjectRef, Runtime, Scope, Sequence, ThreadContext, Word, car, cdr,
+    classify_object, make_cons, simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
+
+fn scope_roots<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &[Word]) -> T,
+) -> T {
+    let mut scope = Scope::new(ctx);
+    let locals = values
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let handles: HandleVec<'_> = scope.root_many(&locals);
+    let rooted = handles
+        .iter()
+        .map(|handle| scope.get(*handle).as_word())
+        .collect::<Vec<_>>();
+    f(scope.context_mut(), &rooted)
+}
+
+fn scope_rooted_slice<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T,
+) -> T {
+    let mut rooted = values.to_vec();
+    let roots = rooted.clone();
+    scope_roots(ctx, &roots, |ctx, _| f(ctx, &mut rooted))
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SelectionOptions {
@@ -127,13 +156,13 @@ fn call_one<C: FunctionCaller>(
     argument: Word,
 ) -> Result<Word, ObjectError> {
     let roots = [designator, argument];
-    ncl_object::with_roots(ctx, &roots, |ctx, roots| {
+    scope_roots(ctx, &roots, |ctx, roots| {
         let mut values = MultipleValues::new();
         caller.call_function(
             ctx,
             runtime,
-            function(ctx, **roots.first().ok_or(ObjectError::Layout)?)?,
-            FunctionArguments::new(&[**roots.get(1).ok_or(ObjectError::Layout)?]),
+            function(ctx, *roots.first().ok_or(ObjectError::Layout)?)?,
+            FunctionArguments::new(&[*roots.get(1).ok_or(ObjectError::Layout)?]),
             &mut values,
         )
     })
@@ -159,11 +188,11 @@ fn matches<C: FunctionCaller>(
         options.test.unwrap_or(Word::NIL),
         options.test_not.unwrap_or(Word::NIL),
     ];
-    ncl_object::with_roots(ctx, &predicate_roots, |ctx, roots| {
-        let keyed = **roots.first().ok_or(ObjectError::Layout)?;
-        let object = **roots.get(1).ok_or(ObjectError::Layout)?;
+    scope_roots(ctx, &predicate_roots, |ctx, roots| {
+        let keyed = *roots.first().ok_or(ObjectError::Layout)?;
+        let object = *roots.get(1).ok_or(ObjectError::Layout)?;
         let result = if options.test.is_some() {
-            let designator = function(ctx, **roots.get(3).ok_or(ObjectError::Layout)?)?;
+            let designator = function(ctx, *roots.get(3).ok_or(ObjectError::Layout)?)?;
             let mut values = MultipleValues::new();
             let args = [keyed, object];
             caller.call_function(
@@ -174,7 +203,7 @@ fn matches<C: FunctionCaller>(
                 &mut values,
             )?
         } else if options.test_not.is_some() {
-            let designator = function(ctx, **roots.get(4).ok_or(ObjectError::Layout)?)?;
+            let designator = function(ctx, *roots.get(4).ok_or(ObjectError::Layout)?)?;
             let mut values = MultipleValues::new();
             let args = [keyed, object];
             caller.call_function(
@@ -187,8 +216,8 @@ fn matches<C: FunctionCaller>(
         } else {
             Word::NIL
         };
-        let keyed = **roots.first().ok_or(ObjectError::Layout)?;
-        let object = **roots.get(1).ok_or(ObjectError::Layout)?;
+        let keyed = *roots.first().ok_or(ObjectError::Layout)?;
+        let object = *roots.get(1).ok_or(ObjectError::Layout)?;
         let truth = result != Word::NIL;
         Ok(if options.test_not.is_some() {
             !truth
@@ -224,27 +253,18 @@ pub fn matching_indices<C: FunctionCaller>(
     object: Word,
     options: SelectionOptions,
 ) -> Result<Vec<usize>, ObjectError> {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
+    scope_roots(ctx, values, |ctx, roots| {
         let option_roots = [
             object,
             options.key.unwrap_or(Word::NIL),
             options.test.unwrap_or(Word::NIL),
             options.test_not.unwrap_or(Word::NIL),
         ];
-        ncl_object::with_roots(ctx, &option_roots, |ctx, option_roots| {
+        scope_roots(ctx, &option_roots, |ctx, option_roots| {
             let rooted_options = || -> Result<SelectionOptions, ObjectError> {
-                let key = option_roots
-                    .get(1)
-                    .ok_or(ObjectError::Layout)
-                    .map(|r| **r)?;
-                let test = option_roots
-                    .get(2)
-                    .ok_or(ObjectError::Layout)
-                    .map(|r| **r)?;
-                let test_not = option_roots
-                    .get(3)
-                    .ok_or(ObjectError::Layout)
-                    .map(|r| **r)?;
+                let key = option_roots.get(1).ok_or(ObjectError::Layout).map(|r| *r)?;
+                let test = option_roots.get(2).ok_or(ObjectError::Layout).map(|r| *r)?;
+                let test_not = option_roots.get(3).ok_or(ObjectError::Layout).map(|r| *r)?;
                 Ok(SelectionOptions {
                     key: (key != Word::NIL).then_some(key),
                     test: (test != Word::NIL).then_some(test),
@@ -264,8 +284,8 @@ pub fn matching_indices<C: FunctionCaller>(
                     ctx,
                     runtime,
                     rooted_options()?,
-                    **roots.get(index).ok_or(ObjectError::Layout)?,
-                    **option_roots.first().ok_or(ObjectError::Layout)?,
+                    *roots.get(index).ok_or(ObjectError::Layout)?,
+                    *option_roots.first().ok_or(ObjectError::Layout)?,
                 )? {
                     found.push(index);
                     if let Some(count) = options.count
@@ -385,8 +405,8 @@ pub fn search<C: FunctionCaller>(
     right: &mut [Word], // check-added-lines: allow(index) slice type
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_roots(ctx, left, |ctx, left_roots| {
-        ncl_object::with_roots(ctx, right, |ctx, right_roots| {
+    scope_roots(ctx, left, |ctx, left_roots| {
+        scope_roots(ctx, right, |ctx, right_roots| {
             let (start, end) = bounds(options, left.len())?;
             let width = end - start;
             if width > right.len() {
@@ -405,8 +425,8 @@ pub fn search<C: FunctionCaller>(
                         ctx,
                         runtime,
                         options,
-                        **left_roots.get(start + i).ok_or(ObjectError::Layout)?,
-                        **right_roots.get(offset + i).ok_or(ObjectError::Layout)?,
+                        *left_roots.get(start + i).ok_or(ObjectError::Layout)?,
+                        *right_roots.get(offset + i).ok_or(ObjectError::Layout)?,
                     )? {
                         equal = false;
                         break;
@@ -430,8 +450,8 @@ pub fn mismatch<C: FunctionCaller>(
     right: &mut [Word], // check-added-lines: allow(index) slice type
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_roots(ctx, left, |ctx, left_roots| {
-        ncl_object::with_roots(ctx, right, |ctx, right_roots| {
+    scope_roots(ctx, left, |ctx, left_roots| {
+        scope_roots(ctx, right, |ctx, right_roots| {
             let (start, end) = bounds(options, left.len())?;
             for index in start..end.min(right.len()) {
                 if !matches(
@@ -439,8 +459,8 @@ pub fn mismatch<C: FunctionCaller>(
                     ctx,
                     runtime,
                     options,
-                    **left_roots.get(index).ok_or(ObjectError::Layout)?,
-                    **right_roots.get(index).ok_or(ObjectError::Layout)?,
+                    *left_roots.get(index).ok_or(ObjectError::Layout)?,
+                    *right_roots.get(index).ok_or(ObjectError::Layout)?,
                 )? {
                     return index_word(index);
                 }
@@ -460,17 +480,12 @@ pub fn list_from_values(
     runtime: &Runtime,
     values: &mut [Word], // check-added-lines: allow(index) slice type
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
+    scope_rooted_slice(ctx, values, |ctx, rooted_values| {
         let mut result = Word::NIL;
-        let result_root = push_root(ctx, &mut result);
-        for root in roots.iter().rev() {
-            result = make_cons(ctx, runtime, **root, result)?;
+        for value in rooted_values.iter().rev().copied() {
+            result = make_cons(ctx, runtime, value, result)?;
         }
-        if pop_root(ctx, result_root) {
-            Ok(result)
-        } else {
-            Err(ObjectError::Layout)
-        }
+        Ok(result)
     })
 }
 

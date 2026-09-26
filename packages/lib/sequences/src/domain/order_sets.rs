@@ -10,47 +10,53 @@ mod extra;
 pub use extra::{adjoin, intersection, set_difference, set_exclusive_or, subsetp};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, MultipleValues, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify_object, pop_root, push_root,
-    rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, Handle, HandleVec, Local,
+    MultipleValues, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word, car, cdr,
+    classify_object, rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
+
+pub(super) fn with_scope<'ctx, T>(
+    ctx: &'ctx mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut Scope<'ctx>, &HandleVec<'ctx>) -> T,
+) -> T {
+    let mut scope = Scope::new(ctx);
+    let locals = values
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let handles = scope.root_many(&locals);
+    f(&mut scope, &handles)
+}
+
+fn word<'scope>(scope: &Scope<'scope>, handle: Handle<'scope>) -> Word {
+    scope.get(handle).as_word()
+}
+
 pub(super) fn list_from(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut rooted = values.to_vec();
-    let roots = rooted
-        .iter_mut()
-        .map(|value| push_root(ctx, value))
-        .collect::<Vec<_>>();
-    let mut result = Word::NIL;
-    let result_root = push_root(ctx, &mut result);
-    for &value in rooted.iter().rev() {
-        result = ncl_object::make_cons(ctx, runtime, value, result)?;
-    }
-    let valid =
-        pop_root(ctx, result_root) && roots.into_iter().rev().all(|root| pop_root(ctx, root));
-    if valid {
-        Ok(result)
-    } else {
-        Err(ObjectError::Layout)
-    }
+    with_scope(ctx, values, |scope, handles| {
+        let result = scope.root(Local::from_word(Word::NIL));
+        for handle in handles.iter().rev() {
+            let first = word(scope, *handle);
+            let second = word(scope, result);
+            let next = ncl_object::make_cons(scope.context_mut(), runtime, first, second)?;
+            scope.set(result, Local::from_word(next));
+        }
+        Ok(word(scope, result))
+    })
 }
-pub(super) fn rooted_nested<T>(
+pub(super) fn scoped_rows<T>(
     ctx: &mut ThreadContext,
     words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
     f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
 ) -> T {
-    let mut tokens = Vec::new();
-    for row in words.iter_mut() {
-        for word in row {
-            tokens.push(push_root(ctx, word));
-        }
-    }
-    let result = f(ctx, words);
-    tokens.into_iter().rev().all(|token| pop_root(ctx, token));
-    result
+    let values = words.iter().flatten().copied().collect::<Vec<_>>();
+    with_scope(ctx, &values, |scope, _| f(scope.context_mut(), words))
 }
 #[derive(Clone, Copy)]
 pub struct Options {
@@ -72,16 +78,14 @@ pub(super) fn with_options<T>(
     opts: Options,
     f: impl FnOnce(&mut ThreadContext, Options) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    let rooted = [opts.key, opts.test, opts.test_not];
-    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
-        f(
-            ctx,
-            Options {
-                key: **rooted.first().ok_or(ObjectError::Layout)?,
-                test: **rooted.get(1).ok_or(ObjectError::Layout)?,
-                test_not: **rooted.get(2).ok_or(ObjectError::Layout)?,
-            },
-        )
+    let root_values = [opts.key, opts.test, opts.test_not];
+    with_scope(ctx, &root_values, |scope, handles| {
+        let options = Options {
+            key: word(scope, *handles.iter().nth(0).ok_or(ObjectError::Layout)?),
+            test: word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?),
+            test_not: word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?),
+        };
+        f(scope.context_mut(), options)
     })
 }
 fn symbol_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
@@ -194,32 +198,29 @@ fn call_predicate(
     function: Word,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut designator = function;
-    let designator_root = push_root(ctx, &mut designator);
-    let mut rooted = args.to_vec();
-    let roots = rooted
-        .iter_mut()
-        .map(|word| push_root(ctx, word))
-        .collect::<Vec<_>>();
-    let result = (|| {
-        let designator = FunctionDesignator::try_from_word(ctx, designator)?;
+    let mut values = Vec::with_capacity(args.len() + 1);
+    values.push(function);
+    values.extend_from_slice(args);
+    with_scope(ctx, &values, |scope, handles| {
+        let designator = FunctionDesignator::try_from_word(
+            scope.context(),
+            word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?),
+        )?;
         let mut caller = BuiltinFunctionCaller;
         let mut values = MultipleValues::new();
+        let args = handles
+            .iter()
+            .skip(1)
+            .map(|handle| word(scope, *handle))
+            .collect::<Vec<_>>();
         caller.call_function(
-            ctx,
+            scope.context_mut(),
             runtime,
             designator,
-            FunctionArguments::new(&rooted),
+            FunctionArguments::new(&args),
             &mut values,
         )
-    })();
-    let valid =
-        roots.into_iter().rev().all(|token| pop_root(ctx, token)) && pop_root(ctx, designator_root);
-    if valid {
-        result
-    } else {
-        Err(ObjectError::Layout)
-    }
+    })
 }
 fn key(
     ctx: &mut ThreadContext,
@@ -240,41 +241,29 @@ pub(super) fn matches(
     b: Word,
     opts: Options,
 ) -> Result<bool, ObjectError> {
-    let rooted = [a, b, opts.key, opts.test, opts.test_not];
-    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
-        let mut keyed_a = key(
-            ctx,
-            runtime,
-            **rooted.get(2).ok_or(ObjectError::Layout)?,
-            **rooted.first().ok_or(ObjectError::Layout)?,
-        )?;
-        ncl_object::with_root(ctx, &mut keyed_a, |ctx, keyed_a| {
-            let mut keyed_b = key(
-                ctx,
-                runtime,
-                **rooted.get(2).ok_or(ObjectError::Layout)?,
-                **rooted.get(1).ok_or(ObjectError::Layout)?,
-            )?;
-            ncl_object::with_root(ctx, &mut keyed_b, |ctx, keyed_b| {
-                if **rooted.get(3).ok_or(ObjectError::Layout)? != Word::NIL {
-                    Ok(call_predicate(
-                        ctx,
-                        runtime,
-                        **rooted.get(3).ok_or(ObjectError::Layout)?,
-                        &[*keyed_a, *keyed_b],
-                    )? != Word::NIL)
-                } else if **rooted.get(4).ok_or(ObjectError::Layout)? != Word::NIL {
-                    Ok(call_predicate(
-                        ctx,
-                        runtime,
-                        **rooted.get(4).ok_or(ObjectError::Layout)?,
-                        &[*keyed_a, *keyed_b],
-                    )? == Word::NIL)
-                } else {
-                    Ok(*keyed_a == *keyed_b)
-                }
-            })
-        })
+    let root_values = [a, b, opts.key, opts.test, opts.test_not];
+    with_scope(ctx, &root_values, |scope, handles| {
+        let key_fn = word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?);
+        let first = word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?);
+        let second = word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?);
+        let keyed_a_word = key(scope.context_mut(), runtime, key_fn, first)?;
+        let keyed_a = scope.root(Local::from_word(keyed_a_word));
+        let keyed_b_word = key(scope.context_mut(), runtime, key_fn, second)?;
+        let keyed_b = scope.root(Local::from_word(keyed_b_word));
+        let left = word(scope, keyed_a);
+        let right = word(scope, keyed_b);
+        let test = word(scope, *handles.iter().nth(3).ok_or(ObjectError::Layout)?);
+        let test_not = word(scope, *handles.iter().nth(4).ok_or(ObjectError::Layout)?);
+        if test != Word::NIL {
+            Ok(call_predicate(scope.context_mut(), runtime, test, &[left, right])? != Word::NIL)
+        } else if test_not != Word::NIL {
+            Ok(
+                call_predicate(scope.context_mut(), runtime, test_not, &[left, right])?
+                    == Word::NIL,
+            )
+        } else {
+            Ok(left == right)
+        }
     })
 }
 fn compare(
@@ -294,73 +283,70 @@ pub fn sort(
     key_fn: Word,
     stable: bool,
 ) -> Result<Word, ObjectError> {
-    let mut values = sequence_values(ctx, sequence)?;
-    let function_roots = [sequence, predicate, key_fn];
-    ncl_object::with_roots(ctx, &function_roots, |ctx, function_roots| {
-        let roots = values
-            .iter_mut()
-            .map(|word| push_root(ctx, word))
-            .collect::<Vec<_>>();
-        let result = {
-            let key_values = vec![Word::NIL; values.len()];
-            ncl_object::with_rooted_slice(ctx, &key_values, |ctx, key_values| {
-                for (key_value, value) in key_values.iter_mut().zip(values.iter()) {
-                    *key_value = if **function_roots.get(2).ok_or(ObjectError::Layout)? == Word::NIL
-                    {
-                        *value
-                    } else {
-                        key(
-                            ctx,
-                            runtime,
-                            **function_roots.get(2).ok_or(ObjectError::Layout)?,
-                            *value,
-                        )?
-                    };
-                }
-                let mut order: Vec<usize> = Vec::with_capacity(values.len());
-                for index in 0..values.len() {
-                    let mut position = order.len();
-                    for (offset, &other) in order.iter().enumerate() {
-                        if compare(
-                            ctx,
-                            runtime,
-                            **function_roots.get(1).ok_or(ObjectError::Layout)?,
-                            *key_values.get(index).ok_or(ObjectError::Layout)?,
-                            *key_values.get(other).ok_or(ObjectError::Layout)?,
-                        )? {
-                            position = offset;
-                            break;
-                        }
-                    }
-                    if !stable
-                        && position < order.len()
-                        && *key_values.get(index).ok_or(ObjectError::Layout)?
-                            == *key_values
-                                .get(*order.get(position).ok_or(ObjectError::Layout)?)
-                                .ok_or(ObjectError::Layout)?
-                    {
-                        position += 1;
-                    }
-                    order.insert(position, index);
-                }
-                for (i, index) in order.into_iter().enumerate() {
-                    let value = *values.get(index).ok_or(ObjectError::Layout)?;
-                    set_sequence_value(
-                        ctx,
-                        **function_roots.first().ok_or(ObjectError::Layout)?,
-                        i,
-                        value,
-                    )?;
-                }
-                Ok(**function_roots.first().ok_or(ObjectError::Layout)?)
-            })
-        };
-        let valid = roots.into_iter().rev().all(|token| pop_root(ctx, token));
-        if valid {
-            result
-        } else {
-            Err(ObjectError::Layout)
+    let values = sequence_values(ctx, sequence)?;
+    let mut roots = vec![sequence, predicate, key_fn];
+    roots.extend_from_slice(&values);
+    with_scope(ctx, &roots, |scope, handles| {
+        let sequence_handle = *handles.iter().next().ok_or(ObjectError::Layout)?;
+        let predicate_word = word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?);
+        let key_word = word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?);
+        let value_handles = handles.iter().skip(3).copied().collect::<Vec<_>>();
+        let key_values = scope.root_many(&vec![Local::from_word(Word::NIL); values.len()]);
+        for (key_handle, value_handle) in key_values.iter().zip(value_handles.iter()) {
+            let value = word(scope, *value_handle);
+            let keyed = if key_word == Word::NIL {
+                value
+            } else {
+                key(scope.context_mut(), runtime, key_word, value)?
+            };
+            scope.set(*key_handle, Local::from_word(keyed));
         }
+        let mut order: Vec<usize> = Vec::with_capacity(values.len());
+        for index in 0..values.len() {
+            let mut position = order.len();
+            for (offset, &other) in order.iter().enumerate() {
+                let current_key = word(
+                    scope,
+                    *key_values.iter().nth(index).ok_or(ObjectError::Layout)?,
+                );
+                let other_key = word(
+                    scope,
+                    *key_values.iter().nth(other).ok_or(ObjectError::Layout)?,
+                );
+                if compare(
+                    scope.context_mut(),
+                    runtime,
+                    predicate_word,
+                    current_key,
+                    other_key,
+                )? {
+                    position = offset;
+                    break;
+                }
+            }
+            if !stable
+                && position < order.len()
+                && word(
+                    scope,
+                    *key_values.iter().nth(index).ok_or(ObjectError::Layout)?,
+                ) == word(
+                    scope,
+                    *key_values
+                        .iter()
+                        .nth(*order.get(position).ok_or(ObjectError::Layout)?)
+                        .ok_or(ObjectError::Layout)?,
+                )
+            {
+                position += 1;
+            }
+            order.insert(position, index);
+        }
+        for (i, index) in order.into_iter().enumerate() {
+            let value = word(scope, *value_handles.get(index).ok_or(ObjectError::Layout)?);
+            let sequence_word = word(scope, sequence_handle);
+            set_sequence_value(scope.context_mut(), sequence_word, i, value)?;
+        }
+        Ok(word(scope, sequence_handle))
     })
 }
 #[allow(dead_code)]
@@ -383,7 +369,7 @@ pub(super) fn set_operation(
     difference: bool,
 ) -> Result<Word, ObjectError> {
     let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
+    scoped_rows(ctx, &mut rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             let candidates = if difference {
                 (0..rows.first().map_or(0, Vec::len))
@@ -395,8 +381,8 @@ pub(super) fn set_operation(
                     .flat_map(|(row, values)| (0..values.len()).map(move |index| (row, index)))
                     .collect()
             };
-            let result = vec![Word::NIL; candidates.len()];
-            ncl_object::with_rooted_slice(ctx, &result, |ctx, result| {
+            let mut result = vec![Word::NIL; candidates.len()];
+            {
                 let mut result_len = 0;
                 for &(candidate_row, candidate_index) in &candidates {
                     let mut in_left = false;
@@ -453,7 +439,7 @@ pub(super) fn set_operation(
                     runtime,
                     result.get(..result_len).ok_or(ObjectError::Layout)?,
                 )
-            })
+            }
         })
     })
 }

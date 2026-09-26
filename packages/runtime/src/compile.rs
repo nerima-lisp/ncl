@@ -260,7 +260,7 @@ fn visit_expr(expr: &Expr, profile: &mut OptimizationProfile) {
                 visit_expr(form, profile);
             }
         }
-        _ => {}
+        _ => profile.unsupported = true,
     }
 }
 

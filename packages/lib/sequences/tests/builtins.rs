@@ -43,7 +43,6 @@ fn with_list(
     f(ctx, &mut list);
     assert!(ncl_object::pop_root(ctx, root));
 }
-
 fn probe(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -61,7 +60,6 @@ fn probe(
         )
     });
 }
-
 #[test]
 #[allow(clippy::too_many_lines)]
 fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
@@ -158,14 +156,12 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     let list_symbol_root = ncl_object::push_root(&mut ctx, &mut list_symbol);
     ctx.set_gc_stress(true);
     ctx.set_strict_forwarding(true);
-
     let one = Word::fixnum(1);
     let two = Word::fixnum(2);
     let three = Word::fixnum(3);
     let four = Word::fixnum(4);
     let five = Word::fixnum(5);
     let values = [one, two, three, four, five];
-
     assert_eq!(
         call(&runtime, &mut ctx, &functions, "ATOM", &[one]),
         Word::TRUE
@@ -221,7 +217,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         assert_eq!(call(&runtime, ctx, &functions, "NINTH", &[list]), Word::NIL);
         assert_eq!(call(&runtime, ctx, &functions, "TENTH", &[list]), Word::NIL);
     });
-
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list_root| {
         let mut result = call(
             &runtime,
@@ -239,7 +234,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         assert_eq!(ncl_object::cdr(ctx, result), Ok(list));
         assert!(ncl_object::pop_root(ctx, root));
     });
-
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list_root| {
         let list = *list_root;
         assert_eq!(
@@ -253,7 +247,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         );
         assert_eq!(ncl_object::cdr(ctx, list), Ok(Word::NIL));
     });
-
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list_root| {
         let list = *list_root;
         let mut result = call(&runtime, ctx, &functions, "COPY-LIST", &[list]);
@@ -262,7 +255,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         assert_ne!(result, list);
         assert!(ncl_object::pop_root(ctx, root));
     });
-
     let mut list_star = call(
         &runtime,
         &mut ctx,
@@ -273,7 +265,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     let list_star_root = ncl_object::push_root(&mut ctx, &mut list_star);
     assert_list(&mut ctx, list_star, &[one, two, three]);
     assert!(ncl_object::pop_root(&mut ctx, list_star_root));
-
     with_list(
         &runtime,
         &mut ctx,
@@ -290,7 +281,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             assert!(ncl_object::pop_root(ctx, right_root));
         },
     );
-
     with_list(
         &runtime,
         &mut ctx,
@@ -305,7 +295,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             assert!(ncl_object::pop_root(ctx, right_root));
         },
     );
-
     assert_eq!(
         call(
             &runtime,
@@ -316,7 +305,6 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         ),
         Word::NIL
     );
-
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list_root| {
         let list = *list_root;
         assert_eq!(
@@ -429,7 +417,6 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("context: {error:?}"));
     ncl_lib_sequences::register(&runtime).unwrap_or_else(|error| panic!("sequences: {error:?}"));
-
     let names = [
         "LIST", "MAPCAR", "MAP-INTO", "REDUCE", "SORT", "UNION", "CAR", "CONS",
     ];
@@ -466,7 +453,6 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let destination_root = ncl_object::push_root(&mut ctx, &mut destination);
     ctx.set_gc_stress(true);
     ctx.set_strict_forwarding(true);
-
     // These calls exercise the Lisp callback, map-into destination, reducer,
     // sort predicate, and set :test paths under both forwarding checks.
     let mut car = functions["CAR"].as_word();
@@ -503,7 +489,6 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     );
     assert!(union.is_cons());
     assert_eq!(ncl_object::cdr(&mut ctx, union), Ok(Word::NIL));
-
     assert!(ncl_object::pop_root(&mut ctx, test_keyword_root));
     assert!(ncl_object::pop_root(&mut ctx, cons_root));
     assert!(ncl_object::pop_root(&mut ctx, car_root));

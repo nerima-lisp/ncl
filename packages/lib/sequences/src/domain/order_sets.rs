@@ -1,16 +1,20 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::redundant_pub_crate)]
 
 #[path = "order_sets_assoc.rs"]
 mod assoc;
 #[allow(unused_imports)]
 pub use assoc::{assoc, member, rassoc};
+#[path = "order_sets_extra.rs"]
+mod extra;
+#[allow(unused_imports)]
+pub use extra::{adjoin, intersection, set_difference, set_exclusive_or, subsetp};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     BuiltinFunctionCaller, FunctionArguments, FunctionCaller, MultipleValues, ObjectError,
     ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify_object, pop_root, push_root,
     rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
-fn list_from(
+pub(super) fn list_from(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     values: &[Word],
@@ -33,7 +37,7 @@ fn list_from(
         Err(ObjectError::Layout)
     }
 }
-fn rooted_nested<T>(
+pub(super) fn rooted_nested<T>(
     ctx: &mut ThreadContext,
     words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
     f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
@@ -63,7 +67,7 @@ impl Default for Options {
         }
     }
 }
-fn with_options<T>(
+pub(super) fn with_options<T>(
     ctx: &mut ThreadContext,
     opts: Options,
     f: impl FnOnce(&mut ThreadContext, Options) -> Result<T, ObjectError>,
@@ -138,7 +142,10 @@ pub fn parse_options(
 ) -> Result<(Vec<Word>, Options), ObjectError> {
     options(ctx, args, required)
 }
-fn sequence_values(ctx: &mut ThreadContext, sequence: Word) -> Result<Vec<Word>, ObjectError> {
+pub(super) fn sequence_values(
+    ctx: &mut ThreadContext,
+    sequence: Word,
+) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
     if sequence == Word::NIL {
         return Ok(result);
@@ -226,7 +233,7 @@ fn key(
         call_predicate(ctx, runtime, key, &[value])
     }
 }
-fn matches(
+pub(super) fn matches(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     a: Word,
@@ -366,7 +373,7 @@ pub fn stable_sort(
 ) -> Result<Word, ObjectError> {
     sort(ctx, runtime, sequence, predicate, key_fn, true)
 }
-fn set_operation(
+pub(super) fn set_operation(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     first: Word,
@@ -458,145 +465,4 @@ pub fn union(
     opts: Options,
 ) -> Result<Word, ObjectError> {
     set_operation(ctx, runtime, first, second, opts, false, false)
-}
-pub fn intersection(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    first: Word,
-    second: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
-        with_options(ctx, opts, |ctx, opts| {
-            let result = vec![Word::NIL; rows.first().map_or(0, Vec::len)];
-            ncl_object::with_rooted_slice(ctx, &result, |ctx, result| {
-                let mut result_len = 0;
-                for index in 0..rows.first().map_or(0, Vec::len) {
-                    let mut found = false;
-                    for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
-                        let value = *rows
-                            .first()
-                            .and_then(|row| row.get(index))
-                            .ok_or(ObjectError::Layout)?;
-                        if matches(ctx, runtime, value, *candidate, opts)? {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        let mut duplicate = false;
-                        for candidate in result.iter().take(result_len) {
-                            let value = *rows
-                                .first()
-                                .and_then(|row| row.get(index))
-                                .ok_or(ObjectError::Layout)?;
-                            if matches(ctx, runtime, value, *candidate, opts)? {
-                                duplicate = true;
-                                break;
-                            }
-                        }
-                        if !duplicate {
-                            let value = *rows
-                                .first()
-                                .and_then(|row| row.get(index))
-                                .ok_or(ObjectError::Layout)?;
-                            *result.get_mut(result_len).ok_or(ObjectError::Layout)? = value;
-                            result_len += 1;
-                        }
-                    }
-                }
-                list_from(
-                    ctx,
-                    runtime,
-                    result.get(..result_len).ok_or(ObjectError::Layout)?,
-                )
-            })
-        })
-    })
-}
-pub fn set_difference(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    first: Word,
-    second: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    set_operation(ctx, runtime, first, second, opts, false, true)
-}
-pub fn set_exclusive_or(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    first: Word,
-    second: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    set_operation(ctx, runtime, first, second, opts, true, false)
-}
-pub fn subsetp(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    first: Word,
-    second: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
-        with_options(ctx, opts, |ctx, opts| {
-            for index in 0..rows.first().map_or(0, Vec::len) {
-                let mut found = false;
-                for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
-                    let value = *rows
-                        .first()
-                        .and_then(|row| row.get(index))
-                        .ok_or(ObjectError::Layout)?;
-                    if matches(ctx, runtime, value, *candidate, opts)? {
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    return Ok(Word::NIL);
-                }
-            }
-            Ok(Word::TRUE)
-        })
-    })
-}
-pub fn adjoin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    item: Word,
-    list: Word,
-    opts: Options,
-) -> Result<Word, ObjectError> {
-    let mut rows = vec![vec![item], sequence_values(ctx, list)?];
-    rooted_nested(ctx, &mut rows, |ctx, rows| {
-        with_options(ctx, opts, |ctx, opts| {
-            for value in rows.get(1).ok_or(ObjectError::Layout)? {
-                let item = *rows
-                    .first()
-                    .and_then(|row| row.first())
-                    .ok_or(ObjectError::Layout)?;
-                if matches(ctx, runtime, item, *value, opts)? {
-                    return Ok(list);
-                }
-            }
-            let values = vec![Word::NIL; rows.get(1).map_or(0, Vec::len) + 1];
-            ncl_object::with_rooted_slice(ctx, &values, |ctx, values| {
-                *values.first_mut().ok_or(ObjectError::Layout)? = *rows
-                    .first()
-                    .and_then(|row| row.first())
-                    .ok_or(ObjectError::Layout)?;
-                for (destination, value) in values
-                    .iter_mut()
-                    .skip(1)
-                    .zip(rows.get(1).ok_or(ObjectError::Layout)?)
-                {
-                    *destination = *value;
-                }
-                list_from(ctx, runtime, values)
-            })
-        })
-    })
 }

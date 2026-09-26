@@ -26,34 +26,16 @@ pub fn list_from(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut values = values.to_vec();
-    let value_tokens = values
-        .iter_mut()
-        .map(|value| ncl_object::push_root(ctx, value))
-        .collect::<Vec<_>>();
-    let mut result = Word::NIL;
-    let result_token = ncl_object::push_root(ctx, &mut result);
-    for &value in values.iter().rev() {
-        match make_cons(ctx, runtime, value, result) {
-            Ok(next) => result = next,
-            Err(error) => {
-                ncl_object::pop_root(ctx, result_token);
-                for token in value_tokens.into_iter().rev() {
-                    ncl_object::pop_root(ctx, token);
-                }
-                return Err(error);
-            }
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let mut result = Word::NIL;
+        for value in roots.iter().rev() {
+            let next = ncl_object::with_root(ctx, &mut result, |ctx, result| {
+                make_cons(ctx, runtime, **value, *result)
+            })?;
+            result = next;
         }
-    }
-    let result_root_error =
-        (!ncl_object::pop_root(ctx, result_token)).then_some(ObjectError::Layout);
-    let value_root_error = value_tokens
-        .into_iter()
-        .rev()
-        .find_map(|token| (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout));
-    result_root_error
-        .or(value_root_error)
-        .map_or(Ok(result), Err)
+        Ok(result)
+    })
 }
 
 pub mod filter;

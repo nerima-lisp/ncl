@@ -1,17 +1,20 @@
 //! Evaluation, compilation, loading, and registration orchestration.
 
 mod compile;
+mod function_call;
 mod load;
 
+pub use function_call::RuntimeFunctionCaller;
+
 use ncl_codegen::{RuntimeAbi, RuntimeFunction};
-use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
+use ncl_compiler_front::{lower_toplevel, FormExpander, MacroCaller, MacroRegistry};
 use ncl_object::{
-    FunctionObject, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word,
-    symbol_function,
+    symbol_function, FunctionObject, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext,
+    Word,
 };
 use ncl_sys::{
-    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code, invoke_entry,
-    publish_code, register_code, thread_layout, write_code,
+    alloc_code, invoke_entry, publish_code, register_code, thread_layout, write_code,
+    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation,
 };
 
 /// Errors raised while setting up or executing one compilation unit.

@@ -111,6 +111,11 @@ fn evals_native_functions_constants_and_closures() {
     for (source, expected) in [
         ("(progn (defun f (x) (+ x 1)) (f 41))", "42"),
         ("(funcall (let ((y 5)) (lambda (x) (+ x y))) 10)", "15"),
+        (
+            "(progn (defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 25))",
+            "75025",
+        ),
+        ("(if t 1 2)", "1"),
     ] {
         let result = output(ncl().args(["--eval", source]));
         assert!(result.status.success(), "{source}: {result:?}");

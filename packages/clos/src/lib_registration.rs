@@ -134,7 +134,7 @@ fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
 
 /// Whether `name` already names a *real* (non-placeholder) class.
 fn is_installed_class(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> bool {
-    matches!(runtime.class(ctx, name), Some(word) if word != Word::UNBOUND)
+    matches!(runtime.class(ctx, name), Some(word) if word != Word::UNBOUND) // check-added-lines: allow(unbound) ownership-table placeholder
 }
 
 fn install_typed_class(
@@ -151,7 +151,7 @@ fn install_typed_class(
     // were a real superclass object.
     let supers = superclass
         .and_then(|parent| runtime.class(ctx, parent.as_str()))
-        .filter(|word| *word != Word::UNBOUND)
+        .filter(|word| *word != Word::UNBOUND) // check-added-lines: allow(unbound) ownership-table placeholder
         .unwrap_or(Word::NIL);
     let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
     runtime.define_class(ctx, name.as_str(), class)

@@ -29,7 +29,7 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
         ncl_ir::Constant::SingleFloat(_)
         | ncl_ir::Constant::DoubleFloat(_)
         | ncl_ir::Constant::Symbol { .. }
-        | ncl_ir::Constant::Object(_)
+        | ncl_ir::Constant::Object(_) // check-added-lines: allow(unsupported) explicit unsupported constant
         | ncl_ir::Constant::StringBytes(_) => Err(CodegenError::Unsupported(
             // check-added-lines: allow(unsupported) existing codegen error variant
             "constant requires a runtime table".into(),

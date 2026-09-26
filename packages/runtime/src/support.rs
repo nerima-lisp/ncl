@@ -18,7 +18,7 @@ pub struct NativeInvocation<'a> {
     /// Native entry address -> that function's own `CODE` object, so
     /// `MakeClosure` can attach the callee's code (and constants table)
     /// rather than always inheriting the currently-executing function's.
-    pub(crate) entry_codes: &'a BTreeMap<usize, Word>,
+    pub(crate) entry_codes: &'a BTreeMap<usize, Word>, // check-added-lines: allow(word-table) borrowed from Runtime's rooted table
 }
 
 #[derive(Clone, Copy, Debug)]

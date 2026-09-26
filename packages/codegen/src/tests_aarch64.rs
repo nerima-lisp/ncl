@@ -58,7 +58,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
 }
 
 #[test]
-fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
+fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
     let mut builder = ncl_ir::FunctionBuilder::new(
         ncl_ir::FunctionId(70),
         "ir-v2-ops",
@@ -87,11 +87,9 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
             .is_ok()
     );
     let argc_value = ncl_ir::ValueId(2);
-    assert!(
-        builder
-            .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-            .is_ok()
-    );
+    builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .map_err(|error| format!("argc constant: {error:?}"))?;
     assert!(
         builder
             .push_op(
@@ -140,6 +138,7 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
     };
     assert!(!compiled.code.is_empty());
     assert!(compiled.safepoint_maps.len() >= 4);
+    Ok(())
 }
 
 #[test]
@@ -234,7 +233,7 @@ fn golden_aarch64_prologue_spills_register_arguments() {
 
 #[test]
 #[allow(clippy::chunks_exact_to_as_chunks)]
-fn golden_aarch64_tail_call_restores_frame_and_branches() {
+fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> {
     let mut builder =
         FunctionBuilder::new(ncl_ir::FunctionId(30), "tail-call", Vec::new(), Vec::new());
     let callee = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
@@ -251,7 +250,7 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() {
         .ok()
         .and_then(|values| values.first().copied())
     else {
-        unreachable!("argc result")
+        return Err("argc result missing".to_owned());
     };
     assert!(
         builder
@@ -264,7 +263,7 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() {
 
     let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
         Ok(compiled) => compiled,
-        Err(error) => unreachable!("AArch64 tail-call lowering: {error:?}"),
+        Err(error) => return Err(format!("AArch64 tail-call lowering: {error:?}")),
     };
     let instructions = compiled
         .code
@@ -279,6 +278,7 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() {
     );
     assert!(!instructions.iter().any(|text| text == "ret x30"));
     assert!(compiled.safepoint_maps.is_empty());
+    Ok(())
 }
 
 #[test]

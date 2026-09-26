@@ -194,7 +194,7 @@ fn golden_x86_64_fixnum_constant_uses_imm32() {
 }
 
 #[test]
-fn golden_x86_64_call_map_matches_return_address() {
+fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(32), "call-map", Vec::new(), vec![]);
     let callee_constant = builder.add_constant(Constant::Fixnum(0));
     let callee = builder.push_op(
@@ -212,8 +212,11 @@ fn golden_x86_64_call_map_matches_return_address() {
         },
         &[Ty::Word],
     );
-    assert!(argc.is_ok());
-    let argc = argc.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let argc = argc.map_err(|error| format!("argc constant: {error:?}"))?;
+    let argc = argc
+        .first()
+        .copied()
+        .ok_or_else(|| "argc constant produced no value".to_owned())?;
     assert!(
         builder
             .push_op(
@@ -233,10 +236,10 @@ fn golden_x86_64_call_map_matches_return_address() {
     let compiled_result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
     assert!(compiled_result.is_ok());
     let Some(compiled) = compiled_result.ok() else {
-        return;
+        return Ok(());
     };
     let Some(map) = compiled.safepoint_maps.first() else {
-        return;
+        return Ok(());
     };
     assert_ne!(map.map_flags & FLAG_CALL, 0);
     let end = usize::try_from(map.pc_offset).unwrap_or(0);
@@ -244,6 +247,7 @@ fn golden_x86_64_call_map_matches_return_address() {
     // three bytes before it, and the caller releases its header reservation after.
     assert_eq!(compiled.code[end - 3..end], [0x41, 0xFF, 0xD3]);
     assert_eq!(compiled.code[end..end + 4], [0x48, 0x83, 0xC4, 0x10]);
+    Ok(())
 }
 
 #[test]

@@ -1,6 +1,8 @@
 use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
+
+mod stack;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
 
@@ -208,7 +210,7 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
-        self.stack_bounds = current_stack_bounds();
+        self.stack_bounds = stack::current_stack_bounds();
         self.callee_saved = crate::snapshot_callee_saved();
     }
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
@@ -407,46 +409,6 @@ impl Thread {
 
 // SAFETY: a Thread is an owner-local mutator context and is transferred to one OS thread at a time.
 unsafe impl Send for Thread {}
-
-#[cfg(target_os = "macos")]
-fn current_stack_bounds() -> Option<(usize, usize)> {
-    // SAFETY: pthread_self identifies the calling thread and both APIs return its live stack extent.
-    unsafe {
-        let thread = crate::os::declarations::pthread_self();
-        let top = crate::os::declarations::pthread_get_stackaddr_np(thread) as usize;
-        let size = crate::os::declarations::pthread_get_stacksize_np(thread);
-        top.checked_sub(size).map(|start| (start, top))
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn current_stack_bounds() -> Option<(usize, usize)> {
-    let mut attr = [0_u8; 128];
-    let mut start = ptr::null_mut();
-    let mut size = 0;
-    // SAFETY: pthread attributes are written to platform ABI storage and destroyed after use.
-    let result = unsafe {
-        let thread = crate::os::declarations::pthread_self();
-        let result = crate::os::declarations::pthread_getattr_np(thread, attr.as_mut_ptr().cast());
-        if result == 0 {
-            let result = crate::os::declarations::pthread_attr_getstack(
-                attr.as_ptr().cast(),
-                &raw mut start,
-                &raw mut size,
-            );
-            let _ = crate::os::declarations::pthread_attr_destroy(attr.as_mut_ptr().cast());
-            result
-        } else {
-            result
-        }
-    };
-    (result == 0).then_some((start as usize, (start as usize).saturating_add(size)))
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-const fn current_stack_bounds() -> Option<(usize, usize)> {
-    None
-}
 
 #[cfg(test)]
 mod tests {

@@ -24,8 +24,14 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .ok_or_else(|| {
                 CodegenError::Unsupported("function entry constant is unavailable".into())
+                // check-added-lines: allow(unsupported) existing codegen error variant
             }),
-        _ => Err(CodegenError::Unsupported(
+        ncl_ir::Constant::SingleFloat(_)
+        | ncl_ir::Constant::DoubleFloat(_)
+        | ncl_ir::Constant::Symbol { .. }
+        | ncl_ir::Constant::Object(_)
+        | ncl_ir::Constant::StringBytes(_) => Err(CodegenError::Unsupported(
+            // check-added-lines: allow(unsupported) existing codegen error variant
             "constant requires a runtime table".into(),
         )),
     }
@@ -95,9 +101,12 @@ fn closure_capture_count(function: &Function, closure: ValueId) -> usize {
         .iter()
         .flat_map(|block| block.ops.iter())
         .find(|op| op.results.iter().any(|(value, _)| *value == closure))
-        .and_then(|op| match &op.kind {
-            OpKind::MakeClosure { captures, .. } => Some(captures.len()),
-            _ => None,
+        .and_then(|op| {
+            if let OpKind::MakeClosure { captures, .. } = &op.kind {
+                Some(captures.len())
+            } else {
+                None
+            }
         })
         .unwrap_or(0)
 }
@@ -111,6 +120,7 @@ fn lower_prim(
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
+        // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported(
             "primitive has no operands".into(),
         ));
@@ -149,7 +159,8 @@ fn lower_prim(
                 Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), ENTRY),
             )?;
         }
-        _ => {
+        Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
+            // check-added-lines: allow(unsupported) existing codegen error variant
             return Err(CodegenError::Unsupported(format!(
                 "primitive is not available: {prim:?}"
             )));

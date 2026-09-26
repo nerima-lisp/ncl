@@ -75,7 +75,7 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() {
 }
 
 #[test]
-fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
+fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
     let mut builder = ncl_ir::FunctionBuilder::new(
         ncl_ir::FunctionId(70),
         "ir-v2-ops",
@@ -93,11 +93,9 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
             .is_ok()
     );
     let argc_value = ncl_ir::ValueId(2);
-    assert!(
-        builder
-            .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-            .is_ok()
-    );
+    builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .map_err(|error| format!("argc constant: {error:?}"))?;
     assert!(
         builder
             .push_op(
@@ -157,10 +155,11 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
     };
     assert!(!compiled.code.is_empty());
     assert!(compiled.safepoint_maps.len() >= 4);
+    Ok(())
 }
 
 #[test]
-fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
+fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(73),
         "tail-call",
@@ -181,7 +180,7 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
         .ok()
         .and_then(|values| values.first().copied())
     else {
-        unreachable!("argc result")
+        return Err("argc result missing".to_owned());
     };
     assert!(
         builder
@@ -194,7 +193,7 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
 
     let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
         Ok(compiled) => compiled,
-        Err(error) => unreachable!("tail-call lowering: {error:?}"),
+        Err(error) => return Err(format!("tail-call lowering: {error:?}")),
     };
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0;
     // mov [rbp+24], r11; sub rsp, 32
@@ -216,6 +215,7 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
         ]
     );
     assert!(compiled.safepoint_maps.is_empty());
+    Ok(())
 }
 
 #[test]

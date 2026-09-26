@@ -1,15 +1,24 @@
-const fn descriptor(arity: u8) -> Builtin {
-    let required = match arity {
-        0 => ARGS_0,
-        1 => ARGS_1,
-        2 => ARGS_2,
-        3 => ARGS_3,
-        4 => ARGS_4,
-        _ => &[],
-    };
-    Builtin {
-        lambda_list: LambdaList::fixed(required),
-        convention: ncl_object::BuiltinConvention::Direct(Arity::exact(arity)),
+#[derive(Clone, Copy)]
+enum BuiltinArity {
+    One,
+    Two,
+    Three,
+}
+
+const fn descriptor(arity: BuiltinArity) -> Builtin {
+    match arity {
+        BuiltinArity::One => Builtin {
+            lambda_list: LambdaList::fixed(ARGS_1),
+            convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
+        },
+        BuiltinArity::Two => Builtin {
+            lambda_list: LambdaList::fixed(ARGS_2),
+            convention: ncl_object::BuiltinConvention::Direct(Arity::exact(2)),
+        },
+        BuiltinArity::Three => Builtin {
+            lambda_list: LambdaList::fixed(ARGS_3),
+            convention: ncl_object::BuiltinConvention::Direct(Arity::exact(3)),
+        },
     }
 }
 

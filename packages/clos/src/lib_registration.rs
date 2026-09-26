@@ -7,7 +7,7 @@ struct Registration {
 fn direct_registration(
     package: BuiltinPackage,
     name: &'static str,
-    arity: u8,
+    arity: BuiltinArity,
     callback: ncl_object::RustBuiltin,
 ) -> Registration {
     Registration {
@@ -18,13 +18,48 @@ fn direct_registration(
 
 fn builtin_manifest() -> Vec<Registration> {
     let mut manifest = vec![
-        direct_registration(BuiltinPackage::CommonLisp, "CLASS-NAME", 1, class_name_builtin),
-        direct_registration(BuiltinPackage::CommonLisp, "CLASS-OF", 1, class_of_builtin),
-        direct_registration(BuiltinPackage::CommonLisp, "SLOT-BOUNDP", 2, slot_boundp_builtin),
-        direct_registration(BuiltinPackage::CommonLisp, "SLOT-EXISTS-P", 2, slot_exists_builtin),
-        direct_registration(BuiltinPackage::CommonLisp, "SLOT-MAKUNBOUND", 2, slot_makunbound_builtin),
-        direct_registration(BuiltinPackage::CommonLisp, "SLOT-VALUE", 2, slot_value_builtin),
-        direct_registration(BuiltinPackage::NclMop, "CLASS-NAME", 1, class_name_builtin),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "CLASS-NAME",
+            BuiltinArity::One,
+            class_name_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "CLASS-OF",
+            BuiltinArity::One,
+            class_of_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "SLOT-BOUNDP",
+            BuiltinArity::Two,
+            slot_boundp_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "SLOT-EXISTS-P",
+            BuiltinArity::Two,
+            slot_exists_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "SLOT-MAKUNBOUND",
+            BuiltinArity::Two,
+            slot_makunbound_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::CommonLisp,
+            "SLOT-VALUE",
+            BuiltinArity::Two,
+            slot_value_builtin,
+        ),
+        direct_registration(
+            BuiltinPackage::NclMop,
+            "CLASS-NAME",
+            BuiltinArity::One,
+            class_name_builtin,
+        ),
     ];
     manifest.extend(mop::builtin_descriptors().iter().map(|descriptor| Registration {
         identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
@@ -202,7 +237,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let slot_value_set = direct_registration(
         BuiltinPackage::CommonLisp,
         "SLOT-VALUE-SET",
-        3,
+        BuiltinArity::Three,
         slot_set_builtin,
     );
     runtime.register_builtin(&mut ctx, slot_value_set.identifier, slot_value_set.implementation)?;

@@ -40,10 +40,16 @@ let _ = unsafe { read(); };
         )
         failures = checker.check_added_lines(diff)
         for rule in ("index", "as-cast", "panic", "wildcard", "unbound", "todo", "unsafe"):
-            if rule == "unbound":
-                self.assertTrue(any("[unbound]" in item for item in checker.unbound_warnings(checker.added_lines(diff))))
-            else:
-                self.assertTrue(any(f"[{rule}]" in item for item in failures), failures)
+            self.assertTrue(any(f"[{rule}]" in item for item in failures), failures)
+
+    def test_detects_unsupported_and_word_tables(self):
+        failures = checker.check_added_lines(make_diff(
+            "packages/object/src/value.rs",
+            "let _table: HashMap<Word, Word> = HashMap::new();\n"
+            "return Err(ObjectError::Unsupported);",
+        ))
+        self.assertTrue(any("[word-table]" in item for item in failures), failures)
+        self.assertTrue(any("[unsupported]" in item for item in failures), failures)
 
     def test_detects_em_dash_and_external_dependency(self):
         diff = make_diff("README.md", "A documented choice " + chr(0x2014) + " with a reason.")

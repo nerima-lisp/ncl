@@ -160,7 +160,7 @@ fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> 
 }
 
 fn parse_options(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     args: &[Word],
     required: usize,
 ) -> Result<(Vec<Word>, Options), ObjectError> {
@@ -169,13 +169,12 @@ fn parse_options(
     let mut index = 0;
     while index < args.len() {
         if args[index] != Word::NIL
-            && keyword_name(ctx, args[index])
-                .is_ok_and(|n| {
-                    matches!(
-                        n.as_str(),
-                        "START" | "END" | "FROM-END" | "COUNT" | "KEY" | "TEST" | "TEST-NOT"
-                    )
-                })
+            && keyword_name(ctx, args[index]).is_ok_and(|n| {
+                matches!(
+                    n.as_str(),
+                    "START" | "END" | "FROM-END" | "COUNT" | "KEY" | "TEST" | "TEST-NOT"
+                )
+            })
         {
             let name = keyword_name(ctx, args[index])?;
             let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
@@ -269,10 +268,8 @@ fn selected_indices(
 }
 
 fn character(value: Word) -> Result<char, ObjectError> {
-    char::from_u32(
-        u32::try_from(value.bits() >> 4).map_err(|_| ObjectError::TypeError)?,
-    )
-    .ok_or(ObjectError::TypeError)
+    char::from_u32(u32::try_from(value.bits() >> 4).map_err(|_| ObjectError::TypeError)?)
+        .ok_or(ObjectError::TypeError)
 }
 
 fn fixnum(value: usize) -> Result<Word, ObjectError> {
@@ -298,12 +295,9 @@ fn set_value(
         Sequence::Vector(vector) => {
             ncl_object::simple_vector_set(ctx, vector.into(), index, value)?;
         }
-        Sequence::String(string) => ncl_object::string_set(
-            ctx,
-            string.into(),
-            index,
-            character(value)?,
-        )?,
+        Sequence::String(string) => {
+            ncl_object::string_set(ctx, string.into(), index, character(value)?)?
+        }
     }
     Ok(())
 }

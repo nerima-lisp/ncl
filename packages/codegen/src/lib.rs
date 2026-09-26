@@ -64,6 +64,13 @@ pub enum CodegenError {
     Encode(String),
     /// Frame layout arithmetic overflowed.
     FrameOverflow,
+    /// An IR operation refers to a constant-table entry that cannot be indexed.
+    InvalidConstantIndex {
+        /// The requested constant-table index.
+        index: u32,
+        /// The number of entries in the constant table.
+        length: usize,
+    },
     /// The fixed-template backend does not have the runtime contract needed for an operation.
     Unsupported(String),
 }
@@ -76,6 +83,9 @@ impl core::fmt::Display for CodegenError {
             Self::UnknownValue(id) => write!(f, "unknown value {id}"),
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
+            Self::InvalidConstantIndex { index, length } => {
+                write!(f, "constant index {index} is out of range for table of length {length}")
+            }
             Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),
         }
     }

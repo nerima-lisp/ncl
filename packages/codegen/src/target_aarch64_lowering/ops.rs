@@ -25,6 +25,23 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
     }
 }
 
+fn constant_table_entry<'a>(
+    constants: &'a [ncl_ir::Constant],
+    index: ncl_ir::ConstantIndex,
+) -> Result<&'a ncl_ir::Constant, CodegenError> {
+    let raw_index = index.0;
+    let index = usize::try_from(raw_index).map_err(|_| CodegenError::InvalidConstantIndex {
+        index: raw_index,
+        length: constants.len(),
+    })?;
+    constants
+        .get(index)
+        .ok_or(CodegenError::InvalidConstantIndex {
+            index: raw_index,
+            length: constants.len(),
+        })
+}
+
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::Eq,
@@ -181,10 +198,7 @@ pub fn lower_op(
     let mut call_pc = None;
     match &op.kind {
         OpKind::Const { result: constant } => {
-            let value = function
-                .constants
-                .get(constant.0 as usize)
-                .ok_or_else(|| CodegenError::Unsupported("constant index out of range".into()))?;
+            let value = constant_table_entry(&function.constants, *constant)?;
             for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), constant_word(value, abi)?) {
                 emit(assembler, instruction)?;
             }

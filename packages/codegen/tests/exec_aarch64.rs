@@ -151,12 +151,7 @@ fn executes_fixnum_add_of_two_arguments() {
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            Word::fixnum(1).bits(),
-            Word::fixnum(2).bits(),
-            0,
-            0,
-        ],
+        [Word::fixnum(1).bits(), Word::fixnum(2).bits(), 0, 0],
         0,
     );
     assert_eq!(value, Word::fixnum(3).bits());
@@ -208,18 +203,12 @@ fn preserves_arguments_across_entry_safepoint() {
     publish_code(&mut code).expect("code publication");
     let mut thread = Thread::new();
     request_safepoint(&mut thread);
-    let abi = BuiltinAbi;
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            Word::fixnum(11).bits(),
-            Word::fixnum(31).bits(),
-            0,
-            0,
-        ],
+        [Word::fixnum(11).bits(), Word::fixnum(31).bits(), 0, 0],
         0,
     );
     assert_eq!(value, Word::fixnum(42).bits());
@@ -275,12 +264,7 @@ fn executes_builtin_call_with_context_and_arguments() {
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            Word::fixnum(4).bits(),
-            Word::fixnum(5).bits(),
-            0,
-            0,
-        ],
+        [Word::fixnum(4).bits(), Word::fixnum(5).bits(), 0, 0],
         0,
     );
     assert_eq!(value, Word::fixnum(9).bits());

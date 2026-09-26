@@ -7,11 +7,15 @@ pub fn list(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut result = Word::NIL;
-    for value in values.iter().rev().copied() {
-        result = make_cons(ctx, runtime, value, result)?;
-    }
-    Ok(result)
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let mut result = Word::NIL;
+        for value in roots.iter().rev() {
+            result = ncl_object::with_root(ctx, &mut result, |ctx, result| {
+                make_cons(ctx, runtime, **value, *result)
+            })?;
+        }
+        Ok(result)
+    })
 }
 
 pub fn elements(ctx: &mut ThreadContext, mut form: Word) -> Result<Vec<Word>, ObjectError> {

@@ -155,8 +155,10 @@ fn place_form(
     operator: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let operator = symbol(ctx, runtime, operator)?;
-    list(ctx, runtime, &[operator, args[0]])
+    ncl_object::with_roots(ctx, args, |ctx, args| {
+        let operator = symbol(ctx, runtime, operator)?;
+        list(ctx, runtime, &[operator, *args[0]])
+    })
 }
 
 fn fdefinition_place(
@@ -167,14 +169,24 @@ fn fdefinition_place(
     if args.len() != 1 {
         return Err(ObjectError::TypeError);
     }
-    let store = symbol(ctx, runtime, "NCL::FDEFINITION-SET")?;
-    let variable = symbol(ctx, runtime, "NCL::STORE")?;
-    Ok(ncl_object::SetfExpansion {
-        temporary_variables: Vec::new(),
-        value_forms: Vec::new(),
-        store_variables: vec![variable],
-        store_form: list(ctx, runtime, &[store, args[0], variable])?,
-        access_form: place_form(ctx, runtime, "FDEFINITION", args)?,
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut store = symbol(ctx, runtime, "NCL::FDEFINITION-SET")?;
+        ncl_object::with_root(ctx, &mut store, |ctx, store| {
+            let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+            ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+                let mut store_form = list(ctx, runtime, &[*store, *roots[0], *variable])?;
+                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                    let access_form = place_form(ctx, runtime, "FDEFINITION", &[*roots[0]])?;
+                    Ok(ncl_object::SetfExpansion {
+                        temporary_variables: Vec::new(),
+                        value_forms: Vec::new(),
+                        store_variables: vec![*variable],
+                        store_form: *store_form,
+                        access_form,
+                    })
+                })
+            })
+        })
     })
 }
 
@@ -186,14 +198,24 @@ fn macro_function_place(
     if args.len() != 1 {
         return Err(ObjectError::TypeError);
     }
-    let store = symbol(ctx, runtime, "NCL::MACRO-FUNCTION-SET")?;
-    let variable = symbol(ctx, runtime, "NCL::STORE")?;
-    Ok(ncl_object::SetfExpansion {
-        temporary_variables: Vec::new(),
-        value_forms: Vec::new(),
-        store_variables: vec![variable],
-        store_form: list(ctx, runtime, &[store, args[0], variable])?,
-        access_form: place_form(ctx, runtime, "MACRO-FUNCTION", args)?,
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut store = symbol(ctx, runtime, "NCL::MACRO-FUNCTION-SET")?;
+        ncl_object::with_root(ctx, &mut store, |ctx, store| {
+            let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+            ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+                let mut store_form = list(ctx, runtime, &[*store, *roots[0], *variable])?;
+                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                    let access_form = place_form(ctx, runtime, "MACRO-FUNCTION", &[*roots[0]])?;
+                    Ok(ncl_object::SetfExpansion {
+                        temporary_variables: Vec::new(),
+                        value_forms: Vec::new(),
+                        store_variables: vec![*variable],
+                        store_form: *store_form,
+                        access_form,
+                    })
+                })
+            })
+        })
     })
 }
 
@@ -205,17 +227,28 @@ fn get_place(
     if args.len() != 2 {
         return Err(ObjectError::TypeError);
     }
-    let store = symbol(ctx, runtime, "NCL::GET-SET")?;
-    let variable = symbol(ctx, runtime, "NCL::STORE")?;
-    Ok(ncl_object::SetfExpansion {
-        temporary_variables: Vec::new(),
-        value_forms: Vec::new(),
-        store_variables: vec![variable],
-        store_form: list(ctx, runtime, &[store, args[0], args[1], variable])?,
-        access_form: {
-            let get = symbol(ctx, runtime, "GET")?;
-            list(ctx, runtime, &[get, args[0], args[1]])?
-        },
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut store = symbol(ctx, runtime, "NCL::GET-SET")?;
+        ncl_object::with_root(ctx, &mut store, |ctx, store| {
+            let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+            ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+                let mut store_form =
+                    list(ctx, runtime, &[*store, *roots[0], *roots[1], *variable])?;
+                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                    let mut get = symbol(ctx, runtime, "GET")?;
+                    ncl_object::with_root(ctx, &mut get, |ctx, get| {
+                        let access_form = list(ctx, runtime, &[*get, *roots[0], *roots[1]])?;
+                        Ok(ncl_object::SetfExpansion {
+                            temporary_variables: Vec::new(),
+                            value_forms: Vec::new(),
+                            store_variables: vec![*variable],
+                            store_form: *store_form,
+                            access_form,
+                        })
+                    })
+                })
+            })
+        })
     })
 }
 
@@ -234,8 +267,10 @@ pub fn register_runtime_support(
         ),
         ("GET", get_place as ncl_object::PlaceExpander),
     ] {
-        let symbol = symbol(ctx, runtime, name)?;
-        runtime.register_place_expander(ctx, symbol, place)?;
+        let mut symbol = symbol(ctx, runtime, name)?;
+        ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
+            runtime.register_place_expander(ctx, *symbol, place)
+        })?;
     }
     let builtins: &[(&str, ncl_object::RustBuiltin, LambdaList)] = &[
         (

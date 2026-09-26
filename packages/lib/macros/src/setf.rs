@@ -10,10 +10,13 @@ fn form(
     name: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut values = Vec::with_capacity(args.len() + 1);
-    values.push(symbol(ctx, runtime, name)?);
-    values.extend_from_slice(args);
-    list(ctx, runtime, &values)
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let operator = symbol(ctx, runtime, name)?;
+        let mut values = Vec::with_capacity(roots.len() + 1);
+        values.push(operator);
+        values.extend(roots.iter().map(|value| **value));
+        list(ctx, runtime, &values)
+    })
 }
 
 fn binding(
@@ -54,15 +57,17 @@ fn place(
         return Err(ObjectError::TypeError);
     }
     if matches!(classify_object(ctx, place), ObjectRef::Symbol(_)) {
-        let set = symbol(ctx, runtime, "SET")?;
-        let store = fresh_symbol(ctx, runtime)?;
-        let store_form = list(ctx, runtime, &[set, place, store])?;
-        return Ok(SetfExpansion {
-            temporary_variables: Vec::new(),
-            value_forms: Vec::new(),
-            store_variables: vec![store],
-            store_form,
-            access_form: place,
+        let mut set = symbol(ctx, runtime, "SET")?;
+        return ncl_object::with_root(ctx, &mut set, |ctx, set| {
+            let store = fresh_symbol(ctx, runtime)?;
+            let store_form = list(ctx, runtime, &[*set, place, store])?;
+            Ok(SetfExpansion {
+                temporary_variables: Vec::new(),
+                value_forms: Vec::new(),
+                store_variables: vec![store],
+                store_form,
+                access_form: place,
+            })
         });
     }
     if !place.is_cons() {
@@ -238,14 +243,16 @@ pub fn expand_pop(
 ) -> Result<Word, ObjectError> {
     let place_word = *arguments.first().ok_or(ObjectError::TypeError)?;
     let expansion = place(ctx, runtime, registry, place_word)?;
-    let old = fresh_symbol(ctx, runtime)?;
-    let car = form(ctx, runtime, "CAR", &[old])?;
-    let cdr = form(ctx, runtime, "CDR", &[old])?;
-    let store = store_place(ctx, runtime, &expansion, cdr)?;
-    let body = sequence(ctx, runtime, &[store, car])?;
-    let old_binding = binding(ctx, runtime, old, expansion.access_form)?;
-    let body = wrap_let(ctx, runtime, "LET", &[old_binding], body)?;
-    wrap_let(ctx, runtime, "LET*", &[], body)
+    let mut old = fresh_symbol(ctx, runtime)?;
+    ncl_object::with_root(ctx, &mut old, |ctx, old| {
+        let car = form(ctx, runtime, "CAR", &[*old])?;
+        let cdr = form(ctx, runtime, "CDR", &[*old])?;
+        let store = store_place(ctx, runtime, &expansion, cdr)?;
+        let body = sequence(ctx, runtime, &[store, car])?;
+        let old_binding = binding(ctx, runtime, *old, expansion.access_form)?;
+        let body = wrap_let(ctx, runtime, "LET", &[old_binding], body)?;
+        wrap_let(ctx, runtime, "LET*", &[], body)
+    })
 }
 
 pub fn expand_shiftf(
@@ -328,12 +335,14 @@ pub fn expand_remf(
         return Err(ObjectError::TypeError);
     }
     let expansion = place(ctx, runtime, registry, arguments[0])?;
-    let property_list = fresh_symbol(ctx, runtime)?;
-    let removed = form(ctx, runtime, "REMF", &[property_list, arguments[1]])?;
-    let store = store_place(ctx, runtime, &expansion, property_list)?;
-    let body = form(ctx, runtime, "IF", &[removed, store, Word::NIL])?;
-    let property_binding = binding(ctx, runtime, property_list, expansion.access_form)?;
-    wrap_let(ctx, runtime, "LET", &[property_binding], body)
+    let mut property_list = fresh_symbol(ctx, runtime)?;
+    ncl_object::with_root(ctx, &mut property_list, |ctx, property_list| {
+        let removed = form(ctx, runtime, "REMF", &[*property_list, arguments[1]])?;
+        let store = store_place(ctx, runtime, &expansion, *property_list)?;
+        let body = form(ctx, runtime, "IF", &[removed, store, Word::NIL])?;
+        let property_binding = binding(ctx, runtime, *property_list, expansion.access_form)?;
+        wrap_let(ctx, runtime, "LET", &[property_binding], body)
+    })
 }
 
 pub fn expand_get_setf_expansion(

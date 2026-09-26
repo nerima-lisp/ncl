@@ -106,6 +106,14 @@ pub struct Runtime {
     context: ThreadContext,
     code: Vec<CodePtr>,
     functions: BTreeMap<u32, PublishedFunction>,
+    /// Maps a published function's native entry address to the `CODE`
+    /// object built for *that* function's own constants table.
+    ///
+    /// `MakeClosure` must attach this code object (not the caller's) when
+    /// it mints a closure over a separately-published top-level function;
+    /// otherwise the closure inherits the caller's constants table and any
+    /// constant load inside the callee reads the wrong slot.
+    entry_codes: BTreeMap<usize, Word>,
     rooted_functions: Vec<(Box<Word>, RootToken)>,
     object: ObjectRuntime,
 }
@@ -130,6 +138,7 @@ impl Runtime {
             context,
             code: Vec::new(),
             functions: BTreeMap::new(),
+            entry_codes: BTreeMap::new(),
             rooted_functions: Vec::new(),
         })
     }
@@ -206,7 +215,7 @@ impl Runtime {
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
-        for function in module.functions.into_iter().skip(1) {
+        for function in module.functions.iter().skip(1) {
             self.publish_function(function)?;
         }
         let compiled = self.compile_native(&entry)?;
@@ -215,7 +224,9 @@ impl Runtime {
             .0
             .address()
             .saturating_add(entry_metadata.entry_offset);
-        let entry_function = self.make_function_object(&entry, &(&compiled.0, &compiled.1))?;
+        let (entry_function, entry_code) =
+            self.make_function_object(&entry, &(&compiled.0, &compiled.1))?;
+        self.entry_codes.insert(entry_address, entry_code);
         self.functions.insert(
             entry.id.0,
             PublishedFunction {
@@ -272,7 +283,7 @@ impl Runtime {
         &mut self,
         function: &ncl_ir::Function,
         compiled: &(&CodePtr, &CodeObjectMetadata),
-    ) -> Result<Word, RuntimeError> {
+    ) -> Result<(Word, Word), RuntimeError> {
         let entry = compiled.0.address().saturating_add(compiled.1.entry_offset);
         let constants = self.make_constants(function)?;
         let code_object = ncl_object::make_code_object(
@@ -295,7 +306,7 @@ impl Runtime {
         let mut rooted = Box::new(function_object.as_word());
         let token = ncl_object::push_root(&mut self.context, &mut rooted);
         self.rooted_functions.push((rooted, token));
-        Ok(function_object.as_word())
+        Ok((function_object.as_word(), code_object.as_word()))
     }
 
     fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
@@ -306,7 +317,9 @@ impl Runtime {
                     let entry = self
                         .functions
                         .get(&id.0)
-                        .ok_or_else(|| RuntimeError::Native(format!("function entry {} is unavailable", id.0)))?
+                        .ok_or_else(|| {
+                            RuntimeError::Native(format!("function entry {} is unavailable", id.0))
+                        })?
                         .entry;
                     Word::fixnum(i64::try_from(entry).map_err(|_| {
                         RuntimeError::Native("function entry does not fit fixnum".to_owned())
@@ -319,11 +332,16 @@ impl Runtime {
         make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into)
     }
 
-    fn publish_function(&mut self, function: ncl_ir::Function) -> Result<(), RuntimeError> {
+    fn publish_function(&mut self, function: &ncl_ir::Function) -> Result<(), RuntimeError> {
         let id = function.id;
-        let (code, metadata) = self.compile_native(&function)?;
+        let (code, metadata) = self.compile_native(function)?;
         let entry = code.address().saturating_add(metadata.entry_offset);
-        self.make_function_object(&function, &(&code, &metadata))?;
+        let (_function_object, code_object) =
+            self.make_function_object(function, &(&code, &metadata))?;
+        // Record this function's own CODE object (with its own constants
+        // table) so `MakeClosure` can attach it when a closure is minted
+        // over this entry, instead of inheriting the caller's CODE object.
+        self.entry_codes.insert(entry, code_object);
         self.functions.insert(id.0, PublishedFunction { entry });
         self.code.push(code);
         Ok(())
@@ -336,6 +354,7 @@ impl Runtime {
         function: Word,
     ) -> Result<Word, RuntimeError> {
         let code_object = function_code(&self.context, Function::from_word(function))?;
+        let entry_codes = &self.entry_codes;
         let context = &mut self.context;
         context.thread_mut().take_native_error();
         let thread = NonNull::from(context.thread_mut());
@@ -343,13 +362,14 @@ impl Runtime {
             object: &self.object,
             context,
             code: code_object,
+            entry_codes,
         };
         let previous = ncl_sys::replace_native_context(
             thread,
             Some(NonNull::from(&mut native_context).cast()),
         );
         let result = invoke_entry_with_function(
-            &code,
+            code,
             metadata.entry_offset,
             thread.as_ptr(),
             function.bits(),
@@ -357,8 +377,13 @@ impl Runtime {
             [0; 4],
             0,
         );
-        ncl_sys::replace_native_context(thread, previous);
-        drop(native_context);
+        let _ = ncl_sys::replace_native_context(thread, previous);
+        // Not a `Drop` type; this only marks the mutable borrow of
+        // `self.context` as no longer needed before `context` is used again
+        // below (`native_context` is opaque to the caller once cast to a raw
+        // pointer, so the compiler cannot infer that its last real use was
+        // the `NonNull::from` cast above).
+        let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));

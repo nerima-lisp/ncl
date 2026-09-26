@@ -21,7 +21,11 @@ const A3: &[ncl_object::Parameter] = &[ARG, ARG, ARG];
 const fn fixed(required: &'static [ncl_object::Parameter]) -> Builtin {
     Builtin {
         lambda_list: LambdaList::fixed(required),
-        convention: ncl_object::BuiltinConvention::Direct(Arity::exact(required.len() as u8)),
+        convention: ncl_object::BuiltinConvention::Direct(Arity::exact(match required.len() {
+            1 => 1,
+            3 => 3,
+            _ => 0,
+        })),
     }
 }
 
@@ -101,6 +105,8 @@ const fn descriptor(
 pub const CLASS_DIRECT_SUPERCLASS: usize = 1;
 /// Class descriptor field containing its effective slot descriptor vector.
 pub const CLASS_SLOTS: usize = 2;
+/// Class descriptor field containing effective slot metadata.
+pub const CLASS_EFFECTIVE_SLOTS: usize = 4;
 /// Slot descriptor field containing its name.
 pub const SLOT_NAME: usize = 0;
 /// Slot descriptor field containing its finalized instance location.
@@ -109,6 +115,9 @@ pub const SLOT_LOCATION: usize = 1;
 pub const EQL_SPECIALIZER_OBJECT: usize = 1;
 
 /// Make a slot descriptor understood by the callbacks in this module.
+///
+/// # Errors
+/// Returns an object error when the descriptor allocation fails.
 pub fn make_slot_descriptor(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -123,6 +132,9 @@ pub fn make_slot_descriptor(
 }
 
 /// Make an EQL-specializer descriptor understood by this module.
+///
+/// # Errors
+/// Returns an object error when the descriptor allocation fails.
 pub fn make_eql_specializer(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -143,7 +155,7 @@ fn slot_field(ctx: &ThreadContext, slot: Word, field: usize) -> Result<Word, Obj
     vector_field(ctx, slot, field)
 }
 
-fn instance_arg(ctx: &mut ThreadContext, object: Word) -> Result<Instance, ObjectError> {
+fn instance_arg(ctx: &ThreadContext, object: Word) -> Result<Instance, ObjectError> {
     match classify_object(ctx, object) {
         ObjectRef::Instance(_) => Ok(Instance::from_word(object)),
         _ => Err(ObjectError::TypeError),
@@ -185,28 +197,17 @@ fn class_precedence_list_builtin(
 
 fn class_slots_builtin(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut classes = Vec::new();
-    let mut current = args.required(0)?;
-    while current != Word::NIL {
-        classes.push(current);
-        current = class_field(ctx, current, CLASS_DIRECT_SUPERCLASS)?;
-    }
-
-    let mut slots = Vec::new();
-    for class in classes.into_iter().rev() {
-        let direct_slots = class_field(ctx, class, CLASS_SLOTS)?;
-        if direct_slots == Word::NIL {
-            continue;
-        }
-        for index in 0..simple_vector_length(ctx, direct_slots)? {
-            slots.push(simple_vector_ref(ctx, direct_slots, index)?);
-        }
-    }
-    make_simple_vector(ctx, runtime, &slots)
+    let class = args.required(0)?;
+    let field = if simple_vector_length(ctx, class)? > CLASS_EFFECTIVE_SLOTS {
+        CLASS_EFFECTIVE_SLOTS
+    } else {
+        CLASS_SLOTS
+    };
+    class_field(ctx, class, field)
 }
 
 fn class_direct_slots_builtin(
@@ -239,7 +240,7 @@ fn slot_definition_location_builtin(
 }
 
 fn checked_instance_for_class(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     class: Word,
     object: Word,
 ) -> Result<Instance, ObjectError> {

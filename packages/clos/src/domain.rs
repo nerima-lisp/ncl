@@ -500,6 +500,10 @@ impl GenericFunction {
     }
 
     /// Compute the standard primary/before/after/around method combination.
+    ///
+    /// # Errors
+    /// Returns an error when an applicable method is missing or no primary
+    /// method is available.
     pub fn compute_standard_method_combination(
         &mut self,
         arguments: &[DispatchArgument],
@@ -639,9 +643,10 @@ mod tests {
                     .is_ok()
             );
         }
-        let combination = generic
-            .compute_standard_method_combination(&[DispatchArgument::Class(ClassId::new(1))])
-            .expect("primary method exists");
+        let result = generic
+            .compute_standard_method_combination(&[DispatchArgument::Class(ClassId::new(1))]);
+        assert!(result.is_ok());
+        let Ok(combination) = result else { return };
         assert_eq!(combination.around(), &[MethodId::new(4)]);
         assert_eq!(combination.before(), &[MethodId::new(2)]);
         assert_eq!(combination.primary(), &[MethodId::new(3)]);

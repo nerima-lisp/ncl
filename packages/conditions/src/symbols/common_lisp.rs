@@ -31,6 +31,11 @@ pub const COMMON_LISP: &[SymbolRow] = &[
     },
     SymbolRow {
         package: "COMMON-LISP",
+        name: "ARITHMETIC-ERROR-OPERATION",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "COMMON-LISP",
         name: "BREAK",
         kind: SymbolKind::Function,
     },

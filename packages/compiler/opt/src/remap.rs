@@ -27,9 +27,15 @@ pub fn remap_kind(
     let v = |value: ValueId| values.get(&value).copied().unwrap_or(value);
     match kind {
         OpKind::Const { result } => {
+            let Some(constant) = usize::try_from(result.0)
+                .ok()
+                .and_then(|index| callee.constants.get(index))
+                .cloned()
+            else {
+                return kind.clone();
+            };
             let mapped = *constants.entry(*result).or_insert_with(|| {
-                let c = callee.constants[result.0 as usize].clone();
-                caller_constants.push(c);
+                caller_constants.push(constant);
                 ConstantIndex(u32::try_from(caller_constants.len() - 1).unwrap_or(u32::MAX))
             });
             OpKind::Const { result: mapped }

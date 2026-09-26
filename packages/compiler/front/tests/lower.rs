@@ -316,6 +316,36 @@ fn lowers_lambda_to_function_entry_closure_and_closure_call() {
 }
 
 #[test]
+fn lowers_lambda_value_in_let_body() {
+    let mut fx = Fixture::new();
+    let let_symbol = fx.cl("LET");
+    let lambda_symbol = fx.cl("LAMBDA");
+    let funcall_symbol = fx.cl("FUNCALL");
+    let y = fx.user("Y");
+    let x = fx.user("X");
+    let plus = fx.cl("+");
+
+    let binding = fx.list(&[y, Word::fixnum(5)]);
+    let lambda_list = fx.list(&[x]);
+    let sum = fx.list(&[plus, x, y]);
+    let lambda = fx.list(&[lambda_symbol, lambda_list, sum]);
+    let bindings = fx.list(&[binding]);
+    let let_form = fx.list(&[let_symbol, bindings, lambda]);
+    let form = fx.list(&[funcall_symbol, let_form, Word::fixnum(10)]);
+
+    let expr = fx.expand(form).expect("expand lambda value in let");
+    let lowered = lower_toplevel(&expr).expect("lower lambda value in let");
+
+    assert_verifies(&lowered.entry);
+    assert_eq!(lowered.nested.len(), 1);
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeClosure { captures, .. } if captures.len() == 1
+    )));
+    assert_verifies(&lowered.nested[0]);
+}
+
+#[test]
 fn lowers_a_named_global_call_through_the_function_cell() {
     let mut fx = Fixture::new();
     let form = fx.form("GLOBAL-FUNCTION", &[Word::NIL]);

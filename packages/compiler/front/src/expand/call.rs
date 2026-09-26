@@ -3,7 +3,7 @@
 //! These methods resolve one form to an [`Expr`] or to a replacement that must
 //! be expanded again. They live apart from `expand` to keep both files small.
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car, symbol_is_macro};
+use ncl_object::{ObjectRef, Package, Runtime, ThreadContext, Word, car, symbol_is_macro};
 
 use crate::ast::{Expr, LocalMacro, Operator};
 use crate::error::FrontError;
@@ -97,6 +97,11 @@ impl<'a> FormExpander<'a> {
             });
         }
         let name = self.symbol(*head)?;
+        if self.is_named(*head, "LAMBDA")? {
+            return Ok(Step::Done(Expr::Lambda(Box::new(
+                self.expand_lambda(form)?,
+            ))));
+        }
         if let Some(kind) = SpecialForm::from_symbol(&name) {
             return Ok(Step::Done(special::parse(self, kind, form)?));
         }
@@ -114,11 +119,35 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
-        if symbol_is_macro(self.ctx, *head)? {
-            let replacement =
-                Self::call_global_macro(&mut self.caller, self.ctx, self.runtime, &name, form)?;
+        let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
+            let package = self.runtime.find_package(self.ctx, "COMMON-LISP").ok_or(
+                FrontError::MacroExpansion {
+                    name: name.clone(),
+                    detail: "COMMON-LISP package is not present".to_owned(),
+                },
+            )?;
+            let (symbol, _) = Package::from_word(package)
+                .intern(self.ctx, self.runtime, &name.name)
+                .map_err(|error| FrontError::MacroExpansion {
+                    name: name.clone(),
+                    detail: error.to_string(),
+                })?;
+            symbol_is_macro(self.ctx, symbol)?
+                .then(|| SymbolRef::interned("COMMON-LISP", &name.name))
+        } else {
+            None
+        };
+        if symbol_is_macro(self.ctx, *head)? || inherited_macro.is_some() {
+            let macro_name = inherited_macro.as_ref().unwrap_or(&name);
+            let replacement = Self::call_global_macro(
+                &mut self.caller,
+                self.ctx,
+                self.runtime,
+                macro_name,
+                form,
+            )?;
             return Ok(Step::Retry {
-                name,
+                name: macro_name.clone(),
                 form: replacement,
             });
         }

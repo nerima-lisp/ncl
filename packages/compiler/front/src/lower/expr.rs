@@ -1,6 +1,6 @@
 //! Expression lowering for the IR v2 path.
 
-use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Prim, Terminator, Ty, ValueId};
 
 use crate::ast::{Expr, FunctionDesignator, LambdaExpr, Operator};
 use crate::symbols::SymbolRef;
@@ -89,11 +89,14 @@ impl Context<'_> {
             Some(Slot::Cell(address)) => f.one(OpKind::Load { address }, Ty::Word),
             None => {
                 let symbol = f.symbol(name)?;
-                f.safepoint()?;
                 f.one(
-                    OpKind::Builtin {
-                        name: "symbol-value".to_owned(),
-                        args: vec![symbol],
+                    OpKind::LoadField {
+                        object: symbol,
+                        field: u32::try_from(ncl_object::symbol_offset::VALUE).map_err(|_| {
+                            LowerError::Ir {
+                                detail: "symbol value offset does not fit u32".to_owned(),
+                            }
+                        })?,
                     },
                     Ty::Word,
                 )
@@ -111,8 +114,85 @@ impl Context<'_> {
             .iter()
             .map(|argument| self.lower_expr(f, argument))
             .collect::<Result<Vec<_>, _>>()?;
+        if let Operator::Name(name) = operator {
+            if name.name.eq_ignore_ascii_case("FUNCALL") {
+                let Some((&callee, call_arguments)) = values.split_first() else {
+                    return Err(LowerError::Ir {
+                        detail: "funcall requires a function designator".to_owned(),
+                    });
+                };
+                let argc = Self::argc(f, call_arguments.len())?;
+                let mut args = vec![argc];
+                args.extend_from_slice(call_arguments);
+                f.safepoint()?;
+                return f.one(
+                    OpKind::CallClosure {
+                        closure: callee,
+                        args,
+                    },
+                    Ty::Word,
+                );
+            }
+            if values.len() == 2 && name.name == "-" {
+                return f.one(
+                    OpKind::Prim {
+                        op: Prim::FixnumSub,
+                        args: values,
+                        condition: None,
+                    },
+                    Ty::Word,
+                );
+            }
+            if values.len() == 2 && name.name == "<" {
+                return f.one(
+                    OpKind::Prim {
+                        op: Prim::FixnumLt,
+                        args: values,
+                        condition: None,
+                    },
+                    Ty::Bool,
+                );
+            }
+        }
+        if let Operator::Name(name) = operator {
+            let field = if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE")
+                && values.len() == 1
+            {
+                Some((ncl_object::symbol_offset::VALUE, false))
+            } else if name.name == "set-symbol-value" && values.len() == 2 {
+                Some((ncl_object::symbol_offset::VALUE, true))
+            } else if (name.is_named("COMMON-LISP", "NCL::FDEFINITION-SET")
+                || name.is_named("NCL", "FDEFINITION-SET")
+                || name.is_named("NCL-EXT", "FDEFINITION-SET"))
+                && values.len() == 2
+            {
+                Some((ncl_object::symbol_offset::FUNCTION, true))
+            } else {
+                None
+            };
+            if let Some((field, store)) = field {
+                let field = u32::try_from(field).map_err(|_| LowerError::Ir {
+                    detail: "symbol cell offset does not fit u32".to_owned(),
+                })?;
+                if store {
+                    f.none(OpKind::StoreField {
+                        object: values[0],
+                        field,
+                        value: values[1],
+                    })?;
+                    return Ok(values[1]);
+                }
+                return f.one(
+                    OpKind::LoadField {
+                        object: values[0],
+                        field,
+                    },
+                    Ty::Word,
+                );
+            }
+        }
         if let Operator::Name(name) = operator
-            && ((matches!(name.name.as_str(), "+" | "*") && values.len() == 2)
+            && ((matches!(name.name.as_str(), "+" | "*" | "-" | "<") && values.len() == 2)
                 || (name.name == "CAR" && values.len() == 1)
                 || (name.name == "CONS" && values.len() == 2))
         {

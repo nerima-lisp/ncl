@@ -142,12 +142,12 @@ fn call_native(
     );
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     values.clear();
-    match count {
-        0 => Ok(Word::NIL),
+    let result = match count {
+        0 => Word::NIL,
         1 => {
             let value = Word::from_bits(result);
             values.set(&[value]);
-            Ok(value)
+            value
         }
         count => {
             let area = ctx.thread_mut().multiple_values();
@@ -155,9 +155,14 @@ fn call_native(
                 return Err(ObjectError::Layout);
             }
             values.set(&area[..count]);
-            Ok(Word::from_bits(result))
+            Word::from_bits(result)
         }
+    };
+    if ctx.take_non_local_exit() {
+        ctx.set_non_local_exit(true);
+        return Err(ObjectError::NonLocalExit);
     }
+    Ok(result)
 }
 
 impl Runtime {

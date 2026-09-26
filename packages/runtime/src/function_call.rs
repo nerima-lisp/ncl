@@ -66,12 +66,12 @@ fn call_native(
     );
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     values.clear();
-    match count {
-        0 => Ok(Word::NIL),
+    let result = match count {
+        0 => Word::NIL,
         1 => {
             let value = Word::from_bits(result);
             values.set(&[value]);
-            Ok(value)
+            value
         }
         count => {
             let area = ctx.thread_mut().multiple_values();
@@ -79,9 +79,14 @@ fn call_native(
                 return Err(ObjectError::Layout);
             }
             values.set(&area[..count]);
-            Ok(Word::from_bits(result))
+            Word::from_bits(result)
         }
+    };
+    if ctx.take_non_local_exit() {
+        ctx.set_non_local_exit(true);
+        return Err(ObjectError::NonLocalExit);
     }
+    Ok(result)
 }
 
 fn resolve_function(
@@ -258,5 +263,64 @@ mod tests {
             Ok(Word::fixnum(42))
         );
         assert_eq!(values.as_slice(), &[Word::fixnum(42)]);
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn native_call_reports_pending_non_local_exit_after_preserving_values() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        #[cfg(target_arch = "x86_64")]
+        let machine_code = [
+            0xb8, 0x54, 0, 0, 0, // mov eax, (42 << 1)
+            0xba, 1, 0, 0, 0,    // mov edx, 1
+            0xc3, // ret
+        ];
+        #[cfg(target_arch = "aarch64")]
+        let machine_code = [
+            0x80, 0x0a, 0x80, 0xd2, // mov x0, #84
+            0x21, 0x00, 0x80, 0xd2, // mov x1, #1
+            0xc0, 0x03, 0x5f, 0xd6, // ret
+        ];
+        let mut native = ncl_sys::alloc_code(machine_code.len()).unwrap();
+        ncl_sys::write_code(&mut native, 0, &machine_code).unwrap();
+        ncl_sys::publish_code(&mut native).unwrap();
+        let code = make_code_object(
+            &mut runtime.context,
+            &runtime.object,
+            0,
+            machine_code.len(),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .unwrap_or_else(|error| panic!("code object: {error:?}"));
+        let closure = make_closure(
+            &mut runtime.context,
+            &runtime.object,
+            native.address(),
+            Word::NIL,
+            Word::NIL,
+            code,
+            &[],
+        )
+        .unwrap_or_else(|error| panic!("closure: {error:?}"));
+        let function = ncl_object::FunctionObject::try_from(closure.as_word())
+            .unwrap_or_else(|error| panic!("function object: {error:?}"));
+        let mut caller = RuntimeFunctionCaller;
+        let mut values = MultipleValues::new();
+        runtime.context.set_non_local_exit(true);
+
+        assert_eq!(
+            caller.call_function(
+                &mut runtime.context,
+                &runtime.object,
+                FunctionDesignator::Function(function),
+                FunctionArguments::new(&[]),
+                &mut values,
+            ),
+            Err(ncl_object::ObjectError::NonLocalExit)
+        );
+        assert_eq!(values.as_slice(), &[Word::fixnum(42)]);
+        assert!(runtime.context.take_non_local_exit());
     }
 }

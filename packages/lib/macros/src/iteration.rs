@@ -116,6 +116,9 @@ fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Resul
 
 fn args(ctx: &mut ThreadContext, form_word: Word) -> Result<Vec<Word>> {
     let mut values = elements(ctx, form_word)?;
+    if values.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
     values.remove(0);
     Ok(values)
 }

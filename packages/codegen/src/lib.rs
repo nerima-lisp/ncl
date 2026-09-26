@@ -71,6 +71,13 @@ pub enum CodegenError {
         /// The number of entries in the constant table.
         length: usize,
     },
+    /// The function returns more values than the fixed runtime area can hold.
+    MultipleValueAreaOverflow {
+        /// Number of values requested by the function.
+        count: usize,
+        /// Number of words available in the runtime area.
+        capacity: usize,
+    },
     /// The fixed-template backend does not have the runtime contract needed for an operation.
     Unsupported(String),
 }
@@ -87,6 +94,12 @@ impl core::fmt::Display for CodegenError {
                 write!(
                     f,
                     "constant index {index} is out of range for table of length {length}"
+                )
+            }
+            Self::MultipleValueAreaOverflow { count, capacity } => {
+                write!(
+                    f,
+                    "multiple-value area holds {capacity} words, function returns {count}"
                 )
             }
             Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),

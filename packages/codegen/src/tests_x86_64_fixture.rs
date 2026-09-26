@@ -17,6 +17,7 @@ impl RuntimeAbi for X86_64FixtureAbi {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
             ContextField::SafepointRequest => layout.safepoint_request,
+            ContextField::MultipleValueArea => layout.mv,
             _ => return None,
         };
         i32::try_from(offset).ok()

@@ -1,7 +1,4 @@
-use crate::{
-    AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap,
-    allocate, checked_u32,
-};
+use crate::{CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap, checked_u32};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
@@ -9,9 +6,9 @@ use ncl_ir::{Function, OpKind, Terminator};
 #[path = "target_x86_64_lowering.rs"]
 mod lowering;
 use lowering::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate, load_slot, lower_call,
-    lower_op, move_args, slots,
+    ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT, RETURN_VALUE,
+    VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate, load_slot, lower_call, lower_op,
+    move_args, slots, store_return_values,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -25,45 +22,28 @@ fn add_map(
     maps: &mut Vec<SafepointMap>,
     pc: u32,
     frame: FrameLayout,
-    values: &ValueSlots,
-    position: u32,
     flags: u32,
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    let (registers, live_slots) = values.roots(position);
-    SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
+    let live_slots = (4..slots).collect::<Vec<_>>();
+    SafepointMap::new(pc, slots, slots, &live_slots, &[0], flags)
         .map(|map| maps.push(map))
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-fn spill_arguments(
-    assembler: &mut Assembler,
-    argument_words: u32,
-    generated_lambda: bool,
-) -> Result<(), CodegenError> {
+fn spill_arguments(assembler: &mut Assembler, argument_words: u32) -> Result<(), CodegenError> {
     for index in 0..argument_words {
         let offset = i32::try_from((index + 1).saturating_mul(8))
             .map_err(|_| CodegenError::FrameOverflow)?;
         let destination = Mem::base(FRAME_POINTER, -offset);
-        let register_index = if generated_lambda {
-            index.saturating_sub(1)
-        } else {
-            index
-        };
-        let register = if generated_lambda && index == 0 {
-            Some(ARGUMENT_COUNT)
-        } else {
-            usize::try_from(register_index)
-                .ok()
-                .and_then(|slot| ARGUMENT_REGISTERS.get(slot).copied())
-        };
+        let register = usize::try_from(index)
+            .ok()
+            .and_then(|slot| ARGUMENT_REGISTERS.get(slot).copied());
         if let Some(register) = register {
             emit(assembler, Inst::MovMR(destination, register))?;
         } else {
-            let overflow_base = if generated_lambda { 5 } else { 4 };
-            let source_offset =
-                i32::try_from(index.saturating_sub(overflow_base).saturating_mul(8))
-                    .map_err(|_| CodegenError::FrameOverflow)?;
+            let source_offset = i32::try_from((index - 4).saturating_mul(8))
+                .map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
                 Inst::MovRM(ENTRY, Mem::base(REST_ARGUMENT, source_offset)),
@@ -78,30 +58,6 @@ fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
     emit(assembler, Inst::Ret)
-}
-
-/// Tears down the current frame and transfers to an indirect callee.
-///
-/// The caller return address is moved below a fresh two-word header area so
-/// the callee prologue sees the same layout as a regular indirect call.
-fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
-    emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
-    emit(assembler, Inst::Pop(FRAME_POINTER))?;
-    // At this point `rsp` points at the return address of the current frame.
-    // Move it below the callee's two-word header reservation and preserve the
-    // callee function object immediately above it. The callee prologue then
-    // observes the same stack layout as after a regular call.
-    emit(assembler, Inst::MovRM(RETURN_VALUE, Mem::base(Reg::Rsp, 0)))?;
-    emit(
-        assembler,
-        Inst::MovMR(Mem::base(Reg::Rsp, -16), RETURN_VALUE),
-    )?;
-    emit(
-        assembler,
-        Inst::MovMR(Mem::base(Reg::Rsp, -8), FUNCTION_OBJECT),
-    )?;
-    emit(assembler, Inst::BinRI(BinOp::Sub, Reg::Rsp, 16))?;
-    emit(assembler, Inst::JmpReg(ENTRY))
 }
 
 /// Lowers an IR function to x86-64 machine code using the native frame ABI.
@@ -120,16 +76,8 @@ pub fn compile_function_x86_64(
     };
     let argument_words =
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
-    let allocation = allocate(function, AllocationTarget::X86_64);
-    let spill_words = allocation.spill_words;
-    let (value_slots, local_words) = slots(function, argument_words, allocation);
-    let frame = FrameLayout::new(
-        argument_words,
-        local_words
-            .checked_add(spill_words)
-            .ok_or(CodegenError::FrameOverflow)?,
-        0,
-    )?;
+    let (value_slots, local_words) = slots(function, argument_words);
+    let frame = FrameLayout::new(argument_words, local_words, 0)?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -158,28 +106,7 @@ pub fn compile_function_x86_64(
             Inst::BinRI(BinOp::Sub, Reg::Rsp, body_bytes.cast_signed()),
         )?;
     }
-    let generated_lambda = function
-        .params
-        .first()
-        .is_some_and(|parameter| parameter.name == "argc");
-    spill_arguments(&mut assembler, argument_words, generated_lambda)?;
-    for (index, parameter) in function
-        .blocks
-        .first()
-        .map(|block| block.params.iter())
-        .into_iter()
-        .flatten()
-        .enumerate()
-    {
-        let offset = i32::try_from(index.saturating_add(1).saturating_mul(8))
-            .map_err(|_| CodegenError::FrameOverflow)?;
-        emit(
-            &mut assembler,
-            Inst::MovRM(ENTRY, Mem::base(FRAME_POINTER, -offset)),
-        )?;
-        lowering::store_slot(&mut assembler, &value_slots, parameter.value, ENTRY)?;
-    }
-    let mut position = 0u32;
+    spill_arguments(&mut assembler, argument_words)?;
     for block in &function.blocks {
         assembler.bind(labels[&block.id]);
         for op in &block.ops {
@@ -189,8 +116,6 @@ pub fn compile_function_x86_64(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
                     frame,
-                    &value_slots,
-                    position,
                     FLAG_ALLOCATION_SLOW,
                 )?;
             } else if matches!(
@@ -208,12 +133,9 @@ pub fn compile_function_x86_64(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
                     frame,
-                    &value_slots,
-                    position,
                     FLAG_CALL,
                 )?;
             }
-            position = position.saturating_add(1);
         }
         match &block.terminator {
             Terminator::Jump { target, args } => {
@@ -229,8 +151,6 @@ pub fn compile_function_x86_64(
                         &mut maps,
                         checked_u32(assembler.bytes().len())?,
                         frame,
-                        &value_slots,
-                        position,
                         FLAG_LOOP_BACKEDGE,
                     )?;
                 }
@@ -307,14 +227,11 @@ pub fn compile_function_x86_64(
                 }
             }
             Terminator::Return { values } => {
+                store_return_values(&mut assembler, &value_slots, values, abi)?;
                 if let Some(value) = values.first() {
                     load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
                 } else {
-                    load_immediate(
-                        &mut assembler,
-                        RETURN_VALUE,
-                        i64::from_ne_bytes(ncl_sys::Word::fixnum(0).bits().to_ne_bytes()),
-                    )?;
+                    load_immediate(&mut assembler, RETURN_VALUE, abi.encode_fixnum(0))?;
                 }
                 load_immediate(
                     &mut assembler,
@@ -323,23 +240,16 @@ pub fn compile_function_x86_64(
                 )?;
                 emit_epilogue(&mut assembler)?;
             }
-            Terminator::CallReturn { function, args } => {
+            Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
                 let call_pc = emit_call(&mut assembler)?;
-                add_map(&mut maps, call_pc, frame, &value_slots, position, FLAG_CALL)?;
+                add_map(&mut maps, call_pc, frame, FLAG_CALL)?;
                 emit_epilogue(&mut assembler)?;
-            }
-            Terminator::TailCall { function, args } => {
-                lower_call(&mut assembler, *function, args, &value_slots)?;
-                // A tail transfer has no return PC in this frame, so there is
-                // no new caller safepoint map or unwind point to register.
-                emit_tail_transfer(&mut assembler)?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Ud2)?;
             }
         }
-        position = position.saturating_add(1);
     }
     let blob = assembler
         .finish()

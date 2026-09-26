@@ -81,6 +81,29 @@ pub fn with_roots<T>(
     result
 }
 
+/// Run a callback with a contiguous mutable word slice registered as roots.
+///
+/// The slice allocation is kept alive and its elements remain mutable for the
+/// complete callback, so a native caller may safely pass a pointer into it as
+/// the rest-argument area.
+///
+/// # Errors
+/// Returns an object-layer error from the callback.
+///
+/// # Panics
+/// Panics if the root stack is corrupted while removing the registered slice.
+pub fn with_rooted_slice<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut rooted = values.to_vec();
+    let token = ncl_sys::register_root_set(&mut ctx.thread, &mut rooted);
+    let result = f(ctx, &mut rooted);
+    assert!(ncl_sys::pop_root(&mut ctx.thread, token));
+    result
+}
+
 /// Pop a root and return the callback result.
 ///
 /// # Panics

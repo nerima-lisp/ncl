@@ -43,9 +43,6 @@ pub fn classify(word: Word) -> ObjectRef {
     if let Some(value) = word.as_character() {
         return ObjectRef::Character(value);
     }
-    if let Some(value) = word.as_fixnum() {
-        return ObjectRef::Fixnum(value);
-    }
     match word.lowtag() {
         x if x == LowTag::List as u8 => {
             if word == Word::NIL {

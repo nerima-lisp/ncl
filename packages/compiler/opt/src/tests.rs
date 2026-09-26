@@ -365,6 +365,26 @@ fn manager_reports_module_passes_limits_and_errors() {
 }
 
 #[test]
+fn default_pipeline_registers_phase_three_passes_in_order() {
+    let mut manager = PassManager::new();
+    manager.add_default_optimization_pipeline();
+    let report = manager
+        .run(&mut Module {
+            functions: vec![leaf()],
+        })
+        .fixture();
+    let names = report
+        .stats
+        .iter()
+        .map(|stat| stat.pass.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec!["inline-direct-calls", "global-value-numbering", "sccp",]
+    );
+}
+
+#[test]
 #[allow(clippy::too_many_lines)]
 fn conservative_guards_and_manager_edges_are_exercised() {
     let mut invalid = leaf();

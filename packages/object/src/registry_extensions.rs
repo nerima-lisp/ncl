@@ -34,7 +34,13 @@ impl Runtime {
                 if result.is_some() || failure.is_some() {
                     return;
                 }
-                let package = Package::from_word(package);
+                let package = match Package::try_from_word(context, package) {
+                    Ok(package) => package,
+                    Err(error) => {
+                        failure = Some(error);
+                        return;
+                    }
+                };
                 let matches = |word: Word| {
                     string_length(context, word).ok() == Some(name_chars.len())
                         && name_chars
@@ -53,12 +59,7 @@ impl Runtime {
                     result = Some(package.as_word());
                     return;
                 }
-                let mut nicknames = match crate::object_access::get(
-                    context,
-                    package.as_word(),
-                    crate::widetag::PACKAGE,
-                    crate::package::NICKNAMES,
-                ) {
+                let mut nicknames = match package.nicknames(context) {
                     Ok(nicknames) => nicknames,
                     Err(error) => {
                         failure = Some(error);

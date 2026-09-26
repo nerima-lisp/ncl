@@ -116,7 +116,12 @@ fn default_pipeline_registers_phase_three_passes_in_order() {
         .collect::<Vec<_>>();
     assert_eq!(
         names,
-        vec!["inline-direct-calls", "global-value-numbering", "sccp"]
+        vec![
+            "inline-direct-calls",
+            "global-value-numbering",
+            "sccp",
+            "dead-code-elimination",
+        ]
     );
 }
 

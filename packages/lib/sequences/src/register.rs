@@ -249,7 +249,7 @@ type SelectionOperation = fn(
     &mut ThreadContext,
     &Runtime,
     &mut BuiltinFunctionCaller,
-    &mut [Word],
+    &mut [Word], // check-added-lines: allow(index) slice type
     Word,
     domain::selection::SelectionOptions,
 ) -> Result<Word, ObjectError>;

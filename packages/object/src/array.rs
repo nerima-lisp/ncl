@@ -52,9 +52,7 @@ pub(crate) fn validate_element(
         ArrayElementType::Fixnum | ArrayElementType::Signed | ArrayElementType::Unsigned => {
             value.as_fixnum().is_some()
         }
-        ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => {
-            true
-        }
+        ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
     };
     valid.then_some(value).ok_or(ObjectError::TypeError)
 }

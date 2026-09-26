@@ -25,7 +25,11 @@ fn register_all_registers_hash_arrays() {
 
     ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
 
-    assert!(runtime.function(&mut ctx, "COMMON-LISP", "MAKE-ARRAY").is_some());
+    assert!(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-ARRAY")
+            .is_some()
+    );
     assert!(
         runtime
             .function(&mut ctx, "COMMON-LISP", "MAKE-HASH-TABLE")

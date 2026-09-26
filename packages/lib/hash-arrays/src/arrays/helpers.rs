@@ -1,7 +1,7 @@
 use ncl_object::package::Package;
 use ncl_object::{
-    ArrayElementType, ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr,
-    array_dimensions, simple_vector_length, string_length,
+    ArrayElementType, ObjectError, ObjectRef, Runtime, ThreadContext, Word, array_dimensions, car,
+    cdr, simple_vector_length, string_length,
 };
 
 pub(super) fn array_element_type_symbol(
@@ -26,7 +26,10 @@ pub(super) fn array_element_type_symbol(
     Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
 }
 
-pub(super) fn list_values(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
+pub(super) fn list_values(
+    ctx: &mut ThreadContext,
+    mut list: Word,
+) -> Result<Vec<Word>, ObjectError> {
     let mut values = Vec::new();
     while list != Word::NIL {
         values.push(car(ctx, list)?);

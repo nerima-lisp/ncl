@@ -6,6 +6,30 @@ use ncl_object::{
     ratio_denominator, ratio_numerator,
 };
 
+const fn integer_to_f64(value: i128) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
+const fn u64_to_f64(value: u64) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
+fn float_to_i128(value: f64) -> Option<i128> {
+    const I128_MIN: f64 = -170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    const I128_MAX_EXCLUSIVE: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    if !value.is_finite() || !(I128_MIN..I128_MAX_EXCLUSIVE).contains(&value) {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    Some(value as i128)
+}
+
 #[derive(Clone, Copy)]
 enum Real {
     Integer(i128),
@@ -112,17 +136,17 @@ fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
     }
     let bits = value.to_bits();
     let sign = if bits >> 63 == 0 { 1_i128 } else { -1_i128 };
-    let exponent = ((bits >> 52) & 0x7ff) as i32;
+    let exponent = i32::try_from((bits >> 52) & 0x7ff).map_err(|_| ObjectError::TypeError)?;
     let fraction = bits & ((1_u64 << 52) - 1);
     let (mantissa, power) = if exponent == 0 {
-        (fraction as i128, -1074)
+        (i128::from(fraction), -1074)
     } else {
-        (((1_u64 << 52) | fraction) as i128, exponent - 1075)
+        (i128::from((1_u64 << 52) | fraction), exponent - 1075)
     };
     if power >= 0 {
         sign.checked_mul(
             mantissa
-                .checked_shl(power as u32)
+                .checked_shl(u32::try_from(power).map_err(|_| ObjectError::TypeError)?)
                 .ok_or(ObjectError::TypeError)?,
         )
         .map(|n| (n, 1))
@@ -131,7 +155,7 @@ fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
         Ok((
             sign * mantissa,
             1_i128
-                .checked_shl((-power) as u32)
+                .checked_shl(u32::try_from(-power).map_err(|_| ObjectError::TypeError)?)
                 .ok_or(ObjectError::TypeError)?,
         ))
     }
@@ -144,18 +168,18 @@ fn continued_fraction_between(mut lower: f64, mut upper: f64) -> Result<(i128, i
     }
     let mut prefix = Vec::new();
     for _ in 0..64 {
-        let low = lower.ceil() as i128;
-        let high = upper.floor() as i128;
+        let low = float_to_i128(lower.ceil()).ok_or(ObjectError::TypeError)?;
+        let high = float_to_i128(upper.floor()).ok_or(ObjectError::TypeError)?;
         if low <= high {
             return Ok(prefix
                 .into_iter()
                 .rev()
                 .fold((low, 1), |(n, d), a| (a * n + d, n)));
         }
-        let a = lower.floor() as i128;
+        let a = float_to_i128(lower.floor()).ok_or(ObjectError::TypeError)?;
         prefix.push(a);
-        let next_lower = 1.0 / (upper - a as f64);
-        let next_upper = 1.0 / (lower - a as f64);
+        let next_lower = 1.0 / (upper - integer_to_f64(a));
+        let next_upper = 1.0 / (lower - integer_to_f64(a));
         lower = next_lower;
         upper = next_upper;
     }
@@ -262,8 +286,8 @@ pub fn float(
         float_value(ctx, p)?;
     }
     let value = match real(ctx, args.required(0)?)? {
-        Real::Integer(n) => n as f64,
-        Real::Ratio(n, d) => n as f64 / d as f64,
+        Real::Integer(n) => integer_to_f64(n),
+        Real::Ratio(n, d) => integer_to_f64(n) / integer_to_f64(d),
         Real::Float(v) => v,
     };
     values.clear();
@@ -279,12 +303,12 @@ pub fn decode_float(
     let value = float_value(ctx, args.required(0)?)?;
     let bits = value.to_bits();
     let sign = if bits >> 63 == 0 { 1.0 } else { -1.0 };
-    let raw_exponent = ((bits >> 52) & 0x7ff) as i32;
+    let raw_exponent = i32::try_from((bits >> 52) & 0x7ff).map_err(|_| ObjectError::TypeError)?;
     let fraction = bits & ((1_u64 << 52) - 1);
     let (significand, exponent) = match raw_exponent {
-        0 => (fraction as f64 / (1_u64 << 52) as f64, -1022),
+        0 => (u64_to_f64(fraction) / u64_to_f64(1_u64 << 52), -1022),
         _ => (
-            ((1_u64 << 52 | fraction) as f64) / (1_u64 << 53) as f64,
+            u64_to_f64(1_u64 << 52 | fraction) / u64_to_f64(1_u64 << 53),
             raw_exponent - 1022,
         ),
     };
@@ -303,12 +327,12 @@ pub fn integer_decode_float(
 ) -> Result<Word, ObjectError> {
     let value = float_value(ctx, args.required(0)?)?;
     let bits = value.to_bits();
-    let raw = ((bits >> 52) & 0x7ff) as i32;
+    let raw = i32::try_from((bits >> 52) & 0x7ff).map_err(|_| ObjectError::TypeError)?;
     let fraction = bits & ((1_u64 << 52) - 1);
     let (n, e) = if raw == 0 {
-        (fraction as i128, -1074)
+        (i128::from(fraction), -1074)
     } else {
-        (((1_u64 << 52) | fraction) as i128, raw - 1075)
+        (i128::from((1_u64 << 52) | fraction), raw - 1075)
     };
     let n = word(ctx, runtime, Real::Integer(n))?;
     let e = word(ctx, runtime, Real::Integer(i128::from(e)))?;
@@ -324,10 +348,12 @@ pub fn scale_float(
 ) -> Result<Word, ObjectError> {
     let value = float_value(ctx, args.required(0)?)?;
     let scale = integer(ctx, args.required(1)?)?;
-    let scale = i32::try_from(scale).unwrap_or(if scale.is_negative() {
-        i32::MIN
-    } else {
-        i32::MAX
+    let scale = i32::try_from(scale).unwrap_or_else(|_| {
+        if scale.is_negative() {
+            i32::MIN
+        } else {
+            i32::MAX
+        }
     });
     values.clear();
     make_double(ctx, runtime, value * 2_f64.powi(scale)).map(Into::into)

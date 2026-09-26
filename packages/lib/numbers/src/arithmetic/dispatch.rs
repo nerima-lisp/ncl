@@ -6,8 +6,8 @@
 
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, abs, add, ceiling,
-    complexp, div, equal, evenp, fceiling, ffloor, floatp, floor, fround, ftruncate, gcd, greater,
-    greater_equal, integerp, isqrt, lcm, less, less_equal, max, min, minusp, modulo, mul,
+    complexp, div, eq, eql, equal, evenp, fceiling, ffloor, floatp, floor, fround, ftruncate, gcd,
+    greater, greater_equal, integerp, isqrt, lcm, less, less_equal, max, min, minusp, modulo, mul,
     not_equal, numberp, oddp, one_minus, one_plus, plusp, rationalp, realp, remainder, round,
     signum, sub, truncate, zerop,
 };
@@ -229,6 +229,22 @@ typed_legacy_dispatch!(typed_dispatch_sub, dispatch_sub);
 typed_legacy_dispatch!(typed_dispatch_mul, dispatch_mul);
 typed_legacy_dispatch!(typed_dispatch_div, dispatch_div);
 typed_legacy_dispatch!(typed_dispatch_equal, dispatch_equal);
+pub fn typed_dispatch_eq(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    eq(ctx, runtime, args.as_slice())
+}
+pub fn typed_dispatch_eql(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    eql(ctx, runtime, args.as_slice())
+}
 typed_legacy_dispatch!(typed_dispatch_not_equal, dispatch_not_equal);
 typed_legacy_dispatch!(typed_dispatch_less, dispatch_less);
 typed_legacy_dispatch!(typed_dispatch_greater, dispatch_greater);

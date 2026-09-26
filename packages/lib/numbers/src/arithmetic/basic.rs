@@ -14,7 +14,7 @@ pub fn sub(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let value = if ns.len() == 1 {
         sub_pair(Number::Integer(0), first)
     } else {
-        ns[1..].iter().copied().fold(first, sub_pair)
+        ns.iter().copied().skip(1).fold(first, sub_pair)
     };
     word(ctx, runtime, value)
 }
@@ -32,7 +32,7 @@ pub fn div(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let value = if ns.len() == 1 {
         div_pair(Number::Integer(1), first)?
     } else {
-        ns[1..].iter().copied().try_fold(first, div_pair)?
+        ns.iter().copied().skip(1).try_fold(first, div_pair)?
     };
     word(ctx, runtime, value)
 }
@@ -41,17 +41,19 @@ pub fn one_plus(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    add(ctx, runtime, &[args[0], Word::fixnum(1)])
+    let value = *args.first().ok_or(ObjectError::TypeError)?;
+    add(ctx, runtime, &[value, Word::fixnum(1)])
 }
 pub fn one_minus(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    sub(ctx, runtime, &[args[0], Word::fixnum(1)])
+    let value = *args.first().ok_or(ObjectError::TypeError)?;
+    sub(ctx, runtime, &[value, Word::fixnum(1)])
 }
 pub fn abs(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
-    let n = number(ctx, args[0])?;
+    let n = number(ctx, *args.first().ok_or(ObjectError::TypeError)?)?;
     word(
         ctx,
         runtime,
@@ -68,7 +70,7 @@ pub fn signum(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let n = number(ctx, args[0])?;
+    let n = number(ctx, *args.first().ok_or(ObjectError::TypeError)?)?;
     word(
         ctx,
         runtime,

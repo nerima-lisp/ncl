@@ -7,12 +7,23 @@ use ncl_object::{
     make_instance, set_symbol_constant, set_symbol_special, set_symbol_value, slot_ref, slot_set,
 };
 
+const fn u64_to_f64(value: u64) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
 const STATE_SLOT: usize = 0;
-const INITIAL_SEED: i64 = 0x1357_9bdf_2468_acd;
+const INITIAL_SEED: i64 = 0x0135_79bd_f246_8acd;
 const ANY: Parameter = Parameter {
     name: BuiltinName::new("OBJECT"),
     ty: ParameterType::Any,
 };
+const RANDOM_REQUIRED: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("LIMIT"),
+    ty: ParameterType::Number,
+}];
 
 fn random_state_class(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
     if let Some(class) = runtime.class(ctx, "RANDOM-STATE") {
@@ -49,13 +60,14 @@ fn next_word(ctx: &mut ThreadContext, state: Word) -> Result<u64, ObjectError> {
     let instance = ncl_object::Instance::from_word(state);
     let mut seed = slot_ref(ctx, instance, STATE_SLOT)?
         .as_fixnum()
-        .ok_or(ObjectError::TypeError)? as u64;
+        .ok_or(ObjectError::TypeError)
+        .and_then(|seed| u64::try_from(seed).map_err(|_| ObjectError::TypeError))?;
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    let next = (seed & ((1_u64 << 62) - 1)) as i64;
+    let next = i64::try_from(seed & ((1_u64 << 62) - 1)).map_err(|_| ObjectError::TypeError)?;
     slot_set(ctx, instance, STATE_SLOT, Word::fixnum(next))?;
-    Ok(next as u64)
+    u64::try_from(next).map_err(|_| ObjectError::TypeError)
 }
 
 fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
@@ -90,15 +102,16 @@ fn random_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let limit = args.required(0)?;
-    let state = if let Some(state) = args.get(1) {
-        state
-    } else {
-        let package = runtime
-            .find_package(ctx, "COMMON-LISP")
-            .ok_or(ObjectError::PackageConflict)?;
-        let (symbol, _) = Package::from_word(package).intern(ctx, runtime, "*RANDOM-STATE*")?;
-        ncl_object::symbol_value(ctx, symbol)?
-    };
+    let state = args.get(1).map_or_else(
+        || -> Result<Word, ObjectError> {
+            let package = runtime
+                .find_package(ctx, "COMMON-LISP")
+                .ok_or(ObjectError::PackageConflict)?;
+            let (symbol, _) = Package::from_word(package).intern(ctx, runtime, "*RANDOM-STATE*")?;
+            ncl_object::symbol_value(ctx, symbol)
+        },
+        Ok,
+    )?;
     if !state_p(ctx, runtime, state)? {
         return Err(ObjectError::TypeError);
     }
@@ -108,7 +121,7 @@ fn random_builtin(
             if !bound.is_finite() || bound <= 0.0 {
                 return Err(ObjectError::TypeError);
             }
-            let fraction = (next_word(ctx, state)? as f64) / ((1_u64 << 62) as f64);
+            let fraction = u64_to_f64(next_word(ctx, state)?) / u64_to_f64(1_u64 << 62);
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
@@ -117,12 +130,10 @@ fn random_builtin(
                 return Err(ObjectError::TypeError);
             }
             let value = i128::from(next_word(ctx, state)?) % bound;
-            i64::try_from(value)
-                .map(Word::fixnum)
-                .map(Ok)
-                .unwrap_or_else(|_| {
-                    ncl_object::make_bignum_from_i128(ctx, runtime, value).map(Into::into)
-                })
+            i64::try_from(value).map_or_else(
+                |_| ncl_object::make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                |value| Ok(Word::fixnum(value)),
+            )
         }
         _ => Err(ObjectError::TypeError),
     }
@@ -136,7 +147,7 @@ fn make_random_state_builtin(
 ) -> Result<Word, ObjectError> {
     match args.get(0) {
         None | Some(Word::NIL) => make_state(ctx, runtime, INITIAL_SEED),
-        Some(Word::TRUE) => make_state(ctx, runtime, INITIAL_SEED ^ 0x5deece66),
+        Some(Word::TRUE) => make_state(ctx, runtime, INITIAL_SEED ^ 0x5dee_ce66),
         Some(value) if state_p(ctx, runtime, value)? => {
             let seed = slot_ref(ctx, ncl_object::Instance::from_word(value), STATE_SLOT)?
                 .as_fixnum()
@@ -272,10 +283,6 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     let state = make_state(ctx, runtime, INITIAL_SEED)?;
     set_symbol_value(ctx, symbol, state)?;
 
-    const RANDOM_REQUIRED: &[Parameter] = &[Parameter {
-        name: BuiltinName::new("LIMIT"),
-        ty: ParameterType::Number,
-    }];
     let descriptor = Builtin {
         lambda_list: LambdaList::with_optional(RANDOM_REQUIRED, &[ANY]),
         convention: BuiltinConvention::Adapted,

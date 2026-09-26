@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(
+    clippy::float_cmp,
+    clippy::needless_pass_by_ref_mut,
+    clippy::unwrap_used,
+    dead_code,
+    missing_docs
+)]
 
 #[path = "../src/complex.rs"]
 mod complex;

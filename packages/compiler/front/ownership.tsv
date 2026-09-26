@@ -1,6 +1,7 @@
 package	symbol	kind	crate	phase	direct-expansion	notes
 COMMON-LISP	&ALLOW-OTHER-KEYS	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	&AUX	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DECLARATION	other	ncl-compiler-front	1	no	declaration syntax surface
 COMMON-LISP	&BODY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	&ENVIRONMENT	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	&KEY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule

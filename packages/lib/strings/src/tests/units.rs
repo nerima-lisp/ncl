@@ -241,7 +241,18 @@ fn string_allocations_survive_gc_stress_and_strict_forwarding() {
     );
     let mut made = made;
     let token = ncl_object::push_root(&mut ctx, &mut made);
+    ctx.collect(false)
+        .unwrap_or_else(|error| panic!("collect: {error:?}"));
     assert_eq!(ncl_object::string_length(&ctx, made), Ok(4));
     assert_eq!(ncl_object::string_ref(&ctx, made, 0), Ok('x'));
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "DIGIT-CHAR-P",
+            &[Word::character('A' as u32), Word::fixnum(16)],
+        ),
+        Word::fixnum(10)
+    );
     assert!(ncl_object::pop_root(&mut ctx, token));
 }

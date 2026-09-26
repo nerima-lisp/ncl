@@ -215,11 +215,14 @@ fn digit_char_p_builtin(
         return Err(ObjectError::TypeError);
     }
     let code = u32::from(c);
-    let digit = match c {
-        '0'..='9' => i64::from(code - u32::from('0')),
-        'A'..='Z' => i64::from(code - u32::from('A')) + 10,
-        'a'..='z' => i64::from(code - u32::from('a')) + 10,
-        _ => return Ok(Word::NIL),
+    let digit = if c.is_ascii_digit() {
+        i64::from(code - u32::from('0'))
+    } else if c.is_ascii_uppercase() {
+        i64::from(code - u32::from('A')) + 10
+    } else if c.is_ascii_lowercase() {
+        i64::from(code - u32::from('a')) + 10
+    } else {
+        return Ok(Word::NIL);
     };
     Ok(if digit < radix {
         Word::fixnum(digit)

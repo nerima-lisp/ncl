@@ -1,7 +1,7 @@
 use super::{
-    adjust_array, adjustable_array_p, array_dimensions, array_row_major_ref, array_row_major_set,
-    fill_pointer, layout, length, metadata_offset, set_fill_pointer, write, ObjectError, Runtime,
-    ThreadContext, Word,
+    ObjectError, Runtime, ThreadContext, Word, adjust_array, adjustable_array_p, array_dimensions,
+    array_row_major_ref, array_row_major_set, fill_pointer, layout, length, metadata_offset,
+    set_fill_pointer, write,
 };
 
 /// Push an element into a vector with a fill pointer, returning its old pointer.

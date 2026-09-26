@@ -1,7 +1,7 @@
 use super::{
-    array_element_type, array_row_major_ref, array_row_major_set, array_shape, classify_object,
-    make_array, row_major_index, ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues,
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
+    ThreadContext, Word, array_element_type, array_row_major_ref, array_row_major_set, array_shape,
+    classify_object, make_array, row_major_index,
 };
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {

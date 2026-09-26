@@ -4,10 +4,10 @@ use ncl_object::array::{
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
-    array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
-    make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
+    array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
+    make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
 };
 
 use super::{register_one, symbol_text};

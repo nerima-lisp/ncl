@@ -1,5 +1,5 @@
 use super::{
-    allocate, layout, length, read, with_roots, write, ObjectError, Runtime, ThreadContext, Word,
+    ObjectError, Runtime, ThreadContext, Word, allocate, layout, length, read, with_roots, write,
 };
 
 /// Allocate a string containing Unicode scalar values.

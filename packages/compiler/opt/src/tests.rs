@@ -336,6 +336,24 @@ impl FunctionPass for FailingPass {
     }
 }
 
+#[derive(Debug)]
+struct InvalidatingPass;
+
+impl FunctionPass for InvalidatingPass {
+    fn name(&self) -> &'static str {
+        "invalidating"
+    }
+
+    fn run(&mut self, function: &mut Function, _module: &Module) -> PassResult {
+        function.blocks[0].ops.push(Op {
+            results: vec![(ValueId(0), Ty::Word)],
+            kind: OpKind::Move { value: ValueId(0) },
+            loc: None,
+        });
+        Ok(true)
+    }
+}
+
 #[test]
 fn manager_reports_module_passes_limits_and_errors() {
     let options = PassManagerOptions {
@@ -362,6 +380,19 @@ fn manager_reports_module_passes_limits_and_errors() {
     };
     assert_eq!(error.pass, "failing");
     assert!(error.to_string().contains("failing"));
+}
+
+#[test]
+fn manager_rejects_an_invalid_function_after_a_pass() {
+    let mut manager = PassManager::new();
+    manager.add_function_pass(InvalidatingPass);
+    let Err(error) = manager.run(&mut Module {
+        functions: vec![leaf()],
+    }) else {
+        std::process::exit(1);
+    };
+    assert_eq!(error.pass, "invalidating");
+    assert!(error.message.contains("DuplicateValue"));
 }
 
 #[test]

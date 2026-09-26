@@ -312,7 +312,7 @@ impl Runtime {
                         RuntimeError::Native("function entry does not fit fixnum".to_owned())
                     })?)
                 }
-                _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?,
+                _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?, // check-added-lines: allow(wildcard) delegate all non-entry constants
             };
             values.push(value);
         }

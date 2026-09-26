@@ -83,14 +83,20 @@ fn initialize_arguments(
                 Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?),
             )?;
         } else {
+            // `MemOperand::Unsigned` takes a byte offset (a multiple of
+            // `scale`), not a word index, so the index into the rest-args
+            // array pointed to by `x5` must be scaled by the word size.
+            let rest_offset = (register_index - 5)
+                .checked_mul(8)
+                .and_then(|offset| u16::try_from(offset).ok())
+                .ok_or(CodegenError::FrameOverflow)?;
             emit(
                 assembler,
                 Inst::Ldr {
                     rt: Reg(16),
                     mem: MemOperand::Unsigned {
                         base: RegOrSp::Reg(Reg(5)),
-                        offset: u16::try_from(register_index - 5)
-                            .map_err(|_| CodegenError::FrameOverflow)?,
+                        offset: rest_offset,
                         scale: 8,
                     },
                 },

@@ -1,4 +1,4 @@
-use super::{AccumulatorKind, LimitDirection, StepDirection};
+use super::{AccumulatorKind, HashIterationKind, LimitDirection, StepDirection};
 
 #[derive(Clone, Debug)]
 pub(super) enum HeldLoopClause {
@@ -12,6 +12,12 @@ pub(super) enum HeldLoopClause {
         step: Option<usize>,
         direction: Option<StepDirection>,
         limit: Option<(LimitDirection, usize)>,
+    },
+    Hash {
+        variable: usize,
+        kind: HashIterationKind,
+        table: usize,
+        using: Option<(HashIterationKind, usize)>,
     },
     EqualsThen {
         variable: usize,

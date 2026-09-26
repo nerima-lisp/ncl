@@ -49,6 +49,23 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     limit,
                 }
             }
+            LoopClause::Hash(spec) => {
+                let variable = held.len();
+                held.push(spec.variable);
+                let table = held.len();
+                held.push(spec.table);
+                let using = spec.using.map(|(kind, variable)| {
+                    let index = held.len();
+                    held.push(variable);
+                    (kind, index)
+                });
+                HeldLoopClause::Hash {
+                    variable,
+                    kind: spec.kind,
+                    table,
+                    using,
+                }
+            }
             LoopClause::EqualsThen {
                 variable,
                 init,
@@ -241,6 +258,43 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     )?);
                 }
             }
+            HeldLoopClause::Hash {
+                variable,
+                kind,
+                table,
+                using,
+            } => {
+                let secondary = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let (key_variable, value_variable) = match using {
+                    Some((using_kind, using_variable)) => {
+                        if using_kind == super::HashIterationKind::Key {
+                            (using_variable, variable)
+                        } else {
+                            (variable, using_variable)
+                        }
+                    }
+                    None => {
+                        if kind == super::HashIterationKind::Key {
+                            (variable, secondary)
+                        } else {
+                            (secondary, variable)
+                        }
+                    }
+                };
+                let parameters =
+                    held_list(ctx, runtime, &mut held, &[key_variable, value_variable])?;
+                let body_value = held.len();
+                held.push(Word::NIL);
+                let callback_form =
+                    held_form(ctx, runtime, &mut held, "LAMBDA", &[parameters, body_value])?;
+                body.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "MAPHASH",
+                    &[callback_form, table],
+                )?);
+            }
             HeldLoopClause::EqualsThen {
                 variable,
                 init,
@@ -282,15 +336,28 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
             }
             HeldLoopClause::Across { variable, vector } => {
                 let index = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let vector_binding = held_fresh_symbol(ctx, runtime, &mut held)?;
+                bindings.push(held_list(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &[vector_binding, vector],
+                )?);
                 let zero = held.len();
                 held.push(Word::fixnum(0));
                 let nil_index = held.len();
                 held.push(Word::NIL);
                 bindings.push(held_list(ctx, runtime, &mut held, &[index, zero])?);
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
-                let length = held_form(ctx, runtime, &mut held, "ARRAY-TOTAL-SIZE", &[vector])?;
+                let length = held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "ARRAY-TOTAL-SIZE",
+                    &[vector_binding],
+                )?;
                 tests.push(held_form(ctx, runtime, &mut held, ">=", &[index, length])?);
-                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector, index])?;
+                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector_binding, index])?;
                 body.push(held_form(
                     ctx,
                     runtime,

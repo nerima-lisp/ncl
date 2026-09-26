@@ -7,6 +7,8 @@ mod definition_support;
 mod form;
 mod function_call;
 mod functions;
+mod iteration;
+mod r#loop;
 mod place;
 mod setf;
 mod setf_support;
@@ -269,6 +271,10 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "NTH-VALUE" => Some(control::expand_nth_value_adapter),
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
+        "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
+        "DOLIST" => Some(iteration::expand_dolist_adapter),
+        "DOTIMES" => Some(iteration::expand_dotimes_adapter),
+        "LOOP" => Some(r#loop::expand_loop_callback),
         _ => None,
     }
 }
@@ -352,11 +358,15 @@ const MACROS: &[&str] = &[
     "DEFPARAMETER",
     "DEFSETF",
     "DEFVAR",
+    "DESTRUCTURING-BIND",
     "DO",
     "DO*",
+    "DOLIST",
+    "DOTIMES",
     "ECASE",
     "ETYPECASE",
     "INCF",
+    "LOOP",
     "NTH-VALUE",
     "OR",
     "POP",
@@ -453,3 +463,6 @@ const OWNED_MACROS: &[&str] = &[
     "WITH-SIMPLE-RESTART",
     "WITH-SLOTS",
 ];
+#[cfg(test)]
+#[path = "tests/registration.rs"]
+mod tests;

@@ -38,9 +38,13 @@ pub(super) fn constant_value(
         Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .ok_or_else(|| CodegenError::Unsupported("entry unavailable".into())),
-        Constant::Symbol { .. } | Constant::Object(_) | Constant::StringBytes(_) => Err(
-            CodegenError::Unsupported("constant requires a runtime constant table".into()),
-        ),
+        Constant::Symbol { .. }
+        | Constant::Object(_)
+        | Constant::StringBytes(_)
+        // check-added-lines: allow(unsupported) runtime-table constants are loaded through code objects
+        | Constant::Structure { .. } => Err(CodegenError::Unsupported(
+            "constant requires a runtime constant table".into(),
+        )),
     }
 }
 

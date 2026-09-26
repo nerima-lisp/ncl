@@ -3,7 +3,8 @@ use super::ParseError;
 use crate::{
     BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
     DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind, HandlerRegion,
-    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, Terminator, Ty, ValueId,
+    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind, Terminator, Ty,
+    ValueId,
 };
 
 fn u32(value: u64) -> Result<u32, ParseError> {
@@ -178,6 +179,19 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
                 .map(|_| Ok(u8(r.u()?)?))
                 .collect::<Result<Vec<_>, ParseError>>()?,
         ),
+        11 => {
+            let kind = match r.u()? {
+                0 => StructureKind::Cons,
+                1 => StructureKind::SimpleVector,
+                _ => return Err(ParseError("bad structure kind".into())), // check-added-lines: allow(wildcard) encoded descriptor kind is validated explicitly
+            };
+            Constant::Structure {
+                kind,
+                elements: (0..r.u()?)
+                    .map(|_| Ok(ConstantIndex(u32(r.u()?)?)))
+                    .collect::<Result<Vec<_>, ParseError>>()?,
+            }
+        }
         7 => Constant::Nil,
         8 => Constant::T,
         9 => Constant::Unbound,

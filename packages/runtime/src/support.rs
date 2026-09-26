@@ -5,7 +5,8 @@ use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::MacroCaller;
 use ncl_object::{
     BuiltinIdentifier, CodeObject, FunctionObject, ObjectError, Package, Runtime as ObjectRuntime,
-    ThreadContext, Word, cdr, make_closure, make_cons, make_double, make_string, symbol_function,
+    ThreadContext, Word, cdr, make_closure, make_cons, make_double, make_simple_vector,
+    make_string, symbol_function,
 };
 use ncl_sys::{Thread, thread_layout};
 
@@ -207,6 +208,34 @@ pub fn resolve_constant(
                 ncl_ir::Constant::StringBytes(bytes) => {
                     let text = std::str::from_utf8(bytes).map_err(|_| ObjectError::Layout)?;
                     make_string(ctx, runtime, &text.chars().collect::<Vec<_>>())?
+                }
+                ncl_ir::Constant::Structure { kind, elements } => {
+                    let values = elements
+                        .iter()
+                        .map(|index| {
+                            previous
+                                .get(usize::try_from(index.0).map_err(|_| ObjectError::Layout)?)
+                                .map(|value| **value)
+                                .ok_or(ObjectError::Layout)
+                        })
+                        .collect::<Result<Vec<_>, ObjectError>>()?;
+                    match kind {
+                        ncl_ir::StructureKind::Cons => {
+                            if values.len() != 2 {
+                                return Err(ObjectError::Layout);
+                            }
+                            let Some(car) = values.first() else {
+                                return Err(ObjectError::Layout);
+                            };
+                            let Some(cdr) = values.get(1) else {
+                                return Err(ObjectError::Layout);
+                            };
+                            make_cons(ctx, runtime, *car, *cdr)?
+                        }
+                        ncl_ir::StructureKind::SimpleVector => {
+                            make_simple_vector(ctx, runtime, &values)?
+                        }
+                    }
                 }
                 ncl_ir::Constant::DoubleFloat(value) => {
                     make_double(ctx, runtime, *value)?.as_word()

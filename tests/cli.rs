@@ -107,6 +107,22 @@ fn evals_core_forms_through_native_builtin_entries() {
 }
 
 #[test]
+fn evals_readable_objects() {
+    for (source, expected) in [
+        ("'(1 2 . 3)", "(1 2 . 3)"),
+        ("#(1 \"two\" #\\x)", "#(1 \"two\" #\\x)"),
+        (
+            "'((\"hello\" #\\Space) #(1 \"nested\"))",
+            "((\"hello\" #\\Space) #(1 \"nested\"))",
+        ),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+}
+
+#[test]
 fn evals_native_functions_constants_and_closures() {
     for (source, expected) in [
         ("(progn (defun f (x) (+ x 1)) (f 41))", "42"),

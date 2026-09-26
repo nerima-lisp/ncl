@@ -139,6 +139,10 @@ impl FunctionLowerer {
         self.constant(constant)
     }
 
+    pub(super) fn add_constant(&mut self, constant: Constant) -> ncl_ir::ConstantIndex {
+        self.builder.add_constant(constant)
+    }
+
     /// Append `nil` as a `Word`.
     pub(super) fn nil(&mut self) -> Result<ValueId, LowerError> {
         self.word_constant(Constant::Nil)
@@ -214,6 +218,7 @@ const fn constant_type(constant: &Constant) -> Ty {
         | Constant::Symbol { .. }
         | Constant::Object(_)
         | Constant::StringBytes(_)
+        | Constant::Structure { .. }
         | Constant::Nil
         | Constant::T
         | Constant::Unbound

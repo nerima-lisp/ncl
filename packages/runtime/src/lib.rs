@@ -1,30 +1,27 @@
 //! Evaluation, compilation, loading, and registration orchestration.
-
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
-
 mod compile;
+#[cfg(test)]
+mod constant_tests;
 mod function_call;
 mod load;
 mod native_error;
 mod support;
-
 pub use function_call::RuntimeFunctionCaller;
-
+pub use native_error::NativeCondition;
+use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
     Function, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
     make_simple_vector,
 };
+use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, NativeError, RootToken, SafepointMap, SourceLocation, alloc_code,
     invoke_entry_with_function, publish_code, register_code, write_code,
 };
-
-pub use native_error::NativeCondition;
-use native_error::native_failure;
 use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
-
 /// Errors raised while setting up or executing one compilation unit.
 #[derive(Debug)]
 pub enum RuntimeError {
@@ -53,7 +50,6 @@ pub enum RuntimeError {
         condition: NativeCondition,
     },
 }
-
 impl std::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -69,7 +65,6 @@ impl std::fmt::Display for RuntimeError {
         }
     }
 }
-
 impl std::error::Error for RuntimeError {}
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
@@ -99,7 +94,6 @@ impl From<ncl_compiler_front::LowerError> for RuntimeError {
         Self::Lower(value)
     }
 }
-
 /// A running NCL instance and its published native code.
 #[derive(Debug)]
 pub struct Runtime {
@@ -111,12 +105,10 @@ pub struct Runtime {
     rooted_functions: Vec<(Box<Word>, RootToken)>,
     object: ObjectRuntime,
 }
-
 #[derive(Debug)]
 pub(crate) struct PublishedFunction {
     pub(crate) entry: usize,
 }
-
 impl Runtime {
     /// Create a runtime and register the standard library exactly once.
     ///
@@ -136,7 +128,6 @@ impl Runtime {
             rooted_functions: Vec::new(),
         })
     }
-
     /// Evaluate source by compiling it to native code and invoking the entry.
     ///
     /// # Errors
@@ -149,7 +140,6 @@ impl Runtime {
         }
         Ok(result)
     }
-
     /// Compile and execute a source string through the native pipeline.
     ///
     /// The current native pipeline publishes code as it compiles it, so this
@@ -160,7 +150,6 @@ impl Runtime {
     pub fn compile(&mut self, source: &str) -> Result<Word, RuntimeError> {
         compile::source(self, source)
     }
-
     /// Compile and execute all forms in a source file.
     ///
     /// # Errors
@@ -171,7 +160,6 @@ impl Runtime {
     ) -> Result<Word, RuntimeError> {
         compile::file(self, path.as_ref())
     }
-
     /// Load and execute all forms in a source string.
     ///
     /// # Errors
@@ -179,7 +167,6 @@ impl Runtime {
     pub fn load(&mut self, source: &str) -> Result<Word, RuntimeError> {
         self.eval(source)
     }
-
     /// Load and execute all forms in a source file.
     ///
     /// # Errors
@@ -187,7 +174,6 @@ impl Runtime {
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
         load::file(self, path.as_ref())
     }
-
     fn compile_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         let registry = MacroRegistry::new();
         let mut caller = RuntimeMacroCaller;
@@ -231,7 +217,6 @@ impl Runtime {
         self.code.push(compiled.0);
         Ok(value)
     }
-
     fn compile_native(
         &mut self,
         function: &ncl_ir::Function,
@@ -272,7 +257,6 @@ impl Runtime {
         }
         Ok((code, metadata))
     }
-
     fn make_function_object(
         &mut self,
         function: &ncl_ir::Function,
@@ -302,7 +286,6 @@ impl Runtime {
         self.rooted_functions.push((rooted, token));
         Ok((function_object.as_word(), code_object.as_word()))
     }
-
     fn root_entry_code(&mut self, entry: usize, code: Word) {
         let mut rooted = Box::new(code);
         let token = ncl_object::push_root(&mut self.context, &mut rooted);
@@ -310,6 +293,7 @@ impl Runtime {
     }
     fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
+        let mut roots = Vec::with_capacity(function.constants.len());
         for constant in &function.constants {
             let value = match constant {
                 ncl_ir::Constant::FunctionEntry(id) => {
@@ -327,10 +311,18 @@ impl Runtime {
                 _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?, // check-added-lines: allow(wildcard) delegate all non-entry constants
             };
             values.push(value);
+            let value = values
+                .last_mut()
+                .ok_or_else(|| RuntimeError::Native("constant table append failed".to_owned()))?;
+            roots.push(ncl_object::push_root(&mut self.context, value));
         }
-        make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into)
+        let result =
+            make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into);
+        for token in roots.into_iter().rev() {
+            let _ = ncl_object::pop_root(&mut self.context, token);
+        }
+        result
     }
-
     fn publish_function(&mut self, function: &ncl_ir::Function) -> Result<(), RuntimeError> {
         let id = function.id;
         let (code, metadata) = self.compile_native(function)?;
@@ -343,7 +335,6 @@ impl Runtime {
         self.code.push(code);
         Ok(())
     }
-
     fn invoke_compiled(
         &mut self,
         code: &CodePtr,
@@ -390,22 +381,28 @@ impl Runtime {
         }
         Ok(Word::from_bits(value))
     }
-
-    /// Format a fixnum result for the command-line frontend.
-    pub fn format_result(&self, value: Word) -> String {
-        value.as_fixnum().map_or_else(
-            || format!("0x{:x}", value.bits()),
-            |number| number.to_string(),
-        )
+    /// Format a result for the command-line frontend.
+    pub fn format_result(&mut self, value: Word) -> String {
+        if value == Word::TRUE {
+            return "T".to_owned();
+        }
+        if let Some(number) = value.as_fixnum() {
+            return number.to_string();
+        }
+        let mut sink = StringSink::new();
+        let options = PrintOptions::new().with_readably(true);
+        if write(&mut self.context, &self.object, value, &mut sink, &options).is_ok() {
+            sink.into_string()
+        } else {
+            format!("0x{:x}", value.bits())
+        }
     }
-
     /// Create a function caller that can invoke this runtime's published code.
     #[must_use]
     pub const fn function_caller(&self) -> RuntimeFunctionCaller {
         RuntimeFunctionCaller
     }
 }
-
 impl Drop for Runtime {
     fn drop(&mut self) {
         for (_, (_, token)) in std::mem::take(&mut self.entry_codes) {
@@ -416,13 +413,10 @@ impl Drop for Runtime {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::{Runtime, RuntimeError};
-
+    use std::fs;
     #[test]
     fn evaluates_a_literal_through_native_code() {
         let mut runtime = match Runtime::new() {
@@ -436,7 +430,6 @@ mod tests {
         assert_eq!(runtime.format_result(value), "42");
         drop(runtime);
     }
-
     #[test]
     fn compile_and_load_share_the_native_pipeline() {
         let mut runtime = match Runtime::new() {
@@ -454,14 +447,12 @@ mod tests {
         assert_eq!(runtime.format_result(compiled), "41");
         assert_eq!(runtime.format_result(loaded), "42");
     }
-
     #[test]
     fn load_file_executes_source_and_reports_missing_files() {
         let path = std::env::temp_dir().join(format!("ncl-runtime-{}.lisp", std::process::id()));
         if let Err(error) = fs::write(&path, "43") {
             panic!("source file creation failed: {error}");
         }
-
         let mut runtime = match Runtime::new() {
             Ok(runtime) => runtime,
             Err(error) => panic!("runtime initialization failed: {error}"),
@@ -482,7 +473,6 @@ mod tests {
             panic!("source file cleanup failed: {error}");
         }
     }
-
     #[test]
     fn runtimes_can_be_created_and_dropped_repeatedly() {
         for _ in 0..3 {

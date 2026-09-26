@@ -15,6 +15,7 @@ ncl-image = { path = "../image" }
 ncl-threads = { path = "../threads" }
 ncl-ffi = { path = "../ffi" }
 ncl-object = { path = "../object" }
+ncl-printer = { path = "../printer" }
 ncl-reader = { path = "../reader" }
 ncl-sys = { path = "../sys" }
 

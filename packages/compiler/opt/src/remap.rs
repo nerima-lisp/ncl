@@ -27,17 +27,14 @@ pub fn remap_kind(
     let v = |value: ValueId| values.get(&value).copied().unwrap_or(value);
     match kind {
         OpKind::Const { result } => {
-            let Some(constant) = usize::try_from(result.0)
+            if usize::try_from(result.0)
                 .ok()
                 .and_then(|index| callee.constants.get(index))
-                .cloned()
-            else {
+                .is_none()
+            {
                 return kind.clone();
-            };
-            let mapped = *constants.entry(*result).or_insert_with(|| {
-                caller_constants.push(constant);
-                ConstantIndex(u32::try_from(caller_constants.len() - 1).unwrap_or(u32::MAX))
-            });
+            }
+            let mapped = remap_constant(*result, constants, caller_constants, callee);
             OpKind::Const { result: mapped }
         }
         OpKind::Move { value } => OpKind::Move { value: v(*value) },
@@ -87,6 +84,50 @@ pub fn remap_kind(
         },
         other => other.clone(),
     }
+}
+
+fn remap_constant(
+    index: ConstantIndex,
+    constants: &mut HashMap<ConstantIndex, ConstantIndex>,
+    caller_constants: &mut Vec<Constant>,
+    callee: &Function,
+) -> ConstantIndex {
+    if let Some(mapped) = constants.get(&index).copied() {
+        return mapped;
+    }
+    let Some(constant) = usize::try_from(index.0)
+        .ok()
+        .and_then(|position| callee.constants.get(position))
+        .cloned()
+    else {
+        return index;
+    };
+    #[allow(clippy::manual_unwrap_or, clippy::option_if_let_else)]
+    let mapped_index = match u32::try_from(caller_constants.len()) {
+        Ok(value) => value,
+        Err(_) => u32::MAX,
+    };
+    let mapped = ConstantIndex(mapped_index);
+    constants.insert(index, mapped);
+    let slot = caller_constants.len();
+    caller_constants.push(Constant::Nil);
+    let remapped = match constant {
+        Constant::Object(child) => {
+            Constant::Object(remap_constant(child, constants, caller_constants, callee))
+        }
+        Constant::Structure { kind, elements } => Constant::Structure {
+            kind,
+            elements: elements
+                .into_iter()
+                .map(|child| remap_constant(child, constants, caller_constants, callee))
+                .collect(),
+        },
+        other => other,
+    };
+    if let Some(entry) = caller_constants.get_mut(slot) {
+        *entry = remapped;
+    }
+    mapped
 }
 
 pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {

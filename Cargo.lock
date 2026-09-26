@@ -293,6 +293,7 @@ dependencies = [
  "ncl-ir",
  "ncl-object",
  "ncl-opt",
+ "ncl-printer",
  "ncl-reader",
  "ncl-stdlib",
  "ncl-sys",

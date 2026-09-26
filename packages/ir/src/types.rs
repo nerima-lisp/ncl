@@ -105,6 +105,13 @@ pub struct DebugLocation {
     pub form: FormId,
 }
 
+/// The shape of a frozen heap object described by a constant.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StructureKind {
+    Cons,
+    SimpleVector,
+}
+
 /// A constant descriptor resolved by the runtime or code generator.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -112,9 +119,16 @@ pub enum Constant {
     Character(u32),
     SingleFloat(f32),
     DoubleFloat(f64),
-    Symbol { package: String, name: String },
+    Symbol {
+        package: String,
+        name: String,
+    },
     Object(ConstantIndex),
     StringBytes(Vec<u8>),
+    Structure {
+        kind: StructureKind,
+        elements: Vec<ConstantIndex>,
+    },
     Nil,
     T,
     Unbound,

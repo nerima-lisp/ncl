@@ -152,6 +152,17 @@ fn constant(w: &mut Writer, c: &Constant) {
                 w.u((*b).into());
             }
         }
+        Constant::Structure { kind, elements } => {
+            w.u(11);
+            w.u(match kind {
+                crate::StructureKind::Cons => 0,
+                crate::StructureKind::SimpleVector => 1,
+            });
+            vec_len(w, elements.len());
+            for element in elements {
+                w.u(element.0.into());
+            }
+        }
         Constant::Nil => w.u(7),
         Constant::T => w.u(8),
         Constant::Unbound => w.u(9),

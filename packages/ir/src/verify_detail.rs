@@ -22,10 +22,24 @@ pub(super) fn check_op(
                 return;
             };
             if let Some(constant) = function.constants.get(result_index) {
-                if let crate::Constant::Object(index) = constant {
+                let references = match constant {
+                    crate::Constant::Object(index) => std::slice::from_ref(index),
+                    crate::Constant::Structure { elements, .. } => elements.as_slice(),
+                    crate::Constant::Fixnum(_)
+                    | crate::Constant::Character(_)
+                    | crate::Constant::SingleFloat(_)
+                    | crate::Constant::DoubleFloat(_)
+                    | crate::Constant::Symbol { .. }
+                    | crate::Constant::StringBytes(_)
+                    | crate::Constant::Nil
+                    | crate::Constant::T
+                    | crate::Constant::Unbound
+                    | crate::Constant::FunctionEntry(_) => &[],
+                };
+                for index in references {
                     let Some(object_index) = usize::try_from(index.0).ok() else {
                         errors.push(VerifyError::ConstantOutOfBounds(block.id));
-                        return;
+                        break;
                     };
                     if object_index >= function.constants.len() {
                         errors.push(VerifyError::ConstantOutOfBounds(block.id));
@@ -366,6 +380,7 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         | crate::Constant::Symbol { .. }
         | crate::Constant::Object(_)
         | crate::Constant::StringBytes(_)
+        | crate::Constant::Structure { .. }
         | crate::Constant::Nil
         | crate::Constant::T
         | crate::Constant::Unbound

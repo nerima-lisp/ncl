@@ -6,13 +6,27 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
 use ncl_object::{
-    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
-    classify_object, make_bignum_from_i128,
+    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, ObjectError,
+    ObjectRef, Runtime, ThreadContext, Word,
 };
 
 use ncl_object::MultipleValues;
 
-pub(super) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
+fn signed_magnitude(magnitude: u128, negative: bool) -> Result<i128, ObjectError> {
+    if negative {
+        if magnitude == 1_u128 << 127 {
+            return Ok(i128::MIN);
+        }
+        i128::try_from(magnitude)
+            .ok()
+            .and_then(i128::checked_neg)
+            .ok_or(ObjectError::Layout)
+    } else {
+        i128::try_from(magnitude).map_err(|_| ObjectError::Layout)
+    }
+}
+
+pub fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
         return Ok(i128::from(value));
     }
@@ -21,20 +35,15 @@ pub(super) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectEr
     };
     let object = Bignum::from_word(word);
     let limbs = bignum_limbs(ctx, object)?;
-    let mut magnitude = 0_i128;
+    let mut magnitude = 0_u128;
     for (index, limb) in limbs.iter().enumerate() {
         let shift = index.checked_mul(32).ok_or(ObjectError::Layout)?;
-        if shift >= 127 || (i128::from(*limb) << shift) < 0 {
-            return Err(ObjectError::Layout);
-        }
-        magnitude |= i128::from(*limb) << shift;
+        magnitude |= u128::from(*limb)
+            .checked_shl(u32::try_from(shift).map_err(|_| ObjectError::Layout)?)
+            .ok_or(ObjectError::Layout)?;
     }
     let negative = bignum_sign(ctx, object)?;
-    if negative {
-        magnitude.checked_neg().ok_or(ObjectError::Layout)
-    } else {
-        Ok(magnitude)
-    }
+    signed_magnitude(magnitude, negative)
 }
 
 pub(super) fn integer_word(
@@ -42,11 +51,8 @@ pub(super) fn integer_word(
     runtime: &Runtime,
     value: i128,
 ) -> Result<Word, ObjectError> {
-    if let Some((value, bits)) = i64::try_from(value)
-        .ok()
-        .and_then(|value| value.checked_shl(1).map(|bits| (value, bits)))
-    {
-        let word = Word::from_bits(bits.cast_unsigned());
+    if let Ok(value) = i64::try_from(value) {
+        let word = Word::fixnum(value);
         if word.as_fixnum() == Some(value) {
             return Ok(word);
         }
@@ -221,7 +227,11 @@ pub fn logbitp(
     let index = usize::try_from(integer(ctx, *index)?).map_err(|_| ObjectError::TypeError)?;
     let value = integer(ctx, *value)?;
     Ok(if index >= 127 {
-        if value < 0 { Word::TRUE } else { Word::NIL }
+        if value < 0 {
+            Word::TRUE
+        } else {
+            Word::NIL
+        }
     } else if (value & (1_i128 << index)) != 0 {
         Word::TRUE
     } else {
@@ -302,7 +312,28 @@ pub fn byte(
         .map_err(|_| ObjectError::TypeError)?;
     let position = u32::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?)
         .map_err(|_| ObjectError::TypeError)?;
-    Ok(Word::from_bits(
-        (u64::from(position) << 32) | u64::from(size),
-    ))
+    let encoded = i64::from(position)
+        .checked_shl(32)
+        .and_then(|position| position.checked_add(i64::from(size)))
+        .ok_or(ObjectError::Layout)?;
+    let word = Word::fixnum(encoded);
+    (word.as_fixnum() == Some(encoded))
+        .then_some(word)
+        .ok_or(ObjectError::Layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signed_magnitude;
+
+    #[test]
+    fn signed_magnitude_accepts_i128_minimum() {
+        assert_eq!(signed_magnitude(1_u128 << 127, true), Ok(i128::MIN));
+    }
+
+    #[test]
+    fn signed_magnitude_rejects_unrepresentable_values() {
+        assert!(signed_magnitude(1_u128 << 127, false).is_err());
+        assert!(signed_magnitude(1_u128 << 127, true).is_ok());
+    }
 }

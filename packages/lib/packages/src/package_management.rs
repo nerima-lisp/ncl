@@ -38,14 +38,21 @@ pub(super) fn rename_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let package = package_arg(ctx, runtime, args, 0)?;
-    let name = string_designator(ctx, args.required(1)?)?;
-    let nicknames = args.get(2).unwrap_or(Word::NIL);
-    for nickname in list_items(ctx, nicknames)? {
-        let _ = string_designator(ctx, nickname)?;
-    }
-    runtime.rename_package(ctx, package, name.as_word(), nicknames)?;
-    Ok(package.as_word())
+    let mut package = package_arg(ctx, runtime, args, 0)?.as_word();
+    with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+        let name = string_designator(ctx, args.required(1)?)?;
+        let nicknames = args.get(2).unwrap_or(Word::NIL);
+        for nickname in list_items(ctx, nicknames)? {
+            let _ = string_designator(ctx, nickname)?;
+        }
+        runtime.rename_package(
+            ctx,
+            Package::from_word(package[0]),
+            name.as_word(),
+            nicknames,
+        )?;
+        Ok(package[0])
+    })
 }
 
 pub(super) fn shadowing_import(
@@ -93,17 +100,12 @@ pub(super) fn make_package(
             .map(|offset| ncl_object::string_ref(ctx, key.as_word(), offset))
             .collect::<Result<String, _>>()?;
         match key.as_str() {
-            "NICKNAMES" => {
-                for nickname in list_items(ctx, value)? {
-                    let nickname = string_designator(ctx, nickname)?.as_word();
-                    nicknames = ncl_object::make_cons(ctx, runtime, nickname, nicknames)?;
-                }
-            }
             "USE" => {
                 for used in list_items(ctx, value)? {
                     use_packages.push(package_designator(ctx, runtime, used)?.as_word());
                 }
             }
+            "NICKNAMES" => {}
             _ => return Err(ObjectError::TypeError),
         }
         index += 2;
@@ -113,6 +115,27 @@ pub(super) fn make_package(
             ctx,
             std::slice::from_mut(&mut nicknames),
             |ctx, nicknames| {
+                let mut index = 1;
+                while index < args.len() {
+                    let key = args.get(index).ok_or(ObjectError::TypeError)?;
+                    let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
+                    let key = string_designator(ctx, key)?;
+                    let key = (0..ncl_object::string_length(ctx, key.as_word())?)
+                        .map(|offset| ncl_object::string_ref(ctx, key.as_word(), offset))
+                        .collect::<Result<String, _>>()?;
+                    match key.as_str() {
+                        "NICKNAMES" => {
+                            for nickname in list_items(ctx, value)? {
+                                let nickname = string_designator(ctx, nickname)?.as_word();
+                                nicknames[0] =
+                                    ncl_object::make_cons(ctx, runtime, nickname, nicknames[0])?;
+                            }
+                        }
+                        "USE" => {}
+                        _ => return Err(ObjectError::TypeError),
+                    }
+                    index += 2;
+                }
                 let mut package = runtime.ensure_package(ctx, &name)?;
                 with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
                     let mut roots = [package[0], nicknames[0]];

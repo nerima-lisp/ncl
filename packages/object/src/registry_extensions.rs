@@ -114,22 +114,35 @@ impl Runtime {
         ctx: &mut ThreadContext,
         package: Package,
     ) -> Result<bool, ObjectError> {
-        package.ensure_unlocked(ctx)?;
-        let table = Self::table(&self.packages)?;
-        let mut removed = HashTable::from_word(table)
-            .remove(ctx, self, package.name(ctx)?)?
-            .is_some();
-        let mut nicknames = package.nicknames(ctx)?;
-        while nicknames != Word::NIL {
-            let nickname =
-                ncl_sys::read_cons_word(&ctx.thread, nicknames, 0).ok_or(ObjectError::Layout)?;
-            removed |= HashTable::from_word(table)
-                .remove(ctx, self, nickname)?
-                .is_some();
-            nicknames =
-                ncl_sys::read_cons_word(&ctx.thread, nicknames, 1).ok_or(ObjectError::Layout)?;
-        }
-        Ok(removed)
+        let mut package_word = package.as_word();
+        crate::with_root(ctx, &mut package_word, |ctx, package| {
+            Package::from_word(*package).ensure_unlocked(ctx)?;
+            let table = Self::table(&self.packages)?;
+            let mut name = Package::from_word(*package).name(ctx)?;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let mut nicknames = Package::from_word(*package).nicknames(ctx)?;
+                let mut removed = HashTable::from_word(table)
+                    .remove(ctx, self, *name)?
+                    .is_some();
+                while nicknames != Word::NIL {
+                    let next = crate::with_root(ctx, &mut nicknames, |ctx, nicknames_slot| {
+                        let mut nickname =
+                            ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 0)
+                                .ok_or(ObjectError::Layout)?;
+                        crate::with_root(ctx, &mut nickname, |ctx, nickname| {
+                            removed |= HashTable::from_word(table)
+                                .remove(ctx, self, *nickname)?
+                                .is_some();
+                            Ok(())
+                        })?;
+                        ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 1)
+                            .ok_or(ObjectError::Layout)
+                    })?;
+                    nicknames = next;
+                }
+                Ok(removed)
+            })
+        })
     }
 
     #[must_use]

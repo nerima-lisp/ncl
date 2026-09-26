@@ -246,9 +246,11 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    use ncl_sys::{CodeRegistry, Thread};
+
     use super::{LispProfileApi, ProfileSession, SessionError};
-    use crate::adapter::ReportFormat;
-    use crate::domain::{FrameId, Sample};
+    use crate::adapter::{ReportFormat, ThreadSampler};
+    use crate::domain::{FrameId, Sample, SampleError};
 
     fn sample(leaf: u32) -> Option<Sample> {
         Sample::new(vec![FrameId::new(1), FrameId::new(leaf)]).ok()
@@ -277,6 +279,47 @@ mod tests {
         if let Ok(snapshot) = snapshot {
             assert_eq!(snapshot.sample_count(), 1);
         }
+    }
+
+    #[test]
+    fn session_state_errors_are_explicit() {
+        for error in [
+            SessionError::NotActive,
+            SessionError::NotStarted,
+            SessionError::Poisoned,
+            SessionError::Sampling(SampleError::EmptyStack),
+        ] {
+            assert!(!error.to_string().is_empty());
+        }
+        let session = ProfileSession::new();
+        assert_eq!(session.stop(), Err(SessionError::NotStarted));
+        assert_eq!(
+            session.report(ReportFormat::Flat),
+            Err(SessionError::NotStarted)
+        );
+        let sample = Sample::new(vec![FrameId::new(1)]);
+        assert!(sample.is_ok());
+        if let Ok(sample) = sample {
+            assert_eq!(session.record(sample), Err(SessionError::NotStarted));
+        }
+        assert!(session.start().is_ok());
+        let sampler = ThreadSampler::new(1, 1);
+        assert!(sampler.is_ok());
+        let thread = Thread::new();
+        let registry = CodeRegistry::default();
+        if let Ok(sampler) = sampler {
+            assert_eq!(
+                session.sample_thread(&sampler, &thread, &registry),
+                Err(SessionError::Sampling(SampleError::EmptyStack))
+            );
+        }
+        let snapshot = session.stop();
+        assert!(snapshot.is_ok());
+        if let Ok(snapshot) = snapshot {
+            assert!(snapshot.report(ReportFormat::Folded).as_str().is_empty());
+        }
+        assert_eq!(session.stop(), Err(SessionError::NotActive));
+        assert!(session.report(ReportFormat::Flat).is_ok());
     }
 
     #[test]

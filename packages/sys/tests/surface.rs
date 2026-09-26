@@ -10,6 +10,7 @@ use ncl_sys::{
     register_thread_with_thread, request_safepoint, set_strict_forwarding, set_tlab, tlab_bump,
     weak_value, write_barrier, write_cons_word, write_object_word,
 };
+use std::ptr::NonNull;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -23,8 +24,9 @@ fn direct_native_failures_keep_typed_side_channel() {
     let mut thread = Thread::new();
     assert_eq!(register_thread(&heap, &mut thread), Ok(()));
 
-    let returned = native_add(&raw mut thread, Word::fixnum(7), Word::NIL);
-    assert_eq!(returned, Word::UNBOUND);
+    let thread_ptr = NonNull::from(&mut thread);
+    let returned = native_add(thread_ptr, Word::fixnum(7), Word::NIL);
+    assert_eq!(returned, Word::NIL);
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::TypeMismatch {
@@ -33,8 +35,8 @@ fn direct_native_failures_keep_typed_side_channel() {
             ..
         })
     ));
-    let returned = native_mul(&raw mut thread, Word::fixnum(i64::MAX / 2), Word::fixnum(3));
-    assert_eq!(returned, Word::UNBOUND);
+    let returned = native_mul(thread_ptr, Word::fixnum(i64::MAX / 2), Word::fixnum(3));
+    assert_eq!(returned, Word::NIL);
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::Overflow {
@@ -43,8 +45,8 @@ fn direct_native_failures_keep_typed_side_channel() {
         })
     ));
     // SAFETY: the test passes a registered live thread and a valid pointer.
-    let returned = unsafe { native_car(&raw mut thread, Word::fixnum(7)) };
-    assert_eq!(returned, Word::UNBOUND);
+    let returned = unsafe { native_car(thread_ptr, Word::fixnum(7)) };
+    assert_eq!(returned, Word::NIL);
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::TypeMismatch {
@@ -53,8 +55,8 @@ fn direct_native_failures_keep_typed_side_channel() {
         })
     ));
     // SAFETY: the test passes a registered live thread and a valid pointer.
-    let returned = unsafe { native_cons(&raw mut thread, Word::NIL, Word::NIL) };
-    assert_eq!(returned, Word::UNBOUND);
+    let returned = unsafe { native_cons(thread_ptr, Word::NIL, Word::NIL) };
+    assert_eq!(returned, Word::NIL);
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::Allocation {
@@ -62,6 +64,28 @@ fn direct_native_failures_keep_typed_side_channel() {
             ..
         })
     ));
+    ncl_sys::unregister_thread(&thread);
+}
+
+#[test]
+fn native_cons_and_car_survive_gc_stress_with_strict_forwarding() {
+    let heap = Heap::new(HeapConfig {
+        bytes_considered_between_gcs: 1,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert!(register_thread(&heap, &mut thread).is_ok());
+    set_strict_forwarding(&thread, true);
+
+    let thread_ptr = NonNull::from(&mut thread);
+    // SAFETY: the test passes a registered live thread and a valid pointer.
+    let mut pair = unsafe { native_cons(thread_ptr, Word::fixnum(42), Word::NIL) };
+    assert!(pair.is_cons());
+    let root = push_root(&mut thread, &mut pair);
+    collect(&mut thread, true);
+    // SAFETY: the pair is rooted and the thread remains registered.
+    assert_eq!(unsafe { native_car(thread_ptr, pair) }, Word::fixnum(42));
+    assert!(pop_root(&mut thread, root));
     ncl_sys::unregister_thread(&thread);
 }
 

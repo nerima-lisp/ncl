@@ -23,7 +23,7 @@ pub struct Runtime {
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
-    pub(crate) builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    pub(crate) builtins: Mutex<Vec<BuiltinEntry>>,
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
     pub(crate) place_expanders: Mutex<crate::place::PlaceExpanders>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
@@ -34,6 +34,13 @@ pub struct Runtime {
 pub struct RootedTable {
     slot: Box<Word>,
     _token: RootToken,
+}
+
+#[derive(Debug)]
+pub struct BuiltinEntry {
+    pub(crate) function: Box<Word>,
+    pub(crate) implementation: BuiltinImplementation,
+    pub(crate) _token: RootToken,
 }
 const KEYWORD_LIST: Parameter = Parameter {
     name: BuiltinName::new("LIST"),
@@ -128,7 +135,7 @@ impl Runtime {
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
-            builtins: Mutex::new(HashMap::new()),
+            builtins: Mutex::new(Vec::new()),
             builtin_addresses: Mutex::new(HashMap::new()),
             place_expanders: Mutex::new(crate::place::PlaceExpanders::default()),
             lisp_error_converter: Mutex::new(None),

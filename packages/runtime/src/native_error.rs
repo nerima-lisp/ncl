@@ -62,13 +62,13 @@ mod tests {
         runtime.context.set_gc_stress(true);
         runtime.context.set_strict_forwarding(true);
 
-        let thread = std::ptr::from_mut(runtime.context.thread_mut());
+        let thread = std::ptr::NonNull::from(runtime.context.thread_mut());
         let returned = ncl_sys::native_add(
             thread,
             Word::fixnum(i64::MAX / 2),
             Word::fixnum(i64::MAX / 2),
         );
-        assert_eq!(returned, Word::UNBOUND);
+        assert_eq!(returned, Word::NIL);
         assert!(matches!(
             runtime.context.thread_mut().take_native_error(),
             Some(NativeError::Overflow {

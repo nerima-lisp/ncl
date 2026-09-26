@@ -420,7 +420,9 @@ impl RuntimeAbi for NativeAbi<'_> {
     }
     fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
         match function {
-            RuntimeFunction::SafepointSlow => Some(ncl_sys::native_safepoint as *const () as u64),
+            RuntimeFunction::SafepointSlow => ncl_sys::function_address!(ncl_sys::native_safepoint)
+                .map_err(|error| RuntimeError::Native(error.to_string()))
+                .ok(),
             _ => None,
         }
     }

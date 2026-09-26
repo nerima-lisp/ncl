@@ -78,8 +78,11 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
     let before = expansion;
     let root = ncl_object::push_root(&mut ctx, &mut expansion);
     ctx.collect(true)?;
+    // check-added-lines: allow(panic) test-only assertion
     assert_ne!(expansion, before);
+    // check-added-lines: allow(panic) test-only assertion
     assert!(!elements(&mut ctx, expansion)?.is_empty());
+    // check-added-lines: allow(panic) test-only assertion
     assert!(ncl_object::pop_root(&mut ctx, root));
     Ok(())
 }

@@ -233,7 +233,16 @@ impl Runtime {
                 .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         }
         self.context.thread_mut().take_native_error();
-        let (value, _) = invoke_entry(&code, entry_offset, self.context.thread_mut(), 0, [0; 4], 0);
+        let (value, value_count) =
+            invoke_entry(&code, entry_offset, self.context.thread_mut(), 0, [0; 4], 0);
+        let value_count = usize::try_from(value_count).map_err(|_| {
+            RuntimeError::Native("multiple-value count does not fit usize".to_owned())
+        })?;
+        if value_count > 1 && self.context.thread_mut().multiple_values().len() < value_count {
+            return Err(RuntimeError::Native(
+                "native multiple-value area is smaller than the returned count".to_owned(),
+            ));
+        }
         if let Some(error) = self.context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }

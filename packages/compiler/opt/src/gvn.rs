@@ -89,7 +89,7 @@ impl GlobalValueNumbering {
             .map(|id| {
                 (
                     *id,
-                    if *id == entry || predecessors[id].is_empty() {
+                    if *id == entry || predecessors.get(id).is_none_or(Vec::is_empty) {
                         HashSet::from([*id])
                     } else {
                         blocks.clone()
@@ -100,7 +100,10 @@ impl GlobalValueNumbering {
         loop {
             let mut changed = false;
             for id in blocks.iter().copied().filter(|id| *id != entry) {
-                let mut preds = predecessors[&id]
+                let Some(predecessor_ids) = predecessors.get(&id) else {
+                    continue;
+                };
+                let mut preds = predecessor_ids
                     .iter()
                     .filter_map(|pred| dominators.get(pred));
                 let Some(first) = preds.next() else {
@@ -125,14 +128,21 @@ impl GlobalValueNumbering {
             .map(|id| (*id, Vec::new()))
             .collect::<HashMap<_, _>>();
         for id in blocks.iter().copied().filter(|id| *id != entry) {
-            let Some(parent) = dominators[&id]
+            let Some(dominated) = dominators.get(&id) else {
+                continue;
+            };
+            let Some(parent) = dominated
                 .iter()
                 .filter(|candidate| **candidate != id)
                 .filter(|candidate| {
-                    dominators[&id]
+                    dominated
                         .iter()
                         .filter(|other| **other != id && **other != **candidate)
-                        .all(|other| !dominators[other].contains(candidate))
+                        .all(|other| {
+                            dominators
+                                .get(other)
+                                .is_none_or(|set| !set.contains(candidate))
+                        })
                 })
                 .copied()
                 .next()
@@ -205,7 +215,10 @@ impl GlobalValueNumbering {
                 };
                 if op.results.len() == 1 {
                     if let Some(&existing) = table.get(&key) {
-                        tables.replacements.insert(op.results[0].0, existing);
+                        let Some(&(result, _)) = op.results.first() else {
+                            continue;
+                        };
+                        tables.replacements.insert(result, existing);
                         changed = true;
                         continue;
                     }

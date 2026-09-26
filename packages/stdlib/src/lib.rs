@@ -49,5 +49,6 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;
+    ncl_profiler::register::register(runtime)?;
     Ok(())
 }

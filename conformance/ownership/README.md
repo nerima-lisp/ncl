@@ -19,11 +19,11 @@ or `3` for supporting implementation work. `direct-expansion` is `yes` only
 for primitives covered by the compiler-pipeline contract.
 
 The package column may contain `COMMON-LISP`, `ASDF/INTERFACE`,
-`UIOP/DRIVER`, or one of the ten frozen NCL extension packages:
+`UIOP/DRIVER`, or one of the eleven frozen NCL extension packages:
 
 ```text
 NCL-THREADS  NCL-FFI      NCL-MOP       NCL-GRAY      NCL-GC
-NCL-IMAGE    NCL-UNICODE  NCL-OS        NCL-EXT       NCL-SYS
+NCL-IMAGE    NCL-UNICODE  NCL-OS        NCL-EXT       NCL-SYS       NCL-PROFILER
 ```
 
 NCL extension rows are intentionally open-ended. Their count and individual
@@ -52,7 +52,7 @@ python3 conformance/ownership/check.py
 - Numeric, sequence/list, string/character, array/hash, stream, pathname, package/symbol, conditions, CLOS, and type surfaces go to their dedicated crates.
 - Built-in data types go to `ncl-types`; condition classes go to `ncl-conditions`; standard CLOS classes and MOP objects go to `ncl-clos`. A `class+function` row follows its primary kind and records the secondary responsibility in `notes` when needed.
 - Evaluation, compilation, loading, feature/module state, implementation-environment functions, REPL/debugger operations, and evaluator/compiler or image hooks go to the runtime or extension crate that implements them.
-- NCL extensions are assigned by subsystem: GC/object state to `NCL-GC`, threads and synchronization to `NCL-THREADS`, FFI to `NCL-FFI`, MOP to `NCL-MOP`, Gray streams to `NCL-GRAY`, image lifecycle to `NCL-IMAGE`, Unicode to `NCL-UNICODE`, operating-system services to `NCL-OS`, language extensions to `NCL-EXT`, and internal primitives to `NCL-SYS`.
+- NCL extensions are assigned by subsystem: GC/object state to `NCL-GC`, threads and synchronization to `NCL-THREADS`, FFI to `NCL-FFI`, MOP to `NCL-MOP`, Gray streams to `NCL-GRAY`, image lifecycle to `NCL-IMAGE`, Unicode to `NCL-UNICODE`, operating-system services to `NCL-OS`, language extensions to `NCL-EXT`, statistical profiling to `NCL-PROFILER`, and internal primitives to `NCL-SYS`.
 
 ## Judgement notes
 

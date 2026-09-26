@@ -7,10 +7,10 @@ crates or reverse dependencies.
 ## Frozen package names
 
 The public extension packages are `NCL-THREADS`, `NCL-FFI`, `NCL-MOP`,
-`NCL-GRAY`, `NCL-GC`, `NCL-IMAGE`, `NCL-UNICODE`, `NCL-OS`, `NCL-EXT`, and
-`NCL-SYS`. Their owning crates are, in order, `ncl-threads`, `ncl-ffi`,
+`NCL-GRAY`, `NCL-GC`, `NCL-IMAGE`, `NCL-UNICODE`, `NCL-OS`, `NCL-EXT`,
+`NCL-SYS`, and `NCL-PROFILER`. Their owning crates are, in order, `ncl-threads`, `ncl-ffi`,
 `ncl-clos`, `ncl-lib-streams`, `ncl-object`, `ncl-image`, `ncl-lib-strings`,
-`ncl-os`, `ncl-compiler-front`, and `ncl-sys`.
+`ncl-os`, `ncl-compiler-front`, `ncl-sys`, and `ncl-profiler`.
 
 `NCL-` packages are the only extension namespace. The ASDF and UIOP package
 names remain `ASDF/INTERFACE` and `UIOP/DRIVER`.

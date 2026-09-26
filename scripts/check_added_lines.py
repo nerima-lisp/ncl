@@ -12,6 +12,9 @@ FORBIDDEN = re.compile(
 )
 UNSAFE = re.compile(r"\bunsafe\b")
 TODO = re.compile(r"\b(?:todo|unimplemented)!\s*\(")
+UNBOUND = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*::UNBOUND\b")
+UNSUPPORTED = re.compile(r"\bUnsupported\b")
+WORD_TABLE = re.compile(r"\b(?:HashMap|BTreeMap|HashSet)\s*<[^\n>]*\bWord\b")
 ALLOW = re.compile(r"check-added-lines:\s*allow\(([^)]+)\)(.*)$")
 
 def diff_text(base: Optional[str]) -> str:
@@ -137,8 +140,12 @@ def violations(lines: list[tuple[Path, int, str]]) -> list[str]:
             failures.append(f"{location}: [todo] placeholder macro")
         if "wildcard" not in allowed and re.search(r"\b_\s*=>", code):
             failures.append(f"{location}: [wildcard] wildcard match arm")
-        # UNBOUND is reported as a warning by main, because it is sometimes
-        # intentional in registration metadata and is not a hard gate.
+        if "unbound" not in allowed and UNBOUND.search(code):
+            failures.append(f"{location}: [unbound] unbound sentinel")
+        if "unsupported" not in allowed and UNSUPPORTED.search(code):
+            failures.append(f"{location}: [unsupported] unsupported placeholder")
+        if "word-table" not in allowed and WORD_TABLE.search(code):
+            failures.append(f"{location}: [word-table] unrooted Word table")
         if "sys" not in path.parts and UNSAFE.search(code):
             failures.append(f"{location}: [unsafe] unsafe outside packages/sys")
     return failures
@@ -157,13 +164,6 @@ def check_added_lines(diff: str) -> list[str]:
                     failures.append(f"{location}: [dependency] external dependency {name}")
     return failures
 
-def unbound_warnings(lines: list[tuple[Path, int, str]]) -> list[str]:
-    return [
-        f"{path}:{number}: [unbound] Word::UNBOUND sentinel"
-        for path, number, text in lines
-        if path.suffix == ".rs" and re.search(r"\b[A-Za-z_][A-Za-z0-9_]*::UNBOUND\b", code_only(text))
-    ]
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base", nargs="?"); parser.add_argument("--base", dest="base_option")
@@ -176,12 +176,9 @@ def main() -> int:
     lines = []
     lines.extend(entries)
     failures = violations(lines)
-    warnings = unbound_warnings(lines)
     print(f"Rust added lines checked: {len(lines)}")
     if failures:
         print("violations:\n" + "\n".join(f"- {failure}" for failure in failures)); return 1
-    if warnings:
-        print("warnings:\n" + "\n".join(f"- {warning}" for warning in warnings))
     print("violations: none"); return 0
 
 if __name__ == "__main__":

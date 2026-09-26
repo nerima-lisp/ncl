@@ -1,6 +1,90 @@
 use super::*;
 
 #[test]
+fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    register(&runtime)?;
+    ctx.register(&runtime)?;
+    ctx.set_strict_forwarding(true);
+
+    let named = symbol(&mut ctx, &runtime, "LOOP-BLOCK")?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let y = symbol(&mut ctx, &runtime, "Y")?;
+    let z = symbol(&mut ctx, &runtime, "Z")?;
+    let do_form = list(&mut ctx, &runtime, &[x])?;
+    let initial_form = list(&mut ctx, &runtime, &[y])?;
+    let final_form = list(&mut ctx, &runtime, &[z])?;
+    let ast = r#loop::LoopAst {
+        name: Some(named),
+        clauses: vec![
+            r#loop::LoopClause::With {
+                variable: x,
+                init: Word::fixnum(0),
+            },
+            r#loop::LoopClause::For(r#loop::ForClause {
+                variable: y,
+                init: Word::fixnum(0),
+                step: Some(Word::fixnum(1)),
+                direction: Some(r#loop::StepDirection::UpFrom),
+                limit: Some((r#loop::LimitDirection::Below, Word::fixnum(2))),
+            }),
+            r#loop::LoopClause::Repeat(Word::fixnum(1)),
+            r#loop::LoopClause::While(x),
+            r#loop::LoopClause::Until(y),
+            r#loop::LoopClause::Initially(vec![initial_form]),
+            r#loop::LoopClause::Finally(vec![final_form]),
+            r#loop::LoopClause::Do(vec![do_form]),
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Collect,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Append,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Nconc,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Count,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Sum,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Maximize,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Accumulate {
+                kind: r#loop::AccumulatorKind::Minimize,
+                form: x,
+                variable: None,
+            },
+            r#loop::LoopClause::Return(z),
+        ],
+    };
+    ctx.set_gc_stress(true);
+    let mut expansion = r#loop::expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let before = expansion;
+    let root = ncl_object::push_root(&mut ctx, &mut expansion);
+    ctx.collect(true)?;
+    assert_ne!(expansion, before);
+    assert!(!elements(&mut ctx, expansion)?.is_empty());
+    assert!(ncl_object::pop_root(&mut ctx, root));
+    Ok(())
+}
+
+#[test]
 #[allow(clippy::too_many_lines)]
 fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<(), ObjectError> {
     fn form(

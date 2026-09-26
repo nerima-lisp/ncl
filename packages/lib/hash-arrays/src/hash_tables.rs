@@ -277,16 +277,24 @@ fn hash_table_test_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = match table(ctx, args.required(0)?)?.test(ctx)? {
-        HashTest::Eq => "EQ",
-        HashTest::Eql => "EQL",
-        HashTest::Equal => "EQUAL",
-        HashTest::Equalp => "EQUALP",
-    };
-    let package = runtime
-        .find_package(ctx, "COMMON-LISP")
-        .ok_or(ObjectError::PackageConflict)?;
-    Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
+    let mut table_word = args.required(0)?;
+    let table_token = push_root(ctx, &mut table_word);
+    let result = (|| {
+        let name = match table(ctx, table_word)?.test(ctx)? {
+            HashTest::Eq => "EQ",
+            HashTest::Eql => "EQL",
+            HashTest::Equal => "EQUAL",
+            HashTest::Equalp => "EQUALP",
+        };
+        let package = runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ObjectError::PackageConflict)?;
+        Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
+    })();
+    if !pop_root(ctx, table_token) {
+        return Err(ObjectError::Layout);
+    }
+    result
 }
 
 fn sxhash_builtin(

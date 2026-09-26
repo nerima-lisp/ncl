@@ -1,6 +1,6 @@
 use ncl_object::array::{
-    adjust_array, adjustable_array_p, array_displacement, array_element_type,
-    array_has_fill_pointer_p, fill_pointer, vector_pop, vector_push, vector_push_extend,
+    adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
+    fill_pointer, vector_pop, vector_push, vector_push_extend,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
@@ -13,7 +13,10 @@ use ncl_object::{
 use super::{register_one, symbol_text};
 use helpers::{array_element_type_symbol, array_shape, list_values};
 
+mod adjust;
 mod helpers;
+
+use adjust::adjust_array_builtin;
 
 const ARRAY: Parameter = Parameter {
     name: BuiltinName::new("ARRAY"),
@@ -211,23 +214,6 @@ fn fill_pointer_builtin(
             i64::try_from(value).map_err(|_| ObjectError::Layout)?,
         ))
     })
-}
-
-fn adjust_array_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let dimensions = list_values(ctx, args.required(1)?)?
-        .into_iter()
-        .map(|value| {
-            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                .map_err(|_| ObjectError::TypeError)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let initial = args.as_slice().get(2).copied().unwrap_or(Word::NIL);
-    adjust_array(ctx, runtime, args.required(0)?, &dimensions, initial)
 }
 
 fn vector_push_builtin(

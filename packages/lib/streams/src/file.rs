@@ -1,4 +1,4 @@
-use super::character::{ensure_open, fail, stream_from_args};
+use super::character::{ensure_open, stream_from_args};
 use super::{CLOSED, DATA, POSITION};
 
 use std::fs;
@@ -59,42 +59,39 @@ pub(crate) fn open_adapter(
     {
         return Ok(Word::NIL);
     }
-    let (data, interactive) = match direction.as_str() {
-        "INPUT" => {
-            let mut file = fs::File::open(&path).map_err(|_| ObjectError::Unsupported)?;
-            let interactive = file.is_terminal();
-            let mut data = Vec::new();
-            if !interactive {
-                file.read_to_end(&mut data)
-                    .map_err(|_| ObjectError::Unsupported)?;
-            }
-            (data, interactive)
+    let (data, interactive) = if direction == "INPUT" {
+        let mut file = fs::File::open(&path).map_err(|_| ObjectError::Layout)?;
+        let interactive = file.is_terminal();
+        let mut data = Vec::new();
+        if !interactive {
+            file.read_to_end(&mut data)
+                .map_err(|_| ObjectError::Layout)?;
         }
-        "OUTPUT" => {
-            let exists_policy = option(ctx, args, "IF-EXISTS")?
-                .map(|word| symbol_text(ctx, word))
-                .transpose()?;
-            if exists && exists_policy.as_deref() == Some("ERROR") {
-                return Ok(fail(ctx, ObjectError::Unsupported));
-            }
-            let file = fs::File::create(&path).map_err(|_| ObjectError::Unsupported)?;
-            (Vec::new(), file.is_terminal())
+        (data, interactive)
+    } else if direction == "OUTPUT" {
+        let exists_policy = option(ctx, args, "IF-EXISTS")?
+            .map(|word| symbol_text(ctx, word))
+            .transpose()?;
+        if exists && exists_policy.as_deref() == Some("ERROR") {
+            return Err(ObjectError::TypeError);
         }
-        "IO" => {
-            let mut file = fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)
-                .map_err(|_| ObjectError::Unsupported)?;
-            let interactive = file.is_terminal();
-            let mut data = Vec::new();
-            if !interactive {
-                file.read_to_end(&mut data)
-                    .map_err(|_| ObjectError::Unsupported)?;
-            }
-            (data, interactive)
+        let file = fs::File::create(&path).map_err(|_| ObjectError::Layout)?;
+        (Vec::new(), file.is_terminal())
+    } else if direction == "IO" {
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|_| ObjectError::Layout)?;
+        let interactive = file.is_terminal();
+        let mut data = Vec::new();
+        if !interactive {
+            file.read_to_end(&mut data)
+                .map_err(|_| ObjectError::Layout)?;
         }
-        _ => return Ok(fail(ctx, ObjectError::TypeError)),
+        (data, interactive)
+    } else {
+        return Err(ObjectError::TypeError);
     };
     let direction_word = option(ctx, args, "DIRECTION")?.unwrap_or(Word::NIL);
     let format_word = option(ctx, args, "EXTERNAL-FORMAT")?.unwrap_or(Word::NIL);
@@ -141,7 +138,7 @@ pub(crate) fn file_position_adapter(
         let position = usize::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
         if position > simple_vector_length(ctx, state)?.saturating_sub(DATA) {
-            return Ok(fail(ctx, ObjectError::TypeError));
+            return Err(ObjectError::TypeError);
         }
         simple_vector_set(
             ctx,
@@ -174,7 +171,7 @@ pub(crate) fn file_string_length_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     if stream_external_format(ctx, Stream::from_word(args.required(0)?))? != Word::NIL {
-        return Err(ObjectError::Unsupported);
+        return Err(ObjectError::TypeError);
     }
     let length = text(ctx, args.required(1)?)?.len();
     Ok(Word::fixnum(

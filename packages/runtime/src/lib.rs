@@ -66,9 +66,23 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 impl std::error::Error for RuntimeError {}
+
+impl RuntimeError {
+    /// Returns whether reading can continue after receiving more input.
+    #[must_use]
+    pub const fn is_incomplete_read(&self) -> bool {
+        matches!(self, Self::Read(ncl_reader::ReadError::UnexpectedEof))
+    }
+}
+
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
+    }
+}
+impl From<ncl_objfile::ObjectError> for RuntimeError {
+    fn from(value: ncl_objfile::ObjectError) -> Self {
+        Self::Native(format!("object file error: {value}"))
     }
 }
 impl From<ncl_reader::ReadError> for RuntimeError {
@@ -173,6 +187,9 @@ impl Runtime {
     /// Returns a file, reader, front-end, lowering, or native execution error.
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
         load::file(self, path.as_ref())
+    }
+    pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
+        self.compile_form(form)
     }
     fn compile_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         let registry = MacroRegistry::new();
@@ -414,77 +431,5 @@ impl Drop for Runtime {
     }
 }
 #[cfg(test)]
-mod tests {
-    use super::{Runtime, RuntimeError};
-    use std::fs;
-    #[test]
-    fn evaluates_a_literal_through_native_code() {
-        let mut runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("runtime initialization failed: {error}"),
-        };
-        let value = match runtime.eval("42") {
-            Ok(value) => value,
-            Err(error) => panic!("native evaluation failed: {error}"),
-        };
-        assert_eq!(runtime.format_result(value), "42");
-        drop(runtime);
-    }
-    #[test]
-    fn compile_and_load_share_the_native_pipeline() {
-        let mut runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("runtime initialization failed: {error}"),
-        };
-        let compiled = match runtime.compile("41") {
-            Ok(value) => value,
-            Err(error) => panic!("compile failed: {error}"),
-        };
-        let loaded = match runtime.load("42") {
-            Ok(value) => value,
-            Err(error) => panic!("load failed: {error}"),
-        };
-        assert_eq!(runtime.format_result(compiled), "41");
-        assert_eq!(runtime.format_result(loaded), "42");
-    }
-    #[test]
-    fn load_file_executes_source_and_reports_missing_files() {
-        let path = std::env::temp_dir().join(format!("ncl-runtime-{}.lisp", std::process::id()));
-        if let Err(error) = fs::write(&path, "43") {
-            panic!("source file creation failed: {error}");
-        }
-        let mut runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("runtime initialization failed: {error}"),
-        };
-        let value = match runtime.load_file(&path) {
-            Ok(value) => value,
-            Err(error) => panic!("load_file failed: {error}"),
-        };
-        let compiled = match runtime.compile_file(&path) {
-            Ok(value) => value,
-            Err(error) => panic!("compile_file failed: {error}"),
-        };
-        assert_eq!(runtime.format_result(value), "43");
-        assert_eq!(runtime.format_result(compiled), "43");
-        let missing = runtime.load_file(path.with_extension("missing"));
-        assert!(matches!(missing, Err(RuntimeError::Io { .. })));
-        if let Err(error) = fs::remove_file(path) {
-            panic!("source file cleanup failed: {error}");
-        }
-    }
-    #[test]
-    fn runtimes_can_be_created_and_dropped_repeatedly() {
-        for _ in 0..3 {
-            let mut runtime = match Runtime::new() {
-                Ok(runtime) => runtime,
-                Err(error) => panic!("runtime initialization failed: {error}"),
-            };
-            let value = match runtime.eval("7") {
-                Ok(value) => value,
-                Err(error) => panic!("native evaluation failed: {error}"),
-            };
-            assert_eq!(runtime.format_result(value), "7");
-        }
-    }
-}
+#[path = "runtime_tests.rs"]
+mod tests;

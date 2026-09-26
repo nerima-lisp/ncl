@@ -18,14 +18,10 @@ const ARG: ncl_object::Parameter = ncl_object::Parameter {
 const A1: &[ncl_object::Parameter] = &[ARG];
 const A3: &[ncl_object::Parameter] = &[ARG, ARG, ARG];
 
-const fn fixed(required: &'static [ncl_object::Parameter]) -> Builtin {
+const fn fixed(required: &'static [ncl_object::Parameter], arity: Arity) -> Builtin {
     Builtin {
         lambda_list: LambdaList::fixed(required),
-        convention: ncl_object::BuiltinConvention::Direct(Arity::exact(match required.len() {
-            1 => 1,
-            3 => 3,
-            _ => 0,
-        })),
+        convention: ncl_object::BuiltinConvention::Direct(arity),
     }
 }
 
@@ -51,39 +47,47 @@ pub const fn builtin_descriptors() -> &'static [MopBuiltinDescriptor] {
 const BUILTINS: [MopBuiltinDescriptor; 9] = [
     descriptor(
         "CLASS-PRECEDENCE-LIST",
-        fixed(A1),
+        fixed(A1, Arity::exact(1)),
         class_precedence_list_builtin,
     ),
-    descriptor("CLASS-SLOTS", fixed(A1), class_slots_builtin),
-    descriptor("CLASS-DIRECT-SLOTS", fixed(A1), class_direct_slots_builtin),
+    descriptor(
+        "CLASS-SLOTS",
+        fixed(A1, Arity::exact(1)),
+        class_slots_builtin,
+    ),
+    descriptor(
+        "CLASS-DIRECT-SLOTS",
+        fixed(A1, Arity::exact(1)),
+        class_direct_slots_builtin,
+    ),
     descriptor(
         "SLOT-DEFINITION-NAME",
-        fixed(A1),
+        fixed(A1, Arity::exact(1)),
         slot_definition_name_builtin,
     ),
     descriptor(
         "SLOT-DEFINITION-LOCATION",
-        fixed(A1),
+        fixed(A1, Arity::exact(1)),
         slot_definition_location_builtin,
     ),
     descriptor(
         "SLOT-VALUE-USING-CLASS",
-        fixed(A3),
+        fixed(A3, Arity::exact(3)),
         slot_value_using_class_builtin,
     ),
     descriptor(
         "SLOT-BOUNDP-USING-CLASS",
-        fixed(A3),
+        fixed(A3, Arity::exact(3)),
         slot_boundp_using_class_builtin,
     ),
     descriptor(
         "SLOT-MAKUNBOUND-USING-CLASS",
-        fixed(A3),
+        fixed(A3, Arity::exact(3)),
         slot_makunbound_using_class_builtin,
     ),
     descriptor(
         "EQL-SPECIALIZER-OBJECT",
-        fixed(A1),
+        fixed(A1, Arity::exact(1)),
         eql_specializer_object_builtin,
     ),
 ];

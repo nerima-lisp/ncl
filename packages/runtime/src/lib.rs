@@ -230,6 +230,12 @@ impl Runtime {
             |number| number.to_string(),
         )
     }
+
+    /// Create a function caller that can invoke this runtime's published code.
+    #[must_use]
+    pub fn function_caller(&self) -> RuntimeFunctionCaller<'_> {
+        RuntimeFunctionCaller::new(&self.code)
+    }
 }
 
 #[cfg(test)]

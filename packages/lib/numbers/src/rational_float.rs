@@ -1,9 +1,9 @@
 //! Rational and binary64 numeric builtins.
 
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, double_value, make_bignum_from_i128, make_double, make_ratio,
-    ratio_denominator, ratio_numerator,
+    ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
+    Runtime, ThreadContext, Word,
 };
 
 const fn integer_to_f64(value: i128) -> f64 {
@@ -42,7 +42,7 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
         ObjectRef::Fixnum(value) => Ok(i128::from(value)),
         ObjectRef::Bignum(value) => {
             let value = ncl_object::Bignum::from_word(value);
-            let mut result = 0_i128;
+            let mut result = 0_u128;
             for (index, limb) in ncl_object::bignum_limbs(ctx, value)?
                 .into_iter()
                 .enumerate()
@@ -56,50 +56,70 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                     .ok_or(ObjectError::TypeError)?;
                 result = result
                     .checked_add(
-                        i128::from(limb)
+                        u128::from(limb)
                             .checked_shl(shift)
                             .ok_or(ObjectError::TypeError)?,
                     )
                     .ok_or(ObjectError::TypeError)?;
             }
             if ncl_object::bignum_sign(ctx, value)? {
-                Ok(-result)
+                if result == (1u128 << 127) {
+                    Ok(i128::MIN)
+                } else {
+                    i128::try_from(result)
+                        .ok()
+                        .and_then(i128::checked_neg)
+                        .ok_or(ObjectError::TypeError)
+                }
             } else {
-                Ok(result)
+                i128::try_from(result).map_err(|_| ObjectError::TypeError)
             }
         }
         _ => Err(ObjectError::TypeError),
     }
 }
 
-fn gcd(mut a: i128, mut b: i128) -> i128 {
-    a = a.abs();
-    b = b.abs();
+fn gcd(a: i128, b: i128) -> Option<i128> {
+    let mut a = a.unsigned_abs();
+    let mut b = b.unsigned_abs();
     while b != 0 {
         (a, b) = (b, a % b);
     }
-    a.max(1)
+    if a == 0 {
+        Some(1)
+    } else {
+        i128::try_from(a).ok()
+    }
 }
 
-fn normalized(n: i128, d: i128) -> Real {
+fn normalized(n: i128, d: i128) -> Result<Real, ObjectError> {
     if d == 0 {
-        return Real::Ratio(n, d);
+        return Ok(Real::Ratio(n, d));
+    }
+    if n == 0 {
+        return Ok(Real::Integer(0));
     }
     let sign = if d < 0 { -1 } else { 1 };
-    let g = gcd(n, d);
-    let n = n / g * sign;
-    let d = d.abs() / g;
+    let g = gcd(n, d).ok_or(ObjectError::TypeError)?;
+    let n = n
+        .checked_div(g)
+        .and_then(|n| n.checked_mul(sign))
+        .ok_or(ObjectError::TypeError)?;
+    let d = d
+        .checked_abs()
+        .and_then(|d| d.checked_div(g))
+        .ok_or(ObjectError::TypeError)?;
     if d == 1 {
-        Real::Integer(n)
+        Ok(Real::Integer(n))
     } else {
-        Real::Ratio(n, d)
+        Ok(Real::Ratio(n, d))
     }
 }
 
 fn real(ctx: &ThreadContext, word: Word) -> Result<Real, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Real::Integer(integer(ctx, word)?)),
-        ObjectRef::Ratio(value) => Ok(normalized(
+        ObjectRef::Ratio(value) => normalized(
             integer(
                 ctx,
                 ratio_numerator(ctx, ncl_object::Ratio::from_word(value))?,
@@ -108,7 +128,7 @@ fn real(ctx: &ThreadContext, word: Word) -> Result<Real, ObjectError> {
                 ctx,
                 ratio_denominator(ctx, ncl_object::Ratio::from_word(value))?,
             )?,
-        )),
+        ),
         ObjectRef::DoubleFloat(value) => Ok(Real::Float(double_value(
             ctx,
             ncl_object::DoubleFloat::from_word(value),
@@ -163,7 +183,7 @@ fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
         .ok_or(ObjectError::TypeError)
     } else {
         Ok((
-            sign * mantissa,
+            sign.checked_mul(mantissa).ok_or(ObjectError::TypeError)?,
             1_i128
                 .checked_shl(u32::try_from(-power).map_err(|_| ObjectError::TypeError)?)
                 .ok_or(ObjectError::TypeError)?,
@@ -174,17 +194,22 @@ fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
 fn continued_fraction_between(mut lower: f64, mut upper: f64) -> Result<(i128, i128), ObjectError> {
     if upper < 0.0 {
         let (n, d) = continued_fraction_between(-upper, -lower)?;
-        return Ok((-n, d));
+        return Ok((n.checked_neg().ok_or(ObjectError::TypeError)?, d));
     }
     let mut prefix = Vec::new();
     for _ in 0..64 {
         let low = float_to_i128(lower.ceil()).ok_or(ObjectError::TypeError)?;
         let high = float_to_i128(upper.floor()).ok_or(ObjectError::TypeError)?;
         if low <= high {
-            return Ok(prefix
+            return prefix
                 .into_iter()
                 .rev()
-                .fold((low, 1), |(n, d), a| (a * n + d, n)));
+                .try_fold((low, 1i128), |(n, d), a: i128| {
+                    a.checked_mul(n)
+                        .and_then(|a_n| a_n.checked_add(d))
+                        .map(|next_n| (next_n, n))
+                        .ok_or(ObjectError::TypeError)
+                });
         }
         let a = float_to_i128(lower.floor()).ok_or(ObjectError::TypeError)?;
         prefix.push(a);
@@ -251,10 +276,10 @@ pub fn rational(
 ) -> Result<Word, ObjectError> {
     let result = match real(ctx, args.required(0)?)? {
         Real::Integer(n) => word(ctx, runtime, Real::Integer(n))?,
-        Real::Ratio(n, d) => word(ctx, runtime, normalized(n, d))?,
+        Real::Ratio(n, d) => word(ctx, runtime, normalized(n, d)?)?,
         Real::Float(value) => {
             let (n, d) = exact_float(value)?;
-            word(ctx, runtime, normalized(n, d))?
+            word(ctx, runtime, normalized(n, d)?)?
         }
     };
     values.clear();
@@ -268,7 +293,7 @@ pub fn rationalize(
 ) -> Result<Word, ObjectError> {
     let result = match real(ctx, args.required(0)?)? {
         Real::Integer(n) => word(ctx, runtime, Real::Integer(n))?,
-        Real::Ratio(n, d) => word(ctx, runtime, normalized(n, d))?,
+        Real::Ratio(n, d) => word(ctx, runtime, normalized(n, d)?)?,
         Real::Float(value) => {
             let tolerance = args
                 .get(1)
@@ -280,7 +305,7 @@ pub fn rationalize(
                 })
                 .transpose()?;
             let (n, d) = rationalize_float(value, tolerance)?;
-            word(ctx, runtime, normalized(n, d))?
+            word(ctx, runtime, normalized(n, d)?)?
         }
     };
     values.clear();
@@ -417,4 +442,25 @@ pub fn float_radix(
     float_value(ctx, args.required(0)?)?;
     values.clear();
     Ok(Word::fixnum(2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{exact_float, gcd, normalized};
+
+    #[test]
+    fn i128_min_boundaries_are_checked() {
+        assert_eq!(gcd(i128::MIN, 0), None);
+        assert_eq!(gcd(i128::MIN, -1), Some(1));
+        assert!(matches!(normalized(1, i128::MIN), Err(_)));
+        assert!(matches!(normalized(i128::MIN, -1), Err(_)));
+    }
+
+    #[test]
+    fn exact_float_keeps_signed_mantissa_checked() {
+        assert_eq!(
+            exact_float(-1.5),
+            Ok((-6_755_399_441_055_744, 4_503_599_627_370_496))
+        );
+    }
 }

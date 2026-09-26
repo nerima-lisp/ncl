@@ -1,3 +1,4 @@
+use super::core::gcd_i128;
 use super::*;
 use ncl_object::make_bignum_from_i128;
 
@@ -57,6 +58,77 @@ fn arithmetic_preserves_fixnum_bignum_boundary_and_argument_order() -> Result<()
 }
 
 #[test]
+fn arithmetic_handles_i64_and_i128_boundaries_without_wrapping() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = context()?;
+    let min_i64 = bignum(&mut ctx, &runtime, i128::from(i64::MIN))?;
+    assert_eq!(integer(&ctx, min_i64)?, i128::from(i64::MIN));
+    let min_i64_minus_one = sub(&mut ctx, &runtime, &[min_i64, Word::fixnum(1)])?;
+    assert_eq!(integer(&ctx, min_i64_minus_one)?, i128::from(i64::MIN) - 1);
+
+    let max = bignum(&mut ctx, &runtime, i128::MAX)?;
+    let min = bignum(&mut ctx, &runtime, i128::MIN)?;
+    assert_eq!(integer(&ctx, max)?, i128::MAX);
+    assert_eq!(integer(&ctx, min)?, i128::MIN);
+
+    assert_eq!(
+        word(
+            &mut ctx,
+            &runtime,
+            add_pair(Number::Integer(i128::MAX), Number::Integer(1))
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        word(
+            &mut ctx,
+            &runtime,
+            sub_pair(Number::Integer(i128::MIN), Number::Integer(1))
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        word(
+            &mut ctx,
+            &runtime,
+            mul_pair(Number::Integer(i128::MAX), Number::Integer(2))
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        div_pair(Number::Integer(i128::MIN), Number::Integer(-1))
+            .and_then(|value| word(&mut ctx, &runtime, value)),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(gcd_i128(i128::MIN, -1), 1);
+    Ok(())
+}
+
+#[test]
+fn arithmetic_rejects_i128_overflow_and_abs_minimum() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = context()?;
+    let max = bignum(&mut ctx, &runtime, i128::MAX)?;
+    let one = Word::fixnum(1);
+    let near_min = bignum(&mut ctx, &runtime, i128::MIN + 1)?;
+
+    assert_eq!(
+        add(&mut ctx, &runtime, &[max, one]),
+        Err(ObjectError::TypeError)
+    );
+    let result = sub(&mut ctx, &runtime, &[near_min, one])?;
+    assert_eq!(integer(&ctx, result)?, i128::MIN);
+    assert_eq!(
+        mul(&mut ctx, &runtime, &[max, Word::fixnum(2)]),
+        Err(ObjectError::TypeError)
+    );
+    assert!(matches!(
+        abs_number(Number::Integer(i128::MIN)),
+        Err(ObjectError::TypeError)
+    ));
+    Ok(())
+}
+
+#[test]
 fn comparisons_keep_pairwise_and_chain_semantics_at_boundary() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = context()?;
     let max = i128::from(i64::MAX >> 4);
@@ -69,14 +141,8 @@ fn comparisons_keep_pairwise_and_chain_semantics_at_boundary() -> Result<(), Obj
         not_equal(&ctx, &runtime, &[fixnum, next, after])?,
         Word::TRUE
     );
-    assert_eq!(
-        less(&ctx, &runtime, &[fixnum, next, after])?,
-        Word::TRUE
-    );
-    assert_eq!(
-        greater(&ctx, &runtime, &[after, next, fixnum])?,
-        Word::TRUE
-    );
+    assert_eq!(less(&ctx, &runtime, &[fixnum, next, after])?, Word::TRUE);
+    assert_eq!(greater(&ctx, &runtime, &[after, next, fixnum])?, Word::TRUE);
     assert_eq!(
         less_equal(&ctx, &runtime, &[fixnum, next, next])?,
         Word::TRUE

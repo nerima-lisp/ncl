@@ -31,22 +31,29 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     let magnitude = bignum_limbs(ctx, ncl_object::Bignum::from_word(value))?
         .into_iter()
         .enumerate()
-        .try_fold(0_i128, |sum, (index, limb)| {
+        .try_fold(0_u128, |sum, (index, limb)| {
             let shift = u32::try_from(index)
                 .ok()
                 .and_then(|index| index.checked_mul(32))
                 .ok_or(ObjectError::Layout)?;
             sum.checked_add(
-                i128::from(limb)
+                u128::from(limb)
                     .checked_shl(shift)
                     .ok_or(ObjectError::Layout)?,
             )
             .ok_or(ObjectError::Layout)
         })?;
     if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {
-        Ok(-magnitude)
+        if magnitude == (1_u128 << 127) {
+            Ok(i128::MIN)
+        } else {
+            i128::try_from(magnitude)
+                .ok()
+                .and_then(i128::checked_neg)
+                .ok_or(ObjectError::Layout)
+        }
     } else {
-        Ok(magnitude)
+        i128::try_from(magnitude).map_err(|_| ObjectError::Layout)
     }
 }
 

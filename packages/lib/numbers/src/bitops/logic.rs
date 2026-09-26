@@ -12,7 +12,21 @@ use ncl_object::{
 
 use ncl_object::MultipleValues;
 
-pub(super) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
+fn signed_magnitude(magnitude: u128, negative: bool) -> Result<i128, ObjectError> {
+    if negative {
+        if magnitude == 1_u128 << 127 {
+            return Ok(i128::MIN);
+        }
+        i128::try_from(magnitude)
+            .ok()
+            .and_then(i128::checked_neg)
+            .ok_or(ObjectError::Layout)
+    } else {
+        i128::try_from(magnitude).map_err(|_| ObjectError::Layout)
+    }
+}
+
+pub(crate) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
         return Ok(i128::from(value));
     }
@@ -21,20 +35,15 @@ pub(super) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectEr
     };
     let object = Bignum::from_word(word);
     let limbs = bignum_limbs(ctx, object)?;
-    let mut magnitude = 0_i128;
+    let mut magnitude = 0_u128;
     for (index, limb) in limbs.iter().enumerate() {
         let shift = index.checked_mul(32).ok_or(ObjectError::Layout)?;
-        if shift >= 127 || (i128::from(*limb) << shift) < 0 {
-            return Err(ObjectError::Layout);
-        }
-        magnitude |= i128::from(*limb) << shift;
+        magnitude |= u128::from(*limb)
+            .checked_shl(u32::try_from(shift).map_err(|_| ObjectError::Layout)?)
+            .ok_or(ObjectError::Layout)?;
     }
     let negative = bignum_sign(ctx, object)?;
-    if negative {
-        magnitude.checked_neg().ok_or(ObjectError::Layout)
-    } else {
-        Ok(magnitude)
-    }
+    signed_magnitude(magnitude, negative)
 }
 
 pub(super) fn integer_word(
@@ -305,4 +314,20 @@ pub fn byte(
     Ok(Word::from_bits(
         (u64::from(position) << 32) | u64::from(size),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signed_magnitude;
+
+    #[test]
+    fn signed_magnitude_accepts_i128_minimum() {
+        assert_eq!(signed_magnitude(1_u128 << 127, true), Ok(i128::MIN));
+    }
+
+    #[test]
+    fn signed_magnitude_rejects_unrepresentable_values() {
+        assert!(signed_magnitude(1_u128 << 127, false).is_err());
+        assert!(signed_magnitude(1_u128 << 127, true).is_ok());
+    }
 }

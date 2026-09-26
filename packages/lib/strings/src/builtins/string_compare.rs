@@ -11,8 +11,8 @@ fn string_compare_builtin(
     let index = left
         .iter()
         .zip(&right)
-        .position(|(left, right)| left != right)
-        .unwrap_or_else(|| left.len().min(right.len()));
+        .take_while(|(left, right)| left == right)
+        .count();
     let result = match comparison {
         StringComparison::Equal => ordering == std::cmp::Ordering::Equal,
         StringComparison::NotEqual => ordering != std::cmp::Ordering::Equal,

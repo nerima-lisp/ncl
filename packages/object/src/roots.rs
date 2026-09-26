@@ -28,6 +28,13 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
     Ok(pop_root(ctx, token))
 }
 
+/// Push one precise root while running a callback.
+///
+/// The callback receives a handle that reads the collector-updated value after
+/// each allocation.
+///
+/// # Errors
+/// Returns an object error when root registration or the callback fails.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -44,6 +51,17 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+/// Push several precise roots while running a callback.
+///
+/// The callback receives handles that read the collector-updated values after
+/// each allocation.
+///
+/// # Errors
+/// Returns an object error when a root cannot be registered or the callback
+/// returns one.
+///
+/// # Panics
+/// Panics if root cleanup detects a corrupted root stack.
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],

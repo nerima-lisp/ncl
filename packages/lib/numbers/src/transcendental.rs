@@ -6,11 +6,20 @@ use ncl_object::{
     make_complex, make_double, ratio_denominator, ratio_numerator,
 };
 
+const fn integer_to_f64(value: i128) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Number {
     Real(f64),
     Complex(f64, f64),
 }
+
+const HALF: f64 = 0.5;
 
 fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
@@ -25,7 +34,7 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
         .try_fold(0_i128, |sum, (index, limb)| {
             sum.checked_add(
                 i128::from(limb)
-                    .checked_shl((index * 32) as u32)
+                    .checked_shl(u32::try_from(index * 32).map_err(|_| ObjectError::Layout)?)
                     .ok_or(ObjectError::Layout)?,
             )
             .ok_or(ObjectError::Layout)
@@ -39,8 +48,8 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
 
 fn number(ctx: &ThreadContext, value: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, value) {
-        ObjectRef::Fixnum(value) => Ok(Number::Real(value as f64)),
-        ObjectRef::Bignum(value) => Ok(Number::Real(integer(ctx, value.into())? as f64)),
+        ObjectRef::Fixnum(value) => Ok(Number::Real(integer_to_f64(i128::from(value)))),
+        ObjectRef::Bignum(value) => Ok(Number::Real(integer_to_f64(integer(ctx, value)?))),
         ObjectRef::Ratio(value) => {
             let numerator = integer(
                 ctx,
@@ -50,7 +59,9 @@ fn number(ctx: &ThreadContext, value: Word) -> Result<Number, ObjectError> {
                 ctx,
                 ratio_denominator(ctx, ncl_object::Ratio::from_word(value))?,
             )?;
-            Ok(Number::Real(numerator as f64 / denominator as f64))
+            Ok(Number::Real(
+                integer_to_f64(numerator) / integer_to_f64(denominator),
+            ))
         }
         ObjectRef::DoubleFloat(value) => Ok(Number::Real(double_value(
             ctx,
@@ -67,20 +78,20 @@ fn number(ctx: &ThreadContext, value: Word) -> Result<Number, ObjectError> {
 }
 
 impl Number {
-    fn real(self) -> f64 {
+    const fn real(self) -> f64 {
         match self {
             Self::Real(value) | Self::Complex(value, _) => value,
         }
     }
 
-    fn pair(self) -> (f64, f64) {
+    const fn pair(self) -> (f64, f64) {
         match self {
             Self::Real(value) => (value, 0.0),
             Self::Complex(real, imag) => (real, imag),
         }
     }
 
-    fn is_complex(self) -> bool {
+    const fn is_complex(self) -> bool {
         matches!(self, Self::Complex(_, _))
     }
 }
@@ -100,10 +111,12 @@ fn add(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     (a.0 + b.0, a.1 + b.1)
 }
 
+#[allow(clippy::suboptimal_flops)]
 fn mul(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)
 }
 
+#[allow(clippy::suboptimal_flops)]
 fn div(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     let scale = b.0.hypot(b.1);
     let (br, bi) = (b.0 / scale, b.1 / scale);
@@ -131,8 +144,8 @@ fn sqrt((real, imag): (f64, f64)) -> (f64, f64) {
         return (real.sqrt(), imag.copysign(0.0));
     }
     let magnitude = real.hypot(imag);
-    let root = ((magnitude + real) / 2.0).sqrt();
-    let imag_root = ((magnitude - real) / 2.0).sqrt().copysign(imag);
+    let root = ((magnitude + real) * HALF).sqrt();
+    let imag_root = ((magnitude - real) * HALF).sqrt().copysign(imag);
     (root, imag_root)
 }
 
@@ -146,7 +159,7 @@ fn cos((real, imag): (f64, f64)) -> (f64, f64) {
 
 fn asin(value: (f64, f64)) -> (f64, f64) {
     let root = sqrt((
-        1.0 - value.0 * value.0 + value.1 * value.1,
+        value.1.mul_add(value.1, value.0.mul_add(-value.0, 1.0)),
         -2.0 * value.0 * value.1,
     ));
     let result = log(add((-value.1, value.0), root));
@@ -327,7 +340,7 @@ unary_complex!(typed_acosh, |value: (f64, f64)| log(add(
 unary_complex!(typed_asinh, |value: (f64, f64)| log(add(
     value,
     sqrt((
-        value.0 * value.0 - value.1 * value.1 + 1.0,
+        value.1.mul_add(-value.1, value.0.mul_add(value.0, 1.0)),
         2.0 * value.0 * value.1
     ))
 )));

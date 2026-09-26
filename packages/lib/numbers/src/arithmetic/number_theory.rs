@@ -22,21 +22,32 @@ pub fn lcm(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     })?;
     word(ctx, runtime, Number::Integer(value.abs()))
 }
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
 pub fn isqrt(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let x = integer(ctx, args[0])?;
+    let x = integer(ctx, *args.first().ok_or(ObjectError::TypeError)?)?;
     if x < 0 {
         return Err(ObjectError::TypeError);
     }
-    let root = (x as f64).sqrt();
-    let root = i128::try_from(root as u128).map_err(|_| ObjectError::TypeError)?;
+    let root = if x < 2 {
+        x
+    } else {
+        let mut low = 1_i128;
+        let mut high = x / 2 + 1;
+        let mut result = 1_i128;
+        while low <= high {
+            let middle = low + (high - low) / 2;
+            match middle.checked_mul(middle) {
+                Some(square) if square <= x => {
+                    result = middle;
+                    low = middle + 1;
+                }
+                _ => high = middle - 1,
+            }
+        }
+        result
+    };
     word(ctx, runtime, Number::Integer(root))
 }

@@ -7,6 +7,7 @@ COMMON-LISP	ARRAY-DIMENSION-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified
 COMMON-LISP	ARRAY-DIMENSIONS	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-DISPLACEMENT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-ELEMENT-TYPE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	UPGRADED-ARRAY-ELEMENT-TYPE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-HAS-FILL-POINTER-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ARRAY-IN-BOUNDS-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-RANK	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation

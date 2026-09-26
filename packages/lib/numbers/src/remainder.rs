@@ -6,6 +6,13 @@ use ncl_object::{
     make_ratio, ratio_denominator, ratio_numerator,
 };
 
+const fn integer_to_f64(value: i128) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Number {
     Integer(i128),
@@ -79,8 +86,8 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
 }
 fn as_float(value: Number) -> f64 {
     match value {
-        Number::Integer(value) => value as f64,
-        Number::Ratio(n, d) => n as f64 / d as f64,
+        Number::Integer(value) => integer_to_f64(value),
+        Number::Ratio(n, d) => integer_to_f64(n) / integer_to_f64(d),
         Number::Float(value) => value,
     }
 }
@@ -205,11 +212,11 @@ pub fn typed_lcm(
         Number::Integer(value.checked_abs().ok_or(ObjectError::TypeError)?),
     )
 }
-fn integer_sqrt(value: i128) -> i128 {
+const fn integer_sqrt(value: i128) -> i128 {
     let mut low = 0i128;
     let mut high = 1i128 << 64;
     while low + 1 < high {
-        let middle = (low + high) / 2;
+        let middle = low + (high - low) / 2;
         if middle <= value / middle {
             low = middle;
         } else {

@@ -9,6 +9,23 @@ use ncl_object::{
     RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
 };
 
+#[derive(Clone, Copy)]
+enum NativeEntry {
+    Add,
+    Mul,
+}
+
+impl NativeEntry {
+    fn address(self) -> Result<usize, ObjectError> {
+        let address = match self {
+            Self::Add => ncl_sys::function_address!(ncl_sys::native_add),
+            Self::Mul => ncl_sys::function_address!(ncl_sys::native_mul),
+        }
+        .map_err(|_| ObjectError::Layout)?;
+        usize::try_from(address).map_err(|_| ObjectError::Layout)
+    }
+}
+
 fn install(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -16,6 +33,7 @@ fn install(
     arity: u8,
     direct: bool,
     callback: RustBuiltin,
+    native_entry: Option<NativeEntry>,
 ) -> Result<(), ObjectError> {
     const NO_PARAMETERS: &[Parameter] = &[];
     const ONE_PARAMETER: &[Parameter] = &[Parameter {
@@ -71,20 +89,9 @@ fn install(
     };
     let identifier = BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name));
     let implementation = BuiltinImplementation::direct(descriptor, callback);
-    let implementation = match name {
-        "+" => implementation.with_entry(
-            usize::try_from(
-                ncl_sys::function_address!(ncl_sys::native_add).map_err(|_| ObjectError::Layout)?,
-            )
-            .map_err(|_| ObjectError::Layout)?,
-        ),
-        "*" => implementation.with_entry(
-            usize::try_from(
-                ncl_sys::function_address!(ncl_sys::native_mul).map_err(|_| ObjectError::Layout)?,
-            )
-            .map_err(|_| ObjectError::Layout)?,
-        ),
-        _ => implementation,
+    let implementation = match native_entry.map(NativeEntry::address).transpose()? {
+        Some(entry) => implementation.with_entry(entry),
+        None => implementation,
     };
     runtime
         .register_builtin(ctx, identifier, implementation)
@@ -94,10 +101,10 @@ fn install(
 fn install_set(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
-    entries: &[(&'static str, u8, bool, RustBuiltin)],
+    entries: &[(&'static str, u8, bool, RustBuiltin, Option<NativeEntry>)],
 ) -> Result<(), ObjectError> {
-    for &(name, arity, direct, callback) in entries {
-        install(runtime, ctx, name, arity, direct, callback)?;
+    for &(name, arity, direct, callback, native_entry) in entries {
+        install(runtime, ctx, name, arity, direct, callback, native_entry)?;
     }
     Ok(())
 }
@@ -115,77 +122,137 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         runtime,
         &mut ctx,
         &[
-            ("NUMBERP", 1, true, arithmetic::typed_dispatch_numberp),
-            ("INTEGERP", 1, true, arithmetic::typed_dispatch_integerp),
-            ("RATIONALP", 1, true, arithmetic::typed_dispatch_rationalp),
-            ("FLOATP", 1, true, arithmetic::typed_dispatch_floatp),
-            ("REALP", 1, true, arithmetic::typed_dispatch_realp),
-            ("COMPLEXP", 1, true, arithmetic::typed_dispatch_complexp),
-            ("+", 0, false, arithmetic::typed_dispatch_add),
-            ("-", 0, false, arithmetic::typed_dispatch_sub),
-            ("*", 0, false, arithmetic::typed_dispatch_mul),
-            ("/", 0, false, arithmetic::typed_dispatch_div),
-            ("=", 0, false, arithmetic::typed_dispatch_equal),
-            ("/=", 0, false, arithmetic::typed_dispatch_not_equal),
-            ("<", 0, false, arithmetic::typed_dispatch_less),
-            (">", 0, false, arithmetic::typed_dispatch_greater),
-            ("<=", 0, false, arithmetic::typed_dispatch_less_equal),
-            (">=", 0, false, arithmetic::typed_dispatch_greater_equal),
-            ("MAX", 0, false, arithmetic::typed_dispatch_max),
-            ("MIN", 0, false, arithmetic::typed_dispatch_min),
-            ("1+", 1, true, arithmetic::typed_dispatch_one_plus),
-            ("1-", 1, true, arithmetic::typed_dispatch_one_minus),
-            ("ABS", 1, true, arithmetic::typed_dispatch_abs),
-            ("SIGNUM", 1, true, arithmetic::typed_dispatch_signum),
-            ("ZEROP", 1, true, arithmetic::typed_dispatch_zerop),
-            ("PLUSP", 1, true, arithmetic::typed_dispatch_plusp),
-            ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp),
-            ("EVENP", 1, true, arithmetic::typed_dispatch_evenp),
-            ("ODDP", 1, true, arithmetic::typed_dispatch_oddp),
-            ("FLOOR", 1, true, arithmetic::typed_dispatch_floor),
-            ("CEILING", 1, true, arithmetic::typed_dispatch_ceiling),
-            ("TRUNCATE", 1, true, arithmetic::typed_dispatch_truncate),
-            ("ROUND", 1, true, arithmetic::typed_dispatch_round),
-            ("FFLOOR", 1, true, arithmetic::typed_dispatch_ffloor),
-            ("FCEILING", 1, true, arithmetic::typed_dispatch_fceiling),
-            ("FTRUNCATE", 1, true, arithmetic::typed_dispatch_ftruncate),
-            ("FROUND", 1, true, arithmetic::typed_dispatch_fround),
-            ("MOD", 2, true, arithmetic::typed_dispatch_mod),
-            ("REM", 2, true, arithmetic::typed_dispatch_rem),
-            ("GCD", 0, false, arithmetic::typed_dispatch_gcd),
-            ("LCM", 0, false, arithmetic::typed_dispatch_lcm),
-            ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt),
+            ("NUMBERP", 1, true, arithmetic::typed_dispatch_numberp, None),
+            (
+                "INTEGERP",
+                1,
+                true,
+                arithmetic::typed_dispatch_integerp,
+                None,
+            ),
+            (
+                "RATIONALP",
+                1,
+                true,
+                arithmetic::typed_dispatch_rationalp,
+                None,
+            ),
+            ("FLOATP", 1, true, arithmetic::typed_dispatch_floatp, None),
+            ("REALP", 1, true, arithmetic::typed_dispatch_realp, None),
+            (
+                "COMPLEXP",
+                1,
+                true,
+                arithmetic::typed_dispatch_complexp,
+                None,
+            ),
+            (
+                "+",
+                0,
+                false,
+                arithmetic::typed_dispatch_add,
+                Some(NativeEntry::Add),
+            ),
+            ("-", 0, false, arithmetic::typed_dispatch_sub, None),
+            (
+                "*",
+                0,
+                false,
+                arithmetic::typed_dispatch_mul,
+                Some(NativeEntry::Mul),
+            ),
+            ("/", 0, false, arithmetic::typed_dispatch_div, None),
+            ("=", 0, false, arithmetic::typed_dispatch_equal, None),
+            ("/=", 0, false, arithmetic::typed_dispatch_not_equal, None),
+            ("<", 0, false, arithmetic::typed_dispatch_less, None),
+            (">", 0, false, arithmetic::typed_dispatch_greater, None),
+            ("<=", 0, false, arithmetic::typed_dispatch_less_equal, None),
+            (
+                ">=",
+                0,
+                false,
+                arithmetic::typed_dispatch_greater_equal,
+                None,
+            ),
+            ("MAX", 0, false, arithmetic::typed_dispatch_max, None),
+            ("MIN", 0, false, arithmetic::typed_dispatch_min, None),
+            ("1+", 1, true, arithmetic::typed_dispatch_one_plus, None),
+            ("1-", 1, true, arithmetic::typed_dispatch_one_minus, None),
+            ("ABS", 1, true, arithmetic::typed_dispatch_abs, None),
+            ("SIGNUM", 1, true, arithmetic::typed_dispatch_signum, None),
+            ("ZEROP", 1, true, arithmetic::typed_dispatch_zerop, None),
+            ("PLUSP", 1, true, arithmetic::typed_dispatch_plusp, None),
+            ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp, None),
+            ("EVENP", 1, true, arithmetic::typed_dispatch_evenp, None),
+            ("ODDP", 1, true, arithmetic::typed_dispatch_oddp, None),
+            ("FLOOR", 1, true, arithmetic::typed_dispatch_floor, None),
+            ("CEILING", 1, true, arithmetic::typed_dispatch_ceiling, None),
+            (
+                "TRUNCATE",
+                1,
+                true,
+                arithmetic::typed_dispatch_truncate,
+                None,
+            ),
+            ("ROUND", 1, true, arithmetic::typed_dispatch_round, None),
+            ("FFLOOR", 1, true, arithmetic::typed_dispatch_ffloor, None),
+            (
+                "FCEILING",
+                1,
+                true,
+                arithmetic::typed_dispatch_fceiling,
+                None,
+            ),
+            (
+                "FTRUNCATE",
+                1,
+                true,
+                arithmetic::typed_dispatch_ftruncate,
+                None,
+            ),
+            ("FROUND", 1, true, arithmetic::typed_dispatch_fround, None),
+            ("MOD", 2, true, arithmetic::typed_dispatch_mod, None),
+            ("REM", 2, true, arithmetic::typed_dispatch_rem, None),
+            ("GCD", 0, false, arithmetic::typed_dispatch_gcd, None),
+            ("LCM", 0, false, arithmetic::typed_dispatch_lcm, None),
+            ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt, None),
         ],
     )?;
     install_set(
         runtime,
         &mut ctx,
         &[
-            ("LOGAND", 0, false, bitops::typed_logand),
-            ("LOGIOR", 0, false, bitops::typed_logior),
-            ("LOGXOR", 0, false, bitops::typed_logxor),
-            ("LOGNOT", 1, true, bitops::typed_lognot),
-            ("LOGEQV", 0, false, bitops::typed_logeqv),
-            ("LOGNAND", 2, true, bitops::typed_lognand),
-            ("LOGNOR", 2, true, bitops::typed_lognor),
-            ("LOGANDC1", 2, true, bitops::typed_logandc1),
-            ("LOGANDC2", 2, true, bitops::typed_logandc2),
-            ("LOGORC1", 2, true, bitops::typed_logorc1),
-            ("LOGORC2", 2, true, bitops::typed_logorc2),
-            ("LOGTEST", 2, true, bitops::typed_logtest),
-            ("LOGBITP", 2, true, bitops::typed_logbitp),
-            ("LOGCOUNT", 1, true, bitops::typed_logcount),
-            ("INTEGER-LENGTH", 1, true, bitops::typed_integer_length),
-            ("ASH", 2, true, bitops::typed_ash),
-            ("BYTE", 2, true, bitops::typed_byte),
-            ("BYTE-SIZE", 1, true, bitops::typed_byte_size),
-            ("BYTE-POSITION", 1, true, bitops::typed_byte_position),
-            ("LDB", 2, true, bitops::typed_ldb),
-            ("DPB", 3, true, bitops::typed_dpb),
-            ("LDB-TEST", 2, true, bitops::typed_ldb_test),
-            ("MASK-FIELD", 2, true, bitops::typed_mask_field),
-            ("DEPOSIT-FIELD", 3, true, bitops::typed_deposit_field),
-            ("BOOLE", 3, true, bitops::typed_boole),
+            ("LOGAND", 0, false, bitops::typed_logand, None),
+            ("LOGIOR", 0, false, bitops::typed_logior, None),
+            ("LOGXOR", 0, false, bitops::typed_logxor, None),
+            ("LOGNOT", 1, true, bitops::typed_lognot, None),
+            ("LOGEQV", 0, false, bitops::typed_logeqv, None),
+            ("LOGNAND", 2, true, bitops::typed_lognand, None),
+            ("LOGNOR", 2, true, bitops::typed_lognor, None),
+            ("LOGANDC1", 2, true, bitops::typed_logandc1, None),
+            ("LOGANDC2", 2, true, bitops::typed_logandc2, None),
+            ("LOGORC1", 2, true, bitops::typed_logorc1, None),
+            ("LOGORC2", 2, true, bitops::typed_logorc2, None),
+            ("LOGTEST", 2, true, bitops::typed_logtest, None),
+            ("LOGBITP", 2, true, bitops::typed_logbitp, None),
+            ("LOGCOUNT", 1, true, bitops::typed_logcount, None),
+            (
+                "INTEGER-LENGTH",
+                1,
+                true,
+                bitops::typed_integer_length,
+                None,
+            ),
+            ("ASH", 2, true, bitops::typed_ash, None),
+            ("BYTE", 2, true, bitops::typed_byte, None),
+            ("BYTE-SIZE", 1, true, bitops::typed_byte_size, None),
+            ("BYTE-POSITION", 1, true, bitops::typed_byte_position, None),
+            ("LDB", 2, true, bitops::typed_ldb, None),
+            ("DPB", 3, true, bitops::typed_dpb, None),
+            ("LDB-TEST", 2, true, bitops::typed_ldb_test, None),
+            ("MASK-FIELD", 2, true, bitops::typed_mask_field, None),
+            ("DEPOSIT-FIELD", 3, true, bitops::typed_deposit_field, None),
+            ("BOOLE", 3, true, bitops::typed_boole, None),
         ],
     )?;
     let package = runtime

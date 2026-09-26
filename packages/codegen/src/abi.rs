@@ -90,24 +90,20 @@ pub enum RuntimeFunction {
     Builtin,
     /// Runtime constant table lookup.
     ConstantTable,
-}
-
-/// A named builtin without exposing a raw string as the ABI selector.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BuiltinName<'a>(&'a str);
-
-impl<'a> BuiltinName<'a> {
-    /// Creates a builtin name borrowed from the caller.
-    #[must_use]
-    pub const fn new(name: &'a str) -> Self {
-        Self(name)
-    }
-
-    /// Returns the underlying legacy identifier.
-    #[must_use]
-    pub const fn as_str(self) -> &'a str {
-        self.0
-    }
+    /// Construct a closure object.
+    MakeClosure,
+    /// Enter a catch handler.
+    EnterCatch,
+    /// Enter an unwind-protect handler.
+    EnterUnwindProtect,
+    /// Enter a progv handler.
+    EnterProgv,
+    /// Leave a catch handler.
+    LeaveCatch,
+    /// Leave an unwind-protect handler.
+    LeaveUnwindProtect,
+    /// Leave a progv handler.
+    LeaveProgv,
 }
 
 /// A named runtime constant without exposing a raw string as the ABI selector.
@@ -128,15 +124,6 @@ impl<'a> ConstantName<'a> {
     }
 }
 
-/// Selects a runtime address without using a nullable function/name pair.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum RuntimeEntry<'a> {
-    /// A fixed runtime function.
-    Function(RuntimeFunction),
-    /// A named runtime builtin.
-    Builtin(BuiltinName<'a>),
-}
-
 impl RegisterId {
     /// Returns the stable numeric identifier used by stack maps.
     #[must_use]
@@ -147,31 +134,12 @@ impl RegisterId {
 
 /// Runtime values and entry points needed by code generation.
 pub trait RuntimeAbi {
-    /// Returns the address of a runtime symbol.
-    fn builtin_address(&self, name: &str) -> Option<u64>;
-    /// Returns the address of a named builtin through the typed ABI boundary.
-    fn builtin_address_named(&self, name: BuiltinName<'_>) -> Option<u64> {
-        self.builtin_address(name.as_str())
-    }
+    /// Returns the address of a typed builtin or a precise lookup error.
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError>;
     /// Returns the `ThreadContext` field offset used by a runtime operation.
-    fn context_offset(&self, field: &str) -> Option<i32>;
-    /// Returns a typed `ThreadContext` field offset in bytes.
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
-        self.context_offset(field.identifier())
-    }
-    /// Returns a runtime function address.
-    fn runtime_address(&self, _function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
-        None
-    }
-    /// Returns a runtime entry address through a typed selector.
-    fn runtime_entry_address(&self, entry: RuntimeEntry<'_>) -> Option<u64> {
-        match entry {
-            RuntimeEntry::Function(function) => self.runtime_address(function, None),
-            RuntimeEntry::Builtin(name) => {
-                self.runtime_address(RuntimeFunction::Builtin, Some(name.as_str()))
-            }
-        }
-    }
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError>;
+    /// Returns a runtime function address or a precise lookup error.
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError>;
     /// Returns a runtime constant encoded as a machine word.
     fn constant_word(&self, _name: &str) -> Option<i64> {
         None
@@ -182,22 +150,57 @@ pub trait RuntimeAbi {
     }
 }
 
+/// Errors raised while resolving a runtime ABI selector.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AbiError {
+    /// The builtin is not registered in the runtime registry.
+    MissingBuiltin(ncl_object::BuiltinIdentifier),
+    /// The runtime does not expose this context field.
+    UnsupportedContextField(ContextField),
+    /// The runtime does not expose this entry point.
+    UnsupportedRuntimeFunction(RuntimeFunction),
+}
+
+/// Converts an IR builtin spelling into the object-layer registry key.
+pub fn common_lisp_builtin(name: &str) -> ncl_object::BuiltinIdentifier {
+    ncl_object::BuiltinIdentifier::new(
+        ncl_object::BuiltinPackage::CommonLisp,
+        ncl_object::BuiltinName::new(Box::leak(name.to_owned().into_boxed_str())),
+    )
+}
+
+impl core::fmt::Display for AbiError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingBuiltin(identifier) => write!(
+                f,
+                "builtin address is unavailable: {}::{}",
+                identifier.package.as_str(),
+                identifier.name.as_str()
+            ),
+            Self::UnsupportedContextField(field) => {
+                write!(f, "context offset is unavailable: {field:?}")
+            }
+            Self::UnsupportedRuntimeFunction(function) => {
+                write!(f, "runtime address is unavailable: {function:?}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for AbiError {}
+
 /// Supplies stable addresses for generated builtin calls without exposing target details.
 #[allow(dead_code)]
 pub trait BuiltinAddressProvider {
-    /// Return the process address for a named builtin.
-    fn builtin_address(&self, name: &str) -> Option<u64>;
-
-    /// Return the process address for a typed builtin name.
-    fn builtin_address_named(&self, name: BuiltinName<'_>) -> Option<u64> {
-        self.builtin_address(name.as_str())
-    }
+    /// Return the process address for a typed builtin identifier.
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Option<u64>;
 }
 
 /// Small deterministic address table suitable for embedders and tests.
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
-pub struct BuiltinAddressTable(Vec<(String, u64)>);
+pub struct BuiltinAddressTable(Vec<(ncl_object::BuiltinIdentifier, u64)>);
 #[allow(dead_code)]
 impl BuiltinAddressTable {
     /// Create an empty address table.
@@ -206,39 +209,36 @@ impl BuiltinAddressTable {
         Self(Vec::new())
     }
     /// Insert or replace a builtin address.
-    pub fn insert(&mut self, name: impl Into<String>, address: u64) {
-        let name = name.into();
-        if let Some(entry) = self.0.iter_mut().find(|entry| entry.0 == name) {
+    pub fn insert(&mut self, identifier: ncl_object::BuiltinIdentifier, address: u64) {
+        if let Some(entry) = self.0.iter_mut().find(|entry| entry.0 == identifier) {
             entry.1 = address;
         } else {
-            self.0.push((name, address));
+            self.0.push((identifier, address));
         }
     }
 }
 impl BuiltinAddressProvider for BuiltinAddressTable {
-    fn builtin_address(&self, name: &str) -> Option<u64> {
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Option<u64> {
         self.0
             .iter()
-            .find(|entry| entry.0 == name)
+            .find(|entry| entry.0 == identifier)
             .map(|entry| entry.1)
     }
 }
 
 #[cfg(test)]
 mod builtin_address_tests {
-    use super::{BuiltinAddressProvider, BuiltinAddressTable, BuiltinName, ContextField};
+    use super::{BuiltinAddressProvider, BuiltinAddressTable, ContextField};
+    use ncl_object::{BuiltinIdentifier, BuiltinName, BuiltinPackage};
 
     #[test]
     fn address_table_replaces_and_reads_entries() {
         let mut table = BuiltinAddressTable::new();
-        table.insert("NCL-TEST::ADD", 0x10);
-        assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x10));
-        table.insert("NCL-TEST::ADD", 0x20);
-        assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x20));
-        assert_eq!(
-            table.builtin_address_named(BuiltinName::new("NCL-TEST::ADD")),
-            Some(0x20)
-        );
+        let identifier = BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD"));
+        table.insert(identifier, 0x10);
+        assert_eq!(table.builtin_address(identifier), Some(0x10));
+        table.insert(identifier, 0x20);
+        assert_eq!(table.builtin_address(identifier), Some(0x20));
     }
 
     #[test]
@@ -253,11 +253,14 @@ mod builtin_address_tests {
 pub struct X86_64Abi;
 
 impl RuntimeAbi for X86_64Abi {
-    fn builtin_address(&self, _name: &str) -> Option<u64> {
-        None
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        Err(AbiError::MissingBuiltin(identifier))
     }
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        Err(AbiError::UnsupportedContextField(field))
+    }
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        Err(AbiError::UnsupportedRuntimeFunction(function))
     }
 }
 
@@ -266,11 +269,13 @@ impl RuntimeAbi for X86_64Abi {
 pub struct Aarch64Abi;
 
 impl RuntimeAbi for Aarch64Abi {
-    fn builtin_address(&self, _name: &str) -> Option<u64> {
-        None
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        Err(AbiError::MissingBuiltin(identifier))
     }
-
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        Err(AbiError::UnsupportedContextField(field))
+    }
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        Err(AbiError::UnsupportedRuntimeFunction(function))
     }
 }

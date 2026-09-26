@@ -488,38 +488,3 @@ pub fn list_length(
 
 macro_rules! list_nth { ($($name:ident => $index:literal),+ $(,)?) => { $(pub fn $name(ctx: &mut ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> { let cursor = list_word(value); proper_list(ctx, cursor)?; nth_word(ctx, $index, cursor) })+ }; }
 list_nth!(first => 0, second => 1, third => 2, fourth => 3, fifth => 4, sixth => 5, seventh => 6, eighth => 7, ninth => 8, tenth => 9);
-
-pub fn acons(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    key: Word,
-    datum: Word,
-    alist: List,
-) -> Result<Word, LispError> {
-    let entry = make_cons_rooted(ctx, runtime, key, datum)?;
-    Ok(make_cons_rooted(ctx, runtime, entry, list_word(alist))?)
-}
-pub fn getf(
-    ctx: &mut ThreadContext,
-    plist: List,
-    indicator: Word,
-    default: Word,
-) -> Result<Word, LispError> {
-    let mut cursor = list_word(plist);
-    while cursor != Word::NIL {
-        let key = object_car(ctx, cursor)?;
-        cursor = object_cdr(ctx, cursor)?;
-        if !cursor.is_cons() {
-            return Err(LispError::TypeError {
-                datum: cursor,
-                expected: ncl_object::ObjectType::Cons,
-            });
-        }
-        let value = object_car(ctx, cursor)?;
-        cursor = object_cdr(ctx, cursor)?;
-        if key == indicator {
-            return Ok(value);
-        }
-    }
-    Ok(default)
-}

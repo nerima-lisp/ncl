@@ -1,7 +1,7 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, Fixnum, FromLispArg, LambdaList, List, MultipleValues,
-    ObjectError, Parameter, ParameterType, Runtime, Sequence, ThreadContext, Word,
+    BuiltinName, BuiltinPackage, Fixnum, LambdaList, List, MultipleValues, ObjectError, Parameter,
+    ParameterType, Runtime, Sequence, ThreadContext, Word,
 };
 
 use crate::domain;
@@ -58,13 +58,6 @@ fn finish<T>(
             ObjectError::TypeError
         })
         .inspect(|_| values.clear())
-}
-
-fn list_arg(ctx: &mut ThreadContext, word: Word) -> Result<List, ObjectError> {
-    List::from_lisp_arg(ctx, word).map_err(|error| {
-        ctx.set_pending_lisp_error(error);
-        ObjectError::TypeError
-    })
 }
 
 fn sequence_arg(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
@@ -222,26 +215,6 @@ fn subseq_builtin(
     finish(ctx, values, result)
 }
 
-fn acons_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let alist = list_arg(ctx, args.required(2)?)?;
-    let result = domain::list::acons(ctx, runtime, args.required(0)?, args.required(1)?, alist);
-    finish(ctx, values, result)
-}
-fn getf_builtin(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let plist = list_arg(ctx, args.required(0)?)?;
-    let result = domain::list::getf(ctx, plist, args.required(1)?, args.required(2)?);
-    finish(ctx, values, result)
-}
 fn register_adapted(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -368,20 +341,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             convention: BuiltinConvention::Adapted,
         },
         subseq_builtin,
-    )?;
-    register_direct(
-        runtime,
-        &mut ctx,
-        "ACONS",
-        direct_descriptor(&[OBJECT, OBJECT, LIST]),
-        acons_builtin,
-    )?;
-    register_direct(
-        runtime,
-        &mut ctx,
-        "GETF",
-        direct_descriptor(&[LIST, OBJECT, OBJECT]),
-        getf_builtin,
     )?;
     for name in ["FILL", "REPLACE"] {
         let Some(implementation) = domain::filter::filter_entry(name) else {

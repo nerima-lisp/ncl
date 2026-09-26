@@ -87,9 +87,18 @@ fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
 fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
+    // At this point `rsp` points at the return address of the current frame.
+    // Move it below the callee's two-word header reservation and preserve the
+    // callee function object immediately above it. The callee prologue then
+    // observes the same stack layout as after a regular call.
+    emit(assembler, Inst::MovRM(RETURN_VALUE, Mem::base(Reg::Rsp, 0)))?;
     emit(
         assembler,
-        Inst::MovMR(Mem::base(Reg::Rsp, -16), FUNCTION_OBJECT),
+        Inst::MovMR(Mem::base(Reg::Rsp, -16), RETURN_VALUE),
+    )?;
+    emit(
+        assembler,
+        Inst::MovMR(Mem::base(Reg::Rsp, -8), FUNCTION_OBJECT),
     )?;
     emit(assembler, Inst::BinRI(BinOp::Sub, Reg::Rsp, 16))?;
     emit(assembler, Inst::JmpReg(ENTRY))
@@ -318,10 +327,6 @@ pub fn compile_function_x86_64(
             }
             Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
-                emit(
-                    &mut assembler,
-                    Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 8)),
-                )?;
                 // A tail transfer has no return PC in this frame, so there is
                 // no new caller safepoint map or unwind point to register.
                 emit_tail_transfer(&mut assembler)?;

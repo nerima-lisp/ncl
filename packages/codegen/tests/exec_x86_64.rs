@@ -434,3 +434,6 @@ mod fib;
 
 #[path = "exec_x86_64/basic.rs"]
 mod basic;
+
+#[path = "exec_x86_64/tail.rs"]
+mod tail;

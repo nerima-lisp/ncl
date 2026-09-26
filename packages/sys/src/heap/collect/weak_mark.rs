@@ -2,8 +2,6 @@ use super::{
     HASH_TABLE_HIGH_WATER, HASH_TABLE_KV, HASH_TABLE_MARKER, HashMap, HashSet, VECTOR_DATA,
     Weakness, Word, scan,
 };
-use crate::LowTag;
-
 pub(super) struct WeakMarkContext<'a> {
     pub(super) state: &'a super::super::State,
     pub(super) full: bool,
@@ -153,10 +151,6 @@ fn is_immediate(value: Word) -> bool {
     value.is_fixnum()
         || value == Word::NIL
         || value == Word::TRUE
-        || matches!(
-            value.lowtag(),
-            tag if tag == LowTag::Character as u8
-                || tag == LowTag::SingleFloat as u8
-                || tag == LowTag::OtherImmediate as u8
-        )
+        || value.is_character()
+        || value.is_unbound()
 }

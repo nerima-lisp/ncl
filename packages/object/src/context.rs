@@ -91,7 +91,8 @@ impl ThreadContext {
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         self.pending_lisp_error = Some(error);
     }
-    pub(crate) const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
+    /// Take the pending typed Lisp condition, if one was recorded.
+    pub const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
         self.pending_lisp_error.take()
     }
     /// Store the condition object produced for the latest typed builtin error.

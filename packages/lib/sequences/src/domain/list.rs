@@ -134,11 +134,7 @@ pub fn concatenate(
         "STRING" => {
             let chars = values
                 .iter()
-                .map(|value| {
-                    u32::try_from(value.bits() >> 4)
-                        .map_err(|_| ObjectError::TypeError)
-                        .and_then(|code| char::from_u32(code).ok_or(ObjectError::TypeError))
-                })
+                .map(|value| character(*value))
                 .collect::<Result<Vec<_>, _>>()?;
             make_string(ctx, runtime, &chars).map_err(LispError::from)
         }
@@ -348,15 +344,27 @@ fn sequence_result(
         }
         Sequence::String(_) => values
             .iter()
-            .map(|x| {
-                u32::try_from(x.bits() >> 4)
-                    .map_err(|_| ObjectError::TypeError)
-                    .and_then(|code| char::from_u32(code).ok_or(ObjectError::TypeError))
-            })
+            .map(|value| character(*value))
             .collect::<Result<Vec<_>, _>>()
             .and_then(|chars| make_string(ctx, runtime, &chars)),
     }
 }
+
+fn character(value: Word) -> Result<char, ObjectError> {
+    value
+        .as_character()
+        .and_then(char::from_u32)
+        .ok_or(ObjectError::TypeError)
+}
+
+fn sequence_word(value: Sequence) -> Word {
+    match value {
+        Sequence::List(list) => list_word(list),
+        Sequence::String(string) => string.into(),
+        Sequence::Vector(vector) => vector.into(),
+    }
+}
+
 fn sequence_length(ctx: &mut ThreadContext, value: Sequence) -> Result<usize, ObjectError> {
     Ok(sequence_values(ctx, value)?.len())
 }
@@ -378,7 +386,11 @@ fn sequence_copy(
     value: Sequence,
 ) -> Result<Word, ObjectError> {
     let values = sequence_values(ctx, value)?;
-    sequence_result(ctx, runtime, value, &values)
+    let mut source = sequence_word(value);
+    let token = ncl_object::push_root(ctx, &mut source);
+    let result = sequence_result(ctx, runtime, value, &values);
+    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
+    root_error.map_or(result, Err)
 }
 fn sequence_reverse(
     ctx: &mut ThreadContext,
@@ -387,7 +399,11 @@ fn sequence_reverse(
 ) -> Result<Word, ObjectError> {
     let mut values = sequence_values(ctx, value)?;
     values.reverse();
-    sequence_result(ctx, runtime, value, &values)
+    let mut source = sequence_word(value);
+    let token = ncl_object::push_root(ctx, &mut source);
+    let result = sequence_result(ctx, runtime, value, &values);
+    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
+    root_error.map_or(result, Err)
 }
 fn sequence_subseq(
     ctx: &mut ThreadContext,
@@ -407,7 +423,11 @@ fn sequence_subseq(
     if start > end || end > values.len() {
         return Err(ObjectError::TypeError);
     }
-    sequence_result(ctx, runtime, value, &values[start..end])
+    let mut source = sequence_word(value);
+    let token = ncl_object::push_root(ctx, &mut source);
+    let result = sequence_result(ctx, runtime, value, &values[start..end]);
+    let root_error = (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout);
+    root_error.map_or(result, Err)
 }
 fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, ObjectError> {
     match value {
@@ -424,6 +444,38 @@ fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, O
             Ok(previous)
         }
         _ => Err(ObjectError::TypeError),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn empty_list_sequence_has_no_elements() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let sequence = Sequence::List(List::Nil);
+
+        assert_eq!(sequence_length(&mut ctx, sequence).unwrap(), 0);
+        assert!(sequence_elt(&mut ctx, sequence, Word::fixnum(0)).is_err());
+    }
+
+    #[test]
+    fn string_sequence_conversion_validates_word_character() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let marker = Sequence::String(ncl_object::StringObject::from_word(Word::NIL));
+        let string = sequence_result(
+            &mut ctx,
+            &runtime,
+            marker,
+            &[Word::character(u32::from('λ'))],
+        )
+        .unwrap();
+        assert_eq!(ncl_object::string_ref(&ctx, string, 0).unwrap(), 'λ');
+        assert!(sequence_result(&mut ctx, &runtime, marker, &[Word::fixnum(65)]).is_err());
     }
 }
 

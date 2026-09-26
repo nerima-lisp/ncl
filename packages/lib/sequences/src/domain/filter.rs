@@ -133,8 +133,10 @@ fn bounds(options: Options, length: usize) -> Result<(usize, usize), ObjectError
 }
 
 fn character(value: Word) -> Result<char, ObjectError> {
-    let code = u32::try_from(value.bits() >> 4).map_err(|_| ObjectError::TypeError)?;
-    char::from_u32(code).ok_or(ObjectError::TypeError)
+    value
+        .as_character()
+        .and_then(char::from_u32)
+        .ok_or(ObjectError::TypeError)
 }
 
 fn set_value(
@@ -235,4 +237,15 @@ pub fn filter_entry(name: &str) -> Option<BuiltinImplementation> {
         _ => return None,
     };
     Some(implementation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn character_accepts_only_valid_character_words() {
+        assert_eq!(character(Word::character(u32::from('λ'))), Ok('λ'));
+        assert_eq!(character(Word::fixnum(65)), Err(ObjectError::TypeError));
+    }
 }

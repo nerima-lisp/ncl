@@ -1,8 +1,9 @@
 #![allow(clippy::unwrap_used, missing_docs)]
 
 use ncl_object::{
-    DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word,
-    classify_object, double_value, symbol_is_constant, symbol_is_special, symbol_value,
+    Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext,
+    Word, bignum_limbs, bignum_sign, classify_object, double_value, symbol_is_constant,
+    symbol_is_special, symbol_value,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -40,6 +41,27 @@ fn float(ctx: &ThreadContext, value: Word) -> f64 {
         panic!("expected double-float")
     };
     double_value(ctx, DoubleFloat::from_word(value)).unwrap()
+}
+
+fn integer(ctx: &ThreadContext, value: Word) -> i128 {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(value) => i128::from(value),
+        ObjectRef::Bignum(value) => {
+            let magnitude = bignum_limbs(ctx, Bignum::from_word(value))
+                .unwrap()
+                .into_iter()
+                .enumerate()
+                .fold(0_i128, |value, (index, limb)| {
+                    value | (i128::from(limb) << (index * 32))
+                });
+            if bignum_sign(ctx, Bignum::from_word(value)).unwrap() {
+                -magnitude
+            } else {
+                magnitude
+            }
+        }
+        other => panic!("expected integer, got {other:?}"),
+    }
 }
 
 #[test]
@@ -87,6 +109,19 @@ fn random_respects_integer_and_float_ranges() {
 }
 
 #[test]
+fn random_supports_bignum_limits_above_fixnum_range() {
+    let (runtime, mut ctx) = setup();
+    let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::NIL]).unwrap();
+    let limit = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 63)
+        .unwrap()
+        .into();
+    for _ in 0..16 {
+        let value = call(&runtime, &mut ctx, "RANDOM", &[limit, state]).unwrap();
+        assert!((0..(1_i128 << 63)).contains(&integer(&ctx, value)));
+    }
+}
+
+#[test]
 fn random_rejects_invalid_limits() {
     let (runtime, mut ctx) = setup();
     let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::NIL]).unwrap();
@@ -113,4 +148,19 @@ fn numeric_constants_are_constant_and_bound() {
     let pi = common_lisp_symbol(&runtime, &mut ctx, "PI");
     let pi_value = symbol_value(&ctx, pi).unwrap();
     assert!((float(&ctx, pi_value) - std::f64::consts::PI).abs() < f64::EPSILON);
+}
+
+#[test]
+fn fixnum_constants_match_word_encoding_range() {
+    let (runtime, mut ctx) = setup();
+    for (name, expected) in [
+        ("MOST-POSITIVE-FIXNUM", i64::MAX >> ncl_sys::FIXNUM_TAG_BITS),
+        ("MOST-NEGATIVE-FIXNUM", i64::MIN >> ncl_sys::FIXNUM_TAG_BITS),
+    ] {
+        let symbol = common_lisp_symbol(&runtime, &mut ctx, name);
+        assert_eq!(
+            symbol_value(&ctx, symbol).unwrap().as_fixnum(),
+            Some(expected)
+        );
+    }
 }

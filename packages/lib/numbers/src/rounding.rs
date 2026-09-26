@@ -130,8 +130,15 @@ fn as_float(value: Number) -> f64 {
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Word, ObjectError> {
     match value {
         Number::Integer(value) => i64::try_from(value)
-            .map(Word::fixnum)
-            .or_else(|_| make_bignum_from_i128(ctx, runtime, value).map(Into::into)),
+            .ok()
+            .and_then(|value| {
+                let word = Word::fixnum(value);
+                (word.as_fixnum() == Some(value)).then_some(word)
+            })
+            .map_or_else(
+                || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                Ok,
+            ),
         Number::Ratio(numerator, denominator) => {
             let numerator = word(ctx, runtime, Number::Integer(numerator))?;
             let denominator = word(ctx, runtime, Number::Integer(denominator))?;
@@ -192,9 +199,7 @@ fn exact_round(
         .checked_mul(divisor_n)
         .ok_or(ObjectError::TypeError)?;
     let sign = denominator.signum();
-    let numerator = numerator
-        .checked_mul(sign)
-        .ok_or(ObjectError::TypeError)?;
+    let numerator = numerator.checked_mul(sign).ok_or(ObjectError::TypeError)?;
     let denominator = denominator.checked_abs().ok_or(ObjectError::TypeError)?;
     let q = quotient(numerator, denominator, mode).ok_or(ObjectError::TypeError)?;
     let remainder_n = value_n
@@ -213,7 +218,9 @@ fn exact_round(
         Number::Integer(q),
         ratio(
             remainder_n,
-            value_d.checked_mul(divisor_d).ok_or(ObjectError::TypeError)?,
+            value_d
+                .checked_mul(divisor_d)
+                .ok_or(ObjectError::TypeError)?,
         )
         .ok_or(ObjectError::TypeError)?,
     )))

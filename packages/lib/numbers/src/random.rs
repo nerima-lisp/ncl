@@ -67,10 +67,42 @@ fn next_word(ctx: &mut ThreadContext, state: Word) -> Result<u64, ObjectError> {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    let next = i64::try_from(seed & MOST_POSITIVE_FIXNUM as u64)
-        .map_err(|_| ObjectError::TypeError)?;
+    let mask = u64::try_from(MOST_POSITIVE_FIXNUM).map_err(|_| ObjectError::TypeError)?;
+    let next = i64::try_from(seed & mask).map_err(|_| ObjectError::TypeError)?;
     slot_set(ctx, instance, STATE_SLOT, Word::fixnum(next))?;
     u64::try_from(next).map_err(|_| ObjectError::TypeError)
+}
+
+fn random_u128(ctx: &mut ThreadContext, state: Word, bits: u32) -> Result<u128, ObjectError> {
+    if bits == 0 {
+        return Ok(0);
+    }
+    if bits > 127 {
+        return Err(ObjectError::TypeError);
+    }
+    let first = u128::from(next_word(ctx, state)?);
+    let second = u128::from(next_word(ctx, state)?);
+    let third = u128::from(next_word(ctx, state)?);
+    let value = first
+        | second.checked_shl(62).ok_or(ObjectError::TypeError)?
+        | third.checked_shl(124).ok_or(ObjectError::TypeError)?;
+    let mask = 1_u128
+        .checked_shl(bits)
+        .and_then(|value| value.checked_sub(1))
+        .ok_or(ObjectError::TypeError)?;
+    Ok(value & mask)
+}
+
+fn random_below(ctx: &mut ThreadContext, state: Word, bound: i128) -> Result<i128, ObjectError> {
+    let bound = u128::try_from(bound).map_err(|_| ObjectError::TypeError)?;
+    let upper = bound.checked_sub(1).ok_or(ObjectError::TypeError)?;
+    let bits = u128::BITS - upper.leading_zeros();
+    loop {
+        let value = random_u128(ctx, state, bits)?;
+        if value < bound {
+            return i128::try_from(value).map_err(|_| ObjectError::TypeError);
+        }
+    }
 }
 
 fn random_builtin(
@@ -99,8 +131,11 @@ fn random_builtin(
             if !bound.is_finite() || bound <= 0.0 {
                 return Err(ObjectError::TypeError);
             }
-            let fraction = u64_to_f64(next_word(ctx, state)?)
-                / u64_to_f64(MOST_POSITIVE_FIXNUM as u64 + 1);
+            let modulus = u64::try_from(MOST_POSITIVE_FIXNUM)
+                .ok()
+                .and_then(|value| value.checked_add(1))
+                .ok_or(ObjectError::TypeError)?;
+            let fraction = u64_to_f64(next_word(ctx, state)?) / u64_to_f64(modulus);
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
@@ -108,11 +143,17 @@ fn random_builtin(
             if bound <= 0 {
                 return Err(ObjectError::TypeError);
             }
-            let value = i128::from(next_word(ctx, state)?) % bound;
-            i64::try_from(value).map_or_else(
-                |_| ncl_object::make_bignum_from_i128(ctx, runtime, value).map(Into::into),
-                |value| Ok(Word::fixnum(value)),
-            )
+            let value = random_below(ctx, state, bound)?;
+            i64::try_from(value)
+                .ok()
+                .and_then(|value| {
+                    let word = Word::fixnum(value);
+                    (word.as_fixnum() == Some(value)).then_some(word)
+                })
+                .map_or_else(
+                    || ncl_object::make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                    Ok,
+                )
         }
         _ => Err(ObjectError::TypeError),
     }

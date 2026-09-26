@@ -21,10 +21,7 @@ pub(super) fn gcd_i128(a: i128, b: i128) -> i128 {
     while ub != 0 {
         (ua, ub) = (ub, ua % ub);
     }
-    match i128::try_from(ua) {
-        Ok(value) => value,
-        Err(_) => 0,
-    }
+    i128::try_from(ua).unwrap_or(0)
 }
 
 pub(super) fn ratio(n: i128, d: i128) -> Number {
@@ -87,7 +84,7 @@ pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectErr
                 } else {
                     i128::try_from(magnitude)
                         .ok()
-                        .and_then(|magnitude| magnitude.checked_neg())
+                        .and_then(i128::checked_neg)
                         .ok_or(ObjectError::TypeError)
                 }
             } else {
@@ -158,8 +155,15 @@ pub(super) fn word(
 ) -> Result<Word, ObjectError> {
     match value {
         Number::Integer(value) => i64::try_from(value)
-            .map(Word::fixnum)
-            .or_else(|_| make_bignum_from_i128(ctx, runtime, value).map(Into::into)),
+            .ok()
+            .and_then(|value| {
+                let word = Word::fixnum(value);
+                (word.as_fixnum() == Some(value)).then_some(word)
+            })
+            .map_or_else(
+                || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                Ok,
+            ),
         Number::Ratio(n, d) => {
             if d == 0 {
                 return Err(ObjectError::TypeError);

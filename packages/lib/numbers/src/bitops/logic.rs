@@ -26,7 +26,7 @@ fn signed_magnitude(magnitude: u128, negative: bool) -> Result<i128, ObjectError
     }
 }
 
-pub(crate) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
+pub fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
         return Ok(i128::from(value));
     }

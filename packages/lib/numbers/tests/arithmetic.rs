@@ -46,7 +46,11 @@ fn integer(ctx: &ThreadContext, word: Word) -> i128 {
                     value | (i128::from(limb) << (index * 32))
                 });
             if bignum_sign(ctx, Bignum::from_word(value)).unwrap() {
-                -magnitude
+                if magnitude == (1_i128 << 127) {
+                    i128::MIN
+                } else {
+                    -magnitude
+                }
             } else {
                 magnitude
             }

@@ -68,7 +68,7 @@ pub fn abs(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     word(ctx, runtime, abs_number(n)?)
 }
 
-fn checked_div(a: i128, b: i128) -> Option<i128> {
+const fn checked_div(a: i128, b: i128) -> Option<i128> {
     a.checked_div(b)
 }
 

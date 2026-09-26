@@ -5,8 +5,6 @@ use ncl_object::{
     set_symbol_value,
 };
 
-use crate::{MOST_NEGATIVE_FIXNUM, MOST_POSITIVE_FIXNUM};
-
 fn set_constant(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -40,14 +38,14 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         runtime,
         package,
         "MOST-POSITIVE-FIXNUM",
-        Word::fixnum(MOST_POSITIVE_FIXNUM),
+        Word::fixnum(i64::MAX >> ncl_sys::FIXNUM_TAG_BITS),
     )?;
     set_constant(
         ctx,
         runtime,
         package,
         "MOST-NEGATIVE-FIXNUM",
-        Word::fixnum(MOST_NEGATIVE_FIXNUM),
+        Word::fixnum(i64::MIN >> ncl_sys::FIXNUM_TAG_BITS),
     )?;
     set_float_constant(ctx, runtime, package, "PI", std::f64::consts::PI)?;
     for name in [

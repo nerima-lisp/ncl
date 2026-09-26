@@ -1,9 +1,9 @@
 //! Common Lisp remainder, divisor, and integer-root builtins.
 
 use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
-    make_ratio, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    make_ratio, ratio_denominator, ratio_numerator,
 };
 
 const fn integer_to_f64(value: i128) -> f64 {
@@ -113,8 +113,15 @@ fn as_float(value: Number) -> f64 {
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Word, ObjectError> {
     match value {
         Number::Integer(value) => i64::try_from(value)
-            .map(Word::fixnum)
-            .or_else(|_| make_bignum_from_i128(ctx, runtime, value).map(Into::into)),
+            .ok()
+            .and_then(|value| {
+                let word = Word::fixnum(value);
+                (word.as_fixnum() == Some(value)).then_some(word)
+            })
+            .map_or_else(
+                || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                Ok,
+            ),
         Number::Ratio(n, d) => {
             let n = word(ctx, runtime, Number::Integer(n))?;
             let d = word(ctx, runtime, Number::Integer(d))?;
@@ -264,14 +271,14 @@ pub fn typed_isqrt(
 
 #[cfg(test)]
 mod tests {
-    use super::{exact_remainder, gcd, ratio, Number};
+    use super::{Number, exact_remainder, gcd, ratio};
 
     #[test]
     fn i128_min_boundaries_are_checked() {
         assert_eq!(gcd(i128::MIN, 0), None);
         assert_eq!(gcd(i128::MIN, -1), Some(1));
-        assert!(matches!(ratio(1, i128::MIN), None));
-        assert!(matches!(ratio(i128::MIN, -1), None));
+        assert!(ratio(1, i128::MIN).is_none());
+        assert!(ratio(i128::MIN, -1).is_none());
     }
 
     #[test]

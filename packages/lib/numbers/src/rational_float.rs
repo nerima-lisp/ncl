@@ -1,9 +1,9 @@
 //! Rational and binary64 numeric builtins.
 
 use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, double_value, make_bignum_from_i128, make_double, make_ratio,
-    ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
-    Runtime, ThreadContext, Word,
+    ratio_denominator, ratio_numerator,
 };
 
 const fn integer_to_f64(value: i128) -> f64 {
@@ -140,8 +140,15 @@ fn real(ctx: &ThreadContext, word: Word) -> Result<Real, ObjectError> {
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Real) -> Result<Word, ObjectError> {
     match value {
         Real::Integer(value) => i64::try_from(value)
-            .map(Word::fixnum)
-            .or_else(|_| make_bignum_from_i128(ctx, runtime, value).map(Into::into)),
+            .ok()
+            .and_then(|value| {
+                let word = Word::fixnum(value);
+                (word.as_fixnum() == Some(value)).then_some(word)
+            })
+            .map_or_else(
+                || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
+                Ok,
+            ),
         Real::Ratio(n, d) => {
             let n = word(ctx, runtime, Real::Integer(n))?;
             let d = word(ctx, runtime, Real::Integer(d))?;
@@ -452,8 +459,8 @@ mod tests {
     fn i128_min_boundaries_are_checked() {
         assert_eq!(gcd(i128::MIN, 0), None);
         assert_eq!(gcd(i128::MIN, -1), Some(1));
-        assert!(matches!(normalized(1, i128::MIN), Err(_)));
-        assert!(matches!(normalized(i128::MIN, -1), Err(_)));
+        assert!(normalized(1, i128::MIN).is_err());
+        assert!(normalized(i128::MIN, -1).is_err());
     }
 
     #[test]

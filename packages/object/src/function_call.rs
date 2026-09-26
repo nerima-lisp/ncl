@@ -84,7 +84,57 @@ impl FunctionCaller for BuiltinFunctionCaller {
                 FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
             }
         };
-        runtime.call_builtin_with_caller(ctx, self, function, args.as_slice(), values)
+        let result = runtime.call_builtin(ctx, function, args.as_slice())?;
+        values.set(ctx.values());
+        Ok(result)
+    }
+}
+
+impl Runtime {
+    pub(crate) fn call_registered_builtin(
+        &self,
+        ctx: &mut ThreadContext,
+        function: FunctionObject,
+        args: &[Word],
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        if function.is_unbound() {
+            return Err(ObjectError::Unbound);
+        }
+        let implementation = self
+            .builtins
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&function.as_word())
+            .copied()
+            .ok_or(ObjectError::Unbound)?;
+        if args.len() < implementation.descriptor.lambda_list.min_arity()
+            || implementation
+                .descriptor
+                .lambda_list
+                .max_arity()
+                .is_some_and(|max| args.len() > max)
+        {
+            return Err(ObjectError::TypeError);
+        }
+        let original = args.to_vec();
+        let args = crate::BuiltinArgs::new(&original);
+        let adapted = if let Some(adapter) = implementation.keyword_adapter {
+            adapter(&args)?
+        } else {
+            original
+        };
+        let adapted = crate::BuiltinArgs::new(&adapted);
+        let result = (implementation.function)(ctx, self, &adapted, values);
+        ctx.set_values(values.as_slice());
+        if let Some(error) = ctx.take_pending_lisp_error()
+            && let Some(converter) = self.lisp_error_converter()
+        {
+            let condition = converter(ctx, self, error)?;
+            ctx.set_pending_condition(condition);
+        }
+        let pending = ctx.take_pending();
+        pending.map_or(result, Err)
     }
 }
 

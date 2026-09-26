@@ -4,6 +4,7 @@
 mod control;
 mod defining;
 mod form;
+mod functions;
 mod place;
 mod setf;
 
@@ -34,7 +35,6 @@ const PLACE: Parameter = Parameter {
     name: BuiltinName::new("PLACE"),
     ty: ParameterType::Any,
 };
-
 fn expansion_arg(args: &[Word]) -> Result<Word, ObjectError> {
     args.first().copied().ok_or(ObjectError::TypeError)
 }
@@ -310,6 +310,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             get_setf_adapter,
         ),
     )?;
+    functions::register(runtime, &mut ctx)?;
     let variable = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
         .intern(&mut ctx, runtime, "*MACROEXPAND-HOOK*")?
         .0;

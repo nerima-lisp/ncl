@@ -450,7 +450,6 @@ const OWNED_MACROS: &[&str] = &[
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-
     #[test]
     fn registration_marks_owned_macros_and_installs_function_cells() {
         let runtime = Runtime::new().expect("runtime");
@@ -497,4 +496,5 @@ mod tests {
                 .is_some()
         );
     }
+    mod gc_stress_tests;
 }

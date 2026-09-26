@@ -178,6 +178,7 @@ impl Runtime {
         let mut expander = FormExpander::new(&mut self.context, &self.object, &registry);
         expander.set_caller(&mut caller);
         let expr = expander.expand(form)?;
+        let optimization_level = compile::optimization_level(&expr);
         let lowered = lower_toplevel(&expr)?;
         if !lowered.nested.is_empty() {
             return Err(RuntimeError::Native(
@@ -188,7 +189,9 @@ impl Runtime {
             functions: vec![lowered.entry],
         };
         let mut passes = ncl_opt::PassManager::new();
-        passes.add_default_optimization_pipeline();
+        if !matches!(optimization_level, compile::OptimizationLevel::Debug) {
+            passes.add_default_optimization_pipeline();
+        }
         passes
             .run(&mut module)
             .map_err(|error| RuntimeError::Native(error.to_string()))?;

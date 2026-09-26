@@ -154,17 +154,23 @@ impl Context<'_> {
                 let field = u32::try_from(field).map_err(|_| LowerError::Ir {
                     detail: "symbol cell offset does not fit u32".to_owned(),
                 })?;
+                let object = values.first().copied().ok_or_else(|| LowerError::Ir {
+                    detail: "symbol cell operation requires a symbol".to_owned(),
+                })?;
                 if store {
-                    f.none(OpKind::StoreField {
-                        object: values[0],
-                        field,
-                        value: values[1],
+                    let value = values.get(1).copied().ok_or_else(|| LowerError::Ir {
+                        detail: "symbol cell store requires a value".to_owned(),
                     })?;
-                    return Ok(values[1]);
+                    f.none(OpKind::StoreField {
+                        object,
+                        field,
+                        value,
+                    })?;
+                    return Ok(value);
                 }
                 return f.one(
                     OpKind::LoadField {
-                        object: values[0],
+                        object,
                         field,
                     },
                     Ty::Word,

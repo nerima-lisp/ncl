@@ -7,23 +7,23 @@ mod compile;
 mod function_call;
 mod load;
 mod native_error;
+mod support;
 
 pub use function_call::RuntimeFunctionCaller;
 
-use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
-use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
+use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
-    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, make_closure, make_cons,
-    make_double, make_simple_vector, make_string, symbol_function,
+    Function, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
+    make_simple_vector,
 };
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, NativeError, RootToken, SafepointMap, SourceLocation, alloc_code,
-    invoke_entry_with_function, publish_code, register_code, thread_layout, write_code,
+    invoke_entry_with_function, publish_code, register_code, write_code,
 };
 
 pub use native_error::NativeCondition;
 use native_error::native_failure;
+use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
 
 /// Errors raised while setting up or executing one compilation unit.
 #[derive(Debug)]
@@ -111,8 +111,8 @@ pub struct Runtime {
 }
 
 #[derive(Debug)]
-struct PublishedFunction {
-    entry: usize,
+pub(crate) struct PublishedFunction {
+    pub(crate) entry: usize,
 }
 
 impl Runtime {
@@ -246,11 +246,12 @@ impl Runtime {
         write_code(&mut code, 0, &compiled.code)
             .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         publish_code(&mut code).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-        let maps = encode_maps(&compiled.safepoint_maps)?;
+        let maps = support::encode_maps(&compiled.safepoint_maps)?;
         let safepoint_map = SafepointMap::decode(&maps, compiled.safepoint_maps.len())
             .map_err(|error| RuntimeError::Native(error.to_owned()))?;
         let metadata = CodeObjectMetadata {
-            entry_offset: compiled.entry_offset as usize,
+            entry_offset: usize::try_from(compiled.entry_offset)
+                .map_err(|_| RuntimeError::Native("entry offset is too large".to_owned()))?,
             size: compiled.code.len(),
             frame_words: u16::try_from(compiled.frame_size / 8)
                 .map_err(|_| RuntimeError::Native("frame is too large".to_owned()))?,
@@ -300,7 +301,7 @@ impl Runtime {
     fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
         for constant in &function.constants {
-            let value = resolve_constant(&mut self.context, &self.object, constant, &values)?;
+            let value = support::resolve_constant(&mut self.context, &self.object, constant, &values)?;
             values.push(value);
         }
         make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into)
@@ -369,12 +370,6 @@ impl Runtime {
     pub const fn function_caller(&self) -> RuntimeFunctionCaller {
         RuntimeFunctionCaller
     }
-}
-
-struct NativeInvocation<'a> {
-    object: &'a ObjectRuntime,
-    context: &'a mut ThreadContext,
-    code: CodeObject,
 }
 
 impl Drop for Runtime {
@@ -465,241 +460,4 @@ mod tests {
             assert_eq!(runtime.format_result(value), "7");
         }
     }
-}
-
-fn encode_maps(maps: &[ncl_codegen::SafepointMap]) -> Result<Vec<u8>, RuntimeError> {
-    maps.iter().try_fold(Vec::new(), |mut bytes, map| {
-        bytes.extend(
-            map.encode()
-                .map_err(|error| RuntimeError::Native(error.to_string()))?,
-        );
-        Ok(bytes)
-    })
-}
-
-struct RuntimeMacroCaller;
-impl MacroCaller for RuntimeMacroCaller {
-    fn call_macro(
-        &mut self,
-        ctx: &mut ThreadContext,
-        runtime: &ObjectRuntime,
-        name: &ncl_compiler_front::SymbolRef,
-        form: Word,
-    ) -> Result<Word, ncl_compiler_front::FrontError> {
-        let package =
-            name.package_name()
-                .ok_or_else(|| ncl_compiler_front::FrontError::MacroExpansion {
-                    name: name.clone(),
-                    detail: "uninterned macro has no function cell".to_owned(),
-                })?;
-        let package_word = runtime.find_package(ctx, package).ok_or_else(|| {
-            ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: "macro package is not present".to_owned(),
-            }
-        })?;
-        let (symbol, _) = Package::from_word(package_word)
-            .intern(ctx, runtime, &name.name)
-            .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: error.to_string(),
-            })?;
-        let function = symbol_function(ctx, symbol).map_err(|error| {
-            ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: error.to_string(),
-            }
-        })?;
-        let function = FunctionObject::try_from(function).map_err(|error| {
-            ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: error.to_string(),
-            }
-        })?;
-        let form = if name.package_name() == Some("COMMON-LISP") {
-            let package = runtime.find_package(ctx, "COMMON-LISP").ok_or_else(|| {
-                ncl_compiler_front::FrontError::MacroExpansion {
-                    name: name.clone(),
-                    detail: "macro package is not present".to_owned(),
-                }
-            })?;
-            let (head, _) = Package::from_word(package)
-                .intern(ctx, runtime, &name.name)
-                .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
-                    name: name.clone(),
-                    detail: error.to_string(),
-                })?;
-            let tail =
-                cdr(ctx, form).map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
-                    name: name.clone(),
-                    detail: error.to_string(),
-                })?;
-            ncl_object::with_roots(ctx, &[head, tail], |ctx, roots| {
-                make_cons(
-                    ctx,
-                    runtime,
-                    **roots.first().ok_or(ObjectError::Layout)?,
-                    **roots.get(1).ok_or(ObjectError::Layout)?,
-                )
-            })
-            .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: error.to_string(),
-            })?
-        } else {
-            form
-        };
-        runtime
-            .call_builtin(ctx, function, &[form])
-            .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
-                name: name.clone(),
-                detail: error.to_string(),
-            })
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct NativeAbi<'a> {
-    object: &'a ObjectRuntime,
-    functions: &'a BTreeMap<u32, PublishedFunction>,
-}
-impl RuntimeAbi for NativeAbi<'_> {
-    fn builtin_address(&self, identifier: BuiltinIdentifier) -> Result<u64, AbiError> {
-        self.object
-            .builtin_address(identifier)
-            .ok_or(AbiError::MissingBuiltin(identifier))
-    }
-    fn field_offset(&self, field: ncl_codegen::ContextField) -> Result<i32, AbiError> {
-        let layout = thread_layout();
-        let offset = match field {
-            ncl_codegen::ContextField::TlabBump => layout.tlab_bump,
-            ncl_codegen::ContextField::TlabLimit => layout.tlab_limit,
-            ncl_codegen::ContextField::SafepointRequest => layout.safepoint_request,
-            ncl_codegen::ContextField::MultipleValueArea => layout.mv,
-            ncl_codegen::ContextField::Pending
-            | ncl_codegen::ContextField::MultipleValueCount
-            | ncl_codegen::ContextField::Handler
-            | ncl_codegen::ContextField::Cleanup
-            | ncl_codegen::ContextField::Catch => {
-                return Err(AbiError::UnsupportedContextField(field));
-            }
-        };
-        i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
-    }
-    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
-        match function {
-            RuntimeFunction::SafepointSlow => ncl_sys::function_address!(ncl_sys::native_safepoint)
-                .map_err(|error| RuntimeError::Native(error.to_string()))
-                .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
-            RuntimeFunction::AllocateSlow
-            | RuntimeFunction::Unwind
-            | RuntimeFunction::Builtin
-            | RuntimeFunction::ConstantTable => Err(AbiError::UnsupportedRuntimeFunction(function)),
-            RuntimeFunction::MakeClosure => ncl_sys::function_address!(native_make_closure)
-                .map_err(|error| RuntimeError::Native(error.to_string()))
-                .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
-            RuntimeFunction::EnterCatch
-            | RuntimeFunction::EnterUnwindProtect
-            | RuntimeFunction::EnterProgv
-            | RuntimeFunction::LeaveCatch
-            | RuntimeFunction::LeaveUnwindProtect
-            | RuntimeFunction::LeaveProgv => Err(AbiError::UnsupportedRuntimeFunction(function)),
-        }
-    }
-
-    fn constant_word_named(&self, name: ncl_codegen::ConstantName<'_>) -> Option<i64> {
-        let id = name
-            .as_str()
-            .strip_prefix("function-entry:")?
-            .parse()
-            .ok()?;
-        let function = self.functions.get(&id)?;
-        i64::try_from(function.entry).ok()
-    }
-}
-
-/// Construct the closure object used by generated `MakeClosure` operations.
-///
-/// The callback receives the stable system thread pointer rather than the
-/// object-layer context, so it uses the same low-level object layout and root
-/// protocol as the object constructors.
-extern "C" fn native_make_closure(
-    thread: NonNull<ncl_sys::Thread>,
-    entry: Word,
-    capture0: Word,
-    capture1: Word,
-    capture2: Word,
-) -> Word {
-    ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        let ctx = &mut *invocation.context;
-        let entry = match usize::try_from(entry.bits()) {
-            Ok(entry) => entry,
-            Err(_) => {
-                ctx.set_pending(ObjectError::Layout);
-                return Word::NIL;
-            }
-        };
-        match make_closure(
-            ctx,
-            invocation.object,
-            entry,
-            Word::NIL,
-            Word::NIL,
-            invocation.code,
-            &[capture0, capture1, capture2],
-        ) {
-            Ok(function) => function.as_word(),
-            Err(error) => {
-                ctx.set_pending(error);
-                Word::NIL
-            }
-        }
-    })
-    .unwrap_or(Word::NIL)
-}
-
-fn resolve_constant(
-    ctx: &mut ThreadContext,
-    runtime: &ObjectRuntime,
-    constant: &ncl_ir::Constant,
-    previous: &[Word],
-) -> Result<Word, RuntimeError> {
-    ncl_object::with_roots(
-        ctx,
-        previous,
-        |ctx, previous| -> Result<Word, ObjectError> {
-            let value = match constant {
-                ncl_ir::Constant::Fixnum(value) => Word::fixnum(*value),
-                ncl_ir::Constant::Character(value) => Word::character(*value),
-                ncl_ir::Constant::Nil => Word::NIL,
-                ncl_ir::Constant::T => Word::TRUE,
-                ncl_ir::Constant::Unbound => Word::UNBOUND,
-                ncl_ir::Constant::Object(index) => previous
-                    .get(index.0 as usize)
-                    .map(|value| **value)
-                    .ok_or(ObjectError::Layout)?,
-                ncl_ir::Constant::StringBytes(bytes) => {
-                    let text = std::str::from_utf8(bytes).map_err(|_| ObjectError::Layout)?;
-                    make_string(ctx, runtime, &text.chars().collect::<Vec<_>>())?
-                }
-                ncl_ir::Constant::DoubleFloat(value) => {
-                    make_double(ctx, runtime, *value)?.as_word()
-                }
-                ncl_ir::Constant::SingleFloat(value) => {
-                    make_double(ctx, runtime, f64::from(*value))?.as_word()
-                }
-                ncl_ir::Constant::Symbol { package, name } => {
-                    let package_word = runtime
-                        .find_package(ctx, package)
-                        .ok_or(ObjectError::Layout)?;
-                    Package::from_word(package_word)
-                        .intern(ctx, runtime, name)
-                        .map(|(symbol, _)| symbol)?
-                }
-                ncl_ir::Constant::FunctionEntry(_) => Word::NIL,
-            };
-            Ok(value)
-        },
-    )
-    .map_err(Into::into)
 }

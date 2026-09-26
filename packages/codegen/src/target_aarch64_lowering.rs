@@ -149,6 +149,7 @@ pub(super) fn lower_call(
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
     let Some((argc, arguments)) = args.split_first() else {
+        // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
         return Err(CodegenError::Unsupported(
             "calls require a tagged argc argument".into(),
         ));
@@ -451,4 +452,6 @@ fn lower_builtin(
 
 #[path = "target_aarch64_lowering/ops.rs"]
 pub(super) mod ops;
+#[path = "target_aarch64_lowering/primitives.rs"]
+pub(super) mod primitives;
 pub(super) use ops::{lower_op, move_args};

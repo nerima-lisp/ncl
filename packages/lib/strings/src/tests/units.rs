@@ -222,3 +222,26 @@ fn character_and_mutating_string_builtins_cover_boundaries() {
         Word::NIL
     );
 }
+
+#[test]
+fn string_allocations_survive_gc_stress_and_strict_forwarding() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let made = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-STRING",
+        &[Word::fixnum(4), Word::character('x' as u32)],
+    );
+    let mut made = made;
+    let token = ncl_object::push_root(&mut ctx, &mut made);
+    assert_eq!(ncl_object::string_length(&ctx, made), Ok(4));
+    assert_eq!(ncl_object::string_ref(&ctx, made, 0), Ok('x'));
+    assert!(ncl_object::pop_root(&mut ctx, token));
+}

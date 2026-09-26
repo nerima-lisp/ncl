@@ -122,3 +122,45 @@ fn string_index(args: &BuiltinArgs<'_>) -> Result<usize, ObjectError> {
     )
     .map_err(|_| ObjectError::TypeError)
 }
+
+fn keyword_name(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+    let ncl_object::ObjectRef::Symbol(symbol) = ncl_object::classify_object(ctx, value) else {
+        return Err(ObjectError::TypeError);
+    };
+    let name = ncl_object::symbol_name(ctx, symbol)?;
+    (0..ncl_object::string_length(ctx, name)?)
+        .map(|index| ncl_object::string_ref(ctx, name, index))
+        .collect()
+}
+
+fn string_range(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+    option_start: usize,
+    length: usize,
+    start_names: &[&str],
+    end_names: &[&str],
+) -> Result<(usize, usize), ObjectError> {
+    let mut start = 0;
+    let mut end = length;
+    let words = args.as_slice();
+    let mut index = option_start;
+    while index < words.len() {
+        let name = keyword_name(ctx, words[index])?;
+        let value = words.get(index + 1).ok_or(ObjectError::TypeError)?;
+        let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+            .map_err(|_| ObjectError::TypeError)?;
+        if start_names.contains(&name.as_str()) {
+            start = number;
+        } else if end_names.contains(&name.as_str()) {
+            end = number;
+        } else {
+            return Err(ObjectError::TypeError);
+        }
+        index += 2;
+    }
+    if start > end || end > length {
+        return Err(ObjectError::TypeError);
+    }
+    Ok((start, end))
+}

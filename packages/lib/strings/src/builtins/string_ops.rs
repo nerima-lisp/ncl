@@ -133,7 +133,8 @@ fn nstring_case_builtin(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let length = string_length(ctx, string)?;
-    for index in 0..length {
+    let (start, end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
+    for index in start..end {
         let mapped = map(string_ref(ctx, string, index)?);
         string_set(ctx, string, index, mapped)?;
     }
@@ -261,31 +262,5 @@ fn string_builtin(
             make_result_string(ctx, runtime, [character(value)?])
         }
         _ => Err(ObjectError::TypeError),
-    }
-}
-
-fn string_compare(
-    ctx: &ThreadContext,
-    args: &BuiltinArgs<'_>,
-    fold: bool,
-) -> Result<Vec<char>, ObjectError> {
-    let chars = string_chars(ctx, args.required(0)?)?;
-    if fold {
-        Ok(chars.into_iter().flat_map(char::to_lowercase).collect())
-    } else {
-        Ok(chars)
-    }
-}
-
-fn string_compare_word(
-    ctx: &ThreadContext,
-    value: Word,
-    fold: bool,
-) -> Result<Vec<char>, ObjectError> {
-    let chars = string_chars(ctx, value)?;
-    if fold {
-        Ok(chars.into_iter().flat_map(char::to_lowercase).collect())
-    } else {
-        Ok(chars)
     }
 }

@@ -47,6 +47,7 @@ pub(super) struct ValueSlots {
     allocation: Allocation,
     spill_base: u32,
     pub(super) outgoing_base: u32,
+    pub(super) incoming_args_base: Option<u32>,
 }
 
 impl ValueSlots {
@@ -129,6 +130,7 @@ pub(super) fn slots(
             allocation,
             spill_base,
             outgoing_base,
+            incoming_args_base: None,
         },
         local_words,
     )
@@ -406,6 +408,29 @@ fn lower_builtin(
             ));
         };
         emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+        if let Some(base) = slots.incoming_args_base {
+            for (index, register) in ARGUMENT_REGISTERS.into_iter().enumerate() {
+                emit(
+                    assembler,
+                    Inst::MovRM(
+                        register,
+                        slot_mem_of(
+                            base.checked_add(
+                                u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
+                            )
+                            .ok_or(CodegenError::FrameOverflow)?,
+                        )?,
+                    ),
+                )?;
+            }
+            emit(
+                assembler,
+                Inst::MovRM(
+                    REST_ARGUMENT,
+                    slot_mem_of(base.checked_add(4).ok_or(CodegenError::FrameOverflow)?)?,
+                ),
+            )?;
+        }
         for register in ARGUMENT_REGISTERS
             .into_iter()
             .chain(std::iter::once(REST_ARGUMENT))

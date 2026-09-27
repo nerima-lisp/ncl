@@ -71,6 +71,20 @@ fn add_map(
             );
         }
     }
+    if let Some(base) = allocation.incoming_args_base {
+        for offset in 0..5 {
+            live_slots.push(
+                4u16.checked_add(
+                    u16::try_from(
+                        base.checked_add(offset)
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+                )
+                .ok_or(CodegenError::FrameOverflow)?,
+            );
+        }
+    }
     live_slots.sort_unstable();
     live_slots.dedup();
     registers.sort_unstable();
@@ -144,8 +158,24 @@ pub fn compile_function_aarch64(
     };
     let mut allocation = crate::allocate(function, AllocationTarget::AArch64);
     let outgoing_words = outgoing_words(function)?;
-    allocation.outgoing_base = allocation.spill_words;
-    let frame = FrameLayout::new(0, allocation.spill_words, outgoing_words)?;
+    let generated_lambda = function
+        .params
+        .first()
+        .is_some_and(|parameter| parameter.name == "argc");
+    let incoming_words = if generated_lambda { 5 } else { 0 };
+    allocation.incoming_args_base = generated_lambda.then_some(allocation.spill_words);
+    allocation.outgoing_base = allocation
+        .spill_words
+        .checked_add(incoming_words)
+        .ok_or(CodegenError::FrameOverflow)?;
+    let frame = FrameLayout::new(
+        0,
+        allocation
+            .spill_words
+            .checked_add(incoming_words)
+            .ok_or(CodegenError::FrameOverflow)?,
+        outgoing_words,
+    )?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -222,6 +252,40 @@ pub fn compile_function_aarch64(
                     rn: RegOrSp::Sp,
                     rm: Reg(16),
                     shift: ncl_asm_aarch64::Shift::Lsl(0),
+                },
+            )?;
+        }
+    }
+    if let Some(base) = allocation.incoming_args_base {
+        let offset = base
+            .checked_add(1)
+            .and_then(|slot| slot.checked_mul(8))
+            .ok_or(CodegenError::FrameOverflow)?;
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(offset)) {
+            emit(&mut assembler, instruction)?;
+        }
+        emit(
+            &mut assembler,
+            Inst::Sub {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(29)),
+                rm: Reg(16),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            },
+        )?;
+        for (index, register) in [Reg(1), Reg(2), Reg(3), Reg(4), Reg(5)]
+            .into_iter()
+            .enumerate()
+        {
+            emit(
+                &mut assembler,
+                Inst::Str {
+                    rt: register,
+                    mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: i16::try_from(index.saturating_mul(8))
+                            .map_err(|_| CodegenError::FrameOverflow)?,
+                    },
                 },
             )?;
         }

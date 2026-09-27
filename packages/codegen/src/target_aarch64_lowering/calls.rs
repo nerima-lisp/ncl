@@ -19,7 +19,6 @@ pub(crate) fn lower_call(
         ));
     };
     load_value(assembler, allocation, callee, Reg(16))?;
-    primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
     load_value(assembler, allocation, *argc, Reg(0))?;
     let extra_count = rest.len().saturating_sub(4);
     if extra_count > 0 {
@@ -99,6 +98,7 @@ pub(crate) fn lower_call(
     } else {
         load_value(assembler, allocation, callee, Reg(16))?;
     }
+    primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
     Ok(())
 }
 

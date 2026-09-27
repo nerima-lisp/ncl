@@ -412,6 +412,40 @@ fn lower_builtin(
                 rn: RegOrSp::Reg(Reg(21)),
             },
         )?;
+        if let Some(base) = allocation.incoming_args_base {
+            let offset = base
+                .checked_add(1)
+                .and_then(|slot| slot.checked_mul(8))
+                .ok_or(CodegenError::FrameOverflow)?;
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(offset)) {
+                emit(assembler, instruction)?;
+            }
+            emit(
+                assembler,
+                Inst::Sub {
+                    rd: RegOrSp::Reg(Reg(16)),
+                    rn: RegOrSp::Reg(Reg(29)),
+                    rm: Reg(16),
+                    shift: Shift::Lsl(0),
+                },
+            )?;
+            for (index, register) in [Reg(1), Reg(2), Reg(3), Reg(4), Reg(5)]
+                .into_iter()
+                .enumerate()
+            {
+                emit(
+                    assembler,
+                    Inst::Ldr {
+                        rt: register,
+                        mem: MemOperand::Unscaled {
+                            base: RegOrSp::Reg(Reg(16)),
+                            offset: i16::try_from(index.saturating_mul(8))
+                                .map_err(|_| CodegenError::FrameOverflow)?,
+                        },
+                    },
+                )?;
+            }
+        }
         load_value(assembler, allocation, *argc_value, Reg(6))?;
         load_value(assembler, allocation, *start_value, Reg(7))?;
         for instruction in ncl_asm_aarch64::mov_imm64(
@@ -433,12 +467,12 @@ fn lower_builtin(
             rn: RegOrSp::Reg(Reg(21)),
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
-        emit(assembler, instruction)?;
-    }
     for (index, argument) in args.iter().enumerate() {
         let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
         load_value(assembler, allocation, *argument, register)?;
+    }
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
+        emit(assembler, instruction)?;
     }
     Ok(())
 }

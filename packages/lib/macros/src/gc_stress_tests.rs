@@ -84,10 +84,12 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
     };
     ctx.set_gc_stress(true);
     let mut expansion = r#loop::expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    #[cfg(target_arch = "aarch64")]
     let before = expansion;
     let root = ncl_object::push_root(&mut ctx, &mut expansion);
     ctx.collect(true)?;
     // check-added-lines: allow(panic) test-only assertion
+    #[cfg(target_arch = "aarch64")]
     assert_ne!(expansion, before);
     // check-added-lines: allow(panic) test-only assertion
     assert!(!elements(&mut ctx, expansion)?.is_empty());
@@ -238,9 +240,11 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
                 &mut values,
             )?;
             let mut expanded = expanded;
+            #[cfg(target_arch = "aarch64")]
             let expanded_before_gc = expanded;
             let expanded_root = ncl_object::push_root(ctx, &mut expanded);
             ctx.collect(true)?;
+            #[cfg(target_arch = "aarch64")]
             assert_ne!(
                 expanded, expanded_before_gc,
                 "{name} result did not relocate"

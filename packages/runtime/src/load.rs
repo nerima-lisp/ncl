@@ -81,17 +81,19 @@ fn eval_top_level_inner(
     let Some(name) = top_level_name(&runtime.context, *head)? else {
         return eval_rooted(runtime, options, form);
     };
-    let body_start = match name.as_str() {
-        "PROGN" => 0,
-        "LOCALLY" => leading_declarations(&mut runtime.context, arguments),
-        "EVAL-WHEN" => 1,
-        "MACROLET" | "SYMBOL-MACROLET" => {
-            if arguments.is_empty() {
-                return eval_rooted(runtime, options, form);
-            }
-            1 + leading_declarations(&mut runtime.context, &arguments[1..])
-        }
-        _ => return eval_rooted(runtime, options, form),
+    let body_start = if name == "PROGN" {
+        0
+    } else if name == "LOCALLY" {
+        leading_declarations(&mut runtime.context, arguments)
+    } else if name == "EVAL-WHEN" {
+        1
+    } else if name == "MACROLET" || name == "SYMBOL-MACROLET" {
+        let Some(rest) = arguments.get(1..) else {
+            return eval_rooted(runtime, options, form);
+        };
+        1 + leading_declarations(&mut runtime.context, rest)
+    } else {
+        return eval_rooted(runtime, options, form);
     };
     if body_start >= arguments.len() {
         return eval_rooted(runtime, options, form);
@@ -102,11 +104,17 @@ fn eval_top_level_inner(
     }
     let mut result = Word::NIL;
     let evaluated = (|| {
-        for body in &elements[1 + body_start..] {
+        let body_forms = elements
+            .get(1 + body_start..)
+            .ok_or_else(|| RuntimeError::Native("load: top-level body is missing".to_owned()))?;
+        for body in body_forms {
             let body_form = if name == "PROGN" {
                 *body
             } else {
-                wrap_top_level_form(runtime, &elements[..=body_start], *body)?
+                let prefix = elements.get(..=body_start).ok_or_else(|| {
+                    RuntimeError::Native("load: top-level prefix is missing".to_owned())
+                })?;
+                wrap_top_level_form(runtime, prefix, *body)?
             };
             result = if name == "PROGN" {
                 eval_top_level(runtime, options, body_form)?

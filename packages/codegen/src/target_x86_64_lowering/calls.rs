@@ -1,6 +1,6 @@
 use super::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    ValueSlots, emit, load_slot, slot_mem_of,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, ValueSlots, emit,
+    load_slot, slot_mem_of,
 };
 use crate::CodegenError;
 use ncl_asm_x86_64::{Assembler, Inst, Mem, Shift};
@@ -22,10 +22,6 @@ pub fn lower_call(
         ));
     };
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
-    emit(
-        assembler,
-        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
-    )?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     for (index, argument) in rest.iter().enumerate() {
@@ -48,7 +44,7 @@ pub fn lower_call(
                     ),
                 )?;
             }
-            load_slot(assembler, slots, *argument, ENTRY)?;
+            load_slot(assembler, slots, *argument, FUNCTION_OBJECT)?;
             emit(
                 assembler,
                 Inst::MovMR(
@@ -58,16 +54,12 @@ pub fn lower_call(
                             .checked_add(extra)
                             .ok_or(CodegenError::FrameOverflow)?,
                     )?,
-                    ENTRY,
+                    FUNCTION_OBJECT,
                 ),
             )?;
         }
     }
-    emit(
-        assembler,
-        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
-    )?;
-    emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
     Ok(())
 }
 
@@ -144,10 +136,6 @@ pub fn lower_closure_call(
             )?;
         }
     }
-    emit(
-        assembler,
-        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
-    )?;
     emit(
         assembler,
         Inst::MovRM(

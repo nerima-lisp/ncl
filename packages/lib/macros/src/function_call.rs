@@ -2,8 +2,8 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
-    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, function_name,
-    symbol_function, symbol_is_macro,
+    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, symbol_function,
+    symbol_is_macro,
 };
 
 const FUNCTION: Parameter = Parameter {
@@ -41,10 +41,7 @@ fn call_designator(
             });
         })?;
         match designator {
-            FunctionDesignator::Function(function) => {
-                let name = function_name(ctx, ncl_object::Function::from_word(function.as_word()))?;
-                FunctionObject::try_from(symbol_function(ctx, name)?).or(Ok(function))
-            }
+            FunctionDesignator::Function(function) => Ok(function),
             FunctionDesignator::Symbol(symbol) => {
                 if symbol_is_macro(ctx, symbol.into())? {
                     return Err(ObjectError::UndefinedFunction);
@@ -54,7 +51,7 @@ fn call_designator(
             }
         }
     }?;
-    if runtime.builtin_allows_nested_evaluation(resolved) {
+    if runtime.builtin_descriptor(resolved).is_some() {
         return runtime
             .call_builtin(ctx, resolved, arguments)
             .map_err(|error| {

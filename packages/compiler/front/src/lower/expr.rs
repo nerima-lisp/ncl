@@ -265,7 +265,20 @@ impl Context<'_> {
         designator: &FunctionDesignator,
     ) -> Result<ValueId, LowerError> {
         match designator {
-            FunctionDesignator::Name(name) => f.symbol(name),
+            FunctionDesignator::Name(name) => {
+                let symbol = f.symbol(name)?;
+                f.one(
+                    OpKind::LoadField {
+                        object: symbol,
+                        field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(
+                            |_| LowerError::Ir {
+                                detail: "function symbol offset does not fit u32".to_owned(),
+                            },
+                        )?,
+                    },
+                    Ty::Word,
+                )
+            }
             FunctionDesignator::Lambda(lambda) => self.lower_lambda_value(f, lambda),
         }
     }

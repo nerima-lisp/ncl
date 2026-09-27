@@ -1,6 +1,7 @@
 //! Evaluation, compilation, loading, and registration orchestration.
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
+mod builtin_trampoline;
 mod compile;
 #[cfg(test)]
 mod constant_tests;
@@ -132,11 +133,15 @@ impl Runtime {
         let object = ObjectRuntime::new()?;
         let mut context = ThreadContext::new();
         context.register(&object)?;
+        // Every builtin that `ncl_stdlib::register_all` is about to register
+        // needs a real native `ENTRY` the moment it is created, so the
+        // trampoline must be published and installed first.
+        let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
         ncl_stdlib::register_all(&mut context, &object)?;
         Ok(Self {
             object,
             context,
-            code: Vec::new(),
+            code: vec![builtin_trampoline],
             functions: BTreeMap::new(),
             entry_codes: BTreeMap::new(),
             rooted_functions: Vec::new(),

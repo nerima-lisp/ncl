@@ -19,6 +19,8 @@ ncl-object = { path = "../object" }
 ncl-printer = { path = "../printer" }
 ncl-reader = { path = "../reader" }
 ncl-sys = { path = "../sys" }
+ncl-asm-aarch64 = { path = "../asm/aarch64" }
+ncl-asm-x86-64 = { path = "../asm/x86-64" }
 
 [lints]
 workspace = true

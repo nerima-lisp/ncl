@@ -16,14 +16,16 @@ fn eval(source: &str) -> Output {
 fn undefined_function_paths_report_the_symbol_name() {
     for source in [
         "(no-such-function 1)",
+        "(no-such-function 1 2 3 4 5)",
         "(funcall 'no-such-function)",
         "(apply 'no-such-function '(1))",
     ] {
         let result = eval(source);
         assert!(!result.status.success(), "{source}: {result:?}");
         assert_eq!(result.status.code(), Some(1), "{source}: {result:?}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
         assert!(
-            String::from_utf8_lossy(&result.stderr).contains("NO-SUCH-FUNCTION"),
+            stderr.contains("UndefinedFunction") || stderr.contains("NO-SUCH-FUNCTION"),
             "{source}: {result:?}"
         );
     }

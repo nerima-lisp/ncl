@@ -93,7 +93,11 @@ pub fn lower_closure_call(
             assembler,
             // check-added-lines: allow(unbound)
             RETURN_VALUE,
-            i64::from_ne_bytes(ncl_sys::Word::from_bits(0xffff_ffff_ffff_fff9).bits().to_ne_bytes()),
+            i64::from_ne_bytes(
+                ncl_sys::Word::from_bits(0xffff_ffff_ffff_fff9)
+                    .bits()
+                    .to_ne_bytes(),
+            ),
         )?;
         emit(assembler, Inst::CmpRR(ENTRY, RETURN_VALUE))?;
         let normal = assembler.new_label();

@@ -2,9 +2,9 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Package, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, set_symbol_special, string_length, string_ref,
-    symbol_name,
+    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, set_symbol_special, slot_ref,
+    string_length, string_ref, symbol_name,
 };
 
 use crate::class::{HIERARCHY, install_class, wire_superclass};
@@ -58,6 +58,10 @@ fn register_condition_builtins(
         ("SIGNAL", BuiltinImplementation::direct(one, signal_builtin)),
         ("ERROR", BuiltinImplementation::direct(one, error_builtin)),
         ("WARN", BuiltinImplementation::direct(one, warn_builtin)),
+        (
+            "CELL-ERROR-NAME",
+            BuiltinImplementation::direct(one, cell_error_name_builtin),
+        ),
     ] {
         runtime.register_builtin(
             ctx,
@@ -80,6 +84,15 @@ fn register_condition_builtins(
         BuiltinImplementation::direct(one, pop_handler_builtin),
     )?;
     Ok(())
+}
+
+fn cell_error_name_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    slot_ref(ctx, Instance::from_word(args.required(0)?), 0)
 }
 
 const fn condition_object_error(error: crate::ConditionError) -> ObjectError {

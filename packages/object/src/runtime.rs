@@ -11,7 +11,10 @@ use crate::{
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+
+#[path = "generic_entry.rs"]
+mod generic_entry;
 
 /// Shared runtime heap and registries.
 #[derive(Debug)]
@@ -28,9 +31,6 @@ pub struct Runtime {
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
     pub(crate) place_expanders: Mutex<crate::place::PlaceExpanders>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
-    /// Native entry shared by every builtin that has no ISA-specific fast
-    /// path. Zero means "not installed yet"; see
-    /// [`Runtime::install_generic_builtin_entry`].
     generic_builtin_entry: AtomicUsize,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
@@ -159,53 +159,6 @@ impl Runtime {
         context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
-    }
-
-    /// Return the native entry shared by builtins with no ISA-specific fast
-    /// path, or `0` before [`Runtime::install_generic_builtin_entry`] runs.
-    pub(crate) fn generic_builtin_entry(&self) -> usize {
-        self.generic_builtin_entry.load(Ordering::Relaxed)
-    }
-
-    /// Install the shared native trampoline used as the default `ENTRY` for
-    /// builtins registered without an ISA-specific fast path (see
-    /// [`crate::BuiltinImplementation::with_entry`]).
-    ///
-    /// A caller above this layer (which alone knows how to publish executable
-    /// code and reach back into the running `ThreadContext`/`Runtime` pair
-    /// from native code) builds the trampoline and calls this once, early in
-    /// its own construction. Builtins registered *before* this call — today,
-    /// only [`Runtime::register_keyword_builtins`]'s own bootstrap registrations
-    /// — already baked the unset `0` sentinel into their function object, so
-    /// this also patches those objects' `ENTRY` slot in place.
-    ///
-    /// # Errors
-    /// Returns an allocation or layout error while patching an
-    /// already-registered builtin's `ENTRY` slot.
-    pub fn install_generic_builtin_entry(
-        &self,
-        ctx: &mut ThreadContext,
-        address: usize,
-    ) -> Result<(), ObjectError> {
-        self.generic_builtin_entry.store(address, Ordering::Relaxed);
-        let pending: Vec<Word> = self
-            .builtins
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
-            .filter(|entry| entry.implementation.entry == 0)
-            .map(|entry| *entry.function)
-            .collect();
-        let entry_word = crate::object_access::fix(address)?;
-        for function_word in pending {
-            crate::object_access::put(
-                ctx,
-                function_word,
-                crate::function_offset::ENTRY,
-                entry_word,
-            )?;
-        }
-        Ok(())
     }
 
     /// Register the compiler's keyword-argument helper builtins.

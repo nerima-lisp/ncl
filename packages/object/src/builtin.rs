@@ -469,15 +469,7 @@ impl Runtime {
     }
 }
 impl BuiltinImplementation {
-    /// `entry` starts at the `0` sentinel, which `Runtime::register_builtin`
-    /// resolves to the shared generic native trampoline (see
-    /// [`Runtime::install_generic_builtin_entry`]). A raw Rust `fn` pointer
-    /// is never a usable native `ENTRY`: compiled Lisp code calls `ENTRY`
-    /// using the native Lisp calling convention (tagged argc, register
-    /// arguments, pinned function-object/thread-context registers), which
-    /// does not match the safe-Rust-boundary ABI of [`RustBuiltin`]. Use
-    /// [`Self::with_entry`] to install a real ISA-specific native entry
-    /// (for example `native_cons`/`native_add`) when one exists.
+    /// A zero entry is resolved to the runtime's generic native trampoline.
     #[must_use]
     pub fn direct(descriptor: Builtin, function: RustBuiltin) -> Self {
         Self {

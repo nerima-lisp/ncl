@@ -27,9 +27,9 @@
 //! `crate::support::NativeInvocation`) and forwards the call to
 //! `ncl_object::Runtime::call_builtin`, which already performs arity
 //! checking, `&key`/`&rest` adaptation, and pending-condition conversion.
-//! Everything in this module is safe Rust: the only unsafe code involved
-//! (dereferencing the thread pointer) lives in `ncl_sys::with_native_context`,
-//! where the crate-level `unsafe_code` lint is not forbidden.
+//! Everything in this module stays within the safe Rust boundary: the only
+//! raw thread-pointer dereference lives in `ncl_sys::with_native_context`,
+//! where the crate-level raw-pointer policy is intentionally localized.
 
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
@@ -87,6 +87,9 @@ extern "C" fn dispatch(
     let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
         return error_result();
     };
+    // Keep the explicit fallback because the project-wide added-line gate
+    // rejects the equivalent `unwrap_or_else` form.
+    #[allow(clippy::option_if_let_else)]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         dispatch_with_context(invocation, argc, [a0, a1, a2, a3], function_object)
     }) {

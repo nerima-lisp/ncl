@@ -372,10 +372,13 @@ fn make_string_builtin(
             .ok_or(ObjectError::TypeError)?,
     )
     .map_err(|_| ObjectError::TypeError)?;
-    let initial = args
-        .get(1)
-        .map_or(Ok(' '), character)
-        .map_err(|_| ObjectError::TypeError)?;
+    let initial = match args.len() {
+        1 => ' ',
+        3 if keyword_name(ctx, args.required(1)?).is_ok_and(|name| name == "INITIAL-ELEMENT") => {
+            character(args.required(2)?).map_err(|_| ObjectError::TypeError)?
+        }
+        _ => return Err(ObjectError::TypeError),
+    };
     make_result_string(ctx, runtime, std::iter::repeat_n(initial, size))
 }
 

@@ -6,6 +6,17 @@ The compiled hash/array matrix has 53 normal cases and 3 explicit XFAIL cases.
 Each XFAIL must exit with status 1 and retain stderr for the listed substring
 assertion.
 
+## macros
+
+`tests/e2emacro.rs` asserts compiled results for the working control macros and
+keeps the currently failing loop, binding, iteration, multiple-value, and
+structure paths as explicit XFAILs. The observed failures are native IR
+verification errors (`pass inline-direct-calls failed`) for loop and generated
+iteration control flow, front-end macro-expansion errors for unsupported
+destructuring/multiple-value/defstruct paths, and `UnsupportedLiteral` for the
+loop maximize probe. These are retained with their stderr and exit status in
+the test rather than being silently omitted.
+
 | builtin | source | expected exit | stderr substring | cause |
 | --- | --- | ---: | --- | --- |
 | `VECTOR-PUSH-EXTEND` | `(vector-push-extend 7 (make-array 0 :fill-pointer 0 :adjustable t))` | 1 | `AArch64 calls support at most four register arguments` | `packages/codegen/src/target_aarch64_lowering.rs:160-163`: AArch64 call lowering is unimplemented beyond four register arguments |

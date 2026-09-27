@@ -35,55 +35,73 @@ pub fn make_class(
     slots: Word,
     kind: Word,
 ) -> Result<Word, ObjectError> {
-    with_roots(
-        ctx,
-        &[name, direct_superclasses, slots, kind],
-        |ctx, rooted| {
-            let mut effective = Vec::new();
-            if *rooted[1] != Word::NIL {
-                let inherited = class_effective_slots(ctx, *rooted[1])?;
-                for slot in inherited {
-                    let slot_name = slot_key(ctx, slot)?;
-                    let mut found = false;
-                    for candidate in &effective {
-                        if slot_key(ctx, *candidate)? == slot_name {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        effective.push(slot);
-                    }
+    let mut scope = ncl_object::Scope::new(ctx);
+    let rooted = scope.root_many::<Word>(
+        &[name, direct_superclasses, slots, kind]
+            .into_iter()
+            .map(ncl_object::Local::<Word>::from_word)
+            .collect::<Vec<_>>(),
+    );
+    let mut effective = Vec::new();
+    let mut rooted_iter = rooted.iter().copied();
+    let name_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
+    let superclass_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
+    let slots_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
+    let kind_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
+
+    if scope.get(superclass_handle).as_word() != Word::NIL {
+        let inherited = class_effective_slots(scope.context(), scope.get(superclass_handle).as_word())?;
+        for slot in inherited {
+            let inherited_slot_handle: ncl_object::Handle<'_, Word> =
+                scope.root(ncl_object::Local::from_word(slot));
+            let slot_name =
+                slot_key(scope.context(), scope.get(inherited_slot_handle).as_word())?;
+            let mut found = false;
+            for candidate in &effective {
+                if slot_key(scope.context(), scope.get(*candidate).as_word())? == slot_name {
+                    found = true;
+                    break;
                 }
             }
-            if *rooted[2] != Word::NIL {
-                for index in 0..simple_vector_length(ctx, *rooted[2])? {
-                    let slot = simple_vector_ref(ctx, *rooted[2], index)?;
-                    let key = slot_key(ctx, slot)?;
-                    let mut retained = Vec::with_capacity(effective.len());
-                    for candidate in effective {
-                        if slot_key(ctx, candidate)? != key {
-                            retained.push(candidate);
-                        }
-                    }
-                    effective = retained;
-                    effective.push(slot);
+            if !found {
+                effective.push(inherited_slot_handle);
+            }
+        }
+    }
+    if scope.get(slots_handle).as_word() != Word::NIL {
+        let slots_word = scope.get(slots_handle).as_word();
+        for index in 0..simple_vector_length(scope.context(), slots_word)? {
+            let slot = simple_vector_ref(scope.context(), slots_word, index)?;
+            let direct_slot_handle: ncl_object::Handle<'_, Word> =
+                scope.root(ncl_object::Local::from_word(slot));
+            let key = slot_key(scope.context(), scope.get(direct_slot_handle).as_word())?;
+            let mut retained = Vec::with_capacity(effective.len());
+            for candidate in effective {
+                if slot_key(scope.context(), scope.get(candidate).as_word())? != key {
+                    retained.push(candidate);
                 }
             }
-            let effective_slots = make_simple_vector(ctx, runtime, &effective)?;
-            make_simple_vector(
-                ctx,
-                runtime,
-                &[
-                    *rooted[0],
-                    *rooted[1],
-                    *rooted[2],
-                    *rooted[3],
-                    effective_slots,
-                ],
-            )
-        },
-    )
+            effective = retained;
+            effective.push(direct_slot_handle);
+        }
+    }
+
+    let effective_values = effective
+        .iter()
+        .map(|handle| ncl_object::Local::from_word(scope.get(*handle).as_word()))
+        .collect::<Vec<_>>();
+    let effective_handles = scope.root_many(&effective_values);
+    let effective_slots = scope.make_simple_vector(runtime, &effective_handles)?;
+    let class_values = [name_handle, superclass_handle, slots_handle, kind_handle]
+        .into_iter()
+    .map(|handle| ncl_object::Local::from_word(scope.get(handle).as_word()))
+    .chain(std::iter::once(ncl_object::Local::from_word(
+        scope.get(effective_slots).as_word(),
+    )))
+    .collect::<Vec<_>>();
+    let class_handles = scope.root_many(&class_values);
+    let class = scope.make_simple_vector(runtime, &class_handles)?;
+    Ok(scope.get(class).as_word())
 }
 
 fn slot_key(ctx: &ThreadContext, slot: Word) -> Result<Word, ObjectError> {
@@ -194,7 +212,25 @@ pub fn make_instance(
     class: Word,
     slots: &[Word],
 ) -> Result<Word, ObjectError> {
-    Ok(allocate_instance(ctx, runtime, class, slots)?.as_word())
+    let mut scope = ncl_object::Scope::new(ctx);
+    let class: ncl_object::Handle<'_, Word> =
+        scope.root(ncl_object::Local::from_word(class));
+    let rooted_slots = scope.root_many(
+        &slots
+            .iter()
+            .copied()
+            .map(ncl_object::Local::<Word>::from_word)
+            .collect::<Vec<_>>(),
+    );
+    let slot_words = rooted_slots
+        .iter()
+        .map(|handle| scope.get(*handle).as_word())
+        .collect::<Vec<_>>();
+    let class_word = scope.get(class).as_word();
+    let instance = allocate_instance(scope.context_mut(), runtime, class_word, &slot_words)?;
+    let instance: ncl_object::Handle<'_, Word> =
+        scope.root(ncl_object::Local::from_word(instance.as_word()));
+    Ok(scope.get(instance).as_word())
 }
 
 const fn typed_error(ctx: &mut ThreadContext, error: ncl_object::LispError) -> ObjectError {

@@ -128,12 +128,20 @@ impl<'a> FormExpander<'a> {
             let step = self.expand_step(current);
             match step {
                 Ok(Step::Done(expr)) => {
-                    let _ = ncl_object::pop_root(self.ctx, token);
+                    if !ncl_object::pop_root(self.ctx, token) {
+                        return Err(FrontError::Object(
+                            ncl_object::ObjectError::RootStackCorrupted,
+                        ));
+                    }
                     return Ok(expr);
                 }
                 Ok(Step::Retry { name, form }) => {
                     if remaining == 0 {
-                        let _ = ncl_object::pop_root(self.ctx, token);
+                        if !ncl_object::pop_root(self.ctx, token) {
+                            return Err(FrontError::Object(
+                                ncl_object::ObjectError::RootStackCorrupted,
+                            ));
+                        }
                         return Err(FrontError::MacroExpansion {
                             name,
                             detail: "expansion limit exceeded".to_owned(),
@@ -143,7 +151,11 @@ impl<'a> FormExpander<'a> {
                     current = form;
                 }
                 Err(error) => {
-                    let _ = ncl_object::pop_root(self.ctx, token);
+                    if !ncl_object::pop_root(self.ctx, token) {
+                        return Err(FrontError::Object(
+                            ncl_object::ObjectError::RootStackCorrupted,
+                        ));
+                    }
                     return Err(error);
                 }
             }

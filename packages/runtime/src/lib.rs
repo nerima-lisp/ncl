@@ -193,7 +193,9 @@ impl Runtime {
     }
     fn compile_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         let registry = MacroRegistry::new();
-        let mut caller = RuntimeMacroCaller;
+        let mut caller = RuntimeMacroCaller {
+            entry_codes: &self.entry_codes,
+        };
         let mut expander = FormExpander::new(&mut self.context, &self.object, &registry);
         expander.set_caller(&mut caller);
         let expr = expander.expand(form)?;

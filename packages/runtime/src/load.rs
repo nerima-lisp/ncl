@@ -113,6 +113,7 @@ fn load_with_runtime(
             | RuntimeError::Read(_)
             | RuntimeError::Front(_)
             | RuntimeError::Lower(_)
+            | RuntimeError::UndefinedFunction { .. }
             | RuntimeError::NativeFailure { .. },
         ) => {
             ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));

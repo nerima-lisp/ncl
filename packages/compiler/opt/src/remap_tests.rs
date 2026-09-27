@@ -67,6 +67,7 @@ fn remap_helpers_cover_ir_shapes() {
         OpKind::CallClosure {
             closure: ValueId(0),
             args: vec![ValueId(0)],
+            named_symbol: None,
         },
         OpKind::SetMultipleValues {
             values: vec![ValueId(0)],

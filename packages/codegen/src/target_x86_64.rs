@@ -14,9 +14,11 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
                     args.len().saturating_sub(1)
                 }
-                OpKind::CallClosure { closure, args } => closure_capture_count(function, *closure)?
-                    .unwrap_or(0)
-                    .saturating_add(args.len().saturating_sub(1)),
+                OpKind::CallClosure { closure, args, .. } => {
+                    closure_capture_count(function, *closure)?
+                        .unwrap_or(0)
+                        .saturating_add(args.len().saturating_sub(1))
+                }
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
                 | OpKind::Load { .. }

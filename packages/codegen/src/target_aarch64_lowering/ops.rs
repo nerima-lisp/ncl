@@ -423,18 +423,30 @@ pub fn move_args(
             .ok_or(CodegenError::FrameOverflow)?;
         let temporary_bytes =
             u16::try_from(temporary_bytes).map_err(|_| CodegenError::FrameOverflow)?;
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(temporary_bytes)) {
-            emit(assembler, instruction)?;
+        if temporary_bytes <= 4095 {
+            emit(
+                assembler,
+                Inst::SubImm {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    imm: temporary_bytes,
+                    shift: false,
+                },
+            )?;
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(temporary_bytes)) {
+                emit(assembler, instruction)?;
+            }
+            emit(
+                assembler,
+                Inst::Sub {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    rm: Reg(16),
+                    shift: ncl_asm_aarch64::Shift::Lsl(0),
+                },
+            )?;
         }
-        emit(
-            assembler,
-            Inst::Sub {
-                rd: RegOrSp::Sp,
-                rn: RegOrSp::Sp,
-                rm: Reg(16),
-                shift: ncl_asm_aarch64::Shift::Lsl(0),
-            },
-        )?;
         for (index, (argument, _)) in moves.iter().enumerate() {
             load_value(assembler, allocation, *argument, Reg(16))?;
             let offset =

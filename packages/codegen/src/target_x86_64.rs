@@ -80,6 +80,18 @@ fn add_map(
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
     let (registers, mut live_slots) = values.roots(position);
+    if let Some(base) = values.incoming_args_base {
+        for offset in 0..5 {
+            live_slots.push(
+                u16::try_from(
+                    base.checked_add(offset)
+                        .and_then(|slot| slot.checked_add(4))
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )
+                .map_err(|_| CodegenError::FrameOverflow)?,
+            );
+        }
+    }
     if flags & FLAG_CALL != 0 {
         let outgoing_base = values.outgoing_base();
         for offset in 0..frame.outgoing_words {
@@ -177,6 +189,11 @@ pub fn compile_function_x86_64(
     };
     let argument_words =
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
+    let generated_lambda = function
+        .params
+        .first()
+        .is_some_and(|parameter| parameter.name == "argc");
+    let extra_frame_words = if generated_lambda { 5 } else { 0 };
     let allocation = allocate(function, AllocationTarget::X86_64);
     let spill_words = allocation.spill_words;
     let (mut value_slots, local_words) = slots(function, argument_words, allocation, 0);
@@ -184,11 +201,13 @@ pub fn compile_function_x86_64(
     value_slots.outgoing_base = argument_words
         .checked_add(local_words)
         .and_then(|words| words.checked_add(spill_words))
+        .and_then(|words| words.checked_add(extra_frame_words))
         .ok_or(CodegenError::FrameOverflow)?;
     let frame = FrameLayout::new(
         argument_words,
         local_words
             .checked_add(spill_words)
+            .and_then(|words| words.checked_add(extra_frame_words))
             .ok_or(CodegenError::FrameOverflow)?,
         outgoing_words,
     )?;
@@ -220,11 +239,36 @@ pub fn compile_function_x86_64(
             Inst::BinRI(BinOp::Sub, Reg::Rsp, body_bytes.cast_signed()),
         )?;
     }
-    let generated_lambda = function
-        .params
-        .first()
-        .is_some_and(|parameter| parameter.name == "argc");
+    let incoming_args_base = generated_lambda.then(|| {
+        argument_words
+            .saturating_add(local_words)
+            .saturating_add(spill_words)
+    });
+    value_slots.incoming_args_base = incoming_args_base;
     spill_arguments(&mut assembler, argument_words, generated_lambda)?;
+    if let Some(base) = incoming_args_base {
+        for (index, register) in lowering::ARGUMENT_REGISTERS.into_iter().enumerate() {
+            emit(
+                &mut assembler,
+                Inst::MovMR(
+                    lowering::slot_mem_of(
+                        base.checked_add(
+                            u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
+                        )
+                        .ok_or(CodegenError::FrameOverflow)?,
+                    )?,
+                    register,
+                ),
+            )?;
+        }
+        emit(
+            &mut assembler,
+            Inst::MovMR(
+                lowering::slot_mem_of(base.checked_add(4).ok_or(CodegenError::FrameOverflow)?)?,
+                lowering::REST_ARGUMENT,
+            ),
+        )?;
+    }
     for (index, parameter) in function
         .blocks
         .first()

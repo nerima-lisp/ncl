@@ -30,6 +30,43 @@ pub(super) fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand
     })
 }
 
+pub(super) fn lower_set_multiple_values(
+    assembler: &mut Assembler,
+    values: &[ValueId],
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    let count = u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
+        emit(assembler, instruction)?;
+    }
+    if let (Some(first), Some(result)) = (values.first(), result) {
+        load_value(assembler, allocation, *first, Reg(16))?;
+        store_value(assembler, allocation, result, Reg(16))?;
+    }
+    for (index, value) in values.iter().copied().enumerate() {
+        load_value(assembler, allocation, value, Reg(16))?;
+        emit(
+            assembler,
+            Inst::Str {
+                rt: Reg(16),
+                mem: mv_area_mem(
+                    abi,
+                    i32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
+                )?,
+            },
+        )?;
+    }
+    emit(
+        assembler,
+        Inst::Str {
+            rt: Reg(1),
+            mem: context_mem(abi, ContextField::MultipleValueCount)?,
+        },
+    )
+}
+
 /// Handler regions covering `block`, innermost first.
 ///
 /// A region's `protected` block list always includes every block of any

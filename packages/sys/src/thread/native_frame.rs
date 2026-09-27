@@ -51,6 +51,8 @@ impl Thread {
         self.frame_chain = snapshot;
         self.stack_bounds = None;
         self.frame_registers = registers.into_iter().map(Word::from_bits).collect();
+        // The collector can forward frame_registers, but it cannot rewrite the
+        // CPU registers saved by the callback ABI, so keep these values pinned.
         self.callee_saved = registers;
         let Ok(return_pc) = u64::try_from(return_pc) else {
             self.frame_snapshot_failed = true;

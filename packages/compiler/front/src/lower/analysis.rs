@@ -62,8 +62,23 @@ fn mentions_return_from(expr: &Expr, name: &SymbolRef) -> bool {
                     .iter()
                     .any(|form| mentions_return_from(form, name))
         }
-        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
-        _ => false,
+        Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Lambda(_)
+        | Expr::Function(_)
+        | Expr::If { .. }
+        | Expr::Block { .. }
+        | Expr::Tagbody(_)
+        | Expr::Go { .. }
+        | Expr::Throw { .. }
+        | Expr::Setq(_)
+        | Expr::MultipleValueCall { .. }
+        | Expr::MultipleValueProg1 { .. }
+        | Expr::The { .. }
+        | Expr::EvalWhen { .. }
+        | Expr::LoadTimeValue { .. }
+        | Expr::Flet { .. }
+        | Expr::Labels { .. } => false,
     }
 }
 
@@ -107,8 +122,23 @@ fn has_unwind_protect(expr: &Expr) -> bool {
         Expr::Function(FunctionDesignator::Lambda(lambda)) => {
             lambda.body.iter().any(has_unwind_protect)
         }
-        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
-        _ => false,
+        Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Function(FunctionDesignator::Name(_))
+        | Expr::If { .. }
+        | Expr::Block { .. }
+        | Expr::ReturnFrom { .. }
+        | Expr::Tagbody(_)
+        | Expr::Go { .. }
+        | Expr::Throw { .. }
+        | Expr::Setq(_)
+        | Expr::MultipleValueCall { .. }
+        | Expr::MultipleValueProg1 { .. }
+        | Expr::The { .. }
+        | Expr::EvalWhen { .. }
+        | Expr::LoadTimeValue { .. }
+        | Expr::Flet { .. }
+        | Expr::Labels { .. } => false,
     }
 }
 
@@ -138,8 +168,26 @@ fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::SymbolMacrolet { body: forms, .. } => {
             forms.iter().any(|form| nested_return(form, name))
         }
-        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
-        _ => false,
+        Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Function(_)
+        | Expr::If { .. }
+        | Expr::Block { .. }
+        | Expr::ReturnFrom { .. }
+        | Expr::Tagbody(_)
+        | Expr::Go { .. }
+        | Expr::Catch { .. }
+        | Expr::Throw { .. }
+        | Expr::UnwindProtect { .. }
+        | Expr::Progv { .. }
+        | Expr::Setq(_)
+        | Expr::MultipleValueCall { .. }
+        | Expr::MultipleValueProg1 { .. }
+        | Expr::The { .. }
+        | Expr::EvalWhen { .. }
+        | Expr::LoadTimeValue { .. }
+        | Expr::Flet { .. }
+        | Expr::Labels { .. } => false,
     }
 }
 

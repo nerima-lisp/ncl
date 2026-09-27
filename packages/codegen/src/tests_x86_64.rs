@@ -217,12 +217,12 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), S
         Err(error) => return Err(format!("tail-call lowering: {error:?}")),
     };
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0;
-    // mov [rbp+24], r11; sub rsp, 32
+    // mov [rbp+24], r11; sub rsp, 64
     assert_eq!(
         compiled.code[0..23],
         [
             0x55, 0x48, 0x89, 0xe5, 0x4c, 0x89, 0x55, 0x10, 0x49, 0xc7, 0xc3, 0x00, 0x00, 0x00,
-            0x00, 0x4c, 0x89, 0x5d, 0x18, 0x48, 0x83, 0xec, 0x20,
+            0x00, 0x4c, 0x89, 0x5d, 0x18, 0x48, 0x83, 0xec, 0x40,
         ]
     );
     // mov rsp, rbp; pop rbp; mov rax, [rsp]; mov [rsp-16], rax;

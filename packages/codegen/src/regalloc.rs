@@ -171,9 +171,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             .iter()
             .map(|(_, register)| *register)
             .collect::<BTreeSet<_>>();
-        let location = if interval.crosses_handler
-            || (interval.crosses_call && target == AllocationTarget::AArch64)
-        {
+        let location = if interval.crosses_handler || interval.crosses_call {
             let slot = next_spill;
             next_spill = next_spill.saturating_add(1);
             Location::Spill(slot)
@@ -227,7 +225,7 @@ impl Location {
 
 const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
     match target {
-        AllocationTarget::X86_64 => &[10, 11, 12, 13],
+        AllocationTarget::X86_64 => &[12, 13, 14],
         AllocationTarget::AArch64 => &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     }
 }

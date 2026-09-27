@@ -5,7 +5,7 @@ use crate::{AllocationTarget, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
-fn x86_64_lowering_uses_allocator_register_roots() {
+fn x86_64_lowering_spills_allocator_values_across_safepoints() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),
         "allocated-root",
@@ -28,10 +28,16 @@ fn x86_64_lowering_uses_allocator_register_roots() {
     );
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert!(allocation.locations.iter().all(|(_, location)| {
+        matches!(
+            location,
+            crate::Location::Spill(_) | crate::Location::Register(12..=14)
+        )
+    }));
     let Some(expected) = allocation.safepoint_registers.get(&1) else {
         unreachable!("allocator safepoint roots");
     };
-    assert!(!expected.is_empty());
+    assert!(expected.is_empty());
     let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("{error:?}"),

@@ -26,6 +26,7 @@ pub struct NativeInvocation<'a> {
 pub struct NativeAbi<'a> {
     pub(crate) object: &'a ObjectRuntime,
     pub(crate) functions: &'a BTreeMap<u32, PublishedFunction>,
+    pub(crate) undefined_function_stub: usize,
 }
 
 impl RuntimeAbi for NativeAbi<'_> {
@@ -93,6 +94,10 @@ impl RuntimeAbi for NativeAbi<'_> {
             | RuntimeFunction::Unwind
             | RuntimeFunction::Builtin
             | RuntimeFunction::ConstantTable => Err(AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::UndefinedFunction => {
+                Ok(u64::try_from(self.undefined_function_stub)
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))?)
+            }
         }
     }
 
@@ -213,6 +218,12 @@ fn call_macro_function(
         let _restored_context = replace_native_context(thread, previous);
         if ctx.thread_mut().take_native_error().is_some() {
             return Err(ObjectError::Layout);
+        }
+        if let Some(error) = ctx.take_pending_lisp_error()
+            && let Some(converter) = runtime.lisp_error_converter()
+        {
+            let condition = converter(ctx, runtime, error)?;
+            ctx.set_pending_condition(condition);
         }
         if let Some(error) = ctx.take_pending() {
             return Err(error);

@@ -1,5 +1,5 @@
 use super::{emit, load_value, primitives};
-use crate::{Allocation, CodegenError};
+use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::ValueId;
 
@@ -115,7 +115,12 @@ pub(crate) fn lower_closure_call(
     closure: ValueId,
     args: &[ValueId],
     allocation: &Allocation,
+    named_symbol: Option<ValueId>,
+    abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
+    if let Some(symbol) = named_symbol {
+        return lower_named_global_call(assembler, closure, symbol, args, allocation, abi);
+    }
     lower_call(assembler, closure, args, allocation)?;
     emit(
         assembler,
@@ -129,4 +134,89 @@ pub(crate) fn lower_closure_call(
         },
     )?;
     primitives::decode_function_entry(assembler, Reg(17))
+}
+
+fn lower_named_global_call(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    symbol: ValueId,
+    args: &[ValueId],
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    let Some((argc, rest)) = args.split_first() else {
+        return Err(CodegenError::Unsupported(
+            "closure calls require a tagged argc argument".into(),
+        ));
+    };
+    if rest.len() > 4 {
+        return Err(CodegenError::Unsupported(
+            "AArch64 calls support at most four register arguments".into(),
+        ));
+    }
+    load_value(assembler, allocation, symbol, Reg(16))?;
+    load_value(assembler, allocation, closure, Reg(17))?;
+    load_value(assembler, allocation, *argc, Reg(0))?;
+    for (index, argument) in rest.iter().enumerate() {
+        load_value(
+            assembler,
+            allocation,
+            *argument,
+            Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+        )?;
+    }
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(5), ncl_sys::Word::UNBOUND.bits()) {
+        emit(assembler, instruction)?;
+    }
+    emit(
+        assembler,
+        Inst::Cmp {
+            rn: Reg(17),
+            rm: Reg(5),
+            shift: ncl_asm_aarch64::Shift::Lsl(0),
+        },
+    )?;
+    let normal = assembler.new_label();
+    let call = assembler.new_label();
+    emit(
+        assembler,
+        Inst::BCond {
+            cond: ncl_asm_aarch64::Cond::Ne,
+            label: normal,
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(
+        Reg(17),
+        abi.runtime_address(RuntimeFunction::UndefinedFunction)
+            .map_err(|error| CodegenError::Unsupported(error.to_string()))?,
+    ) {
+        emit(assembler, instruction)?;
+    }
+    emit(assembler, Inst::B { label: call })?;
+    assembler
+        .bind(normal)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(16)),
+            rn: RegOrSp::Reg(Reg(17)),
+        },
+    )?;
+    primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(17)),
+                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+            },
+        },
+    )?;
+    primitives::decode_function_entry(assembler, Reg(17))?;
+    assembler
+        .bind(call)
+        .map_err(|error| CodegenError::Encode(error.to_string()))
 }

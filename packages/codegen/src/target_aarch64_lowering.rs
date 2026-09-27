@@ -157,11 +157,6 @@ pub(super) fn lower_call(
             "calls require a tagged argc argument".into(),
         ));
     };
-    if rest.len() > 4 {
-        return Err(CodegenError::Unsupported(
-            "AArch64 calls support at most four register arguments".into(),
-        ));
-    }
     load_value(assembler, allocation, callee, Reg(16))?;
     emit(
         assembler,
@@ -180,8 +175,41 @@ pub(super) fn lower_call(
     )?;
     load_value(assembler, allocation, *argc, Reg(0))?;
     for (index, argument) in rest.iter().enumerate() {
-        let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
-        load_value(assembler, allocation, *argument, register)?;
+        if index < 4 {
+            let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
+            load_value(assembler, allocation, *argument, register)?;
+        } else {
+            if index == 4 {
+                emit(
+                    assembler,
+                    Inst::SubImm {
+                        rd: RegOrSp::Reg(Reg(5)),
+                        rn: RegOrSp::Reg(Reg(29)),
+                        imm: u16::try_from(
+                            allocation
+                                .outgoing_base
+                                .checked_add(1)
+                                .and_then(|slot| slot.checked_mul(8))
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )
+                        .map_err(|_| CodegenError::FrameOverflow)?,
+                        shift: false,
+                    },
+                )?;
+            }
+            load_value(assembler, allocation, *argument, Reg(16))?;
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(5)),
+                        offset: i16::try_from((index - 4).saturating_mul(8))
+                            .map_err(|_| CodegenError::FrameOverflow)?,
+                    },
+                },
+            )?;
+        }
     }
     Ok(())
 }

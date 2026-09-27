@@ -141,7 +141,23 @@ fn dispatch_with_context(
         };
         call_words.extend(rest_words);
     }
-    let result = object.call_builtin(context, function, &call_words);
+    let mut rooted_function = function.as_word();
+    let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
+    let argument_tokens = call_words
+        .iter_mut()
+        .map(|word| ncl_object::push_heap_root(object, word))
+        .collect::<Vec<_>>();
+    let result = FunctionObject::try_from(rooted_function)
+        .and_then(|function| object.call_builtin(context, function, &call_words));
+    let arguments_popped = argument_tokens
+        .into_iter()
+        .rev()
+        .all(|token| ncl_object::pop_heap_root(object, token));
+    let function_popped = ncl_object::pop_heap_root(object, function_token);
+    if !arguments_popped || !function_popped {
+        context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
+        return error_result();
+    }
     match result {
         Ok(value) => ok_result(value, context.values().len()),
         Err(error) => {
@@ -220,10 +236,23 @@ extern "C" fn make_rest_list_native(
                         .map_err(|_| ncl_object::ObjectError::Layout)?;
                     arguments.extend(rest_words);
                 }
-                let result =
-                    ncl_object::with_rooted_slice(context, &arguments, |context, rooted| {
-                        object.call_builtin(context, function, rooted)
-                    });
+                let mut rooted_function = function.as_word();
+                let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
+                let argument_tokens = arguments
+                    .iter_mut()
+                    .map(|word| ncl_object::push_heap_root(object, word))
+                    .collect::<Vec<_>>();
+                let result = FunctionObject::try_from(rooted_function)
+                    .and_then(|function| object.call_builtin(context, function, &arguments));
+                let arguments_popped = argument_tokens
+                    .into_iter()
+                    .rev()
+                    .all(|token| ncl_object::pop_heap_root(object, token));
+                let function_popped = ncl_object::pop_heap_root(object, function_token);
+                if !arguments_popped || !function_popped {
+                    context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
+                    return Ok(Word::NIL.bits());
+                }
                 Ok(match result {
                     Ok(value) => value.bits(),
                     Err(error) => {

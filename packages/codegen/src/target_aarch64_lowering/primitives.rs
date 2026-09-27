@@ -3,6 +3,43 @@ use crate::{Allocation, CodegenError};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Function, OpKind, Prim, ValueId};
 
+pub(super) fn load_callable_address(
+    assembler: &mut Assembler,
+    source: Reg,
+    destination: Reg,
+) -> Result<(), CodegenError> {
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(destination),
+            rn: RegOrSp::Reg(source),
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: destination,
+            rn: destination,
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )
+}
+
+pub(super) fn decode_function_entry(
+    assembler: &mut Assembler,
+    register: Reg,
+) -> Result<(), CodegenError> {
+    emit(
+        assembler,
+        Inst::AsrImm {
+            rd: register,
+            rn: register,
+            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
+                .map_err(|_| CodegenError::FrameOverflow)?,
+        },
+    )
+}
+
 fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
     function
         .blocks
@@ -62,21 +99,7 @@ pub(super) fn lower_closure_call(
         ));
     };
     load_value(assembler, allocation, closure, Reg(16))?;
-    emit(
-        assembler,
-        Inst::Mov {
-            rd: RegOrSp::Reg(Reg(17)),
-            rn: RegOrSp::Reg(Reg(16)),
-        },
-    )?;
-    emit(
-        assembler,
-        Inst::AndImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            imm: !ncl_sys::LOWTAG_MASK,
-        },
-    )?;
+    load_callable_address(assembler, Reg(16), Reg(17))?;
     load_value(assembler, allocation, *argc, Reg(0))?;
     for (index, _) in captures.iter().enumerate() {
         let offset = ncl_object::function_offset::CAPTURES
@@ -194,15 +217,7 @@ pub(super) fn lower_closure_call(
             },
         },
     )?;
-    emit(
-        assembler,
-        Inst::AsrImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
-                .map_err(|_| CodegenError::FrameOverflow)?,
-        },
-    )
+    decode_function_entry(assembler, Reg(17))
 }
 
 #[allow(clippy::too_many_lines)]

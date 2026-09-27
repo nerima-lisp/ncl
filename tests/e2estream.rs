@@ -11,6 +11,7 @@ struct Case {
 struct XFail {
     builtin: &'static str,
     source: &'static str,
+    stdout: &'static str,
     stderr: &'static str,
 }
 
@@ -191,46 +192,55 @@ const XFAILS: &[XFail] = &[
     XFail {
         builtin: "FRESH-LINE",
         source: "(let ((s (make-string-output-stream))) (fresh-line s))",
+        stdout: "",
         stderr: "ncl: object error: TypeError",
     },
     XFail {
         builtin: "WRITE-STRING",
         source: "(let ((s (make-string-output-stream))) (write-string \"abc\" s :start 1 :end 2))",
+        stdout: "",
         stderr: "AArch64 calls support at most four register arguments",
     },
     XFail {
         builtin: "MAKE-STRING-INPUT-STREAM",
         source: "(let ((s (make-string-input-stream \"abc\" :start 1 :end 2))) (read-char s))",
+        stdout: "",
         stderr: "AArch64 calls support at most four register arguments",
     },
     XFail {
         builtin: "WITH-OUTPUT-TO-STRING",
         source: "(with-output-to-string (s) (write-string \"x\" s))",
+        stdout: "",
         stderr: "MacroExpansion",
     },
     XFail {
         builtin: "WITH-INPUT-FROM-STRING",
         source: "(with-input-from-string (s \"x\") (read-char s))",
+        stdout: "",
         stderr: "MacroExpansion",
     },
     XFail {
         builtin: "PRINC",
         source: "(princ \"x\")",
+        stdout: "",
         stderr: "undefined function UNDEFINED-FUNCTION: PRINC",
     },
     XFail {
         builtin: "PRIN1",
         source: "(prin1 \"x\")",
+        stdout: "",
         stderr: "undefined function UNDEFINED-FUNCTION: PRIN1",
     },
     XFail {
         builtin: "PRINT",
         source: "(print \"x\")",
+        stdout: "",
         stderr: "undefined function UNDEFINED-FUNCTION: PRINT",
     },
     XFail {
         builtin: "FORMAT",
         source: "(format nil \"~a/~s/~d~%~&\" \"x\" \"y\" 12)",
+        stdout: "",
         stderr: "undefined function UNDEFINED-FUNCTION: FORMAT",
     },
 ];
@@ -299,6 +309,12 @@ fn known_stream_failures_keep_exit_status_and_stderr() {
     for case in XFAILS {
         let output = run(case.source);
         assert_eq!(output.status.code(), Some(1), "{}", case.builtin);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            case.stdout,
+            "{}: stdout",
+            case.builtin
+        );
         assert!(
             String::from_utf8_lossy(&output.stderr).contains(case.stderr),
             "{}: {:?}",

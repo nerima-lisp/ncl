@@ -409,8 +409,12 @@ impl Runtime {
                     .collect::<Vec<_>>(),
             )?;
             let code = make_code_object(ctx, self, 0, 0, Word::NIL, Word::NIL, Word::NIL)?;
-            let function =
-                make_simple_fun(ctx, self, implementation.entry, *symbol, lambda_list, code)?;
+            let entry = if implementation.entry == 0 {
+                self.generic_builtin_entry()
+            } else {
+                implementation.entry
+            };
+            let function = make_simple_fun(ctx, self, entry, *symbol, lambda_list, code)?;
             let mut function_word = function.as_word();
             with_root(ctx, &mut function_word, |ctx, function_word| {
                 ctx.write_object_slot(
@@ -432,7 +436,7 @@ impl Runtime {
                 self.builtin_addresses
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(identifier, implementation.entry);
+                    .insert(identifier, entry);
                 FunctionObject::try_from(*function_word)
             })
         })
@@ -465,20 +469,30 @@ impl Runtime {
     }
 }
 impl BuiltinImplementation {
+    /// `entry` starts at the `0` sentinel, which `Runtime::register_builtin`
+    /// resolves to the shared generic native trampoline (see
+    /// [`Runtime::install_generic_builtin_entry`]). A raw Rust `fn` pointer
+    /// is never a usable native `ENTRY`: compiled Lisp code calls `ENTRY`
+    /// using the native Lisp calling convention (tagged argc, register
+    /// arguments, pinned function-object/thread-context registers), which
+    /// does not match the safe-Rust-boundary ABI of [`RustBuiltin`]. Use
+    /// [`Self::with_entry`] to install a real ISA-specific native entry
+    /// (for example `native_cons`/`native_add`) when one exists.
     #[must_use]
     pub fn direct(descriptor: Builtin, function: RustBuiltin) -> Self {
         Self {
             descriptor,
-            entry: function as usize,
+            entry: 0,
             function,
             keyword_adapter: None,
         }
     }
+    /// See [`Self::direct`] for the `entry` sentinel's meaning.
     #[must_use]
     pub fn adapted(descriptor: Builtin, function: RustBuiltin, adapter: KeywordAdapter) -> Self {
         Self {
             descriptor,
-            entry: function as usize,
+            entry: 0,
             function,
             keyword_adapter: Some(adapter),
         }

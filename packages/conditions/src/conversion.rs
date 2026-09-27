@@ -80,6 +80,20 @@ pub fn condition_from_lisp_error(
     if let LispError::TypeError { datum, expected } = error {
         return type_error_condition(ctx, runtime, datum, expected);
     }
+    if let LispError::CellError(CellError::UndefinedFunction { name }) = error {
+        let mut name = name;
+        let token = push_root(ctx, &mut name);
+        let result = make_typed_condition(
+            ctx,
+            runtime,
+            ConditionIdentifier::UndefinedFunction,
+            &words(&[name]),
+        )
+        .map(ConditionRecord::as_word)
+        .map_err(object_error);
+        pop_root(ctx, token);
+        return result;
+    }
     let (identifier, slots) = match error {
         LispError::TypeError { datum, expected } => (
             ConditionIdentifier::TypeError,

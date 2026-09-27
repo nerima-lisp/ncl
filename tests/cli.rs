@@ -109,6 +109,33 @@ fn eval_load_script_and_repl_use_runtime() {
 }
 
 #[test]
+fn common_lisp_load_is_a_callable_builtin() {
+    let path = std::env::temp_dir().join(format!("ncl-load-builtin-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(&path, "41") {
+        panic!("source file creation failed: {error}");
+    }
+    let path = path_str(&path);
+
+    let top_level = output(ncl().args(["--eval", &format!("(load \"{path}\")")]));
+    assert!(top_level.status.success(), "{top_level:?}");
+    assert_eq!(String::from_utf8_lossy(&top_level.stdout).trim(), "41");
+
+    let local = output(ncl().args([
+        "--eval",
+        &format!("(progn (defun read-file (p) (load p)) (read-file \"{path}\"))"),
+    ]));
+    assert!(local.status.success(), "{local:?}");
+    assert_eq!(String::from_utf8_lossy(&local.stdout).trim(), "41");
+
+    let missing = output(ncl().args([
+        "--eval",
+        "(load \"ncl-file-that-does-not-exist\" :if-does-not-exist nil)",
+    ]));
+    assert!(missing.status.success(), "{missing:?}");
+    assert_eq!(String::from_utf8_lossy(&missing.stdout).trim(), "NIL");
+}
+
+#[test]
 fn repl_continues_forms_and_errors() {
     let mut repl = match ncl()
         .stdin(Stdio::piped())

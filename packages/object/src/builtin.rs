@@ -350,6 +350,8 @@ pub struct BuiltinImplementation {
     pub entry: usize,
     pub function: RustBuiltin,
     pub keyword_adapter: Option<KeywordAdapter>,
+    /// This builtin may invoke the evaluator recursively.
+    pub nested_evaluation: bool,
 }
 
 #[derive(Debug)]
@@ -466,34 +468,5 @@ impl Runtime {
             .iter()
             .find(|entry| *entry.function == function_word)
             .map(|entry| entry.implementation.descriptor)
-    }
-}
-impl BuiltinImplementation {
-    /// `entry` starts at the `0` sentinel: a raw [`RustBuiltin`] pointer is
-    /// never a usable native `ENTRY`, so `register_builtin` resolves `0` to
-    /// the shared trampoline; use [`Self::with_entry`] for a real one.
-    #[must_use]
-    pub fn direct(descriptor: Builtin, function: RustBuiltin) -> Self {
-        Self {
-            descriptor,
-            entry: 0,
-            function,
-            keyword_adapter: None,
-        }
-    }
-    /// See [`Self::direct`] for the `entry` sentinel.
-    #[must_use]
-    pub fn adapted(descriptor: Builtin, function: RustBuiltin, adapter: KeywordAdapter) -> Self {
-        Self {
-            descriptor,
-            entry: 0,
-            function,
-            keyword_adapter: Some(adapter),
-        }
-    }
-    /// Override the native entry address while keeping the safe Rust callback.
-    #[must_use]
-    pub const fn with_entry(self, entry: usize) -> Self {
-        Self { entry, ..self }
     }
 }

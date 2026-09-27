@@ -17,6 +17,7 @@ pub struct ThreadContext {
     pub(crate) cleanup: Option<usize>,
     pub(crate) catch: Option<usize>,
     pub(crate) gc_stress: bool,
+    evaluator_runtime: Option<std::ptr::NonNull<()>>,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -35,7 +36,23 @@ impl ThreadContext {
             cleanup: None,
             catch: None,
             gc_stress: false,
+            evaluator_runtime: None,
         }
+    }
+
+    /// Associate this context with its owning evaluator for the duration of an evaluation.
+    pub const fn set_evaluator_runtime(&mut self, runtime: *mut ()) {
+        self.evaluator_runtime = std::ptr::NonNull::new(runtime);
+    }
+
+    /// Clear the evaluator association after an outer evaluation returns.
+    pub const fn clear_evaluator_runtime(&mut self) {
+        self.evaluator_runtime = None;
+    }
+
+    #[must_use]
+    pub const fn evaluator_runtime(&self) -> Option<std::ptr::NonNull<()>> {
+        self.evaluator_runtime
     }
     /// Register this context with a runtime.
     ///

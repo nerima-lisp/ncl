@@ -34,6 +34,7 @@ pub struct Runtime {
     /// path. Zero means "not installed yet"; see
     /// [`Runtime::install_generic_builtin_entry`].
     generic_builtin_entry: AtomicUsize,
+    load_port: Mutex<Option<std::sync::Arc<dyn crate::LoadPort>>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
@@ -92,6 +93,7 @@ impl Runtime {
             place_expanders: Mutex::new(crate::place::PlaceExpanders::default()),
             lisp_error_converter: Mutex::new(None),
             generic_builtin_entry: AtomicUsize::new(0),
+            load_port: Mutex::new(None),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -112,6 +114,49 @@ impl Runtime {
         context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
+    }
+
+    /// Install the evaluator service used by the Common Lisp `LOAD` builtin.
+    pub fn set_load_port(&self, port: Box<dyn crate::LoadPort>) {
+        *self
+            .load_port
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(port.into());
+    }
+
+    /// Dispatch a load request to the installed evaluator service.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Unsupported` when no evaluator service is installed.
+    pub fn load_port(
+        &self,
+        ctx: &mut ThreadContext,
+        args: &crate::BuiltinArgs<'_>,
+        values: &mut crate::MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let port = self
+            .load_port
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .cloned()
+            .ok_or(ObjectError::Unsupported)?;
+        port.load(ctx, self, args, values)
+    }
+
+    /// Return whether a registered builtin may recursively evaluate forms.
+    #[must_use]
+    pub fn builtin_allows_nested_evaluation(&self, function: crate::FunctionObject) -> bool {
+        let Some(function_word) = self.heap.forwarded_word(function.as_word()) else {
+            return false;
+        };
+        self.builtins
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .find(|entry| *entry.function == function_word)
+            .is_some_and(|entry| entry.implementation.nested_evaluation)
     }
 
     /// Return the native entry shared by builtins with no ISA-specific fast

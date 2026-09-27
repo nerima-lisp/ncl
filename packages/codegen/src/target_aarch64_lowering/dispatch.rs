@@ -76,6 +76,7 @@ pub(super) fn emit_epilogue(
     abi: &dyn RuntimeAbi,
     body_bytes: u32,
     values: &[ValueId],
+    preserve_mv_count: bool,
 ) -> Result<(), CodegenError> {
     if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
         return Err(CodegenError::MultipleValueAreaOverflow {
@@ -105,7 +106,7 @@ pub(super) fn emit_epilogue(
     for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
         emit(assembler, instruction)?;
     }
-    if !values.is_empty() {
+    if !preserve_mv_count {
         emit(
             assembler,
             Inst::Str {
@@ -250,7 +251,7 @@ pub fn lower_return_or_throw(
         },
     )?;
     try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
-    emit_epilogue(assembler, allocation, abi, body_bytes, &[])?;
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
@@ -260,6 +261,7 @@ pub fn lower_return_or_throw(
         abi,
         body_bytes,
         values.unwrap_or(&[]),
+        false,
     )
 }
 
@@ -283,6 +285,10 @@ pub fn lower_pending_check(
     body_bytes: u32,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
+    let cleanup_block = function
+        .handler_regions
+        .iter()
+        .any(|region| region.cleanup == Some(block));
     let normal = assembler.new_label();
     emit(
         assembler,
@@ -298,8 +304,10 @@ pub fn lower_pending_check(
             label: normal,
         },
     )?;
-    try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
-    emit_epilogue(assembler, allocation, abi, body_bytes, &[])?;
+    if !cleanup_block {
+        try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
+    }
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))

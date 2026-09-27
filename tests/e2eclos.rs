@@ -82,16 +82,6 @@ fn compiled_clos_baseline_asserts_ansi_output() {
 fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
     let cases = [
         XFail {
-            name: "defgeneric",
-            source: "(defgeneric area (object))",
-            stderr: "MacroExpansion",
-        },
-        XFail {
-            name: "defmethod",
-            source: "(defmethod area ((object integer)) object)",
-            stderr: "MacroExpansion",
-        },
-        XFail {
             name: "call-next-method",
             source: "(call-next-method)",
             stderr: "UNDEFINED-FUNCTION",
@@ -127,6 +117,18 @@ fn compiled_clos_class_and_instance_paths_are_available() {
         ),
         (
             "(progn (defclass point () ((x :initarg :x) (y :initarg :y :initform 0))) (slot-value (make-instance 'point :x 3) 'y))",
+            "0",
+        ),
+        (
+            "(progn (defclass point () ((x :initarg :x :accessor px) (y :initarg :y :initform 0 :accessor py))) (px (make-instance 'point :x 3)))",
+            "3",
+        ),
+        (
+            "(progn (defclass point () ((x :initarg :x :accessor px) (y :initarg :y :initform 0 :accessor py))) (defclass colored (point) ()) (typep (make-instance 'colored :x 3) 'point))",
+            "T",
+        ),
+        (
+            "(progn (defclass point () ((x :initarg :x :accessor px) (y :initarg :y :initform 0 :accessor py))) (defclass colored (point) ()) (defgeneric area (s)) (defmethod area ((s point)) (* (px s) (py s))) (area (make-instance 'colored :x 3)))",
             "0",
         ),
     ];

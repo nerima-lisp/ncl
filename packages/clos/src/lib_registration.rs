@@ -33,7 +33,7 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 9] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 10] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
@@ -42,6 +42,7 @@ const DIRECT_BUILTINS: [DirectBuiltin; 9] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-MAKUNBOUND"), arity: BuiltinArity::Two, callback: slot_makunbound_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
     DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
 ];
 
@@ -71,12 +72,15 @@ fn builtin_manifest() -> Vec<Registration> {
         lambda_list: LambdaList::with_rest(&[MACRO_FORM], MACRO_ENV),
         convention: ncl_object::BuiltinConvention::Adapted,
     };
-    registrations.push(Registration {
-        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("DEFCLASS")),
-        implementation: BuiltinImplementation::adapted(macro_builtin, defclass_macro_builtin, |args| {
+    let macro_registration = |name, callback| Registration {
+        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+        implementation: BuiltinImplementation::adapted(macro_builtin, callback, |args| {
             Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
         }),
-    });
+    };
+    registrations.push(macro_registration("DEFCLASS", defclass_macro_builtin));
+    registrations.push(macro_registration("DEFGENERIC", defgeneric_macro_builtin));
+    registrations.push(macro_registration("DEFMETHOD", defmethod_macro_builtin));
     registrations
 }
 

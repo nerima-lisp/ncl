@@ -381,6 +381,37 @@ fn class_of_builtin(
     class_of(ctx, runtime, args.required(0)?)
 }
 
+fn class_is_subclass(
+    ctx: &ThreadContext,
+    actual: Word,
+    expected: Word,
+) -> Result<bool, ObjectError> {
+    if actual == expected {
+        return Ok(true);
+    }
+    let superclass = simple_vector_ref(ctx, actual, CLASS_DIRECT_SUPERCLASS)?;
+    if superclass == Word::NIL {
+        return Ok(false);
+    }
+    class_is_subclass(ctx, superclass, expected)
+}
+
+pub(crate) fn typep_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let expected = class_designator(ctx, runtime, args.required(1)?)?;
+    let actual = class_of(ctx, runtime, object)?;
+    Ok(if class_is_subclass(ctx, actual, expected)? {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
 fn class_name_builtin(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,

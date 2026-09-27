@@ -30,6 +30,7 @@ impl Context<'_> {
         f.env().bind_block(BlockEntry {
             name: name.clone(),
             target: exit,
+            active_depth: self.active_len(),
         });
         let value = self.lower_body(f, body)?;
         f.env().pop();
@@ -112,6 +113,9 @@ impl Context<'_> {
                 None => f.nil()?,
             };
             if !f.is_terminated() {
+                self.close_active_since(f, entry.active_depth)?;
+            }
+            if !f.is_terminated() {
                 f.terminate(Terminator::Jump {
                     target: entry.target,
                     args: vec![value],
@@ -158,10 +162,12 @@ impl Context<'_> {
             }
         }
         f.position(start)?;
+        let tag_depth = self.active_len();
         for (name, target) in &targets {
             f.env().bind_tag(TagEntry {
                 name: name.clone(),
                 target: *target,
+                active_depth: tag_depth,
             });
         }
         let mark = self.targets.len();
@@ -209,12 +215,15 @@ impl Context<'_> {
     }
 
     pub(super) fn lower_go(
-        &self,
+        &mut self,
         f: &mut FunctionLowerer,
         tag: &SymbolRef,
     ) -> Result<ValueId, LowerError> {
         if let Some(entry) = f.env().lookup_tag(tag) {
             let value = f.nil()?;
+            if !f.is_terminated() {
+                self.close_active_since(f, entry.active_depth)?;
+            }
             if !f.is_terminated() {
                 f.terminate(Terminator::Jump {
                     target: entry.target,

@@ -62,6 +62,8 @@ pub enum CodegenError {
     UnknownValue(ncl_ir::ValueId),
     /// The target encoder rejected an instruction.
     Encode(String),
+    /// The runtime ABI could not provide a requested layout or address.
+    Abi(String),
     /// Frame layout arithmetic overflowed.
     FrameOverflow,
     /// An IR operation refers to a constant-table entry that cannot be indexed.
@@ -91,6 +93,7 @@ impl core::fmt::Display for CodegenError {
             Self::UnknownBlock(id) => write!(f, "unknown block {id}"),
             Self::UnknownValue(id) => write!(f, "unknown value {id}"),
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
+            Self::Abi(message) => write!(f, "runtime ABI error: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
             Self::InvalidConstantIndex { index, length } => {
                 write!(

@@ -18,7 +18,7 @@ use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction}
 fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
     let base = abi
         .field_offset(ContextField::MultipleValueArea)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
+        .map_err(|error| CodegenError::Abi(error.to_string()))?;
     let byte_offset = index
         .checked_mul(8)
         .and_then(|delta| base.checked_add(delta))

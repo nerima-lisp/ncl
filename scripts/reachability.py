@@ -84,9 +84,11 @@ def scan_crate(src_root: Path):
             target = (resolve_dir / rel).resolve()
             path_attr_mods.add(m.end())
             if not target.exists():
-                matches = list(resolve_dir.rglob(rel))
-                if len(matches) == 1:
-                    target = matches[0]
+                candidates = [
+                    resolve_dir / current.stem / rel,
+                    resolve_dir / current.stem / "tests" / rel,
+                ]
+                target = next((candidate for candidate in candidates if candidate.exists()), target)
             stack.append((target, target.parent, False, True))
 
         # For plain `mod NAME;` not preceded by a #[path] attribute,
@@ -154,8 +156,23 @@ def self_test():
         )
         (src_root / "live.rs").write_text("", encoding="utf-8")
         (src_root / "piece.rs").write_text("", encoding="utf-8")
+        (src_root / "thread.rs").write_text(
+            '#[path = "thread/tests/coverage.rs"]\nmod coverage;\n', encoding="utf-8"
+        )
+        (src_root / "thread" / "tests").mkdir(parents=True)
+        (src_root / "thread" / "tests" / "coverage.rs").write_text(
+            "", encoding="utf-8"
+        )
         (src_root / "orphan.rs").write_text("", encoding="utf-8")
+        (src_root / "lib.rs").write_text(
+            'mod r#live;\nmod thread;\nconst ITEMS: &[&str] = &[include!("piece.rs"),];\n',
+            encoding="utf-8",
+        )
         reached, all_rs = scan_crate(src_root)
+        if (src_root / "piece.rs").resolve() not in reached:
+            raise AssertionError("comma-terminated include was not reached")
+        if (src_root / "thread" / "tests" / "coverage.rs").resolve() not in reached:
+            raise AssertionError("path module fixture was not reached")
         if not all_rs - reached:
             raise AssertionError("orphan fixture was not detected")
 

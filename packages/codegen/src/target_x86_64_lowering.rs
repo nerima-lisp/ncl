@@ -46,7 +46,6 @@ pub(super) struct ValueSlots {
     values: Vec<(ValueId, u32)>,
     allocation: Allocation,
     spill_base: u32,
-    pub(super) outgoing_base: u32,
 }
 
 impl ValueSlots {
@@ -100,7 +99,6 @@ pub(super) fn slots(
     function: &Function,
     argument_words: u32,
     allocation: Allocation,
-    outgoing_base: u32,
 ) -> (ValueSlots, u32) {
     let mut result = Vec::new();
     let mut next = argument_words;
@@ -123,7 +121,6 @@ pub(super) fn slots(
             values: result,
             allocation,
             spill_base,
-            outgoing_base,
         },
         local_words,
     )
@@ -379,7 +376,6 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
     Ok(call_pc)
 }
 
-#[allow(clippy::similar_names)]
 fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,
@@ -391,40 +387,6 @@ fn lower_builtin(
         return Err(CodegenError::Unsupported(
             "x86-64 builtins support at most four arguments".into(),
         ));
-    }
-    if name == "make-rest-list" {
-        // check-added-lines: allow(index) intentional
-        let [argc_value, start_value] = args else {
-            // check-added-lines: allow(unsupported) intentional
-            return Err(CodegenError::Unsupported(
-                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) intentional
-            ));
-        };
-        emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-        for register in ARGUMENT_REGISTERS
-            .into_iter()
-            .chain(std::iter::once(REST_ARGUMENT))
-        {
-            emit(assembler, Inst::MovRR(register, register))?;
-        }
-        load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
-        load_slot(assembler, slots, *start_value, RETURN_VALUE)?;
-        emit(
-            assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, -16), FUNCTION_OBJECT),
-        )?;
-        emit(
-            assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, -8), RETURN_VALUE),
-        )?;
-        load_immediate(
-            assembler,
-            ENTRY,
-            abi.builtin_address(common_lisp_builtin(name))
-                .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI address lookup failure.
-                .cast_signed(),
-        )?;
-        return Ok(());
     }
     let address = abi
         .builtin_address(common_lisp_builtin(name))

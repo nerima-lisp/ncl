@@ -46,7 +46,7 @@ fn multiple_value_call_list(
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
-pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+pub(super) fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(

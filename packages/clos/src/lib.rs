@@ -111,7 +111,7 @@ fn class_designator(
         let name = symbol_name_string(ctx, value)?;
         return runtime
             .class(ctx, &name)
-            // check-added-lines: allow(unbound)
+            // check-added-lines: allow(unbound) class placeholder
             .filter(|class| *class != Word::UNBOUND)
             .ok_or(ObjectError::TypeError);
     }
@@ -154,28 +154,28 @@ fn defclass_macro_builtin(
         let fields = form_elements(ctx, slot_form)?;
         let slot_name = *fields.first().ok_or(ObjectError::TypeError)?;
         let mut initarg = Word::NIL;
-        // check-added-lines: allow(unbound)
+        // check-added-lines: allow(unbound) sentinel initialization
         let mut initform = Word::UNBOUND;
         let mut index = 1;
         while index + 1 < fields.len() {
-            // check-added-lines: allow(index)
+            // check-added-lines: allow(index) slot specification
             let key = fields[index];
             let key_name = symbol_name_string(ctx, key)?;
             if key_name == ":INITARG" || key_name == "INITARG" {
-                // check-added-lines: allow(index)
+                // check-added-lines: allow(index) slot specification
                 initarg = fields[index + 1];
             }
             if key_name == ":INITFORM" || key_name == "INITFORM" {
-                // check-added-lines: allow(index)
+                // check-added-lines: allow(index) slot specification
                 initform = fields[index + 1];
             }
             if (key_name == ":ACCESSOR"
                 || key_name == "ACCESSOR"
                 || key_name == ":READER"
-                || key_name == "READER")
+                || key_name == "READER") // check-added-lines: allow(index) slot specification
                 && fields[index + 1] != Word::NIL
-            // check-added-lines: allow(index)
             {
+                // check-added-lines: allow(index) slot specification
                 accessors.push((fields[index + 1], slot_name));
             }
             index += 2;

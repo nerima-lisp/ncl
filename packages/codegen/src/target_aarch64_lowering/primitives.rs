@@ -148,7 +148,7 @@ pub(super) fn lower_closure_call(
                 Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
             load_value(assembler, allocation, *argument, register)?;
         } else {
-            if register_index == 5 && captures.len() < 4 {
+            if register_index == 5 {
                 emit(
                     assembler,
                     Inst::SubImm {

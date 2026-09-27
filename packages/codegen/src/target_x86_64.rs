@@ -10,8 +10,8 @@ use ncl_ir::{Function, OpKind, Terminator};
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate, load_slot, lower_call,
-    lower_op, move_args, slots, store_return_values,
+    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call, lower_op,
+    lower_pending_check, lower_return_or_throw, move_args, slots,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -204,6 +204,23 @@ pub fn compile_function_x86_64(
                     position,
                     FLAG_CALL,
                 )?;
+                if matches!(
+                    op.kind,
+                    OpKind::Call { .. }
+                        | OpKind::CallIndirect { .. }
+                        | OpKind::MakeClosure { .. }
+                        | OpKind::CallClosure { .. }
+                        | OpKind::Builtin { .. }
+                ) {
+                    lower_pending_check(
+                        &mut assembler,
+                        function,
+                        block.id,
+                        &value_slots,
+                        abi,
+                        &labels,
+                    )?;
+                }
             }
             position = position.saturating_add(1);
         }
@@ -299,22 +316,15 @@ pub fn compile_function_x86_64(
                 }
             }
             Terminator::Return { values } => {
-                store_return_values(&mut assembler, &value_slots, values, abi)?;
-                if let Some(value) = values.first() {
-                    load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
-                } else {
-                    load_immediate(
-                        &mut assembler,
-                        RETURN_VALUE,
-                        i64::from_ne_bytes(ncl_sys::Word::fixnum(0).bits().to_ne_bytes()),
-                    )?;
-                }
-                load_immediate(
+                lower_return_or_throw(
                     &mut assembler,
-                    VALUE_COUNT,
-                    i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                    function,
+                    block.id,
+                    Some(values),
+                    &value_slots,
+                    abi,
+                    &labels,
                 )?;
-                emit_epilogue(&mut assembler)?;
             }
             Terminator::CallReturn { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
@@ -327,7 +337,15 @@ pub fn compile_function_x86_64(
                 emit_tail_transfer(&mut assembler)?;
             }
             Terminator::Throw { .. } => {
-                return Err(CodegenError::NonLocalExitUnsupported);
+                lower_return_or_throw(
+                    &mut assembler,
+                    function,
+                    block.id,
+                    None,
+                    &value_slots,
+                    abi,
+                    &labels,
+                )?;
             }
             Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Ud2)?;

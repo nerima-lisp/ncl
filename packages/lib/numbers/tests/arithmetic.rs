@@ -17,6 +17,7 @@ fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
+    ncl_conditions::register(&runtime).unwrap();
     ncl_lib_numbers::register(&runtime).unwrap();
     (runtime, ctx)
 }
@@ -212,4 +213,21 @@ fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     ));
     assert!(ncl_object::pop_root(&mut ctx, complex_token));
     assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
+fn division_by_zero_records_a_typed_lisp_error() {
+    let (runtime, mut ctx) = setup();
+    let function = function(&runtime, &mut ctx, "/");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[Word::fixnum(1), Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+    let condition = ctx.take_pending_condition().unwrap();
+    let class = ncl_conditions::condition_class_of(&ctx, condition).unwrap();
+    let expected = ncl_conditions::ConditionIdentifier::DivisionByZero
+        .class(&mut ctx, &runtime)
+        .unwrap();
+    assert_eq!(class, expected);
 }

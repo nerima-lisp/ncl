@@ -1,8 +1,17 @@
 //! Allocation and cons primitives over a registered context.
 
 use crate::layout::{symbol_offset, widetag};
-use crate::{ObjectError, Runtime, ThreadContext};
+use crate::{ObjectError, Runtime, ThreadContext, make_code_object, make_simple_fun};
 use ncl_sys::{StorageCondition, TypeTag, Word};
+
+#[allow(clippy::option_if_let_else)]
+const fn function_cell_or_unbound(function: Option<Word>) -> Word {
+    match function {
+        Some(value) => value,
+        // check-added-lines: allow(unbound) IR uses the symbol-cell sentinel.
+        None => Word::UNBOUND,
+    }
+}
 
 /// Allocate a cons cell.
 /// # Errors
@@ -57,23 +66,51 @@ pub fn make_symbol(
 ) -> Result<Word, ObjectError> {
     let mut name = name;
     crate::with_root(ctx, &mut name, |ctx, name| {
-        let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
-        for (slot, value) in [
-            (symbol_offset::VALUE, Word::UNBOUND),
-            (symbol_offset::FUNCTION, Word::UNBOUND),
-            (symbol_offset::PLIST, Word::NIL),
-            (symbol_offset::PACKAGE, Word::NIL),
-            (symbol_offset::NAME, *name),
-            (symbol_offset::TLS_INDEX, Word::fixnum(0)),
-            (symbol_offset::HASH, Word::fixnum(0)),
-            (symbol_offset::FLAGS, Word::fixnum(0)),
-        ] {
-            if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
-                return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+        let mut symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
+        crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+            let function = if runtime.undefined_function_entry() != 0 {
+                let code = make_code_object(
+                    ctx,
+                    runtime,
+                    runtime.undefined_function_entry(),
+                    0,
+                    Word::NIL,
+                    Word::NIL,
+                    Word::NIL,
+                )?;
+                Some(
+                    make_simple_fun(
+                        ctx,
+                        runtime,
+                        runtime.undefined_function_entry(),
+                        *symbol,
+                        // check-added-lines: allow(unbound) IR uses the undefined-function marker.
+                        Word::UNBOUND,
+                        code,
+                    )?
+                    .as_word(),
+                )
+            } else {
+                None
+            };
+            for (slot, value) in [
+                // check-added-lines: allow(unbound) IR uses the value-cell sentinel.
+                (symbol_offset::VALUE, Word::UNBOUND),
+                (symbol_offset::FUNCTION, function_cell_or_unbound(function)),
+                (symbol_offset::PLIST, Word::NIL),
+                (symbol_offset::PACKAGE, Word::NIL),
+                (symbol_offset::NAME, *name),
+                (symbol_offset::TLS_INDEX, Word::fixnum(0)),
+                (symbol_offset::HASH, Word::fixnum(0)),
+                (symbol_offset::FLAGS, Word::fixnum(0)),
+            ] {
+                if !ncl_sys::write_object_word(&mut ctx.thread, *symbol, slot, value) {
+                    return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+                }
+                ncl_sys::write_barrier(&mut ctx.thread, *symbol, slot);
             }
-            ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
-        }
-        Ok(symbol)
+            Ok(*symbol)
+        })
     })
 }
 /// Return the car of a cons cell.

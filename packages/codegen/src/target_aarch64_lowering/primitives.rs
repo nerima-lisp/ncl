@@ -50,9 +50,11 @@ pub(super) fn lower_closure_call(
     args: &[ValueId],
     function: &Function,
     allocation: &Allocation,
+    named_symbol: Option<ValueId>,
+    abi: &dyn crate::RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let Some(captures) = closure_captures(function, closure) else {
-        return super::lower_closure_call(assembler, closure, args, allocation);
+        return super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi);
     };
     let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.

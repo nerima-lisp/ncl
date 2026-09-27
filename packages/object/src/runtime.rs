@@ -368,7 +368,7 @@ impl Runtime {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(converter);
     }
 
-    pub(crate) fn lisp_error_converter(&self) -> Option<LispErrorConverter> {
+    pub fn lisp_error_converter(&self) -> Option<LispErrorConverter> {
         self.lisp_error_converter
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

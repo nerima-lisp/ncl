@@ -99,7 +99,12 @@ impl DeadCodeElimination {
             OpKind::MakeClosure { entry, captures } => std::iter::once(*entry)
                 .chain(captures.iter().copied())
                 .collect(),
-            OpKind::CallClosure { closure, args } => std::iter::once(*closure)
+            OpKind::CallClosure {
+                closure,
+                args,
+                named_symbol,
+            } => std::iter::once(*closure)
+                .chain(named_symbol.iter().copied())
                 .chain(args.iter().copied())
                 .collect(),
             OpKind::Compare { left, right, .. } => vec![*left, *right],

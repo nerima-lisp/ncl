@@ -1,16 +1,9 @@
 #![allow(missing_docs)]
 
-use std::path::Path;
 use std::process::Command;
 
 fn eval(source: &str) -> (bool, String) {
-    let release = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/release/ncl");
-    let binary = if release.is_file() {
-        release
-    } else {
-        Path::new(env!("CARGO_BIN_EXE_ncl")).to_owned()
-    };
-    let output = Command::new(binary)
+    let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])
         .output()
         .unwrap_or_else(|error| panic!("failed to run {source}: {error}"));
@@ -73,7 +66,7 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(mapl #'car '((1) (2)))", "((1) (2))"),
         ("(mapcan (lambda (x) (list x)) '(1 2))", "(1 2)"),
         ("(mapcon (lambda (x) (list (car x))) '(1 2))", "(1 2)"),
-        ("(map nil #'1+ '(1 2))", "(2 3)"),
+        ("(map nil #'1+ '(1 2))", "NIL"),
         ("(map-into (vector 0 0) #'1+ '(1 2))", "#(2 3)"),
         ("(reduce #'+ '(1 2 3))", "6"),
         ("(every #'numberp '(1 2))", "T"),
@@ -94,6 +87,7 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(rassoc 1 '((a . 1)))", "(COMMON-LISP-USER:A . 1)"),
         ("(member 2 '(1 2))", "(2)"),
     ];
+    assert_eq!(cases.len(), 67);
     for (source, expected) in cases {
         let (success, actual) = eval(source);
         assert!(success, "{source} failed");

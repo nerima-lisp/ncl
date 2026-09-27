@@ -79,6 +79,8 @@ impl ThreadContext {
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
         self.registered = true;
+        self.condition_handler_root =
+            Some(self.thread.push_root_cell(&self.condition_handler_head));
         self.ensure_standard_packages(runtime)
     }
     pub(crate) fn ensure_standard_packages(
@@ -182,24 +184,11 @@ impl ThreadContext {
     pub fn set_condition_handler_head(&mut self, head: Word) {
         self.condition_handler_head.set(head);
     }
-    pub fn root_condition_handler_head(&mut self) -> bool {
-        if self.condition_handler_root.is_none() {
-            self.condition_handler_root =
-                Some(self.thread.push_root_cell(&self.condition_handler_head));
-            true
-        } else {
-            false
-        }
+    pub const fn root_condition_handler_head(&mut self) -> bool {
+        self.condition_handler_root.is_none()
     }
-    pub fn unroot_condition_handler_head(&mut self) -> bool {
-        let Some(token) = self.condition_handler_root else {
-            return true;
-        };
-        let popped = ncl_sys::pop_root(&mut self.thread, token);
-        if popped {
-            self.condition_handler_root = None;
-        }
-        popped
+    pub const fn unroot_condition_handler_head(&mut self, _runtime: &Runtime) -> bool {
+        true
     }
     pub fn set_condition_handler_invoker(&mut self, invoker: ConditionHandlerInvoker) {
         self.condition_handler_invoker = Some(invoker);
@@ -255,9 +244,7 @@ impl ThreadContext {
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if self.registered {
-            if let Some(token) = self.condition_handler_root.take() {
-                let _ = ncl_sys::pop_root(&mut self.thread, token);
-            }
+            let _ = self.condition_handler_root.take();
             ncl_sys::unregister_thread(&self.thread);
             self.registered = false;
         }

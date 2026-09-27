@@ -43,16 +43,16 @@ pub fn push_handler(
         Ok(HandlerChain(previous))
     })();
     if result.is_err() && added_root {
-        let _ = ctx.unroot_condition_handler_head();
+        let _ = ctx.unroot_condition_handler_head(runtime);
     }
     result
 }
 
 /// Restore the handler cluster to the head captured by `chain`.
-pub fn pop_handler(ctx: &mut ThreadContext, chain: HandlerChain) {
+pub fn pop_handler(ctx: &mut ThreadContext, runtime: &Runtime, chain: HandlerChain) {
     records::set_cluster_head(ctx, chain.0);
     if chain.0 == Word::NIL {
-        let _ = ctx.unroot_condition_handler_head();
+        let _ = ctx.unroot_condition_handler_head(runtime);
     }
 }
 

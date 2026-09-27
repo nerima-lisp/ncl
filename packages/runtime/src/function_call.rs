@@ -171,6 +171,30 @@ mod tests {
     }
 
     #[test]
+    fn generic_builtin_trampoline_survives_gc_stress_and_strict_forwarding_in_a_loop() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        // Compile the recursive helper before enabling stress mode: `DEFUN`'s
+        // own macro expansion is unrelated to the generic builtin trampoline
+        // this test exercises, and is not part of this task's scope.
+        runtime
+            .eval(
+                "(defun count-down (n acc) \
+                   (if (< n 1) acc (count-down (- n 1) (length (list n n)))))",
+            )
+            .unwrap_or_else(|error| panic!("defining count-down: {error:?}"));
+        runtime.context.set_gc_stress(true);
+        runtime.context.set_strict_forwarding(true);
+        // `LIST` and `LENGTH` have no ISA-specific fast path, so every
+        // recursive call below dispatches through the generic native
+        // trampoline (`crate::builtin_trampoline`) and allocates, forcing a
+        // collection on nearly every call under `gc_stress`.
+        let value = runtime
+            .eval("(count-down 20 0)")
+            .unwrap_or_else(|error| panic!("gc-stress builtin loop: {error:?}"));
+        assert_eq!(runtime.format_result(value), "2");
+    }
+
+    #[test]
     fn calls_registered_builtin_through_function_and_symbol_designators_under_gc_stress_and_forwarding()
      {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

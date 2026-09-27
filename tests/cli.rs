@@ -199,3 +199,57 @@ fn evals_native_functions_constants_and_closures() {
         assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
     }
 }
+
+/// Every builtin below has no ISA-specific fast path, so a compiled call site
+/// resolves its `ENTRY` to the generic native trampoline
+/// (`ncl_runtime::builtin_trampoline`). Before that trampoline existed, each
+/// of these silently crashed the process instead of running.
+#[test]
+fn evals_builtins_through_the_generic_native_trampoline() {
+    for (source, expected) in [
+        ("(list 1 2 3)", "(1 2 3)"),
+        ("(length (list 1 2))", "2"),
+        ("(null nil)", "T"),
+        ("(null (quote a))", "NIL"),
+        ("(1+ 2)", "3"),
+        ("(progn (defvar *x* 5) *x*)", "5"),
+        ("(reverse (quote (1 2 3)))", "(3 2 1)"),
+        ("(string-upcase \"abc\")", "\"ABC\""),
+        ("(gethash (quote a) (make-hash-table))", "NIL"),
+        ("(mapcar #'1+ (quote (1 2 3)))", "(2 3 4)"),
+        ("(values 1 2)", "1"),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+
+    let path = std::env::temp_dir().join(format!("ncl-trampoline-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(&path, "(length (reverse (mapcar #'1+ (list 1 2 3))))") {
+        panic!("source file creation failed: {error}");
+    }
+    let load = output(ncl().args(["--load", path_str(&path)]));
+    assert!(load.status.success(), "{load:?}");
+    assert_eq!(String::from_utf8_lossy(&load.stdout).trim(), "3");
+    if let Err(error) = fs::remove_file(&path) {
+        panic!("source file cleanup failed: {error}");
+    }
+}
+
+/// A builtin call with the wrong argument count must raise a clean error
+/// through the generic trampoline, not crash the process.
+#[test]
+fn generic_builtin_trampoline_reports_wrong_argument_counts_cleanly() {
+    for source in ["(car 1 2)", "(1+)", "(length)"] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(!result.status.success(), "{source}: {result:?}");
+        assert!(
+            result.status.code() == Some(1),
+            "{source}: expected a clean exit(1), got {result:?}"
+        );
+        assert!(
+            !String::from_utf8_lossy(&result.stderr).is_empty(),
+            "{source}: expected an error message on stderr"
+        );
+    }
+}

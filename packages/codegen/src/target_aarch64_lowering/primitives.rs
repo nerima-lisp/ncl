@@ -44,6 +44,7 @@ fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), C
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
 #[allow(clippy::similar_names)]
+#[allow(clippy::too_many_lines)]
 pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
@@ -60,16 +61,6 @@ pub(super) fn lower_closure_call(
             "closure calls require a tagged argc argument".into(),
         ));
     };
-    let argument_count = captures
-        .len()
-        .checked_add(rest.len())
-        .ok_or(CodegenError::FrameOverflow)?;
-    if argument_count > 4 {
-        // check-added-lines: allow(unsupported) the fixed AArch64 ABI has four forwarded registers.
-        return Err(CodegenError::Unsupported(
-            "AArch64 closure calls support at most four capture and register arguments".into(),
-        ));
-    }
     load_value(assembler, allocation, closure, Reg(16))?;
     emit(
         assembler,
@@ -94,24 +85,103 @@ pub(super) fn lower_closure_call(
             .and_then(|slot| slot.checked_mul(8))
             .and_then(|offset| i16::try_from(offset).ok())
             .ok_or(CodegenError::FrameOverflow)?;
-        emit(
-            assembler,
-            Inst::Ldr {
-                rt: Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
-                mem: MemOperand::Unscaled {
-                    base: RegOrSp::Reg(Reg(17)),
-                    offset,
+        if index < 4 {
+            emit(
+                assembler,
+                Inst::Ldr {
+                    rt: Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(17)),
+                        offset,
+                    },
                 },
-            },
-        )?;
+            )?;
+        } else {
+            if index == 4 {
+                emit(
+                    assembler,
+                    Inst::SubImm {
+                        rd: RegOrSp::Reg(Reg(5)),
+                        rn: RegOrSp::Reg(Reg(29)),
+                        imm: u16::try_from(
+                            allocation
+                                .outgoing_base
+                                .checked_add(1)
+                                .and_then(|slot| slot.checked_mul(8))
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )
+                        .map_err(|_| CodegenError::FrameOverflow)?,
+                        shift: false,
+                    },
+                )?;
+            }
+            emit(
+                assembler,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(17)),
+                        offset,
+                    },
+                },
+            )?;
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(5)),
+                        offset: i16::try_from((index - 4).saturating_mul(8))
+                            .map_err(|_| CodegenError::FrameOverflow)?,
+                    },
+                },
+            )?;
+        }
     }
     for (index, argument) in rest.iter().enumerate() {
         let register_index = captures
             .len()
             .checked_add(index + 1)
             .ok_or(CodegenError::FrameOverflow)?;
-        let register = Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
-        load_value(assembler, allocation, *argument, register)?;
+        if register_index < 5 {
+            let register =
+                Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
+            load_value(assembler, allocation, *argument, register)?;
+        } else {
+            if register_index == 5 && captures.len() < 4 {
+                emit(
+                    assembler,
+                    Inst::SubImm {
+                        rd: RegOrSp::Reg(Reg(5)),
+                        rn: RegOrSp::Reg(Reg(29)),
+                        imm: u16::try_from(
+                            allocation
+                                .outgoing_base
+                                .checked_add(1)
+                                .and_then(|slot| slot.checked_mul(8))
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )
+                        .map_err(|_| CodegenError::FrameOverflow)?,
+                        shift: false,
+                    },
+                )?;
+            }
+            load_value(assembler, allocation, *argument, Reg(16))?;
+            let extra_index = index
+                .saturating_sub(4usize.saturating_sub(captures.len()))
+                .saturating_add(captures.len().saturating_sub(4));
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(5)),
+                        offset: i16::try_from(extra_index.saturating_mul(8))
+                            .map_err(|_| CodegenError::FrameOverflow)?,
+                    },
+                },
+            )?;
+        }
     }
     emit(
         assembler,

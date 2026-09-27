@@ -16,10 +16,12 @@ fn x86_64_rejects_non_local_exit_at_codegen_time() {
         ncl_ir::FunctionBuilder::new(ncl_ir::FunctionId(99), "x86-64-throw", Vec::new(), vec![]);
     let constant = builder.add_constant(Constant::Fixnum(1));
     let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
+    // check-added-lines: allow(panic) test-only assertion
     assert!(values.is_ok(), "constant lowering: {values:?}");
     let Some(value) = values.ok().and_then(|ids| ids.first().copied()) else {
         return;
     };
+    // check-added-lines: allow(panic) test-only assertion
     assert!(
         builder
             .terminate(Terminator::Throw { condition: value })
@@ -28,6 +30,7 @@ fn x86_64_rejects_non_local_exit_at_codegen_time() {
     );
 
     let result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    // check-added-lines: allow(panic) test-only assertion
     assert!(matches!(result, Err(CodegenError::NonLocalExitUnsupported)));
 }
 

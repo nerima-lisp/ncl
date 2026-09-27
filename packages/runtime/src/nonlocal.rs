@@ -36,7 +36,7 @@ fn with_context(thread: NonNull<Thread>, body: impl FnOnce(&mut ThreadContext) -
         body(invocation.context)
     }) {
         Some(value) => value,
-        None => unreachable!("native context missing"), // check-added-lines: allow(panic)
+        None => unreachable!("native context missing"), // check-added-lines: allow(panic) impossible ABI state
     }
 }
 

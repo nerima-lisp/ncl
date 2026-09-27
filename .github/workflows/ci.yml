@@ -114,6 +114,21 @@ jobs:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked --release
+      - name: Debug x86-64 CLI crash
+        shell: bash
+        run: |
+          set +e
+          ulimit -c unlimited
+          for expr in 42 '(+ 1 2)'; do
+            echo "=== gdb --eval $expr ==="
+            gdb -q -batch \
+              -ex 'set pagination off' \
+              -ex run \
+              -ex 'bt full' \
+              --args target/release/ncl --eval "$expr"
+            status=$?
+            echo "gdb_status=$status"
+          done
       - name: Exercise release CLI
         shell: bash
         run: |

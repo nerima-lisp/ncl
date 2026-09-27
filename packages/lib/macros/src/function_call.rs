@@ -1,12 +1,12 @@
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
     ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, function_name,
     symbol_function, symbol_is_macro,
 };
 
-use crate::list;
+mod multiple_values;
 
 const FUNCTION: Parameter = Parameter {
     name: BuiltinName::new("FUNCTION"),
@@ -25,7 +25,7 @@ fn function_designator(ctx: &ThreadContext, word: Word) -> Result<FunctionDesign
     FunctionDesignator::try_from_word(ctx, word).map_err(|_| ObjectError::TypeError)
 }
 
-fn call_designator(
+pub fn call_designator(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     designator: Word,
@@ -118,7 +118,11 @@ fn funcall(
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
-fn append_list(ctx: &ThreadContext, list: Word, output: &mut Vec<Word>) -> Result<(), ObjectError> {
+pub fn append_list(
+    ctx: &ThreadContext,
+    list: Word,
+    output: &mut Vec<Word>,
+) -> Result<(), ObjectError> {
     let mut cursor = list;
     while cursor != Word::NIL {
         if !cursor.is_cons() {
@@ -146,37 +150,6 @@ fn apply(
     let last = *supplied.last().ok_or(ObjectError::TypeError)?;
     let mut arguments = supplied[1..supplied.len() - 1].to_vec();
     append_list(ctx, last, &mut arguments)?;
-    call_designator(ctx, runtime, designator, &arguments, values)
-}
-
-fn capture_multiple_values(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let values = ctx.values().to_vec();
-    ncl_object::with_roots(ctx, &values, |ctx, roots| {
-        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
-        list(ctx, runtime, &values)
-    })
-}
-
-fn multiple_value_call_list(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let designator = args.required(0)?;
-    let mut arguments = Vec::new();
-    for index in 1..args.len() {
-        append_list(
-            ctx,
-            args.get(index).ok_or(ObjectError::TypeError)?,
-            &mut arguments,
-        )?;
-    }
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
@@ -211,35 +184,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         )
         .with_nested_evaluation(),
     )?;
-    runtime.register_builtin(
-        ctx,
-        BuiltinIdentifier::new(
-            BuiltinPackage::NclExt,
-            BuiltinName::new("CAPTURE-MULTIPLE-VALUES"),
-        ),
-        BuiltinImplementation::direct(
-            Builtin {
-                lambda_list: LambdaList::fixed(&[]),
-                convention: BuiltinConvention::Direct(Arity::exact(0)),
-            },
-            capture_multiple_values,
-        ),
-    )?;
-    runtime.register_builtin(
-        ctx,
-        BuiltinIdentifier::new(
-            BuiltinPackage::NclExt,
-            BuiltinName::new("MULTIPLE-VALUE-CALL-LIST"),
-        ),
-        BuiltinImplementation::adapted(
-            Builtin {
-                lambda_list: LambdaList::with_rest(&[FUNCTION], REST_ARGUMENT),
-                convention: BuiltinConvention::Adapted,
-            },
-            multiple_value_call_list,
-            |args| Ok(args.as_slice().to_vec()),
-        ),
-    )?;
+    multiple_values::register(ctx, runtime)?;
     Ok(())
 }
 

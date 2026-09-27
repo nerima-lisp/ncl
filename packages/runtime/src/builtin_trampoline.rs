@@ -140,9 +140,7 @@ fn dispatch_with_context(
         };
         call_words.extend(rest_words);
     }
-    let result = ncl_object::with_rooted_slice(context, &call_words, |context, rooted| {
-        object.call_builtin(context, function, rooted)
-    });
+    let result = object.call_builtin(context, function, &call_words);
     match result {
         Ok(value) => ok_result(value, context.values().len()),
         Err(error) => {

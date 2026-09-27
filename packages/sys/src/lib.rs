@@ -149,15 +149,18 @@ fn snapshot_callee_saved() -> [u64; 16] {
 #[cfg(target_arch = "x86_64")]
 fn snapshot_callee_saved() -> [u64; 16] {
     let mut values = [0_u64; 16];
+    let (mut rbx, mut r12, mut r13, mut r14, mut r15) = (0_u64, 0_u64, 0_u64, 0_u64, 0_u64);
     // SAFETY: each output is a scalar register snapshot and no stack or flags are modified.
     unsafe {
         core::arch::asm!(
             "mov {0}, rbx", "mov {1}, r12", "mov {2}, r13",
             "mov {3}, r14", "mov {4}, r15",
-            out(reg) values[10], out(reg) values[11], out(reg) values[12],
-            out(reg) values[13], out(reg) values[14],
+            out(reg) rbx, out(reg) r12, out(reg) r13, out(reg) r14, out(reg) r15,
             options(nostack, preserves_flags)
         );
+    }
+    for (slot, value) in values.iter_mut().skip(10).zip([rbx, r12, r13, r14, r15]) {
+        *slot = value;
     }
     values
 }

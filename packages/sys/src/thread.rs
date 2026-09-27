@@ -3,6 +3,7 @@ use crate::word::Word;
 use std::ptr;
 
 mod control;
+mod native_frame;
 mod stack;
 pub use control::ControlFrameKind;
 /// Number of words in the machine-visible multiple-value return area.
@@ -324,56 +325,6 @@ impl Thread {
         self.frame_snapshot_failed = false;
         self.frame_last_written.clear();
     }
-    /// Capture the current generated frame header for collection.
-    ///
-    /// # Safety
-    ///
-    /// `frame_fp` must point to a live generated frame whose `frame_words`
-    /// words are readable, and `return_pc` must be that frame's continuation PC.
-    pub unsafe fn set_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
-        let map = self
-            .heap()
-            .and_then(|heap| heap.safepoint_map_for_pc(return_pc));
-        let Some(map) = map else {
-            self.frame_snapshot_failed = true;
-            self.frame_chain.clear();
-            self.frame_registers.clear();
-            self.frame_address = None;
-            return;
-        };
-        let frame_words = usize::from(map.frame_words);
-        let words = frame_fp as *const Word;
-        let mut snapshot = Vec::with_capacity(frame_words);
-        // SAFETY: the caller guarantees the generated frame has the mapped width.
-        unsafe {
-            for index in 0..4 {
-                snapshot.push(words.add(index).read());
-            }
-            for index in 4..frame_words {
-                snapshot.push(words.sub(index - 3).read());
-            }
-        }
-        self.frame_chain = snapshot;
-        self.stack_bounds = None;
-        #[cfg(target_arch = "x86_64")]
-        {
-            self.frame_registers = crate::snapshot_callee_saved()
-                .into_iter()
-                .map(Word::from_bits)
-                .collect();
-        }
-        self.callee_saved = [0; 16];
-        self.frame_chain[1] = Word::from_bits(return_pc as u64);
-        self.frame_address = Some(frame_fp);
-        self.frame_snapshot_failed = false;
-    }
-
-    /// Capture a callback-provided generated frame.
-    pub fn capture_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
-        // SAFETY: this entry point is called by the generated safepoint callback with its live frame.
-        unsafe { self.set_native_frame(frame_fp, return_pc) };
-    }
-
     /// Return the current value of a captured real frame word.
     #[must_use]
     pub fn frame_word(&self, index: usize) -> Option<Word> {

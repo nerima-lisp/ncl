@@ -223,9 +223,13 @@ pub extern "C" fn native_mul(mut thread: NonNull<Thread>, left: Word, right: Wor
 /// `thread` must point to a registered live thread. `frame` and `pc` must
 /// describe the live generated frame at a registered safepoint map.
 pub unsafe extern "C" fn native_safepoint(mut thread: NonNull<Thread>, frame: *mut u8, pc: usize) {
+    #[cfg(target_arch = "x86_64")]
+    let registers = crate::snapshot_callee_saved();
+    #[cfg(not(target_arch = "x86_64"))]
+    let registers = [0; 16];
     // SAFETY: the caller provides a valid registered thread.
     let thread = unsafe { thread.as_mut() };
-    thread.capture_native_frame(frame.addr(), pc);
+    thread.capture_native_frame_with_registers(frame.addr(), pc, registers);
     thread.enter_native();
     collect(thread, false);
     thread.leave_native();

@@ -411,9 +411,9 @@ fn lower_builtin(
         load_slot(assembler, slots, *start_value, ENTRY)?;
         emit(
             assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, 0), FUNCTION_OBJECT),
+            Inst::MovMR(Mem::base(Reg::Rsp, 8), FUNCTION_OBJECT),
         )?;
-        emit(assembler, Inst::MovMR(Mem::base(Reg::Rsp, 8), ENTRY))?;
+        emit(assembler, Inst::MovMR(Mem::base(Reg::Rsp, 16), ENTRY))?;
         load_immediate(
             assembler,
             RETURN_VALUE,

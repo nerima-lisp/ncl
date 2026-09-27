@@ -36,7 +36,7 @@ fn call_designator(
     let resolved = {
         let designator = function_designator(ctx, designator).inspect_err(|_| {
             ctx.set_pending_lisp_error(LispError::TypeError {
-                datum: rooted[0],
+                datum: rooted.first().copied().unwrap_or(Word::NIL),
                 expected: ObjectType::Function,
             });
         })?;

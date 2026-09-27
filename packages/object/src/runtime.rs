@@ -141,7 +141,7 @@ impl Runtime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .cloned()
-            .ok_or(ObjectError::Unsupported)?;
+            .ok_or(ObjectError::Layout)?;
         port.load(ctx, self, args, values)
     }
 

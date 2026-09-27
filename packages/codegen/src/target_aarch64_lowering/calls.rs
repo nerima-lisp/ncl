@@ -54,7 +54,7 @@ pub fn lower_call(
                         .checked_neg()
                         .ok_or(CodegenError::FrameOverflow)?,
                 },
-            }, // check-added-lines: allow(index)
+            }, // check-added-lines: allow(index) intentional
         )?;
     }
     for (index, argument) in rest.iter().enumerate() {
@@ -117,7 +117,6 @@ pub fn lower_call(
             },
         )?;
     } else {
-        // check-added-lines: allow(index) the loop's extra-argument offset is bounded above.
         load_value(assembler, allocation, callee, Reg(16))?;
     }
     Ok(())

@@ -4,7 +4,7 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext,
-    Word, make_cons, rplaca, symbol_function, symbol_name, symbol_plist,
+    Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist,
 };
 
 use crate::form::{list, symbol};
@@ -79,6 +79,7 @@ fn set_macro_function_builtin(
     let name = checked_symbol(ctx, args.required(0)?)?;
     let function = checked_function(args.required(1)?)?;
     ctx.write_object_slot(name, ncl_object::symbol_offset::FUNCTION, function)?;
+    set_symbol_macro(ctx, name, true)?;
     Ok(function)
 }
 
@@ -171,7 +172,7 @@ fn fdefinition_place(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut store = symbol(ctx, runtime, "NCL::FDEFINITION-SET")?;
+        let mut store = symbol(ctx, runtime, "NCL-EXT::FDEFINITION-SET")?;
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
@@ -202,7 +203,7 @@ fn macro_function_place(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut store = symbol(ctx, runtime, "NCL::MACRO-FUNCTION-SET")?;
+        let mut store = symbol(ctx, runtime, "NCL-EXT::MACRO-FUNCTION-SET")?;
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
@@ -233,7 +234,7 @@ fn get_place(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut store = symbol(ctx, runtime, "NCL::GET-SET")?;
+        let mut store = symbol(ctx, runtime, "NCL-EXT::GET-SET")?;
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
@@ -287,7 +288,7 @@ pub fn register_runtime_support(
             LambdaList::fixed(&[SYMBOL]),
         ),
         (
-            "NCL::FDEFINITION-SET",
+            "NCL-EXT::FDEFINITION-SET",
             set_fdefinition_builtin,
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
@@ -297,13 +298,13 @@ pub fn register_runtime_support(
             LambdaList::fixed(&[SYMBOL]),
         ),
         (
-            "NCL::MACRO-FUNCTION-SET",
+            "NCL-EXT::MACRO-FUNCTION-SET",
             set_macro_function_builtin,
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
         ("GET", get_builtin, LambdaList::fixed(&[SYMBOL, PROPERTY])),
         (
-            "NCL::GET-SET",
+            "NCL-EXT::GET-SET",
             set_get_builtin,
             LambdaList::fixed(&[SYMBOL, PROPERTY, VALUE]),
         ),
@@ -314,7 +315,7 @@ pub fn register_runtime_support(
             .unwrap_or(("COMMON-LISP", *builtin));
         let package = match package {
             "COMMON-LISP" => CL,
-            "NCL" => BuiltinPackage::NclExt,
+            "NCL-EXT" => BuiltinPackage::NclExt,
             _ => return Err(ObjectError::TypeError),
         };
         runtime.register_builtin(

@@ -31,8 +31,13 @@ pub fn elements(ctx: &mut ThreadContext, mut form: Word) -> Result<Vec<Word>, Ob
 }
 
 pub fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
-    let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
-    Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
+    let (package_name, symbol_name) = name
+        .split_once("::")
+        .map_or(("COMMON-LISP", name), |(package, symbol)| (package, symbol));
+    let package = runtime.ensure_package(ctx, package_name)?;
+    Ok(Package::from_word(package)
+        .intern(ctx, runtime, symbol_name)?
+        .0)
 }
 
 pub fn fresh_symbol(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {

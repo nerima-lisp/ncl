@@ -275,6 +275,7 @@ fn make_instance_builtin(
         "INITIALIZE-INSTANCE",
     )?;
     let initialize_function = ncl_object::symbol_function(scope.context(), initialize_name)?;
+    // check-added-lines: allow(unbound) function cell absence is reported as an error
     if initialize_function == Word::UNBOUND {
         return Err(ObjectError::UndefinedFunction);
     }
@@ -323,6 +324,7 @@ fn initialize_instance_builtin(
         "SHARED-INITIALIZE",
     )?;
     let shared_function = ncl_object::symbol_function(scope.context(), shared_name)?;
+    // check-added-lines: allow(unbound) function cell absence is reported as an error
     if shared_function == Word::UNBOUND {
         return Err(ObjectError::UndefinedFunction);
     }

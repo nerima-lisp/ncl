@@ -216,7 +216,9 @@ fn defmethod_macro_builtin(
     let mut dispatch_specializers = Vec::new();
     let mut index = 0;
     while index < specializer_fields.len() {
-        let field = specializer_fields[index];
+        let field = *specializer_fields
+            .get(index)
+            .ok_or(ObjectError::Layout)?;
         if field.is_cons() {
             let fields = form_elements(ctx, field)?;
             lambda.push(*fields.first().ok_or(ObjectError::TypeError)?);

@@ -24,6 +24,7 @@ fn clos_ensure_initialization_base_builtin(
         return Ok(name);
     }
     let function = symbol_function(ctx, name)?;
+    // check-added-lines: allow(unbound) function cell absence is reported as an error
     if function == Word::UNBOUND {
         return Err(ObjectError::UndefinedFunction);
     }

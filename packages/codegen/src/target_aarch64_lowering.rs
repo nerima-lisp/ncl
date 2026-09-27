@@ -375,15 +375,6 @@ fn lower_builtin(
                 rn: RegOrSp::Reg(Reg(21)),
             },
         )?;
-        for register in 1..=5 {
-            emit(
-                assembler,
-                Inst::Mov {
-                    rd: RegOrSp::Reg(Reg(register)),
-                    rn: RegOrSp::Reg(Reg(register)),
-                },
-            )?;
-        }
         load_value(assembler, allocation, *argc_value, Reg(6))?;
         load_value(assembler, allocation, *start_value, Reg(7))?;
         for instruction in ncl_asm_aarch64::mov_imm64(

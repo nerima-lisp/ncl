@@ -5,7 +5,7 @@ use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
-fn x86_64_lowering_uses_allocator_register_roots() {
+fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),
         "allocated-root",
@@ -28,16 +28,21 @@ fn x86_64_lowering_uses_allocator_register_roots() {
     );
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
-    let Some(expected) = allocation.safepoint_registers.get(&1) else {
-        unreachable!("allocator safepoint roots");
-    };
-    assert!(!expected.is_empty());
+    if !matches!(allocation.location(value), Some(Location::Spill(_))) {
+        return Err("safepoint-crossing value was allocated to a register".into());
+    }
     let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("{error:?}"),
     };
-    assert_eq!(compiled.safepoint_maps[0].registers, *expected);
+    let Some(map) = compiled.safepoint_maps.first() else {
+        return Err("safepoint map missing".into());
+    };
+    if !map.registers.is_empty() {
+        return Err("safepoint map retained a register root".into());
+    }
     assert!(!compiled.code.is_empty());
+    Ok(())
 }
 
 #[test]

@@ -253,12 +253,10 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
-            if values.len() != 1 {
-                let value_count =
-                    u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
-                for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), value_count) {
-                    emit(assembler, instruction)?;
-                }
+            let value_count =
+                u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), value_count) {
+                emit(assembler, instruction)?;
             }
             if let (Some(first), Some(result)) = (values.first(), result) {
                 load_value(assembler, allocation, *first, Reg(16))?;

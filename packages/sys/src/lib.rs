@@ -152,10 +152,10 @@ fn snapshot_callee_saved() -> [u64; 16] {
     // SAFETY: each output is a scalar register snapshot and no stack or flags are modified.
     unsafe {
         core::arch::asm!(
-            "mov {0}, rbx", "mov {1}, rbp", "mov {2}, r12",
-            "mov {3}, r13", "mov {4}, r14", "mov {5}, r15",
-            out(reg) values[0], out(reg) values[1], out(reg) values[2],
-            out(reg) values[3], out(reg) values[4], out(reg) values[5],
+            "mov {0}, rbx", "mov {1}, r12", "mov {2}, r13",
+            "mov {3}, r14", "mov {4}, r15",
+            out(reg) values[10], out(reg) values[11], out(reg) values[12],
+            out(reg) values[13], out(reg) values[14],
             options(nostack, preserves_flags)
         );
     }

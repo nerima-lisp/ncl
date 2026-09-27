@@ -68,6 +68,38 @@ fn native_frame_capture_reads_registered_layout_and_writes_back() {
     crate::unregister_thread(&thread);
 }
 
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn native_frame_capture_publishes_x86_register_slots() {
+    let heap = crate::Heap::new(crate::HeapConfig::default());
+    let mut thread = Thread::new();
+    assert!(crate::register_thread(&heap, &mut thread).is_ok());
+    let Ok(mut code) = alloc_code(16) else { return };
+    assert!(publish_code(&mut code).is_ok());
+    assert!(
+        heap.register_code(
+            &code,
+            CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 5,
+                function_name: "x86-register-capture".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: map_for_frame(),
+                debug_table: Vec::new(),
+            }
+        )
+        .is_ok()
+    );
+    let mut storage = vec![Word::fixnum(9); 8];
+    // SAFETY: the pointer stays within the live vector and the frame layout reads its initialized words.
+    let frame_pointer = unsafe { storage.as_mut_ptr().add(3) } as usize;
+    thread.capture_native_frame(frame_pointer, code.address());
+    assert_eq!(thread.frame_registers.len(), 16);
+    crate::unregister_thread(&thread);
+}
+
 #[test]
 fn native_frame_registry_scan_and_failed_capture_are_observable() {
     let Ok(mut code) = alloc_code(16) else { return };

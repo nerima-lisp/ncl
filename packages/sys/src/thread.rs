@@ -355,6 +355,13 @@ impl Thread {
         }
         self.frame_chain = snapshot;
         self.stack_bounds = None;
+        #[cfg(target_arch = "x86_64")]
+        {
+            self.frame_registers = crate::snapshot_callee_saved()
+                .into_iter()
+                .map(Word::from_bits)
+                .collect();
+        }
         self.callee_saved = [0; 16];
         self.frame_chain[1] = Word::from_bits(return_pc as u64);
         self.frame_address = Some(frame_fp);

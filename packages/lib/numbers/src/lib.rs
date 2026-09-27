@@ -168,6 +168,10 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
         name: BuiltinName::new("NUMBER"),
         ty: ParameterType::Number,
     }];
+    const OPTIONAL_PROTOTYPE: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("PROTOTYPE"),
+        ty: ParameterType::Number,
+    }];
     const TWO_FLOATS: &[Parameter] = &[
         Parameter {
             name: BuiltinName::new("FLOAT"),
@@ -182,7 +186,6 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
         ("NUMERATOR", rational_float::numerator as RustBuiltin),
         ("DENOMINATOR", rational_float::denominator as RustBuiltin),
         ("RATIONAL", rational_float::rational as RustBuiltin),
-        ("FLOAT", rational_float::float as RustBuiltin),
         ("DECODE-FLOAT", rational_float::decode_float as RustBuiltin),
         (
             "INTEGER-DECODE-FLOAT",
@@ -213,6 +216,15 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("SCALE-FLOAT")),
         BuiltinImplementation::direct(scale, rational_float::scale_float),
+    )?;
+    let float = Builtin {
+        lambda_list: LambdaList::with_optional(ONE, OPTIONAL_PROTOTYPE),
+        convention: BuiltinConvention::Adapted,
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FLOAT")),
+        BuiltinImplementation::direct(float, rational_float::float),
     )?;
     install_optional_set(
         runtime,

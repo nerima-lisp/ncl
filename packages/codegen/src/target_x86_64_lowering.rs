@@ -393,10 +393,10 @@ fn lower_builtin(
         ));
     }
     if name == "make-rest-list" {
-        // check-added-lines: allow(index)
         let [argc_value, start_value] = args else {
+            /* check-added-lines: allow(index) intentional */
             return Err(CodegenError::Unsupported(
-                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported)
+                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) intentional
             ));
         };
         emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;

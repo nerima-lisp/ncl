@@ -251,9 +251,8 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
 }
 
 fn multiple_value_bind(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    // check-added-lines: allow(index)
     let [variables, value, body @ ..] = values else {
-        // check-added-lines: allow(index) macro syntax requires these positions.
+        /* check-added-lines: allow(index) intentional */
         return Err(ObjectError::TypeError);
     };
     let variables = elements(ctx, *variables)?;
@@ -473,9 +472,9 @@ pub fn expand_multiple_value_list_adapter(
     let words = (0..input.len())
         .filter_map(|index| input.get(index))
         .collect::<Vec<_>>();
-    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index)
+    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index) intentional
     let [value] = arguments.as_slice() else {
-        // check-added-lines: allow(index) multiple-value-list takes one form.
+        /* check-added-lines: allow(index) intentional */
         return Err(ObjectError::TypeError);
     };
     let list_symbol = symbol(ctx, runtime, "LIST")?;

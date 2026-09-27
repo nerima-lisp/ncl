@@ -5,6 +5,13 @@ use crate::{
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Constant, ConstantIndex, ValueId};
 
+pub(super) fn closure_captures(
+    function: &ncl_ir::Function,
+    closure: ValueId,
+) -> Option<&[ValueId]> {
+    primitives::closure_captures(function, closure)
+}
+
 pub(super) fn constant_table_entry(
     constants: &[Constant],
     index: ConstantIndex,

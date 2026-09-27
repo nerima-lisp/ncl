@@ -59,7 +59,9 @@ pub fn lower_call(
             )?;
         }
     }
-    emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
+    if rest.len() > ARGUMENT_REGISTERS.len() {
+        emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
+    }
     Ok(())
 }
 

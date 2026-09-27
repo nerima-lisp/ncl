@@ -312,6 +312,7 @@ const XFAILS: &[XfailCase] = &[
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
     assert_eq!(CASES.len(), 53);
     assert_eq!(XFAILS.len(), 3);
+    assert_eq!(CASES.len() + XFAILS.len(), 56);
     for case in CASES {
         let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
             .args(["--eval", case.source])
@@ -342,6 +343,12 @@ fn compiled_hash_array_matrix_reports_every_registered_builtin() {
             Err(error) => panic!("{}: failed to execute ncl: {error}", case.builtin),
         };
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(
+            !output.status.success(),
+            "{} unexpectedly succeeded; move it to CASES with its ANSI stdout: {}",
+            case.builtin,
+            String::from_utf8_lossy(&output.stdout).trim()
+        );
         assert_eq!(
             output.status.code(),
             Some(case.expected_exit),

@@ -138,13 +138,13 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "destructuring-bind",
         source: "(destructuring-bind (a (b &optional c) &rest d) (list 1 (list 2 3) 4 5) (list a b c d))",
-        stderr: "front-end error",
+        stderr: "UnknownLambdaListKeyword",
         exit_code: 1,
     },
     XFail {
         name: "do",
         source: "(do ((x 0 (1+ x))) ((= x 3) x))",
-        stderr: "front-end error",
+        stderr: "PSETQ",
         exit_code: 1,
     },
     XFail {
@@ -168,7 +168,7 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "defstruct",
         source: "(progn (defstruct point x y) (point-x (make-point :x 3 :y 4)))",
-        stderr: "front-end error",
+        stderr: "DEFSTRUCT",
         exit_code: 1,
     },
     XFail {
@@ -180,37 +180,37 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "psetq",
         source: "(let ((a 1) (b 2)) (psetq a b b a) (list a b))",
-        stderr: "front-end error",
+        stderr: "PSETQ",
         exit_code: 1,
     },
     XFail {
         name: "rotatef",
         source: "(let ((a 1) (b 2)) (rotatef a b) (list a b))",
-        stderr: "front-end error",
+        stderr: "ROTATEF",
         exit_code: 1,
     },
     XFail {
         name: "shiftf",
         source: "(let ((a 1) (b 2)) (shiftf a b 3) (list a b))",
-        stderr: "front-end error",
+        stderr: "SHIFTF",
         exit_code: 1,
     },
     XFail {
         name: "multiple-value-setq",
         source: "(multiple-value-setq (a b) (values 1 2))",
-        stderr: "front-end error",
+        stderr: "MULTIPLE-VALUE-SETQ",
         exit_code: 1,
     },
     XFail {
         name: "with-input-from-string",
         source: "(with-input-from-string (s \"abc\") (read-char s))",
-        stderr: "front-end error",
+        stderr: "WITH-INPUT-FROM-STRING",
         exit_code: 1,
     },
     XFail {
         name: "with-output-to-string",
         source: "(with-output-to-string (s) (write-char #\\a s))",
-        stderr: "front-end error",
+        stderr: "WITH-OUTPUT-TO-STRING",
         exit_code: 1,
     },
 ];

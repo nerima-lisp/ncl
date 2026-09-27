@@ -5,6 +5,7 @@ use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
+#[cfg(test)]
 fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),

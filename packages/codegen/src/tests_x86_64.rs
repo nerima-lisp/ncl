@@ -5,7 +5,7 @@ use crate::{AllocationTarget, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
-fn x86_64_rejects_calls_with_five_forwarded_arguments() {
+fn x86_64_rejects_calls_with_five_forwarded_arguments() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(76),
         "reject-five-args",
@@ -13,44 +13,51 @@ fn x86_64_rejects_calls_with_five_forwarded_arguments() {
         vec![Ty::Word],
     );
     let callee = builder.add_constant(Constant::Fixnum(0));
-    let callee = match builder.push_op(OpKind::Const { result: callee }, &[Ty::Word]) {
-        Ok(values) => values[0],
-        Err(error) => unreachable!("callee: {error:?}"),
-    };
+    let callee = builder
+        .push_op(OpKind::Const { result: callee }, &[Ty::Word])
+        .map_err(|error| format!("callee: {error:?}"))?
+        .first()
+        .copied()
+        .ok_or_else(|| "callee result missing".to_owned())?;
     let mut args = Vec::new();
     for value in 0..6 {
         let constant = builder.add_constant(Constant::Fixnum(value));
         args.push(
-            match builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]) {
-                Ok(values) => values[0],
-                Err(error) => unreachable!("argument: {error:?}"),
-            },
+            builder
+                .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+                .map_err(|error| format!("argument: {error:?}"))?
+                .first()
+                .copied()
+                .ok_or_else(|| "argument result missing".to_owned())?,
         );
     }
-    let result = match builder.push_op(
-        OpKind::Call {
-            function: callee,
-            args,
-        },
-        &[Ty::Word],
-    ) {
-        Ok(values) => values[0],
-        Err(error) => unreachable!("call: {error:?}"),
-    };
-    if let Err(error) = builder.terminate(Terminator::Return {
-        values: vec![result],
-    }) {
-        unreachable!("return: {error:?}");
-    }
+    let result = builder
+        .push_op(
+            OpKind::Call {
+                function: callee,
+                args,
+            },
+            &[Ty::Word],
+        )
+        .map_err(|error| format!("call: {error:?}"))?
+        .first()
+        .copied()
+        .ok_or_else(|| "call result missing".to_owned())?;
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .map_err(|error| format!("return: {error:?}"))?;
 
-    let Err(error) = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) else {
-        unreachable!("x86-64 must reject five forwarded arguments");
-    };
-    assert!(matches!(
-        error,
-        crate::CodegenError::Unsupported(message)
-            if message.contains("x86-64 calls support at most four")
-    ));
+    let error = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+        .err()
+        .ok_or_else(|| "x86-64 accepted five forwarded arguments".to_owned())?;
+    if !error.contains("unsupported operation") {
+        return Err(format!("unexpected codegen error: {error}"));
+    }
+    Ok(())
 }
 
 #[test]

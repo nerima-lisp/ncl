@@ -235,7 +235,8 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     )
     .map_err(|_| ObjectError::TypeError)?;
     let form_value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
-    let mut lambda_list = Vec::with_capacity(index + 3);
+    let mut lambda_list = Vec::with_capacity(index + 4);
+    lambda_list.push(symbol(ctx, runtime, "&OPTIONAL")?);
     let mut selected = Word::NIL;
     for position in 0..=index {
         let variable = fresh_symbol(ctx, runtime)?;

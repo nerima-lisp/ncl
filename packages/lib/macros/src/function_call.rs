@@ -2,8 +2,8 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
-    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, symbol_function,
-    symbol_is_macro,
+    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, function_name,
+    symbol_function, symbol_is_macro,
 };
 
 const FUNCTION: Parameter = Parameter {
@@ -41,7 +41,10 @@ fn call_designator(
             });
         })?;
         match designator {
-            FunctionDesignator::Function(function) => Ok(function),
+            FunctionDesignator::Function(function) => {
+                let name = function_name(ctx, ncl_object::Function::from_word(function.as_word()))?;
+                FunctionObject::try_from(symbol_function(ctx, name)?).or(Ok(function))
+            }
             FunctionDesignator::Symbol(symbol) => {
                 if symbol_is_macro(ctx, symbol.into())? {
                     return Err(ObjectError::UndefinedFunction);
@@ -51,7 +54,7 @@ fn call_designator(
             }
         }
     }?;
-    if runtime.builtin_descriptor(resolved).is_some() {
+    if runtime.builtin_allows_nested_evaluation(resolved) {
         return runtime
             .call_builtin(ctx, resolved, arguments)
             .map_err(|error| {
@@ -135,6 +138,9 @@ fn apply(
     let supplied: Vec<Word> = (0..args.len())
         .filter_map(|index| args.get(index))
         .collect();
+    if supplied.len() < 2 {
+        return Err(ObjectError::TypeError);
+    }
     let last = *supplied.last().ok_or(ObjectError::TypeError)?;
     let mut arguments = supplied[1..supplied.len() - 1].to_vec();
     append_list(ctx, last, &mut arguments)?;

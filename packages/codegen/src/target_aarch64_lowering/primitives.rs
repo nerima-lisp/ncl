@@ -40,7 +40,7 @@ pub(super) fn decode_function_entry(
     )
 }
 
-fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
+pub(super) fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
     let mut current = closure;
     for _ in 0..function
         .blocks

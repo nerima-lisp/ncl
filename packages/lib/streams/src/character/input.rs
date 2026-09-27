@@ -1,9 +1,29 @@
 use super::{
-    BuiltinArgs, DATA, MultipleValues, ObjectError, POSITION, Runtime, Stream, StreamKind,
-    ThreadContext, Word, ensure_open, make_string, position, set_position, simple_vector_length,
-    simple_vector_ref, state_kind, stream_from_args, stream_or_default, stream_state,
-    string_length, string_ref,
+    BuiltinArgs, DATA, MultipleValues, ObjectError, ObjectRef, POSITION, Runtime, Stream,
+    StreamKind, ThreadContext, Word, car, classify_object, ensure_open, make_string, position,
+    set_position, simple_vector_length, simple_vector_ref, state_kind, stream_from_args,
+    stream_or_default, stream_state, string_length, string_ref,
 };
+
+pub fn string_output_at_line_start(
+    ctx: &ThreadContext,
+    stream: Stream,
+) -> Result<bool, ObjectError> {
+    let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
+    if state_kind(ctx, state)? != StreamKind::StringOutput {
+        return Err(ObjectError::TypeError);
+    }
+    let output = simple_vector_ref(ctx, state, 2)?;
+    if output == Word::NIL {
+        return Ok(true);
+    }
+    let character = car(ctx, output)?;
+    match classify_object(ctx, character) {
+        ObjectRef::Character(code) => Ok(char::from_u32(code) == Some('\n')),
+        _ => Err(ObjectError::Layout), // check-added-lines: allow(wildcard) reject non-character output data
+    }
+}
 
 pub fn next_character(
     ctx: &mut ThreadContext,

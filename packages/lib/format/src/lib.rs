@@ -2,8 +2,10 @@
 #![allow(missing_docs)]
 
 mod executor;
+mod registration;
 
 pub use executor::{FormatError, execute};
+pub use registration::register;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FormatControl {

@@ -176,6 +176,10 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut to_keyword);
     let mut do_keyword = symbol(&mut ctx, &runtime, "DO")?;
     root!(&mut do_keyword);
+    let mut input_stream_spec = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut input_stream_spec);
+    let mut output_stream_spec = list(&mut ctx, &runtime, &[x])?;
+    root!(&mut output_stream_spec);
     let nil = Word::NIL;
     let mut cases: Vec<(&str, Box<Word>)> = Vec::with_capacity(MACROS.len());
     macro_rules! case {
@@ -202,7 +206,11 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
     case!("DEFSETF", "DEFSETF", [x, y]);
     case!("DEFVAR", "DEFVAR", [x, one]);
-    case!("DESTRUCTURING-BIND", "DESTRUCTURING-BIND", [destructuring_lambda_list, x, x]);
+    case!(
+        "DESTRUCTURING-BIND",
+        "DESTRUCTURING-BIND",
+        [destructuring_lambda_list, x, x]
+    );
     case!("DO", "DO", [do_variables, do_end, x]);
     case!("DO*", "DO*", [do_variables, do_end, x]);
     case!("DOLIST", "DOLIST", [dolist_spec, x]);
@@ -212,8 +220,25 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
-    case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
-    case!("MULTIPLE-VALUE-BIND", "MULTIPLE-VALUE-BIND", [destructuring_lambda_list, x, x]);
+    case!(
+        "LOOP",
+        "LOOP",
+        [
+            for_keyword,
+            x,
+            from_keyword,
+            one,
+            to_keyword,
+            one,
+            do_keyword,
+            x
+        ]
+    );
+    case!(
+        "MULTIPLE-VALUE-BIND",
+        "MULTIPLE-VALUE-BIND",
+        [destructuring_lambda_list, x, x]
+    );
     case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
     case!("OR", "OR", [x, y]);
@@ -231,6 +256,16 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("TYPECASE", "TYPECASE", [x, type_clause]);
     case!("UNLESS", "UNLESS", [x, y]);
     case!("WHEN", "WHEN", [x, y]);
+    case!(
+        "WITH-INPUT-FROM-STRING",
+        "WITH-INPUT-FROM-STRING",
+        [input_stream_spec, x]
+    );
+    case!(
+        "WITH-OUTPUT-TO-STRING",
+        "WITH-OUTPUT-TO-STRING",
+        [output_stream_spec, x]
+    );
     assert_eq!(cases.len(), MACROS.len());
     ctx.set_gc_stress(true);
     let case_words: Vec<_> = cases.iter().map(|(_, input)| **input).collect();

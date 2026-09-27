@@ -30,11 +30,14 @@ use crate::support::NativeInvocation;
 /// Run `body` with the `ThreadContext` reached through the installed native
 /// callback context, returning `Word::NIL` if no context is installed (which
 /// should not happen for code compiled through this crate).
+#[allow(clippy::option_if_let_else)]
 fn with_context(thread: NonNull<Thread>, body: impl FnOnce(&mut ThreadContext) -> Word) -> Word {
-    ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+    match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         body(invocation.context)
-    })
-    .unwrap_or_else(|| unreachable!("native context missing")) // check-added-lines: allow(panic)
+    }) {
+        Some(value) => value,
+        None => unreachable!("native context missing"), // check-added-lines: allow(panic)
+    }
 }
 
 /// Establish a `catch` frame. See [`ThreadContext::enter_catch`].

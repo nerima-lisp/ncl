@@ -10,7 +10,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
                     args.len().saturating_sub(1)
                 }
-                OpKind::CallClosure { closure, args } => {
+                OpKind::CallClosure { closure, args, .. } => {
                     let arguments = args.len().saturating_sub(1);
                     match closure_layout(function, *closure)? {
                         ClosureLayout::Static(captures) => captures.len().saturating_add(arguments),

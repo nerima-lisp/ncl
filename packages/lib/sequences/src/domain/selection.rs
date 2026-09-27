@@ -7,9 +7,9 @@
 //! move every object in the sequence.
 
 use ncl_object::{
-    FunctionArguments, FunctionCaller, FunctionDesignator, HandleVec, List, Local, MultipleValues,
-    ObjectError, ObjectRef, Runtime, Scope, Sequence, ThreadContext, Word, car, cdr,
-    classify_object, simple_vector_length, simple_vector_ref, string_length, string_ref,
+    FunctionArguments, FunctionCaller, FunctionDesignator, List, MultipleValues, ObjectError,
+    ObjectRef, Runtime, Sequence, ThreadContext, Word, car, cdr, classify_object,
+    simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
 #[path = "selection_values.rs"]
 mod selection_values;
@@ -29,20 +29,9 @@ pub fn object_sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, Obje
 fn scope_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &[Word]) -> T,
-) -> T {
-    let mut scope = Scope::new(ctx);
-    let locals = values
-        .iter()
-        .copied()
-        .map(Local::from_word)
-        .collect::<Vec<_>>();
-    let handles: HandleVec<'_> = scope.root_many(&locals);
-    let rooted = handles
-        .iter()
-        .map(|handle| scope.get(*handle).as_word())
-        .collect::<Vec<_>>();
-    f(scope.context_mut(), &rooted)
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, values, f)
 }
 
 fn scope_rooted_slice<T>(

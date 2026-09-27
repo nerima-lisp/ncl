@@ -3,28 +3,17 @@
 #![allow(dead_code)]
 
 use ncl_object::{
-    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, HandleVec, List,
-    Local, MultipleValues, ObjectError, Runtime, Scope, Sequence, ThreadContext, Word,
-    make_simple_vector, simple_vector_length, simple_vector_ref,
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, List,
+    MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word, make_simple_vector,
+    simple_vector_length, simple_vector_ref,
 };
 
 fn scope_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &[Word]) -> T,
-) -> T {
-    let mut scope = Scope::new(ctx);
-    let locals = values
-        .iter()
-        .copied()
-        .map(Local::from_word)
-        .collect::<Vec<_>>();
-    let handles: HandleVec<'_> = scope.root_many(&locals);
-    let rooted = handles
-        .iter()
-        .map(|handle| scope.get(*handle).as_word())
-        .collect::<Vec<_>>();
-    f(scope.context_mut(), &rooted)
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, values, f)
 }
 
 fn scope_rooted_slice<T>(

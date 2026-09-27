@@ -17,6 +17,8 @@ impl RuntimeAbi for X86_64FixtureAbi {
         let offset = match field {
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
+            ContextField::Pending => layout.pending,
+            ContextField::MultipleValueCount => layout.mv_count,
             _ => return Err(crate::AbiError::UnsupportedContextField(field)),
         };
         i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))

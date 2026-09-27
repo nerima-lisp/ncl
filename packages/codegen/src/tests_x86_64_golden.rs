@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
-use crate::{CodegenError, FLAG_CALL, compile_function_x86_64};
+use crate::{FLAG_CALL, compile_function_x86_64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -10,28 +10,39 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
+#[cfg(test)]
 #[test]
-fn x86_64_rejects_non_local_exit_at_codegen_time() {
+fn x86_64_lowers_non_local_exit_at_codegen_time() -> Result<(), String> {
     let mut builder =
         ncl_ir::FunctionBuilder::new(ncl_ir::FunctionId(99), "x86-64-throw", Vec::new(), vec![]);
     let constant = builder.add_constant(Constant::Fixnum(1));
     let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
-    // check-added-lines: allow(panic) test-only assertion
-    assert!(values.is_ok(), "constant lowering: {values:?}");
-    let Some(value) = values.ok().and_then(|ids| ids.first().copied()) else {
-        return;
-    };
-    // check-added-lines: allow(panic) test-only assertion
-    assert!(
-        builder
-            .terminate(Terminator::Throw { condition: value })
-            .is_ok(),
-        "throw terminator"
-    );
+    let value = values
+        .map_err(|error| format!("constant lowering: {error:?}"))?
+        .first()
+        .copied()
+        .ok_or_else(|| "constant result missing".to_owned())?;
+    builder
+        .terminate(Terminator::Throw { condition: value })
+        .map_err(|error| format!("throw terminator: {error:?}"))?;
 
     let result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
-    // check-added-lines: allow(panic) test-only assertion
-    assert!(matches!(result, Err(CodegenError::NonLocalExitUnsupported)));
+    let compiled = result.map_err(|error| format!("x86-64 throw lowering failed: {error:?}"))?;
+    let decoded = ncl_disasm::decode(ncl_disasm::Architecture::X86_64, &compiled.code, 0)
+        .map_err(|error| format!("x86-64 throw lowering decode failed: {error}"))?;
+    if !decoded
+        .iter()
+        .any(|instruction| instruction.text == "mov 480(%r15), %r8")
+    {
+        return Err("throw lowering does not inspect pending".to_owned());
+    }
+    if !decoded
+        .iter()
+        .any(|instruction| instruction.text == "mov $2, %r10")
+    {
+        return Err("throw condition was not lowered".to_owned());
+    }
+    Ok(())
 }
 
 fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
@@ -274,6 +285,7 @@ fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 #[test]
 fn golden_x86_64_switch_dispatches_on_value() {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(33), "switch", Vec::new(), vec![]);
@@ -319,7 +331,7 @@ fn golden_x86_64_switch_dispatches_on_value() {
     // One compare per case, and one conditional branch per case.
     assert!(contains(&compiled.code, &[0x49, 0x83, 0xFA, 0x00]));
     assert!(contains(&compiled.code, &[0x49, 0x83, 0xFA, 0x01]));
-    assert_eq!(count_occurrences(&compiled.code, &[0x0F, 0x84]), 2);
+    assert_eq!(count_occurrences(&compiled.code, &[0x0F, 0x84]), 5);
 }
 
 #[test]

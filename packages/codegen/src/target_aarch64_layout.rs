@@ -55,5 +55,5 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
 
 fn extra_words(argument_count: usize) -> usize {
     let extras = argument_count.saturating_sub(4);
-    extras.saturating_add(usize::from(extras > 0))
+    extras.saturating_add(usize::from(extras > 0)).max(1)
 }

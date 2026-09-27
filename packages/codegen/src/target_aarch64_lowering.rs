@@ -65,15 +65,10 @@ pub(super) fn load_value(
         ),
         Location::Spill(_) => {
             let offset = spill_offset(allocation, value)?;
-            emit(
-                assembler,
-                Inst::SubImm {
-                    rd: RegOrSp::Reg(register),
-                    rn: RegOrSp::Reg(Reg(29)),
-                    imm: offset,
-                    shift: false,
-                },
-            )?;
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), u64::from(offset)) {
+                emit(assembler, instruction)?;
+            }
+            emit(assembler, Inst::Sub { rd: RegOrSp::Reg(register), rn: RegOrSp::Reg(Reg(29)), rm: Reg(17), shift: ncl_asm_aarch64::Shift::Lsl(0) })?;
             emit(
                 assembler,
                 Inst::Ldr {
@@ -121,15 +116,10 @@ pub(super) fn store_value(
             } else {
                 register
             };
-            emit(
-                assembler,
-                Inst::SubImm {
-                    rd: RegOrSp::Reg(Reg(16)),
-                    rn: RegOrSp::Reg(Reg(29)),
-                    imm: offset,
-                    shift: false,
-                },
-            )?;
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), u64::from(offset)) {
+                emit(assembler, instruction)?;
+            }
+            emit(assembler, Inst::Sub { rd: RegOrSp::Reg(Reg(16)), rn: RegOrSp::Reg(Reg(29)), rm: Reg(17), shift: ncl_asm_aarch64::Shift::Lsl(0) })?;
             emit(
                 assembler,
                 Inst::Str {

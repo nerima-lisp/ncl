@@ -24,6 +24,10 @@ pub fn lower_call(
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    emit(
+        assembler,
+        Inst::Lea(REST_ARGUMENT, slot_mem_of(slots.outgoing_base)?),
+    )?;
     for (index, argument) in rest.iter().enumerate() {
         if let Some(register) = ARGUMENT_REGISTERS.get(index) {
             load_slot(assembler, slots, *argument, *register)?;
@@ -128,6 +132,10 @@ pub fn lower_closure_call(
     emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
     emit(assembler, Inst::MovRR(RETURN_VALUE, ENTRY))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    emit(
+        assembler,
+        Inst::Lea(REST_ARGUMENT, slot_mem_of(slots.outgoing_base)?),
+    )?;
     let total = capture_count
         .checked_add(rest.len())
         .ok_or(CodegenError::FrameOverflow)?;

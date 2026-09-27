@@ -1,6 +1,6 @@
 use super::{emit, load_value, primitives};
 use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
-use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
+use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::ValueId;
 
 #[allow(clippy::redundant_pub_crate)]
@@ -21,6 +21,16 @@ pub(crate) fn lower_call(
     load_value(assembler, allocation, callee, Reg(16))?;
     primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
     load_value(assembler, allocation, *argc, Reg(0))?;
+    let rest_offset = allocation
+        .outgoing_base
+        .checked_add(1)
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|bytes| u16::try_from(bytes).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(rest_offset)) {
+        emit(assembler, instruction)?;
+    }
+    emit(assembler, Inst::Sub { rd: RegOrSp::Reg(Reg(5)), rn: RegOrSp::Reg(Reg(29)), rm: Reg(16), shift: Shift::Lsl(0) })?;
     let extra_count = rest.len().saturating_sub(4);
     if extra_count > 0 {
         let offset = allocation
@@ -52,22 +62,6 @@ pub(crate) fn lower_call(
                 Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
             )?;
         } else {
-            if index == 4 {
-                let offset = allocation
-                    .outgoing_base
-                    .checked_add(1)
-                    .and_then(|slot| slot.checked_mul(8))
-                    .ok_or(CodegenError::FrameOverflow)?;
-                emit(
-                    assembler,
-                    Inst::SubImm {
-                        rd: RegOrSp::Reg(Reg(5)),
-                        rn: RegOrSp::Reg(Reg(29)),
-                        imm: u16::try_from(offset).map_err(|_| CodegenError::FrameOverflow)?,
-                        shift: false,
-                    },
-                )?;
-            }
             load_value(assembler, allocation, *argument, Reg(16))?;
             emit(
                 assembler,

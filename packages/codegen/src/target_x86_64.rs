@@ -37,7 +37,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::EnterHandler { .. }
                 | OpKind::LeaveHandler { .. } => 0,
             };
-            maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+            maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()).max(1));
         }
         let count = match &block.terminator {
             Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
@@ -50,7 +50,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
             | Terminator::Throw { .. }
             | Terminator::Unreachable => 0,
         };
-        maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+        maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()).max(1));
     }
     u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
 }

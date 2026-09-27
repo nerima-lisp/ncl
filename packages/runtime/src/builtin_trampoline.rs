@@ -267,6 +267,99 @@ extern "C" fn make_rest_list_native(
     result
 }
 
+extern "C" fn keyword_check_native(
+    thread_ptr: *mut Thread,
+    a0: u64,
+    a1: u64,
+    a2: u64,
+    _a3: u64,
+    _rest: u64,
+    _argc: u64,
+    _start: u64,
+) -> u64 {
+    call_keyword_builtin(thread_ptr, "CHECK-KEYWORDS", &[a0, a1, a2])
+}
+
+extern "C" fn keyword_value_native(
+    thread_ptr: *mut Thread,
+    a0: u64,
+    a1: u64,
+    _a2: u64,
+    _a3: u64,
+    _rest: u64,
+    _argc: u64,
+    _start: u64,
+) -> u64 {
+    call_keyword_builtin(thread_ptr, "KEYWORD-VALUE", &[a0, a1])
+}
+
+extern "C" fn keyword_supplied_native(
+    thread_ptr: *mut Thread,
+    a0: u64,
+    a1: u64,
+    _a2: u64,
+    _a3: u64,
+    _rest: u64,
+    _argc: u64,
+    _start: u64,
+) -> u64 {
+    call_keyword_builtin(thread_ptr, "KEYWORD-SUPPLIED-P", &[a0, a1])
+}
+
+fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u64 {
+    let Some(thread) = NonNull::new(thread_ptr) else {
+        return Word::NIL.bits();
+    };
+    let Some(result) = ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        let context = &mut *invocation.context;
+        let object = invocation.object;
+        let Some(package) = object.find_package(context, "NCL-EXT") else {
+            context.set_pending(ncl_object::ObjectError::Layout);
+            return Word::NIL.bits();
+        };
+        let Ok((symbol, _)) = Package::from_word(package).intern(context, object, name) else {
+            context.set_pending(ncl_object::ObjectError::Layout);
+            return Word::NIL.bits();
+        };
+        let Ok(function_word) = symbol_function(context, symbol) else {
+            context.set_pending(ncl_object::ObjectError::Unbound);
+            return Word::NIL.bits();
+        };
+        let Ok(function) = FunctionObject::try_from(function_word) else {
+            context.set_pending(ncl_object::ObjectError::Unbound);
+            return Word::NIL.bits();
+        };
+        let mut arguments = words.iter().copied().map(Word::from_bits).collect::<Vec<_>>();
+        let mut rooted_function = function.as_word();
+        let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
+        let tokens = arguments
+            .iter_mut()
+            .map(|word| ncl_object::push_heap_root(object, word))
+            .collect::<Vec<_>>();
+        let result = FunctionObject::try_from(rooted_function)
+            .and_then(|function| object.call_builtin(context, function, &arguments));
+        let arguments_popped = tokens
+            .into_iter()
+            .rev()
+            .all(|token| ncl_object::pop_heap_root(object, token));
+        let function_popped = ncl_object::pop_heap_root(object, function_token);
+        if !arguments_popped || !function_popped {
+            context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
+            return Word::NIL.bits();
+        }
+        match result {
+            Ok(value) => value.bits(),
+            Err(error) => {
+                context.set_pending(error);
+                Word::NIL.bits()
+            }
+        }
+    }) else {
+        return Word::NIL.bits();
+    };
+    result
+}
+
 extern "C" fn undefined_function_dispatch(
     _argc: u64,
     _a0: u64,
@@ -418,6 +511,21 @@ pub fn install(
             .map_err(|_| RuntimeError::Native("make-rest-list address overflow".to_owned()))?,
     );
     let builtin_address = dispatch_address()?;
+    let keyword_addresses = [
+        ("check-keywords", ncl_sys::function_address!(keyword_check_native)),
+        ("keyword-value", ncl_sys::function_address!(keyword_value_native)),
+        (
+            "keyword-supplied-p",
+            ncl_sys::function_address!(keyword_supplied_native),
+        ),
+    ];
+    for (name, address) in keyword_addresses {
+        object.register_builtin_address(
+            BuiltinIdentifier::new(BuiltinPackage::NclExt, BuiltinName::new(name)),
+            usize::try_from(address.map_err(|error| RuntimeError::Native(error.to_string()))?)
+                .map_err(|_| RuntimeError::Native("builtin address overflow".to_owned()))?,
+        );
+    }
     let undefined_address = undefined_function_dispatch_address()?;
     let build = |address| {
         if cfg!(target_arch = "aarch64") {

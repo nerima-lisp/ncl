@@ -175,8 +175,14 @@ pub enum AbiError {
 /// Converts an IR builtin spelling into the object-layer registry key.
 #[must_use]
 pub fn common_lisp_builtin(name: &str) -> ncl_object::BuiltinIdentifier {
+    let package = match name {
+        "check-keywords" | "keyword-value" | "keyword-supplied-p" => {
+            ncl_object::BuiltinPackage::NclExt
+        }
+        _ => ncl_object::BuiltinPackage::CommonLisp,
+    };
     ncl_object::BuiltinIdentifier::new(
-        ncl_object::BuiltinPackage::CommonLisp,
+        package,
         ncl_object::BuiltinName::new(Box::leak(name.to_owned().into_boxed_str())),
     )
 }

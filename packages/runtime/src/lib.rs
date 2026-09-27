@@ -15,8 +15,8 @@ pub use native_error::NativeCondition;
 use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    BuiltinIdentifier, BuiltinName, BuiltinPackage, Function, ObjectError,
-    Runtime as ObjectRuntime, ThreadContext, Word, function_code, make_simple_vector,
+    Function, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
+    make_simple_vector,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
@@ -138,16 +138,6 @@ impl Runtime {
         // needs a real native `ENTRY` the moment it is created, so the
         // trampoline must be published and installed first.
         let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
-        let make_rest_list = builtin_trampoline::make_rest_list_address()?;
-        object.register_builtin_address(
-            BuiltinIdentifier::new(
-                BuiltinPackage::CommonLisp,
-                BuiltinName::new("make-rest-list"),
-            ),
-            usize::try_from(make_rest_list).map_err(|_| {
-                RuntimeError::Native("make-rest-list address does not fit usize".to_owned())
-            })?,
-        );
         ncl_stdlib::register_all(&mut context, &object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));

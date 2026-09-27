@@ -448,6 +448,7 @@ pub fn expand_multiple_value_list_adapter(
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index) intentional
     ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
+        // check-added-lines: allow(index) exact-shape destructuring
         let [value] = roots else {
             return Err(ObjectError::TypeError);
         };

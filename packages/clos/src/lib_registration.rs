@@ -33,7 +33,7 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 13] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 14] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
@@ -45,6 +45,7 @@ const DIRECT_BUILTINS: [DirectBuiltin; 13] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DEFINE-GENERIC"), arity: BuiltinArity::One, callback: clos_define_generic_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ADD-METHOD"), arity: BuiltinArity::Three, callback: clos_add_method_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ENSURE-INITIALIZATION-BASE"), arity: BuiltinArity::One, callback: clos_ensure_initialization_base_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DISPATCH"), arity: BuiltinArity::Two, callback: clos_dispatch_builtin },
     DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
 ];

@@ -241,6 +241,9 @@ fn method_match(
             score += 10_000;
             continue;
         }
+        if symbol_name_string(ctx, designator)? == "T" {
+            continue;
+        }
         let expected = class_designator(ctx, runtime, designator)?;
         let actual = class_of(ctx, runtime, *argument)?;
         if !class_is_subclass(ctx, actual, expected)? {

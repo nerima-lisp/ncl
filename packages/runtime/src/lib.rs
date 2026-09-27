@@ -192,6 +192,9 @@ impl Runtime {
         self.compile_form(form)
     }
     fn compile_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
+        if let Some(value) = load::try_load_form(self, form)? {
+            return Ok(value);
+        }
         let registry = MacroRegistry::new();
         let mut caller = RuntimeMacroCaller {
             entry_codes: &self.entry_codes,

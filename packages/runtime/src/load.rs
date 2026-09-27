@@ -22,6 +22,40 @@ pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
     source_forms(runtime, &source)
 }
 
+pub fn try_load_form(runtime: &mut Runtime, form: Word) -> Result<Option<Word>, RuntimeError> {
+    if !matches!(classify_object(&runtime.context, form), ObjectRef::Cons(_)) {
+        return Ok(None);
+    }
+    let head = car(&runtime.context, form)?;
+    if !matches!(
+        classify_object(&runtime.context, head),
+        ObjectRef::Symbol(_)
+    ) {
+        return Ok(None);
+    }
+    let name = word_string(&runtime.context, symbol_name(&runtime.context, head)?)?;
+    if !name.eq_ignore_ascii_case("LOAD") {
+        return Ok(None);
+    }
+    let arguments = cdr(&runtime.context, form)?;
+    let path_word = car(&runtime.context, arguments)?;
+    if cdr(&runtime.context, arguments)? != Word::NIL {
+        return Err(RuntimeError::Native(
+            "load: expected exactly one pathname".to_owned(),
+        ));
+    }
+    if !matches!(
+        classify_object(&runtime.context, path_word),
+        ObjectRef::String(_)
+    ) {
+        return Err(RuntimeError::Native(
+            "load: expected a pathname string".to_owned(),
+        ));
+    }
+    let path = word_string(&runtime.context, path_word)?;
+    file(runtime, Path::new(&path)).map(Some)
+}
+
 pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
     let mut input = StringSource::new(source);
     let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;

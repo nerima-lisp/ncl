@@ -109,6 +109,21 @@ fn eval_load_script_and_repl_use_runtime() {
 }
 
 #[test]
+fn lisp_load_form_executes_a_source_file() {
+    let path = std::env::temp_dir().join(format!("ncl-lisp-load-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(&path, "42") {
+        panic!("source file creation failed: {error}");
+    }
+    let expression = format!("(load \"{}\")", path_str(&path));
+    let result = output(ncl().args(["--eval", &expression]));
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "42");
+    if let Err(error) = fs::remove_file(path) {
+        panic!("source file cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn repl_continues_forms_and_errors() {
     let mut repl = match ncl()
         .stdin(Stdio::piped())

@@ -1,5 +1,5 @@
 use crate::layout::{symbol_flag, symbol_offset, widetag};
-use crate::{ObjectError, ThreadContext, Word};
+use crate::{Function, FunctionObject, ObjectError, ThreadContext, Word, function_lambda_list};
 use ncl_sys::{LowTag, StorageCondition};
 
 fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
@@ -49,6 +49,16 @@ pub fn set_symbol_value(
 /// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
+}
+
+/// Return whether a function object carries the undefined-function marker.
+///
+/// # Errors
+/// Returns an object error when the word is not a function or its layout is malformed.
+pub fn is_undefined_function(ctx: &ThreadContext, function: Word) -> Result<bool, ObjectError> {
+    let function = FunctionObject::try_from(function).map_err(|_| ObjectError::TypeError)?;
+    // check-added-lines: allow(unbound) identifies the sentinel marker.
+    Ok(function_lambda_list(ctx, Function::from_word(function.as_word()))? == Word::UNBOUND)
 }
 
 /// Read a symbol's property list.

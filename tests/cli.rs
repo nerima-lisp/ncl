@@ -269,6 +269,19 @@ fn evals_builtins_through_the_generic_native_trampoline() {
     }
 }
 
+#[test]
+fn undefined_function_is_reported_without_process_crash() {
+    let result = output(ncl().args(["--eval", "(no-such-function 1)"]));
+    assert!(!result.status.success());
+    assert_ne!(result.status.code(), Some(139));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("UNDEFINED-FUNCTION"));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("NO-SUCH-FUNCTION"));
+
+    let result = output(ncl().args(["--eval", "(fboundp 'no-such-function)"]));
+    assert!(result.status.success());
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "NIL");
+}
+
 /// A builtin call with the wrong argument count must raise a clean error
 /// through the generic trampoline, not crash the process.
 #[test]

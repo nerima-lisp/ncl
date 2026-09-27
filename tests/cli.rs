@@ -390,6 +390,7 @@ fn evals_variadic_calls_and_multiple_values() {
         ),
         ("(apply #'+ 1 2 3 4 5 '(6 7))", "28"),
         ("(multiple-value-list (floor 7 2))", "(3 1)"),
+        ("(nth-value 5 (floor 7 2))", "NIL"),
         ("(nth-value 1 (floor 7 2))", "1"),
         ("(multiple-value-bind (q r) (floor 7 2) (+ q r))", "4"),
         (
@@ -400,6 +401,11 @@ fn evals_variadic_calls_and_multiple_values() {
             "(multiple-value-call #'list (values 1 2) (values 3 4))",
             "(1 2 3 4)",
         ),
+        (
+            "(progn (defun two () (values 1 2)) (multiple-value-call #'list (two) (two)))",
+            "(1 2 1 2)",
+        ),
+        ("(catch 'a (throw 'a 1) 2)", "1"),
     ] {
         let result = output(ncl().args(["--eval", source]));
         assert!(result.status.success(), "{source}: {result:?}");

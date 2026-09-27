@@ -201,15 +201,30 @@ pub fn compile_function_aarch64(
     )?;
     let body_bytes = frame.size_bytes().saturating_sub(32);
     if body_bytes > 0 {
-        emit(
-            &mut assembler,
-            Inst::SubImm {
-                rd: RegOrSp::Sp,
-                rn: RegOrSp::Sp,
-                imm: u16::try_from(body_bytes).map_err(|_| CodegenError::FrameOverflow)?,
-                shift: false,
-            },
-        )?;
+        if body_bytes <= 4095 {
+            emit(
+                &mut assembler,
+                Inst::SubImm {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    imm: u16::try_from(body_bytes).map_err(|_| CodegenError::FrameOverflow)?,
+                    shift: false,
+                },
+            )?;
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(body_bytes)) {
+                emit(&mut assembler, instruction)?;
+            }
+            emit(
+                &mut assembler,
+                Inst::Sub {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    rm: Reg(16),
+                    shift: ncl_asm_aarch64::Shift::Lsl(0),
+                },
+            )?;
+        }
     }
     initialize_arguments(&mut assembler, function, &allocation)?;
     let mut position = 0u32;
@@ -363,16 +378,33 @@ pub fn compile_function_aarch64(
                     FLAG_CALL,
                 )?;
                 if body_bytes > 0 {
-                    emit(
-                        &mut assembler,
-                        Inst::AddImm {
-                            rd: RegOrSp::Sp,
-                            rn: RegOrSp::Sp,
-                            imm: u16::try_from(body_bytes)
-                                .map_err(|_| CodegenError::FrameOverflow)?,
-                            shift: false,
-                        },
-                    )?;
+                    if body_bytes <= 4095 {
+                        emit(
+                            &mut assembler,
+                            Inst::AddImm {
+                                rd: RegOrSp::Sp,
+                                rn: RegOrSp::Sp,
+                                imm: u16::try_from(body_bytes)
+                                    .map_err(|_| CodegenError::FrameOverflow)?,
+                                shift: false,
+                            },
+                        )?;
+                    } else {
+                        for instruction in
+                            ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(body_bytes))
+                        {
+                            emit(&mut assembler, instruction)?;
+                        }
+                        emit(
+                            &mut assembler,
+                            Inst::Add {
+                                rd: RegOrSp::Sp,
+                                rn: RegOrSp::Sp,
+                                rm: Reg(16),
+                                shift: ncl_asm_aarch64::Shift::Lsl(0),
+                            },
+                        )?;
+                    }
                 }
                 emit(
                     &mut assembler,
@@ -390,16 +422,33 @@ pub fn compile_function_aarch64(
             Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &allocation)?;
                 if body_bytes > 0 {
-                    emit(
-                        &mut assembler,
-                        Inst::AddImm {
-                            rd: RegOrSp::Sp,
-                            rn: RegOrSp::Sp,
-                            imm: u16::try_from(body_bytes)
-                                .map_err(|_| CodegenError::FrameOverflow)?,
-                            shift: false,
-                        },
-                    )?;
+                    if body_bytes <= 4095 {
+                        emit(
+                            &mut assembler,
+                            Inst::AddImm {
+                                rd: RegOrSp::Sp,
+                                rn: RegOrSp::Sp,
+                                imm: u16::try_from(body_bytes)
+                                    .map_err(|_| CodegenError::FrameOverflow)?,
+                                shift: false,
+                            },
+                        )?;
+                    } else {
+                        for instruction in
+                            ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(body_bytes))
+                        {
+                            emit(&mut assembler, instruction)?;
+                        }
+                        emit(
+                            &mut assembler,
+                            Inst::Add {
+                                rd: RegOrSp::Sp,
+                                rn: RegOrSp::Sp,
+                                rm: Reg(16),
+                                shift: ncl_asm_aarch64::Shift::Lsl(0),
+                            },
+                        )?;
+                    }
                 }
                 emit(
                     &mut assembler,

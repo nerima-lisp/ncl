@@ -149,6 +149,25 @@ pub(super) fn lower_closure_call(
     load_value(assembler, allocation, closure, Reg(16))?;
     load_callable_address(assembler, Reg(16), Reg(17))?;
     load_value(assembler, allocation, *argc, Reg(0))?;
+    if captures.len().saturating_add(rest.len()) > 4 {
+        let rest_offset = allocation
+            .outgoing_base
+            .checked_add(1)
+            .and_then(|slot| slot.checked_mul(8))
+            .ok_or(CodegenError::FrameOverflow)?;
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(6), u64::from(rest_offset)) {
+            emit(assembler, instruction)?;
+        }
+        emit(
+            assembler,
+            Inst::Sub {
+                rd: RegOrSp::Reg(Reg(5)),
+                rn: RegOrSp::Reg(Reg(29)),
+                rm: Reg(6),
+                shift: Shift::Lsl(0),
+            },
+        )?;
+    }
     for (index, _) in captures.iter().enumerate() {
         let offset = ncl_object::function_offset::CAPTURES
             .checked_add(index)
@@ -168,24 +187,6 @@ pub(super) fn lower_closure_call(
                 },
             )?;
         } else {
-            if index == 4 {
-                emit(
-                    assembler,
-                    Inst::SubImm {
-                        rd: RegOrSp::Reg(Reg(5)),
-                        rn: RegOrSp::Reg(Reg(29)),
-                        imm: u16::try_from(
-                            allocation
-                                .outgoing_base
-                                .checked_add(1)
-                                .and_then(|slot| slot.checked_mul(8))
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )
-                        .map_err(|_| CodegenError::FrameOverflow)?,
-                        shift: false,
-                    },
-                )?;
-            }
             emit(
                 assembler,
                 Inst::Ldr {
@@ -219,24 +220,6 @@ pub(super) fn lower_closure_call(
                 Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
             load_value(assembler, allocation, *argument, register)?;
         } else {
-            if register_index == 5 {
-                emit(
-                    assembler,
-                    Inst::SubImm {
-                        rd: RegOrSp::Reg(Reg(5)),
-                        rn: RegOrSp::Reg(Reg(29)),
-                        imm: u16::try_from(
-                            allocation
-                                .outgoing_base
-                                .checked_add(1)
-                                .and_then(|slot| slot.checked_mul(8))
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )
-                        .map_err(|_| CodegenError::FrameOverflow)?,
-                        shift: false,
-                    },
-                )?;
-            }
             load_value(assembler, allocation, *argument, Reg(16))?;
             let extra_index = index
                 .saturating_sub(4usize.saturating_sub(captures.len()))

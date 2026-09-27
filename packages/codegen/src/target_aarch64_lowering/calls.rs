@@ -23,22 +23,35 @@ pub(crate) fn lower_call(
     load_value(assembler, allocation, *argc, Reg(0))?;
     let extra_count = rest.len().saturating_sub(4);
     if extra_count > 0 {
-        let offset = allocation
+        let rest_offset = allocation
             .outgoing_base
-            .checked_add(u32::try_from(extra_count).map_err(|_| CodegenError::FrameOverflow)?)
-            .and_then(|slot| slot.checked_add(1))
+            .checked_add(1)
             .and_then(|slot| slot.checked_mul(8))
             .ok_or(CodegenError::FrameOverflow)?;
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(6), u64::from(rest_offset)) {
+            emit(assembler, instruction)?;
+        }
+        emit(
+            assembler,
+            Inst::Sub {
+                rd: RegOrSp::Reg(Reg(5)),
+                rn: RegOrSp::Reg(Reg(29)),
+                rm: Reg(6),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            },
+        )?;
         emit(
             assembler,
             Inst::Str {
                 rt: Reg(16),
                 mem: MemOperand::Unscaled {
-                    base: RegOrSp::Reg(Reg(29)),
-                    offset: i16::try_from(offset)
-                        .map_err(|_| CodegenError::FrameOverflow)?
-                        .checked_neg()
-                        .ok_or(CodegenError::FrameOverflow)?,
+                    base: RegOrSp::Reg(Reg(5)),
+                    offset: i16::try_from(
+                        extra_count
+                            .checked_mul(8)
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )
+                    .map_err(|_| CodegenError::FrameOverflow)?,
                 },
             }, // check-added-lines: allow(index) intentional
         )?;
@@ -52,22 +65,6 @@ pub(crate) fn lower_call(
                 Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
             )?;
         } else {
-            if index == 4 {
-                let offset = allocation
-                    .outgoing_base
-                    .checked_add(1)
-                    .and_then(|slot| slot.checked_mul(8))
-                    .ok_or(CodegenError::FrameOverflow)?;
-                emit(
-                    assembler,
-                    Inst::SubImm {
-                        rd: RegOrSp::Reg(Reg(5)),
-                        rn: RegOrSp::Reg(Reg(29)),
-                        imm: u16::try_from(offset).map_err(|_| CodegenError::FrameOverflow)?,
-                        shift: false,
-                    },
-                )?;
-            }
             load_value(assembler, allocation, *argument, Reg(16))?;
             emit(
                 assembler,
@@ -83,22 +80,18 @@ pub(crate) fn lower_call(
         }
     }
     if extra_count > 0 {
-        let offset = allocation
-            .outgoing_base
-            .checked_add(u32::try_from(extra_count).map_err(|_| CodegenError::FrameOverflow)?)
-            .and_then(|slot| slot.checked_add(1))
-            .and_then(|slot| slot.checked_mul(8))
-            .ok_or(CodegenError::FrameOverflow)?;
         emit(
             assembler,
             Inst::Ldr {
                 rt: Reg(16),
                 mem: MemOperand::Unscaled {
-                    base: RegOrSp::Reg(Reg(29)),
-                    offset: i16::try_from(offset)
-                        .map_err(|_| CodegenError::FrameOverflow)?
-                        .checked_neg()
-                        .ok_or(CodegenError::FrameOverflow)?,
+                    base: RegOrSp::Reg(Reg(5)),
+                    offset: i16::try_from(
+                        extra_count
+                            .checked_mul(8)
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )
+                    .map_err(|_| CodegenError::FrameOverflow)?,
                 },
             },
             // check-added-lines: allow(index) intentional

@@ -366,7 +366,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     register!(
         "MAKE-STRING",
-        LambdaList::with_optional(&[SIZE], &[INITIAL_ELEMENT]),
+        LambdaList::with_keys(&[SIZE], &[INITIAL_ELEMENT], false),
         make_string_builtin
     );
     register!(

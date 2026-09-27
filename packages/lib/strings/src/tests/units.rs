@@ -130,11 +130,16 @@ fn string_builtins_cover_comparison_case_trim_and_construction() {
     let trimmed = call(&runtime, &mut ctx, "STRING-TRIM", &[spaces, padded]);
     assert_eq!(ncl_object::string_ref(&ctx, trimmed, 0), Ok('H'));
 
+    let initial_element = keyword(&mut ctx, &runtime, "INITIAL-ELEMENT");
     let made = call(
         &runtime,
         &mut ctx,
         "MAKE-STRING",
-        &[Word::fixnum(3), Word::character('x' as u32)],
+        &[
+            Word::fixnum(3),
+            initial_element,
+            Word::character('x' as u32),
+        ],
     );
     assert_eq!(ncl_object::string_ref(&ctx, made, 2), Ok('x'));
 }
@@ -302,13 +307,7 @@ fn string_allocations_survive_gc_stress_and_strict_forwarding() {
     crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
     ctx.set_strict_forwarding(true);
-
-    let made = call(
-        &runtime,
-        &mut ctx,
-        "MAKE-STRING",
-        &[Word::fixnum(4), Word::character('x' as u32)],
-    );
+    let made = call(&runtime, &mut ctx, "MAKE-STRING", &[Word::fixnum(4)]);
     let mut scope = ncl_object::Scope::new(&mut ctx);
     let made = scope.root::<Word>(ncl_object::Local::from_word(made));
     assert_eq!(
@@ -317,7 +316,7 @@ fn string_allocations_survive_gc_stress_and_strict_forwarding() {
     );
     assert_eq!(
         ncl_object::string_ref(scope.context(), scope.get(made).as_word(), 0),
-        Ok('x')
+        Ok(' ')
     );
     assert_eq!(
         call(

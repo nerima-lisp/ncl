@@ -50,13 +50,14 @@ impl FunctionCaller for RuntimeFunctionCaller {
         }
 
         ncl_object::with_rooted_slice(ctx, args.as_slice(), |ctx, rooted_args| {
-            call_native(ctx, function, rooted_args, values)
+            call_native(ctx, runtime, function, rooted_args, values)
         })
     }
 }
 
 fn call_native(
     ctx: &mut ThreadContext,
+    runtime: &ObjectRuntime,
     function: FunctionObject,
     args: &mut [Word],
     values: &mut MultipleValues,
@@ -108,6 +109,15 @@ fn call_native(
     if ctx.take_non_local_exit() {
         ctx.set_non_local_exit(true);
         return Err(ObjectError::NonLocalExit);
+    }
+    if let Some(error) = ctx.take_pending_lisp_error()
+        && let Some(converter) = runtime.lisp_error_converter()
+    {
+        let condition = converter(ctx, runtime, error)?;
+        ctx.set_pending_condition(condition);
+    }
+    if let Some(error) = ctx.take_pending() {
+        return Err(error);
     }
     Ok(result)
 }

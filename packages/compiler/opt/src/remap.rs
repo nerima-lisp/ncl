@@ -165,9 +165,16 @@ pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {
             v(entry);
             captures.iter_mut().for_each(v);
         }
-        OpKind::CallClosure { closure, args } => {
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
             v(closure);
             args.iter_mut().for_each(v);
+            if let Some(symbol) = named_symbol {
+                v(symbol);
+            }
         }
         OpKind::Compare { left, right, .. } => {
             v(left);

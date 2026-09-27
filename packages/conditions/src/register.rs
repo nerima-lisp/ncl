@@ -1,8 +1,12 @@
 //! Registration of the owned symbols and the standard condition hierarchy.
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, set_symbol_special};
+use ncl_object::{
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, Instance, LambdaList, ObjectError, Package, Runtime,
+    ThreadContext, Word, instance_class, set_symbol_special, slot_ref,
+};
 
-use crate::class::{HIERARCHY, install_class, wire_superclass};
+use crate::class::{HIERARCHY, class_named, install_class, wire_superclass};
 use crate::symbols::{SymbolKind, SymbolRow, symbols};
 
 /// Register every owned symbol and the standard condition hierarchy.
@@ -21,8 +25,47 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         register_symbol(runtime, &mut ctx, row)?;
     }
     install_hierarchy(runtime, &mut ctx)?;
+    register_accessors(runtime, &mut ctx)?;
     runtime.register_lisp_error_converter(crate::condition_from_lisp_error);
     Ok(())
+}
+
+const CELL_ERROR_PARAMETER: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("CONDITION"),
+    ty: ncl_object::ParameterType::Any,
+};
+
+fn cell_error_name(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let condition = args.required(0)?;
+    let class = instance_class(ctx, Instance::from_word(condition))?;
+    if !class_named(ctx, class, "CELL-ERROR")? {
+        return Err(ObjectError::TypeError);
+    }
+    slot_ref(ctx, Instance::from_word(condition), 0)
+}
+
+fn register_accessors(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    runtime
+        .register_builtin(
+            ctx,
+            BuiltinIdentifier::new(
+                BuiltinPackage::CommonLisp,
+                BuiltinName::new("CELL-ERROR-NAME"),
+            ),
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::fixed(&[CELL_ERROR_PARAMETER]),
+                    convention: BuiltinConvention::Direct(Arity::exact(1)),
+                },
+                cell_error_name,
+            ),
+        )
+        .map(|_| ())
 }
 
 fn register_symbol(

@@ -74,16 +74,16 @@ fn place(
         return Err(ObjectError::TypeError);
     }
     if matches!(classify_object(ctx, place), ObjectRef::Symbol(_)) {
-        let mut set = symbol(ctx, runtime, "SET")?;
-        return ncl_object::with_root(ctx, &mut set, |ctx, set| {
+        let mut place = place;
+        return ncl_object::with_root(ctx, &mut place, |ctx, place| {
             let store = fresh_symbol(ctx, runtime)?;
-            let store_form = list(ctx, runtime, &[*set, place, store])?;
+            let store_form = form(ctx, runtime, "SETQ", &[*place, store])?;
             Ok(SetfExpansion {
                 temporary_variables: Vec::new(),
                 value_forms: Vec::new(),
                 store_variables: vec![store],
                 store_form,
-                access_form: place,
+                access_form: *place,
             })
         });
     }

@@ -84,13 +84,15 @@ extern "C" fn dispatch(
     let Ok(address) = usize::try_from(thread_ptr) else {
         return error_result();
     };
-    let Some(thread) = NonNull::new(address as *mut Thread) else {
+    let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
         return error_result();
     };
-    ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+    match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         dispatch_with_context(invocation, argc, [a0, a1, a2, a3], function_object)
-    })
-    .unwrap_or_else(error_result)
+    }) {
+        Some(result) => result,
+        None => error_result(),
+    }
 }
 
 fn dispatch_with_context(
@@ -113,8 +115,9 @@ fn dispatch_with_context(
         context.set_pending(ncl_object::ObjectError::Unbound);
         return error_result();
     };
-    let call_words: Vec<Word> = registers[..count]
+    let call_words: Vec<Word> = registers
         .iter()
+        .take(count)
         .copied()
         .map(Word::from_bits)
         .collect();

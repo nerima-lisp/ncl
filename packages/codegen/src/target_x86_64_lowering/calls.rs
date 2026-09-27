@@ -1,9 +1,9 @@
 use super::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, ValueSlots, emit,
-    load_slot, slot_mem_of,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, RETURN_VALUE,
+    ValueSlots, emit, load_immediate, load_slot, slot_mem_of,
 };
 use crate::CodegenError;
-use ncl_asm_x86_64::{Assembler, Inst, Mem, Shift};
+use ncl_asm_x86_64::{Assembler, BinOp, Inst, Mem, Shift};
 use ncl_ir::ValueId;
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
@@ -83,6 +83,13 @@ pub fn lower_closure_call(
     };
     load_slot(assembler, slots, closure, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    load_immediate(
+        assembler,
+        RETURN_VALUE,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
+    emit(assembler, Inst::MovRR(RETURN_VALUE, ENTRY))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     let total = capture_count
         .checked_add(rest.len())
@@ -114,7 +121,12 @@ pub fn lower_closure_call(
             .map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
-                Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, offset)),
+                Inst::MovRM(
+                    *ARGUMENT_REGISTERS
+                        .get(index)
+                        .ok_or(CodegenError::FrameOverflow)?,
+                    Mem::base(RETURN_VALUE, offset),
+                ),
             )?;
         } else {
             // check-added-lines: allow(index) capture layout bounds the rest offset.
@@ -144,7 +156,7 @@ pub fn lower_closure_call(
         Inst::MovRM(
             ENTRY,
             Mem::base(
-                FUNCTION_OBJECT,
+                RETURN_VALUE,
                 i32::try_from(
                     ncl_object::function_offset::ENTRY
                         .checked_add(1)

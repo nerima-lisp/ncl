@@ -3,11 +3,12 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, Handle, Local, MultipleValues, ObjectError, Runtime, Scope, ThreadContext, Word,
-    symbol_name,
+    BuiltinArgs, Handle, Local, MultipleValues, ObjectError, ObjectRef, Runtime, Scope,
+    ThreadContext, Word, classify_object, string_length, string_ref, symbol_name,
 };
 
 mod handler_bind;
+mod typecase;
 
 mod multiple_value_bind;
 mod multiple_values;
@@ -18,6 +19,23 @@ pub(crate) use multiple_values::{
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
+
+fn is_otherwise(ctx: &ThreadContext, word: Word) -> Result<bool> {
+    let ObjectRef::Symbol(_) = classify_object(ctx, word) else {
+        return Ok(false);
+    };
+    let name = symbol_name(ctx, word)?;
+    let expected = "OTHERWISE";
+    if string_length(ctx, name)? != expected.len() {
+        return Ok(false);
+    }
+    expected
+        .chars()
+        .enumerate()
+        .map(|(index, character)| Ok(string_ref(ctx, name, index)? == character))
+        .collect::<Result<Vec<_>>>()
+        .map(|matches| matches.into_iter().all(|matched| matched))
+}
 
 pub(crate) fn form(
     ctx: &mut ThreadContext,
@@ -119,7 +137,19 @@ fn case(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
                             .collect::<Vec<_>>();
                         let mut body = progn(ctx, runtime, &body_values)?;
                         ncl_object::with_root(ctx, &mut body, |ctx, body| {
-                            let key_values = elements(ctx, *keys)?;
+                            if is_otherwise(ctx, *keys)? {
+                                let true_symbol = symbol(ctx, runtime, "T")?;
+                                branches =
+                                    ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
+                                        form(ctx, runtime, "IF", &[true_symbol, *body, *branches])
+                                    })?;
+                                return Ok(());
+                            }
+                            let key_values = if keys.is_cons() {
+                                elements(ctx, *keys)?
+                            } else {
+                                vec![*keys]
+                            };
                             ncl_object::with_roots(ctx, &key_values, |ctx, key_values| {
                                 let mut tests = Vec::with_capacity(key_values.len());
                                 for key in key_values {
@@ -174,46 +204,6 @@ fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result 
             })
         })
     })
-}
-
-fn typecase(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], errorp: bool) -> Result {
-    let value = values.first().copied().ok_or(ObjectError::TypeError)?;
-    let temporary = fresh_symbol(ctx, runtime)?;
-    let mut branches = Vec::with_capacity(values.len().saturating_sub(1));
-    let mut types = Vec::with_capacity(values.len().saturating_sub(1));
-    for clause in values.get(1..).ok_or(ObjectError::TypeError)? {
-        let parts = elements(ctx, *clause)?;
-        let type_specifier = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        let body = progn(ctx, runtime, parts.get(1..).ok_or(ObjectError::TypeError)?)?;
-        let quoted_type = form(ctx, runtime, "QUOTE", &[type_specifier])?;
-        let type_test = form(ctx, runtime, "TYPEP", &[temporary, quoted_type])?;
-        branches.push((type_test, body));
-        types.push(type_specifier);
-    }
-    let fallback = if errorp {
-        let mut expected_types = vec![symbol(ctx, runtime, "OR")?];
-        expected_types.extend(types);
-        let expected_type = list(ctx, runtime, &expected_types)?;
-        let expected = form(ctx, runtime, "QUOTE", &[expected_type])?;
-        let type_error = symbol(ctx, runtime, "TYPE-ERROR")?;
-        let error_type = form(ctx, runtime, "QUOTE", &[type_error])?;
-        let datum = symbol(ctx, runtime, ":DATUM")?;
-        let expected_type = symbol(ctx, runtime, ":EXPECTED-TYPE")?;
-        form(
-            ctx,
-            runtime,
-            "ERROR",
-            &[error_type, datum, temporary, expected_type, expected],
-        )?
-    } else {
-        Word::NIL
-    };
-    let mut branch = fallback;
-    for (test, body) in branches.into_iter().rev() {
-        branch = form(ctx, runtime, "IF", &[test, body, branch])?;
-    }
-    let let_bindings = bindings(ctx, runtime, &[(temporary, value)])?;
-    form(ctx, runtime, "LET", &[let_bindings, branch])
 }
 
 fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
@@ -408,8 +398,8 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
             let value = values.first().copied().unwrap_or(Word::NIL);
             form(ctx, runtime, "RETURN-FROM", &[Word::NIL, value])
         }
-        Kind::Typecase => typecase(ctx, runtime, values, false),
-        Kind::Etypecase => typecase(ctx, runtime, values, true),
+        Kind::Typecase => typecase::expand(ctx, runtime, values, false),
+        Kind::Etypecase => typecase::expand(ctx, runtime, values, true),
         Kind::NthValue => nth_value(ctx, runtime, values),
         Kind::Do => do_macro(ctx, runtime, values, false),
         Kind::DoStar => do_macro(ctx, runtime, values, true),

@@ -139,7 +139,9 @@ fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result
         let cursor_binding = held_list(ctx, runtime, &mut held, &[cursor, list_form])?;
         let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, cursor_binding])?;
         let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
-        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[0, body])?;
+        let block_name = held.len();
+        held.push(Word::NIL);
+        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[block_name, body])?;
         held_get(&held, block)
     })
 }
@@ -179,7 +181,9 @@ fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Resul
         let limit_binding = held_list(ctx, runtime, &mut held, &[limit, limit_form])?;
         let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, limit_binding])?;
         let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
-        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[0, body])?;
+        let block_name = held.len();
+        held.push(Word::NIL);
+        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[block_name, body])?;
         held_get(&held, block)
     })
 }

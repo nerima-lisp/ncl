@@ -188,10 +188,7 @@ fn call_macro_function(
             registers,
             rest,
         );
-        let restored_context = replace_native_context(thread, previous);
-        if restored_context != previous {
-            return Err(ObjectError::Layout);
-        }
+        let _restored_context = replace_native_context(thread, previous);
         if ctx.thread_mut().take_native_error().is_some() {
             return Err(ObjectError::Layout);
         }

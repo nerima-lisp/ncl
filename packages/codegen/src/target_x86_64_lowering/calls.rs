@@ -115,6 +115,7 @@ pub fn lower_closure_call(
                 Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, offset)),
             )?;
         } else {
+            // check-added-lines: allow(index) capture layout bounds the rest offset.
             load_slot(assembler, slots, rest[index - capture_count], ENTRY)?;
         }
         if let Some(register) = target {

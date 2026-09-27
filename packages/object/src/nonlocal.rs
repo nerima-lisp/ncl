@@ -55,8 +55,12 @@ impl RootedWord {
         self.slot.get()
     }
 
-    fn release(self, ctx: &mut ThreadContext) {
-        let _popped: bool = ncl_sys::pop_root(&mut ctx.thread, self.token);
+    fn release(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+        if ncl_sys::pop_root(&mut ctx.thread, self.token) {
+            Ok(())
+        } else {
+            Err(ObjectError::RootStackCorrupted)
+        }
     }
 }
 
@@ -77,6 +81,29 @@ pub enum DynamicFrame {
     UnwindProtect,
     /// A `progv` frame; always restores its bindings when unwound past.
     Progv { bindings: Vec<ProgvBinding> },
+}
+
+fn restore_progv_bindings(
+    ctx: &mut ThreadContext,
+    bindings: Vec<ProgvBinding>,
+) -> Result<(), ObjectError> {
+    let mut result = Ok(());
+    for binding in bindings.into_iter().rev() {
+        let symbol = binding.symbol.get();
+        let previous = binding.previous.get();
+        if result.is_ok()
+            && let Err(error) = set_symbol_value(ctx, symbol, previous)
+        {
+            result = Err(error);
+        }
+        if let Err(error) = binding.previous.release(ctx) {
+            result = Err(error);
+        }
+        if let Err(error) = binding.symbol.release(ctx) {
+            result = Err(error);
+        }
+    }
+    result
 }
 
 impl DynamicFrame {
@@ -109,7 +136,7 @@ impl ThreadContext {
         if let Some(frame) = self.frames.pop() {
             self.thread.pop_control_depth(frame.kind());
             if let DynamicFrame::Catch { tag } = frame {
-                tag.release(self);
+                let _ = tag.release(self);
             }
         }
         self.thread.set_pending(false);
@@ -146,23 +173,32 @@ impl ThreadContext {
         let mut bindings = Vec::new();
         let mut symbol_cursor = symbols;
         let mut value_cursor = values;
-        while symbol_cursor != Word::NIL {
-            let symbol = car(self, symbol_cursor)?;
-            let value = if value_cursor == Word::NIL {
-                Word::NIL
-            } else {
-                car(self, value_cursor)?
-            };
-            let previous = symbol_value(self, symbol)?;
-            set_symbol_value(self, symbol, value)?;
-            bindings.push(ProgvBinding {
-                symbol: RootedWord::new(self, symbol),
-                previous: RootedWord::new(self, previous),
-            });
-            symbol_cursor = cdr(self, symbol_cursor)?;
-            if value_cursor != Word::NIL {
-                value_cursor = cdr(self, value_cursor)?;
+        let result = (|| {
+            while symbol_cursor != Word::NIL {
+                let symbol = car(self, symbol_cursor)?;
+                let value = if value_cursor == Word::NIL {
+                    Word::NIL
+                } else {
+                    car(self, value_cursor)?
+                };
+                let previous = symbol_value(self, symbol)?;
+                bindings.push(ProgvBinding {
+                    symbol: RootedWord::new(self, symbol),
+                    previous: RootedWord::new(self, previous),
+                });
+                set_symbol_value(self, symbol, value)?;
+                symbol_cursor = cdr(self, symbol_cursor)?;
+                if value_cursor != Word::NIL {
+                    value_cursor = cdr(self, value_cursor)?;
+                }
             }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            return match restore_progv_bindings(self, bindings) {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(rollback_error),
+            };
         }
         let frame = DynamicFrame::Progv { bindings };
         self.thread.push_control_depth(frame.kind());
@@ -182,13 +218,7 @@ impl ThreadContext {
         };
         self.thread.pop_control_depth(frame.kind());
         if let DynamicFrame::Progv { bindings } = frame {
-            for binding in bindings {
-                let symbol = binding.symbol.get();
-                let previous = binding.previous.get();
-                binding.symbol.release(self);
-                binding.previous.release(self);
-                set_symbol_value(self, symbol, previous)?;
-            }
+            restore_progv_bindings(self, bindings)?;
         }
         Ok(())
     }
@@ -222,9 +252,9 @@ mod tests {
     use crate::{ObjectError, Runtime, ThreadContext, Word, make_string, make_symbol};
 
     fn context() -> (Runtime, ThreadContext) {
-        let runtime = Runtime::new().expect("runtime");
+        let runtime = Runtime::new().expect("runtime"); // check-added-lines: allow(panic)
         let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("register");
+        ctx.register(&runtime).expect("register"); // check-added-lines: allow(panic)
         (runtime, ctx)
     }
 
@@ -233,13 +263,13 @@ mod tests {
         let (_runtime, mut ctx) = context();
         let tag = Word::fixnum(7);
         ctx.enter_catch(tag);
-        ctx.throw(tag, Word::fixnum(42)).expect("throw");
-        assert!(ctx.thread.pending());
-        assert_eq!(ctx.thread.mv_count(), 2);
-        assert_eq!(ctx.thread.multiple_values()[0], tag);
-        assert_eq!(ctx.thread.multiple_values()[1], Word::fixnum(42));
+        ctx.throw(tag, Word::fixnum(42)).expect("throw"); // check-added-lines: allow(panic)
+        assert!(ctx.thread.pending()); // check-added-lines: allow(panic)
+        assert_eq!(ctx.thread.mv_count(), 2); // check-added-lines: allow(panic)
+        assert_eq!(ctx.thread.multiple_values()[0], tag); // check-added-lines: allow(panic,index)
+        assert_eq!(ctx.thread.multiple_values()[1], Word::fixnum(42)); // check-added-lines: allow(panic,index)
         ctx.leave_catch();
-        assert!(!ctx.thread.pending());
+        assert!(!ctx.thread.pending()); // check-added-lines: allow(panic)
     }
 
     #[test]

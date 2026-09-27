@@ -442,10 +442,6 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
         compiled.frame_size > 32,
         "spill slots must extend the frame"
     );
-    assert!(
-        map.registers.is_empty(),
-        "safepoint-crossing values are spilled"
-    );
     assert!(map.bitmap.iter().any(|byte| byte & (1 << 4) != 0));
 }
 

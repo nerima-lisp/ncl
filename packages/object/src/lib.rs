@@ -15,6 +15,7 @@ pub mod hash_table;
 mod instance;
 mod keyword_builtins;
 mod layout;
+mod nonlocal;
 mod number;
 mod object_access;
 mod object_error;

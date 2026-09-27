@@ -149,13 +149,14 @@ fn snapshot_callee_saved() -> [u64; 16] {
 #[cfg(target_arch = "x86_64")]
 fn snapshot_callee_saved() -> [u64; 16] {
     let mut values = [0_u64; 16];
-    // SAFETY: each output is a scalar register snapshot and no stack or flags are modified.
+    // SAFETY: the pointer addresses sixteen writable u64 slots, and the assembly only
+    // reads callee-saved registers without assigning any output register. Keeping the
+    // snapshots in memory avoids an output register aliasing a later source register.
     unsafe {
         core::arch::asm!(
-            "mov {0}, rbx", "mov {1}, rbp", "mov {2}, r12",
-            "mov {3}, r13", "mov {4}, r14", "mov {5}, r15",
-            out(reg) values[0], out(reg) values[1], out(reg) values[2],
-            out(reg) values[3], out(reg) values[4], out(reg) values[5],
+            "mov [{0} + 0], rbx", "mov [{0} + 8], rbp", "mov [{0} + 16], r12",
+            "mov [{0} + 24], r13", "mov [{0} + 32], r14", "mov [{0} + 40], r15",
+            in(reg) values.as_mut_ptr(),
             options(nostack, preserves_flags)
         );
     }

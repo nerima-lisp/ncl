@@ -69,7 +69,11 @@ impl RuntimeAbi for Aarch64FixtureAbi {
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
-            _ => return Err(AbiError::UnsupportedContextField(field)),
+            ContextField::Pending => layout.pending,
+            ContextField::MultipleValueCount => layout.mv_count,
+            ContextField::Handler => layout.handler,
+            ContextField::Cleanup => layout.cleanup,
+            ContextField::Catch => layout.catch,
         };
         i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
@@ -295,7 +299,19 @@ fn golden_builtin_call_has_call_safepoint() {
             }
         }
         fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-            Err(AbiError::UnsupportedContextField(field))
+            let layout = ncl_sys::thread_layout();
+            let offset = match field {
+                ContextField::TlabBump => layout.tlab_bump,
+                ContextField::TlabLimit => layout.tlab_limit,
+                ContextField::SafepointRequest => layout.safepoint_request,
+                ContextField::MultipleValueArea => layout.mv,
+                ContextField::Pending => layout.pending,
+                ContextField::MultipleValueCount => layout.mv_count,
+                ContextField::Handler => layout.handler,
+                ContextField::Cleanup => layout.cleanup,
+                ContextField::Catch => layout.catch,
+            };
+            i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
         }
         fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
             Err(AbiError::UnsupportedRuntimeFunction(function))

@@ -31,9 +31,15 @@ impl RuntimeAbi for Aarch64FixtureAbi {
     fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
+            ContextField::TlabBump => layout.tlab_bump,
+            ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
-            _ => return Err(crate::AbiError::UnsupportedContextField(field)),
+            ContextField::Pending => layout.pending,
+            ContextField::MultipleValueCount => layout.mv_count,
+            ContextField::Handler => layout.handler,
+            ContextField::Cleanup => layout.cleanup,
+            ContextField::Catch => layout.catch,
         };
         i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
     }

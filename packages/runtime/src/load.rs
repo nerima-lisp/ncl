@@ -22,7 +22,7 @@ pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
     source_forms(runtime, &source)
 }
 
-fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
+pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
     let mut input = StringSource::new(source);
     let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;
     let mut result = Word::NIL;

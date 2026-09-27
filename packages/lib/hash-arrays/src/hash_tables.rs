@@ -7,7 +7,7 @@ use ncl_object::{
     ThreadContext, Word, classify_object, pop_root, push_root,
 };
 
-use super::{register_one, symbol_text};
+use super::{register_one, register_one_ncl, symbol_text};
 
 const OBJECT: Parameter = Parameter {
     name: BuiltinName::new("OBJECT"),
@@ -132,6 +132,24 @@ fn gethash_builtin(
     let result = table.get(ctx, key)?;
     let (value, present) = result.map_or((default, nil()), |value| (value, truth()));
     values.set(&[value, present]);
+    Ok(value)
+}
+
+/// `setf`-support: `(NCL-EXT::GETHASH-SET key table value)`.
+///
+/// Inserts `value` under `key` and returns `value`, matching the argument
+/// order produced by the `GETHASH` setf-expander (place arguments followed
+/// by the new value).
+fn gethash_set_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let key = args.required(0)?;
+    let table = table(ctx, args.required(1)?)?;
+    let value = args.required(2)?;
+    table.insert(ctx, runtime, key, value)?;
     Ok(value)
 }
 
@@ -336,6 +354,13 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         "GETHASH",
         LambdaList::with_optional(&[KEY, TABLE], &[VALUE]),
         gethash_builtin,
+    )?;
+    register_one_ncl(
+        runtime,
+        ctx,
+        "GETHASH-SET",
+        LambdaList::fixed(&[KEY, TABLE, VALUE]),
+        gethash_set_builtin,
     )?;
     register_one(
         runtime,

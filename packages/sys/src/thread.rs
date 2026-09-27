@@ -261,6 +261,10 @@ impl Thread {
         self.poll_safepoint();
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
+        // Native callbacks can allocate before a precise generated-frame
+        // capture is available. Refresh the conservative snapshot at the
+        // collection site so the active generated frame is included.
+        self.publish_snapshot();
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {

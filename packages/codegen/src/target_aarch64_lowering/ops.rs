@@ -1,3 +1,4 @@
+use super::dispatch::mv_area_mem;
 use super::{
     constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
     lower_runtime_builtin, lower_safepoint, primitives, store_value,
@@ -262,6 +263,26 @@ pub fn lower_op(
                 load_value(assembler, allocation, *first, Reg(16))?;
                 store_value(assembler, allocation, result, Reg(16))?;
             }
+            for (index, value) in values.iter().copied().enumerate() {
+                load_value(assembler, allocation, value, Reg(16))?;
+                emit(
+                    assembler,
+                    Inst::Str {
+                        rt: Reg(16),
+                        mem: mv_area_mem(
+                            abi,
+                            i32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
+                        )?,
+                    },
+                )?;
+            }
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(1),
+                    mem: super::context_mem(abi, crate::ContextField::MultipleValueCount)?,
+                },
+            )?;
         }
         OpKind::Alloc { words } => {
             call_pc = Some(lower_alloc(assembler, *words, result, allocation, abi)?);

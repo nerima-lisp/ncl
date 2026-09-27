@@ -75,7 +75,7 @@ pub extern "C" fn native_enter_unwind_protect(
     _cleanup_block: u64,
 ) -> Word {
     with_context(thread, |ctx| {
-        ctx.enter_unwind_protect();
+        ctx.enter_unwind_protect(_region);
         Word::NIL
     })
 }
@@ -83,9 +83,9 @@ pub extern "C" fn native_enter_unwind_protect(
 /// Leave the innermost `unwind-protect` frame. See
 /// [`ThreadContext::leave_unwind_protect`].
 ///
-pub extern "C" fn native_leave_unwind_protect(thread: NonNull<Thread>, _region: u64) -> Word {
+pub extern "C" fn native_leave_unwind_protect(thread: NonNull<Thread>, region: u64) -> Word {
     with_context(thread, |ctx| {
-        if let Err(error) = ctx.leave_unwind_protect() {
+        if let Err(error) = ctx.leave_unwind_protect(region) {
             ctx.set_pending(error);
             ctx.set_non_local_exit(true);
         }

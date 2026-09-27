@@ -15,7 +15,7 @@ use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
 use super::{context_mem, emit, load_value, store_value};
 use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 
-fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
+pub(super) fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
     let base = abi
         .field_offset(ContextField::MultipleValueArea)
         .map_err(|error| CodegenError::Abi(error.to_string()))?;

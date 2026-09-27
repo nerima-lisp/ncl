@@ -453,8 +453,11 @@ fn lower_builtin(
     Ok(())
 }
 
+#[path = "target_aarch64_lowering/dispatch.rs"]
+pub(super) mod dispatch;
 #[path = "target_aarch64_lowering/ops.rs"]
 pub(super) mod ops;
 #[path = "target_aarch64_lowering/primitives.rs"]
 pub(super) mod primitives;
+pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 pub(super) use ops::{lower_op, move_args};

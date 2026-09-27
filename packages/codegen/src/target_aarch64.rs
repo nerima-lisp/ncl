@@ -8,7 +8,10 @@ use ncl_ir::{Function, OpKind, Terminator, Ty};
 
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
-use lowering::{load_value, lower_call, lower_op, move_args, store_value};
+use lowering::{
+    load_value, lower_call, lower_op, lower_pending_check, lower_return_or_throw, move_args,
+    store_value,
+};
 
 #[allow(clippy::needless_pass_by_value)]
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -224,6 +227,24 @@ pub fn compile_function_aarch64(
                     position,
                     FLAG_CALL,
                 )?;
+                if matches!(
+                    op.kind,
+                    OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::CallClosure { .. }
+                ) {
+                    // A callee may be propagating a non-local exit (for
+                    // example a closure crossed by `return-from`/`throw`)
+                    // rather than returning normally; see
+                    // `lowering::dispatch::lower_pending_check`.
+                    lower_pending_check(
+                        &mut assembler,
+                        function,
+                        block.id,
+                        &allocation,
+                        abi,
+                        body_bytes,
+                        &labels,
+                    )?;
+                }
             }
             position = position.saturating_add(1);
         }
@@ -295,74 +316,16 @@ pub fn compile_function_aarch64(
                 )?;
             }
             Terminator::Return { values } => {
-                if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
-                    return Err(CodegenError::MultipleValueAreaOverflow {
-                        count: values.len(),
-                        capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
-                    });
-                }
-                let area_offset = abi
-                    .field_offset(crate::ContextField::MultipleValueArea)
-                    .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
-                for (index, value) in values.iter().copied().enumerate() {
-                    let byte_offset = i32::try_from(index)
-                        .ok()
-                        .and_then(|index| index.checked_mul(8))
-                        .and_then(|index| area_offset.checked_add(index))
-                        .ok_or(CodegenError::FrameOverflow)?;
-                    load_value(&mut assembler, &allocation, value, Reg(16))?;
-                    emit(
-                        &mut assembler,
-                        Inst::Str {
-                            rt: Reg(16),
-                            mem: MemOperand::Unsigned {
-                                base: RegOrSp::Reg(Reg(21)),
-                                offset: u16::try_from(byte_offset)
-                                    .map_err(|_| CodegenError::FrameOverflow)?,
-                                scale: 8,
-                            },
-                        },
-                    )?;
-                }
-                if let Some(value) = values.first() {
-                    load_value(&mut assembler, &allocation, *value, Reg(0))?;
-                } else {
-                    for instruction in
-                        ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::fixnum(0).bits())
-                    {
-                        emit(&mut assembler, instruction)?;
-                    }
-                }
-                for instruction in ncl_asm_aarch64::mov_imm64(
-                    Reg(1),
-                    u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
-                ) {
-                    emit(&mut assembler, instruction)?;
-                }
-                if body_bytes > 0 {
-                    emit(
-                        &mut assembler,
-                        Inst::AddImm {
-                            rd: RegOrSp::Sp,
-                            rn: RegOrSp::Sp,
-                            imm: u16::try_from(body_bytes)
-                                .map_err(|_| CodegenError::FrameOverflow)?,
-                            shift: false,
-                        },
-                    )?;
-                }
-                emit(
+                lower_return_or_throw(
                     &mut assembler,
-                    Inst::Ldp {
-                        rt: Reg(29),
-                        rt2: Reg(30),
-                        mem: MemOperand::PostIndex {
-                            base: RegOrSp::Sp,
-                            offset: 32,
-                        },
-                    },
+                    function,
+                    block.id,
+                    Some(values),
+                    &allocation,
+                    abi,
+                    body_bytes,
+                    &labels,
                 )?;
-                emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
             }
             Terminator::CallReturn { function, args } => {
                 lower_call(&mut assembler, *function, args, &allocation)?;
@@ -427,7 +390,19 @@ pub fn compile_function_aarch64(
                 )?;
                 emit(&mut assembler, Inst::Br { rn: Reg(17) })?;
             }
-            Terminator::Throw { .. } | Terminator::Unreachable => {
+            Terminator::Throw { .. } => {
+                lower_return_or_throw(
+                    &mut assembler,
+                    function,
+                    block.id,
+                    None,
+                    &allocation,
+                    abi,
+                    body_bytes,
+                    &labels,
+                )?;
+            }
+            Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Brk { imm: 0 })?;
             }
         }

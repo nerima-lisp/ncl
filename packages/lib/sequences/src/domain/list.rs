@@ -427,7 +427,7 @@ fn sequence_subseq(
     }
     let mut scope = Scope::new(ctx);
     let _source = scope.root::<Word>(Local::from_word(sequence_word(value)));
-    // check-added-lines: allow(index)
+    // check-added-lines: allow(index) slice type
     let result = sequence_result_scope(&mut scope, runtime, value, &values[start..end])?;
     Ok(scope.get(result).as_word())
 }

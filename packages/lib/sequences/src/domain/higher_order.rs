@@ -77,7 +77,7 @@ struct RootedNested<'a> {
 
 impl RootedNested<'_> {
     fn iter(&self) -> impl Iterator<Item = &[Word]> {
-        self.ranges.iter().map(|range| &self.values[range.clone()]) // check-added-lines: allow(index)
+        self.ranges.iter().map(|range| &self.values[range.clone()]) // check-added-lines: allow(index) slice type
     }
 }
 

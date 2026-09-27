@@ -131,15 +131,24 @@ fn nstring_case_builtin(
     args: &BuiltinArgs<'_>,
     map: fn(char) -> char,
 ) -> Result<Word, ObjectError> {
-    let length = string_length(ctx, args.required(0)?)?;
-    let (start, end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
+    let mut scope = ncl_object::Scope::new(ctx);
+    let string_handle = scope.root::<Word>(ncl_object::Local::from_word(args.required(0)?));
+    let string = scope.get(string_handle).as_word();
+    let length = string_length(scope.context(), string)?;
+    let (start, end) = string_range(
+        scope.context(),
+        args,
+        1,
+        length,
+        &["START"],
+        &["END"],
+    )?;
     for index in start..end {
-        let string = args.required(0)?;
-        let mapped = map(string_ref(ctx, string, index)?);
-        let string = args.required(0)?;
-        string_set(ctx, string, index, mapped)?;
+        let string = scope.get(string_handle).as_word();
+        let mapped = map(string_ref(scope.context(), string, index)?);
+        string_set(scope.context_mut(), string, index, mapped)?;
     }
-    args.required(0)
+    Ok(scope.get(string_handle).as_word())
 }
 
 fn nstring_upcase_builtin(
@@ -170,22 +179,31 @@ fn nstring_capitalize_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let length = string_length(ctx, args.required(0)?)?;
+    let mut scope = ncl_object::Scope::new(ctx);
+    let string_handle = scope.root::<Word>(ncl_object::Local::from_word(args.required(0)?));
+    let string = scope.get(string_handle).as_word();
+    let length = string_length(scope.context(), string)?;
     let mut start = true;
-    let (range_start, range_end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
+    let (range_start, range_end) = string_range(
+        scope.context(),
+        args,
+        1,
+        length,
+        &["START"],
+        &["END"],
+    )?;
     for index in range_start..range_end {
-        let string = args.required(0)?;
-        let value = string_ref(ctx, string, index)?;
+        let string = scope.get(string_handle).as_word();
+        let value = string_ref(scope.context(), string, index)?;
         let mapped = if start {
             value.to_uppercase().next().unwrap_or(value)
         } else {
             value.to_lowercase().next().unwrap_or(value)
         };
-        let string = args.required(0)?;
-        string_set(ctx, string, index, mapped)?;
+        string_set(scope.context_mut(), string, index, mapped)?;
         start = !value.is_alphanumeric();
     }
-    args.required(0)
+    Ok(scope.get(string_handle).as_word())
 }
 
 fn simple_string_p_builtin(
@@ -211,7 +229,9 @@ fn make_result_string(
     runtime: &Runtime,
     chars: impl IntoIterator<Item = char>,
 ) -> Result<Word, ObjectError> {
-    ncl_object::make_string(ctx, runtime, &chars.into_iter().collect::<Vec<_>>())
+    let mut scope = ncl_object::Scope::new(ctx);
+    let result = scope.make_string(runtime, &chars.into_iter().collect::<Vec<_>>())?;
+    Ok(scope.get(result).as_word())
 }
 
 fn stringp_builtin(

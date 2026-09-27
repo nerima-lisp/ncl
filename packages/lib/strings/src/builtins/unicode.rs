@@ -9,7 +9,25 @@ fn make_text(
     runtime: &Runtime,
     chars: &[char],
 ) -> Result<Word, ObjectError> {
-    make_string(ctx, runtime, chars)
+    let mut scope = ncl_object::Scope::new(ctx);
+    let result = scope.make_string(runtime, chars)?;
+    Ok(scope.get(result).as_word())
+}
+
+fn make_vector(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
+    let mut scope = ncl_object::Scope::new(ctx);
+    let locals = values
+        .iter()
+        .copied()
+        .map(ncl_object::Local::from_word)
+        .collect::<Vec<_>>();
+    let handles = scope.root_many(&locals);
+    let result = scope.make_simple_vector(runtime, &handles)?;
+    Ok(scope.get(result).as_word())
 }
 
 fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
@@ -186,14 +204,11 @@ fn string_to_utf8_builtin(
         .iter()
         .collect::<String>()
         .into_bytes();
-    make_simple_vector(
-        ctx,
-        runtime,
-        &bytes
-            .into_iter()
-            .map(|byte| Word::fixnum(i64::from(byte)))
-            .collect::<Vec<_>>(),
-    )
+    let values = bytes
+        .into_iter()
+        .map(|byte| Word::fixnum(i64::from(byte)))
+        .collect::<Vec<_>>();
+    make_vector(ctx, runtime, &values)
 }
 fn utf8_to_string_builtin(
     ctx: &mut ThreadContext,
@@ -248,5 +263,5 @@ fn grapheme_boundaries_builtin(
     boundaries.push(Word::fixnum(
         i64::try_from(chars.len()).map_err(|_| ObjectError::Layout)?,
     ));
-    make_simple_vector(ctx, runtime, &boundaries)
+    make_vector(ctx, runtime, &boundaries)
 }

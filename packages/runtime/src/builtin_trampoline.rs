@@ -187,13 +187,13 @@ extern "C" fn make_rest_list_native(
                 context.set_pending(ncl_object::ObjectError::Layout);
                 return Word::NIL.bits();
             };
-            let Some(package) = object.find_package(context, "NCL-EXT") else {
+            let Some(mut package) = object.find_package(context, "NCL-EXT") else {
                 context.set_pending(ncl_object::ObjectError::Layout);
                 return Word::NIL.bits();
             };
-            let Ok((name, _)) =
-                Package::from_word(package).intern(context, object, "MAKE-REST-LIST")
-            else {
+            let Ok((name, _)) = ncl_object::with_root(context, &mut package, |context, package| {
+                Package::from_word(*package).intern(context, object, "MAKE-REST-LIST")
+            }) else {
                 context.set_pending(ncl_object::ObjectError::Layout);
                 return Word::NIL.bits();
             };

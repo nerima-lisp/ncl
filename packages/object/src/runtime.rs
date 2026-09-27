@@ -34,6 +34,7 @@ pub struct Runtime {
     /// path. Zero means "not installed yet"; see
     /// [`Runtime::install_generic_builtin_entry`].
     generic_builtin_entry: AtomicUsize,
+    undefined_function_entry: AtomicUsize,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
@@ -92,6 +93,7 @@ impl Runtime {
             place_expanders: Mutex::new(crate::place::PlaceExpanders::default()),
             lisp_error_converter: Mutex::new(None),
             generic_builtin_entry: AtomicUsize::new(0),
+            undefined_function_entry: AtomicUsize::new(0),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -118,6 +120,75 @@ impl Runtime {
     /// path, or `0` before [`Runtime::install_generic_builtin_entry`] runs.
     pub(crate) fn generic_builtin_entry(&self) -> usize {
         self.generic_builtin_entry.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn undefined_function_entry(&self) -> usize {
+        self.undefined_function_entry.load(Ordering::Relaxed)
+    }
+
+    /// Return whether a function object is the undefined-function sentinel.
+    ///
+    /// # Errors
+    /// Returns an object error when the function layout is malformed.
+    pub fn is_undefined_function(
+        &self,
+        ctx: &ThreadContext,
+        function: crate::FunctionObject,
+    ) -> Result<bool, ObjectError> {
+        crate::is_undefined_function(ctx, function.as_word())
+    }
+
+    /// Install the shared entry and materialize undefined function cells.
+    ///
+    /// # Errors
+    /// Returns an object error when package, symbol, or function allocation fails.
+    pub fn install_undefined_function_entry(
+        &self,
+        ctx: &mut ThreadContext,
+        address: usize,
+    ) -> Result<(), ObjectError> {
+        self.undefined_function_entry
+            .store(address, Ordering::Relaxed);
+        let packages = self.all_packages(ctx)?;
+        crate::with_roots(ctx, &packages, |ctx, packages| {
+            for package in packages.iter().map(|word| **word) {
+                let mut symbols = Vec::new();
+                crate::Package::from_word(package).for_each_symbol(ctx, |symbol| {
+                    symbols.push(symbol);
+                })?;
+                crate::with_roots(ctx, &symbols, |ctx, symbols| {
+                    for symbol in symbols.iter().map(|word| **word) {
+                        if crate::symbol_function(ctx, symbol)? == Word::UNBOUND {
+                            let code = crate::make_code_object(
+                                ctx,
+                                self,
+                                address,
+                                0,
+                                Word::NIL,
+                                Word::NIL,
+                                Word::NIL,
+                            )?;
+                            let function = crate::make_simple_fun(
+                                ctx,
+                                self,
+                                address,
+                                symbol,
+                                Word::UNBOUND,
+                                code,
+                            )?;
+                            crate::object_access::put(
+                                ctx,
+                                symbol,
+                                crate::symbol_offset::FUNCTION,
+                                function.as_word(),
+                            )?;
+                        }
+                    }
+                    Ok(())
+                })?;
+            }
+            Ok(())
+        })
     }
 
     /// Install the shared native trampoline used as the default `ENTRY` for

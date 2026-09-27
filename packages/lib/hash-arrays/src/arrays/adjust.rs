@@ -15,13 +15,16 @@ pub(super) fn adjust_array_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let dimensions = list_values(ctx, args.required(1)?)?
-        .into_iter()
-        .map(|value| {
-            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                .map_err(|_| ObjectError::TypeError)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let dimensions = match args.required(1)? {
+        dimension if dimension.as_fixnum().is_some() => vec![dimension],
+        dimensions => list_values(ctx, dimensions)?,
+    }
+    .into_iter()
+    .map(|value| {
+        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+            .map_err(|_| ObjectError::TypeError)
+    })
+    .collect::<Result<Vec<_>, _>>()?;
     let object = args.required(0)?;
     let mut initial = Word::NIL;
     let mut fill_pointer_value = None;

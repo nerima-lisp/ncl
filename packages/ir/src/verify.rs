@@ -236,7 +236,14 @@ fn verify_handler_flow(
                 }
                 stack.push(region);
             } else if stack.pop() != Some(region) {
-                errors.push(VerifyError::HandlerMismatch(block.id));
+                let is_unwind_restore = regions.get(&region).is_some_and(|definition| {
+                    definition.kind == crate::HandlerKind::UnwindProtect
+                        && definition.handler == block.id
+                        && stack.is_empty()
+                });
+                if !is_unwind_restore {
+                    errors.push(VerifyError::HandlerMismatch(block.id));
+                }
             }
         }
         let normal_exit = matches!(

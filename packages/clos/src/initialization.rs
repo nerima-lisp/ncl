@@ -1,9 +1,10 @@
 //! Typed adapters for the standard CLOS instance initialization protocol.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object,
+    Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller, FunctionDesignator,
+    FunctionObject, Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
+    ObjectType, Package, Parameter, ParameterType, Runtime, ThreadContext, Word, classify_object,
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
     string_length, string_ref, symbol_name,
 };
@@ -244,12 +245,12 @@ fn make_instance_builtin(
     let class: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
     let requested_class = scope.get(class).as_word();
     let class_word = resolve_class(scope.context_mut(), runtime, requested_class)?;
-    let class = scope.root(Local::from_word(class_word));
+    let class: Handle<'_, Word> = scope.root(Local::from_word(class_word));
     let initarg_words = args
         .as_slice()
         .get(1..)
         .ok_or_else(|| type_error(scope.context_mut(), class_word, ObjectType::SimpleVector))?;
-    let initarg_locals = initarg_words
+    let initarg_locals: Vec<Local<'_, Word>> = initarg_words
         .iter()
         .copied()
         .map(Local::from_word)
@@ -266,15 +267,33 @@ fn make_instance_builtin(
         &vec![Word::UNBOUND; slot_count], // check-added-lines: allow(unbound) sentinel initialization
     )?;
     let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(instance.as_word()));
-    let instance = Instance::from_word(scope.get(instance_handle).as_word());
-    initialize_slots(&mut scope, instance, class, &initargs)?;
     values.clear();
-    Ok(scope.get(instance_handle).as_word())
+    let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
+    let (initialize_name, _) = Package::from_word(common_lisp).intern(
+        scope.context_mut(),
+        runtime,
+        "INITIALIZE-INSTANCE",
+    )?;
+    let initialize_function = ncl_object::symbol_function(scope.context(), initialize_name)?;
+    if initialize_function == Word::UNBOUND {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let initialize_function: Handle<'_, Word> = scope.root(Local::from_word(initialize_function));
+    let mut call_args = vec![scope.get(instance_handle).as_word()];
+    call_args.extend(scope.get_many(&initargs).into_iter().map(Local::as_word));
+    let initialize_function = FunctionObject::try_from(scope.get(initialize_function).as_word())?;
+    BuiltinFunctionCaller.call_function(
+        scope.context_mut(),
+        runtime,
+        FunctionDesignator::Function(initialize_function),
+        FunctionArguments::new(&call_args),
+        values,
+    )
 }
 
 fn initialize_instance_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
@@ -297,17 +316,58 @@ fn initialize_instance_builtin(
         instance,
     )?));
     initialize_slots(&mut scope, instance, class, &initargs)?;
+    let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
+    let (shared_name, _) = Package::from_word(common_lisp).intern(
+        scope.context_mut(),
+        runtime,
+        "SHARED-INITIALIZE",
+    )?;
+    let shared_function = ncl_object::symbol_function(scope.context(), shared_name)?;
+    if shared_function == Word::UNBOUND {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let shared_function: Handle<'_, Word> = scope.root(Local::from_word(shared_function));
+    let mut call_args = vec![scope.get(instance_handle).as_word()];
+    call_args.extend(scope.get_many(&initargs).into_iter().map(Local::as_word));
+    let shared_function = FunctionObject::try_from(scope.get(shared_function).as_word())?;
+    BuiltinFunctionCaller.call_function(
+        scope.context_mut(),
+        runtime,
+        FunctionDesignator::Function(shared_function),
+        FunctionArguments::new(&call_args),
+        values,
+    )?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
 }
 
 fn shared_initialize_builtin(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    initialize_instance_builtin(ctx, runtime, args, values)
+    let mut scope = Scope::new(ctx);
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let instance_word = scope.get(instance_handle).as_word();
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
+    let initarg_locals: Vec<Local<'_, Word>> = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect();
+    let initargs = scope.root_many(&initarg_locals);
+    let instance = instance_argument(scope.context_mut(), instance_word)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
+        scope.context(),
+        instance,
+    )?));
+    initialize_slots(&mut scope, instance, class, &initargs)?;
+    values.clear();
+    Ok(scope.get(instance_handle).as_word())
 }
 
 /// Build the adapted implementation for an initialization descriptor.

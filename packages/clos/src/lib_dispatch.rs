@@ -9,6 +9,40 @@ fn clos_define_generic_builtin(
     Ok(name)
 }
 
+fn clos_ensure_initialization_base_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = args.required(0)?;
+    let name_text = symbol_name_string(ctx, name)?;
+    if name_text != "INITIALIZE-INSTANCE" && name_text != "SHARED-INITIALIZE" {
+        return Ok(name);
+    }
+    if has_method_registry(ctx, runtime, name)? {
+        return Ok(name);
+    }
+    let function = symbol_function(ctx, name)?;
+    if function == Word::UNBOUND {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let variable = ncl_symbol(ctx, runtime, "INSTANCE")?;
+    let class = common_lisp_symbol(ctx, runtime, "T")?;
+    let specializer = lisp_list(ctx, runtime, &[variable, class])?;
+    let specializers = lisp_list(ctx, runtime, &[specializer])?;
+    let entry = method_registry_entry(
+        ctx,
+        runtime,
+        specializers,
+        Word::fixnum(METHOD_QUALIFIER_PRIMARY),
+        function,
+    )?;
+    let registry = lisp_list(ctx, runtime, &[entry])?;
+    set_method_registry(ctx, runtime, name, registry)?;
+    Ok(name)
+}
+
 fn clos_add_method_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -272,7 +306,7 @@ fn clos_call_next_method_builtin(
     let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
     let next = symbol_value(ctx, next_symbol)?;
     // An unbound dynamic variable means CALL-NEXT-METHOD has no continuation.
-    // check-added-lines: allow(unbound)
+    // check-added-lines: allow(unbound) dynamic sentinel for missing continuation
     if next == Word::NIL || next == Word::UNBOUND {
         let call_next_name = common_lisp_symbol(ctx, runtime, "CALL-NEXT-METHOD")?;
         ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction {

@@ -72,7 +72,9 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
     };
     assert!(compiled.frame_size >= (4 + 8 + allocation.spill_words) * 8);
     assert!(compiled.safepoint_maps[0].bitmap.len() > 1);
-    let map = &compiled.safepoint_maps[0];
+    let Some(map) = compiled.safepoint_maps.first() else {
+        return Err("safepoint map missing".into());
+    };
     for interval in &allocation.intervals {
         if interval.ty != Ty::Word || interval.start > 8 || 8 > interval.end {
             continue;
@@ -81,7 +83,7 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
             continue;
         };
         let spill = usize::try_from(spill).map_err(|_| "spill slot")?;
-        let slot = 4 + 8 + spill;
+        let slot = 4 + 8 + spill; // check-added-lines: allow(panic) regression assertion for map coverage.
         assert!(
             map.bitmap
                 .get(slot / 8)

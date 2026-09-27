@@ -37,11 +37,11 @@ fn callback_for(name: &str) -> Option<DefinitionCallback> {
 }
 
 /// Return the callback for a definition macro, if `name` is one of ours.
-fn form_elements(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>, ObjectError> {
+pub(crate) fn form_elements(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>, ObjectError> {
     elements(ctx, form)
 }
 
-fn required(elements: &[Word], index: usize) -> Result<Word, ObjectError> {
+pub(crate) fn required(elements: &[Word], index: usize) -> Result<Word, ObjectError> {
     elements.get(index).copied().ok_or(ObjectError::TypeError)
 }
 
@@ -49,7 +49,7 @@ fn ensure_symbol(ctx: &ThreadContext, value: Word) -> Result<Word, ObjectError> 
     ncl_object::symbol_name(ctx, value).map(|_| value)
 }
 
-fn ensure_form_operator(
+pub(crate) fn ensure_form_operator(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     parts: &[Word],
@@ -65,7 +65,11 @@ fn ensure_list(ctx: &mut ThreadContext, value: Word) -> Result<(), ObjectError> 
     elements(ctx, value).map(|_| ())
 }
 
-fn quote(ctx: &mut ThreadContext, runtime: &Runtime, value: Word) -> Result<Word, ObjectError> {
+pub(crate) fn quote(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+) -> Result<Word, ObjectError> {
     let quote = symbol(ctx, runtime, "QUOTE")?;
     list(ctx, runtime, &[quote, value])
 }

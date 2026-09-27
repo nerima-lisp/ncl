@@ -9,6 +9,7 @@ mod function_call;
 mod functions;
 mod iteration;
 mod r#loop;
+mod packaging;
 mod place;
 mod setf;
 mod setf_support;
@@ -252,6 +253,8 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DEFINE-COMPILER-MACRO" => Some(defining::define_compiler_macro_adapter),
         "DEFSETF" => Some(defining::defsetf_adapter),
         "DEFINE-SETF-EXPANDER" => Some(defining::define_setf_expander_adapter),
+        "DEFPACKAGE" => Some(packaging::defpackage_adapter),
+        "IN-PACKAGE" => Some(packaging::in_package_adapter),
         "WHEN" => Some(control::expand_when_adapter),
         "UNLESS" => Some(control::expand_unless_adapter),
         "AND" => Some(control::expand_and_adapter),
@@ -354,6 +357,7 @@ const MACROS: &[&str] = &[
     "DEFINE-SETF-EXPANDER",
     "DEFINE-SYMBOL-MACRO",
     "DEFMACRO",
+    "DEFPACKAGE",
     "DEFUN",
     "DEFPARAMETER",
     "DEFSETF",
@@ -365,6 +369,7 @@ const MACROS: &[&str] = &[
     "DOTIMES",
     "ECASE",
     "ETYPECASE",
+    "IN-PACKAGE",
     "INCF",
     "LOOP",
     "NTH-VALUE",

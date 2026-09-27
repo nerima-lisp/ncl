@@ -401,6 +401,12 @@ fn lower_builtin(
             ));
         };
         emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+        for register in ARGUMENT_REGISTERS
+            .into_iter()
+            .chain(std::iter::once(REST_ARGUMENT))
+        {
+            emit(assembler, Inst::MovRR(register, register))?;
+        }
         load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
         load_slot(assembler, slots, *start_value, ENTRY)?;
         emit(

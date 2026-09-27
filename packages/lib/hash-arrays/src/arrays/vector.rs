@@ -1,5 +1,7 @@
 use super::array_shape;
-use ncl_object::array::array_element_type;
+use ncl_object::array::{
+    adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
+};
 use ncl_object::package::{nil, truth};
 use ncl_object::{
     ArrayElementType, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext,
@@ -22,9 +24,20 @@ pub(super) fn simple_bit_vector_p_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
-    let simple_bit_vector = matches!(classify_object(ctx, value), ObjectRef::SpecializedArray(_))
-        && array_element_type(ctx, value)? == ArrayElementType::Bit
-        && array_shape(ctx, value)?.len() == 1;
+    let simple_bit_vector = match classify_object(ctx, value) {
+        ObjectRef::SpecializedArray(_) => {
+            array_element_type(ctx, value)? == ArrayElementType::Bit
+                && array_shape(ctx, value)?.len() == 1
+        }
+        ObjectRef::Array(_) => {
+            array_element_type(ctx, value)? == ArrayElementType::Bit
+                && array_shape(ctx, value)?.len() == 1
+                && !adjustable_array_p(ctx, value)?
+                && !array_has_fill_pointer_p(ctx, value)?
+                && array_displacement(ctx, value)?.0 == Word::NIL
+        }
+        _ => false,
+    };
     Ok(if simple_bit_vector { truth() } else { nil() })
 }
 

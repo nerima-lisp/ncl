@@ -1,4 +1,4 @@
-use super::{emit, load_value};
+use super::{emit, load_value, primitives};
 use crate::{Allocation, CodegenError};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::ValueId;
@@ -19,21 +19,7 @@ pub fn lower_call(
         ));
     };
     load_value(assembler, allocation, callee, Reg(16))?;
-    emit(
-        assembler,
-        Inst::Mov {
-            rd: RegOrSp::Reg(Reg(17)),
-            rn: RegOrSp::Reg(Reg(16)),
-        },
-    )?;
-    emit(
-        assembler,
-        Inst::AndImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            imm: !ncl_sys::LOWTAG_MASK,
-        },
-    )?;
+    primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
     load_value(assembler, allocation, *argc, Reg(0))?;
     let extra_count = rest.len().saturating_sub(4);
     if extra_count > 0 {
@@ -141,13 +127,5 @@ pub fn lower_closure_call(
             },
         },
     )?;
-    emit(
-        assembler,
-        Inst::AsrImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
-                .map_err(|_| CodegenError::FrameOverflow)?,
-        },
-    )
+    primitives::decode_function_entry(assembler, Reg(17))
 }

@@ -15,19 +15,39 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                         .iter()
                         .flat_map(|candidate| &candidate.ops)
                         .find_map(|candidate| {
-                            candidate
+                            if !candidate
                                 .results
                                 .iter()
                                 .any(|(value, _)| value == closure)
-                                .then_some(match &candidate.kind {
-                                    OpKind::MakeClosure { captures, .. } => captures.len(),
-                                    _ => 0, // check-added-lines: allow(wildcard) non-closure ops are not captures.
-                                })
+                            {
+                                return None;
+                            }
+                            if let OpKind::MakeClosure { captures, .. } = &candidate.kind {
+                                Some(captures.len())
+                            } else {
+                                None
+                            }
                         })
                         .unwrap_or(0);
                     captures.saturating_add(args.len().saturating_sub(1))
                 }
-                _ => 0, // check-added-lines: allow(wildcard) non-call ops need no outgoing slots.
+                OpKind::Const { .. }
+                | OpKind::Move { .. }
+                | OpKind::Load { .. }
+                | OpKind::Store { .. }
+                | OpKind::LoadField { .. }
+                | OpKind::StoreField { .. }
+                | OpKind::Alloc { .. }
+                | OpKind::LoadArg { .. }
+                | OpKind::MakeClosure { .. }
+                | OpKind::Builtin { .. }
+                | OpKind::Prim { .. }
+                | OpKind::Compare { .. }
+                | OpKind::Convert { .. }
+                | OpKind::SetMultipleValues { .. }
+                | OpKind::Safepoint
+                | OpKind::EnterHandler { .. }
+                | OpKind::LeaveHandler { .. } => 0,
             };
             maximum = maximum.max(extra_words(count));
         }
@@ -35,7 +55,12 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
             Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
                 args.len().saturating_sub(1)
             }
-            _ => 0, // check-added-lines: allow(wildcard) non-call terminators need no outgoing slots.
+            Terminator::Jump { .. }
+            | Terminator::Branch { .. }
+            | Terminator::Switch { .. }
+            | Terminator::Return { .. }
+            | Terminator::Throw { .. }
+            | Terminator::Unreachable => 0,
         };
         maximum = maximum.max(extra_words(count));
     }

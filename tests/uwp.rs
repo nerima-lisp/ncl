@@ -36,6 +36,14 @@ fn cleanup_non_local_exit_has_priority() {
 }
 
 #[test]
+fn caught_cleanup_exit_preserves_outer_pending_exit() {
+    assert_eq!(
+        eval("(catch 'a (unwind-protect (throw 'a 1) (catch 'b (throw 'b 2))))"),
+        "1"
+    );
+}
+
+#[test]
 fn pending_value_survives_allocating_cleanup() {
     assert_eq!(
         eval("(catch 'a (unwind-protect (throw 'a 1) (list 9)))"),

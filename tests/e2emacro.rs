@@ -107,7 +107,7 @@ const XFAILS: &[XFail] = &[
     },
     XFail {
         name: "loop-maximize",
-        source: "(loop for x in (quote (3 1 4)) maximize x)",
+        source: "(loop for x from 1 below 4 maximize x)",
         stderr: "UnsupportedLiteral",
         exit_code: 1,
     },

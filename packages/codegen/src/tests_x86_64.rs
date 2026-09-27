@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
-use crate::{AllocationTarget, allocate, compile_function_x86_64};
+use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
@@ -41,7 +41,7 @@ fn x86_64_lowering_uses_allocator_register_roots() {
 }
 
 #[test]
-fn x86_64_lowering_reserves_allocator_spills_in_frame() {
+fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(72),
         "allocated-spills",
@@ -72,6 +72,24 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() {
     };
     assert!(compiled.frame_size >= (4 + 8 + allocation.spill_words) * 8);
     assert!(compiled.safepoint_maps[0].bitmap.len() > 1);
+    let map = &compiled.safepoint_maps[0];
+    for interval in &allocation.intervals {
+        if interval.ty != Ty::Word || interval.start > 8 || 8 > interval.end {
+            continue;
+        }
+        let Some(Location::Spill(spill)) = allocation.location(interval.value) else {
+            continue;
+        };
+        let spill = usize::try_from(spill).map_err(|_| "spill slot")?;
+        let slot = 4 + 8 + spill;
+        assert!(
+            map.bitmap
+                .get(slot / 8)
+                .is_some_and(|bits| bits & (1 << (slot % 8)) != 0),
+            "spill slot {slot} is missing from the header-inclusive map"
+        );
+    }
+    Ok(())
 }
 
 #[test]

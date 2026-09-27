@@ -38,6 +38,7 @@ pub struct Allocation {
     pub locations: Vec<(ValueId, Location)>,
     pub spill_words: u32,
     pub safepoint_registers: BTreeMap<u32, Vec<u16>>,
+    pub outgoing_base: u32,
 }
 
 impl Allocation {
@@ -212,6 +213,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         locations,
         spill_words: next_spill,
         safepoint_registers,
+        outgoing_base: 0,
     }
 }
 

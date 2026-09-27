@@ -29,7 +29,7 @@ pub fn object_sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, Obje
 fn scope_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>, // check-added-lines: allow(index) slice type
 ) -> Result<T, ObjectError> {
     ncl_object::with_rooted_slice(ctx, values, f)
 }

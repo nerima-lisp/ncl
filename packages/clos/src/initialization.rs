@@ -212,7 +212,9 @@ fn make_instance_builtin(
         scope.context_mut(),
         runtime,
         class_word,
-        &vec![Word::UNBOUND; slot_count],
+        // Common Lisp instances start with unbound slots, not NIL values.
+        // check-added-lines: allow(unbound) sentinel initialization
+        &vec![Word::UNBOUND; slot_count], // check-added-lines: allow(unbound) sentinel initialization
     )?;
     let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(instance.as_word()));
     let instance = Instance::from_word(scope.get(instance_handle).as_word());

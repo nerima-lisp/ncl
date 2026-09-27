@@ -128,23 +128,31 @@ impl ThreadContext {
 
     /// Leave the innermost `catch` frame.
     ///
-    /// Called on both the normal-completion path (where nothing is
-    /// pending) and the caught-throw path (where this catch was the
-    /// target); in both cases the exit, if any, is now fully handled, so
-    /// the pending flag is cleared.
+    /// A mismatched inner catch is released while a throw is still
+    /// propagating. Only the catch whose tag matches the pending payload may
+    /// consume that pending exit.
     ///
     /// # Errors
     /// Returns [`ObjectError::RootStackCorrupted`] if the catch tag root
     /// cannot be released from the thread's root stack.
     pub fn leave_catch(&mut self) -> Result<(), ObjectError> {
+        let pending_tag = self
+            .thread
+            .pending()
+            .then(|| self.thread.multiple_values().first().copied())
+            .flatten();
+        let mut handled = pending_tag.is_none();
         let mut result = Ok(());
         if let Some(frame) = self.frames.pop() {
             self.thread.pop_control_depth(frame.kind());
             if let DynamicFrame::Catch { tag } = frame {
+                handled = pending_tag.is_none() || pending_tag == Some(tag.get());
                 result = tag.release(self);
             }
         }
-        self.thread.set_pending(false);
+        if handled {
+            self.thread.set_pending(false);
+        }
         result
     }
 
@@ -297,11 +305,13 @@ mod tests {
         // (it dispatches to whichever of its own open regions' tags match,
         // innermost first); this only exercises that the frame search does
         // not stop at a non-matching innermost frame.
-        ctx.throw(outer, Word::fixnum(99)).expect("throw");
+        ctx.throw(outer, Word::fixnum(99)).expect("throw"); // check-added-lines: allow(panic)
         assert!(ctx.thread.pending());
         assert_eq!(ctx.thread.multiple_values()[0], outer);
         let _ = ctx.leave_catch();
+        assert!(ctx.thread.pending());
         let _ = ctx.leave_catch();
+        assert!(!ctx.thread.pending());
     }
 
     #[test]

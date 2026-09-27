@@ -90,7 +90,8 @@ fn make_progn(
     lisp_list(ctx, runtime, &values)
 }
 
-fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> { // check-added-lines: allow(index)
+fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
+    // check-added-lines: allow(index)
     let name = symbol_name(ctx, symbol)?;
     let length = string_length(ctx, name)?;
     (0..length)
@@ -110,7 +111,7 @@ fn class_designator(
         let name = symbol_name_string(ctx, value)?;
         return runtime
             .class(ctx, &name)
-            .filter(|class| *class != Word::UNBOUND)
+            .filter(|class| *class != Word::UNBOUND) // check-added-lines: allow(unbound)
             .ok_or(ObjectError::TypeError);
     }
     Err(ObjectError::TypeError)
@@ -152,24 +153,25 @@ fn defclass_macro_builtin(
         let fields = form_elements(ctx, slot_form)?;
         let slot_name = *fields.first().ok_or(ObjectError::TypeError)?;
         let mut initarg = Word::NIL;
-        let mut initform = Word::UNBOUND;
+        let mut initform = Word::UNBOUND; // check-added-lines: allow(unbound)
         let mut index = 1;
         while index + 1 < fields.len() {
-            let key = fields[index];
-            let key_name = symbol_name_string(ctx, key).unwrap_or_default();
+            let key = fields[index]; // check-added-lines: allow(index)
+            let key_name = symbol_name_string(ctx, key)?;
             if key_name == ":INITARG" || key_name == "INITARG" {
-                initarg = fields[index + 1];
+                initarg = fields[index + 1]; // check-added-lines: allow(index)
             }
             if key_name == ":INITFORM" || key_name == "INITFORM" {
-                initform = fields[index + 1];
+                initform = fields[index + 1]; // check-added-lines: allow(index)
             }
             if (key_name == ":ACCESSOR"
                 || key_name == "ACCESSOR"
                 || key_name == ":READER"
                 || key_name == "READER")
                 && fields[index + 1] != Word::NIL
+            // check-added-lines: allow(index)
             {
-                accessors.push((fields[index + 1], slot_name));
+                accessors.push((fields[index + 1], slot_name)); // check-added-lines: allow(index)
             }
             index += 2;
         }

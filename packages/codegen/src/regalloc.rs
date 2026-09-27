@@ -28,6 +28,7 @@ pub struct LiveInterval {
     pub end: u32,
     pub ty: Ty,
     pub crosses_call: bool,
+    pub crosses_safepoint: bool,
     pub crosses_handler: bool,
 }
 
@@ -70,6 +71,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut definitions = HashMap::<ValueId, (u32, Ty)>::new();
     let mut last_use = HashMap::<ValueId, u32>::new();
     let mut call_positions = BTreeSet::new();
+    let mut safepoint_positions = BTreeSet::new();
     let mut safepoints = Vec::new();
     let mut handler_values = HashSet::new();
     let mut position = 0u32;
@@ -93,8 +95,11 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             for value in operands {
                 last_use.insert(value, position);
             }
-            if is_call(&op.kind) || matches!(op.kind, OpKind::Safepoint) {
+            if is_call(&op.kind) {
                 call_positions.insert(position);
+            }
+            if matches!(op.kind, OpKind::Safepoint) {
+                safepoint_positions.insert(position);
             }
             if matches!(op.kind, OpKind::Safepoint) || is_call(&op.kind) {
                 safepoints.push(position);
@@ -148,6 +153,9 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             let crosses_call = call_positions
                 .iter()
                 .any(|&call| start < call && call <= end);
+            let crosses_safepoint = safepoint_positions
+                .iter()
+                .any(|&safepoint| start < safepoint && safepoint <= end);
             let crosses_handler = handler_values.contains(&value);
             LiveInterval {
                 value,
@@ -155,6 +163,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
                 end,
                 ty,
                 crosses_call,
+                crosses_safepoint,
                 crosses_handler,
             }
         })
@@ -172,7 +181,8 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             .map(|(_, register)| *register)
             .collect::<BTreeSet<_>>();
         let location = if interval.crosses_handler
-            || (interval.crosses_call && target == AllocationTarget::AArch64)
+            || interval.crosses_call
+            || (interval.crosses_safepoint && target == AllocationTarget::AArch64)
         {
             let slot = next_spill;
             next_spill = next_spill.saturating_add(1);
@@ -227,7 +237,7 @@ impl Location {
 
 const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
     match target {
-        AllocationTarget::X86_64 => &[10, 11, 12, 13],
+        AllocationTarget::X86_64 => &[11, 12, 13],
         AllocationTarget::AArch64 => &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     }
 }
@@ -413,5 +423,57 @@ mod tests {
             Some(Location::Spill(_))
         ));
         assert!(allocation.safepoint_registers.values().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn call_crossing_values_are_spilled_for_both_targets() {
+        let mut builder = FunctionBuilder::new(
+            FunctionId(2),
+            "call-crossing",
+            vec![
+                ncl_ir::Param {
+                    name: "function".into(),
+                    ty: Ty::Word,
+                },
+                ncl_ir::Param {
+                    name: "live".into(),
+                    ty: Ty::Word,
+                },
+            ],
+            vec![Ty::Word],
+        );
+        let constant = builder.add_constant(Constant::Fixnum(0));
+        assert!(
+            builder
+                .push_op(OpKind::Const { result: constant }, &[Ty::Word],)
+                .is_ok()
+        );
+        assert!(
+            builder
+                .push_op(
+                    OpKind::Call {
+                        function: ValueId(0),
+                        args: Vec::new(),
+                    },
+                    &[Ty::Word],
+                )
+                .is_ok()
+        );
+        assert!(
+            builder
+                .terminate(Terminator::Return {
+                    values: vec![ValueId(1)],
+                })
+                .is_ok()
+        );
+        let function = builder.finish();
+
+        for target in [AllocationTarget::X86_64, AllocationTarget::AArch64] {
+            let allocation = allocate(&function, target);
+            assert!(matches!(
+                allocation.location(ValueId(1)),
+                Some(Location::Spill(_))
+            ));
+        }
     }
 }

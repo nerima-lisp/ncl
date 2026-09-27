@@ -36,6 +36,7 @@ pub(super) fn simple_bit_vector_p_builtin(
                 && !array_has_fill_pointer_p(ctx, value)?
                 && array_displacement(ctx, value)?.0 == Word::NIL
         }
+        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
         _ => false,
     };
     Ok(if simple_bit_vector { truth() } else { nil() })

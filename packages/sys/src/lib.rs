@@ -252,6 +252,22 @@ pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: 
     heap.write_word(object, slot, value)
 }
 
+/// Copy words from the caller-owned rest-argument area used by compiled calls.
+///
+/// The pointer is valid only for the duration of the native call and must point
+/// to at least `count` initialized `Word` values.
+#[must_use]
+pub fn copy_native_words(address: u64, count: usize) -> Option<Vec<Word>> {
+    if count == 0 {
+        return Some(Vec::new());
+    }
+    let address = usize::try_from(address).ok()?;
+    let pointer = std::ptr::without_provenance::<Word>(address);
+    // SAFETY: the compiled caller supplies a live, initialized rest area with
+    // exactly the requested number of words for the duration of this call.
+    Some(unsafe { std::slice::from_raw_parts(pointer, count) }.to_vec())
+}
+
 /// Write a cons payload word through a registered thread.
 pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
     let Some(heap) = thread.heap() else {

@@ -142,10 +142,51 @@ impl Context<'_> {
         arguments: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let callee = self.lower_expr(f, function)?;
-        let values = arguments
-            .iter()
-            .map(|argument| self.lower_expr(f, argument))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut values = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            self.lower_expr(f, argument)?;
+            let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "CAPTURE-MULTIPLE-VALUES"))?;
+            let helper = f.one(
+                OpKind::LoadField {
+                    object: helper,
+                    field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                        LowerError::Ir {
+                            detail: "function symbol offset does not fit u32".to_owned(),
+                        }
+                    })?,
+                },
+                Ty::Word,
+            )?;
+            let zero = f.fixnum(0)?;
+            let zero = f.one(
+                OpKind::Convert {
+                    op: Convert::I64ToWord,
+                    value: zero,
+                },
+                Ty::Word,
+            )?;
+            f.safepoint()?;
+            values.push(f.one(
+                OpKind::CallClosure {
+                    closure: helper,
+                    args: vec![zero],
+                },
+                Ty::Word,
+            )?);
+        }
+        let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "MULTIPLE-VALUE-CALL-LIST"))?;
+        let helper = f.one(
+            OpKind::LoadField {
+                object: helper,
+                field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                    LowerError::Ir {
+                        detail: "function symbol offset does not fit u32".to_owned(),
+                    }
+                })?,
+            },
+            Ty::Word,
+        )?;
+        values.insert(0, callee);
         let raw_argc = f.fixnum(i64::try_from(values.len()).map_err(|_| LowerError::Ir {
             detail: "argument count does not fit i64".to_owned(),
         })?)?;
@@ -160,8 +201,8 @@ impl Context<'_> {
         call_args.extend(values);
         f.safepoint()?;
         f.one(
-            OpKind::CallIndirect {
-                callee,
+            OpKind::CallClosure {
+                closure: helper,
                 args: call_args,
             },
             Ty::Word,

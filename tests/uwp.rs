@@ -36,7 +36,7 @@ fn cleanup_non_local_exit_has_priority() {
 }
 
 #[test]
-fn pending_multiple_values_survive_allocating_cleanup() {
+fn pending_value_survives_allocating_cleanup() {
     assert_eq!(
         eval("(catch 'a (unwind-protect (throw 'a 1) (list 9)))"),
         "1"

@@ -37,6 +37,12 @@ pub(super) fn lower_set_multiple_values(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
+    if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
+        return Err(CodegenError::MultipleValueAreaOverflow {
+            count: values.len(),
+            capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
+        });
+    }
     let count = u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
     for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
         emit(assembler, instruction)?;

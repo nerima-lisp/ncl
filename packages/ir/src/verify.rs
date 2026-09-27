@@ -235,11 +235,12 @@ fn verify_handler_flow(
                     }
                 }
                 stack.push(region);
-            } else if stack.pop() != Some(region) {
+            } else if stack.last().copied() == Some(region) {
+                stack.pop();
+            } else {
                 let is_unwind_restore = regions.get(&region).is_some_and(|definition| {
                     definition.kind == crate::HandlerKind::UnwindProtect
                         && definition.handler == block.id
-                        && stack.is_empty()
                 });
                 if !is_unwind_restore {
                     errors.push(VerifyError::HandlerMismatch(block.id));

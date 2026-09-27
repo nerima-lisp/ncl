@@ -37,7 +37,7 @@ impl Thread {
             return;
         };
         let frame_words = usize::from(map.frame_words);
-        let words = frame_fp as *const Word;
+        let words = std::ptr::without_provenance::<Word>(frame_fp);
         let mut snapshot = Vec::with_capacity(frame_words);
         // SAFETY: the caller guarantees the generated frame has the mapped width.
         unsafe {
@@ -52,7 +52,21 @@ impl Thread {
         self.stack_bounds = None;
         self.frame_registers = registers.into_iter().map(Word::from_bits).collect();
         self.callee_saved = registers;
-        self.frame_chain[1] = Word::from_bits(return_pc as u64);
+        let Ok(return_pc) = u64::try_from(return_pc) else {
+            self.frame_snapshot_failed = true;
+            self.frame_chain.clear();
+            self.frame_registers.clear();
+            self.frame_address = None;
+            return;
+        };
+        let Some(return_pc_slot) = self.frame_chain.get_mut(1) else {
+            self.frame_snapshot_failed = true;
+            self.frame_chain.clear();
+            self.frame_registers.clear();
+            self.frame_address = None;
+            return;
+        };
+        *return_pc_slot = Word::from_bits(return_pc);
         self.frame_address = Some(frame_fp);
         self.frame_snapshot_failed = false;
     }

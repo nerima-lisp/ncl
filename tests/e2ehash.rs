@@ -95,7 +95,7 @@ const CASES: &[Case] = &[
         expected: "7",
     },
     Case {
-        builtin: "GETHASH AFTER GC",
+        builtin: "GETHASH KEY RETENTION FORM",
         source: "(let ((table (make-hash-table :test 'eq))) (setf (gethash 1 table) 7) (gethash 1 table))",
         expected: "7",
     },
@@ -291,6 +291,8 @@ const CASES: &[Case] = &[
     },
 ];
 
+const KNOWN_COMPILER_BLOCKERS: &[&str] = &["VECTOR-PUSH-EXTEND", "VECTOR-POP", "SBIT"];
+
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
     assert_eq!(CASES.len(), 56);
@@ -312,12 +314,13 @@ fn compiled_hash_array_matrix_reports_every_registered_builtin() {
         };
         let classification = if output.status.success() && stdout == case.expected {
             "OK"
-        } else if stderr.contains("constant requires a runtime table")
-            || stderr.contains("invalid operator")
-            || stderr.contains("InvalidOperator")
-            || stderr.contains("quoted structure")
-            || stderr.contains("UndefinedFunction")
-            || stderr.contains("at most four register arguments")
+        } else if KNOWN_COMPILER_BLOCKERS.contains(&case.builtin)
+            && (stderr.contains("constant requires a runtime table")
+                || stderr.contains("invalid operator")
+                || stderr.contains("InvalidOperator")
+                || stderr.contains("quoted structure")
+                || stderr.contains("UndefinedFunction")
+                || stderr.contains("at most four register arguments"))
         {
             "担当外: codegen/compiler blocker"
         } else {

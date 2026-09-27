@@ -149,6 +149,7 @@ impl Runtime {
         let table = Self::table(&self.packages).ok()?;
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;
+        let mut common_lisp_alias = None;
         let mut failure = None;
         HashTable::from_word(table)
             .for_each_entry(context, |_, package| {
@@ -180,6 +181,16 @@ impl Runtime {
                     result = Some(package.as_word());
                     return;
                 }
+                if name == "CL"
+                    && string_length(context, package_name).ok() == Some(11)
+                    && (0..11)
+                        .zip("COMMON-LISP".chars())
+                        .all(|(index, character)| {
+                            string_ref(context, package_name, index) == Ok(character)
+                        })
+                {
+                    common_lisp_alias = Some(package.as_word());
+                }
                 let mut nicknames = match package.nicknames(context) {
                     Ok(nicknames) => nicknames,
                     Err(error) => {
@@ -208,7 +219,7 @@ impl Runtime {
         if failure.is_some() {
             return None;
         }
-        result
+        result.or(common_lisp_alias)
     }
 
     #[must_use]

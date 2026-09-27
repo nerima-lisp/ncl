@@ -79,32 +79,6 @@ fn held_form(
     Ok(held.len() - 1)
 }
 
-/// Build the plain data list `(arg-at-index...)` (no leading operator).
-fn held_list(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    indexes: &[usize],
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let values = indexes
-            .iter()
-            .map(|index| {
-                roots
-                    .get(*index)
-                    .map(|root| **root)
-                    .ok_or(ObjectError::TypeError)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let value = list(ctx, runtime, &values)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
 fn held_quote(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -112,6 +86,17 @@ fn held_quote(
     index: usize,
 ) -> Result<usize> {
     held_form(ctx, runtime, held, "QUOTE", &[index])
+}
+
+fn held_designator_string(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    index: usize,
+) -> Result<usize> {
+    let word = held_value(held, index)?;
+    let text = designator_text(ctx, word)?;
+    held_string(ctx, runtime, held, &text)
 }
 
 fn held_symbol(
@@ -128,6 +113,32 @@ fn held_symbol(
     *held = refreshed;
     held.push(value);
     Ok(held.len() - 1)
+}
+
+fn held_make_package(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    name: usize,
+    nicknames: &[usize],
+) -> Result<usize> {
+    if nicknames.is_empty() {
+        return held_form(ctx, runtime, held, "MAKE-PACKAGE", &[name]);
+    }
+    let values = nicknames
+        .iter()
+        .map(|index| held_designator_string(ctx, runtime, held, *index))
+        .collect::<Result<Vec<_>>>()?;
+    let nickname_data = held_form(ctx, runtime, held, "LIST", &values)?;
+    let quoted_nicknames = held_quote(ctx, runtime, held, nickname_data)?;
+    let nicknames_key = held_string(ctx, runtime, held, "NICKNAMES")?;
+    held_form(
+        ctx,
+        runtime,
+        held,
+        "MAKE-PACKAGE",
+        &[name, nicknames_key, quoted_nicknames],
+    )
 }
 
 fn held_string(
@@ -203,22 +214,10 @@ pub(crate) fn defpackage(
             }
         }
 
-        let quoted_name = held_quote(ctx, runtime, &mut held, name_index)?;
-        let find_existing = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[quoted_name])?;
-        let make_call = if nickname_indexes.is_empty() {
-            held_form(ctx, runtime, &mut held, "MAKE-PACKAGE", &[quoted_name])?
-        } else {
-            let nickname_data = held_list(ctx, runtime, &mut held, &nickname_indexes)?;
-            let quoted_nicknames = held_quote(ctx, runtime, &mut held, nickname_data)?;
-            let nicknames_key = held_string(ctx, runtime, &mut held, "NICKNAMES")?;
-            held_form(
-                ctx,
-                runtime,
-                &mut held,
-                "MAKE-PACKAGE",
-                &[quoted_name, nicknames_key, quoted_nicknames],
-            )?
-        };
+        let name_designator = held_designator_string(ctx, runtime, &mut held, name_index)?;
+        let find_existing = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[name_designator])?;
+        let make_call =
+            held_make_package(ctx, runtime, &mut held, name_designator, &nickname_indexes)?;
         let mut statements = vec![held_form(
             ctx,
             runtime,
@@ -228,38 +227,43 @@ pub(crate) fn defpackage(
         )?];
 
         for use_index in use_indexes {
-            let quoted_use = held_quote(ctx, runtime, &mut held, use_index)?;
+            let use_designator = held_designator_string(ctx, runtime, &mut held, use_index)?;
+            let find_used = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[use_designator])?;
             statements.push(held_form(
                 ctx,
                 runtime,
                 &mut held,
                 "USE-PACKAGE",
-                &[quoted_use, quoted_name],
+                &[find_used, find_existing],
             )?);
         }
 
         if !shadow_indexes.is_empty() {
-            let shadow_data = held_list(ctx, runtime, &mut held, &shadow_indexes)?;
-            let quoted_shadow = held_quote(ctx, runtime, &mut held, shadow_data)?;
+            let shadow_names = shadow_indexes
+                .iter()
+                .map(|index| held_designator_string(ctx, runtime, &mut held, *index))
+                .collect::<Result<Vec<_>>>()?;
+            let shadow_data = held_form(ctx, runtime, &mut held, "LIST", &shadow_names)?;
             statements.push(held_form(
                 ctx,
                 runtime,
                 &mut held,
                 "SHADOW",
-                &[quoted_shadow, quoted_name],
+                &[shadow_data, find_existing],
             )?);
         }
 
         if !export_indexes.is_empty() {
             let mut interned = Vec::with_capacity(export_indexes.len());
             for export_index in export_indexes {
-                let quoted_export = held_quote(ctx, runtime, &mut held, export_index)?;
+                let export_designator =
+                    held_designator_string(ctx, runtime, &mut held, export_index)?;
                 interned.push(held_form(
                     ctx,
                     runtime,
                     &mut held,
                     "INTERN",
-                    &[quoted_export, quoted_name],
+                    &[export_designator, find_existing],
                 )?);
             }
             let export_list = held_form(ctx, runtime, &mut held, "LIST", &interned)?;
@@ -268,7 +272,7 @@ pub(crate) fn defpackage(
                 runtime,
                 &mut held,
                 "EXPORT",
-                &[export_list, quoted_name],
+                &[export_list, find_existing],
             )?);
         }
 
@@ -298,8 +302,8 @@ pub(crate) fn in_package(
         held_ensure_operator(ctx, runtime, &mut held, "IN-PACKAGE")?;
         let name_index = 1;
         held_value(&held, name_index)?;
-        let quoted_name = held_quote(ctx, runtime, &mut held, name_index)?;
-        let find_call = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[quoted_name])?;
+        let name_designator = held_designator_string(ctx, runtime, &mut held, name_index)?;
+        let find_call = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[name_designator])?;
         let message = held_string(ctx, runtime, &mut held, "package not found")?;
         let error_call = held_form(ctx, runtime, &mut held, "ERROR", &[message])?;
         let selected = held_form(ctx, runtime, &mut held, "OR", &[find_call, error_call])?;

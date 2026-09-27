@@ -41,12 +41,14 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     };
     assert!(map.registers.is_empty()); // check-added-lines: allow(panic) test-only assertion
     let slot = 4 + 1 + usize::try_from(spill).map_err(|_| "spill slot overflow")?;
-    assert!( // check-added-lines: allow(panic) test-only assertion
-        map.bitmap
-            .get(slot / 8)
-            .is_some_and(|bits| bits & (1 << (slot % 8)) != 0),
+    let slot_is_live = map
+        .bitmap
+        .get(slot / 8)
+        .is_some_and(|bits| bits & (1 << (slot % 8)) != 0);
+    assert!(
+        slot_is_live,
         "spill slot {slot} is missing from the safepoint map"
-    );
+    ); // check-added-lines: allow(panic) test-only assertion
     assert!(!compiled.code.is_empty());
     Ok(())
 }

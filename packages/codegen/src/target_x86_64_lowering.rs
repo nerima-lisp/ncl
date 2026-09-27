@@ -408,27 +408,21 @@ fn lower_builtin(
             emit(assembler, Inst::MovRR(register, register))?;
         }
         load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
-        load_slot(assembler, slots, *start_value, ENTRY)?;
+        load_slot(assembler, slots, *start_value, RETURN_VALUE)?;
         emit(
             assembler,
-            Inst::BinRI(BinOp::Sub, Reg::Rsp, CALLEE_HEADER_RESERVE),
+            Inst::MovMR(Mem::base(Reg::Rsp, -16), FUNCTION_OBJECT),
         )?;
         emit(
             assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, 0), FUNCTION_OBJECT),
+            Inst::MovMR(Mem::base(Reg::Rsp, -8), RETURN_VALUE),
         )?;
-        emit(assembler, Inst::MovMR(Mem::base(Reg::Rsp, 8), ENTRY))?;
         load_immediate(
             assembler,
-            RETURN_VALUE,
+            ENTRY,
             abi.builtin_address(common_lisp_builtin(name))
                 .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI address lookup failure.
                 .cast_signed(),
-        )?;
-        emit(assembler, Inst::CallReg(RETURN_VALUE))?;
-        emit(
-            assembler,
-            Inst::BinRI(BinOp::Add, Reg::Rsp, CALLEE_HEADER_RESERVE),
         )?;
         return Ok(());
     }

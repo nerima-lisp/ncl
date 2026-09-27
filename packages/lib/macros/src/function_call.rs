@@ -63,8 +63,10 @@ pub fn call_designator(
             .iter_mut()
             .map(|word| ncl_object::push_heap_root(runtime, word))
             .collect::<Vec<_>>();
+        // check-added-lines: allow(index) rooted slice excludes the designator
+        let arguments = rooted.get(1..).ok_or(ObjectError::TypeError)?;
         let result = FunctionObject::try_from(resolved_word)
-            .and_then(|resolved| runtime.call_builtin(ctx, resolved, &rooted[1..]));
+            .and_then(|resolved| runtime.call_builtin(ctx, resolved, arguments));
         let arguments_popped = argument_tokens
             .into_iter()
             .rev()

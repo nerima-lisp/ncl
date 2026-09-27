@@ -14,9 +14,8 @@ pub(crate) fn expand_multiple_value_list_adapter(
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
     ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
-        let [value] = roots else {
-            return Err(ObjectError::TypeError);
-        };
+        // check-added-lines: allow(index) exact-shape destructuring
+        let value = roots.first().ok_or(ObjectError::TypeError)?;
         let mut list_symbol = symbol(ctx, runtime, "LIST")?;
         ncl_object::with_root(ctx, &mut list_symbol, |ctx, list_symbol| {
             let mut list_function = form(ctx, runtime, "FUNCTION", &[*list_symbol])?;

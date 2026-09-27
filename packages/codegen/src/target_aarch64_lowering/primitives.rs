@@ -40,7 +40,17 @@ pub(super) fn decode_function_entry(
     )
 }
 
-pub(super) fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) enum ClosureLayout<'a> {
+    Static(&'a [ValueId]),
+    Dynamic,
+}
+
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) fn closure_layout(
+    function: &Function,
+    closure: ValueId,
+) -> Result<ClosureLayout<'_>, CodegenError> {
     let mut current = closure;
     for _ in 0..function
         .blocks
@@ -52,9 +62,12 @@ pub(super) fn closure_captures(function: &Function, closure: ValueId) -> Option<
             .blocks
             .iter()
             .flat_map(|block| &block.ops)
-            .find(|op| op.results.iter().any(|(value, _)| *value == current))?;
+            .find(|op| op.results.iter().any(|(value, _)| *value == current))
+            .ok_or_else(|| CodegenError::Abi("closure value definition is unavailable".into()))?;
         match &definition.kind {
-            OpKind::MakeClosure { captures, .. } => return Some(captures.as_slice()),
+            OpKind::MakeClosure { captures, .. } => {
+                return Ok(ClosureLayout::Static(captures.as_slice()));
+            }
             OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
             OpKind::Const { .. }
             | OpKind::Load { .. }
@@ -72,10 +85,12 @@ pub(super) fn closure_captures(function: &Function, closure: ValueId) -> Option<
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. }
-            | OpKind::Alloc { .. } => return None,
+            | OpKind::Alloc { .. } => return Ok(ClosureLayout::Dynamic),
         }
     }
-    None
+    Err(CodegenError::Abi(
+        "closure value definition has a cycle".into(),
+    ))
 }
 
 fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
@@ -107,8 +122,11 @@ pub(super) fn lower_closure_call(
     function: &Function,
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
-    let Some(captures) = closure_captures(function, closure) else {
-        return super::lower_closure_call(assembler, closure, args, allocation);
+    let captures = match closure_layout(function, closure)? {
+        ClosureLayout::Static(captures) => captures,
+        ClosureLayout::Dynamic => {
+            return super::lower_closure_call(assembler, closure, args, allocation);
+        }
     };
     let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.

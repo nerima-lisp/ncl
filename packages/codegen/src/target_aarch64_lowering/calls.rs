@@ -3,9 +3,9 @@ use crate::{Allocation, CodegenError};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::ValueId;
 
+#[allow(clippy::redundant_pub_crate)]
 #[allow(clippy::similar_names)]
 #[allow(clippy::too_many_lines)]
-#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,

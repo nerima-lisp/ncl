@@ -115,6 +115,7 @@ pub fn lower_call(
                         .ok_or(CodegenError::FrameOverflow)?,
                 },
             },
+            // check-added-lines: allow(index) intentional
         )?;
     } else {
         load_value(assembler, allocation, callee, Reg(16))?;

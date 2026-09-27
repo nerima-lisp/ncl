@@ -53,7 +53,9 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 let push = form(ctx, runtime, "NCL-EXT::PUSH-HANDLER", &[condition, handler])?;
                 let token = fresh_symbol(ctx, runtime)?;
                 let bindings = bindings(ctx, runtime, &[(token, push)])?;
-                ncl_object::with_roots(ctx, &[bindings, *result], |ctx, roots| {
+                let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;
+                let body = form(ctx, runtime, "PROGN", &[*result, pop])?;
+                ncl_object::with_roots(ctx, &[bindings, body], |ctx, roots| {
                     let bindings = roots.first().ok_or(ObjectError::Layout)?;
                     let body = roots.get(1).ok_or(ObjectError::Layout)?;
                     form(ctx, runtime, "LET", &[**bindings, **body])

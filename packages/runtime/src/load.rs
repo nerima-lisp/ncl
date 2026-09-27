@@ -32,7 +32,7 @@ fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeErro
     // this same file has run, so the two steps must interleave rather than
     // reading every form up front.
     while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
-        let package = in_package_name(&mut runtime.context, form)?;
+        let package = in_package_name(&runtime.context, form)?;
         result = eval_rooted(runtime, &mut options, form)?;
         if let Some(package) = package {
             options.set_current_package(package)?;
@@ -98,7 +98,7 @@ fn eval_rooted(
 }
 
 fn in_package_name(
-    ctx: &mut ncl_object::ThreadContext,
+    ctx: &ncl_object::ThreadContext,
     form: Word,
 ) -> Result<Option<String>, RuntimeError> {
     if !matches!(classify_object(ctx, form), ObjectRef::Cons(_)) {

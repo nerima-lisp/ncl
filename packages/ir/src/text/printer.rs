@@ -261,8 +261,13 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
                 w.u(v.0.into());
             }
         }
-        OpKind::CallClosure { closure, args } => {
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
             w.u(closure.0.into());
+            w.u(named_symbol.map_or(u64::MAX, |value| value.0.into()));
             vec_len(w, args.len());
             for v in args {
                 w.u(v.0.into());

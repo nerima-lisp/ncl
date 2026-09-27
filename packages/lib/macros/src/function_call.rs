@@ -60,7 +60,7 @@ fn call_designator(
             .map_err(|error| {
                 if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
                     ctx.set_pending_lisp_error(LispError::CellError(
-                        ncl_object::CellError::UndefinedFunction,
+                        ncl_object::CellError::UndefinedFunction { name: designator },
                     ));
                     ObjectError::UndefinedFunction
                 } else {
@@ -93,7 +93,9 @@ fn call_designator(
             .map_err(|error| {
                 if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
                     ctx.set_pending_lisp_error(LispError::CellError(
-                        ncl_object::CellError::UndefinedFunction,
+                        ncl_object::CellError::UndefinedFunction {
+                            name: designator_word,
+                        },
                     ));
                     ObjectError::UndefinedFunction
                 } else {

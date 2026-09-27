@@ -277,6 +277,10 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
         },
         11 => OpKind::CallClosure {
             closure: v(r)?,
+            named_symbol: match r.u()? {
+                u64::MAX => None,
+                value => Some(ValueId(u32(value)?)),
+            },
             args: vals(r)?,
         },
         12 => OpKind::Builtin {

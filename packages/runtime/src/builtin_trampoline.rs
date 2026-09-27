@@ -33,7 +33,9 @@
 
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
-use ncl_object::{FunctionObject, Runtime as ObjectRuntime, ThreadContext, Word};
+use ncl_object::{
+    CellError, FunctionObject, LispError, Runtime as ObjectRuntime, ThreadContext, Word,
+};
 use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
 use std::ptr::NonNull;
 
@@ -135,8 +137,46 @@ fn dispatch_with_context(
     }
 }
 
+extern "C" fn undefined_function_dispatch(
+    _argc: u64,
+    _a0: u64,
+    _a1: u64,
+    _a2: u64,
+    _a3: u64,
+    _rest: u64,
+    symbol: u64,
+    thread_ptr: u64,
+) -> NativeCallResult {
+    let Ok(address) = usize::try_from(thread_ptr) else {
+        return error_result();
+    };
+    let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
+        return error_result();
+    };
+    #[allow(clippy::option_if_let_else)]
+    match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        invocation
+            .context
+            .set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction {
+                name: Word::from_bits(symbol),
+            }));
+        invocation
+            .context
+            .set_pending(ncl_object::ObjectError::UndefinedFunction);
+        error_result()
+    }) {
+        Some(result) => result,
+        None => error_result(),
+    }
+}
+
 fn dispatch_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(dispatch).map_err(|error| RuntimeError::Native(error.to_string()))
+}
+
+fn undefined_function_dispatch_address() -> Result<u64, RuntimeError> {
+    ncl_sys::function_address!(undefined_function_dispatch)
+        .map_err(|error| RuntimeError::Native(error.to_string()))
 }
 
 /// `mov x6, x16` / `mov x7, x21` followed by an absolute branch into
@@ -145,7 +185,7 @@ fn dispatch_address() -> Result<u64, RuntimeError> {
 /// moving the pinned function-object (`x16`) and thread-context (`x21`)
 /// registers there lets `dispatch`'s eight named parameters land exactly on
 /// `x0..x7` per the standard `AArch64` C calling convention.
-fn build_aarch64_stub() -> Result<Vec<u8>, RuntimeError> {
+fn build_aarch64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
     let mut assembler = Aarch64Assembler::new();
     let emit = |assembler: &mut Aarch64Assembler, inst: Aarch64Inst| {
         assembler
@@ -166,7 +206,7 @@ fn build_aarch64_stub() -> Result<Vec<u8>, RuntimeError> {
             rn: ncl_asm_aarch64::RegOrSp::Reg(Aarch64Reg(21)),
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Aarch64Reg(9), dispatch_address()?) {
+    for instruction in ncl_asm_aarch64::mov_imm64(Aarch64Reg(9), address) {
         emit(&mut assembler, instruction)?;
     }
     emit(&mut assembler, Aarch64Inst::Br { rn: Aarch64Reg(9) })?;
@@ -184,9 +224,9 @@ fn build_aarch64_stub() -> Result<Vec<u8>, RuntimeError> {
 /// `rsp` before its own indirect call, so `rsp` is `8 mod 16` on stub entry;
 /// subtracting 24 (also `8 mod 16`) restores the required `0 mod 16` alignment
 /// at the nested `call`.
-fn build_x86_64_stub() -> Result<Vec<u8>, RuntimeError> {
+fn build_x86_64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
     const RESERVED: i32 = 24;
-    let address = i64::try_from(dispatch_address()?).map_err(|_| {
+    let address = i64::try_from(address).map_err(|_| {
         RuntimeError::Native("generic builtin dispatcher address does not fit in i64".to_owned())
     })?;
     let mut assembler = X86Assembler::new();
@@ -233,16 +273,31 @@ fn build_x86_64_stub() -> Result<Vec<u8>, RuntimeError> {
 /// # Errors
 /// Returns a native error if assembling, publishing, or installing the
 /// trampoline fails.
-pub fn install(object: &ObjectRuntime, ctx: &mut ThreadContext) -> Result<CodePtr, RuntimeError> {
-    let bytes = if cfg!(target_arch = "aarch64") {
-        build_aarch64_stub()
-    } else {
-        build_x86_64_stub()
-    }?;
+pub fn install(
+    object: &ObjectRuntime,
+    ctx: &mut ThreadContext,
+) -> Result<(CodePtr, CodePtr), RuntimeError> {
+    let builtin_address = dispatch_address()?;
+    let undefined_address = undefined_function_dispatch_address()?;
+    let build = |address| {
+        if cfg!(target_arch = "aarch64") {
+            build_aarch64_stub(address)
+        } else {
+            build_x86_64_stub(address)
+        }
+    };
+    let bytes = build(builtin_address)?;
+    let undefined_bytes = build(undefined_address)?;
     let mut code =
         alloc_code(bytes.len()).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
     write_code(&mut code, 0, &bytes).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
     publish_code(&mut code).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
     object.install_generic_builtin_entry(ctx, code.address())?;
-    Ok(code)
+    let mut undefined_code = alloc_code(undefined_bytes.len())
+        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
+    write_code(&mut undefined_code, 0, &undefined_bytes)
+        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
+    publish_code(&mut undefined_code)
+        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
+    Ok((code, undefined_code))
 }

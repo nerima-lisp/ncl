@@ -102,6 +102,7 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
                 OpKind::CallClosure {
                     closure,
                     args: vec![argc_value],
+                    named_symbol: None,
                 },
                 &[Ty::Word]
             )

@@ -252,6 +252,7 @@ pub enum OpKind {
     CallClosure {
         closure: ValueId,
         args: Vec<ValueId>,
+        named_symbol: Option<ValueId>,
     },
     Builtin {
         name: String,

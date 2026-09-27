@@ -279,8 +279,15 @@ fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {
             out.push(*entry);
             out.extend(captures);
         }
-        OpKind::CallClosure { closure, args } => {
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
             out.push(*closure);
+            if let Some(symbol) = named_symbol {
+                out.push(*symbol);
+            }
             out.extend(args);
         }
         OpKind::Builtin { args, .. } | OpKind::SetMultipleValues { values: args } => {

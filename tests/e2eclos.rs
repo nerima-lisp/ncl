@@ -82,11 +82,6 @@ fn compiled_clos_baseline_asserts_ansi_output() {
 fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
     let cases = [
         XFail {
-            name: "defclass",
-            source: "(defclass point () ())",
-            stderr: "MacroExpansion",
-        },
-        XFail {
             name: "defgeneric",
             source: "(defgeneric area (object))",
             stderr: "MacroExpansion",
@@ -95,16 +90,6 @@ fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
             name: "defmethod",
             source: "(defmethod area ((object integer)) object)",
             stderr: "MacroExpansion",
-        },
-        XFail {
-            name: "make-instance-symbol",
-            source: "(make-instance 'standard-object)",
-            stderr: "TypeError",
-        },
-        XFail {
-            name: "find-class",
-            source: "(find-class 'standard-object)",
-            stderr: "UNDEFINED-FUNCTION",
         },
         XFail {
             name: "call-next-method",
@@ -125,6 +110,33 @@ fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
             "{}: stderr={:?}",
             case.name,
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn compiled_clos_class_and_instance_paths_are_available() {
+    let cases = [
+        (
+            "(class-name (find-class 'standard-object))",
+            "\"STANDARD-OBJECT\"",
+        ),
+        (
+            "(class-name (class-of (make-instance 'standard-object)))",
+            "\"STANDARD-OBJECT\"",
+        ),
+        (
+            "(progn (defclass point () ((x :initarg :x) (y :initarg :y :initform 0))) (slot-value (make-instance 'point :x 3) 'y))",
+            "0",
+        ),
+    ];
+    for (source, expected) in cases {
+        let output = run_ncl(source);
+        assert_eq!(output.status.code(), Some(0), "{source}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim_end(),
+            expected,
+            "{source}"
         );
     }
 }

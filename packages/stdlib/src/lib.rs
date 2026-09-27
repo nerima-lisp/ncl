@@ -65,6 +65,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_lib_macros::register(runtime)?;
     ncl_lib_streams::register(runtime)?;
     ncl_lib_packages::register(runtime)?;
+    ncl_lib_format::register(runtime)?;
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;

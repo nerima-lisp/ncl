@@ -128,6 +128,11 @@ const CASES: &[Case] = &[
         expected: "\"abc\"",
     },
     Case {
+        builtin: "WRITE-STRING",
+        source: "(let ((s (make-string-output-stream))) (write-string \"abc\" s :start 1 :end 2) (get-output-stream-string s))",
+        expected: "\"b\"",
+    },
+    Case {
         builtin: "WRITE-LINE",
         source: "(let ((s (make-string-output-stream))) (write-line \"abc\" s) (get-output-stream-string s))",
         expected: "\"abc\n\"",
@@ -143,9 +148,19 @@ const CASES: &[Case] = &[
         expected: "NIL",
     },
     Case {
+        builtin: "FRESH-LINE",
+        source: "(let ((s (make-string-output-stream))) (fresh-line s))",
+        expected: "NIL",
+    },
+    Case {
         builtin: "MAKE-STRING-OUTPUT-STREAM",
         source: "(streamp (make-string-output-stream))",
         expected: "T",
+    },
+    Case {
+        builtin: "MAKE-STRING-INPUT-STREAM",
+        source: "(let ((s (make-string-input-stream \"abc\" :start 1 :end 2))) (read-char s))",
+        expected: "#\\b",
     },
     Case {
         builtin: "GET-OUTPUT-STREAM-STRING",
@@ -157,68 +172,44 @@ const CASES: &[Case] = &[
         source: "(let ((s (make-string-input-stream \"\"))) (close s))",
         expected: "T",
     },
-];
-
-const XFAILS: &[XFail] = &[
-    XFail {
-        builtin: "FRESH-LINE",
-        source: "(let ((s (make-string-output-stream))) (fresh-line s))",
-        stdout: "",
-        stderr: "ncl: object error: TypeError\n",
-    },
-    XFail {
-        builtin: "WRITE-STRING",
-        source: "(let ((s (make-string-output-stream))) (write-string \"abc\" s :start 1 :end 2))",
-        stdout: "",
-        stderr: "ncl: lowering error: Ir { detail: \"AArch64 calls support at most four register arguments\" }\n",
-    },
-    XFail {
-        builtin: "MAKE-STRING-INPUT-STREAM",
-        source: "(let ((s (make-string-input-stream \"abc\" :start 1 :end 2))) (read-char s))",
-        stdout: "",
-        stderr: "ncl: lowering error: Ir { detail: \"AArch64 calls support at most four register arguments\" }\n",
-    },
-    XFail {
-        builtin: "WITH-OUTPUT-TO-STRING",
-        source: "(with-output-to-string (s) (write-string \"x\" s))",
-        stdout: "",
-        stderr: "ncl: front-end error: MacroExpansion { name: SymbolRef { package: Some(\"COMMON-LISP\"), name: \"WITH-OUTPUT-TO-STRING\", uninterned: None }, detail: \"TypeError\" }\n",
-    },
-    XFail {
-        builtin: "WITH-INPUT-FROM-STRING",
-        source: "(with-input-from-string (s \"x\") (read-char s))",
-        stdout: "",
-        stderr: "ncl: front-end error: MacroExpansion { name: SymbolRef { package: Some(\"COMMON-LISP\"), name: \"WITH-INPUT-FROM-STRING\", uninterned: None }, detail: \"TypeError\" }\n",
-    },
-    XFail {
+    Case {
         builtin: "PRINC",
         source: "(princ \"x\")",
-        stdout: "",
-        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRINC\n",
+        expected: "x\"x\"",
     },
-    XFail {
+    Case {
         builtin: "PRIN1",
         source: "(prin1 \"x\")",
-        stdout: "",
-        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRIN1\n",
+        expected: "\"x\"\"x\"",
     },
-    XFail {
+    Case {
         builtin: "PRINT",
         source: "(print \"x\")",
-        stdout: "",
-        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRINT\n",
+        expected: "\n\"x\"\n\"x\"",
     },
-    XFail {
+    Case {
         builtin: "FORMAT",
         source: "(format nil \"~a/~s/~d~%~&\" \"x\" \"y\" 12)",
-        stdout: "",
-        stderr: "ncl: undefined function UNDEFINED-FUNCTION: FORMAT\n",
+        expected: "\"x/\\\"y\\\"/12\n\"",
+    },
+    Case {
+        builtin: "WITH-OUTPUT-TO-STRING",
+        source: "(with-output-to-string (s) (write-string \"x\" s))",
+        expected: "\"x\"",
+    },
+    Case {
+        builtin: "WITH-INPUT-FROM-STRING",
+        source: "(with-input-from-string (s \"x\") (read-char s))",
+        expected: "#\\x",
     },
 ];
+
+const XFAILS: &[XFail] = &[];
 
 fn run(source: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -244,7 +235,7 @@ fn registered_stream_builtins_have_compiled_probes() {
     }
     for case in CASES {
         assert!(
-            REGISTERED_BUILTINS.contains(&case.builtin),
+            REGISTERED_BUILTINS.contains(&case.builtin) || ANCILLARY_XFAILS.contains(&case.builtin),
             "unexpected probe: {}",
             case.builtin
         );

@@ -157,7 +157,7 @@ pub fn pop_cleanup(ctx: &mut ThreadContext, record: CleanupRecord) {
 /// Phase 1 pops cleanup records without invoking their entry functions, since
 /// those are generated-code addresses. The machine-side transfer to the
 /// selected `target_pc` is the L13/L14 unwinder work.
-pub const fn unwind(ctx: &mut ThreadContext) {
+pub fn unwind(ctx: &mut ThreadContext) {
     records::set_cleanup_head(ctx, Word::NIL);
     ctx.set_non_local_exit(true);
 }

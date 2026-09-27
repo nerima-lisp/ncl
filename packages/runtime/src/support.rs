@@ -86,7 +86,7 @@ impl RuntimeAbi for NativeAbi<'_> {
 }
 
 pub struct RuntimeMacroCaller<'a> {
-    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>,
+    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) entries are rooted code objects
 }
 
 impl MacroCaller for RuntimeMacroCaller<'_> {
@@ -150,7 +150,7 @@ fn call_macro_function(
     runtime: &ObjectRuntime,
     function: FunctionObject,
     arguments: &[Word],
-    entry_codes: &BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>,
+    entry_codes: &BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) entries are rooted code objects
 ) -> Result<Word, ObjectError> {
     ncl_object::with_rooted_slice(ctx, arguments, |ctx, rooted| {
         let function_word = function.as_word();
@@ -161,7 +161,8 @@ fn call_macro_function(
         let code = function_code(ctx, Function::from_word(function_word))?;
         let mut registers = [0_u64; 4];
         for (register, argument) in rooted.iter().take(4).enumerate() {
-            registers[register] = argument.bits();
+            let slot = registers.get_mut(register).ok_or(ObjectError::Layout)?;
+            *slot = argument.bits();
         }
         let argument_count = u64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?;
         let rest = rooted

@@ -93,10 +93,11 @@ impl FunctionCaller for BuiltinFunctionCaller {
                 FunctionDesignator::Function(_) => FunctionObject::try_from(*rooted_values[0])
                     .map_err(|_| ObjectError::UndefinedFunction)?,
                 FunctionDesignator::Symbol(_) => {
-                    if symbol_is_macro(ctx, *rooted_values[0])? {
+                    let designator = rooted_values.first().ok_or(ObjectError::Layout)?;
+                    if symbol_is_macro(ctx, **designator)? {
                         return Err(ObjectError::UndefinedFunction);
                     }
-                    let word = crate::symbol_function(ctx, *rooted_values[0])?;
+                    let word = crate::symbol_function(ctx, **designator)?;
                     FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
                 }
             };

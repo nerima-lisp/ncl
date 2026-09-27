@@ -53,52 +53,9 @@ fn closure_capture_count(
     function: &Function,
     closure: ncl_ir::ValueId,
 ) -> Result<usize, CodegenError> {
-    let mut current = closure;
-    for _ in 0..function
-        .blocks
-        .iter()
-        .map(|block| block.ops.len())
-        .sum::<usize>()
-    {
-        let definition = function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.ops)
-            .find(|op| op.results.iter().any(|(value, _)| *value == current))
-            .ok_or_else(|| {
-                CodegenError::Unsupported("closure value definition is unavailable".into()) // check-added-lines: allow(unsupported) malformed closure IR cannot be sized safely.
-            })?;
-        match &definition.kind {
-            OpKind::MakeClosure { captures, .. } => return Ok(captures.len()),
-            OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
-            OpKind::Const { .. } | OpKind::LoadArg { .. } | OpKind::LoadField { .. } => {
-                return Ok(0);
-            }
-            OpKind::Store { .. }
-            | OpKind::StoreField { .. }
-            | OpKind::Load { .. }
-            | OpKind::Call { .. }
-            | OpKind::CallIndirect { .. }
-            | OpKind::CallClosure { .. }
-            | OpKind::Builtin { .. }
-            | OpKind::Alloc { .. }
-            | OpKind::Prim { .. }
-            | OpKind::Compare { .. }
-            | OpKind::SetMultipleValues { .. }
-            | OpKind::Safepoint
-            | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. } => {
-                // check-added-lines: allow(unsupported) malformed closure IR has no safe layout.
-                return Err(CodegenError::Abi(
-                    "closure capture metadata is unavailable".into(),
-                ));
-            }
-        }
-    }
-    // check-added-lines: allow(unsupported) cyclic closure IR has no safe layout.
-    Err(CodegenError::Abi(
-        "closure capture metadata has a cycle".into(),
-    ))
+    super::lowering::closure_captures(function, closure)
+        .map(<[ncl_ir::ValueId]>::len)
+        .ok_or_else(|| CodegenError::Abi("closure capture metadata is unavailable".into()))
 }
 
 fn extra_words(argument_count: usize) -> usize {

@@ -56,7 +56,23 @@ fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]>
         match &definition.kind {
             OpKind::MakeClosure { captures, .. } => return Some(captures.as_slice()),
             OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
-            _ => return None,
+            OpKind::Const { .. }
+            | OpKind::Load { .. }
+            | OpKind::LoadField { .. }
+            | OpKind::LoadArg { .. }
+            | OpKind::Store { .. }
+            | OpKind::StoreField { .. }
+            | OpKind::Call { .. }
+            | OpKind::CallIndirect { .. }
+            | OpKind::CallClosure { .. }
+            | OpKind::Builtin { .. }
+            | OpKind::Prim { .. }
+            | OpKind::Compare { .. }
+            | OpKind::SetMultipleValues { .. }
+            | OpKind::Safepoint
+            | OpKind::EnterHandler { .. }
+            | OpKind::LeaveHandler { .. }
+            | OpKind::Alloc { .. } => return None,
         }
     }
     None

@@ -74,7 +74,20 @@ fn closure_capture_count(
             OpKind::Const { .. } | OpKind::LoadArg { .. } | OpKind::LoadField { .. } => {
                 return Ok(0);
             }
-            _ => {
+            OpKind::Store { .. }
+            | OpKind::StoreField { .. }
+            | OpKind::Load { .. }
+            | OpKind::Call { .. }
+            | OpKind::CallIndirect { .. }
+            | OpKind::CallClosure { .. }
+            | OpKind::Builtin { .. }
+            | OpKind::Alloc { .. }
+            | OpKind::Prim { .. }
+            | OpKind::Compare { .. }
+            | OpKind::SetMultipleValues { .. }
+            | OpKind::Safepoint
+            | OpKind::EnterHandler { .. }
+            | OpKind::LeaveHandler { .. } => {
                 return Err(CodegenError::Unsupported(
                     // check-added-lines: allow(unsupported) malformed closure IR cannot be sized safely.
                     "closure capture metadata is unavailable".into(),

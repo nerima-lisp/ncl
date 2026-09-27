@@ -3,11 +3,16 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, Handle, HandleVec, Local, MultipleValues, ObjectError, Runtime, Scope,
-    ThreadContext, Word, symbol_name,
+    BuiltinArgs, Handle, Local, MultipleValues, ObjectError, Runtime, Scope, ThreadContext, Word,
+    symbol_name,
 };
 
 mod multiple_value_bind;
+mod multiple_values;
+
+pub(crate) use multiple_values::{
+    expand_multiple_value_bind_adapter, expand_multiple_value_list_adapter,
+};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
@@ -240,41 +245,54 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     let form_value: Handle<'_, Word> = scope.root(Local::from_word(form_value));
     let optional = symbol(scope.context_mut(), runtime, "&OPTIONAL")?;
     let optional: Handle<'_, Word> = scope.root(Local::from_word(optional));
-    let mut lambda_list: HandleVec<'_, Word> = scope.root_many(&[]);
-    let optional_word = scope.get(optional).as_word();
-    lambda_list.push(&mut scope, Local::from_word(optional_word));
-    let mut selected = None;
-    for position in 0..=index {
-        let variable = fresh_symbol(scope.context_mut(), runtime)?;
-        let variable: Handle<'_, Word> = scope.root(Local::from_word(variable));
-        if position == index {
-            selected = Some(variable);
-        }
-        let variable_word = scope.get(variable).as_word();
-        lambda_list.push(&mut scope, Local::from_word(variable_word));
-    }
     let rest = symbol(scope.context_mut(), runtime, "&REST")?;
     let rest: Handle<'_, Word> = scope.root(Local::from_word(rest));
-    let rest_word = scope.get(rest).as_word();
-    lambda_list.push(&mut scope, Local::from_word(rest_word));
     let rest_variable = fresh_symbol(scope.context_mut(), runtime)?;
     let rest_variable: Handle<'_, Word> = scope.root(Local::from_word(rest_variable));
+    let optional_word = scope.get(optional).as_word();
+    let rest_word = scope.get(rest).as_word();
     let rest_variable_word = scope.get(rest_variable).as_word();
-    lambda_list.push(&mut scope, Local::from_word(rest_variable_word));
-    let lambda_words = scope
-        .get_many(&lambda_list)
-        .into_iter()
-        .map(Local::as_word)
-        .collect::<Vec<_>>();
-    let lambda_list = list(scope.context_mut(), runtime, &lambda_words)?;
+    let lambda_list = list(
+        scope.context_mut(),
+        runtime,
+        &[optional_word, rest_word, rest_variable_word],
+    )?;
     let lambda_list: Handle<'_, Word> = scope.root(Local::from_word(lambda_list));
-    let selected = selected.ok_or(ObjectError::TypeError)?;
-    let lambda_args = [
-        scope.get(lambda_list).as_word(),
-        scope.get(selected).as_word(),
-    ];
-    let lambda = form(scope.context_mut(), runtime, "LAMBDA", &lambda_args)?;
-    let call_args = [lambda, scope.get(form_value).as_word()];
+    let mut current = rest_variable;
+    let mut selected_body = None;
+    for position in 0..=index {
+        let current_word = scope.get(current).as_word();
+        let test = form(scope.context_mut(), runtime, "CONSP", &[current_word])?;
+        let test: Handle<'_, Word> = scope.root(Local::from_word(test));
+        let head = form(scope.context_mut(), runtime, "CAR", &[current_word])?;
+        let head: Handle<'_, Word> = scope.root(Local::from_word(head));
+        let test_word = scope.get(test).as_word();
+        let head_word = scope.get(head).as_word();
+        let selected = form(
+            scope.context_mut(),
+            runtime,
+            "IF",
+            &[test_word, head_word, Word::NIL],
+        )?;
+        let selected_handle: Handle<'_, Word> = scope.root(Local::from_word(selected));
+        if position == index {
+            selected_body = Some(selected_handle);
+            break;
+        }
+        let next = form(scope.context_mut(), runtime, "CDR", &[current_word])?;
+        current = scope.root(Local::from_word(next));
+    }
+    let selected = selected_body.ok_or(ObjectError::TypeError)?;
+    let lambda_list_word = scope.get(lambda_list).as_word();
+    let selected_word = scope.get(selected).as_word();
+    let lambda = form(
+        scope.context_mut(),
+        runtime,
+        "LAMBDA",
+        &[lambda_list_word, selected_word],
+    )?;
+    let lambda: Handle<'_, Word> = scope.root(Local::from_word(lambda));
+    let call_args = [scope.get(lambda).as_word(), scope.get(form_value).as_word()];
     form(
         scope.context_mut(),
         runtime,
@@ -468,46 +486,3 @@ expand_return, expand_return_adapter, Kind::Return;
 expand_nth_value, expand_nth_value_adapter, Kind::NthValue;
 expand_do, expand_do_adapter, Kind::Do;
 expand_do_star, expand_do_star_adapter, Kind::DoStar }
-
-pub fn expand_multiple_value_list_adapter(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    input: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result {
-    let words = (0..input.len())
-        .filter_map(|index| input.get(index))
-        .collect::<Vec<_>>();
-    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index) intentional
-    ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
-        // check-added-lines: allow(index) exact-shape destructuring
-        let [value] = roots else {
-            return Err(ObjectError::TypeError);
-        };
-        let mut list_symbol = symbol(ctx, runtime, "LIST")?;
-        ncl_object::with_root(ctx, &mut list_symbol, |ctx, list_symbol| {
-            let mut list_function = form(ctx, runtime, "FUNCTION", &[*list_symbol])?;
-            ncl_object::with_root(ctx, &mut list_function, |ctx, list_function| {
-                form(
-                    ctx,
-                    runtime,
-                    "MULTIPLE-VALUE-CALL",
-                    &[*list_function, **value],
-                )
-            })
-        })
-    })
-}
-
-pub fn expand_multiple_value_bind_adapter(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    input: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result {
-    let words = (0..input.len())
-        .filter_map(|index| input.get(index))
-        .collect::<Vec<_>>();
-    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
-    multiple_value_bind::expand(ctx, runtime, &arguments)
-}

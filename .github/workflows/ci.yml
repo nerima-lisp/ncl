@@ -98,22 +98,6 @@ jobs:
         with:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
-      - name: Debug runtime GC stress crash
-        shell: bash
-        run: |
-          set +e
-          sudo apt-get update
-          sudo apt-get install -y gdb
-          cargo test --locked -p ncl-runtime --lib --no-run
-          test_binary="$(find target/debug/deps -maxdepth 1 -type f -name 'ncl_runtime-*' -perm -111 | head -n 1)"
-          gdb -q -batch \
-            -ex 'set pagination off' \
-            -ex run \
-            -ex 'bt full' \
-            -ex 'info registers' \
-            -ex 'x/12i $pc-24' \
-            --args "$test_binary" gc_stress --nocapture
-          echo "gdb_status=$?"
       - name: Run GC stress tests
         run: cargo test --locked --workspace --all-features --all-targets gc_stress -- --nocapture
       - name: Run strict forwarding tests
@@ -130,25 +114,6 @@ jobs:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked --release
-      - name: Debug x86-64 CLI crash
-        shell: bash
-        run: |
-          set +e
-          sudo apt-get update
-          sudo apt-get install -y gdb
-          ulimit -c unlimited
-          for expr in 42 '(+ 1 2)'; do
-            echo "=== gdb --eval $expr ==="
-            gdb -q -batch \
-              -ex 'set pagination off' \
-              -ex run \
-              -ex 'bt full' \
-              -ex 'info registers' \
-              -ex 'x/12i $pc-24' \
-              --args target/release/ncl --eval "$expr"
-            status=$?
-            echo "gdb_status=$status"
-          done
       - name: Exercise release CLI
         shell: bash
         run: |

@@ -41,23 +41,25 @@ pub(super) fn decode_function_entry(
 }
 
 fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
-    function
+    let mut current = closure;
+    for _ in 0..function
         .blocks
         .iter()
-        .flat_map(|block| &block.ops)
-        .find_map(|op| {
-            op.results
-                .iter()
-                .any(|(value, _)| *value == closure)
-                .then_some(&op.kind)
-                .and_then(|kind| {
-                    if let OpKind::MakeClosure { captures, .. } = kind {
-                        Some(captures.as_slice())
-                    } else {
-                        None
-                    }
-                })
-        })
+        .map(|block| block.ops.len())
+        .sum::<usize>()
+    {
+        let definition = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .find(|op| op.results.iter().any(|(value, _)| *value == current))?;
+        match &definition.kind {
+            OpKind::MakeClosure { captures, .. } => return Some(captures.as_slice()),
+            OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
+            _ => return None,
+        }
+    }
+    None
 }
 
 fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {

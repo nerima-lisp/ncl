@@ -57,18 +57,32 @@ pub fn call_designator(
         }
     }?;
     if runtime.builtin_allows_nested_evaluation(resolved) {
-        return runtime
-            .call_builtin(ctx, resolved, arguments)
-            .map_err(|error| {
-                if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
-                    ctx.set_pending_lisp_error(LispError::CellError(
-                        ncl_object::CellError::UndefinedFunction,
-                    ));
-                    ObjectError::UndefinedFunction
-                } else {
-                    error
-                }
-            });
+        let mut resolved_word = resolved.as_word();
+        let resolved_token = ncl_object::push_heap_root(runtime, &mut resolved_word);
+        let argument_tokens = rooted
+            .iter_mut()
+            .map(|word| ncl_object::push_heap_root(runtime, word))
+            .collect::<Vec<_>>();
+        let result = FunctionObject::try_from(resolved_word)
+            .and_then(|resolved| runtime.call_builtin(ctx, resolved, &rooted[1..]));
+        let arguments_popped = argument_tokens
+            .into_iter()
+            .rev()
+            .all(|token| ncl_object::pop_heap_root(runtime, token));
+        let resolved_popped = ncl_object::pop_heap_root(runtime, resolved_token);
+        if !arguments_popped || !resolved_popped {
+            return Err(ObjectError::RootStackCorrupted);
+        }
+        return result.map_err(|error| {
+            if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
+                ctx.set_pending_lisp_error(LispError::CellError(
+                    ncl_object::CellError::UndefinedFunction,
+                ));
+                ObjectError::UndefinedFunction
+            } else {
+                error
+            }
+        });
     }
     ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
         let designator_word = *rooted[0];

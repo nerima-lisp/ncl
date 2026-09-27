@@ -110,6 +110,9 @@ license.workspace = true
 [dependencies]
 ncl-runtime = { path = "packages/runtime" }
 
+[dev-dependencies]
+ncl-lib-streams = { path = "packages/lib/streams" }
+
 [lints]
 workspace = true
 

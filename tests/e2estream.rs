@@ -2,6 +2,8 @@
 
 use std::process::{Command, Output, Stdio};
 
+use ncl_lib_streams::registration::REGISTERED_BUILTINS;
+
 struct Case {
     builtin: &'static str,
     source: &'static str,
@@ -14,37 +16,6 @@ struct XFail {
     stdout: &'static str,
     stderr: &'static str,
 }
-
-const REGISTERED: &[&str] = &[
-    "OPEN",
-    "FILE-POSITION",
-    "FILE-LENGTH",
-    "CLOSE",
-    "FILE-STRING-LENGTH",
-    "READ-BYTE",
-    "STREAMP",
-    "INPUT-STREAM-P",
-    "OUTPUT-STREAM-P",
-    "OPEN-STREAM-P",
-    "INTERACTIVE-STREAM-P",
-    "STREAM-ELEMENT-TYPE",
-    "STREAM-EXTERNAL-FORMAT",
-    "READ-CHAR",
-    "READ-CHAR-NO-HANG",
-    "UNREAD-CHAR",
-    "PEEK-CHAR",
-    "READ-LINE",
-    "WRITE-CHAR",
-    "WRITE-BYTE",
-    "WRITE-STRING",
-    "WRITE-LINE",
-    "TERPRI",
-    "FRESH-LINE",
-    "FINISH-OUTPUT",
-    "MAKE-STRING-INPUT-STREAM",
-    "MAKE-STRING-OUTPUT-STREAM",
-    "GET-OUTPUT-STREAM-STRING",
-];
 
 const ANCILLARY_XFAILS: &[&str] = &[
     "WITH-OUTPUT-TO-STRING",
@@ -193,55 +164,55 @@ const XFAILS: &[XFail] = &[
         builtin: "FRESH-LINE",
         source: "(let ((s (make-string-output-stream))) (fresh-line s))",
         stdout: "",
-        stderr: "ncl: object error: TypeError",
+        stderr: "ncl: object error: TypeError\n",
     },
     XFail {
         builtin: "WRITE-STRING",
         source: "(let ((s (make-string-output-stream))) (write-string \"abc\" s :start 1 :end 2))",
         stdout: "",
-        stderr: "AArch64 calls support at most four register arguments",
+        stderr: "ncl: lowering error: Ir { detail: \"AArch64 calls support at most four register arguments\" }\n",
     },
     XFail {
         builtin: "MAKE-STRING-INPUT-STREAM",
         source: "(let ((s (make-string-input-stream \"abc\" :start 1 :end 2))) (read-char s))",
         stdout: "",
-        stderr: "AArch64 calls support at most four register arguments",
+        stderr: "ncl: lowering error: Ir { detail: \"AArch64 calls support at most four register arguments\" }\n",
     },
     XFail {
         builtin: "WITH-OUTPUT-TO-STRING",
         source: "(with-output-to-string (s) (write-string \"x\" s))",
         stdout: "",
-        stderr: "MacroExpansion",
+        stderr: "ncl: front-end error: MacroExpansion { name: SymbolRef { package: Some(\"COMMON-LISP\"), name: \"WITH-OUTPUT-TO-STRING\", uninterned: None }, detail: \"TypeError\" }\n",
     },
     XFail {
         builtin: "WITH-INPUT-FROM-STRING",
         source: "(with-input-from-string (s \"x\") (read-char s))",
         stdout: "",
-        stderr: "MacroExpansion",
+        stderr: "ncl: front-end error: MacroExpansion { name: SymbolRef { package: Some(\"COMMON-LISP\"), name: \"WITH-INPUT-FROM-STRING\", uninterned: None }, detail: \"TypeError\" }\n",
     },
     XFail {
         builtin: "PRINC",
         source: "(princ \"x\")",
         stdout: "",
-        stderr: "undefined function UNDEFINED-FUNCTION: PRINC",
+        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRINC\n",
     },
     XFail {
         builtin: "PRIN1",
         source: "(prin1 \"x\")",
         stdout: "",
-        stderr: "undefined function UNDEFINED-FUNCTION: PRIN1",
+        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRIN1\n",
     },
     XFail {
         builtin: "PRINT",
         source: "(print \"x\")",
         stdout: "",
-        stderr: "undefined function UNDEFINED-FUNCTION: PRINT",
+        stderr: "ncl: undefined function UNDEFINED-FUNCTION: PRINT\n",
     },
     XFail {
         builtin: "FORMAT",
         source: "(format nil \"~a/~s/~d~%~&\" \"x\" \"y\" 12)",
         stdout: "",
-        stderr: "undefined function UNDEFINED-FUNCTION: FORMAT",
+        stderr: "ncl: undefined function UNDEFINED-FUNCTION: FORMAT\n",
     },
 ];
 
@@ -256,15 +227,15 @@ fn run(source: &str) -> Output {
 
 #[test]
 fn registered_stream_builtins_have_compiled_probes() {
-    assert_eq!(REGISTERED.len(), 28);
+    assert_eq!(REGISTERED_BUILTINS.len(), 28);
     assert_eq!(
-        REGISTERED
+        REGISTERED_BUILTINS
             .iter()
             .collect::<std::collections::BTreeSet<_>>()
             .len(),
-        REGISTERED.len()
+        REGISTERED_BUILTINS.len()
     );
-    for builtin in REGISTERED {
+    for builtin in REGISTERED_BUILTINS {
         assert!(
             CASES.iter().any(|case| case.builtin == *builtin)
                 || XFAILS.iter().any(|case| case.builtin == *builtin),
@@ -273,14 +244,14 @@ fn registered_stream_builtins_have_compiled_probes() {
     }
     for case in CASES {
         assert!(
-            REGISTERED.contains(&case.builtin),
+            REGISTERED_BUILTINS.contains(&case.builtin),
             "unexpected probe: {}",
             case.builtin
         );
     }
     for case in XFAILS {
         assert!(
-            REGISTERED.contains(&case.builtin) || ANCILLARY_XFAILS.contains(&case.builtin),
+            REGISTERED_BUILTINS.contains(&case.builtin) || ANCILLARY_XFAILS.contains(&case.builtin),
             "unexpected XFAIL: {}",
             case.builtin
         );
@@ -315,11 +286,11 @@ fn known_stream_failures_keep_exit_status_and_stderr() {
             "{}: stdout",
             case.builtin
         );
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains(case.stderr),
-            "{}: {:?}",
-            case.builtin,
-            output.stderr
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            case.stderr,
+            "{}",
+            case.builtin
         );
     }
 }

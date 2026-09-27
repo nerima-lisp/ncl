@@ -8,6 +8,7 @@ mod constant_tests;
 mod function_call;
 mod load;
 mod native_error;
+mod nonlocal;
 mod support;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
@@ -138,6 +139,7 @@ impl Runtime {
         // trampoline must be published and installed first.
         let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
         ncl_stdlib::register_all(&mut context, &object)?;
+        nonlocal::register_control_builtins(&mut context, &object)?;
         Ok(Self {
             object,
             context,

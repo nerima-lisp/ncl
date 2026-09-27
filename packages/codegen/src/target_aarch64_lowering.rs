@@ -23,7 +23,7 @@ pub(super) fn constant_table_entry(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
+pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
     assembler
         .emit(&instruction)
         .map_err(|error| CodegenError::Encode(error.to_string()))
@@ -140,107 +140,6 @@ pub(super) fn store_value(
             )
         }
     }
-}
-
-// `argc`/`args` mirror the calling convention's own argument-count/argument-
-// list naming; that pairing is clearer here than any alternative spelling.
-#[allow(clippy::similar_names)]
-pub(super) fn lower_call(
-    assembler: &mut Assembler,
-    callee: ValueId,
-    args: &[ValueId],
-    allocation: &Allocation,
-) -> Result<(), CodegenError> {
-    let Some((argc, rest)) = args.split_first() else {
-        // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
-        return Err(CodegenError::Unsupported(
-            "calls require a tagged argc argument".into(),
-        ));
-    };
-    load_value(assembler, allocation, callee, Reg(16))?;
-    emit(
-        assembler,
-        Inst::Mov {
-            rd: RegOrSp::Reg(Reg(17)),
-            rn: RegOrSp::Reg(Reg(16)),
-        },
-    )?;
-    emit(
-        assembler,
-        Inst::AndImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            imm: !ncl_sys::LOWTAG_MASK,
-        },
-    )?;
-    load_value(assembler, allocation, *argc, Reg(0))?;
-    for (index, argument) in rest.iter().enumerate() {
-        if index < 4 {
-            let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
-            load_value(assembler, allocation, *argument, register)?;
-        } else {
-            if index == 4 {
-                emit(
-                    assembler,
-                    Inst::SubImm {
-                        rd: RegOrSp::Reg(Reg(5)),
-                        rn: RegOrSp::Reg(Reg(29)),
-                        imm: u16::try_from(
-                            allocation
-                                .outgoing_base
-                                .checked_add(1)
-                                .and_then(|slot| slot.checked_mul(8))
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )
-                        .map_err(|_| CodegenError::FrameOverflow)?,
-                        shift: false,
-                    },
-                )?;
-            }
-            load_value(assembler, allocation, *argument, Reg(16))?;
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(5)),
-                        offset: i16::try_from((index - 4).saturating_mul(8))
-                            .map_err(|_| CodegenError::FrameOverflow)?,
-                    },
-                },
-            )?;
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn lower_closure_call(
-    assembler: &mut Assembler,
-    closure: ValueId,
-    args: &[ValueId],
-    allocation: &Allocation,
-) -> Result<(), CodegenError> {
-    lower_call(assembler, closure, args, allocation)?;
-    emit(
-        assembler,
-        Inst::Ldr {
-            rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(17)),
-                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
-                    .map_err(|_| CodegenError::FrameOverflow)?,
-            },
-        },
-    )?;
-    emit(
-        assembler,
-        Inst::AsrImm {
-            rd: Reg(17),
-            rn: Reg(17),
-            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
-                .map_err(|_| CodegenError::FrameOverflow)?,
-        },
-    )
 }
 
 pub(super) fn lower_runtime_builtin(
@@ -461,6 +360,30 @@ fn lower_builtin(
             "AArch64 builtins support at most four arguments".into(),
         ));
     }
+    if name == "make-rest-list" {
+        let [argc_value, start_value] = args else {
+            return Err(CodegenError::Unsupported(
+                "make-rest-list requires argc and start".into(),
+            ));
+        };
+        emit(
+            assembler,
+            Inst::Mov {
+                rd: RegOrSp::Reg(Reg(0)),
+                rn: RegOrSp::Reg(Reg(21)),
+            },
+        )?;
+        load_value(assembler, allocation, *argc_value, Reg(6))?;
+        load_value(assembler, allocation, *start_value, Reg(7))?;
+        for instruction in ncl_asm_aarch64::mov_imm64(
+            Reg(17),
+            abi.builtin_address(common_lisp_builtin(name))
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?,
+        ) {
+            emit(assembler, instruction)?;
+        }
+        return Ok(());
+    }
     let address = abi
         .builtin_address(common_lisp_builtin(name))
         .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
@@ -481,8 +404,11 @@ fn lower_builtin(
     Ok(())
 }
 
+#[path = "target_aarch64_lowering/calls.rs"]
+pub(super) mod calls;
 #[path = "target_aarch64_lowering/ops.rs"]
 pub(super) mod ops;
 #[path = "target_aarch64_lowering/primitives.rs"]
 pub(super) mod primitives;
+pub(super) use calls::{lower_call, lower_closure_call};
 pub(super) use ops::{lower_op, move_args};

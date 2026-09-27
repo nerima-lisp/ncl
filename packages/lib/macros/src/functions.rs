@@ -92,6 +92,9 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
     for (name, function) in [
         ("IDENTITY", identity_builtin as ncl_object::RustBuiltin),
         ("NOT", not_builtin),
+        // `NULL` and `NOT` share an implementation per the standard: both
+        // return `T` exactly when their argument is `NIL`.
+        ("NULL", not_builtin),
         ("FUNCTIONP", functionp_builtin),
         ("COMPILED-FUNCTION-P", functionp_builtin),
     ] {

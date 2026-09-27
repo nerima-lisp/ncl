@@ -2,14 +2,16 @@ use super::vector::{bit_vector_p_builtin, simple_bit_vector_p_builtin, vector_bu
 use super::{
     ARRAY, DIMENSIONS, ELEMENT, EXTENSION, INDEX, LambdaList, OPTIONS, ObjectError, RESULT,
     Runtime, ThreadContext, VALUE, adjust_array_builtin, adjustable_array_p_builtin, aref_builtin,
-    array_dimension_builtin, array_dimensions_builtin, array_displacement_builtin,
-    array_element_type_builtin, array_has_fill_pointer_p_builtin, array_in_bounds_builtin,
-    array_rank_builtin, array_row_major_index_builtin, array_total_size_builtin, arrayp_builtin,
-    bit_and_builtin, bit_andc1_builtin, bit_andc2_builtin, bit_builtin, bit_eqv_builtin,
-    bit_ior_builtin, bit_nand_builtin, bit_nor_builtin, bit_not_builtin, bit_orc1_builtin,
-    bit_orc2_builtin, bit_xor_builtin, fill_pointer_builtin, make_array_builtin, register_one,
+    aref_set_builtin, array_dimension_builtin, array_dimensions_builtin,
+    array_displacement_builtin, array_element_type_builtin, array_has_fill_pointer_p_builtin,
+    array_in_bounds_builtin, array_rank_builtin, array_row_major_index_builtin,
+    array_total_size_builtin, arrayp_builtin, bit_and_builtin, bit_andc1_builtin,
+    bit_andc2_builtin, bit_builtin, bit_eqv_builtin, bit_ior_builtin, bit_nand_builtin,
+    bit_nor_builtin, bit_not_builtin, bit_orc1_builtin, bit_orc2_builtin, bit_xor_builtin,
+    fill_pointer_builtin, make_array_builtin, register_one, register_one_ncl,
     row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
-    vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin, vectorp_builtin,
+    svref_set_builtin, vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin,
+    vectorp_builtin,
 };
 use ncl_object::{Package, Word, set_symbol_constant, set_symbol_value};
 
@@ -58,6 +60,20 @@ fn register_arrays(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Obj
         "SVREF",
         LambdaList::fixed(&[ARRAY, INDEX]),
         svref_builtin,
+    )?;
+    register_one_ncl(
+        runtime,
+        ctx,
+        "AREF-SET",
+        LambdaList::with_rest(&[ARRAY], INDEX),
+        aref_set_builtin,
+    )?;
+    register_one_ncl(
+        runtime,
+        ctx,
+        "SVREF-SET",
+        LambdaList::fixed(&[ARRAY, INDEX, VALUE]),
+        svref_set_builtin,
     )?;
     register_array_properties(runtime, ctx)?;
     register_array_operations(runtime, ctx)

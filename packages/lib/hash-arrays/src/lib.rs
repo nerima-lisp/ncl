@@ -43,6 +43,37 @@ pub(crate) fn register_one(
     Ok(())
 }
 
+/// Register a setf-support builtin in the `NCL` package (not part of the
+/// `COMMON-LISP` surface), mirroring [`register_one`].
+///
+/// # Errors
+///
+/// Returns the registration error if a builtin cannot be installed.
+pub(crate) fn register_one_ncl(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &'static str,
+    list: LambdaList,
+    function: ncl_object::RustBuiltin,
+) -> Result<(), ObjectError> {
+    let descriptor = Builtin {
+        lambda_list: list,
+        convention: if list.is_direct() {
+            BuiltinConvention::Direct(Arity::exact(
+                u8::try_from(list.required.len()).map_err(|_| ObjectError::Layout)?,
+            ))
+        } else {
+            BuiltinConvention::Adapted
+        },
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclExt, BuiltinName::new(name)),
+        BuiltinImplementation::direct(descriptor, function),
+    )?;
+    Ok(())
+}
+
 /// Register the implemented hash-table and array builtins owned by this crate.
 ///
 /// # Errors

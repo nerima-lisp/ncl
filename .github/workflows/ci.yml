@@ -127,6 +127,8 @@ jobs:
               -ex 'set pagination off' \
               -ex run \
               -ex 'bt full' \
+              -ex 'info registers' \
+              -ex 'x/12i $pc-24' \
               --args target/release/ncl --eval "$expr"
             status=$?
             echo "gdb_status=$status"

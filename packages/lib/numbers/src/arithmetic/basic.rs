@@ -2,6 +2,7 @@ use super::{
     Number, ObjectError, Runtime, ThreadContext, Word, add_pair, args_numbers, div_pair, mul_pair,
     number, ratio, sub_pair, word,
 };
+use ncl_object::{ArithmeticError, LispError};
 
 pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
@@ -36,6 +37,10 @@ pub fn mul(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
 pub fn div(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
     let first = *ns.first().ok_or(ObjectError::TypeError)?;
+    if ns.iter().skip(1).any(|value| is_zero(*value)) || (ns.len() == 1 && is_zero(first)) {
+        ctx.set_pending_lisp_error(LispError::ArithmeticError(ArithmeticError::DivisionByZero));
+        return Err(ObjectError::TypeError);
+    }
     let value = if ns.len() == 1 {
         checked_integer_pair(Number::Integer(1), first, checked_div)?;
         div_pair(Number::Integer(1), first)?
@@ -46,6 +51,14 @@ pub fn div(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
         })?
     };
     word(ctx, runtime, value)
+}
+
+fn is_zero(value: Number) -> bool {
+    match value {
+        Number::Integer(value) | Number::Ratio(value, _) => value == 0,
+        Number::Float(value) => value == 0.0,
+        Number::Complex(real, imag) => real == 0.0 && imag == 0.0,
+    }
 }
 pub fn one_plus(
     ctx: &mut ThreadContext,

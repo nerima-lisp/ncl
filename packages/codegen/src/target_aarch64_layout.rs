@@ -15,11 +15,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                         .iter()
                         .flat_map(|candidate| &candidate.ops)
                         .find_map(|candidate| {
-                            if !candidate
-                                .results
-                                .iter()
-                                .any(|(value, _)| value == closure)
-                            {
+                            if !candidate.results.iter().any(|(value, _)| value == closure) {
                                 return None;
                             }
                             if let OpKind::MakeClosure { captures, .. } = &candidate.kind {

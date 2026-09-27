@@ -1,9 +1,9 @@
 use super::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, ValueSlots, emit,
-    load_slot, slot_mem_of,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, RETURN_VALUE,
+    ValueSlots, emit, load_immediate, load_slot, slot_mem_of,
 };
-use crate::CodegenError;
-use ncl_asm_x86_64::{Assembler, Inst, Mem, Shift};
+use crate::{CodegenError, RuntimeAbi, RuntimeFunction};
+use ncl_asm_x86_64::{Assembler, Cond, Inst, Mem, Shift};
 use ncl_ir::ValueId;
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
@@ -66,18 +66,52 @@ pub fn lower_call(
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
 #[allow(clippy::similar_names)]
+#[allow(clippy::too_many_lines)]
 pub fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],
     capture_count: usize,
     slots: &ValueSlots,
+    named_symbol: Option<ValueId>,
+    abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported(
             "closure calls require a tagged argc argument".into(),
         ));
+    };
+    let undefined_done = if capture_count == 0
+        && let Some(symbol) = named_symbol
+    {
+        load_slot(assembler, slots, symbol, FUNCTION_OBJECT)?;
+        load_slot(assembler, slots, closure, ENTRY)?;
+        load_immediate(
+            assembler,
+            // check-added-lines: allow(unbound)
+            RETURN_VALUE,
+            // check-added-lines: allow(unbound)
+            i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes()), // check-added-lines: allow(unbound)
+        )?;
+        emit(assembler, Inst::CmpRR(ENTRY, RETURN_VALUE))?;
+        let normal = assembler.new_label();
+        emit(assembler, Inst::Jcc(Cond::Ne, normal))?;
+        load_immediate(
+            assembler,
+            ENTRY,
+            i64::try_from(
+                abi.runtime_address(RuntimeFunction::UndefinedFunction)
+                    .map_err(|error| CodegenError::Abi(error.to_string()))?,
+            )
+            .map_err(|_| CodegenError::FrameOverflow)?,
+        )?;
+        let done = assembler.new_label();
+        emit(assembler, Inst::Jmp(done))?;
+        assembler.bind(normal);
+        Some(done)
+    } else {
+        None
     };
     load_slot(assembler, slots, closure, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
@@ -160,5 +194,9 @@ pub fn lower_closure_call(
             ENTRY,
             u8::try_from(ncl_sys::FIXNUM_TAG_BITS).map_err(|_| CodegenError::FrameOverflow)?,
         ),
-    )
+    )?;
+    if let Some(done) = undefined_done {
+        assembler.bind(done);
+    }
+    Ok(())
 }

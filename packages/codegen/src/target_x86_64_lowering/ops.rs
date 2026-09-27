@@ -96,22 +96,6 @@ fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(),
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
 }
 
-fn closure_capture_count(function: &Function, closure: ValueId) -> usize {
-    function
-        .blocks
-        .iter()
-        .flat_map(|block| block.ops.iter())
-        .find(|op| op.results.iter().any(|(value, _)| *value == closure))
-        .and_then(|op| {
-            if let OpKind::MakeClosure { captures, .. } = &op.kind {
-                Some(captures.len())
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0)
-}
-
 #[allow(clippy::too_many_lines)]
 fn lower_prim(
     assembler: &mut Assembler,
@@ -323,7 +307,7 @@ pub fn lower_op(
                 assembler,
                 *closure,
                 args,
-                closure_capture_count(function, *closure),
+                super::closure_capture_count(function, *closure)?.unwrap_or(0),
                 slots,
             )?;
             call_pc = Some(emit_call(assembler)?);

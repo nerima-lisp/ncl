@@ -4,7 +4,7 @@ use crate::{
     common_lisp_builtin,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
-use ncl_ir::{Function, ValueId};
+use ncl_ir::{Function, OpKind, ValueId};
 
 /// Register carrying the callee function object on entry, stored as frame header word 2.
 pub(super) const FUNCTION_OBJECT: Reg = SCRATCH[0];
@@ -46,9 +46,14 @@ pub(super) struct ValueSlots {
     values: Vec<(ValueId, u32)>,
     allocation: Allocation,
     spill_base: u32,
+    pub(super) outgoing_base: u32,
 }
 
 impl ValueSlots {
+    pub(super) const fn outgoing_base(&self) -> u32 {
+        self.outgoing_base
+    }
+
     pub(super) fn location(&self, value: ValueId) -> Result<Location, CodegenError> {
         self.allocation
             .location(value)
@@ -99,6 +104,7 @@ pub(super) fn slots(
     function: &Function,
     argument_words: u32,
     allocation: Allocation,
+    outgoing_base: u32,
 ) -> (ValueSlots, u32) {
     let mut result = Vec::new();
     let mut next = argument_words;
@@ -121,6 +127,7 @@ pub(super) fn slots(
             values: result,
             allocation,
             spill_base,
+            outgoing_base,
         },
         local_words,
     )
@@ -376,6 +383,7 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
     Ok(call_pc)
 }
 
+#[allow(clippy::similar_names)]
 fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,
@@ -387,6 +395,40 @@ fn lower_builtin(
         return Err(CodegenError::Unsupported(
             "x86-64 builtins support at most four arguments".into(),
         ));
+    }
+    if name == "make-rest-list" {
+        // check-added-lines: allow(index) intentional
+        let [argc_value, start_value] = args else {
+            // check-added-lines: allow(unsupported) intentional
+            return Err(CodegenError::Unsupported(
+                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) intentional
+            ));
+        };
+        emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+        for register in ARGUMENT_REGISTERS
+            .into_iter()
+            .chain(std::iter::once(REST_ARGUMENT))
+        {
+            emit(assembler, Inst::MovRR(register, register))?;
+        }
+        load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
+        load_slot(assembler, slots, *start_value, RETURN_VALUE)?;
+        emit(
+            assembler,
+            Inst::MovMR(Mem::base(Reg::Rsp, -16), FUNCTION_OBJECT),
+        )?;
+        emit(
+            assembler,
+            Inst::MovMR(Mem::base(Reg::Rsp, -8), RETURN_VALUE),
+        )?;
+        load_immediate(
+            assembler,
+            ENTRY,
+            abi.builtin_address(common_lisp_builtin(name))
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI address lookup failure.
+                .cast_signed(),
+        )?;
+        return Ok(());
     }
     let address = abi
         .builtin_address(common_lisp_builtin(name))
@@ -409,4 +451,49 @@ pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
+
+pub(super) fn closure_capture_count(
+    function: &Function,
+    closure: ValueId,
+) -> Result<Option<usize>, CodegenError> {
+    let mut current = closure;
+    let limit = function
+        .blocks
+        .iter()
+        .map(|block| block.ops.len())
+        .sum::<usize>();
+    for _ in 0..limit {
+        let definition = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .find(|op| op.results.iter().any(|(value, _)| *value == current))
+            .ok_or_else(|| CodegenError::Abi("closure value definition is unavailable".into()))?;
+        match &definition.kind {
+            OpKind::MakeClosure { captures, .. } => return Ok(Some(captures.len())),
+            OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
+            OpKind::Const { .. }
+            | OpKind::Load { .. }
+            | OpKind::Store { .. }
+            | OpKind::LoadField { .. }
+            | OpKind::StoreField { .. }
+            | OpKind::LoadArg { .. }
+            | OpKind::Alloc { .. }
+            | OpKind::Call { .. }
+            | OpKind::CallIndirect { .. }
+            | OpKind::CallClosure { .. }
+            | OpKind::Builtin { .. }
+            | OpKind::Prim { .. }
+            | OpKind::Compare { .. }
+            | OpKind::SetMultipleValues { .. }
+            | OpKind::Safepoint
+            | OpKind::EnterHandler { .. }
+            | OpKind::LeaveHandler { .. } => return Ok(None),
+        }
+    }
+    Err(CodegenError::Abi(
+        "closure value definition has a cycle".into(),
+    ))
+}
+
 pub(super) use ops::{lower_op, move_args};

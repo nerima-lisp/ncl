@@ -6,12 +6,59 @@ use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
 
+fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
+    let mut maximum = 0_usize;
+    for block in &function.blocks {
+        for op in &block.ops {
+            let count = match &op.kind {
+                OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
+                    args.len().saturating_sub(1)
+                }
+                OpKind::CallClosure { closure, args } => closure_capture_count(function, *closure)?
+                    .unwrap_or(0)
+                    .saturating_add(args.len().saturating_sub(1)),
+                OpKind::Const { .. }
+                | OpKind::Move { .. }
+                | OpKind::Load { .. }
+                | OpKind::Store { .. }
+                | OpKind::LoadField { .. }
+                | OpKind::StoreField { .. }
+                | OpKind::Alloc { .. }
+                | OpKind::LoadArg { .. }
+                | OpKind::MakeClosure { .. }
+                | OpKind::Builtin { .. }
+                | OpKind::Prim { .. }
+                | OpKind::Compare { .. }
+                | OpKind::Convert { .. }
+                | OpKind::SetMultipleValues { .. }
+                | OpKind::Safepoint
+                | OpKind::EnterHandler { .. }
+                | OpKind::LeaveHandler { .. } => 0,
+            };
+            maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+        }
+        let count = match &block.terminator {
+            Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
+                args.len().saturating_sub(1)
+            }
+            Terminator::Jump { .. }
+            | Terminator::Branch { .. }
+            | Terminator::Switch { .. }
+            | Terminator::Return { .. }
+            | Terminator::Throw { .. }
+            | Terminator::Unreachable => 0,
+        };
+        maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+    }
+    u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
+}
+
 #[path = "target_x86_64_lowering.rs"]
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call, lower_op,
-    lower_pending_check, lower_return_or_throw, move_args, slots,
+    RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
+    lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -30,7 +77,22 @@ fn add_map(
     flags: u32,
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    let (registers, live_slots) = values.roots(position);
+    let (registers, mut live_slots) = values.roots(position);
+    if flags & FLAG_CALL != 0 {
+        let outgoing_base = values.outgoing_base();
+        for offset in 0..frame.outgoing_words {
+            live_slots.push(
+                u16::try_from(
+                    outgoing_base
+                        .checked_add(offset)
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )
+                .map_err(|_| CodegenError::FrameOverflow)?,
+            );
+        }
+        live_slots.sort_unstable();
+        live_slots.dedup();
+    }
     SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
         .map(|map| maps.push(map))
         .map_err(|error| CodegenError::Encode(error.to_string()))
@@ -114,13 +176,18 @@ pub fn compile_function_x86_64(
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
     let allocation = allocate(function, AllocationTarget::X86_64);
     let spill_words = allocation.spill_words;
-    let (value_slots, local_words) = slots(function, argument_words, allocation);
+    let (mut value_slots, local_words) = slots(function, argument_words, allocation, 0);
+    let outgoing_words = outgoing_words(function)?;
+    value_slots.outgoing_base = argument_words
+        .checked_add(local_words)
+        .and_then(|words| words.checked_add(spill_words))
+        .ok_or(CodegenError::FrameOverflow)?;
     let frame = FrameLayout::new(
         argument_words,
         local_words
             .checked_add(spill_words)
             .ok_or(CodegenError::FrameOverflow)?,
-        0,
+        outgoing_words,
     )?;
     let mut assembler = Assembler::new();
     let labels = function

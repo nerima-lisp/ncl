@@ -5,64 +5,6 @@ use crate::{AllocationTarget, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
-fn x86_64_rejects_calls_with_five_forwarded_arguments() -> Result<(), String> {
-    let mut builder = FunctionBuilder::new(
-        ncl_ir::FunctionId(76),
-        "reject-five-args",
-        Vec::new(),
-        vec![Ty::Word],
-    );
-    let callee = builder.add_constant(Constant::Fixnum(0));
-    let callee = builder
-        .push_op(OpKind::Const { result: callee }, &[Ty::Word])
-        .map_err(|error| format!("callee: {error:?}"))?
-        .first()
-        .copied()
-        .ok_or_else(|| "callee result missing".to_owned())?;
-    let mut args = Vec::new();
-    for value in 0..6 {
-        let constant = builder.add_constant(Constant::Fixnum(value));
-        args.push(
-            builder
-                .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-                .map_err(|error| format!("argument: {error:?}"))?
-                .first()
-                .copied()
-                .ok_or_else(|| "argument result missing".to_owned())?,
-        );
-    }
-    let result = builder
-        .push_op(
-            OpKind::Call {
-                function: callee,
-                args,
-            },
-            &[Ty::Word],
-        )
-        .map_err(|error| format!("call: {error:?}"))?
-        .first()
-        .copied()
-        .ok_or_else(|| "call result missing".to_owned())?;
-    builder
-        .terminate(Terminator::Return {
-            values: vec![result],
-        })
-        .map_err(|error| format!("return: {error:?}"))?;
-
-    let error = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-        .err()
-        .ok_or_else(|| "x86-64 accepted five forwarded arguments".to_owned())?;
-    // check-added-lines: allow(panic) assertion verifies the rejection contract.
-    assert!(
-        error.contains("unsupported operation"),
-        "unexpected codegen error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
 fn x86_64_lowering_uses_allocator_register_roots() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),

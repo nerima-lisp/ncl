@@ -121,11 +121,16 @@ pub(super) fn lower_closure_call(
     args: &[ValueId],
     function: &Function,
     allocation: &Allocation,
+    named_symbol: Option<ValueId>,
+    abi: &dyn crate::RuntimeAbi,
 ) -> Result<(), CodegenError> {
+    if named_symbol.is_some() {
+        return super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi);
+    }
     let captures = match closure_layout(function, closure)? {
         ClosureLayout::Static(captures) => captures,
         ClosureLayout::Dynamic => {
-            return super::lower_closure_call(assembler, closure, args, allocation);
+            return super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi);
         }
     };
     let Some((argc, rest)) = args.split_first() else {

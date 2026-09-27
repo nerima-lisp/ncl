@@ -108,6 +108,24 @@ pub use word::{
     LOWTAG_MASK, LowTag, Word,
 };
 
+/// Maximum number of words that can be represented by a native argument area.
+pub const CALL_ARGUMENTS_LIMIT: usize = usize::MAX / std::mem::size_of::<Word>();
+
+/// A rejected caller-owned native argument area.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeWordCopyError {
+    /// The native argument area pointer was null.
+    Null,
+    /// The native argument area pointer was not aligned for [`Word`].
+    Unaligned,
+    /// The argument count cannot be represented by a valid native slice.
+    CountTooLarge,
+    /// The argument count overflowed its byte-size calculation.
+    ByteCountOverflow,
+    /// The native argument area address or end is outside the `isize` range.
+    AddressOutOfRange,
+}
+
 /// A borrowed precise-root slot whose value the collector may rewrite in place.
 ///
 /// A mutator reads a root through this handle after an allocation or collection.
@@ -256,25 +274,41 @@ pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: 
 ///
 /// The pointer is valid only for the duration of the native call and must point
 /// to at least `count` initialized `Word` values.
-#[must_use]
-pub fn copy_native_words(address: u64, count: usize) -> Option<Vec<Word>> {
-    if count == 0 {
-        return Some(Vec::new());
+///
+/// # Errors
+///
+/// Returns the validation failure for a null, unaligned, oversized, overflowing,
+/// or out-of-range native argument area.
+pub fn copy_native_words(address: u64, count: usize) -> Result<Vec<Word>, NativeWordCopyError> {
+    // Errors are returned for malformed ABI values before the native slice is read.
+    let address = usize::try_from(address).map_err(|_| NativeWordCopyError::AddressOutOfRange)?;
+    if address == 0 {
+        return Err(NativeWordCopyError::Null);
     }
-    let address = usize::try_from(address).ok()?;
     let alignment = std::mem::align_of::<Word>();
-    let byte_count = count.checked_mul(std::mem::size_of::<Word>())?;
-    if address == 0 || address % alignment != 0 {
-        return None;
+    if address % alignment != 0 {
+        return Err(NativeWordCopyError::Unaligned);
     }
-    let end = address.checked_add(byte_count)?;
-    if end > isize::MAX as usize {
-        return None;
+    if count > CALL_ARGUMENTS_LIMIT {
+        return Err(NativeWordCopyError::CountTooLarge);
     }
+    let byte_count = count
+        .checked_mul(std::mem::size_of::<Word>())
+        .ok_or(NativeWordCopyError::ByteCountOverflow)?;
+    let end = address
+        .checked_add(byte_count)
+        .ok_or(NativeWordCopyError::AddressOutOfRange)?;
+    isize::try_from(end).map_err(|_| NativeWordCopyError::AddressOutOfRange)?;
     let pointer = std::ptr::without_provenance::<Word>(address);
+    Ok(copy_native_words_unchecked(pointer, count))
+}
+
+fn copy_native_words_unchecked(pointer: *const Word, count: usize) -> Vec<Word> {
     // SAFETY: the compiled caller supplies a live, initialized rest area with
-    // exactly the requested number of words for the duration of this call.
-    Some(unsafe { std::slice::from_raw_parts(pointer, count) }.to_vec())
+    // exactly the requested number of words for the duration of this call;
+    // the caller's argc has already passed the null, alignment, checked-size,
+    // and isize-range checks above.
+    unsafe { std::slice::from_raw_parts(pointer, count) }.to_vec()
 }
 
 /// Write a cons payload word through a registered thread.
@@ -471,5 +505,33 @@ pub fn run_pending_finalizers(thread: &Thread) {
         unsafe {
             (*heap).run_pending_finalizers();
         }
+    }
+}
+
+#[cfg(test)]
+mod native_word_tests {
+    use super::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, Word, copy_native_words};
+
+    #[test]
+    fn rejects_null_native_words_pointer() {
+        assert_eq!(copy_native_words(0, 1), Err(NativeWordCopyError::Null));
+    }
+
+    #[test]
+    fn rejects_native_words_count_above_isize_slice_limit() {
+        let alignment = std::mem::align_of::<Word>();
+        let address = u64::try_from(alignment).unwrap_or(0);
+        assert_eq!(
+            copy_native_words(1, CALL_ARGUMENTS_LIMIT),
+            Err(NativeWordCopyError::Unaligned)
+        );
+        assert_eq!(
+            copy_native_words(address, CALL_ARGUMENTS_LIMIT),
+            Err(NativeWordCopyError::AddressOutOfRange)
+        );
+        assert_eq!(
+            copy_native_words(address, CALL_ARGUMENTS_LIMIT + 1),
+            Err(NativeWordCopyError::CountTooLarge)
+        );
     }
 }

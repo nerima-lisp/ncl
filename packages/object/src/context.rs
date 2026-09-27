@@ -1,7 +1,12 @@
 //! Per-mutator thread registration and control state.
 
 use crate::{LispError, ObjectError, Runtime};
-use ncl_sys::{StorageCondition, Thread, Word};
+use core::cell::Cell;
+
+use ncl_sys::{RootToken, StorageCondition, Thread, Word};
+
+pub type ConditionHandlerInvoker =
+    fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, Word) -> Result<(), ObjectError>;
 
 #[derive(Debug)]
 pub struct ThreadContext {
@@ -15,6 +20,9 @@ pub struct ThreadContext {
     pub(crate) handler: Option<usize>,
     pub(crate) cleanup: Option<usize>,
     pub(crate) catch: Option<usize>,
+    condition_handler_head: Box<Cell<Word>>,
+    condition_handler_root: Option<RootToken>,
+    condition_handler_invoker: Option<ConditionHandlerInvoker>,
     pub(crate) gc_stress: bool,
     /// Active `catch`/`unwind-protect`/`progv` dynamic-extent frames,
     /// innermost last. See [`crate::nonlocal`].
@@ -36,6 +44,9 @@ impl ThreadContext {
             handler: None,
             cleanup: None,
             catch: None,
+            condition_handler_head: Box::new(Cell::new(Word::NIL)),
+            condition_handler_root: None,
+            condition_handler_invoker: None,
             gc_stress: false,
             frames: Vec::new(),
             evaluator_runtime: None,
@@ -164,6 +175,52 @@ impl ThreadContext {
     pub fn set_strict_forwarding(&self, on: bool) {
         ncl_sys::set_strict_forwarding(&self.thread, on);
     }
+    #[must_use]
+    pub fn condition_handler_head(&self) -> Word {
+        self.condition_handler_head.get()
+    }
+    pub fn set_condition_handler_head(&mut self, head: Word) {
+        self.condition_handler_head.set(head);
+    }
+    pub fn root_condition_handler_head(&mut self) -> bool {
+        if self.condition_handler_root.is_none() {
+            self.condition_handler_root =
+                Some(self.thread.push_root_cell(&self.condition_handler_head));
+            true
+        } else {
+            false
+        }
+    }
+    pub fn unroot_condition_handler_head(&mut self) -> bool {
+        let Some(token) = self.condition_handler_root else {
+            return true;
+        };
+        let popped = ncl_sys::pop_root(&mut self.thread, token);
+        if popped {
+            self.condition_handler_root = None;
+        }
+        popped
+    }
+    pub fn set_condition_handler_invoker(&mut self, invoker: ConditionHandlerInvoker) {
+        self.condition_handler_invoker = Some(invoker);
+    }
+    /// Invoke the runtime callback for a condition handler.
+    ///
+    /// # Errors
+    /// Returns an object error when no evaluator is active or invocation fails.
+    pub fn invoke_condition_handler(
+        &mut self,
+        handler: Word,
+        condition: Word,
+    ) -> Result<(), ObjectError> {
+        let Some(invoker) = self.condition_handler_invoker else {
+            return Ok(());
+        };
+        let Some(runtime) = self.evaluator_runtime else {
+            return Err(ObjectError::Layout);
+        };
+        invoker(runtime, self, handler, condition)
+    }
     /// Return the stable thread pointer used by generated code.
     pub fn thread_mut(&mut self) -> &mut Thread {
         &mut self.thread
@@ -198,6 +255,9 @@ impl ThreadContext {
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if self.registered {
+            if let Some(token) = self.condition_handler_root.take() {
+                let _ = ncl_sys::pop_root(&mut self.thread, token);
+            }
             ncl_sys::unregister_thread(&self.thread);
             self.registered = false;
         }

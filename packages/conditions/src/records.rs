@@ -45,6 +45,10 @@ impl HandlerRecord {
         simple_vector_ref(ctx, self.0, HANDLER_CLASS)
     }
 
+    pub(crate) fn function(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        simple_vector_ref(ctx, self.0, HANDLER_FUNCTION)
+    }
+
     /// Read this record's previous handler-cluster record.
     pub(crate) fn previous(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         simple_vector_ref(ctx, self.0, HANDLER_PREVIOUS)
@@ -111,6 +115,7 @@ pub(crate) const RESTART_TAG: Word = Word::fixnum(1);
 
 /// Index of the handler record's class slot.
 pub(crate) const HANDLER_CLASS: usize = 1;
+pub(crate) const HANDLER_FUNCTION: usize = 2;
 /// Index of the handler record's previous slot.
 pub(crate) const HANDLER_PREVIOUS: usize = 3;
 /// Index of the handler record's depth slot.
@@ -132,14 +137,12 @@ pub(crate) const CLEANUP_DEPTH: usize = 2;
 
 /// Read the handler-cluster chain head.
 pub fn cluster_head(ctx: &ThreadContext) -> Word {
-    let (handler, _, _) = ctx.control_pointers();
-    handler.map_or(Word::NIL, word_from_pointer)
+    ctx.condition_handler_head()
 }
 
 /// Write the handler-cluster chain head, preserving the other pointers.
-pub const fn set_cluster_head(ctx: &mut ThreadContext, head: Word) {
-    let (_, cleanup, catch) = ctx.control_pointers();
-    ctx.set_control_pointers(pointer_from_word(head), cleanup, catch);
+pub fn set_cluster_head(ctx: &mut ThreadContext, head: Word) {
+    ctx.set_condition_handler_head(head);
 }
 
 /// Read the cleanup chain head.
@@ -152,6 +155,26 @@ pub fn cleanup_head(ctx: &ThreadContext) -> Word {
 pub const fn set_cleanup_head(ctx: &mut ThreadContext, head: Word) {
     let (handler, _, catch) = ctx.control_pointers();
     ctx.set_control_pointers(handler, pointer_from_word(head), catch);
+}
+
+fn word_from_pointer(pointer: usize) -> Word {
+    u64::try_from(pointer).map_or(Word::NIL, Word::from_bits)
+}
+
+#[cfg(target_pointer_width = "64")]
+#[allow(clippy::unnecessary_wraps, reason = "control pointers are optional")]
+const fn pointer_from_word(word: Word) -> Option<usize> {
+    Some(usize::from_ne_bytes(word.bits().to_ne_bytes()))
+}
+
+#[cfg(target_pointer_width = "32")]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::unnecessary_wraps,
+    reason = "control pointers are usize-sized on supported targets"
+)]
+const fn pointer_from_word(word: Word) -> Option<usize> {
+    usize::try_from(word.bits()).ok()
 }
 
 /// Read the `previous` link of a handler-cluster record.
@@ -186,27 +209,4 @@ pub fn cleanup_next_depth(ctx: &ThreadContext, previous: Word) -> Result<Word, O
     Ok(Word::fixnum(
         CleanupRecord::from_word(previous).depth(ctx)? + 1,
     ))
-}
-
-fn word_from_pointer(pointer: usize) -> Word {
-    u64::try_from(pointer).map_or(Word::NIL, Word::from_bits)
-}
-
-#[cfg(target_pointer_width = "64")]
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "ThreadContext stores optional control pointers"
-)]
-const fn pointer_from_word(word: Word) -> Option<usize> {
-    Some(usize::from_ne_bytes(word.bits().to_ne_bytes()))
-}
-
-#[cfg(target_pointer_width = "32")]
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::unnecessary_wraps,
-    reason = "control pointers are usize-sized on supported targets"
-)]
-const fn pointer_from_word(word: Word) -> Option<usize> {
-    Some(word.bits() as usize)
 }

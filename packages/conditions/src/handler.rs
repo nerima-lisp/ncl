@@ -14,8 +14,6 @@ pub struct HandlerChain(Word);
 /// Push a handler for `class` onto the handler cluster.
 ///
 /// The handler is active until [`pop_handler`] restores the captured head.
-/// Phase 1 does not invoke the handler function (there is no generated code
-/// yet); a matching handler merely marks the condition as handled.
 ///
 /// # Errors
 /// Returns an object-layer error when the record cannot be allocated.
@@ -25,27 +23,37 @@ pub fn push_handler(
     class: crate::class::ConditionClass,
     handler: Word,
 ) -> Result<HandlerChain, ConditionError> {
-    let previous = records::cluster_head(ctx);
-    let depth = records::cluster_next_depth(ctx, previous)?;
-    let record = make_simple_vector(
-        ctx,
-        runtime,
-        &[
-            records::HANDLER_TAG,
-            class.as_word(),
-            handler,
-            previous,
-            depth,
-        ],
-    )
-    .map_err(ConditionError::from)?;
-    records::set_cluster_head(ctx, record);
-    Ok(HandlerChain(previous))
+    let added_root = ctx.root_condition_handler_head();
+    let result = (|| {
+        let previous = records::cluster_head(ctx);
+        let depth = records::cluster_next_depth(ctx, previous)?;
+        let record =
+            ncl_object::with_roots(ctx, &[class.as_word(), handler, previous], |ctx, roots| {
+                let class = roots.first().ok_or(ncl_object::ObjectError::Layout)?;
+                let handler = roots.get(1).ok_or(ncl_object::ObjectError::Layout)?;
+                let previous = roots.get(2).ok_or(ncl_object::ObjectError::Layout)?;
+                make_simple_vector(
+                    ctx,
+                    runtime,
+                    &[records::HANDLER_TAG, **class, **handler, **previous, depth],
+                )
+            })
+            .map_err(ConditionError::from)?;
+        records::set_cluster_head(ctx, record);
+        Ok(HandlerChain(previous))
+    })();
+    if result.is_err() && added_root {
+        let _ = ctx.unroot_condition_handler_head();
+    }
+    result
 }
 
 /// Restore the handler cluster to the head captured by `chain`.
-pub const fn pop_handler(ctx: &mut ThreadContext, chain: HandlerChain) {
+pub fn pop_handler(ctx: &mut ThreadContext, chain: HandlerChain) {
     records::set_cluster_head(ctx, chain.0);
+    if chain.0 == Word::NIL {
+        let _ = ctx.unroot_condition_handler_head();
+    }
 }
 
 /// Signal a condition, invoking the first matching handler for its class chain.
@@ -65,7 +73,25 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
         if let records::ClusterRecord::Handler(handler) = record {
             let handler_class = handler.class(ctx).map_err(ConditionError::from)?;
             if class_matches(ctx, class.as_word(), handler_class)? {
-                return Ok(());
+                let previous = handler.previous(ctx).map_err(ConditionError::from)?;
+                records::set_cluster_head(ctx, previous);
+                let result = ncl_object::with_roots(ctx, &[head], |ctx, head_root| {
+                    let result = handler.function(ctx).and_then(|function| {
+                        ncl_object::with_roots(ctx, &[function, condition], |ctx, roots| {
+                            ctx.invoke_condition_handler(
+                                **roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+                                **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?,
+                            )
+                        })
+                    });
+                    records::set_cluster_head(
+                        ctx,
+                        **head_root.first().ok_or(ncl_object::ObjectError::Layout)?,
+                    );
+                    result
+                })
+                .map_err(ConditionError::from);
+                return result;
             }
         }
         head = records::record_previous(ctx, head)?;
@@ -117,20 +143,41 @@ pub fn cerror(
     continue_args: Word,
     condition: Word,
 ) -> Result<(), ConditionError> {
-    let name = make_string(ctx, runtime, &"CONTINUE".chars().collect::<Vec<_>>())
-        .map_err(ConditionError::from)?;
-    let restart = crate::restart::push_restart(
+    ncl_object::with_roots(
         ctx,
-        runtime,
-        name,
-        continue_control,
-        continue_args,
-        Word::NIL,
-        Word::NIL,
-    )?;
-    let result = signal(ctx, condition);
-    crate::restart::pop_restart(ctx, restart);
-    result
+        &[continue_control, continue_args, condition],
+        |ctx, roots| {
+            let continue_control = **roots.first().ok_or(ncl_object::ObjectError::Layout)?;
+            let continue_args = **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?;
+            let condition = **roots.get(2).ok_or(ncl_object::ObjectError::Layout)?;
+            let name = make_string(ctx, runtime, &"CONTINUE".chars().collect::<Vec<_>>())?;
+            let restart = crate::restart::push_restart(
+                ctx,
+                runtime,
+                name,
+                continue_control,
+                continue_args,
+                Word::NIL,
+                Word::NIL,
+            )
+            .map_err(condition_object_error)?;
+            let result = signal(ctx, condition);
+            crate::restart::pop_restart(ctx, restart);
+            result.map_err(condition_object_error)
+        },
+    )
+    .map_err(ConditionError::from)?;
+    Ok(())
+}
+
+const fn condition_object_error(error: ConditionError) -> ncl_object::ObjectError {
+    match error {
+        ConditionError::Object(error) => error,
+        ConditionError::Unhandled
+        | ConditionError::NotACondition
+        | ConditionError::RestartNotFound
+        | ConditionError::ChainCorrupt => ncl_object::ObjectError::Layout,
+    }
 }
 
 /// Whether `handler_class` equals `class` or one of its ancestors.

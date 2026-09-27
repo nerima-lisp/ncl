@@ -38,6 +38,15 @@ const FAIL_PARAMETERS: &[Parameter] = &[Parameter {
     ty: ParameterType::Fixnum,
 }];
 
+fn collect_during_handler(
+    _runtime: std::ptr::NonNull<()>,
+    ctx: &mut ThreadContext,
+    _handler: Word,
+    _condition: Word,
+) -> Result<(), ncl_object::ObjectError> {
+    ctx.collect(true)
+}
+
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
@@ -62,8 +71,8 @@ fn handler_chain_nests_and_unwinds() {
     let condition = make_condition(&mut ctx, &runtime, type_error, &[]).unwrap();
     signal(&mut ctx, condition).unwrap();
 
-    pop_handler(&mut ctx, second);
-    pop_handler(&mut ctx, first);
+    pop_handler(&mut ctx, &runtime, second);
+    pop_handler(&mut ctx, &runtime, first);
 
     let condition = make_condition(&mut ctx, &runtime, type_error, &[]).unwrap();
     assert_eq!(signal(&mut ctx, condition), Err(ConditionError::Unhandled));
@@ -138,17 +147,35 @@ fn signal_dispatch_is_type_specific() {
     let chain = push_handler(&mut ctx, &runtime, type_error, Word::NIL).unwrap();
     let condition = make_condition(&mut ctx, &runtime, type_error, &[]).unwrap();
     signal(&mut ctx, condition).unwrap();
-    pop_handler(&mut ctx, chain);
+    pop_handler(&mut ctx, &runtime, chain);
 
     let chain = push_handler(&mut ctx, &runtime, type_error, Word::NIL).unwrap();
     let condition = make_condition(&mut ctx, &runtime, program_error, &[]).unwrap();
     assert_eq!(signal(&mut ctx, condition), Err(ConditionError::Unhandled));
-    pop_handler(&mut ctx, chain);
+    pop_handler(&mut ctx, &runtime, chain);
 
     let chain = push_handler(&mut ctx, &runtime, error_class, Word::NIL).unwrap();
     let condition = make_condition(&mut ctx, &runtime, program_error, &[]).unwrap();
     signal(&mut ctx, condition).unwrap();
-    pop_handler(&mut ctx, chain);
+    pop_handler(&mut ctx, &runtime, chain);
+}
+
+#[test]
+fn signal_roots_removed_handler_record_during_callback_collection() {
+    let (runtime, mut ctx) = setup();
+    let class = ncl_conditions::condition_class(&mut ctx, &runtime, "TYPE-ERROR").unwrap();
+    ctx.set_strict_forwarding(true);
+    ctx.set_condition_handler_invoker(collect_during_handler);
+    ctx.set_evaluator_runtime(std::ptr::NonNull::<()>::dangling().as_ptr());
+
+    let chain = push_handler(&mut ctx, &runtime, class, Word::NIL).unwrap();
+    let condition = make_condition(&mut ctx, &runtime, class, &[]).unwrap();
+    ctx.set_gc_stress(true);
+    signal(&mut ctx, condition).unwrap();
+    let class = ncl_conditions::condition_class(&mut ctx, &runtime, "TYPE-ERROR").unwrap();
+    let condition = make_condition(&mut ctx, &runtime, class, &[]).unwrap();
+    signal(&mut ctx, condition).unwrap();
+    pop_handler(&mut ctx, &runtime, chain);
 }
 
 #[test]
@@ -173,7 +200,7 @@ fn typed_condition_constructor_uses_identifier_hierarchy() {
     let class = class(&runtime, &mut ctx, "TYPE-ERROR");
     let chain = push_handler(&mut ctx, &runtime, class, Word::NIL).unwrap();
     signal(&mut ctx, record.as_word()).unwrap();
-    pop_handler(&mut ctx, chain);
+    pop_handler(&mut ctx, &runtime, chain);
 }
 
 #[test]
@@ -185,7 +212,7 @@ fn cerror_signals_with_a_continue_restart() {
 
     cerror(&mut ctx, &runtime, Word::NIL, Word::NIL, condition).unwrap();
 
-    pop_handler(&mut ctx, chain);
+    pop_handler(&mut ctx, &runtime, chain);
 }
 
 #[test]

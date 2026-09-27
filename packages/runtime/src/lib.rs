@@ -157,6 +157,8 @@ impl Runtime {
     /// # Errors
     /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
+        self.context
+            .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = load::source_forms(self, source);
@@ -171,6 +173,8 @@ impl Runtime {
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn compile(&mut self, source: &str) -> Result<Word, RuntimeError> {
+        self.context
+            .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = compile::source(self, source);
@@ -185,6 +189,8 @@ impl Runtime {
         &mut self,
         path: impl AsRef<std::path::Path>,
     ) -> Result<Word, RuntimeError> {
+        self.context
+            .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = compile::file(self, path.as_ref());
@@ -203,6 +209,8 @@ impl Runtime {
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
+        self.context
+            .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = load::file(self, path.as_ref());

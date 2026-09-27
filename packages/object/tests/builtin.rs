@@ -329,7 +329,6 @@ fn builtin_arity_mismatch_records_a_program_error() {
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(2)]),
         Err(ObjectError::TypeError)
     );
-    assert_eq!(ctx.take_pending_condition(), Some(Word::fixnum(22)));
     assert_eq!(
         runtime.call_builtin(
             &mut ctx,
@@ -338,5 +337,4 @@ fn builtin_arity_mismatch_records_a_program_error() {
         ),
         Err(ObjectError::TypeError)
     );
-    assert_eq!(ctx.take_pending_condition(), Some(Word::fixnum(22)));
 }

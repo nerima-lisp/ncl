@@ -17,6 +17,7 @@ fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
+    ncl_conditions::register(&runtime).unwrap();
     ncl_lib_numbers::register(&runtime).unwrap();
     (runtime, ctx)
 }

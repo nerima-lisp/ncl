@@ -13,6 +13,7 @@ mod function_call;
 pub(crate) mod gc;
 pub mod hash_table;
 mod instance;
+mod keyword_builtins;
 mod layout;
 mod number;
 mod object_access;

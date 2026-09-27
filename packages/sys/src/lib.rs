@@ -262,6 +262,15 @@ pub fn copy_native_words(address: u64, count: usize) -> Option<Vec<Word>> {
         return Some(Vec::new());
     }
     let address = usize::try_from(address).ok()?;
+    let alignment = std::mem::align_of::<Word>();
+    let byte_count = count.checked_mul(std::mem::size_of::<Word>())?;
+    if address == 0 || address % alignment != 0 {
+        return None;
+    }
+    let end = address.checked_add(byte_count)?;
+    if end > isize::MAX as usize {
+        return None;
+    }
     let pointer = std::ptr::without_provenance::<Word>(address);
     // SAFETY: the compiled caller supplies a live, initialized rest area with
     // exactly the requested number of words for the duration of this call.

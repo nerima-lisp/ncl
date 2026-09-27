@@ -164,3 +164,12 @@ fn compiled_clos_class_and_instance_paths_are_available() {
         );
     }
 }
+
+#[test]
+fn compiled_clos_initialization_after_methods_run_from_make_instance() {
+    let output = run_ncl(
+        "(progn (defclass point () ((x :initarg :x :initform 0))) (defmethod shared-initialize :after ((instance point) &rest initargs) (slot-value-set instance 'x 7)) (defmethod initialize-instance :after ((instance point) &rest initargs) (slot-value-set instance 'x 9)) (slot-value (make-instance 'point) 'x))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}

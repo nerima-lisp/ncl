@@ -211,13 +211,34 @@ fn defmethod_macro_builtin(
         None => return Err(ObjectError::TypeError),
     };
     let specializer_form = *parts.get(specializer_index).ok_or(ObjectError::TypeError)?;
-    let specializers = form_elements(ctx, specializer_form)?;
-    let mut lambda = Vec::with_capacity(specializers.len());
-    for specializer in specializers {
-        let fields = form_elements(ctx, specializer)?;
-        lambda.push(*fields.first().ok_or(ObjectError::TypeError)?);
+    let specializer_fields = form_elements(ctx, specializer_form)?;
+    let mut lambda = Vec::with_capacity(specializer_fields.len());
+    let mut dispatch_specializers = Vec::new();
+    let mut index = 0;
+    while index < specializer_fields.len() {
+        let field = specializer_fields[index];
+        if field.is_cons() {
+            let fields = form_elements(ctx, field)?;
+            lambda.push(*fields.first().ok_or(ObjectError::TypeError)?);
+            dispatch_specializers.push(field);
+            index += 1;
+        } else if symbol_name_string(ctx, field)? == "&REST" {
+            lambda.push(field);
+            lambda.push(
+                *specializer_fields
+                    .get(index + 1)
+                    .ok_or(ObjectError::TypeError)?,
+            );
+            index += 2;
+        } else {
+            return Err(ObjectError::TypeError);
+        }
     }
+    let dispatch_specializers = lisp_list(ctx, runtime, &dispatch_specializers)?;
     let defun = common_lisp_symbol(ctx, runtime, "DEFUN")?;
+    let dispatch = common_lisp_symbol(ctx, runtime, "%CLOS-DISPATCH")?;
+    let args_symbol = common_lisp_symbol(ctx, runtime, "ARGS")?;
+    let rest = common_lisp_symbol(ctx, runtime, "&REST")?;
     let lambda_words = lambda;
     let lambda = lisp_list(ctx, runtime, &lambda_words)?;
     let body = parts
@@ -232,7 +253,7 @@ fn defmethod_macro_builtin(
     let function_operator = common_lisp_symbol(ctx, runtime, "FUNCTION")?;
     let method_function = lisp_list(ctx, runtime, &[function_operator, method_name])?;
     let tag = ncl_symbol(ctx, runtime, "*CLOS-METHOD-DEFINITION*")?;
-    let definition = lisp_list(ctx, runtime, &[tag, qualifier, specializer_form])?;
+    let definition = lisp_list(ctx, runtime, &[tag, qualifier, dispatch_specializers])?;
     let quoted_specializers = quoted(ctx, runtime, definition)?;
     let add_method = common_lisp_symbol(ctx, runtime, "%CLOS-ADD-METHOD")?;
     let quoted_name = quoted(ctx, runtime, name)?;
@@ -247,11 +268,31 @@ fn defmethod_macro_builtin(
         ],
     )?;
     let method_definition = lisp_list(ctx, runtime, &[defun, method_name, lambda, body])?;
+    let dispatch_call = lisp_list(ctx, runtime, &[dispatch, quoted_name, args_symbol])?;
+    let wrapper_lambda = lisp_list(ctx, runtime, &[rest, args_symbol])?;
+    let wrapper = lisp_list(ctx, runtime, &[defun, name, wrapper_lambda, dispatch_call])?;
+    let name_text = symbol_name_string(ctx, name)?;
+    let initialization_base = if name_text == "INITIALIZE-INSTANCE"
+        || name_text == "SHARED-INITIALIZE"
+    {
+        let ensure = common_lisp_symbol(ctx, runtime, "%CLOS-ENSURE-INITIALIZATION-BASE")?;
+        Some(lisp_list(ctx, runtime, &[ensure, quoted_name])?)
+    } else {
+        None
+    };
     let progn = common_lisp_symbol(ctx, runtime, "PROGN")?;
+    let mut forms = Vec::with_capacity(6);
+    forms.push(progn);
+    if let Some(base) = initialization_base {
+        forms.push(base);
+    }
+    forms.push(wrapper);
+    forms.push(method_definition);
+    forms.push(registration);
+    forms.push(name);
     lisp_list(
         ctx,
         runtime,
-        &[progn, method_definition, registration, name],
+        &forms,
     )
 }
-

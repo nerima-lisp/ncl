@@ -12,11 +12,13 @@ pub struct ThreadContext {
     pending: Option<ObjectError>,
     pending_lisp_error: Option<LispError>,
     pending_condition: Option<Word>,
-    pub(crate) non_local_exit: bool,
     pub(crate) handler: Option<usize>,
     pub(crate) cleanup: Option<usize>,
     pub(crate) catch: Option<usize>,
     pub(crate) gc_stress: bool,
+    /// Active `catch`/`unwind-protect`/`progv` dynamic-extent frames,
+    /// innermost last. See [`crate::nonlocal`].
+    pub(crate) frames: Vec<crate::nonlocal::DynamicFrame>,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -30,11 +32,11 @@ impl ThreadContext {
             pending: None,
             pending_lisp_error: None,
             pending_condition: None,
-            non_local_exit: false,
             handler: None,
             cleanup: None,
             catch: None,
             gc_stress: false,
+            frames: Vec::new(),
         }
     }
     /// Register this context with a runtime.
@@ -55,7 +57,19 @@ impl ThreadContext {
         &mut self,
         runtime: &Runtime,
     ) -> Result<(), ObjectError> {
-        for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
+        // "NCL-NLX" homes the compiler-generated tokens `return-from`/`go`
+        // desugar to when they escape into a closure (see
+        // `ncl_compiler_front`'s `Context::token`, which interns
+        // `NCL-NLX:BLOCK:<name>`/`NCL-NLX:TAG:<name>` symbols compiled code
+        // then resolves as ordinary `catch` tags); it must exist before any
+        // such form compiles.
+        for name in [
+            "COMMON-LISP",
+            "COMMON-LISP-USER",
+            "KEYWORD",
+            "NCL",
+            "NCL-NLX",
+        ] {
             runtime.ensure_package(self, name)?;
         }
         let common_lisp = runtime

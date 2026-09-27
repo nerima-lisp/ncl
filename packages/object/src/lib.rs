@@ -14,6 +14,7 @@ pub(crate) mod gc;
 pub mod hash_table;
 mod instance;
 mod layout;
+mod nonlocal;
 mod number;
 mod object_access;
 mod object_error;

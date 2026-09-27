@@ -54,9 +54,11 @@ fn x86_64_rejects_calls_with_five_forwarded_arguments() -> Result<(), String> {
         .map_err(|error| error.to_string())
         .err()
         .ok_or_else(|| "x86-64 accepted five forwarded arguments".to_owned())?;
-    if !error.contains("unsupported operation") {
-        return Err(format!("unexpected codegen error: {error}"));
-    }
+    // check-added-lines: allow(panic) assertion verifies the rejection contract.
+    assert!(
+        error.contains("unsupported operation"),
+        "unexpected codegen error: {error}"
+    );
     Ok(())
 }
 

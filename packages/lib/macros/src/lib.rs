@@ -12,6 +12,7 @@ mod r#loop;
 mod packaging;
 mod place;
 mod setf;
+mod setf_places;
 mod setf_support;
 
 pub use form::{elements, fresh_symbol, list, symbol};
@@ -287,6 +288,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
     definition_support::register_runtime_support(&mut ctx, runtime)?;
+    setf_places::register(&mut ctx, runtime)?;
     for &name in OWNED_MACROS {
         let symbol = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
             .intern(&mut ctx, runtime, name)?

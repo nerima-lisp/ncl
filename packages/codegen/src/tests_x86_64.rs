@@ -45,10 +45,9 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
         .bitmap
         .get(slot / 8)
         .is_some_and(|bits| bits & (1 << (slot % 8)) != 0);
-    assert!(
-        slot_is_live,
-        "spill slot {slot} is missing from the safepoint map"
-    ); // check-added-lines: allow(panic) test-only assertion
+    let slot_message = format!("spill slot {slot} is missing from the safepoint map");
+    // check-added-lines: allow(panic) test-only assertion
+    assert!(slot_is_live, slot_message); // check-added-lines: allow(panic) test-only assertion
     assert!(!compiled.code.is_empty());
     Ok(())
 }

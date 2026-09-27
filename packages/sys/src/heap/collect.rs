@@ -33,6 +33,17 @@ impl super::Heap {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
                 root_slots.extend((*thread).roots.iter().copied());
+                // The multiple-value return area (used both for ordinary
+                // multi-value returns and, while a non-local exit is
+                // propagating, for the `catch` tag and thrown value) is a
+                // fixed field on `Thread`, not something callers register
+                // through `push_root`; only its live prefix (`mv_count`)
+                // holds meaningful words.
+                let mv_live = (*thread).mv_count();
+                let mv_base: *mut Word = core::ptr::addr_of_mut!((*thread).mv).cast();
+                for index in 0..mv_live.min(crate::MULTIPLE_VALUE_AREA_WORDS) {
+                    root_slots.push(mv_base.add(index));
+                }
                 conservative_values.extend((*thread).conservative_snapshot());
                 let mut values = Vec::new();
                 if (*thread).has_native_frame_snapshot() {

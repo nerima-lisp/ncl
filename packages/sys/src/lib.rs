@@ -34,8 +34,8 @@ pub use native_builtins::{
 pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{
-    MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, SafepointState, Thread, ThreadLayout,
-    thread_layout,
+    ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, SafepointState, Thread,
+    ThreadLayout, thread_layout,
 };
 
 impl RootToken {

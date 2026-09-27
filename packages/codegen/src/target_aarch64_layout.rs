@@ -24,7 +24,11 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                                 None
                             }
                         })
-                        .unwrap_or(0);
+                        .ok_or_else(|| {
+                            CodegenError::Unsupported(
+                                "closure capture metadata is unavailable".into(),
+                            )
+                        })?;
                     captures.saturating_add(args.len().saturating_sub(1))
                 }
                 OpKind::Const { .. }

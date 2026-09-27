@@ -10,8 +10,11 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                     args.len().saturating_sub(1)
                 }
                 OpKind::CallClosure { closure, args } => {
-                    let captures = closure_capture_count(function, *closure);
-                    captures.saturating_add(args.len().saturating_sub(1))
+                    let arguments = args.len().saturating_sub(1);
+                    match closure_capture_layout(function, *closure) {
+                        CaptureLayout::Static(captures) => captures.saturating_add(arguments),
+                        CaptureLayout::Dynamic => arguments,
+                    }
                 }
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
@@ -49,8 +52,16 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
 }
 
-fn closure_capture_count(function: &Function, closure: ncl_ir::ValueId) -> usize {
-    super::lowering::closure_captures(function, closure).map_or(0, <[ncl_ir::ValueId]>::len)
+enum CaptureLayout {
+    Static(usize),
+    Dynamic,
+}
+
+fn closure_capture_layout(function: &Function, closure: ncl_ir::ValueId) -> CaptureLayout {
+    super::lowering::closure_captures(function, closure)
+        .map_or(CaptureLayout::Dynamic, |captures| {
+            CaptureLayout::Static(captures.len())
+        })
 }
 
 fn extra_words(argument_count: usize) -> usize {

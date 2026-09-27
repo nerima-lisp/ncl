@@ -25,7 +25,7 @@ fn function_designator(ctx: &ThreadContext, word: Word) -> Result<FunctionDesign
     FunctionDesignator::try_from_word(ctx, word).map_err(|_| ObjectError::TypeError)
 }
 
-pub fn call_designator(
+fn call_designator(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     designator: Word,
@@ -134,11 +134,7 @@ fn funcall(
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
-pub fn append_list(
-    ctx: &ThreadContext,
-    list: Word,
-    output: &mut Vec<Word>,
-) -> Result<(), ObjectError> {
+fn append_list(ctx: &ThreadContext, list: Word, output: &mut Vec<Word>) -> Result<(), ObjectError> {
     let mut cursor = list;
     while cursor != Word::NIL {
         if !cursor.is_cons() {

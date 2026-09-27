@@ -116,12 +116,6 @@ pub(crate) fn lower_closure_call(
     args: &[ValueId],
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
-    if args.len().saturating_sub(1) > 4 {
-        // check-added-lines: allow(unsupported) dynamic closure calls use the fixed register ABI.
-        return Err(CodegenError::Unsupported(
-            "AArch64 closure calls support at most four register arguments".into(),
-        ));
-    }
     lower_call(assembler, closure, args, allocation)?;
     emit(
         assembler,

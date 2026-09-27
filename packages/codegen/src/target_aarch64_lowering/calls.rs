@@ -3,7 +3,6 @@ use crate::{Allocation, CodegenError};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::ValueId;
 
-// `argc`/`args` mirror the calling convention's own argument-count/argument-list naming.
 #[allow(clippy::similar_names)]
 #[allow(clippy::too_many_lines)]
 pub fn lower_call(

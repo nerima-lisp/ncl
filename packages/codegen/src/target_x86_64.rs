@@ -32,7 +32,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                         .unwrap_or(0);
                     captures.saturating_add(args.len().saturating_sub(1))
                 }
-                _ => 0, // check-added-lines: allow(wildcard)
+                _ => 0, // check-added-lines: allow(wildcard) intentional
             };
             maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
         }

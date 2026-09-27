@@ -119,7 +119,7 @@ fn mapcar_and_mapc_have_the_distinct_return_values() {
         .unwrap();
     let mut caller = First;
     let mapped = higher_order::mapcar(&mut ctx, &runtime, callback, &[list], &mut caller).unwrap();
-    assert_eq!(ncl_object::car(&mut ctx, mapped).unwrap(), Word::fixnum(4));
+    assert_eq!(ncl_object::car(&ctx, mapped).unwrap(), Word::fixnum(4));
     let mapped_c = higher_order::mapc(&mut ctx, &runtime, callback, &[list], &mut caller).unwrap();
     assert_eq!(mapped_c, list);
 }

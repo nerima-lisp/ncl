@@ -21,7 +21,7 @@ fn call(
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
 }
 
-fn assert_list(ctx: &mut ThreadContext, list: Word, expected: &[Word]) {
+fn assert_list(ctx: &ThreadContext, list: Word, expected: &[Word]) {
     let mut cursor = list;
     for &value in expected {
         assert!(cursor.is_cons());
@@ -263,7 +263,7 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         &[one, two, three, Word::NIL],
     );
     let list_star_root = ncl_object::push_root(&mut ctx, &mut list_star);
-    assert_list(&mut ctx, list_star, &[one, two, three]);
+    assert_list(&ctx, list_star, &[one, two, three]);
     assert!(ncl_object::pop_root(&mut ctx, list_star_root));
     with_list(
         &runtime,

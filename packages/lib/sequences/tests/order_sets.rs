@@ -22,9 +22,9 @@ fn order_sets_default_eql_and_list_result() {
     let right = list(&mut ctx, &runtime, &[Word::fixnum(2), Word::fixnum(3)]);
     let result = order_sets::union(&mut ctx, &runtime, left, right, Default::default()).unwrap();
     assert!(result.is_cons());
-    assert_eq!(ncl_object::car(&mut ctx, result).unwrap(), Word::fixnum(1));
-    let tail = ncl_object::cdr(&mut ctx, result).unwrap();
-    assert_eq!(ncl_object::car(&mut ctx, tail).unwrap(), Word::fixnum(2));
+    assert_eq!(ncl_object::car(&ctx, result).unwrap(), Word::fixnum(1));
+    let tail = ncl_object::cdr(&ctx, result).unwrap();
+    assert_eq!(ncl_object::car(&ctx, tail).unwrap(), Word::fixnum(2));
 }
 
 #[test]
@@ -42,5 +42,5 @@ fn order_sets_member_uses_eql_by_default() {
         Default::default(),
     )
     .unwrap();
-    assert_eq!(ncl_object::car(&mut ctx, found).unwrap(), Word::fixnum(2));
+    assert_eq!(ncl_object::car(&ctx, found).unwrap(), Word::fixnum(2));
 }

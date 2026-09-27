@@ -110,18 +110,18 @@ fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
 
     let use_list_function = function(&runtime, &mut ctx, "PACKAGE-USE-LIST")?;
     let use_list = runtime.call_builtin(&mut ctx, use_list_function, &[left.as_word()])?;
-    assert_eq!(list_items(&mut ctx, use_list)?, vec![right.as_word()]);
+    assert_eq!(list_items(&ctx, use_list)?, vec![right.as_word()]);
     let used_by_function = function(&runtime, &mut ctx, "PACKAGE-USED-BY-LIST")?;
     let used_by = runtime.call_builtin(&mut ctx, used_by_function, &[right.as_word()])?;
-    assert_eq!(list_items(&mut ctx, used_by)?, vec![left.as_word()]);
+    assert_eq!(list_items(&ctx, used_by)?, vec![left.as_word()]);
 
     let all_function = function(&runtime, &mut ctx, "LIST-ALL-PACKAGES")?;
     let all = runtime.call_builtin(&mut ctx, all_function, &[])?;
-    assert!(list_items(&mut ctx, all)?.contains(&left.as_word()));
+    assert!(list_items(&ctx, all)?.contains(&left.as_word()));
     let name = ncl_object::make_string(&mut ctx, &runtime, &['S', 'H', 'A', 'R', 'E', 'D'])?;
     let found_function = function(&runtime, &mut ctx, "FIND-ALL-SYMBOLS")?;
     let found = runtime.call_builtin(&mut ctx, found_function, &[name])?;
-    assert_eq!(list_items(&mut ctx, found)?, vec![symbol]);
+    assert_eq!(list_items(&ctx, found)?, vec![symbol]);
     Ok(())
 }
 
@@ -188,7 +188,7 @@ fn package_introspection_lists_survive_gc_stress() -> Result<(), ObjectError> {
     let all_packages = list_all_packages(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values)?;
     let mut all_packages = all_packages;
     let all_packages_result_token = ncl_object::push_root(&mut ctx, &mut all_packages);
-    assert!(list_items(&mut ctx, all_packages)?.contains(&package));
+    assert!(list_items(&ctx, all_packages)?.contains(&package));
 
     let mut name =
         ncl_object::make_string(&mut ctx, &runtime, &['V', 'I', 'S', 'I', 'B', 'L', 'E'])?;
@@ -196,7 +196,7 @@ fn package_introspection_lists_survive_gc_stress() -> Result<(), ObjectError> {
     let found = find_all_symbols(&mut ctx, &runtime, &BuiltinArgs::new(&[name]), &mut values)?;
     let mut found = found;
     let found_token = ncl_object::push_root(&mut ctx, &mut found);
-    assert_eq!(list_items(&mut ctx, found)?, vec![symbol]);
+    assert_eq!(list_items(&ctx, found)?, vec![symbol]);
 
     assert!(ncl_object::pop_root(&mut ctx, found_token));
     assert!(ncl_object::pop_root(&mut ctx, name_token));

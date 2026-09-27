@@ -398,12 +398,12 @@ fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> 
         FunctionObject::try_from(dimensions_function).map_err(|_| ObjectError::TypeError)?,
         &[array],
     )?;
-    assert_eq!(car(&mut ctx, dimensions)?, Word::fixnum(2));
-    let tail = cdr(&mut ctx, dimensions)?;
-    assert_eq!(car(&mut ctx, tail)?, Word::fixnum(3));
-    let tail = cdr(&mut ctx, tail)?;
-    assert_eq!(car(&mut ctx, tail)?, Word::fixnum(4));
-    assert_eq!(cdr(&mut ctx, tail)?, Word::NIL);
+    assert_eq!(car(&ctx, dimensions)?, Word::fixnum(2));
+    let tail = cdr(&ctx, dimensions)?;
+    assert_eq!(car(&ctx, tail)?, Word::fixnum(3));
+    let tail = cdr(&ctx, tail)?;
+    assert_eq!(car(&ctx, tail)?, Word::fixnum(4));
+    assert_eq!(cdr(&ctx, tail)?, Word::NIL);
 
     assert!(pop_root(&mut ctx, dimensions_function_token));
     assert!(pop_root(&mut ctx, array_token));

@@ -94,10 +94,9 @@ fn package_local_nickname_builtins_round_trip() {
             &[package],
         )
         .unwrap_or_else(|error| panic!("list result: {error:?}"));
-    let entry =
-        ncl_object::car(&mut ctx, entries).unwrap_or_else(|error| panic!("entry: {error:?}"));
-    assert_eq!(ncl_object::car(&mut ctx, entry), Ok(nickname));
-    assert_eq!(ncl_object::cdr(&mut ctx, entry), Ok(target));
+    let entry = ncl_object::car(&ctx, entries).unwrap_or_else(|error| panic!("entry: {error:?}"));
+    assert_eq!(ncl_object::car(&ctx, entry), Ok(nickname));
+    assert_eq!(ncl_object::cdr(&ctx, entry), Ok(target));
     assert_eq!(
         Package::from_word(package)
             .resolve_local_nickname(&ctx, StringObject::from_word(nickname))

@@ -10,8 +10,8 @@ pub fn intersection(
     second: Word,
     opts: Options,
 ) -> Result<Word, ObjectError> {
-    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    scoped_rows(ctx, &mut rows, |ctx, rows| {
+    let rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
+    scoped_rows(ctx, &rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             let mut result = vec![Word::NIL; rows.first().map_or(0, Vec::len)];
             {
@@ -73,8 +73,8 @@ pub fn subsetp(
     second: Word,
     opts: Options,
 ) -> Result<Word, ObjectError> {
-    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    scoped_rows(ctx, &mut rows, |ctx, rows| {
+    let rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
+    scoped_rows(ctx, &rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             for value in rows.first().ok_or(ObjectError::Layout)? {
                 let mut found = false;
@@ -100,8 +100,8 @@ pub fn adjoin(
     list: Word,
     opts: Options,
 ) -> Result<Word, ObjectError> {
-    let mut rows = vec![vec![item], sequence_values(ctx, list)?];
-    scoped_rows(ctx, &mut rows, |ctx, rows| {
+    let rows = vec![vec![item], sequence_values(ctx, list)?];
+    scoped_rows(ctx, &rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             let item = *rows
                 .first()

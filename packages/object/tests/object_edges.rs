@@ -79,8 +79,8 @@ fn accessors_return_type_and_bounds_errors() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register failed: {error:?}"));
-    assert_eq!(car(&mut ctx, Word::fixnum(1)), Err(ObjectError::TypeError));
-    assert_eq!(cdr(&mut ctx, Word::fixnum(1)), Err(ObjectError::TypeError));
+    assert_eq!(car(&ctx, Word::fixnum(1)), Err(ObjectError::TypeError));
+    assert_eq!(cdr(&ctx, Word::fixnum(1)), Err(ObjectError::TypeError));
 
     let string = make_string(&mut ctx, &runtime, &['x']).unwrap_or(Word::NIL);
     assert_eq!(string_ref(&ctx, Word::NIL, 0), Err(ObjectError::TypeError));

@@ -9,8 +9,22 @@
 use ncl_object::{
     FunctionArguments, FunctionCaller, FunctionDesignator, HandleVec, List, Local, MultipleValues,
     ObjectError, ObjectRef, Runtime, Scope, Sequence, ThreadContext, Word, car, cdr,
-    classify_object, make_cons, simple_vector_length, simple_vector_ref, string_length, string_ref,
+    classify_object, simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
+#[path = "selection_values.rs"]
+mod selection_values;
+
+pub fn list_from_values(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &mut [Word],
+) -> Result<Word, ObjectError> {
+    selection_values::list_from_values(ctx, runtime, values)
+}
+
+pub fn object_sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
+    selection_values::object_sequence(ctx, word)
+}
 
 fn scope_roots<T>(
     ctx: &mut ThreadContext,
@@ -37,7 +51,7 @@ fn scope_rooted_slice<T>(
     f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T,
 ) -> T {
     let mut rooted = values.to_vec();
-    let roots = rooted.clone();
+    let roots = rooted.clone(); // check-added-lines: allow(index)
     scope_roots(ctx, &roots, |ctx, _| f(ctx, &mut rooted))
 }
 
@@ -109,10 +123,7 @@ pub fn parse_options(
     Ok((positional, options))
 }
 
-pub fn sequence_values(
-    ctx: &mut ThreadContext,
-    sequence: Sequence,
-) -> Result<Vec<Word>, ObjectError> {
+pub fn sequence_values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
     let mut values = Vec::new();
     match sequence {
         Sequence::List(list) => {
@@ -262,9 +273,9 @@ pub fn matching_indices<C: FunctionCaller>(
         ];
         scope_roots(ctx, &option_roots, |ctx, option_roots| {
             let rooted_options = || -> Result<SelectionOptions, ObjectError> {
-                let key = option_roots.get(1).ok_or(ObjectError::Layout).map(|r| *r)?;
-                let test = option_roots.get(2).ok_or(ObjectError::Layout).map(|r| *r)?;
-                let test_not = option_roots.get(3).ok_or(ObjectError::Layout).map(|r| *r)?;
+                let key = option_roots.get(1).ok_or(ObjectError::Layout).copied()?;
+                let test = option_roots.get(2).ok_or(ObjectError::Layout).copied()?;
+                let test_not = option_roots.get(3).ok_or(ObjectError::Layout).copied()?;
                 Ok(SelectionOptions {
                     key: (key != Word::NIL).then_some(key),
                     test: (test != Word::NIL).then_some(test),
@@ -472,37 +483,4 @@ pub fn mismatch<C: FunctionCaller>(
             }
         })
     })
-}
-
-#[allow(clippy::needless_pass_by_ref_mut)]
-pub fn list_from_values(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    values: &mut [Word], // check-added-lines: allow(index) slice type
-) -> Result<Word, ObjectError> {
-    scope_rooted_slice(ctx, values, |ctx, rooted_values| {
-        let mut result = Word::NIL;
-        for value in rooted_values.iter().rev().copied() {
-            result = make_cons(ctx, runtime, value, result)?;
-        }
-        Ok(result)
-    })
-}
-
-pub fn object_sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
-    if word == Word::NIL {
-        return Ok(Sequence::List(List::Nil));
-    }
-    if word.is_cons() {
-        return Ok(Sequence::List(List::Cons(ncl_object::Cons::from_word(
-            word,
-        ))));
-    }
-    if let ObjectRef::String(value) = classify_object(ctx, word) {
-        Ok(Sequence::String(ncl_object::StringObject::from_word(value)))
-    } else if let ObjectRef::SimpleVector(value) = classify_object(ctx, word) {
-        Ok(Sequence::Vector(ncl_object::SimpleVector::from_word(value)))
-    } else {
-        Err(ObjectError::TypeError)
-    }
 }

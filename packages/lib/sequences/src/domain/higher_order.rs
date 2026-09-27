@@ -30,7 +30,7 @@ fn scope_roots<T>(
 fn scope_rooted_slice<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T,
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T, // check-added-lines: allow(index) slice type
 ) -> T {
     let mut rooted = values.to_vec();
     let roots = rooted.clone();
@@ -46,7 +46,7 @@ fn list_word(list: List) -> Word {
     }
 }
 
-fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
+fn values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
     match sequence {
         Sequence::List(list) => {
             let mut result = Vec::new();
@@ -71,13 +71,13 @@ fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, Obje
 }
 
 struct RootedNested<'a> {
-    values: &'a mut [Word],
+    values: &'a mut [Word], // check-added-lines: allow(index) slice type
     ranges: Vec<Range<usize>>,
 }
 
 impl RootedNested<'_> {
     fn iter(&self) -> impl Iterator<Item = &[Word]> {
-        self.ranges.iter().map(|range| &self.values[range.clone()])
+        self.ranges.iter().map(|range| &self.values[range.clone()]) // check-added-lines: allow(index)
     }
 }
 
@@ -157,7 +157,7 @@ pub fn map<C: FunctionCaller>(
             .map(|sequence| values(ctx, *sequence))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sources.iter().map(Vec::len).min().unwrap_or(0);
-        Ok(rooted_nested(ctx, &sources, |ctx, sources| {
+        rooted_nested(ctx, &sources, |ctx, sources| {
             let result = vec![Word::NIL; length];
             scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
                 for (index, value) in rooted_result.iter_mut().enumerate() {
@@ -169,7 +169,7 @@ pub fn map<C: FunctionCaller>(
                 }
                 sequence_result(ctx, runtime, result_type, rooted_result)
             })
-        })?)
+        })
     })
 }
 
@@ -195,7 +195,7 @@ pub fn map_into<C: FunctionCaller>(
             .chain(sources.iter().map(Vec::len))
             .min()
             .unwrap_or(0);
-        Ok(rooted_nested(ctx, &sources, |ctx, sources| {
+        rooted_nested(ctx, &sources, |ctx, sources| {
             scope_rooted_slice(ctx, &destination_values, |ctx, rooted_destination| {
                 for index in 0..length {
                     let args = sources
@@ -235,7 +235,7 @@ pub fn map_into<C: FunctionCaller>(
                 }
                 Ok(*roots.first().ok_or(ObjectError::Layout)?)
             })
-        })?)
+        })
     })
 }
 
@@ -299,7 +299,7 @@ pub fn predicate<C: FunctionCaller>(
             .iter()
             .map(|sequence| values(ctx, *sequence))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rooted_nested(ctx, &source_values, |ctx, source_values| {
+        rooted_nested(ctx, &source_values, |ctx, source_values| {
             let length = source_values.iter().map(<[Word]>::len).min().unwrap_or(0);
             let mut result = matches!(kind, Predicate::Every | Predicate::NotAny);
             for index in 0..length {
@@ -319,7 +319,7 @@ pub fn predicate<C: FunctionCaller>(
                 }
             }
             Ok(if result { Word::TRUE } else { Word::NIL })
-        })?)
+        })
     })
 }
 
@@ -352,7 +352,7 @@ fn list_map<C: FunctionCaller>(
                 .map(|sequence| values(ctx, *sequence))
                 .collect::<Result<Vec<_>, _>>()?;
             let length = sources.iter().map(Vec::len).min().unwrap_or(0);
-            Ok(rooted_nested(ctx, &sources, |ctx, sources| {
+            rooted_nested(ctx, &sources, |ctx, sources| {
                 let result = vec![Word::NIL; length];
                 scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
                     let callback =
@@ -373,12 +373,12 @@ fn list_map<C: FunctionCaller>(
                     }
                     Ok(rooted_result.to_vec())
                 })
-            })?)
+            })
         })
     })
 }
 
-fn nth_tail(ctx: &mut ThreadContext, mut list: Word, index: usize) -> Result<Word, ObjectError> {
+fn nth_tail(ctx: &ThreadContext, mut list: Word, index: usize) -> Result<Word, ObjectError> {
     for _ in 0..index {
         list = ncl_object::cdr(ctx, list)?;
     }

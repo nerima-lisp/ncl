@@ -52,7 +52,7 @@ pub(super) fn list_from(
 }
 pub(super) fn scoped_rows<T>(
     ctx: &mut ThreadContext,
-    words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
+    words: &[Vec<Word>], // check-added-lines: allow(index) slice type
     f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
 ) -> T {
     let values = words.iter().flatten().copied().collect::<Vec<_>>();
@@ -81,7 +81,7 @@ pub(super) fn with_options<T>(
     let root_values = [opts.key, opts.test, opts.test_not];
     with_scope(ctx, &root_values, |scope, handles| {
         let options = Options {
-            key: word(scope, *handles.iter().nth(0).ok_or(ObjectError::Layout)?),
+            key: word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?),
             test: word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?),
             test_not: word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?),
         };
@@ -147,7 +147,7 @@ pub fn parse_options(
     options(ctx, args, required)
 }
 pub(super) fn sequence_values(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     sequence: Word,
 ) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
@@ -248,8 +248,8 @@ pub(super) fn matches(
         let second = word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?);
         let keyed_a_word = key(scope.context_mut(), runtime, key_fn, first)?;
         let keyed_a = scope.root(Local::from_word(keyed_a_word));
-        let keyed_b_word = key(scope.context_mut(), runtime, key_fn, second)?;
-        let keyed_b = scope.root(Local::from_word(keyed_b_word));
+        let keyed_second_word = key(scope.context_mut(), runtime, key_fn, second)?;
+        let keyed_b = scope.root(Local::from_word(keyed_second_word));
         let left = word(scope, keyed_a);
         let right = word(scope, keyed_b);
         let test = word(scope, *handles.iter().nth(3).ok_or(ObjectError::Layout)?);
@@ -368,8 +368,8 @@ pub(super) fn set_operation(
     exclusive: bool,
     difference: bool,
 ) -> Result<Word, ObjectError> {
-    let mut rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    scoped_rows(ctx, &mut rows, |ctx, rows| {
+    let rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
+    scoped_rows(ctx, &rows, |ctx, rows| {
         with_options(ctx, opts, |ctx, opts| {
             let candidates = if difference {
                 (0..rows.first().map_or(0, Vec::len))

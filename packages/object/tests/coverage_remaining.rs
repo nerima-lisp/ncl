@@ -205,14 +205,14 @@ fn runtime_context_roots_and_classification_report_values() {
     context.set_gc_stress(true);
     assert!(ncl_object::make_cons(&mut context, &runtime, Word::NIL, Word::TRUE).is_ok());
     context.set_gc_stress(false);
-    assert_eq!(ncl_object::car(&mut context, Word::NIL), Ok(Word::NIL));
-    assert_eq!(ncl_object::cdr(&mut context, Word::NIL), Ok(Word::NIL));
+    assert_eq!(ncl_object::car(&context, Word::NIL), Ok(Word::NIL));
+    assert_eq!(ncl_object::cdr(&context, Word::NIL), Ok(Word::NIL));
     assert_eq!(
-        ncl_object::car(&mut context, Word::TRUE),
+        ncl_object::car(&context, Word::TRUE),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        ncl_object::cdr(&mut context, Word::TRUE),
+        ncl_object::cdr(&context, Word::TRUE),
         Err(ObjectError::TypeError)
     );
     assert_eq!(classify(Word::character(65)), ObjectRef::Character(65));

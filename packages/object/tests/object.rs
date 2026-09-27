@@ -17,7 +17,7 @@ fn classify_and_allocate() {
     assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_err());
     assert!(ctx.register(&runtime).is_ok());
     let cons = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
-    assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(1)));
+    assert_eq!(car(&ctx, cons), Ok(Word::fixnum(1)));
 }
 #[test]
 fn symbols_and_bindings() {
@@ -152,7 +152,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     );
 
     assert!(ctx.collect(false).is_ok());
-    assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
+    assert_eq!(car(&ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     assert_eq!(runtime.widetag(roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
     assert_eq!(
@@ -168,7 +168,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     );
 
     assert!(ctx.collect(true).is_ok());
-    assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
+    assert_eq!(car(&ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     let table = HashTable::from_word(table_word);
     assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
     assert_eq!(ctx.weak_value(weak), Word::NIL);

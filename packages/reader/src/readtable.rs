@@ -255,7 +255,7 @@ fn table_index(ch: char) -> Option<usize> {
 
 /// Classify a character's syntax within a readtable.
 pub fn syntax_kind(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     readtable: Readtable,
     ch: char,
 ) -> Result<SyntaxKind, ReadError> {
@@ -267,7 +267,7 @@ pub fn syntax_kind(
 }
 
 /// Classify a raw syntax-table entry word.
-fn classify_entry(ctx: &mut ThreadContext, entry: Word) -> SyntaxKind {
+fn classify_entry(ctx: &ThreadContext, entry: Word) -> SyntaxKind {
     if let Some(kind) = entry.as_fixnum() {
         return match kind {
             SYNTAX_CONSTITUENT => SyntaxKind::Constituent,

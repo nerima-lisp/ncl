@@ -1,7 +1,7 @@
 use super::{list_word, object_car, object_cdr, proper_list};
 use ncl_object::{Fixnum, LispError, List, Runtime, ThreadContext, Word};
 
-fn nth_word(ctx: &mut ThreadContext, index: i64, mut cursor: Word) -> Result<Word, LispError> {
+fn nth_word(ctx: &ThreadContext, index: i64, mut cursor: Word) -> Result<Word, LispError> {
     if index < 0 {
         return Err(LispError::TypeError {
             datum: Word::fixnum(index),
@@ -22,7 +22,7 @@ fn nth_word(ctx: &mut ThreadContext, index: i64, mut cursor: Word) -> Result<Wor
 }
 
 pub fn nth(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     _: &Runtime,
     index: Fixnum,
     value: List,
@@ -33,7 +33,7 @@ pub fn nth(
 }
 
 pub fn nthcdr(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     _: &Runtime,
     index: Fixnum,
     value: List,

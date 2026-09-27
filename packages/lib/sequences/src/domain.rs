@@ -33,7 +33,7 @@ pub fn list_from(
     Ok(scope.get(result).as_word())
 }
 
-pub(crate) fn list_from_scope<'ctx>(
+pub fn list_from_scope<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
     values: &[Word],

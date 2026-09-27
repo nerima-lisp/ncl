@@ -130,7 +130,7 @@ fn loaded_objects_survive_a_full_collection() {
     ctx2.collect(true).unwrap();
 
     // The cons still points at the vector, whose string and symbol survived.
-    let vector = car(&mut ctx2, roots[0]).unwrap();
+    let vector = car(&ctx2, roots[0]).unwrap();
     assert_eq!(simple_vector_length(&ctx2, vector).unwrap(), 3);
     let string = simple_vector_ref(&ctx2, vector, 0).unwrap();
     assert_eq!(read_string(&ctx2, string), "hi");

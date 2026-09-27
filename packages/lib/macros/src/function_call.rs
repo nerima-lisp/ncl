@@ -80,11 +80,7 @@ fn funcall(
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
-fn append_list(
-    ctx: &mut ThreadContext,
-    list: Word,
-    output: &mut Vec<Word>,
-) -> Result<(), ObjectError> {
+fn append_list(ctx: &ThreadContext, list: Word, output: &mut Vec<Word>) -> Result<(), ObjectError> {
     let mut cursor = list;
     while cursor != Word::NIL {
         if !cursor.is_cons() {

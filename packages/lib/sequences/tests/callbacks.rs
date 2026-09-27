@@ -21,7 +21,7 @@ fn call(
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
 }
 
-fn assert_list(ctx: &mut ThreadContext, list: Word, expected: &[Word]) {
+fn assert_list(ctx: &ThreadContext, list: Word, expected: &[Word]) {
     let mut cursor = list;
     for &value in expected {
         assert!(cursor.is_cons());
@@ -91,7 +91,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let mut test_keyword = test_keyword;
     let test_keyword_root = ncl_object::push_root(&mut ctx, &mut test_keyword);
     let mapped = call(&runtime, &mut ctx, &functions, "MAPCAR", &[car, source]);
-    assert_list(&mut ctx, mapped, &values);
+    assert_list(&ctx, mapped, &values);
     assert_eq!(
         call(
             &runtime,
@@ -102,7 +102,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         ),
         destination
     );
-    assert_list(&mut ctx, destination, &values);
+    assert_list(&ctx, destination, &values);
     let reduced = call(&runtime, &mut ctx, &functions, "REDUCE", &[cons, source]);
     assert!(reduced.is_cons());
     assert_eq!(
@@ -117,7 +117,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         &[source, destination, test_keyword, cons],
     );
     assert!(union.is_cons());
-    assert_eq!(ncl_object::cdr(&mut ctx, union), Ok(Word::NIL));
+    assert_eq!(ncl_object::cdr(&ctx, union), Ok(Word::NIL));
     let substituted = call(
         &runtime,
         &mut ctx,
@@ -125,7 +125,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         "SUBSTITUTE",
         &[Word::fixnum(9), Word::fixnum(2), source, test_keyword, cons],
     );
-    assert_list(&mut ctx, substituted, &[Word::fixnum(9); 3]);
+    assert_list(&ctx, substituted, &[Word::fixnum(9); 3]);
     assert!(ncl_object::pop_root(&mut ctx, test_keyword_root));
     assert!(ncl_object::pop_root(&mut ctx, cons_root));
     assert!(ncl_object::pop_root(&mut ctx, car_root));

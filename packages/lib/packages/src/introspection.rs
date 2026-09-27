@@ -92,7 +92,7 @@ pub fn package_arg(
     package_designator(ctx, runtime, args.required(index)?)
 }
 
-pub fn list_items(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
+pub fn list_items(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
     while list != Word::NIL {
         result.push(ncl_object::car(ctx, list)?);

@@ -314,7 +314,7 @@ const fn apply_suppress(form: Option<Word>, opts: &ReadOptions) -> Option<Word> 
 
 /// Skip whitespace and `;` line comments.
 fn skip_whitespace(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     source: &mut dyn CharSource,
     _opts: &ReadOptions,
     rt: &Word,

@@ -33,7 +33,7 @@ fn read_name(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> String {
     name_of(ctx, word)
 }
 
-fn list_names(ctx: &mut ThreadContext, list: Word) -> Vec<String> {
+fn list_names(ctx: &ThreadContext, list: Word) -> Vec<String> {
     let mut names = Vec::new();
     let mut cursor = list;
     while cursor != Word::NIL {
@@ -193,10 +193,10 @@ fn reads_quote_and_quasiquote() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let quoted = read_one(&runtime, &mut ctx, "'x");
-    let head = car(&mut ctx, quoted).unwrap();
+    let head = car(&ctx, quoted).unwrap();
     assert_eq!(name_of(&ctx, head), "QUOTE");
-    let rest = cdr(&mut ctx, quoted).unwrap();
-    let inner = car(&mut ctx, rest).unwrap();
+    let rest = cdr(&ctx, quoted).unwrap();
+    let inner = car(&ctx, rest).unwrap();
     assert_eq!(name_of(&ctx, inner), "X");
 }
 
@@ -207,9 +207,9 @@ fn reads_lists_and_dotted_lists() {
     ctx.register(&runtime).unwrap();
     assert_eq!(read_names(&runtime, &mut ctx, "(a b c)"), ["A", "B", "C"]);
     let dotted = read_one(&runtime, &mut ctx, "(a . b)");
-    let head = car(&mut ctx, dotted).unwrap();
+    let head = car(&ctx, dotted).unwrap();
     assert_eq!(name_of(&ctx, head), "A");
-    let tail = cdr(&mut ctx, dotted).unwrap();
+    let tail = cdr(&ctx, dotted).unwrap();
     assert_eq!(name_of(&ctx, tail), "B");
 }
 
@@ -277,7 +277,7 @@ fn reads_quote_with_the_common_lisp_symbol() {
     let (quote, status) = common.intern(&mut ctx, &runtime, "QUOTE").unwrap();
     assert_eq!(status, ncl_object::package::FindStatus::External);
     let form = read_one(&runtime, &mut ctx, "(quote a)");
-    let operator = car(&mut ctx, form).unwrap();
+    let operator = car(&ctx, form).unwrap();
     assert_eq!(operator, quote);
     assert_eq!(symbol_package(&ctx, operator), Ok(common.as_word()));
 }
@@ -320,7 +320,7 @@ fn reads_function_abbreviation() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let form = read_one(&runtime, &mut ctx, "#'car");
-    let head = car(&mut ctx, form).unwrap();
+    let head = car(&ctx, form).unwrap();
     assert_eq!(name_of(&ctx, head), "FUNCTION");
 }
 
@@ -434,11 +434,11 @@ fn labels_reference_prior_forms() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let form = read_one(&runtime, &mut ctx, "(#1=(a b) #1#)");
-    let first = car(&mut ctx, form).unwrap();
-    assert_eq!(list_names(&mut ctx, first), ["A", "B"]);
-    let rest = cdr(&mut ctx, form).unwrap();
-    let second = car(&mut ctx, rest).unwrap();
-    assert_eq!(list_names(&mut ctx, second), ["A", "B"]);
+    let first = car(&ctx, form).unwrap();
+    assert_eq!(list_names(&ctx, first), ["A", "B"]);
+    let rest = cdr(&ctx, form).unwrap();
+    let second = car(&ctx, rest).unwrap();
+    assert_eq!(list_names(&ctx, second), ["A", "B"]);
 }
 
 #[test]

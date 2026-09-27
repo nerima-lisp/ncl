@@ -251,6 +251,13 @@ fn undefined_function_condition_preserves_name_and_accessor_returns_it() {
         LispError::CellError(ncl_object::CellError::UndefinedFunction { name }),
     )
     .unwrap();
+    let class = ncl_conditions::condition_class_of(&ctx, condition).unwrap();
+    assert_eq!(
+        class,
+        ncl_conditions::ConditionIdentifier::UndefinedFunction
+            .class(&mut ctx, &runtime)
+            .unwrap()
+    );
     let function = runtime
         .function(&mut ctx, "COMMON-LISP", "CELL-ERROR-NAME")
         .and_then(|word| FunctionObject::try_from(word).ok())

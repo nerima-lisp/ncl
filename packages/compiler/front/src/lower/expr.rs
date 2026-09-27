@@ -13,6 +13,23 @@ use super::super::literal::lower_literal;
 use super::Context;
 use super::params::{bind_captures, bind_required, lambda_params};
 
+fn is_closure_designator(expr: &Expr) -> bool {
+    match expr {
+        Expr::Lambda(_) | Expr::Function(FunctionDesignator::Lambda(_)) => true,
+        Expr::Let { body, .. } | Expr::Progn(body) => {
+            body.last().is_some_and(is_closure_designator)
+        }
+        Expr::Locally { body, .. }
+        | Expr::Macrolet { body, .. }
+        | Expr::SymbolMacrolet { body, .. } => body.last().is_some_and(is_closure_designator),
+        Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {
+            is_closure_designator(value)
+        }
+        // check-added-lines: allow(wildcard) other forms do not prove a closure result.
+        _ => false,
+    }
+}
+
 impl Context<'_> {
     pub(crate) fn lower_expr(
         &mut self,
@@ -124,6 +141,7 @@ impl Context<'_> {
             .collect::<Result<Vec<_>, _>>()?;
         if let Operator::Name(name) = operator
             && name.name.eq_ignore_ascii_case("FUNCALL")
+            && arguments.first().is_some_and(is_closure_designator)
         {
             let Some((&callee, call_arguments)) = values.split_first() else {
                 return Err(LowerError::Ir {

@@ -426,6 +426,7 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                             OpKind::CallClosure {
                                 closure: ValueId(1),
                                 args: Vec::new(),
+                                named_symbol: None,
                             },
                         ),
                         op(

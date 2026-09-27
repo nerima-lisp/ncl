@@ -248,13 +248,15 @@ impl ThreadContext {
     /// report an escaping block or tag with no live activation, since both
     /// desugar to `throw` with a compiler-generated tag).
     pub fn throw(&mut self, tag: Word, value: Word) -> Result<(), ObjectError> {
+        // Keep the tag/value available to generated dispatch even when this
+        // throw escapes all active catches and returns a control error.
+        self.thread.set_multiple_value_area(&[tag, value]);
         let established = self.frames.iter().any(
             |frame| matches!(frame, DynamicFrame::Catch { tag: active } if active.get() == tag),
         );
         if !established {
             return Err(ObjectError::ControlError);
         }
-        self.thread.set_multiple_value_area(&[tag, value]);
         self.thread.set_pending(true);
         Ok(())
     }
@@ -289,9 +291,13 @@ mod tests {
     #[test]
     fn throw_to_a_missing_tag_is_a_control_error() {
         let (_runtime, mut ctx) = context();
-        let result = ctx.throw(Word::fixnum(9), Word::fixnum(1));
+        let tag = Word::fixnum(9);
+        let value = Word::fixnum(1);
+        let result = ctx.throw(tag, value);
         assert_eq!(result, Err(ObjectError::ControlError));
         assert!(!ctx.thread.pending());
+        assert_eq!(ctx.thread.multiple_values()[0], tag);
+        assert_eq!(ctx.thread.multiple_values()[1], value);
     }
 
     #[test]

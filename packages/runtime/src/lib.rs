@@ -16,8 +16,8 @@ pub use native_error::NativeCondition;
 use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    Function, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
-    make_simple_vector,
+    Function, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
+    make_simple_vector, slot_ref, symbol_name,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
@@ -45,6 +45,11 @@ pub enum RuntimeError {
     Lower(ncl_compiler_front::LowerError),
     /// Code generation or executable-memory failure.
     Native(String),
+    /// An unbound function cell was called.
+    UndefinedFunction {
+        /// Printed function symbol name.
+        name: String,
+    },
     /// A direct native entry failed and was returned through its typed side channel.
     NativeFailure {
         /// The original typed native failure.
@@ -62,6 +67,9 @@ impl std::fmt::Display for RuntimeError {
             Self::Front(error) => write!(f, "front-end error: {error:?}"),
             Self::Lower(error) => write!(f, "lowering error: {error:?}"),
             Self::Native(error) => write!(f, "native error: {error}"),
+            Self::UndefinedFunction { name } => {
+                write!(f, "undefined function UNDEFINED-FUNCTION: {name}")
+            }
             Self::NativeFailure { error, condition } => {
                 write!(f, "native failure {error:?}: {condition:?}")
             }
@@ -436,6 +444,21 @@ impl Runtime {
             context.set_pending_condition(condition);
         }
         if let Some(error) = context.take_pending() {
+            if matches!(error, ObjectError::UndefinedFunction)
+                && let Some(condition) = context.take_pending_condition()
+            {
+                #[allow(clippy::option_if_let_else)]
+                let name = match slot_ref(context, Instance::from_word(condition), 0)
+                    .and_then(|name| symbol_name(context, name))
+                    .and_then(|name| {
+                        ncl_compiler_front::form::word_string(context, name)
+                            .map_err(|_| ObjectError::Layout)
+                    }) {
+                    Ok(name) => name,
+                    Err(_) => "<unknown>".to_owned(),
+                };
+                return Err(RuntimeError::UndefinedFunction { name });
+            }
             return Err(error.into());
         }
         Ok(Word::from_bits(value))

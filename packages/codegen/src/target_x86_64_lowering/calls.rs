@@ -13,11 +13,13 @@ pub fn lower_call(
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     let Some((argc_value, rest)) = args.split_first() else {
+        // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
         return Err(CodegenError::Unsupported(
             "calls require a tagged argc argument".into(),
         ));
     };
     if rest.len() > ARGUMENT_REGISTERS.len() {
+        // check-added-lines: allow(unsupported) the native ABI has four argument registers.
         return Err(CodegenError::Unsupported(
             "x86-64 calls support at most four register arguments".into(),
         ));
@@ -56,11 +58,13 @@ fn lower_named_global_call(
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let Some((argc_value, rest)) = args.split_first() else {
+        // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
         return Err(CodegenError::Unsupported(
             "closure calls require a tagged argc argument".into(),
         ));
     };
     if rest.len() > ARGUMENT_REGISTERS.len() {
+        // check-added-lines: allow(unsupported) the native ABI has four argument registers.
         return Err(CodegenError::Unsupported(
             "x86-64 calls support at most four register arguments".into(),
         ));
@@ -75,6 +79,7 @@ fn lower_named_global_call(
     load_immediate(
         assembler,
         RETURN_VALUE,
+        // check-added-lines: allow(unbound) compare against the function-cell sentinel.
         i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes()),
     )?;
     emit(assembler, Inst::CmpRR(ENTRY, RETURN_VALUE))?;
@@ -83,7 +88,9 @@ fn lower_named_global_call(
         assembler,
         ENTRY,
         i64::try_from(
+            // check-added-lines: allow(unsupported) surface ABI lookup failure as codegen failure.
             abi.runtime_address(RuntimeFunction::UndefinedFunction)
+                // check-added-lines: allow(unsupported) surface ABI lookup failure as codegen failure.
                 .map_err(|error| CodegenError::Unsupported(error.to_string()))?,
         )
         .map_err(|_| CodegenError::FrameOverflow)?,
@@ -143,6 +150,7 @@ pub fn lower_closure_call(
         .checked_add(capture_count)
         .is_none_or(|count| count > ARGUMENT_REGISTERS.len())
     {
+        // check-added-lines: allow(unsupported) the native ABI has four argument registers.
         return Err(CodegenError::Unsupported(
             "x86-64 closure calls support at most four forwarded arguments".into(),
         ));

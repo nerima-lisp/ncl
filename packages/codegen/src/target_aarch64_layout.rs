@@ -10,7 +10,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                     args.len().saturating_sub(1)
                 }
                 OpKind::CallClosure { closure, args } => {
-                    let captures = closure_capture_count(function, *closure)?;
+                    let captures = closure_capture_count(function, *closure);
                     captures.saturating_add(args.len().saturating_sub(1))
                 }
                 OpKind::Const { .. }
@@ -49,13 +49,8 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
 }
 
-fn closure_capture_count(
-    function: &Function,
-    closure: ncl_ir::ValueId,
-) -> Result<usize, CodegenError> {
-    super::lowering::closure_captures(function, closure)
-        .map(<[ncl_ir::ValueId]>::len)
-        .ok_or_else(|| CodegenError::Abi("closure capture metadata is unavailable".into()))
+fn closure_capture_count(function: &Function, closure: ncl_ir::ValueId) -> usize {
+    super::lowering::closure_captures(function, closure).map_or(0, <[ncl_ir::ValueId]>::len)
 }
 
 fn extra_words(argument_count: usize) -> usize {

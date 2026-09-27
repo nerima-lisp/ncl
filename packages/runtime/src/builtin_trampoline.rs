@@ -114,11 +114,14 @@ fn dispatch_with_context(
     let Some(count) = Word::from_bits(argc)
         .as_fixnum()
         .and_then(|value| usize::try_from(value).ok())
-        .filter(|count| *count <= usize::MAX / std::mem::size_of::<Word>())
     else {
         context.set_pending(ncl_object::ObjectError::Layout);
         return error_result();
     };
+    if count > ncl_sys::CALL_ARGUMENTS_LIMIT {
+        context.set_pending(ncl_object::ObjectError::Layout);
+        return error_result();
+    }
     let Ok(function) = FunctionObject::try_from(Word::from_bits(function_object)) else {
         context.set_pending(ncl_object::ObjectError::Unbound);
         return error_result();
@@ -130,9 +133,8 @@ fn dispatch_with_context(
         .map(Word::from_bits)
         .collect();
     if count > registers.len() {
-        let Some(rest_words) =
-            ncl_sys::copy_native_words(rest, count.saturating_sub(registers.len()))
-        else {
+        let rest_count = count - registers.len();
+        let Ok(rest_words) = ncl_sys::copy_native_words(rest, rest_count) else {
             context.set_pending(ncl_object::ObjectError::Layout);
             return error_result();
         };
@@ -172,6 +174,10 @@ extern "C" fn make_rest_list_native(
                 context.set_pending(ncl_object::ObjectError::Layout);
                 return Word::NIL.bits();
             };
+            if count > ncl_sys::CALL_ARGUMENTS_LIMIT {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            }
             let Some(_start_word) = Word::from_bits(start)
                 .as_fixnum()
                 .and_then(|value| usize::try_from(value).ok())
@@ -197,7 +203,11 @@ extern "C" fn make_rest_list_native(
                 context.set_pending(ncl_object::ObjectError::Unbound);
                 return Word::NIL.bits();
             };
-            let mut arguments = Vec::with_capacity(count.saturating_add(2));
+            let Ok(capacity) = count.checked_add(2).ok_or(ncl_object::ObjectError::Layout) else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
+            let mut arguments = Vec::with_capacity(capacity);
             arguments.push(Word::from_bits(argc));
             arguments.push(Word::from_bits(start));
             arguments.extend(
@@ -207,7 +217,7 @@ extern "C" fn make_rest_list_native(
                     .map(Word::from_bits),
             );
             if count > 4 {
-                let Some(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
+                let Ok(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
                     context.set_pending(ncl_object::ObjectError::Layout);
                     return Word::NIL.bits();
                 };

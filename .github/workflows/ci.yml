@@ -118,11 +118,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(target/release/ncl --eval '42')" = 42
-          test "$(target/release/ncl --eval '(+ 1 2)')" = 3
+          eval_literal="$(target/release/ncl --eval '42')"
+          test "$eval_literal" = 42
+          eval_add="$(target/release/ncl --eval '(+ 1 2)')"
+          test "$eval_add" = 3
           load_file="$RUNNER_TEMP/ncl-release-smoke.lisp"
           printf '43\n' > "$load_file"
-          test "$(target/release/ncl --load "$load_file")" = 43
+          loaded="$(target/release/ncl --load "$load_file")"
+          test "$loaded" = 43
       # These features are currently covered by the native pipeline tests rather
       # than the CLI, because nested functions are not publishable yet.
       - run: cargo test --locked --release -p ncl-codegen executes_recursive_fib_twenty_five -- --exact

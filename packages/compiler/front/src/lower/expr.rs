@@ -118,19 +118,6 @@ impl Context<'_> {
         operator: &Operator,
         arguments: &[Expr],
     ) -> Result<ValueId, LowerError> {
-        if arguments.len() > 4
-            && arguments.iter().any(|argument| {
-                matches!(
-                    argument,
-                    Expr::Constant(crate::literal::Literal::Symbol(symbol))
-                        if symbol.is_keyword()
-                )
-            })
-        {
-            return Err(LowerError::Ir {
-                detail: "AArch64 calls support at most four register arguments".to_owned(),
-            });
-        }
         let values = arguments
             .iter()
             .map(|argument| self.lower_expr(f, argument))

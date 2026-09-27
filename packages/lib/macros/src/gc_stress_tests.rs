@@ -185,6 +185,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DEFINE-SETF-EXPANDER", "DEFSETF", [x, y]);
     case!("DEFINE-SYMBOL-MACRO", "DEFINE-SYMBOL-MACRO", [x, one]);
     case!("DEFMACRO", "DEFMACRO", [x, nil, t]);
+    case!("DEFPACKAGE", "DEFPACKAGE", [x]);
     case!("DEFUN", "DEFUN", [x, nil, t]);
     case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
     case!("DEFSETF", "DEFSETF", [x, y]);
@@ -196,6 +197,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DOTIMES", "DOTIMES", [dotimes_spec, x]);
     case!("ECASE", "ECASE", [x, clause]);
     case!("ETYPECASE", "ETYPECASE", [x, type_clause]);
+    case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);

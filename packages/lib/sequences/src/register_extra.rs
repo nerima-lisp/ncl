@@ -225,6 +225,10 @@ pub(super) fn map_entry(
         &mut caller,
     );
     values.clear();
+    if destination == Word::NIL {
+        result?;
+        return Ok(Word::NIL);
+    }
     keep_result(&mut scope, result)
 }
 pub(super) fn predicate_entry(

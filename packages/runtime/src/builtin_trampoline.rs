@@ -33,7 +33,9 @@
 
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
-use ncl_object::{FunctionObject, Runtime as ObjectRuntime, ThreadContext, Word};
+use ncl_object::{
+    FunctionObject, Package, Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
+};
 use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
 use std::ptr::NonNull;
 
@@ -77,7 +79,7 @@ extern "C" fn dispatch(
     a1: u64,
     a2: u64,
     a3: u64,
-    _rest: u64,
+    rest: u64,
     function_object: u64,
     thread_ptr: u64,
 ) -> NativeCallResult {
@@ -93,7 +95,7 @@ extern "C" fn dispatch(
     // form clippy would otherwise prefer.
     #[allow(clippy::option_if_let_else)]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        dispatch_with_context(invocation, argc, [a0, a1, a2, a3], function_object)
+        dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
     }) {
         Some(result) => result,
         None => error_result(),
@@ -104,6 +106,7 @@ fn dispatch_with_context(
     invocation: &mut NativeInvocation<'_>,
     argc: u64,
     registers: [u64; 4],
+    rest: u64,
     function_object: u64,
 ) -> NativeCallResult {
     let context: &mut ThreadContext = invocation.context;
@@ -111,7 +114,7 @@ fn dispatch_with_context(
     let Some(count) = Word::from_bits(argc)
         .as_fixnum()
         .and_then(|value| usize::try_from(value).ok())
-        .filter(|count| *count <= registers.len())
+        .filter(|count| *count <= usize::MAX / std::mem::size_of::<Word>())
     else {
         context.set_pending(ncl_object::ObjectError::Layout);
         return error_result();
@@ -120,12 +123,21 @@ fn dispatch_with_context(
         context.set_pending(ncl_object::ObjectError::Unbound);
         return error_result();
     };
-    let call_words: Vec<Word> = registers
+    let mut call_words: Vec<Word> = registers
         .iter()
         .take(count)
         .copied()
         .map(Word::from_bits)
         .collect();
+    if count > registers.len() {
+        let Some(rest_words) =
+            ncl_sys::copy_native_words(rest, count.saturating_sub(registers.len()))
+        else {
+            context.set_pending(ncl_object::ObjectError::Layout);
+            return error_result();
+        };
+        call_words.extend(rest_words);
+    }
     match object.call_builtin(context, function, &call_words) {
         Ok(value) => ok_result(value, context.values().len()),
         Err(error) => {
@@ -133,6 +145,91 @@ fn dispatch_with_context(
             error_result()
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+extern "C" fn make_rest_list_native(
+    thread_ptr: *mut Thread,
+    a0: u64,
+    a1: u64,
+    a2: u64,
+    a3: u64,
+    rest: u64,
+    argc: u64,
+    start: u64,
+) -> u64 {
+    let Some(thread) = NonNull::new(thread_ptr) else {
+        return Word::NIL.bits();
+    };
+    let Some(result) =
+        ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+            let context = &mut *invocation.context;
+            let object = invocation.object;
+            let Some(count) = Word::from_bits(argc)
+                .as_fixnum()
+                .and_then(|value| usize::try_from(value).ok())
+            else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
+            let Some(_start_word) = Word::from_bits(start)
+                .as_fixnum()
+                .and_then(|value| usize::try_from(value).ok())
+            else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
+            let Some(package) = object.find_package(context, "NCL-EXT") else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
+            let Ok((name, _)) =
+                Package::from_word(package).intern(context, object, "MAKE-REST-LIST")
+            else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
+            let Ok(function) = symbol_function(context, name) else {
+                context.set_pending(ncl_object::ObjectError::Unbound);
+                return Word::NIL.bits();
+            };
+            let Ok(function) = FunctionObject::try_from(function) else {
+                context.set_pending(ncl_object::ObjectError::Unbound);
+                return Word::NIL.bits();
+            };
+            let mut arguments = Vec::with_capacity(count.saturating_add(2));
+            arguments.push(Word::from_bits(argc));
+            arguments.push(Word::from_bits(start));
+            arguments.extend(
+                [a0, a1, a2, a3]
+                    .into_iter()
+                    .take(count)
+                    .map(Word::from_bits),
+            );
+            if count > 4 {
+                let Some(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
+                    context.set_pending(ncl_object::ObjectError::Layout);
+                    return Word::NIL.bits();
+                };
+                arguments.extend(rest_words);
+            }
+            match object.call_builtin(context, function, &arguments) {
+                Ok(value) => value.bits(),
+                Err(error) => {
+                    context.set_pending(error);
+                    Word::NIL.bits()
+                }
+            }
+        })
+    else {
+        return Word::NIL.bits();
+    };
+    result
+}
+
+pub fn make_rest_list_address() -> Result<u64, RuntimeError> {
+    ncl_sys::function_address!(make_rest_list_native)
+        .map_err(|error| RuntimeError::Native(error.to_string()))
 }
 
 fn dispatch_address() -> Result<u64, RuntimeError> {

@@ -156,7 +156,10 @@ fn capture_multiple_values(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let values = ctx.values().to_vec();
-    list(ctx, runtime, &values)
+    ncl_object::with_roots(ctx, &values, |ctx, roots| {
+        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
+        list(ctx, runtime, &values)
+    })
 }
 
 fn multiple_value_call_list(

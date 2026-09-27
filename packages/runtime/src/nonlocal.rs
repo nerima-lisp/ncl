@@ -36,7 +36,7 @@ fn with_context(thread: NonNull<Thread>, body: impl FnOnce(&mut ThreadContext) -
         body(invocation.context)
     }) {
         Some(value) => value,
-        None => unreachable!("native context missing"), // check-added-lines: allow(panic) impossible ABI state
+        None => std::process::abort(),
     }
 }
 
@@ -60,6 +60,7 @@ pub extern "C" fn native_leave_catch(thread: NonNull<Thread>, _region: u64) -> W
     with_context(thread, |ctx| {
         if let Err(error) = ctx.leave_catch() {
             ctx.set_pending(error);
+            ctx.set_non_local_exit(true);
         }
         Word::NIL
     })

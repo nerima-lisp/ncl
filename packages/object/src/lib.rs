@@ -16,6 +16,7 @@ mod instance;
 mod keyword_builtins;
 mod layout;
 mod nonlocal;
+mod load;
 mod number;
 mod object_access;
 mod object_error;
@@ -61,6 +62,7 @@ pub use layout::{
     simple_vector_offset, specialized_array_offset, stream_offset, string_offset, structure_offset,
     symbol_flag, symbol_offset, widetag,
 };
+pub use load::LoadPort;
 pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,

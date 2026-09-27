@@ -1,8 +1,9 @@
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
-    FunctionDesignator, LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, car, cdr,
+    FunctionDesignator, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
+    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, function_name,
+    symbol_function, symbol_is_macro,
 };
 
 const FUNCTION: Parameter = Parameter {
@@ -32,6 +33,41 @@ fn call_designator(
     let mut rooted = Vec::with_capacity(arguments.len() + 1);
     rooted.push(designator);
     rooted.extend_from_slice(arguments);
+    let resolved = {
+        let designator = function_designator(ctx, designator).inspect_err(|_| {
+            ctx.set_pending_lisp_error(LispError::TypeError {
+                datum: rooted[0],
+                expected: ObjectType::Function,
+            });
+        })?;
+        match designator {
+            FunctionDesignator::Function(function) => {
+                let name = function_name(ctx, ncl_object::Function::from_word(function.as_word()))?;
+                FunctionObject::try_from(symbol_function(ctx, name)?).or(Ok(function))
+            }
+            FunctionDesignator::Symbol(symbol) => {
+                if symbol_is_macro(ctx, symbol.into())? {
+                    return Err(ObjectError::UndefinedFunction);
+                }
+                FunctionObject::try_from(symbol_function(ctx, symbol.into())?)
+                    .map_err(|_| ObjectError::UndefinedFunction)
+            }
+        }
+    }?;
+    if runtime.builtin_allows_nested_evaluation(resolved) {
+        return runtime
+            .call_builtin(ctx, resolved, arguments)
+            .map_err(|error| {
+                if matches!(error, ObjectError::Unbound | ObjectError::UndefinedFunction) {
+                    ctx.set_pending_lisp_error(LispError::CellError(
+                        ncl_object::CellError::UndefinedFunction,
+                    ));
+                    ObjectError::UndefinedFunction
+                } else {
+                    error
+                }
+            });
+    }
     ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
         let designator_word = *rooted[0];
         let designator = match function_designator(ctx, designator_word) {
@@ -123,7 +159,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
             },
             funcall,
             |args| Ok(args.as_slice().to_vec()),
-        ),
+        )
+        .with_nested_evaluation(),
     )?;
     runtime.register_builtin(
         ctx,
@@ -135,7 +172,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
             },
             apply,
             |args| Ok(args.as_slice().to_vec()),
-        ),
+        )
+        .with_nested_evaluation(),
     )?;
     Ok(())
 }

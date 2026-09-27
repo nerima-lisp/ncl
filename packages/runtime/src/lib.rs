@@ -140,6 +140,8 @@ impl Runtime {
         let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
         ncl_stdlib::register_all(&mut context, &object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
+        object.set_load_port(Box::new(load::RuntimeLoadPort));
+        load::register_builtin(&mut context, &object)?;
         Ok(Self {
             object,
             context,
@@ -154,7 +156,11 @@ impl Runtime {
     /// # Errors
     /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        load::source_forms(self, source)
+        let evaluator = std::ptr::from_mut(self).cast();
+        self.context.set_evaluator_runtime(evaluator);
+        let result = load::source_forms(self, source);
+        self.context.clear_evaluator_runtime();
+        result
     }
     /// Compile and execute a source string through the native pipeline.
     ///
@@ -164,7 +170,11 @@ impl Runtime {
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn compile(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        compile::source(self, source)
+        let evaluator = std::ptr::from_mut(self).cast();
+        self.context.set_evaluator_runtime(evaluator);
+        let result = compile::source(self, source);
+        self.context.clear_evaluator_runtime();
+        result
     }
     /// Compile and execute all forms in a source file.
     ///
@@ -174,7 +184,11 @@ impl Runtime {
         &mut self,
         path: impl AsRef<std::path::Path>,
     ) -> Result<Word, RuntimeError> {
-        compile::file(self, path.as_ref())
+        let evaluator = std::ptr::from_mut(self).cast();
+        self.context.set_evaluator_runtime(evaluator);
+        let result = compile::file(self, path.as_ref());
+        self.context.clear_evaluator_runtime();
+        result
     }
     /// Load and execute all forms in a source string.
     ///
@@ -188,7 +202,11 @@ impl Runtime {
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
-        load::file(self, path.as_ref())
+        let evaluator = std::ptr::from_mut(self).cast();
+        self.context.set_evaluator_runtime(evaluator);
+        let result = load::file(self, path.as_ref());
+        self.context.clear_evaluator_runtime();
+        result
     }
     pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         self.compile_form(form)

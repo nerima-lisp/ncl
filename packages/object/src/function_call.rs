@@ -7,6 +7,48 @@ use crate::{
 };
 use ncl_sys::invoke_entry_with_function_address;
 
+impl crate::BuiltinImplementation {
+    /// `entry` starts at the `0` sentinel; registration resolves it to the shared trampoline.
+    #[must_use]
+    pub fn direct(descriptor: crate::Builtin, function: crate::RustBuiltin) -> Self {
+        Self {
+            descriptor,
+            entry: 0,
+            function,
+            keyword_adapter: None,
+            nested_evaluation: false,
+        }
+    }
+    /// Construct an adapted builtin using the shared trampoline.
+    #[must_use]
+    pub fn adapted(
+        descriptor: crate::Builtin,
+        function: crate::RustBuiltin,
+        adapter: crate::KeywordAdapter,
+    ) -> Self {
+        Self {
+            descriptor,
+            entry: 0,
+            function,
+            keyword_adapter: Some(adapter),
+            nested_evaluation: false,
+        }
+    }
+    /// Override the native entry address.
+    #[must_use]
+    pub const fn with_entry(self, entry: usize) -> Self {
+        Self { entry, ..self }
+    }
+    /// Permit a builtin to evaluate forms while it is running.
+    #[must_use]
+    pub const fn with_nested_evaluation(self) -> Self {
+        Self {
+            nested_evaluation: true,
+            ..self
+        }
+    }
+}
+
 /// A GC-safe borrowed sequence of Lisp arguments.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FunctionArguments<'a> {
@@ -179,6 +221,37 @@ impl Runtime {
     ) -> Result<Word, ObjectError> {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
+        }
+        let function_word = self
+            .heap
+            .forwarded_word(function.as_word())
+            .ok_or(ObjectError::Unbound)?;
+        let implementation = self
+            .builtins
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .find(|entry| *entry.function == function_word)
+            .map(|entry| entry.implementation)
+            .ok_or(ObjectError::Unbound)?;
+        if implementation.nested_evaluation {
+            let original = args.to_vec();
+            let callback_args = if let Some(adapter) = implementation.keyword_adapter {
+                adapter(&crate::BuiltinArgs::new(&original))?
+            } else {
+                original
+            };
+            let callback_args = crate::BuiltinArgs::new(&callback_args);
+            let result = (implementation.function)(ctx, self, &callback_args, values);
+            ctx.set_values(values.as_slice());
+            if let Some(error) = ctx.take_pending_lisp_error()
+                && let Some(converter) = self.lisp_error_converter()
+            {
+                let condition = converter(ctx, self, error)?;
+                ctx.set_pending_condition(condition);
+            }
+            let pending = ctx.take_pending();
+            return pending.map_or(result, Err);
         }
         let mut rooted_values = Vec::with_capacity(args.len() + 1);
         rooted_values.push(function.as_word());

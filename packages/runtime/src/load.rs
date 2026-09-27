@@ -3,8 +3,11 @@ use std::path::Path;
 use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
-    ObjectRef, Readtable as ObjectReadtable, Word, car, cdr, classify_object, make_cons,
-    pop_heap_root, push_heap_root, symbol_name,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, FileError, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
+    ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
+    ThreadContext, Word, car, cdr, classify_object, make_cons, pop_heap_root, push_heap_root,
+    symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -20,6 +23,157 @@ pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
     let source = String::from_utf8(bytes)
         .map_err(|_| RuntimeError::Native("source file is not valid UTF-8".to_owned()))?;
     source_forms(runtime, &source)
+}
+
+#[derive(Debug)]
+pub(crate) struct RuntimeLoadPort;
+
+impl ncl_object::LoadPort for RuntimeLoadPort {
+    fn load(
+        &self,
+        ctx: &mut ThreadContext,
+        _object: &ObjectRuntime,
+        args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let Some(pointer) = ctx.evaluator_runtime() else {
+            return Err(ObjectError::Unsupported);
+        };
+        // The pointer is installed only around an active Runtime evaluation and
+        // is cleared before that Runtime can be moved or dropped.
+        ncl_sys::with_opaque_mut(pointer, |runtime: &mut Runtime| {
+            load_with_runtime(ctx, _object, runtime, args, values)
+        })
+    }
+}
+
+fn load_with_runtime(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    runtime: &mut Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let path_word = args.required(0)?;
+    let ObjectRef::String(_) = classify_object(ctx, path_word) else {
+        ctx.set_pending_lisp_error(LispError::TypeError {
+            datum: path_word,
+            expected: ObjectType::String,
+        });
+        return Err(ObjectError::TypeError);
+    };
+    let path = ncl_compiler_front::form::word_string(ctx, path_word)
+        .map_err(|_| ObjectError::TypeError)?;
+    let mut if_missing = true;
+    for index in (1..args.len()).step_by(2) {
+        let keyword = args.get(index).ok_or(ObjectError::Layout)?;
+        let value = args.get(index + 1).ok_or(ObjectError::Layout)?;
+        let Some(name) = keyword_name(ctx, object, keyword)? else {
+            ctx.set_pending_lisp_error(LispError::ProgramError(
+                ncl_object::ProgramError::UnknownKeyword,
+            ));
+            return Err(ObjectError::TypeError);
+        };
+        match name.as_str() {
+            "VERBOSE" | "PRINT" => {}
+            "IF-DOES-NOT-EXIST" => if_missing = value != Word::NIL,
+            "EXTERNAL-FORMAT" => {
+                if keyword_name(ctx, object, value)?.as_deref() != Some("DEFAULT") {
+                    return Err(ObjectError::TypeError);
+                }
+            }
+            _ => {
+                ctx.set_pending_lisp_error(LispError::ProgramError(
+                    ncl_object::ProgramError::UnknownKeyword,
+                ));
+                return Err(ObjectError::TypeError);
+            }
+        }
+    }
+    match file(runtime, Path::new(&path)) {
+        Ok(value) => {
+            values.set(&[value]);
+            Ok(value)
+        }
+        Err(RuntimeError::Io { error, .. })
+            if error.kind() == std::io::ErrorKind::NotFound && !if_missing =>
+        {
+            values.set(&[Word::NIL]);
+            Ok(Word::NIL)
+        }
+        Err(RuntimeError::Io { error, .. }) if error.kind() == std::io::ErrorKind::NotFound => {
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
+            Err(ObjectError::TypeError)
+        }
+        Err(_) => {
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
+            Err(ObjectError::TypeError)
+        }
+    }
+}
+
+fn keyword_name(
+    ctx: &ThreadContext,
+    runtime: &ObjectRuntime,
+    word: Word,
+) -> Result<Option<String>, ObjectError> {
+    let ObjectRef::Symbol(_) = classify_object(ctx, word) else {
+        return Ok(None);
+    };
+    let Some(keyword) = runtime.find_package(ctx, "KEYWORD") else {
+        return Ok(None);
+    };
+    if symbol_package(ctx, word)? != keyword {
+        return Ok(None);
+    }
+    Ok(Some(
+        word_string(ctx, symbol_name(ctx, word)?).map_err(|_| ObjectError::TypeError)?,
+    ))
+}
+
+const LOAD_PATH: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("PATHNAME"),
+    ty: ParameterType::StringDesignator,
+}];
+const LOAD_REST: Parameter = Parameter {
+    name: BuiltinName::new("OPTIONS"),
+    ty: ParameterType::Any,
+};
+
+pub(crate) fn register_builtin(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+) -> Result<(), ObjectError> {
+    object.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("LOAD")),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_rest(LOAD_PATH, LOAD_REST),
+                convention: BuiltinConvention::Adapted,
+            },
+            load_builtin,
+            validate_load_arguments,
+        )
+        .with_nested_evaluation(),
+    )?;
+    Ok(())
+}
+
+fn load_builtin(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    object.load_port(ctx, args, values)
+}
+
+fn validate_load_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    if args.len() < 1 || args.len().is_multiple_of(2) {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(args.as_slice().to_vec())
 }
 
 pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {

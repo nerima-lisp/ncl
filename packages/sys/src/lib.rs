@@ -93,6 +93,16 @@ pub fn replace_native_context(
     // invocation ABI.
     unsafe { thread.as_ptr().as_mut()?.replace_native_context(context) }
 }
+
+/// Reborrow an opaque pointer at the boundary where it was created.
+pub fn with_opaque_mut<T, R>(
+    pointer: std::ptr::NonNull<()>,
+    callback: impl FnOnce(&mut T) -> R,
+) -> R {
+    // SAFETY: the owner installs this pointer only while the pointed-to value is live
+    // and exclusively borrowed by the active native evaluation.
+    unsafe { callback(pointer.cast::<T>().as_mut()) }
+}
 pub use word::{
     CHARACTER_MAX, CHARACTER_SHIFT, CHARACTER_TAG, FIXNUM_TAG, FIXNUM_TAG_BITS, LOWTAG_BITS,
     LOWTAG_MASK, LowTag, Word,

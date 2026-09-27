@@ -132,7 +132,8 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
             .push_op(
                 OpKind::CallClosure {
                     closure,
-                    args: vec![argc_value]
+                    args: vec![argc_value],
+                    named_symbol: None,
                 },
                 &[Ty::Word]
             )

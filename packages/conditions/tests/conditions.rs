@@ -15,9 +15,9 @@ use ncl_conditions::{
 };
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LispError, ObjectType, Package, Parameter, ParameterType, Runtime,
-    ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length, string_ref,
-    typed_builtin,
+    BuiltinPackage, FunctionObject, LispError, ObjectType, Package, Parameter, ParameterType,
+    Runtime, ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length,
+    string_ref, typed_builtin,
 };
 
 const fn fail_type_error(
@@ -263,4 +263,28 @@ fn typed_builtin_error_becomes_pending_type_condition() {
         expected_type
     );
     pop_root(&mut ctx, condition_token);
+}
+
+#[test]
+fn undefined_function_condition_preserves_name_and_accessor_returns_it() {
+    let (runtime, mut ctx) = setup();
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let (name, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "MISSING-FUNCTION")
+        .unwrap();
+    let condition = ncl_conditions::condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::CellError(ncl_object::CellError::UndefinedFunction { name }),
+    )
+    .unwrap();
+    let function = runtime
+        .function(&mut ctx, "COMMON-LISP", "CELL-ERROR-NAME")
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[condition]),
+        Ok(name)
+    );
 }

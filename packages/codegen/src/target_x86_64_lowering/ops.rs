@@ -302,13 +302,19 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
         }
-        OpKind::CallClosure { closure, args } => {
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
             lower_closure_call(
                 assembler,
                 *closure,
                 args,
                 super::closure_capture_count(function, *closure)?.unwrap_or(0),
                 slots,
+                *named_symbol,
+                abi,
             )?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {

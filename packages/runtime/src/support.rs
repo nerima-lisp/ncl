@@ -4,11 +4,11 @@ use std::ptr::NonNull;
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::MacroCaller;
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, FunctionObject, ObjectError, Package, Runtime as ObjectRuntime,
-    ThreadContext, Word, cdr, make_closure, make_cons, make_double, make_simple_vector,
-    make_string, symbol_function,
+    BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
+    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
+    make_closure, make_cons, make_double, make_simple_vector, make_string, symbol_function,
 };
-use ncl_sys::{Thread, thread_layout};
+use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
 use crate::{PublishedFunction, RuntimeError};
 
@@ -85,9 +85,11 @@ impl RuntimeAbi for NativeAbi<'_> {
     }
 }
 
-pub struct RuntimeMacroCaller;
+pub struct RuntimeMacroCaller<'a> {
+    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>,
+}
 
-impl MacroCaller for RuntimeMacroCaller {
+impl MacroCaller for RuntimeMacroCaller<'_> {
     fn call_macro(
         &mut self,
         ctx: &mut ThreadContext,
@@ -128,10 +130,75 @@ impl MacroCaller for RuntimeMacroCaller {
         } else {
             form
         };
-        runtime
-            .call_builtin(ctx, function, &[form])
-            .map_err(|error| expansion(name, &error.to_string()))
+        if runtime.builtin_descriptor(function).is_some() {
+            return runtime
+                .call_builtin(ctx, function, &[form])
+                .map_err(|error| expansion(name, &error.to_string()));
+        }
+        let arguments = {
+            let tail = cdr(ctx, form).map_err(|error| expansion(name, &error.to_string()))?;
+            ncl_compiler_front::form::list(ctx, tail)
+                .map_err(|error| expansion(name, &error.to_string()))?
+        };
+        let result = call_macro_function(ctx, runtime, function, &arguments, self.entry_codes);
+        result.map_err(|error| expansion(name, &error.to_string()))
     }
+}
+
+fn call_macro_function(
+    ctx: &mut ThreadContext,
+    runtime: &ObjectRuntime,
+    function: FunctionObject,
+    arguments: &[Word],
+    entry_codes: &BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>,
+) -> Result<Word, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, arguments, |ctx, rooted| {
+        let function_word = function.as_word();
+        let entry = function_entry(ctx, Function::from_word(function_word))?;
+        if entry == 0 {
+            return Err(ObjectError::Layout);
+        }
+        let code = function_code(ctx, Function::from_word(function_word))?;
+        let mut registers = [0_u64; 4];
+        for (register, argument) in rooted.iter().take(4).enumerate() {
+            registers[register] = argument.bits();
+        }
+        let argument_count = u64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?;
+        let rest = rooted
+            .get_mut(4..)
+            .filter(|rest| !rest.is_empty())
+            .map_or(Ok(0), |rest| {
+                u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
+            })?;
+        let thread = NonNull::from(ctx.thread_mut());
+        let mut native_context = NativeInvocation {
+            object: runtime,
+            context: ctx,
+            code,
+            entry_codes,
+        };
+        let previous =
+            replace_native_context(thread, Some(NonNull::from(&mut native_context).cast()));
+        let (result, _) = invoke_entry_with_function_address(
+            entry,
+            thread.as_ptr(),
+            function_word.bits(),
+            argument_count,
+            registers,
+            rest,
+        );
+        let restored_context = replace_native_context(thread, previous);
+        if restored_context != previous {
+            return Err(ObjectError::Layout);
+        }
+        if ctx.thread_mut().take_native_error().is_some() {
+            return Err(ObjectError::Layout);
+        }
+        if let Some(error) = ctx.take_pending() {
+            return Err(error);
+        }
+        Ok(Word::from_bits(result))
+    })
 }
 
 fn expansion(name: &ncl_compiler_front::SymbolRef, detail: &str) -> ncl_compiler_front::FrontError {

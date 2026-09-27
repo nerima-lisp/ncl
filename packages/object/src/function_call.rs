@@ -3,7 +3,7 @@
 use crate::typed::{FunctionDesignator, LispError, ProgramError};
 use crate::{
     Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
-    function_entry,
+    function_entry, symbol_is_macro,
 };
 use ncl_sys::invoke_entry_with_function_address;
 
@@ -93,6 +93,9 @@ impl FunctionCaller for BuiltinFunctionCaller {
                 FunctionDesignator::Function(_) => FunctionObject::try_from(*rooted_values[0])
                     .map_err(|_| ObjectError::UndefinedFunction)?,
                 FunctionDesignator::Symbol(_) => {
+                    if symbol_is_macro(ctx, *rooted_values[0])? {
+                        return Err(ObjectError::UndefinedFunction);
+                    }
                     let word = crate::symbol_function(ctx, *rooted_values[0])?;
                     FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
                 }

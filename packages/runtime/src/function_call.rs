@@ -4,6 +4,7 @@ use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     Function, FunctionArguments, FunctionCaller, FunctionObject, MultipleValues, ObjectError,
     Runtime as ObjectRuntime, ThreadContext, Word, function_entry, symbol_function,
+    symbol_is_macro,
 };
 use ncl_sys::invoke_entry_with_function_address;
 
@@ -96,7 +97,11 @@ fn resolve_function(
     match designator {
         FunctionDesignator::Function(function) => Ok(function),
         FunctionDesignator::Symbol(symbol) => {
-            let word = symbol_function(ctx, symbol.into())?;
+            let symbol = symbol.into();
+            if symbol_is_macro(ctx, symbol)? {
+                return Err(ObjectError::UndefinedFunction);
+            }
+            let word = symbol_function(ctx, symbol)?;
             FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)
         }
     }

@@ -6,6 +6,10 @@ use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::{Function, OpKind, Terminator, Ty};
 
+#[path = "target_aarch64_layout.rs"]
+mod layout;
+use layout::outgoing_words;
+
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
 use lowering::{
@@ -51,6 +55,20 @@ fn add_map(
                     .ok_or(CodegenError::FrameOverflow)?,
             ),
             Location::Register(register) => registers.push(*register),
+        }
+    }
+    if flags & FLAG_CALL != 0 {
+        let base = 4u32
+            .checked_add(allocation.outgoing_base)
+            .ok_or(CodegenError::FrameOverflow)?;
+        for offset in 0..frame.outgoing_words {
+            live_slots.push(
+                u16::try_from(
+                    base.checked_add(offset)
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )
+                .map_err(|_| CodegenError::FrameOverflow)?,
+            );
         }
     }
     live_slots.sort_unstable();
@@ -124,8 +142,10 @@ pub fn compile_function_aarch64(
     let Some(_entry) = function.blocks.first() else {
         return Err(CodegenError::EmptyFunction);
     };
-    let allocation = crate::allocate(function, AllocationTarget::AArch64);
-    let frame = FrameLayout::new(0, allocation.spill_words, 0)?;
+    let mut allocation = crate::allocate(function, AllocationTarget::AArch64);
+    let outgoing_words = outgoing_words(function)?;
+    allocation.outgoing_base = allocation.spill_words;
+    let frame = FrameLayout::new(0, allocation.spill_words, outgoing_words)?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks

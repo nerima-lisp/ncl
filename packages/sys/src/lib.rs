@@ -10,11 +10,15 @@ mod heap_types;
 mod invoke;
 mod native_builtins;
 mod native_error;
+mod native_words;
 pub mod os;
 mod stw;
 mod sync;
 mod thread;
 mod word;
+
+#[cfg(test)]
+mod native_word_tests;
 
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
@@ -32,6 +36,7 @@ pub use native_builtins::{
     native_add, native_car, native_cons, native_less, native_mul, native_safepoint, native_sub,
 };
 pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
+pub use native_words::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, copy_native_words};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{
     ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, SafepointState, Thread,

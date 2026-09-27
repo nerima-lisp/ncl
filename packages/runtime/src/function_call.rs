@@ -50,7 +50,8 @@ fn call_native(
     for (register, argument) in args.iter().take(4).enumerate() {
         registers[register] = argument.bits();
     }
-    let argument_count = u64::try_from(args.len()).map_err(|_| ObjectError::Layout)?;
+    let argument_count =
+        Word::fixnum(i64::try_from(args.len()).map_err(|_| ObjectError::Layout)?).bits();
     let rest = args
         .get_mut(4..)
         .filter(|rest| !rest.is_empty())
@@ -197,6 +198,18 @@ mod tests {
             .eval("(count-down 20 0)")
             .unwrap_or_else(|error| panic!("gc-stress builtin loop: {error:?}"));
         assert_eq!(runtime.format_result(value), "2");
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn make_rest_list_survives_gc_stress_and_strict_forwarding() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        runtime.context.set_gc_stress(true);
+        runtime.context.set_strict_forwarding(true);
+        let value = runtime
+            .eval("(funcall (lambda (&rest values) values) 1 2 3 4 5 6)")
+            .unwrap_or_else(|error| panic!("make-rest-list evaluation: {error:?}"));
+        assert_eq!(runtime.format_result(value), "(1 2 3 4 5 6)");
     }
 
     #[test]

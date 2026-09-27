@@ -26,19 +26,28 @@ fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeErro
     let mut input = StringSource::new(source);
     let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;
     let mut result = Word::NIL;
+    let result_token = push_heap_root(&runtime.object, &mut result);
 
     // Read one form, evaluate it, then read the next: package markers such as
     // `cl-bench:` only resolve once a preceding `defpackage`/`in-package` in
     // this same file has run, so the two steps must interleave rather than
     // reading every form up front.
-    while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
-        let package = in_package_name(&runtime.context, form)?;
-        result = eval_rooted(runtime, &mut options, form)?;
-        if let Some(package) = package {
-            options.set_current_package(package)?;
+    let loaded = (|| {
+        while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
+            let package = in_package_name(&runtime.context, form)?;
+            result = eval_rooted(runtime, &mut options, form)?;
+            if let Some(package) = package {
+                options.set_current_package(package)?;
+            }
         }
+        Ok(result)
+    })();
+    if !pop_heap_root(&runtime.object, result_token) {
+        return Err(RuntimeError::Native(
+            "load: result root stack corrupted".to_owned(),
+        ));
     }
-    Ok(result)
+    loaded
 }
 
 /// Evaluate `form`, keeping both it and the reader's readtable rooted across

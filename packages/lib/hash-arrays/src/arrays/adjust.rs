@@ -6,7 +6,7 @@ use ncl_object::{
     array_row_major_ref, array_row_major_set, make_array, pop_root, push_root,
 };
 
-use super::helpers::{array_shape, list_values};
+use super::helpers::{array_shape, dimension_values};
 use super::symbol_text;
 
 pub(super) fn adjust_array_builtin(
@@ -15,13 +15,7 @@ pub(super) fn adjust_array_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let dimensions = list_values(ctx, args.required(1)?)?
-        .into_iter()
-        .map(|value| {
-            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                .map_err(|_| ObjectError::TypeError)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let dimensions = dimension_values(ctx, args.required(1)?)?;
     let object = args.required(0)?;
     let mut initial = Word::NIL;
     let mut fill_pointer_value = None;

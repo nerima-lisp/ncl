@@ -11,7 +11,7 @@ use ncl_object::{
 };
 
 use super::{register_one, register_one_ncl, symbol_text};
-use helpers::{array_element_type_symbol, array_shape, list_values};
+use helpers::{array_element_type_symbol, array_shape, dimension_values};
 
 mod adjust;
 mod helpers;
@@ -57,30 +57,26 @@ fn make_array_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let dimensions = list_values(ctx, args.required(0)?)?
-        .into_iter()
-        .map(|value| {
-            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                .map_err(|_| ObjectError::TypeError)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let dimensions = dimension_values(ctx, args.required(0)?)?;
     let mut element_type = ArrayElementType::T;
     let mut initial_element = Word::NIL;
+    let mut initial_element_set = false;
     let mut adjustable = false;
     let mut fill_pointer = None;
     let mut displaced_to = None;
     let mut displaced_index_offset = 0;
+    // check-added-lines: allow(index)
     let options = &args.as_slice()[1..];
     if !options.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
-    for pair in options.as_chunks::<2>().0 {
-        match symbol_text(ctx, pair[0])?
+    for &[key, value] in options.as_chunks::<2>().0 {
+        match symbol_text(ctx, key)?
             .to_ascii_uppercase()
             .trim_start_matches(':')
         {
             "ELEMENT-TYPE" => {
-                element_type = match symbol_text(ctx, pair[1])?.to_ascii_uppercase().as_str() {
+                element_type = match symbol_text(ctx, value)?.to_ascii_uppercase().as_str() {
                     "T" => ArrayElementType::T,
                     "BIT" => ArrayElementType::Bit,
                     "CHARACTER" => ArrayElementType::Character,
@@ -93,22 +89,28 @@ fn make_array_builtin(
                     _ => return Err(ObjectError::TypeError),
                 }
             }
-            "INITIAL-ELEMENT" => initial_element = pair[1],
-            "ADJUSTABLE" => adjustable = pair[1] != Word::NIL,
+            "INITIAL-ELEMENT" => {
+                initial_element = value;
+                initial_element_set = true;
+            }
+            "ADJUSTABLE" => adjustable = value != Word::NIL,
             "FILL-POINTER" => {
                 fill_pointer = Some(
-                    usize::try_from(pair[1].as_fixnum().ok_or(ObjectError::TypeError)?)
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                         .map_err(|_| ObjectError::TypeError)?,
                 );
             }
-            "DISPLACED-TO" => displaced_to = (pair[1] != Word::NIL).then_some(pair[1]),
+            "DISPLACED-TO" => displaced_to = (value != Word::NIL).then_some(value),
             "DISPLACED-INDEX-OFFSET" => {
                 displaced_index_offset =
-                    usize::try_from(pair[1].as_fixnum().ok_or(ObjectError::TypeError)?)
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                         .map_err(|_| ObjectError::TypeError)?;
             }
             _ => return Err(ObjectError::TypeError),
         }
+    }
+    if element_type == ArrayElementType::Bit && !initial_element_set {
+        initial_element = Word::fixnum(0);
     }
     make_array(
         ctx,
@@ -176,7 +178,6 @@ fn simple_vector_p_builtin(
         },
     )
 }
-
 fn adjustable_array_p_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -189,7 +190,6 @@ fn adjustable_array_p_builtin(
     };
     Ok(if result { truth() } else { nil() })
 }
-
 fn array_has_fill_pointer_p_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -202,7 +202,6 @@ fn array_has_fill_pointer_p_builtin(
     };
     Ok(if result { truth() } else { nil() })
 }
-
 fn fill_pointer_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -215,14 +214,13 @@ fn fill_pointer_builtin(
         ))
     })
 }
-
 fn vector_push_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(vector_push(ctx, args.required(0)?, args.required(1)?)?
+    Ok(vector_push(ctx, args.required(1)?, args.required(0)?)?
         .and_then(|index| i64::try_from(index).ok().map(Word::fixnum))
         .unwrap_or(Word::NIL))
 }
@@ -239,8 +237,8 @@ fn vector_push_extend_builtin(
     let (index, adjusted) = vector_push_extend(
         ctx,
         runtime,
-        args.required(0)?,
         args.required(1)?,
+        args.required(0)?,
         extension,
     )?;
     values.set(&[
@@ -332,6 +330,7 @@ fn array_in_bounds_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let shape = array_shape(ctx, args.required(0)?)?;
+    // check-added-lines: allow(index)
     let indices = &args.as_slice()[1..];
     Ok(
         if shape.len() == indices.len()
@@ -384,6 +383,7 @@ fn aref_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
+    // check-added-lines: allow(index)
     let offset = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
     array_row_major_ref(ctx, array, offset)
 }
@@ -455,6 +455,7 @@ fn array_row_major_index_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let shape = array_shape(ctx, args.required(0)?)?;
+    // check-added-lines: allow(index)
     let indices = &args.as_slice()[1..];
     let offset = row_major_index(&shape, indices)?;
     Ok(Word::fixnum(

@@ -167,9 +167,9 @@ fn lowers_multiple_value_forms_through_the_adapter() {
     assert!(
         any_op(&lowered.entry, |kind| matches!(
             kind,
-            OpKind::CallIndirect { args, .. } if args.len() == 3
+            OpKind::CallClosure { args, .. } if args.len() == 4
         )),
-        "multiple-value-call uses the existing indirect-call ABI"
+        "multiple-value-call uses the list adapter closure ABI"
     );
     assert!(
         !any_op(&lowered.entry, |kind| matches!(

@@ -200,6 +200,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
+    case!("MULTIPLE-VALUE-BIND", "MULTIPLE-VALUE-BIND", [destructuring_lambda_list, x, x]);
+    case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
     case!("OR", "OR", [x, y]);
     case!("POP", "POP", [x]);

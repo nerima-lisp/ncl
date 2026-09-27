@@ -379,6 +379,7 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
     Ok(call_pc)
 }
 
+#[allow(clippy::similar_names)]
 fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,
@@ -390,6 +391,30 @@ fn lower_builtin(
         return Err(CodegenError::Unsupported(
             "x86-64 builtins support at most four arguments".into(),
         ));
+    }
+    if name == "make-rest-list" {
+        let [argc_value, start_value] = args else {
+            return Err(CodegenError::Unsupported(
+                "make-rest-list requires argc and start".into(),
+            ));
+        };
+        emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+        load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
+        load_slot(assembler, slots, *start_value, ENTRY)?;
+        emit(
+            assembler,
+            Inst::MovMR(Mem::base(Reg::Rsp, 0), FUNCTION_OBJECT),
+        )?;
+        emit(assembler, Inst::MovMR(Mem::base(Reg::Rsp, 8), ENTRY))?;
+        load_immediate(
+            assembler,
+            RETURN_VALUE,
+            abi.builtin_address(common_lisp_builtin(name))
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?
+                .cast_signed(),
+        )?;
+        emit(assembler, Inst::CallReg(RETURN_VALUE))?;
+        return Ok(());
     }
     let address = abi
         .builtin_address(common_lisp_builtin(name))

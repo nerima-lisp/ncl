@@ -375,3 +375,34 @@ fn mismatched_inner_catch_does_not_leave_a_stale_outer_frame() {
         "{result:?}"
     );
 }
+
+#[test]
+fn evals_variadic_calls_and_multiple_values() {
+    for (source, expected) in [
+        ("(list 1 2 3 4 5 6 7 8)", "(1 2 3 4 5 6 7 8)"),
+        (
+            "(progn (defun fun6 (a b c d e z) (list a b c d e z)) (fun6 1 2 3 4 5 6))",
+            "(1 2 3 4 5 6)",
+        ),
+        (
+            "(funcall (lambda (&rest r) r) 1 2 3 4 5 6)",
+            "(1 2 3 4 5 6)",
+        ),
+        ("(apply #'+ 1 2 3 4 5 '(6 7))", "28"),
+        ("(multiple-value-list (floor 7 2))", "(3 1)"),
+        ("(nth-value 1 (floor 7 2))", "1"),
+        ("(multiple-value-bind (q r) (floor 7 2) (+ q r))", "4"),
+        (
+            "(progn (defun two () (values 1 2)) (multiple-value-list (two)))",
+            "(1 2)",
+        ),
+        (
+            "(multiple-value-call #'list (values 1 2) (values 3 4))",
+            "(1 2 3 4)",
+        ),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+}

@@ -6,6 +6,47 @@ use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
 
+fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
+    let mut maximum = 0_usize;
+    for block in &function.blocks {
+        for op in &block.ops {
+            let count = match &op.kind {
+                OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
+                    args.len().saturating_sub(1)
+                }
+                OpKind::CallClosure { closure, args } => {
+                    let captures = function
+                        .blocks
+                        .iter()
+                        .flat_map(|candidate| &candidate.ops)
+                        .find_map(|candidate| {
+                            candidate
+                                .results
+                                .iter()
+                                .any(|(value, _)| value == closure)
+                                .then_some(match &candidate.kind {
+                                    OpKind::MakeClosure { captures, .. } => captures.len(),
+                                    _ => 0,
+                                })
+                        })
+                        .unwrap_or(0);
+                    captures.saturating_add(args.len().saturating_sub(1))
+                }
+                _ => 0,
+            };
+            maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+        }
+        let count = match &block.terminator {
+            Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
+                args.len().saturating_sub(1)
+            }
+            _ => 0,
+        };
+        maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+    }
+    u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
+}
+
 #[path = "target_x86_64_lowering.rs"]
 mod lowering;
 use lowering::{
@@ -114,13 +155,18 @@ pub fn compile_function_x86_64(
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
     let allocation = allocate(function, AllocationTarget::X86_64);
     let spill_words = allocation.spill_words;
-    let (value_slots, local_words) = slots(function, argument_words, allocation);
+    let (mut value_slots, local_words) = slots(function, argument_words, allocation, 0);
+    let outgoing_words = outgoing_words(function)?;
+    value_slots.outgoing_base = argument_words
+        .checked_add(local_words)
+        .and_then(|words| words.checked_add(spill_words))
+        .ok_or(CodegenError::FrameOverflow)?;
     let frame = FrameLayout::new(
         argument_words,
         local_words
             .checked_add(spill_words)
             .ok_or(CodegenError::FrameOverflow)?,
-        0,
+        outgoing_words,
     )?;
     let mut assembler = Assembler::new();
     let labels = function

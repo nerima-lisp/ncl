@@ -47,6 +47,7 @@ pub struct RootedWord {
 #[derive(Debug)]
 pub struct PendingExit {
     region: u64,
+    frame_depth: usize,
     values: Vec<RootedWord>,
 }
 
@@ -160,16 +161,28 @@ impl ThreadContext {
             .then(|| self.thread.multiple_values().first().copied())
             .flatten();
         let mut handled = pending_tag.is_none();
-        let mut result = if pending_tag.is_some() {
-            self.discard_pending_unwind()
-        } else {
-            Ok(())
-        };
+        let mut result = Ok(());
         if let Some(frame) = self.frames.pop() {
             self.thread.pop_control_depth(frame.kind());
             if let DynamicFrame::Catch { tag } = frame {
                 handled = pending_tag.is_none() || pending_tag == Some(tag.get());
+                let discard_before_tag = pending_tag.is_some()
+                    && self.pending_unwind.last().is_some_and(|saved| {
+                        self.frames.len() < saved.frame_depth
+                    });
+                if discard_before_tag
+                    && let Err(error) = self.discard_pending_unwind()
+                {
+                    result = Err(error);
+                }
                 if let Err(error) = tag.release(self) {
+                    result = Err(error);
+                }
+                if pending_tag.is_some()
+                    && !discard_before_tag
+                    && !handled
+                    && let Err(error) = self.discard_pending_unwind()
+                {
                     result = Err(error);
                 }
             }
@@ -218,7 +231,11 @@ impl ThreadContext {
                     };
                     values.push(RootedWord::new(self, value));
                 }
-                self.pending_unwind.push(PendingExit { region, values });
+                self.pending_unwind.push(PendingExit {
+                    region,
+                    frame_depth: self.frames.len(),
+                    values,
+                });
                 self.thread.set_pending(false);
             }
             return Ok(());
@@ -232,6 +249,7 @@ impl ThreadContext {
         let PendingExit {
             region: saved_region,
             values,
+            ..
         } = saved;
         debug_assert_eq!(saved_region, region);
         if !self.thread.pending() {
@@ -299,17 +317,28 @@ impl ThreadContext {
     /// Returns an object error if a bound symbol's value cell can no longer
     /// be written.
     pub fn leave_progv(&mut self) -> Result<(), ObjectError> {
-        let mut result = if self.thread.pending() {
-            self.discard_pending_unwind()
-        } else {
-            Ok(())
-        };
+        let mut result = Ok(());
         let Some(frame) = self.frames.pop() else {
             return result;
         };
         self.thread.pop_control_depth(frame.kind());
+        let discard_before_bindings = self.thread.pending()
+            && self.pending_unwind.last().is_some_and(|saved| {
+                self.frames.len() < saved.frame_depth
+            });
+        if discard_before_bindings
+            && let Err(error) = self.discard_pending_unwind()
+        {
+            result = Err(error);
+        }
         if let DynamicFrame::Progv { bindings } = frame
             && let Err(error) = restore_progv_bindings(self, bindings)
+        {
+            result = Err(error);
+        }
+        if self.thread.pending()
+            && !discard_before_bindings
+            && let Err(error) = self.discard_pending_unwind()
         {
             result = Err(error);
         }

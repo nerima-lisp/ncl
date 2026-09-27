@@ -3,7 +3,8 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, symbol_name,
+    BuiltinArgs, Handle, HandleVec, Local, MultipleValues, ObjectError, Runtime, Scope,
+    ThreadContext, Word, symbol_name,
 };
 
 mod multiple_value_bind;
@@ -235,21 +236,51 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     )
     .map_err(|_| ObjectError::TypeError)?;
     let form_value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
-    let mut lambda_list = Vec::with_capacity(index + 4);
-    lambda_list.push(symbol(ctx, runtime, "&OPTIONAL")?);
-    let mut selected = Word::NIL;
+    let mut scope = Scope::new(ctx);
+    let form_value: Handle<'_, Word> = scope.root(Local::from_word(form_value));
+    let optional = symbol(scope.context_mut(), runtime, "&OPTIONAL")?;
+    let optional: Handle<'_, Word> = scope.root(Local::from_word(optional));
+    let mut lambda_list: HandleVec<'_, Word> = scope.root_many(&[]);
+    let optional_word = scope.get(optional).as_word();
+    lambda_list.push(&mut scope, Local::from_word(optional_word));
+    let mut selected = None;
     for position in 0..=index {
-        let variable = fresh_symbol(ctx, runtime)?;
+        let variable = fresh_symbol(scope.context_mut(), runtime)?;
+        let variable: Handle<'_, Word> = scope.root(Local::from_word(variable));
         if position == index {
-            selected = variable;
+            selected = Some(variable);
         }
-        lambda_list.push(variable);
+        let variable_word = scope.get(variable).as_word();
+        lambda_list.push(&mut scope, Local::from_word(variable_word));
     }
-    lambda_list.push(symbol(ctx, runtime, "&REST")?);
-    lambda_list.push(fresh_symbol(ctx, runtime)?);
-    let lambda_list = list(ctx, runtime, &lambda_list)?;
-    let lambda = form(ctx, runtime, "LAMBDA", &[lambda_list, selected])?;
-    form(ctx, runtime, "MULTIPLE-VALUE-CALL", &[lambda, form_value])
+    let rest = symbol(scope.context_mut(), runtime, "&REST")?;
+    let rest: Handle<'_, Word> = scope.root(Local::from_word(rest));
+    let rest_word = scope.get(rest).as_word();
+    lambda_list.push(&mut scope, Local::from_word(rest_word));
+    let rest_variable = fresh_symbol(scope.context_mut(), runtime)?;
+    let rest_variable: Handle<'_, Word> = scope.root(Local::from_word(rest_variable));
+    let rest_variable_word = scope.get(rest_variable).as_word();
+    lambda_list.push(&mut scope, Local::from_word(rest_variable_word));
+    let lambda_words = scope
+        .get_many(&lambda_list)
+        .into_iter()
+        .map(Local::as_word)
+        .collect::<Vec<_>>();
+    let lambda_list = list(scope.context_mut(), runtime, &lambda_words)?;
+    let lambda_list: Handle<'_, Word> = scope.root(Local::from_word(lambda_list));
+    let selected = selected.ok_or(ObjectError::TypeError)?;
+    let lambda_args = [
+        scope.get(lambda_list).as_word(),
+        scope.get(selected).as_word(),
+    ];
+    let lambda = form(scope.context_mut(), runtime, "LAMBDA", &lambda_args)?;
+    let call_args = [lambda, scope.get(form_value).as_word()];
+    form(
+        scope.context_mut(),
+        runtime,
+        "MULTIPLE-VALUE-CALL",
+        &call_args,
+    )
 }
 
 fn do_macro(

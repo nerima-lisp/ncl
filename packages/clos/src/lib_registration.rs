@@ -33,7 +33,7 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 10] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 13] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
@@ -43,6 +43,9 @@ const DIRECT_BUILTINS: [DirectBuiltin; 10] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DEFINE-GENERIC"), arity: BuiltinArity::One, callback: clos_define_generic_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ADD-METHOD"), arity: BuiltinArity::Three, callback: clos_add_method_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DISPATCH"), arity: BuiltinArity::Two, callback: clos_dispatch_builtin },
     DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
 ];
 
@@ -72,6 +75,19 @@ fn builtin_manifest() -> Vec<Registration> {
         lambda_list: LambdaList::with_rest(&[MACRO_FORM], MACRO_ENV),
         convention: ncl_object::BuiltinConvention::Adapted,
     };
+    let call_next_builtin = Builtin {
+        lambda_list: LambdaList::with_rest(&[], MACRO_ENV),
+        convention: ncl_object::BuiltinConvention::Adapted,
+    };
+    registrations.push(Registration {
+        identifier: BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("CALL-NEXT-METHOD"),
+        ),
+        implementation: BuiltinImplementation::adapted(call_next_builtin, clos_call_next_method_builtin, |args| {
+            Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
+        }),
+    });
     let macro_registration = |name, callback| Registration {
         identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
         implementation: BuiltinImplementation::adapted(macro_builtin, callback, |args| {

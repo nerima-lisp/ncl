@@ -1,5 +1,6 @@
 #[derive(Clone, Copy)]
 enum BuiltinArity {
+    Zero,
     One,
     Two,
     Three,
@@ -7,6 +8,10 @@ enum BuiltinArity {
 
 const fn descriptor(arity: BuiltinArity) -> Builtin {
     match arity {
+        BuiltinArity::Zero => Builtin {
+            lambda_list: LambdaList::fixed(ARGS_0),
+            convention: ncl_object::BuiltinConvention::Direct(Arity::exact(0)),
+        },
         BuiltinArity::One => Builtin {
             lambda_list: LambdaList::fixed(ARGS_1),
             convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),

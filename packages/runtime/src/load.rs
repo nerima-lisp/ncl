@@ -26,13 +26,13 @@ pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
 }
 
 #[derive(Debug)]
-pub(crate) struct RuntimeLoadPort;
+pub struct RuntimeLoadPort;
 
 impl ncl_object::LoadPort for RuntimeLoadPort {
     fn load(
         &self,
         ctx: &mut ThreadContext,
-        _object: &ObjectRuntime,
+        object: &ObjectRuntime,
         args: &BuiltinArgs<'_>,
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
@@ -42,7 +42,7 @@ impl ncl_object::LoadPort for RuntimeLoadPort {
         // The pointer is installed only around an active Runtime evaluation and
         // is cleared before that Runtime can be moved or dropped.
         ncl_sys::with_opaque_mut(pointer, |runtime: &mut Runtime| {
-            load_with_runtime(ctx, _object, runtime, args, values)
+            load_with_runtime(ctx, object, runtime, args, values)
         })
     }
 }
@@ -140,7 +140,7 @@ const LOAD_REST: Parameter = Parameter {
     ty: ParameterType::Any,
 };
 
-pub(crate) fn register_builtin(
+pub fn register_builtin(
     ctx: &mut ThreadContext,
     object: &ObjectRuntime,
 ) -> Result<(), ObjectError> {
@@ -170,7 +170,7 @@ fn load_builtin(
 }
 
 fn validate_load_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    if args.len() < 1 || args.len().is_multiple_of(2) {
+    if args.is_empty() || args.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
     Ok(args.as_slice().to_vec())

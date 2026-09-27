@@ -9,8 +9,8 @@ mod symbol_registration;
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, car, cdr, make_string, make_symbol,
+    BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef, Package,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, make_string, make_symbol,
     set_symbol_special, set_symbol_value, symbol_function, symbol_name, symbol_package,
     symbol_plist, symbol_value,
 };
@@ -83,9 +83,12 @@ fn fboundp(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(predicates::bool_word(
-        symbol_function(ctx, symbol_arg(ctx, args)?)? != Word::UNBOUND,
-    ))
+    let function = symbol_function(ctx, symbol_arg(ctx, args)?)?;
+    let bound = FunctionObject::try_from(function)
+        .ok()
+        .and_then(|function| ncl_object::is_undefined_function(ctx, function.as_word()).ok())
+        == Some(false);
+    Ok(predicates::bool_word(bound))
 }
 
 fn copy_symbol(

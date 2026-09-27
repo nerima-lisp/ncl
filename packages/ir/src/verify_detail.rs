@@ -99,8 +99,15 @@ pub(super) fn check_op(
             require_word_args(captures, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }
-        OpKind::CallClosure { closure, args } => {
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
             require_type(use_one(*closure, errors), Ty::Word, block.id, errors);
+            if let Some(symbol) = named_symbol {
+                require_type(use_one(*symbol, errors), Ty::Word, block.id, errors);
+            }
             require_word_args(args, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }

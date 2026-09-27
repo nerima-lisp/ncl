@@ -115,6 +115,7 @@ impl From<ncl_compiler_front::LowerError> for RuntimeError {
 pub struct Runtime {
     context: ThreadContext,
     code: Vec<CodePtr>,
+    undefined_function_stub: usize,
     functions: BTreeMap<u32, PublishedFunction>,
     /// Published entry addresses retain their own rooted `CODE` objects.
     entry_codes: BTreeMap<usize, (Box<Word>, RootToken)>, // check-added-lines: allow(word-table) every code Word has its own root token
@@ -137,7 +138,9 @@ impl Runtime {
         // Every builtin that `ncl_stdlib::register_all` is about to register
         // needs a real native `ENTRY` the moment it is created, so the
         // trampoline must be published and installed first.
-        let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
+        let (builtin_trampoline, undefined_function_stub) =
+            builtin_trampoline::install(&object, &mut context)?;
+        let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
@@ -145,7 +148,8 @@ impl Runtime {
         Ok(Self {
             object,
             context,
-            code: vec![builtin_trampoline],
+            code: vec![builtin_trampoline, undefined_function_stub],
+            undefined_function_stub: undefined_function_stub_address,
             functions: BTreeMap::new(),
             entry_codes: BTreeMap::new(),
             rooted_functions: Vec::new(),
@@ -263,6 +267,7 @@ impl Runtime {
         let abi = NativeAbi {
             object: &self.object,
             functions: &self.functions,
+            undefined_function_stub: self.undefined_function_stub,
         };
         let compiled = if cfg!(target_arch = "aarch64") {
             ncl_codegen::compile_function_aarch64(function, &abi)
@@ -414,6 +419,12 @@ impl Runtime {
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));
+        }
+        if let Some(error) = context.take_pending_lisp_error()
+            && let Some(converter) = self.object.lisp_error_converter()
+        {
+            let condition = converter(context, &self.object, error)?;
+            context.set_pending_condition(condition);
         }
         if let Some(error) = context.take_pending() {
             return Err(error.into());

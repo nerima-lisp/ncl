@@ -119,7 +119,7 @@ pub enum ControlError {
 #[non_exhaustive]
 pub enum CellError {
     UnboundVariable,
-    UndefinedFunction,
+    UndefinedFunction { name: Word },
     UnboundSlot,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

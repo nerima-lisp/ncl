@@ -130,6 +130,7 @@ impl Context<'_> {
                 OpKind::CallClosure {
                     closure: callee,
                     args: call_args,
+                    named_symbol: None,
                 },
                 Ty::Word,
             );
@@ -153,10 +154,10 @@ impl Context<'_> {
                 Ty::Word,
             );
         }
-        let (callee, closure) = match operator {
+        let (callee, closure, named_symbol) = match operator {
             Operator::Name(name) => {
                 if let Some(entry) = f.env().lookup_function(name) {
-                    (entry.callee, true)
+                    (entry.callee, true, None)
                 } else {
                     let symbol = f.symbol(name)?;
                     let function = f.one(
@@ -170,10 +171,10 @@ impl Context<'_> {
                         },
                         Ty::Word,
                     )?;
-                    (function, true)
+                    (function, true, Some(symbol))
                 }
             }
-            Operator::Lambda(lambda) => (self.lower_lambda_value(f, lambda)?, true),
+            Operator::Lambda(lambda) => (self.lower_lambda_value(f, lambda)?, true, None),
         };
         let argc_value = Self::argc(f, values.len())?;
         let mut args = vec![argc_value];
@@ -184,6 +185,7 @@ impl Context<'_> {
                 OpKind::CallClosure {
                     closure: callee,
                     args,
+                    named_symbol,
                 },
                 Ty::Word,
             )

@@ -372,6 +372,7 @@ impl Context<'_> {
             }
         }
         if !f.is_terminated() {
+            self.leave(f, region_id)?;
             let cleanup_value = f.nil()?;
             f.terminate(Terminator::Return {
                 values: vec![cleanup_value],

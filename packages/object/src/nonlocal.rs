@@ -44,6 +44,11 @@ pub struct RootedWord {
     token: RootToken,
 }
 
+#[derive(Debug)]
+pub(crate) struct PendingExit {
+    values: Vec<RootedWord>,
+}
+
 impl RootedWord {
     fn new(ctx: &mut ThreadContext, value: Word) -> Self {
         let slot = Box::new(Cell::new(value));
@@ -170,10 +175,45 @@ impl ThreadContext {
     /// propagating (see the module-level README note on the known gap this
     /// implies for cleanup forms that themselves call further code covered
     /// by an enclosing `catch`).
-    pub fn leave_unwind_protect(&mut self) {
-        if let Some(frame) = self.frames.pop() {
+    pub fn leave_unwind_protect(&mut self) -> Result<(), ObjectError> {
+        if matches!(self.frames.last(), Some(DynamicFrame::UnwindProtect)) {
+            let Some(frame) = self.frames.pop() else {
+                return Ok(());
+            };
             self.thread.pop_control_depth(frame.kind());
+            if self.thread.pending() {
+                let values: Vec<Word> = self
+                    .thread
+                    .multiple_values()
+                    .iter()
+                    .take(self.thread.mv_count())
+                    .copied()
+                    .collect();
+                let values = values
+                    .into_iter()
+                    .map(|value| RootedWord::new(self, value))
+                    .collect();
+                self.pending_unwind.push(PendingExit { values });
+                self.thread.set_pending(false);
+            }
+            return Ok(());
         }
+        let Some(saved) = self.pending_unwind.pop() else {
+            return Ok(());
+        };
+        let PendingExit { values } = saved;
+        if !self.thread.pending() {
+            let restored = values.iter().map(RootedWord::get).collect::<Vec<_>>();
+            self.thread.set_multiple_value_area(&restored);
+            self.thread.set_pending(true);
+        }
+        let mut result = Ok(());
+        for value in values.into_iter().rev() {
+            if let Err(error) = value.release(self) {
+                result = Err(error);
+            }
+        }
+        result
     }
 
     /// Establish a `progv` frame, dynamically rebinding each symbol in the
@@ -330,7 +370,8 @@ mod tests {
         // Leaving unwind-protect on the pass-through path pops its frame but
         // does not touch `pending`, since the cleanup forms run next and the
         // exit is still propagating outward to the enclosing catch.
-        ctx.leave_unwind_protect();
+        ctx.leave_unwind_protect().expect("save pending exit");
+        ctx.leave_unwind_protect().expect("restore pending exit");
         assert!(ctx.thread.pending());
         assert_eq!(ctx.thread.multiple_values()[0], tag);
         assert_eq!(ctx.thread.multiple_values()[1], Word::fixnum(5));
@@ -383,9 +424,9 @@ mod tests {
         let forwarded = ctx.thread.multiple_values()[1];
         assert_eq!(crate::car(&ctx, forwarded), Ok(Word::fixnum(7)));
 
-        ctx.leave_unwind_protect();
-        ctx.leave_unwind_protect();
-        ctx.leave_unwind_protect();
+        ctx.leave_unwind_protect().expect("save pending exit");
+        ctx.leave_unwind_protect().expect("restore pending exit");
+        ctx.leave_unwind_protect().expect("no pending exit");
         let _ = ctx.leave_catch();
         assert!(!ctx.thread.pending());
     }

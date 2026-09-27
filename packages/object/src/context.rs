@@ -27,6 +27,7 @@ pub struct ThreadContext {
     /// Active `catch`/`unwind-protect`/`progv` dynamic-extent frames,
     /// innermost last. See [`crate::nonlocal`].
     pub(crate) frames: Vec<crate::nonlocal::DynamicFrame>,
+    pub(crate) pending_unwind: Vec<crate::nonlocal::PendingExit>,
     evaluator_runtime: Option<std::ptr::NonNull<()>>,
 }
 impl ThreadContext {
@@ -49,6 +50,7 @@ impl ThreadContext {
             condition_handler_invoker: None,
             gc_stress: false,
             frames: Vec::new(),
+            pending_unwind: Vec::new(),
             evaluator_runtime: None,
         }
     }

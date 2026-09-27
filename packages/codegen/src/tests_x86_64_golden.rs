@@ -120,7 +120,7 @@ fn golden_x86_64_prologue_spills_register_arguments() {
         return;
     };
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0; mov [rbp+24], r11;
-    // sub rsp, 32; mov [rbp-8], rsi; mov [rbp-16], rdx
+    // sub rsp, 64; mov [rbp-8], rsi; mov [rbp-16], rdx
     assert_eq!(compiled.code[0], 0x55);
     assert_eq!(compiled.code[1..4], [0x48, 0x89, 0xE5]);
     assert_eq!(compiled.code[4..8], [0x4C, 0x89, 0x55, 0x10]);
@@ -129,7 +129,7 @@ fn golden_x86_64_prologue_spills_register_arguments() {
         [0x49, 0xC7, 0xC3, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(compiled.code[15..19], [0x4C, 0x89, 0x5D, 0x18]);
-    assert_eq!(compiled.code[19..23], [0x48, 0x83, 0xEC, 0x20]);
+    assert_eq!(compiled.code[19..23], [0x48, 0x83, 0xEC, 0x40]);
     assert_eq!(compiled.code[23..27], [0x48, 0x89, 0x75, 0xF8]);
     assert_eq!(compiled.code[27..31], [0x48, 0x89, 0x55, 0xF0]);
 }

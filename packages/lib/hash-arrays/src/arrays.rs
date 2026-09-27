@@ -57,15 +57,19 @@ fn make_array_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let dimensions = list_values(ctx, args.required(0)?)?
-        .into_iter()
-        .map(|value| {
-            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                .map_err(|_| ObjectError::TypeError)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let dimensions = match args.required(0)? {
+        dimension if dimension.as_fixnum().is_some() => vec![dimension],
+        dimensions => list_values(ctx, dimensions)?,
+    }
+    .into_iter()
+    .map(|value| {
+        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+            .map_err(|_| ObjectError::TypeError)
+    })
+    .collect::<Result<Vec<_>, _>>()?;
     let mut element_type = ArrayElementType::T;
     let mut initial_element = Word::NIL;
+    let mut initial_element_set = false;
     let mut adjustable = false;
     let mut fill_pointer = None;
     let mut displaced_to = None;
@@ -93,7 +97,10 @@ fn make_array_builtin(
                     _ => return Err(ObjectError::TypeError),
                 }
             }
-            "INITIAL-ELEMENT" => initial_element = pair[1],
+            "INITIAL-ELEMENT" => {
+                initial_element = pair[1];
+                initial_element_set = true;
+            }
             "ADJUSTABLE" => adjustable = pair[1] != Word::NIL,
             "FILL-POINTER" => {
                 fill_pointer = Some(
@@ -109,6 +116,9 @@ fn make_array_builtin(
             }
             _ => return Err(ObjectError::TypeError),
         }
+    }
+    if element_type == ArrayElementType::Bit && !initial_element_set {
+        initial_element = Word::fixnum(0);
     }
     make_array(
         ctx,
@@ -222,7 +232,7 @@ fn vector_push_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(vector_push(ctx, args.required(0)?, args.required(1)?)?
+    Ok(vector_push(ctx, args.required(1)?, args.required(0)?)?
         .and_then(|index| i64::try_from(index).ok().map(Word::fixnum))
         .unwrap_or(Word::NIL))
 }
@@ -239,8 +249,8 @@ fn vector_push_extend_builtin(
     let (index, adjusted) = vector_push_extend(
         ctx,
         runtime,
-        args.required(0)?,
         args.required(1)?,
+        args.required(0)?,
         extension,
     )?;
     values.set(&[

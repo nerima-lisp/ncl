@@ -294,3 +294,16 @@ fn throw_to_a_mismatched_tag_reports_a_control_error() {
         "{result:?}"
     );
 }
+
+#[test]
+fn mismatched_inner_catch_does_not_leave_a_stale_outer_frame() {
+    let result = output(ncl().args([
+        "--eval",
+        "(catch 'final (progn (catch 'outer (catch 'inner (throw 'outer 5))) (throw 'outer 7)))",
+    ]));
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("ControlError"),
+        "{result:?}"
+    );
+}

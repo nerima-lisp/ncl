@@ -13,7 +13,7 @@ use ncl_asm_aarch64::{Assembler, Cond, Inst, Label, MemOperand, Reg, RegOrSp, Sh
 use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
 
 use super::{context_mem, emit, load_value, store_value};
-use crate::{Allocation, CodegenError, ContextField, RuntimeAbi};
+use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 
 fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
     let base = abi
@@ -215,6 +215,15 @@ fn try_dispatch_candidates(
                 assembler
                     .bind(mismatch)
                     .map_err(|error| CodegenError::Encode(error.to_string()))?;
+                super::lower_runtime_builtin(
+                    assembler,
+                    RuntimeFunction::LeaveCatch,
+                    &[u64::from(region.id.0)],
+                    &[],
+                    allocation,
+                    abi,
+                )?;
+                emit(assembler, Inst::Blr { rn: Reg(17) })?;
             }
             HandlerKind::UnwindProtect | HandlerKind::Progv => {
                 emit(assembler, Inst::B { label: target })?;

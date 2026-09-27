@@ -42,13 +42,11 @@ impl RuntimeAbi for NativeAbi<'_> {
             ncl_codegen::ContextField::TlabLimit => layout.tlab_limit,
             ncl_codegen::ContextField::SafepointRequest => layout.safepoint_request,
             ncl_codegen::ContextField::MultipleValueArea => layout.mv,
-            ncl_codegen::ContextField::Pending
-            | ncl_codegen::ContextField::MultipleValueCount
-            | ncl_codegen::ContextField::Handler
-            | ncl_codegen::ContextField::Cleanup
-            | ncl_codegen::ContextField::Catch => {
-                return Err(AbiError::UnsupportedContextField(field));
-            }
+            ncl_codegen::ContextField::Pending => layout.pending,
+            ncl_codegen::ContextField::MultipleValueCount => layout.mv_count,
+            ncl_codegen::ContextField::Handler => layout.handler,
+            ncl_codegen::ContextField::Cleanup => layout.cleanup,
+            ncl_codegen::ContextField::Catch => layout.catch,
         };
         i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
@@ -61,16 +59,40 @@ impl RuntimeAbi for NativeAbi<'_> {
             RuntimeFunction::MakeClosure => ncl_sys::function_address!(native_make_closure)
                 .map_err(|error| RuntimeError::Native(error.to_string()))
                 .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::EnterCatch => {
+                ncl_sys::function_address!(crate::nonlocal::native_enter_catch)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
+            RuntimeFunction::LeaveCatch => {
+                ncl_sys::function_address!(crate::nonlocal::native_leave_catch)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
+            RuntimeFunction::EnterUnwindProtect => {
+                ncl_sys::function_address!(crate::nonlocal::native_enter_unwind_protect)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
+            RuntimeFunction::LeaveUnwindProtect => {
+                ncl_sys::function_address!(crate::nonlocal::native_leave_unwind_protect)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
+            RuntimeFunction::EnterProgv => {
+                ncl_sys::function_address!(crate::nonlocal::native_enter_progv)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
+            RuntimeFunction::LeaveProgv => {
+                ncl_sys::function_address!(crate::nonlocal::native_leave_progv)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
             RuntimeFunction::AllocateSlow
             | RuntimeFunction::Unwind
             | RuntimeFunction::Builtin
-            | RuntimeFunction::ConstantTable
-            | RuntimeFunction::EnterCatch
-            | RuntimeFunction::EnterUnwindProtect
-            | RuntimeFunction::EnterProgv
-            | RuntimeFunction::LeaveCatch
-            | RuntimeFunction::LeaveUnwindProtect
-            | RuntimeFunction::LeaveProgv => Err(AbiError::UnsupportedRuntimeFunction(function)),
+            | RuntimeFunction::ConstantTable => Err(AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 

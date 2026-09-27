@@ -262,17 +262,28 @@ mod builtin_address_tests {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct X86_64Abi;
 
+fn default_field_offset(field: ContextField) -> Result<i32, AbiError> {
+    let layout = ncl_sys::thread_layout();
+    let offset = match field {
+        ContextField::TlabBump => layout.tlab_bump,
+        ContextField::TlabLimit => layout.tlab_limit,
+        ContextField::SafepointRequest => layout.safepoint_request,
+        ContextField::MultipleValueArea => layout.mv,
+        ContextField::Pending => layout.pending,
+        ContextField::MultipleValueCount => layout.mv_count,
+        ContextField::Handler => layout.handler,
+        ContextField::Cleanup => layout.cleanup,
+        ContextField::Catch => layout.catch,
+    };
+    i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
+}
+
 impl RuntimeAbi for X86_64Abi {
     fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
         Err(AbiError::MissingBuiltin(identifier))
     }
     fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-        if field == ContextField::MultipleValueArea {
-            i32::try_from(ncl_sys::thread_layout().mv)
-                .map_err(|_| AbiError::UnsupportedContextField(field))
-        } else {
-            Err(AbiError::UnsupportedContextField(field))
-        }
+        default_field_offset(field)
     }
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))
@@ -288,12 +299,7 @@ impl RuntimeAbi for Aarch64Abi {
         Err(AbiError::MissingBuiltin(identifier))
     }
     fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-        if field == ContextField::MultipleValueArea {
-            i32::try_from(ncl_sys::thread_layout().mv)
-                .map_err(|_| AbiError::UnsupportedContextField(field))
-        } else {
-            Err(AbiError::UnsupportedContextField(field))
-        }
+        default_field_offset(field)
     }
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))

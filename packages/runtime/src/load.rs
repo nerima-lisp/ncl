@@ -105,12 +105,14 @@ fn load_with_runtime(
             ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
             Err(ObjectError::TypeError)
         }
-        Err(RuntimeError::Native(_))
-        | Err(RuntimeError::Object(_))
-        | Err(RuntimeError::Read(_))
-        | Err(RuntimeError::Front(_))
-        | Err(RuntimeError::Lower(_))
-        | Err(RuntimeError::NativeFailure { .. }) => {
+        Err(
+            RuntimeError::Native(_)
+            | RuntimeError::Object(_)
+            | RuntimeError::Read(_)
+            | RuntimeError::Front(_)
+            | RuntimeError::Lower(_)
+            | RuntimeError::NativeFailure { .. },
+        ) => {
             ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
             Err(ObjectError::TypeError)
         }

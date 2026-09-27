@@ -46,6 +46,7 @@ pub(super) struct ValueSlots {
     values: Vec<(ValueId, u32)>,
     allocation: Allocation,
     spill_base: u32,
+    pub(super) outgoing_base: u32,
 }
 
 impl ValueSlots {
@@ -99,6 +100,7 @@ pub(super) fn slots(
     function: &Function,
     argument_words: u32,
     allocation: Allocation,
+    outgoing_base: u32,
 ) -> (ValueSlots, u32) {
     let mut result = Vec::new();
     let mut next = argument_words;
@@ -121,6 +123,7 @@ pub(super) fn slots(
             values: result,
             allocation,
             spill_base,
+            outgoing_base,
         },
         local_words,
     )

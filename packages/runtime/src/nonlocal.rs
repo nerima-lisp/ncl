@@ -157,9 +157,8 @@ fn throw_builtin(
 fn control_builtin_address(
     function: extern "C" fn(NonNull<Thread>, Word, Word) -> Word,
 ) -> Result<usize, ObjectError> {
-    // check-added-lines: allow(as-cast) function-pointer-to-address conversion, the same pattern `function_address!` uses internally.
-    let address =
-        ncl_sys::function_address(function as *const ()).map_err(|_| ObjectError::Layout)?;
+    let raw = function as *const (); // check-added-lines: allow(as-cast) function-pointer-to-address conversion, the same pattern `function_address!` uses internally.
+    let address = ncl_sys::function_address(raw).map_err(|_| ObjectError::Layout)?;
     usize::try_from(address).map_err(|_| ObjectError::Layout)
 }
 

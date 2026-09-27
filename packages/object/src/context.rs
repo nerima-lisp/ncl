@@ -10,6 +10,7 @@ pub struct ThreadContext {
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
+    pending_undefined_function: Option<Word>,
     pending_lisp_error: Option<LispError>,
     pending_condition: Option<Word>,
     pub(crate) non_local_exit: bool,
@@ -28,6 +29,7 @@ impl ThreadContext {
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
+            pending_undefined_function: None,
             pending_lisp_error: None,
             pending_condition: None,
             non_local_exit: false,
@@ -100,6 +102,12 @@ impl ThreadContext {
     /// Take the pending condition.
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
+    }
+    pub const fn set_pending_undefined_function(&mut self, name: Word) {
+        self.pending_undefined_function = Some(name);
+    }
+    pub const fn take_pending_undefined_function(&mut self) -> Option<Word> {
+        self.pending_undefined_function.take()
     }
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         self.pending_lisp_error = Some(error);

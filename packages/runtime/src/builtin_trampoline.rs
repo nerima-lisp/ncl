@@ -33,7 +33,7 @@
 
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
-use ncl_object::{FunctionObject, Runtime as ObjectRuntime, ThreadContext, Word};
+use ncl_object::{FunctionObject, Runtime as ObjectRuntime, ThreadContext, Word, function_name};
 use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
 use std::ptr::NonNull;
 
@@ -120,6 +120,22 @@ fn dispatch_with_context(
         context.set_pending(ncl_object::ObjectError::Unbound);
         return error_result();
     };
+    let is_undefined = match object.is_undefined_function(context, function) {
+        Ok(value) => value,
+        Err(error) => {
+            context.set_pending(error);
+            return error_result();
+        }
+    };
+    if is_undefined {
+        if let Ok(name) =
+            function_name(context, ncl_object::Function::from_word(function.as_word()))
+        {
+            context.set_pending_undefined_function(name);
+        }
+        context.set_pending(ncl_object::ObjectError::UndefinedFunction);
+        return error_result();
+    }
     let call_words: Vec<Word> = registers
         .iter()
         .take(count)

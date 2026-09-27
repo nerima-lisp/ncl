@@ -115,8 +115,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         },
         subseq_builtin,
     )?;
-    for name in ["FILL", "REPLACE"] {
-        // check-added-lines: allow(index) slice type
+    for name in std::iter::once("FILL").chain(std::iter::once("REPLACE")) {
         let Some(implementation) = domain::filter::filter_entry(name) else {
             return Err(ObjectError::TypeError);
         };

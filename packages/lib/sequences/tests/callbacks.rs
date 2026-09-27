@@ -31,6 +31,25 @@ fn assert_list(ctx: &ThreadContext, list: Word, expected: &[Word]) {
     assert_eq!(cursor, Word::NIL);
 }
 
+fn assert_map_without_result_type(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    functions: &HashMap<String, FunctionObject>,
+    function: Word,
+    source: Word,
+) {
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            functions,
+            "MAP",
+            &[Word::NIL, function, source]
+        ),
+        Word::NIL
+    );
+}
+
 #[test]
 fn sequence_callbacks_run_through_gc_stress_paths() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -41,6 +60,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let names = [
         "LIST",
         "MAPCAR",
+        "MAP",
         "MAP-INTO",
         "REDUCE",
         "SORT",
@@ -75,15 +95,12 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let two_root = ncl_object::push_root(&mut ctx, &mut two);
     let mut three = call(&runtime, &mut ctx, &functions, "LIST", &[values[2]]);
     let three_root = ncl_object::push_root(&mut ctx, &mut three);
-    let elements = [one, two, three];
-    let mut source = call(&runtime, &mut ctx, &functions, "LIST", &elements);
+    let mut source = call(&runtime, &mut ctx, &functions, "LIST", &[one, two, three]);
     let source_root = ncl_object::push_root(&mut ctx, &mut source);
     let mut destination = call(&runtime, &mut ctx, &functions, "LIST", &values);
     let destination_root = ncl_object::push_root(&mut ctx, &mut destination);
     ctx.set_gc_stress(true);
     ctx.set_strict_forwarding(true);
-    // These calls exercise the Lisp callback, map-into destination, reducer,
-    // sort predicate, and set :test paths under both forwarding checks.
     let mut car = functions["CAR"].as_word();
     let car_root = ncl_object::push_root(&mut ctx, &mut car);
     let mut cons = functions["CONS"].as_word();
@@ -92,6 +109,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let test_keyword_root = ncl_object::push_root(&mut ctx, &mut test_keyword);
     let mapped = call(&runtime, &mut ctx, &functions, "MAPCAR", &[car, source]);
     assert_list(&ctx, mapped, &values);
+    assert_map_without_result_type(&runtime, &mut ctx, &functions, car, source);
     assert_eq!(
         call(
             &runtime,

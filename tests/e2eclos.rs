@@ -80,18 +80,11 @@ fn compiled_clos_baseline_asserts_ansi_output() {
 
 #[test]
 fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
-    let cases = [
-        XFail {
-            name: "call-next-method",
-            source: "(call-next-method)",
-            stderr: "UNDEFINED-FUNCTION",
-        },
-        XFail {
-            name: "unknown-generic",
-            source: "(clos-unknown-generic 1)",
-            stderr: "UNDEFINED-FUNCTION",
-        },
-    ];
+    let cases = [XFail {
+        name: "unknown-generic",
+        source: "(clos-unknown-generic 1)",
+        stderr: "UNDEFINED-FUNCTION",
+    }];
     for case in cases {
         let output = run_ncl(case.source);
         assert_eq!(output.status.code(), Some(1), "{}", case.name);
@@ -102,6 +95,15 @@ fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn compiled_clos_call_next_method_combines_primary_methods() {
+    let output = run_ncl(
+        "(progn (defclass point () ()) (defclass colored (point) ()) (defgeneric area (s)) (defmethod area ((s point)) 2) (defmethod area ((s colored)) (+ 3 (call-next-method))) (area (make-instance 'colored)))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "5");
 }
 
 #[test]
@@ -126,6 +128,26 @@ fn compiled_clos_class_and_instance_paths_are_available() {
         (
             "(progn (defclass point () ((x :initarg :x :accessor px) (y :initarg :y :initform 0 :accessor py))) (defclass colored (point) ()) (typep (make-instance 'colored :x 3) 'point))",
             "T",
+        ),
+        (
+            "(progn (set 'area 77) (defgeneric area (s)) (symbol-value 'area))",
+            "77",
+        ),
+        (
+            "(progn (defclass point () ()) (defclass colored (point) ()) (defgeneric area (s)) (defmethod area ((s point)) 2) (defmethod area ((s colored)) 3) (area (make-instance 'colored)))",
+            "3",
+        ),
+        (
+            "(progn (defgeneric classify (x y)) (defmethod classify ((x integer) (y integer)) 1) (classify 1 2))",
+            "1",
+        ),
+        (
+            "(progn (defgeneric exact (x)) (defmethod exact ((x integer)) 1) (defmethod exact ((x (eql 3))) 9) (exact 3))",
+            "9",
+        ),
+        (
+            "(progn (defgeneric redefine (x)) (defmethod redefine ((x integer)) 1) (defmethod redefine ((x integer)) 2) (redefine 3))",
+            "2",
         ),
         (
             "(progn (defclass point () ((x :initarg :x :accessor px) (y :initarg :y :initform 0 :accessor py))) (defclass colored (point) ()) (defgeneric area (s)) (defmethod area ((s point)) (* (px s) (py s))) (area (make-instance 'colored :x 3)))",

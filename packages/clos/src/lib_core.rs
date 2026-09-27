@@ -1,6 +1,5 @@
 #[derive(Clone, Copy)]
 enum BuiltinArity {
-    Zero,
     One,
     Two,
     Three,
@@ -8,10 +7,6 @@ enum BuiltinArity {
 
 const fn descriptor(arity: BuiltinArity) -> Builtin {
     match arity {
-        BuiltinArity::Zero => Builtin {
-            lambda_list: LambdaList::fixed(ARGS_0),
-            convention: ncl_object::BuiltinConvention::Direct(Arity::exact(0)),
-        },
         BuiltinArity::One => Builtin {
             lambda_list: LambdaList::fixed(ARGS_1),
             convention: ncl_object::BuiltinConvention::Direct(Arity::exact(1)),
@@ -509,9 +504,9 @@ fn eql_specializer(ctx: &ThreadContext, specializer: Word) -> Result<Option<Word
     if !matches!(classify_object(ctx, marker), ObjectRef::Symbol(_)) {
         return Ok(None);
     }
-    Ok((symbol_name_string(ctx, marker)? == "EQL")
+    (symbol_name_string(ctx, marker)? == "EQL")
         .then(|| simple_vector_ref(ctx, specializer, 1))
-        .transpose()?)
+        .transpose()
 }
 
 fn dispatch_arguments(ctx: &ThreadContext, arguments: Word) -> Result<Vec<Word>, ObjectError> {
@@ -542,6 +537,10 @@ fn method_matches(
 /// `specializers` is a vector of class designators or two-element `EQL`
 /// vectors. `qualifier` is zero for a primary method. The method body is kept
 /// as a function word in the same heap record, so it remains live after GC.
+///
+/// # Errors
+/// Returns an object error when the generic function metadata or method body
+/// is malformed, or when heap allocation fails.
 pub fn add_method(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -588,6 +587,10 @@ pub fn add_method(
 /// This adapter intentionally returns the selected function. Calling it is a
 /// runtime-layer operation because `RuntimeFunctionCaller` belongs to
 /// `ncl-runtime`, not to this crate.
+///
+/// # Errors
+/// Returns an object error when the generic function has no registered method
+/// or its dispatch metadata is malformed.
 pub fn dispatch(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

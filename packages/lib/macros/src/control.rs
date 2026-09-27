@@ -7,16 +7,24 @@ use ncl_object::{
     symbol_name,
 };
 
+mod handler_bind;
+
 mod multiple_value_bind;
 mod multiple_values;
 
+pub(crate) use handler_bind::{binding, bindings};
 pub(crate) use multiple_values::{
     expand_multiple_value_bind_adapter, expand_multiple_value_list_adapter,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
-fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -> Result {
+pub(crate) fn form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+    args: &[Word],
+) -> Result {
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let operator = symbol(ctx, runtime, name)?;
         let mut values = Vec::with_capacity(roots.len() + 1);
@@ -35,31 +43,8 @@ fn args(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>> {
     Ok(values)
 }
 
-fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -> Result {
+pub(crate) fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -> Result {
     form(ctx, runtime, "PROGN", body)
-}
-
-fn binding(ctx: &mut ThreadContext, runtime: &Runtime, name: Word, value: Word) -> Result {
-    list(ctx, runtime, &[name, value])
-}
-
-fn bindings(ctx: &mut ThreadContext, runtime: &Runtime, pairs: &[(Word, Word)]) -> Result {
-    let values = pairs
-        .iter()
-        .flat_map(|&(name, value)| std::iter::once(name).chain(std::iter::once(value)))
-        .collect::<Vec<_>>();
-    ncl_object::with_roots(ctx, &values, |ctx, roots| {
-        let mut result = Vec::with_capacity(pairs.len());
-        for index in 0..pairs.len() {
-            let value = ncl_object::with_roots(ctx, &result, |ctx, _result_roots| {
-                let name = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
-                let value = **roots.get(index * 2 + 1).ok_or(ObjectError::TypeError)?;
-                binding(ctx, runtime, name, value)
-            })?;
-            result.push(value);
-        }
-        list(ctx, runtime, &result)
-    })
 }
 
 fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
@@ -428,6 +413,7 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
         Kind::NthValue => nth_value(ctx, runtime, values),
         Kind::Do => do_macro(ctx, runtime, values, false),
         Kind::DoStar => do_macro(ctx, runtime, values, true),
+        Kind::HandlerBind => handler_bind::expand(ctx, runtime, values),
         Kind::Prog => prog_macro(ctx, runtime, values, false),
         Kind::ProgStar => prog_macro(ctx, runtime, values, true),
     }
@@ -452,6 +438,7 @@ enum Kind {
     NthValue,
     Do,
     DoStar,
+    HandlerBind,
 }
 
 macro_rules! callbacks {
@@ -485,4 +472,5 @@ expand_prog2, expand_prog2_adapter, Kind::Prog2;
 expand_return, expand_return_adapter, Kind::Return;
 expand_nth_value, expand_nth_value_adapter, Kind::NthValue;
 expand_do, expand_do_adapter, Kind::Do;
-expand_do_star, expand_do_star_adapter, Kind::DoStar }
+expand_do_star, expand_do_star_adapter, Kind::DoStar;
+expand_handler_bind, expand_handler_bind_adapter, Kind::HandlerBind }

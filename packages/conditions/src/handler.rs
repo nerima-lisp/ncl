@@ -11,6 +11,20 @@ use crate::records;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HandlerChain(Word);
 
+impl HandlerChain {
+    /// Return the handler-cluster head captured before the push.
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+
+    /// Recreate a chain token from a previously captured head.
+    #[must_use]
+    pub const fn from_word(word: Word) -> Self {
+        Self(word)
+    }
+}
+
 /// Push a handler for `class` onto the handler cluster.
 ///
 /// The handler is active until [`pop_handler`] restores the captured head.
@@ -89,9 +103,11 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
                         **head_root.first().ok_or(ncl_object::ObjectError::Layout)?,
                     );
                     result
-                })
-                .map_err(ConditionError::from);
-                return result;
+                });
+                match result {
+                    Ok(()) | Err(ncl_object::ObjectError::NonLocalExit) => return Ok(()),
+                    Err(error) => return Err(ConditionError::from(error)),
+                }
             }
         }
         head = records::record_previous(ctx, head)?;

@@ -290,6 +290,7 @@ dependencies = [
  "ncl-asm-x86-64",
  "ncl-codegen",
  "ncl-compiler-front",
+ "ncl-conditions",
  "ncl-ffi",
  "ncl-image",
  "ncl-ir",

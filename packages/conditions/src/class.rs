@@ -359,7 +359,7 @@ pub const HIERARCHY: &[HierarchyRow] = &[
     HierarchyRow { name: "STREAM-ERROR", superclass: Some("ERROR") },
     HierarchyRow { name: "END-OF-FILE", superclass: Some("STREAM-ERROR") },
     HierarchyRow { name: "SIMPLE-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "SIMPLE-ERROR", superclass: Some("SIMPLE-CONDITION") },
+    HierarchyRow { name: "SIMPLE-ERROR", superclass: Some("ERROR") },
     HierarchyRow { name: "SIMPLE-WARNING", superclass: Some("SIMPLE-CONDITION") },
     HierarchyRow { name: "STYLE-WARNING", superclass: Some("WARNING") },
     HierarchyRow { name: "UNDEFINED-ALIEN-ERROR", superclass: Some("ERROR") },

@@ -57,6 +57,8 @@ COMMON-LISP	UNDEFINED-FUNCTION	condition+class	ncl-conditions	1	no	condition/res
 COMMON-LISP	USE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
 NCL-EXT	CODE-DELETION-NOTE	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	POP-HANDLER	function	ncl-conditions	1	no	condition handler macro primitive
+NCL-EXT	PUSH-HANDLER	function	ncl-conditions	1	no	condition handler macro primitive
 NCL-EXT	COMPILER-NOTE	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
 NCL-EXT	DEFCONSTANT-UNEQL	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
 NCL-EXT	DELETE-FILE-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions

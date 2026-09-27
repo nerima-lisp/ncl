@@ -161,6 +161,20 @@ fn dispatch_with_context(
     match result {
         Ok(value) => ok_result(value, context.values().len()),
         Err(error) => {
+            if let Some(condition) = context.take_pending_condition() {
+                match ncl_conditions::error(context, condition) {
+                    Ok(()) => return ok_result(Word::NIL, context.values().len()),
+                    Err(condition_error) => {
+                        let error = match condition_error {
+                            ncl_conditions::ConditionError::Object(error) => error,
+                            // check-added-lines: allow(wildcard) preserve builtin error for non-object condition failures
+                            _ => error,
+                        };
+                        context.set_pending(error);
+                        return error_result();
+                    }
+                }
+            }
             context.set_pending(error);
             error_result()
         }

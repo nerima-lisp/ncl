@@ -6,6 +6,16 @@ use super::{SymbolKind, SymbolRow};
 pub const NCL_EXT: &[SymbolRow] = &[
     SymbolRow {
         package: "NCL-EXT",
+        name: "POP-HANDLER",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-EXT",
+        name: "PUSH-HANDLER",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-EXT",
         name: "CODE-DELETION-NOTE",
         kind: SymbolKind::Class,
     },

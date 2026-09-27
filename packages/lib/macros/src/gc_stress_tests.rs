@@ -140,6 +140,10 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut clause);
     let mut type_clause = list(&mut ctx, &runtime, &[t, t])?;
     root!(&mut type_clause);
+    let mut handler_clause = list(&mut ctx, &runtime, &[t, t])?;
+    root!(&mut handler_clause);
+    let mut handler_clauses = list(&mut ctx, &runtime, &[handler_clause])?;
+    root!(&mut handler_clauses);
     let mut do_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0), one])?;
     root!(&mut do_variable);
     let mut do_variables = list(&mut ctx, &runtime, &[do_variable])?;
@@ -199,6 +203,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("ETYPECASE", "ETYPECASE", [x, type_clause]);
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
+    case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
     case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
     case!("MULTIPLE-VALUE-BIND", "MULTIPLE-VALUE-BIND", [destructuring_lambda_list, x, x]);
     case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);

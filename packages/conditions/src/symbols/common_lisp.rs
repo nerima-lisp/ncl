@@ -196,6 +196,11 @@ pub const COMMON_LISP: &[SymbolRow] = &[
     },
     SymbolRow {
         package: "COMMON-LISP",
+        name: "WARN",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "COMMON-LISP",
         name: "SIMPLE-CONDITION",
         kind: SymbolKind::Class,
     },

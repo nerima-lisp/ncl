@@ -2,7 +2,9 @@ use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
 
+mod control;
 mod stack;
+pub use control::ControlFrameKind;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
 
@@ -64,6 +66,7 @@ pub struct Thread {
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
     pub(crate) pending: u64,
+    pub(crate) mv_count: usize,
     pub(crate) frame_chain: Vec<Word>,
     pub(crate) frame_registers: Vec<Word>,
     frame_address: Option<usize>,
@@ -91,6 +94,8 @@ pub struct ThreadLayout {
     pub cleanup: usize,
     /// Offset of the catch chain.
     pub catch: usize,
+    /// Offset of the multiple-value count word.
+    pub mv_count: usize,
 }
 /// Return byte offsets for the machine-visible part of [`Thread`].
 #[must_use]
@@ -104,6 +109,7 @@ pub const fn thread_layout() -> ThreadLayout {
         handler: std::mem::offset_of!(Thread, handler),
         cleanup: std::mem::offset_of!(Thread, cleanup),
         catch: std::mem::offset_of!(Thread, catch),
+        mv_count: std::mem::offset_of!(Thread, mv_count),
     }
 }
 impl Default for Thread {
@@ -135,6 +141,7 @@ impl Thread {
             cleanup: 0,
             catch: 0,
             pending: 0,
+            mv_count: 0,
             frame_chain: Vec::new(),
             frame_registers: Vec::new(),
             frame_address: None,
@@ -428,6 +435,7 @@ mod tests {
         assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
         assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
         assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
+        assert_eq!(layout.mv_count, std::mem::offset_of!(Thread, mv_count));
     }
 
     #[test]
@@ -445,6 +453,7 @@ mod tests {
             (layout.handler, std::mem::size_of_val(&thread.handler)),
             (layout.cleanup, std::mem::size_of_val(&thread.cleanup)),
             (layout.catch, std::mem::size_of_val(&thread.catch)),
+            (layout.mv_count, std::mem::size_of_val(&thread.mv_count)),
         ];
         for (offset, size) in fields {
             assert_eq!(offset % 8, 0);

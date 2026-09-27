@@ -1,4 +1,4 @@
-use crate::{ObjectError, ThreadContext};
+use crate::{ObjectError, Runtime, ThreadContext};
 use core::cell::Cell;
 use ncl_sys::{RootSlot, RootToken, Word};
 
@@ -10,6 +10,28 @@ pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
 /// Pop a precise root.
 pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
+}
+
+/// Push a precise root owned by the runtime's heap-level registry, independent
+/// of the per-thread root stack used by [`push_root`]/[`pop_root`].
+///
+/// Compiling a form (e.g. `ncl-runtime`'s `Runtime::eval_form`) permanently
+/// grows the per-thread root stack: each compiled function's code object and
+/// constants table stay rooted for the runtime's lifetime, via `push_root`
+/// calls that are never popped. A caller that needs to keep a `Word` alive
+/// *across* such a call therefore cannot use a `push_root`/`pop_root` pair on
+/// the thread stack: by the time the call returns, the caller's token no
+/// longer points at the stack's top, and `pop_root` reports the corruption
+/// (rather than silently misbehaving). The heap-level registry used here is
+/// untouched by ordinary compilation, so it tolerates being bracketed around
+/// a call that grows the thread-local stack.
+pub fn push_heap_root(runtime: &Runtime, value: &mut Word) -> RootToken {
+    ncl_sys::push_heap_root(&runtime.heap, value)
+}
+
+/// Pop a precise root pushed by [`push_heap_root`].
+pub fn pop_heap_root(runtime: &Runtime, token: RootToken) -> bool {
+    ncl_sys::pop_heap_root(&runtime.heap, token)
 }
 
 /// Push a precise root and return its token.

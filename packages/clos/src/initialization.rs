@@ -5,6 +5,7 @@ use ncl_object::{
     Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
     ParameterType, Runtime, ThreadContext, Word, classify_object,
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
+    string_length, string_ref, symbol_name,
 };
 use ncl_object::{Handle, HandleVec, Local, Scope};
 
@@ -156,6 +157,32 @@ fn class_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectErro
         .collect()
 }
 
+fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
+    let name = symbol_name(ctx, symbol)?;
+    let length = string_length(ctx, name)?;
+    (0..length)
+        .map(|index| string_ref(ctx, name, index))
+        .collect()
+}
+
+fn resolve_class(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    if matches!(classify_object(ctx, value), ObjectRef::SimpleVector(_)) {
+        return Ok(value);
+    }
+    if matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
+        let name = symbol_name_string(ctx, value)?;
+        return runtime
+            .class(ctx, &name)
+            .filter(|class| *class != Word::UNBOUND)
+            .ok_or(ObjectError::TypeError);
+    }
+    Err(type_error(ctx, value, ObjectType::SimpleVector))
+}
+
 fn initialize_slots<'scope>(
     scope: &mut Scope<'scope>,
     instance: Instance,
@@ -176,12 +203,30 @@ fn initialize_slots<'scope>(
             ObjectRef::SimpleVector(_)
         ) && simple_vector_length(scope.context(), slot)? > 0
         {
-            simple_vector_ref(scope.context(), slot, 0)?
+            let initarg = if simple_vector_length(scope.context(), slot)? > 1 {
+                simple_vector_ref(scope.context(), slot, 1)?
+            } else {
+                Word::NIL
+            };
+            if initarg == Word::NIL {
+                simple_vector_ref(scope.context(), slot, 0)?
+            } else {
+                initarg
+            }
         } else {
             slot
         };
         if let Some(value) = initargs.value_for(key) {
             slot_set(scope.context_mut(), instance, index, value.0)?;
+        } else if matches!(
+            classify_object(scope.context(), slot),
+            ObjectRef::SimpleVector(_)
+        ) && simple_vector_length(scope.context(), slot)? > 2
+        {
+            let default = simple_vector_ref(scope.context(), slot, 2)?;
+            if default != Word::UNBOUND {
+                slot_set(scope.context_mut(), instance, index, default)?;
+            }
         }
     }
     Ok(())
@@ -194,8 +239,10 @@ fn make_instance_builtin(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut scope = Scope::new(ctx);
-    let class = scope.root(Local::from_word(args.required(0)?));
-    let class_word = scope.get(class).as_word();
+    let class: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let requested_class = scope.get(class).as_word();
+    let class_word = resolve_class(scope.context_mut(), runtime, requested_class)?;
+    let class = scope.root(Local::from_word(class_word));
     let initarg_words = args
         .as_slice()
         .get(1..)

@@ -18,6 +18,8 @@ mod keyword_builtins;
 mod layout;
 mod load;
 mod nonlocal;
+#[cfg(test)]
+mod nonlocal_extra_tests;
 mod number;
 mod object_access;
 mod object_error;

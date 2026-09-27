@@ -201,11 +201,9 @@ impl ThreadContext {
 
     /// Leave the innermost `unwind-protect` frame.
     ///
-    /// This does not touch `pending`: the cleanup forms lowered immediately
-    /// after this call run while a non-local exit may still be recorded as
-    /// propagating (see the module-level README note on the known gap this
-    /// implies for cleanup forms that themselves call further code covered
-    /// by an enclosing `catch`).
+    /// The first leave pops the dynamic frame, snapshots any pending payload,
+    /// and clears `pending` so cleanup can run. The second leave restores the
+    /// saved payload after cleanup and releases its roots.
     ///
     /// # Errors
     ///

@@ -215,6 +215,7 @@ fn verify_handler_flow(
         let Some(mut stack) = incoming.get(&id).cloned().flatten() else {
             continue;
         };
+        let mut left_regions = std::collections::HashSet::new();
         for op in &block.ops {
             let region = match op.kind {
                 OpKind::EnterHandler { region } => Some((true, region)),
@@ -237,10 +238,12 @@ fn verify_handler_flow(
                 stack.push(region);
             } else if stack.last().copied() == Some(region) {
                 stack.pop();
+                left_regions.insert(region);
             } else {
                 let is_unwind_restore = regions.get(&region).is_some_and(|definition| {
                     definition.kind == crate::HandlerKind::UnwindProtect
                         && definition.handler == block.id
+                        && left_regions.contains(&region)
                 });
                 if !is_unwind_restore {
                     errors.push(VerifyError::HandlerMismatch(block.id));

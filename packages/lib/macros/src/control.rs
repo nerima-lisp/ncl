@@ -447,17 +447,23 @@ pub fn expand_multiple_value_list_adapter(
         .filter_map(|index| input.get(index))
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index) intentional
-    let [value] = arguments.as_slice() else {
-        return Err(ObjectError::TypeError);
-    };
-    let list_symbol = symbol(ctx, runtime, "LIST")?;
-    let list_function = form(ctx, runtime, "FUNCTION", &[list_symbol])?;
-    form(
-        ctx,
-        runtime,
-        "MULTIPLE-VALUE-CALL",
-        &[list_function, *value],
-    )
+    ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
+        let [value] = roots else {
+            return Err(ObjectError::TypeError);
+        };
+        let mut list_symbol = symbol(ctx, runtime, "LIST")?;
+        ncl_object::with_root(ctx, &mut list_symbol, |ctx, list_symbol| {
+            let mut list_function = form(ctx, runtime, "FUNCTION", &[*list_symbol])?;
+            ncl_object::with_root(ctx, &mut list_function, |ctx, list_function| {
+                form(
+                    ctx,
+                    runtime,
+                    "MULTIPLE-VALUE-CALL",
+                    &[*list_function, **value],
+                )
+            })
+        })
+    })
 }
 
 pub fn expand_multiple_value_bind_adapter(

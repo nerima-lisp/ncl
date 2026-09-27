@@ -71,11 +71,11 @@ pub extern "C" fn native_leave_catch(thread: NonNull<Thread>, _region: u64) -> W
 ///
 pub extern "C" fn native_enter_unwind_protect(
     thread: NonNull<Thread>,
-    _region: u64,
+    region: u64,
     _cleanup_block: u64,
 ) -> Word {
     with_context(thread, |ctx| {
-        ctx.enter_unwind_protect(_region);
+        ctx.enter_unwind_protect(region);
         Word::NIL
     })
 }

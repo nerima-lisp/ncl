@@ -1,4 +1,3 @@
-use super::dispatch::mv_area_mem;
 use super::{
     constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
     lower_runtime_builtin, lower_safepoint, primitives, store_value,
@@ -254,35 +253,7 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
-            let value_count =
-                u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
-            for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), value_count) {
-                emit(assembler, instruction)?;
-            }
-            if let (Some(first), Some(result)) = (values.first(), result) {
-                load_value(assembler, allocation, *first, Reg(16))?;
-                store_value(assembler, allocation, result, Reg(16))?;
-            }
-            for (index, value) in values.iter().copied().enumerate() {
-                load_value(assembler, allocation, value, Reg(16))?;
-                emit(
-                    assembler,
-                    Inst::Str {
-                        rt: Reg(16),
-                        mem: mv_area_mem(
-                            abi,
-                            i32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
-                        )?,
-                    },
-                )?;
-            }
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(1),
-                    mem: super::context_mem(abi, crate::ContextField::MultipleValueCount)?,
-                },
-            )?;
+            super::dispatch::lower_set_multiple_values(assembler, values, result, allocation, abi)?;
         }
         OpKind::Alloc { words } => {
             call_pc = Some(lower_alloc(assembler, *words, result, allocation, abi)?);

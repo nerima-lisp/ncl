@@ -30,18 +30,18 @@ pub(crate) fn expand(
             let clause_word = scope.get(clause).as_word();
             let parts = elements(scope.context_mut(), clause_word)?;
             let type_specifier = *parts.first().ok_or(ObjectError::TypeError)?;
+            let type_handle = scope.root(Local::from_word(type_specifier));
+            let type_word = scope.get(type_handle).as_word();
             let body = progn(
                 scope.context_mut(),
                 runtime,
                 parts.get(1..).ok_or(ObjectError::TypeError)?,
             )?;
             let body = scope.root(Local::from_word(body));
-            if is_otherwise(scope.context_mut(), type_specifier)? {
+            if is_otherwise(scope.context_mut(), type_word)? {
                 default_body = Some(body);
                 continue;
             }
-            let type_handle = scope.root(Local::from_word(type_specifier));
-            let type_word = scope.get(type_handle).as_word();
             let quoted_type = form(scope.context_mut(), runtime, "QUOTE", &[type_word])?;
             let temporary_word = scope.get(temporary).as_word();
             let type_test = form(

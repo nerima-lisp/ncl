@@ -48,11 +48,9 @@ fn scope_roots<T>(
 fn scope_rooted_slice<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T, // check-added-lines: allow(index) slice type
-) -> T {
-    let mut rooted = values.to_vec();
-    let roots = rooted.clone(); // check-added-lines: allow(index)
-    scope_roots(ctx, &roots, |ctx, _| f(ctx, &mut rooted))
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>, // check-added-lines: allow(index) slice type
+) -> Result<T, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, values, f)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

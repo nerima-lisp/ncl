@@ -130,7 +130,14 @@ pub(super) fn lower_closure_call(
     let captures = match closure_layout(function, closure)? {
         ClosureLayout::Static(captures) => captures,
         ClosureLayout::Dynamic => {
-            return super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi);
+            return super::lower_closure_call(
+                assembler,
+                closure,
+                args,
+                allocation,
+                named_symbol,
+                abi,
+            );
         }
     };
     let Some((argc, rest)) = args.split_first() else {

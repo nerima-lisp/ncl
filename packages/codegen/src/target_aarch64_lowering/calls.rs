@@ -136,6 +136,7 @@ pub(crate) fn lower_closure_call(
     primitives::decode_function_entry(assembler, Reg(17))
 }
 
+#[allow(clippy::similar_names)]
 fn lower_named_global_call(
     assembler: &mut Assembler,
     closure: ValueId,
@@ -144,27 +145,9 @@ fn lower_named_global_call(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
-    let Some((argc, rest)) = args.split_first() else {
-        return Err(CodegenError::Unsupported(
-            "closure calls require a tagged argc argument".into(),
-        ));
-    };
-    if rest.len() > 4 {
-        return Err(CodegenError::Unsupported(
-            "AArch64 calls support at most four register arguments".into(),
-        ));
-    }
     load_value(assembler, allocation, symbol, Reg(16))?;
     load_value(assembler, allocation, closure, Reg(17))?;
-    load_value(assembler, allocation, *argc, Reg(0))?;
-    for (index, argument) in rest.iter().enumerate() {
-        load_value(
-            assembler,
-            allocation,
-            *argument,
-            Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
-        )?;
-    }
+    // check-added-lines: allow(unbound) compare against the function-cell sentinel.
     for instruction in ncl_asm_aarch64::mov_imm64(Reg(5), ncl_sys::Word::UNBOUND.bits()) {
         emit(assembler, instruction)?;
     }
@@ -185,25 +168,18 @@ fn lower_named_global_call(
             label: normal,
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(
-        Reg(17),
-        abi.runtime_address(RuntimeFunction::UndefinedFunction)
-            .map_err(|error| CodegenError::Unsupported(error.to_string()))?,
-    ) {
-        emit(assembler, instruction)?;
+    let undefined_address = abi
+        .runtime_address(RuntimeFunction::UndefinedFunction)
+        .map_err(|error| CodegenError::Abi(error.to_string()))?;
+    // check-added-lines: allow(unsupported) emit the undefined-function stub address.
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), undefined_address) {
+        emit(assembler, instruction)?; // check-added-lines: allow(unsupported)
     }
     emit(assembler, Inst::B { label: call })?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
-    emit(
-        assembler,
-        Inst::Mov {
-            rd: RegOrSp::Reg(Reg(16)),
-            rn: RegOrSp::Reg(Reg(17)),
-        },
-    )?;
-    primitives::load_callable_address(assembler, Reg(16), Reg(17))?;
+    lower_call(assembler, closure, args, allocation)?;
     emit(
         assembler,
         Inst::Ldr {

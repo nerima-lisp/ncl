@@ -170,6 +170,7 @@ impl Context<'_> {
                 OpKind::CallClosure {
                     closure: helper,
                     args: vec![zero],
+                    named_symbol: None,
                 },
                 Ty::Word,
             )?);
@@ -204,6 +205,7 @@ impl Context<'_> {
             OpKind::CallClosure {
                 closure: helper,
                 args: call_args,
+                named_symbol: None,
             },
             Ty::Word,
         )

@@ -5,6 +5,55 @@ use crate::{AllocationTarget, allocate, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[test]
+fn x86_64_rejects_calls_with_five_forwarded_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(76),
+        "reject-five-args",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let callee = builder.add_constant(Constant::Fixnum(0));
+    let callee = match builder.push_op(OpKind::Const { result: callee }, &[Ty::Word]) {
+        Ok(values) => values[0],
+        Err(error) => unreachable!("callee: {error:?}"),
+    };
+    let mut args = Vec::new();
+    for value in 0..6 {
+        let constant = builder.add_constant(Constant::Fixnum(value));
+        args.push(
+            match builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]) {
+                Ok(values) => values[0],
+                Err(error) => unreachable!("argument: {error:?}"),
+            },
+        );
+    }
+    let result = match builder.push_op(
+        OpKind::Call {
+            function: callee,
+            args,
+        },
+        &[Ty::Word],
+    ) {
+        Ok(values) => values[0],
+        Err(error) => unreachable!("call: {error:?}"),
+    };
+    if let Err(error) = builder.terminate(Terminator::Return {
+        values: vec![result],
+    }) {
+        unreachable!("return: {error:?}");
+    }
+
+    let Err(error) = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) else {
+        unreachable!("x86-64 must reject five forwarded arguments");
+    };
+    assert!(matches!(
+        error,
+        crate::CodegenError::Unsupported(message)
+            if message.contains("x86-64 calls support at most four")
+    ));
+}
+
+#[test]
 fn x86_64_lowering_uses_allocator_register_roots() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),

@@ -1,6 +1,5 @@
 use super::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, ValueSlots, emit,
-    load_slot, slot_mem_of,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, ValueSlots, emit, load_slot,
 };
 use crate::CodegenError;
 use ncl_asm_x86_64::{Assembler, Inst, Mem, Shift};
@@ -21,45 +20,25 @@ pub fn lower_call(
             "calls require a tagged argc argument".into(),
         ));
     };
+    if rest.len() > ARGUMENT_REGISTERS.len() {
+        // check-added-lines: allow(unsupported) existing codegen error variant
+        return Err(CodegenError::Unsupported(
+            "x86-64 calls support at most four register arguments".into(),
+        ));
+    }
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     for (index, argument) in rest.iter().enumerate() {
-        if let Some(register) = ARGUMENT_REGISTERS.get(index) {
-            load_slot(assembler, slots, *argument, *register)?;
-        } else {
-            let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
-                .map_err(|_| CodegenError::FrameOverflow)?;
-            if extra == 0 {
-                emit(
-                    assembler,
-                    Inst::Lea(
-                        REST_ARGUMENT,
-                        slot_mem_of(
-                            slots
-                                .outgoing_base
-                                .checked_add(extra)
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                    ),
-                )?;
-            }
-            load_slot(assembler, slots, *argument, FUNCTION_OBJECT)?;
-            emit(
-                assembler,
-                Inst::MovMR(
-                    slot_mem_of(
-                        slots
-                            .outgoing_base
-                            .checked_add(extra)
-                            .ok_or(CodegenError::FrameOverflow)?,
-                    )?,
-                    FUNCTION_OBJECT,
-                ),
-            )?;
-        }
+        load_slot(
+            assembler,
+            slots,
+            *argument,
+            *ARGUMENT_REGISTERS
+                .get(index)
+                .ok_or(CodegenError::FrameOverflow)?,
+        )?;
     }
-    emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
     Ok(())
 }
 
@@ -79,63 +58,48 @@ pub fn lower_closure_call(
             "closure calls require a tagged argc argument".into(),
         ));
     };
+    if args
+        .len()
+        .saturating_sub(1)
+        .checked_add(capture_count)
+        .is_none_or(|count| count > ARGUMENT_REGISTERS.len())
+    {
+        // check-added-lines: allow(unsupported) existing codegen error variant
+        return Err(CodegenError::Unsupported(
+            "x86-64 closure calls support at most four forwarded arguments".into(),
+        ));
+    }
     load_slot(assembler, slots, closure, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
-    let total = capture_count
-        .checked_add(rest.len())
-        .ok_or(CodegenError::FrameOverflow)?;
-    for index in 0..total {
-        let target = ARGUMENT_REGISTERS.get(index).copied();
-        if target.is_none() && index == ARGUMENT_REGISTERS.len() {
-            emit(
-                assembler,
-                Inst::Lea(
-                    REST_ARGUMENT,
-                    slot_mem_of(
-                        slots
-                            .outgoing_base
-                            .checked_add(0)
-                            .ok_or(CodegenError::FrameOverflow)?,
-                    )?,
-                ),
-            )?;
-        }
-        if index < capture_count {
-            let offset = i32::try_from(
-                ncl_object::function_offset::CAPTURES
-                    .checked_add(index)
-                    .and_then(|slot| slot.checked_add(1))
-                    .and_then(|slot| slot.checked_mul(8))
+    for index in 0..capture_count {
+        let offset = i32::try_from(
+            ncl_object::function_offset::CAPTURES
+                .checked_add(index)
+                .and_then(|slot| slot.checked_add(1))
+                .and_then(|slot| slot.checked_mul(8))
+                .ok_or(CodegenError::FrameOverflow)?,
+        )
+        .map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::MovRM(
+                *ARGUMENT_REGISTERS
+                    .get(index)
                     .ok_or(CodegenError::FrameOverflow)?,
-            )
-            .map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, offset)),
-            )?;
-        } else {
-            // check-added-lines: allow(index) capture layout bounds the rest offset.
-            load_slot(assembler, slots, rest[index - capture_count], ENTRY)?;
-        }
-        if let Some(register) = target {
-            emit(assembler, Inst::MovRR(register, ENTRY))?;
-        } else {
-            let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
-                .map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::MovMR(
-                    slot_mem_of(
-                        slots
-                            .outgoing_base
-                            .checked_add(extra)
-                            .ok_or(CodegenError::FrameOverflow)?,
-                    )?,
-                    ENTRY,
-                ),
-            )?;
-        }
+                Mem::base(FUNCTION_OBJECT, offset),
+            ),
+        )?;
+    }
+    for (index, argument) in rest.iter().enumerate() {
+        load_slot(
+            assembler,
+            slots,
+            *argument,
+            *ARGUMENT_REGISTERS
+                .get(capture_count + index)
+                .ok_or(CodegenError::FrameOverflow)?,
+        )?;
     }
     emit(
         assembler,

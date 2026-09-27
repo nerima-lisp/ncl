@@ -474,7 +474,6 @@ pub fn expand_multiple_value_list_adapter(
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?; // check-added-lines: allow(index) intentional
     let [value] = arguments.as_slice() else {
-        /* check-added-lines: allow(index) intentional */
         return Err(ObjectError::TypeError);
     };
     let list_symbol = symbol(ctx, runtime, "LIST")?;

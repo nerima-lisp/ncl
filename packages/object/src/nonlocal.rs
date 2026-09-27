@@ -167,12 +167,11 @@ impl ThreadContext {
             if let DynamicFrame::Catch { tag } = frame {
                 handled = pending_tag.is_none() || pending_tag == Some(tag.get());
                 let discard_before_tag = pending_tag.is_some()
-                    && self.pending_unwind.last().is_some_and(|saved| {
-                        self.frames.len() < saved.frame_depth
-                    });
-                if discard_before_tag
-                    && let Err(error) = self.discard_pending_unwind()
-                {
+                    && self
+                        .pending_unwind
+                        .last()
+                        .is_some_and(|saved| self.frames.len() < saved.frame_depth);
+                if discard_before_tag && let Err(error) = self.discard_pending_unwind() {
                     result = Err(error);
                 }
                 if let Err(error) = tag.release(self) {
@@ -323,12 +322,11 @@ impl ThreadContext {
         };
         self.thread.pop_control_depth(frame.kind());
         let discard_before_bindings = self.thread.pending()
-            && self.pending_unwind.last().is_some_and(|saved| {
-                self.frames.len() < saved.frame_depth
-            });
-        if discard_before_bindings
-            && let Err(error) = self.discard_pending_unwind()
-        {
+            && self
+                .pending_unwind
+                .last()
+                .is_some_and(|saved| self.frames.len() < saved.frame_depth);
+        if discard_before_bindings && let Err(error) = self.discard_pending_unwind() {
             result = Err(error);
         }
         if let DynamicFrame::Progv { bindings } = frame

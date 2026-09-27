@@ -88,15 +88,15 @@ fn closure_capture_count(
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. } => {
-                return Err(CodegenError::Unsupported(
-                    // check-added-lines: allow(unsupported) malformed closure IR cannot be sized safely.
+                // check-added-lines: allow(unsupported) malformed closure IR has no safe layout.
+                return Err(CodegenError::Abi(
                     "closure capture metadata is unavailable".into(),
                 ));
             }
         }
     }
-    Err(CodegenError::Unsupported(
-        // check-added-lines: allow(unsupported) cyclic closure definitions cannot be sized safely.
+    // check-added-lines: allow(unsupported) cyclic closure IR has no safe layout.
+    Err(CodegenError::Abi(
         "closure capture metadata has a cycle".into(),
     ))
 }

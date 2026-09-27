@@ -14,8 +14,6 @@ pub struct HandlerChain(Word);
 /// Push a handler for `class` onto the handler cluster.
 ///
 /// The handler is active until [`pop_handler`] restores the captured head.
-/// Phase 1 does not invoke the handler function (there is no generated code
-/// yet); a matching handler merely marks the condition as handled.
 ///
 /// # Errors
 /// Returns an object-layer error when the record cannot be allocated.
@@ -25,6 +23,7 @@ pub fn push_handler(
     class: crate::class::ConditionClass,
     handler: Word,
 ) -> Result<HandlerChain, ConditionError> {
+    ctx.root_condition_handler_head();
     let previous = records::cluster_head(ctx);
     let depth = records::cluster_next_depth(ctx, previous)?;
     let record = make_simple_vector(
@@ -44,8 +43,11 @@ pub fn push_handler(
 }
 
 /// Restore the handler cluster to the head captured by `chain`.
-pub const fn pop_handler(ctx: &mut ThreadContext, chain: HandlerChain) {
+pub fn pop_handler(ctx: &mut ThreadContext, chain: HandlerChain) {
     records::set_cluster_head(ctx, chain.0);
+    if chain.0 == Word::NIL {
+        let _ = ctx.unroot_condition_handler_head();
+    }
 }
 
 /// Signal a condition, invoking the first matching handler for its class chain.
@@ -65,7 +67,18 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
         if let records::ClusterRecord::Handler(handler) = record {
             let handler_class = handler.class(ctx).map_err(ConditionError::from)?;
             if class_matches(ctx, class.as_word(), handler_class)? {
-                return Ok(());
+                let previous = handler.previous(ctx).map_err(ConditionError::from)?;
+                records::set_cluster_head(ctx, previous);
+                let function = handler.function(ctx).map_err(ConditionError::from)?;
+                let result = ncl_object::with_roots(ctx, &[function, condition], |ctx, roots| {
+                    ctx.invoke_condition_handler(
+                        **roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+                        **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?,
+                    )
+                })
+                .map_err(ConditionError::from);
+                records::set_cluster_head(ctx, head);
+                return result;
             }
         }
         head = records::record_previous(ctx, head)?;

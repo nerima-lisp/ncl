@@ -1,5 +1,6 @@
 //! Typed, safe values and runtime state for NCL.
 #![allow(missing_docs)]
+pub use context::ConditionHandlerInvoker;
 pub use ncl_sys::Word;
 pub mod array;
 mod builtin;

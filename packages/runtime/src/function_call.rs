@@ -12,6 +12,27 @@ use ncl_sys::invoke_entry_with_function_address;
 #[derive(Debug, Default)]
 pub struct RuntimeFunctionCaller;
 
+pub fn invoke_condition_handler(
+    runtime: std::ptr::NonNull<()>,
+    ctx: &mut ThreadContext,
+    handler: Word,
+    condition: Word,
+) -> Result<(), ObjectError> {
+    ncl_sys::with_opaque_mut(runtime, |runtime: &mut crate::Runtime| {
+        let mut caller = RuntimeFunctionCaller;
+        let mut values = MultipleValues::default();
+        caller
+            .call_function(
+                ctx,
+                &runtime.object,
+                FunctionDesignator::Function(FunctionObject::try_from(handler)?),
+                FunctionArguments::new(&[condition]),
+                &mut values,
+            )
+            .map(|_| ())
+    })
+}
+
 impl FunctionCaller for RuntimeFunctionCaller {
     fn call_function(
         &mut self,

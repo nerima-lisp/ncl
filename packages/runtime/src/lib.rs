@@ -6,7 +6,7 @@ mod compile;
 #[cfg(test)]
 mod constant_tests;
 mod function_call;
-mod load;
+pub(crate) mod load;
 mod native_error;
 mod support;
 pub use function_call::RuntimeFunctionCaller;
@@ -152,12 +152,7 @@ impl Runtime {
     /// # Errors
     /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        let forms = compile::read_forms(&mut self.context, &self.object, source)?;
-        let mut result = Word::NIL;
-        for form in forms {
-            result = self.compile_form(form)?;
-        }
-        Ok(result)
+        load::source_forms(self, source)
     }
     /// Compile and execute a source string through the native pipeline.
     ///

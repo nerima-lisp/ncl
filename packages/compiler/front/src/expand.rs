@@ -122,12 +122,18 @@ impl<'a> FormExpander<'a> {
     /// be called, or when expansion exceeds `MACROEXPANSION_LIMIT`.
     pub fn expand(&mut self, form: Word) -> Result<Expr, FrontError> {
         let mut current = form;
+        let token = ncl_object::push_root(self.ctx, &mut current);
         let mut remaining = MACROEXPANSION_LIMIT;
         loop {
-            match self.expand_step(current)? {
-                Step::Done(expr) => return Ok(expr),
-                Step::Retry { name, form } => {
+            let step = self.expand_step(current);
+            match step {
+                Ok(Step::Done(expr)) => {
+                    let _ = ncl_object::pop_root(self.ctx, token);
+                    return Ok(expr);
+                }
+                Ok(Step::Retry { name, form }) => {
                     if remaining == 0 {
+                        let _ = ncl_object::pop_root(self.ctx, token);
                         return Err(FrontError::MacroExpansion {
                             name,
                             detail: "expansion limit exceeded".to_owned(),
@@ -135,6 +141,10 @@ impl<'a> FormExpander<'a> {
                     }
                     remaining -= 1;
                     current = form;
+                }
+                Err(error) => {
+                    let _ = ncl_object::pop_root(self.ctx, token);
+                    return Err(error);
                 }
             }
         }

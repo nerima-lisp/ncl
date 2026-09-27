@@ -5,17 +5,8 @@
 //! `PROGN` that returns the new value) plus `SYMBOL-VALUE` (which calls the
 //! existing `SET` builtin, which already returns the new value).
 //!
-//! `AREF`/`SVREF`/`GETHASH` are intentionally **not** wired up here yet: the
-//! `NCL-EXT::AREF-SET`/`NCL-EXT::SVREF-SET`/`NCL-EXT::GETHASH-SET` builtins
-//! this module would call (see `ncl-lib-hash-arrays`) work correctly when
-//! invoked directly, but a pre-existing compiler bug crashes the process
-//! when a call to *any* function (builtin or user-defined, any package) with
-//! this many arguments is reached through code produced by macro expansion
-//! rather than typed directly in source text -- reproducible with a plain
-//! `(defmacro two (a b) (list 'two-fn a b))`, unrelated to `setf`. Wiring
-//! these three places up must wait for that codegen/front-end bug (adjacent
-//! to the compiled-call-arity and multiple-value-propagation gaps) to be
-//! fixed; see the patch series README for the exact repro.
+//! The array and hash-table places call their corresponding `NCL-EXT` setter
+//! builtins, which return the stored value required by `SETF`.
 #![allow(clippy::missing_errors_doc)]
 
 use ncl_object::{ObjectError, PlaceExpander, Runtime, SetfExpansion, ThreadContext, Word};
@@ -185,6 +176,30 @@ fn symbol_value_place(
     setter_place(ctx, runtime, args, "SYMBOL-VALUE", "SET")
 }
 
+fn aref_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    setter_place(ctx, runtime, args, "AREF", "NCL-EXT::AREF-SET")
+}
+
+fn svref_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    setter_place(ctx, runtime, args, "SVREF", "NCL-EXT::SVREF-SET")
+}
+
+fn gethash_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    setter_place(ctx, runtime, args, "GETHASH", "NCL-EXT::GETHASH-SET")
+}
+
 /// Register the place expanders defined in this module.
 ///
 /// # Errors
@@ -199,6 +214,9 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("REST", rest_place as PlaceExpander),
         ("NTH", nth_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
+        ("AREF", aref_place as PlaceExpander),
+        ("SVREF", svref_place as PlaceExpander),
+        ("GETHASH", gethash_place as PlaceExpander),
     ] {
         let mut symbol = symbol(ctx, runtime, name)?;
         ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {

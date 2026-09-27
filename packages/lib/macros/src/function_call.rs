@@ -3,7 +3,7 @@ use ncl_object::{
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
     ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, function_name,
-    symbol_function, symbol_is_macro,
+    symbol_function,
 };
 
 const FUNCTION: Parameter = Parameter {
@@ -33,28 +33,27 @@ fn call_designator(
     let mut rooted = Vec::with_capacity(arguments.len() + 1);
     rooted.push(designator);
     rooted.extend_from_slice(arguments);
-    let resolved = {
-        let designator = function_designator(ctx, designator).inspect_err(|_| {
+    let resolved = ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
+        let designator_word = **rooted.first().ok_or(ObjectError::Layout)?;
+        let designator = function_designator(ctx, designator_word).inspect_err(|_| {
             ctx.set_pending_lisp_error(LispError::TypeError {
-                datum: rooted.first().copied().unwrap_or(Word::NIL),
+                datum: designator_word,
                 expected: ObjectType::Function,
             });
         })?;
         match designator {
             FunctionDesignator::Function(function) => {
                 let name = function_name(ctx, ncl_object::Function::from_word(function.as_word()))?;
-                FunctionObject::try_from(symbol_function(ctx, name)?).or(Ok(function))
+                FunctionObject::try_from(symbol_function(ctx, name)?)
+                    .or(Ok(function))
+                    .map(Some)
             }
-            FunctionDesignator::Symbol(symbol) => {
-                if symbol_is_macro(ctx, symbol.into())? {
-                    return Err(ObjectError::UndefinedFunction);
-                }
-                FunctionObject::try_from(symbol_function(ctx, symbol.into())?)
-                    .map_err(|_| ObjectError::UndefinedFunction)
-            }
+            FunctionDesignator::Symbol(_) => Ok(None),
         }
-    }?;
-    if runtime.builtin_allows_nested_evaluation(resolved) {
+    })?;
+    if let Some(resolved) = resolved
+        && runtime.builtin_allows_nested_evaluation(resolved)
+    {
         return runtime
             .call_builtin(ctx, resolved, arguments)
             .map_err(|error| {

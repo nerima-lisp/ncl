@@ -37,7 +37,7 @@ impl ncl_object::LoadPort for RuntimeLoadPort {
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
         let Some(pointer) = ctx.evaluator_runtime() else {
-            return Err(ObjectError::Unsupported);
+            return Err(ObjectError::Layout);
         };
         // The pointer is installed only around an active Runtime evaluation and
         // is cleared before that Runtime can be moved or dropped.
@@ -82,7 +82,7 @@ fn load_with_runtime(
                     return Err(ObjectError::TypeError);
                 }
             }
-            _ => {
+            _unknown_keyword => {
                 ctx.set_pending_lisp_error(LispError::ProgramError(
                     ncl_object::ProgramError::UnknownKeyword,
                 ));
@@ -105,7 +105,12 @@ fn load_with_runtime(
             ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
             Err(ObjectError::TypeError)
         }
-        Err(_) => {
+        Err(RuntimeError::Native(_))
+        | Err(RuntimeError::Object(_))
+        | Err(RuntimeError::Read(_))
+        | Err(RuntimeError::Front(_))
+        | Err(RuntimeError::Lower(_))
+        | Err(RuntimeError::NativeFailure { .. }) => {
             ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
             Err(ObjectError::TypeError)
         }

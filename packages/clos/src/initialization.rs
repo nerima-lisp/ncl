@@ -177,7 +177,7 @@ fn resolve_class(
         let name = symbol_name_string(ctx, value)?;
         return runtime
             .class(ctx, &name)
-            // check-added-lines: allow(unbound)
+            // check-added-lines: allow(unbound) class placeholder
             .filter(|class| *class != Word::UNBOUND)
             .ok_or(ObjectError::TypeError);
     }
@@ -225,7 +225,7 @@ fn initialize_slots<'scope>(
         ) && simple_vector_length(scope.context(), slot)? > 2
         {
             let default = simple_vector_ref(scope.context(), slot, 2)?;
-            // check-added-lines: allow(unbound)
+            // check-added-lines: allow(unbound) sentinel initialization
             if default != Word::UNBOUND {
                 slot_set(scope.context_mut(), instance, index, default)?;
             }

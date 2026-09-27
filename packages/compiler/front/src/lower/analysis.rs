@@ -62,6 +62,7 @@ fn mentions_return_from(expr: &Expr, name: &SymbolRef) -> bool {
                     .iter()
                     .any(|form| mentions_return_from(form, name))
         }
+        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
         _ => false,
     }
 }
@@ -106,6 +107,7 @@ fn has_unwind_protect(expr: &Expr) -> bool {
         Expr::Function(FunctionDesignator::Lambda(lambda)) => {
             lambda.body.iter().any(has_unwind_protect)
         }
+        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
         _ => false,
     }
 }
@@ -136,6 +138,7 @@ fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::SymbolMacrolet { body: forms, .. } => {
             forms.iter().any(|form| nested_return(form, name))
         }
+        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
         _ => false,
     }
 }
@@ -150,6 +153,7 @@ fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
             forms.iter().any(|form| contains_return(form, name))
         }
         Expr::Call { arguments, .. } => arguments.iter().any(|form| contains_return(form, name)),
+        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
         _ => false,
     }
 }

@@ -46,6 +46,7 @@ impl Thread {
     /// [`Self::mv_count`] rather than assuming the whole area is live.
     pub fn set_multiple_value_area(&mut self, values: &[Word]) {
         let count = values.len().min(MULTIPLE_VALUE_AREA_WORDS);
+        // check-added-lines: allow(index) `count` is clamped to both slice lengths on the line above; both slices always contain at least `count` elements.
         self.mv[..count].copy_from_slice(&values[..count]);
         self.set_mv_count(count);
     }

@@ -251,8 +251,20 @@ fn instance_arg(ctx: &mut ThreadContext, word: Word) -> Result<Instance, ObjectE
     }
 }
 
-fn fixnum_arg(ctx: &mut ThreadContext, word: Word) -> Result<Fixnum, ObjectError> {
-    Fixnum::try_from_word(word).map_err(|error| typed_error(ctx, error.into()))
+fn slot_index(ctx: &ThreadContext, instance: Instance, designator: Word) -> Result<usize, ObjectError> {
+    if let Ok(index) = Fixnum::try_from_word(designator) {
+        return usize::try_from(index.value()).map_err(|_| ObjectError::TypeError);
+    }
+    let class = instance_class(ctx, instance)?;
+    let slots = simple_vector_ref(ctx, class, CLASS_EFFECTIVE_SLOTS)?;
+    for index in 0..simple_vector_length(ctx, slots)? {
+        let descriptor = simple_vector_ref(ctx, slots, index)?;
+        let name = if matches!(classify_object(ctx, descriptor), ObjectRef::SimpleVector(_)) {
+            simple_vector_ref(ctx, descriptor, 0)?
+        } else { descriptor };
+        if name == designator { return Ok(index); }
+    }
+    Err(ObjectError::TypeError)
 }
 
 fn slot_value_builtin(
@@ -262,11 +274,11 @@ fn slot_value_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     slot_ref(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
     )
 }
 
@@ -277,12 +289,12 @@ fn slot_set_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     let value = args.required(2)?;
     slot_set(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
         value,
     )?;
     Ok(value)
@@ -309,11 +321,11 @@ fn slot_makunbound_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     slot_set(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
         Word::UNBOUND,
     )?;
     Ok(instance.as_word())

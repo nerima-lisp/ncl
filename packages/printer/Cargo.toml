@@ -10,6 +10,7 @@ ncl-object = { path = "../object" }
 
 [dev-dependencies]
 ncl-ownership = { path = "../ownership" }
+ncl-lib-streams = { path = "../lib/streams" }
 
 [lints]
 

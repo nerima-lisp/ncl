@@ -51,3 +51,16 @@ fn register_all_registers_strings() {
             .is_some()
     );
 }
+
+#[test]
+fn register_all_registers_format() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
+    assert!(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .is_some()
+    );
+}

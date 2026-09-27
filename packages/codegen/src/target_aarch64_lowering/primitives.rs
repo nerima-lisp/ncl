@@ -42,7 +42,7 @@ pub(super) fn decode_function_entry(
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) enum ClosureLayout<'a> {
-    Static(&'a [ValueId]),
+    Static(&'a [ValueId]), // check-added-lines: allow(index) slice type
     Dynamic,
 }
 

@@ -54,7 +54,7 @@ pub fn lower_call(
                         .checked_neg()
                         .ok_or(CodegenError::FrameOverflow)?,
                 },
-            },
+            }, // check-added-lines: allow(index)
         )?;
     }
     for (index, argument) in rest.iter().enumerate() {

@@ -199,3 +199,46 @@ fn evals_native_functions_constants_and_closures() {
         assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
     }
 }
+
+/// `catch`/`throw`, `unwind-protect`, `return-from` crossing a closure
+/// boundary, and `progv`, backed by the return-code propagation engine in
+/// `ncl-object`'s `nonlocal` module and `ncl-codegen`'s
+/// `lower_return_or_throw`/`lower_pending_check`.
+#[test]
+fn evals_native_non_local_exits() {
+    for (source, expected) in [
+        ("(catch 'k (throw 'k 5))", "5"),
+        ("(catch 'k (catch 'j (throw 'k 5)))", "5"),
+        ("(unwind-protect 1 (setq *cli-nlx-a* 2))", "1"),
+        ("(block b (funcall (lambda () (return-from b 42))))", "42"),
+        (
+            "(progn (block b (unwind-protect (return-from b 1) (setq *cli-nlx-b* 2))) *cli-nlx-b*)",
+            "2",
+        ),
+        (
+            "(progn (catch 'k (unwind-protect (throw 'k 1) (setq *cli-nlx-c* 9))) *cli-nlx-c*)",
+            "9",
+        ),
+        ("(catch 'k (unwind-protect (throw 'k 1) 2))", "1"),
+        ("(progv '(*cli-nlx-d*) '(3) *cli-nlx-d*)", "3"),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+}
+
+/// `throw` to a tag with no enclosing `catch` reports a control error
+/// instead of crashing or silently continuing; verified here with an
+/// established-but-mismatched tag. See `nonlocal::tests::*` (ncl-object) for
+/// the fully bare case, which still hits a pre-existing `ncl-opt` gap
+/// documented in the design README.
+#[test]
+fn throw_to_a_mismatched_tag_reports_a_control_error() {
+    let result = output(ncl().args(["--eval", "(catch 'k (throw 'j 1))"]));
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("ControlError"),
+        "{result:?}"
+    );
+}

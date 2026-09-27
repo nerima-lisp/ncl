@@ -284,34 +284,18 @@ struct XfailCase {
     cause: &'static str,
 }
 
-const XFAILS: &[XfailCase] = &[
-    XfailCase {
-        builtin: "VECTOR-PUSH-EXTEND",
-        source: "(vector-push-extend 7 (make-array 0 :fill-pointer 0 :adjustable t))",
-        expected_exit: 1,
-        stderr_contains: "AArch64 calls support at most four register arguments",
-        cause: "packages/codegen/src/target_aarch64_lowering.rs:160-163: AArch64 call lowering is unimplemented beyond four register arguments",
-    },
-    XfailCase {
-        builtin: "VECTOR-POP",
-        source: "(vector-pop (make-array 2 :fill-pointer 1 :initial-element 7))",
-        expected_exit: 1,
-        stderr_contains: "AArch64 calls support at most four register arguments",
-        cause: "packages/codegen/src/target_aarch64_lowering.rs:160-163: AArch64 call lowering is unimplemented beyond four register arguments",
-    },
-    XfailCase {
-        builtin: "SBIT",
-        source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
-        expected_exit: 1,
-        stderr_contains: "UndefinedFunction",
-        cause: "packages/lib/macros/src/setf_places.rs:223-240: SETF place expansion for the SBIT CL function is unimplemented",
-    },
-];
+const XFAILS: &[XfailCase] = &[XfailCase {
+    builtin: "SBIT",
+    source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
+    expected_exit: 1,
+    stderr_contains: "UndefinedFunction",
+    cause: "packages/lib/macros/src/setf_places.rs:223-240: SETF place expansion for the SBIT CL function is unimplemented",
+}];
 
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
     assert_eq!(CASES.len(), 53);
-    assert_eq!(XFAILS.len(), 3);
+    assert_eq!(XFAILS.len(), 1);
     for case in CASES {
         let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
             .args(["--eval", case.source])

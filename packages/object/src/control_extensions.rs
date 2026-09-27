@@ -20,13 +20,17 @@ impl ThreadContext {
         }
     }
 
-    pub const fn set_non_local_exit(&mut self, pending: bool) {
-        self.non_local_exit = pending;
+    /// Record whether a non-local exit is currently propagating through
+    /// native code. Backed by [`ncl_sys::Thread::set_pending`] so both
+    /// generated code and Rust runtime helpers observe the same flag.
+    pub fn set_non_local_exit(&mut self, pending: bool) {
+        self.thread.set_pending(pending);
     }
 
-    pub const fn take_non_local_exit(&mut self) -> bool {
-        let pending = self.non_local_exit;
-        self.non_local_exit = false;
+    /// Read and clear the pending non-local exit flag.
+    pub fn take_non_local_exit(&mut self) -> bool {
+        let pending = self.thread.pending();
+        self.thread.set_pending(false);
         pending
     }
 

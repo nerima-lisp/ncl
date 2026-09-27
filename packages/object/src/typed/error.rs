@@ -169,6 +169,7 @@ pub enum ObjectErrorKind {
     RootStackCorrupted,
     Unsupported,
     PackageConflict,
+    ControlError,
 }
 impl ObjectError {
     /// Return the typed category without changing the existing error enum.
@@ -184,6 +185,7 @@ impl ObjectError {
             Self::RootStackCorrupted => ObjectErrorKind::RootStackCorrupted,
             Self::Unsupported => ObjectErrorKind::Unsupported,
             Self::PackageConflict => ObjectErrorKind::PackageConflict,
+            Self::ControlError => ObjectErrorKind::ControlError,
         }
     }
 }

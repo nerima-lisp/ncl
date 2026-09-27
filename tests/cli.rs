@@ -200,6 +200,39 @@ fn evals_native_functions_constants_and_closures() {
     }
 }
 
+#[test]
+fn top_level_forms_run_in_order_for_definitions_and_macros() {
+    for (source, expected) in [
+        ("(progn (defmacro m (x) (list 'list x x)) (m 3))", "(3 3)"),
+        (
+            "(progn (defmacro quote-one (x) (list 'quote x)) (quote-one 7))",
+            "7",
+        ),
+        ("(progn (defun f () 1) (f))", "1"),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+
+    let result = output(ncl().args([
+        "--eval",
+        "(progn (defmacro m (x) (list 'list x x)) (funcall 'm 3))",
+    ]));
+    assert!(!result.status.success());
+
+    let path = std::env::temp_dir().join(format!("ncl-macro-order-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(&path, "(defmacro m (x) (list 'list x x))\n(m 3)\n") {
+        panic!("source file creation failed: {error}");
+    }
+    let load = output(ncl().args(["--load", path_str(&path)]));
+    assert!(load.status.success(), "{load:?}");
+    assert_eq!(String::from_utf8_lossy(&load.stdout).trim(), "(3 3)");
+    if let Err(error) = fs::remove_file(path) {
+        panic!("source file cleanup failed: {error}");
+    }
+}
+
 /// Every builtin below has no ISA-specific fast path, so a compiled call site
 /// resolves its `ENTRY` to the generic native trampoline
 /// (`ncl_runtime::builtin_trampoline`). Before that trampoline existed, each

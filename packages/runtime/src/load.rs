@@ -3,8 +3,8 @@ use std::path::Path;
 use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
-    ObjectRef, Readtable as ObjectReadtable, Word, car, cdr, classify_object, pop_heap_root,
-    push_heap_root, symbol_name,
+    ObjectRef, Readtable as ObjectReadtable, Word, car, cdr, classify_object, make_cons,
+    pop_heap_root, push_heap_root, symbol_name,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -35,7 +35,7 @@ pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, Runtime
     let loaded = (|| {
         while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
             let package = in_package_name(&runtime.context, form)?;
-            result = eval_rooted(runtime, &mut options, form)?;
+            result = eval_top_level(runtime, &mut options, form)?;
             if let Some(package) = package {
                 options.set_current_package(package)?;
             }
@@ -48,6 +48,140 @@ pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, Runtime
         ));
     }
     loaded
+}
+
+fn eval_top_level(
+    runtime: &mut Runtime,
+    options: &mut ReadOptions,
+    form: Word,
+) -> Result<Word, RuntimeError> {
+    let mut rooted_form = form;
+    let token = push_heap_root(&runtime.object, &mut rooted_form);
+    let result = eval_top_level_inner(runtime, options, rooted_form);
+    if !pop_heap_root(&runtime.object, token) {
+        return Err(RuntimeError::Native(
+            "load: top-level form root stack corrupted".to_owned(),
+        ));
+    }
+    result
+}
+
+fn eval_top_level_inner(
+    runtime: &mut Runtime,
+    options: &mut ReadOptions,
+    form: Word,
+) -> Result<Word, RuntimeError> {
+    if !matches!(classify_object(&runtime.context, form), ObjectRef::Cons(_)) {
+        return eval_rooted(runtime, options, form);
+    }
+    let mut elements = ncl_compiler_front::form::list(&mut runtime.context, form)?;
+    let Some((head, arguments)) = elements.split_first() else {
+        return eval_rooted(runtime, options, form);
+    };
+    let Some(name) = top_level_name(&runtime.context, *head)? else {
+        return eval_rooted(runtime, options, form);
+    };
+    let body_start = match name.as_str() {
+        "PROGN" => 0,
+        "LOCALLY" => leading_declarations(&mut runtime.context, arguments),
+        "EVAL-WHEN" => 1,
+        "MACROLET" | "SYMBOL-MACROLET" => {
+            if arguments.is_empty() {
+                return eval_rooted(runtime, options, form);
+            }
+            1 + leading_declarations(&mut runtime.context, &arguments[1..])
+        }
+        _ => return eval_rooted(runtime, options, form),
+    };
+    if body_start >= arguments.len() {
+        return eval_rooted(runtime, options, form);
+    }
+    let mut element_tokens = Vec::with_capacity(elements.len());
+    for element in &mut elements {
+        element_tokens.push(push_heap_root(&runtime.object, element));
+    }
+    let mut result = Word::NIL;
+    let evaluated = (|| {
+        for body in &elements[1 + body_start..] {
+            let body_form = if name == "PROGN" {
+                *body
+            } else {
+                wrap_top_level_form(runtime, &elements[..=body_start], *body)?
+            };
+            result = if name == "PROGN" {
+                eval_top_level(runtime, options, body_form)?
+            } else {
+                eval_rooted(runtime, options, body_form)?
+            };
+        }
+        Ok(result)
+    })();
+    for token in element_tokens.into_iter().rev() {
+        if !pop_heap_root(&runtime.object, token) {
+            return Err(RuntimeError::Native(
+                "load: top-level form root stack corrupted".to_owned(),
+            ));
+        }
+    }
+    evaluated
+}
+
+fn top_level_name(
+    ctx: &ncl_object::ThreadContext,
+    word: Word,
+) -> Result<Option<String>, RuntimeError> {
+    if !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
+        return Ok(None);
+    }
+    Ok(Some(word_string(ctx, symbol_name(ctx, word)?)?))
+}
+
+fn leading_declarations(ctx: &mut ncl_object::ThreadContext, forms: &[Word]) -> usize {
+    forms
+        .iter()
+        .take_while(|form| {
+            let Ok(elements) = ncl_compiler_front::form::list(ctx, **form) else {
+                return false;
+            };
+            elements
+                .first()
+                .and_then(|head| top_level_name(ctx, *head).ok().flatten())
+                .is_some_and(|name| name == "DECLARE")
+        })
+        .count()
+}
+
+fn wrap_top_level_form(
+    runtime: &mut Runtime,
+    elements: &[Word],
+    body: Word,
+) -> Result<Word, RuntimeError> {
+    let mut words = elements.to_vec();
+    words.push(body);
+    let mut tokens = Vec::with_capacity(words.len());
+    for word in &mut words {
+        tokens.push(push_heap_root(&runtime.object, word));
+    }
+    let mut wrapped = Word::NIL;
+    let wrapped_token = push_heap_root(&runtime.object, &mut wrapped);
+    for word in words.iter().rev() {
+        wrapped = make_cons(&mut runtime.context, &runtime.object, *word, wrapped)?;
+    }
+    let result = wrapped;
+    let wrapped_popped = pop_heap_root(&runtime.object, wrapped_token);
+    for token in tokens.into_iter().rev() {
+        if !pop_heap_root(&runtime.object, token) {
+            return Err(RuntimeError::Native(
+                "load: top-level wrapper root stack corrupted".to_owned(),
+            ));
+        }
+    }
+    if !wrapped_popped {
+        return Err(RuntimeError::Native(
+            "load: top-level wrapper root stack corrupted".to_owned(),
+        ));
+    }
+    Ok(result)
 }
 
 /// Evaluate `form`, keeping both it and the reader's readtable rooted across

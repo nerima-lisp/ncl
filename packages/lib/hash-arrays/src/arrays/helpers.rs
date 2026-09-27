@@ -35,6 +35,23 @@ pub(super) fn list_values(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Wor
     Ok(values)
 }
 
+pub(super) fn dimension_values(
+    ctx: &ThreadContext,
+    value: Word,
+) -> Result<Vec<usize>, ObjectError> {
+    let values = match value.as_fixnum() {
+        Some(_) => vec![value],
+        None => list_values(ctx, value)?,
+    };
+    values
+        .into_iter()
+        .map(|value| {
+            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                .map_err(|_| ObjectError::TypeError)
+        })
+        .collect()
+}
+
 pub(super) fn array_shape(ctx: &ThreadContext, value: Word) -> Result<Vec<usize>, ObjectError> {
     match ncl_object::classify_object(ctx, value) {
         ObjectRef::SimpleVector(vector) => Ok(vec![simple_vector_length(ctx, vector)?]),

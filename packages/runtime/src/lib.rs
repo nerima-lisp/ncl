@@ -5,6 +5,7 @@ mod builtin_trampoline;
 mod compile;
 #[cfg(test)]
 mod constant_tests;
+mod evalwhen;
 mod function_call;
 pub(crate) mod load;
 mod native_error;

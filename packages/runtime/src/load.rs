@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::evalwhen::{TopLevelMode, eval_when_start};
 use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
@@ -120,7 +121,7 @@ fn load_with_runtime(
     }
 }
 
-fn keyword_name(
+pub fn keyword_name(
     ctx: &ThreadContext,
     runtime: &ObjectRuntime,
     word: Word,
@@ -185,6 +186,14 @@ fn validate_load_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectEr
 }
 
 pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
+    source_forms_with_mode(runtime, source, TopLevelMode::Execute)
+}
+
+pub fn source_forms_with_mode(
+    runtime: &mut Runtime,
+    source: &str,
+    mode: TopLevelMode,
+) -> Result<Word, RuntimeError> {
     let mut input = StringSource::new(source);
     let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;
     let mut result = Word::NIL;
@@ -197,7 +206,7 @@ pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, Runtime
     let loaded = (|| {
         while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
             let package = in_package_name(&runtime.context, form)?;
-            result = eval_top_level(runtime, &mut options, form)?;
+            result = eval_top_level(runtime, &mut options, form, mode)?;
             if let Some(package) = package {
                 options.set_current_package(package)?;
             }
@@ -216,10 +225,11 @@ fn eval_top_level(
     runtime: &mut Runtime,
     options: &mut ReadOptions,
     form: Word,
+    mode: TopLevelMode,
 ) -> Result<Word, RuntimeError> {
     let mut rooted_form = form;
     let token = push_heap_root(&runtime.object, &mut rooted_form);
-    let result = eval_top_level_inner(runtime, options, rooted_form);
+    let result = eval_top_level_inner(runtime, options, rooted_form, mode);
     if !pop_heap_root(&runtime.object, token) {
         return Err(RuntimeError::Native(
             "load: top-level form root stack corrupted".to_owned(),
@@ -232,6 +242,7 @@ fn eval_top_level_inner(
     runtime: &mut Runtime,
     options: &mut ReadOptions,
     form: Word,
+    mode: TopLevelMode,
 ) -> Result<Word, RuntimeError> {
     if !matches!(classify_object(&runtime.context, form), ObjectRef::Cons(_)) {
         return eval_rooted(runtime, options, form);
@@ -240,23 +251,33 @@ fn eval_top_level_inner(
     let Some((head, arguments)) = elements.split_first() else {
         return eval_rooted(runtime, options, form);
     };
-    let Some(name) = top_level_name(&runtime.context, *head)? else {
+    let Some(name) = top_level_name(&runtime.context, &runtime.object, *head)? else {
         return eval_rooted(runtime, options, form);
     };
-    let body_start = if name == "PROGN" {
-        0
+    let (body_start, eval_when_active) = if name == "PROGN" {
+        (0, true)
     } else if name == "LOCALLY" {
-        leading_declarations(&mut runtime.context, arguments)
+        (
+            leading_declarations(&mut runtime.context, &runtime.object, arguments),
+            true,
+        )
     } else if name == "EVAL-WHEN" {
-        1
+        let (body_start, active) = eval_when_start(runtime, arguments, mode)?;
+        (body_start, active)
     } else if name == "MACROLET" || name == "SYMBOL-MACROLET" {
         let Some(rest) = arguments.get(1..) else {
             return eval_rooted(runtime, options, form);
         };
-        1 + leading_declarations(&mut runtime.context, rest)
+        (
+            1 + leading_declarations(&mut runtime.context, &runtime.object, rest),
+            true,
+        )
     } else {
         return eval_rooted(runtime, options, form);
     };
+    if name == "EVAL-WHEN" && !eval_when_active {
+        return Ok(Word::NIL);
+    }
     if body_start >= arguments.len() {
         return eval_rooted(runtime, options, form);
     }
@@ -270,7 +291,7 @@ fn eval_top_level_inner(
             .get(1 + body_start..)
             .ok_or_else(|| RuntimeError::Native("load: top-level body is missing".to_owned()))?;
         for body in body_forms {
-            let body_form = if name == "PROGN" {
+            let body_form = if name == "PROGN" || name == "EVAL-WHEN" {
                 *body
             } else {
                 let prefix = elements.get(..=body_start).ok_or_else(|| {
@@ -278,8 +299,8 @@ fn eval_top_level_inner(
                 })?;
                 wrap_top_level_form(runtime, prefix, *body)?
             };
-            result = if name == "PROGN" {
-                eval_top_level(runtime, options, body_form)?
+            result = if name == "PROGN" || name == "EVAL-WHEN" {
+                eval_top_level(runtime, options, body_form, mode)?
             } else {
                 eval_rooted(runtime, options, body_form)?
             };
@@ -298,15 +319,26 @@ fn eval_top_level_inner(
 
 fn top_level_name(
     ctx: &ncl_object::ThreadContext,
+    runtime: &ObjectRuntime,
     word: Word,
 ) -> Result<Option<String>, RuntimeError> {
     if !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
         return Ok(None);
     }
+    let Some(common_lisp) = runtime.find_package(ctx, "COMMON-LISP") else {
+        return Ok(None);
+    };
+    if symbol_package(ctx, word)? != common_lisp {
+        return Ok(None);
+    }
     Ok(Some(word_string(ctx, symbol_name(ctx, word)?)?))
 }
 
-fn leading_declarations(ctx: &mut ncl_object::ThreadContext, forms: &[Word]) -> usize {
+fn leading_declarations(
+    ctx: &mut ncl_object::ThreadContext,
+    runtime: &ObjectRuntime,
+    forms: &[Word],
+) -> usize {
     forms
         .iter()
         .take_while(|form| {
@@ -315,7 +347,7 @@ fn leading_declarations(ctx: &mut ncl_object::ThreadContext, forms: &[Word]) -> 
             };
             elements
                 .first()
-                .and_then(|head| top_level_name(ctx, *head).ok().flatten())
+                .and_then(|head| top_level_name(ctx, runtime, *head).ok().flatten())
                 .is_some_and(|name| name == "DECLARE")
         })
         .count()

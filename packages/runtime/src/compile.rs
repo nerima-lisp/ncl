@@ -284,7 +284,11 @@ pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
     })?;
     let contents = String::from_utf8(bytes)
         .map_err(|_| RuntimeError::Native("source file is not valid UTF-8".to_owned()))?;
-    let value = source(runtime, &contents)?;
+    let value = crate::load::source_forms_with_mode(
+        runtime,
+        &contents,
+        crate::evalwhen::TopLevelMode::CompileFile,
+    )?;
     // This first FASL format deliberately stores source, so load recompiles it.
     // Native code, constants, and fixups are reserved for the persistent FASL format.
     let fasl = ncl_objfile::Fasl {

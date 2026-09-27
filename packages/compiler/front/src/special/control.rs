@@ -234,18 +234,42 @@ fn eval_when(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
+    let Some(first) = arguments.first() else {
+        return Err(special::arity(
+            kind,
+            "a situation list and zero or more forms",
+            0,
+        ));
+    };
     let mut situations = Vec::new();
-    let mut index = 0;
-    while index < arguments.len() && is_keyword(expander, arguments[index])? {
-        let name = expander.symbol(arguments[index])?;
+    let situation_words = if *first == Word::NIL {
+        Vec::new()
+    } else if matches!(classify_form(expander.ctx(), *first), ObjectRef::Cons(_)) {
+        expander.elements(*first)?
+    } else {
+        vec![*first]
+    };
+    for situation_word in situation_words {
+        if !is_keyword(expander, situation_word)? {
+            return Err(FrontError::MalformedForm {
+                operator: kind.symbol(),
+                detail: "eval-when situations must be keyword symbols".to_owned(),
+            });
+        }
+        let name = expander.symbol(situation_word)?;
         let situation = eval_situation(&name.name).ok_or_else(|| FrontError::MalformedForm {
             operator: kind.symbol(),
             detail: format!("unknown eval-when situation {name}"),
         })?;
         situations.push(situation);
-        index += 1;
     }
-    let body = expander.expand_all(&arguments[index..])?;
+    let body = expander.expand_all(arguments.get(1..).ok_or_else(|| {
+        special::arity(
+            kind,
+            "a situation list and zero or more forms",
+            arguments.len(),
+        )
+    })?)?;
     Ok(Expr::EvalWhen { situations, body })
 }
 

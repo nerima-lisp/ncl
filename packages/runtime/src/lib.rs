@@ -76,6 +76,18 @@ impl RuntimeError {
     }
 }
 
+#[allow(clippy::option_if_let_else)]
+fn undefined_function_name(context: &mut ThreadContext) -> String {
+    match context
+        .take_pending_undefined_function()
+        .and_then(|name| ncl_object::symbol_name(context, name).ok())
+        .and_then(|name| ncl_compiler_front::form::word_string(context, name).ok())
+    {
+        Some(name) => name,
+        None => "<unknown>".to_owned(),
+    }
+}
+
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
@@ -137,6 +149,7 @@ impl Runtime {
         // needs a real native `ENTRY` the moment it is created, so the
         // trampoline must be published and installed first.
         let builtin_trampoline = builtin_trampoline::install(&object, &mut context)?;
+        object.install_undefined_function_entry(&mut context, builtin_trampoline.address())?;
         ncl_stdlib::register_all(&mut context, &object)?;
         Ok(Self {
             object,
@@ -396,6 +409,10 @@ impl Runtime {
             return Err(native_failure(error));
         }
         if let Some(error) = context.take_pending() {
+            if matches!(error, ObjectError::UndefinedFunction) {
+                let name = undefined_function_name(context);
+                return Err(RuntimeError::Native(format!("UNDEFINED-FUNCTION {name}")));
+            }
             return Err(error.into());
         }
         Ok(Word::from_bits(value))

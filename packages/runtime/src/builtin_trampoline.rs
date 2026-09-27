@@ -34,7 +34,8 @@
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
 use ncl_object::{
-    FunctionObject, Package, Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
+    BuiltinIdentifier, BuiltinName, BuiltinPackage, FunctionObject, Package,
+    Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
 };
 use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
 use std::ptr::NonNull;
@@ -241,11 +242,6 @@ extern "C" fn make_rest_list_native(
     result
 }
 
-pub(super) fn make_rest_list_address() -> Result<u64, RuntimeError> {
-    ncl_sys::function_address!(make_rest_list_native)
-        .map_err(|error| RuntimeError::Native(error.to_string()))
-}
-
 fn dispatch_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(dispatch).map_err(|error| RuntimeError::Native(error.to_string()))
 }
@@ -345,6 +341,17 @@ fn build_x86_64_stub() -> Result<Vec<u8>, RuntimeError> {
 /// Returns a native error if assembling, publishing, or installing the
 /// trampoline fails.
 pub fn install(object: &ObjectRuntime, ctx: &mut ThreadContext) -> Result<CodePtr, RuntimeError> {
+    let make_rest_list = ncl_sys::function_address!(make_rest_list_native)
+        .map_err(|error| RuntimeError::Native(error.to_string()))?;
+    object.register_builtin_address(
+        BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("make-rest-list"),
+        ),
+        usize::try_from(make_rest_list).map_err(|_| {
+            RuntimeError::Native("make-rest-list address does not fit usize".to_owned())
+        })?,
+    );
     let bytes = if cfg!(target_arch = "aarch64") {
         build_aarch64_stub()
     } else {

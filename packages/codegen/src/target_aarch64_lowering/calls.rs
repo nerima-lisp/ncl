@@ -5,7 +5,7 @@ use ncl_ir::ValueId;
 
 #[allow(clippy::similar_names)]
 #[allow(clippy::too_many_lines)]
-pub(super) fn lower_call(
+pub fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
     args: &[ValueId],
@@ -108,7 +108,7 @@ pub(super) fn lower_call(
     Ok(())
 }
 
-pub(super) fn lower_closure_call(
+pub fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],

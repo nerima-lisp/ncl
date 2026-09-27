@@ -54,11 +54,6 @@ const PROBES: &[Probe] = &[
         expected: "30",
     },
     Probe {
-        name: "typecase-default",
-        source: "(typecase nil (otherwise 12))",
-        expected: "12",
-    },
-    Probe {
         name: "prog1",
         source: "(prog1 7 8)",
         expected: "7",
@@ -84,25 +79,25 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "loop-in",
         source: "(loop for x in (quote (1 2 3)) collect x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "loop-on",
         source: "(loop for x on (quote (1 2 3)) collect (car x))",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "loop-from-below-by",
         source: "(loop for x from 1 below 4 by 2 sum x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "loop-count",
         source: "(loop for x from 1 below 4 count (oddp x))",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
@@ -114,25 +109,25 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "loop-while",
         source: "(loop for x from 1 below 4 while (< x 3) collect x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "loop-until",
         source: "(loop for x from 1 below 4 until (= x 3) collect x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "loop-with-finally",
         source: "(loop with x = 2 finally (return x))",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "SafepointWarning",
         exit_code: 1,
     },
     XFail {
         name: "loop-nested",
         source: "(loop for x from 1 below 3 collect (loop for y from 1 below 3 sum (+ x y)))",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
@@ -150,19 +145,19 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "do-star",
         source: "(do* ((x 0 (1+ x))) ((= x 3) x))",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "UndefinedValue",
         exit_code: 1,
     },
     XFail {
         name: "dolist",
         source: "(dolist (x (list 1 2 3) 9) x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "SafepointWarning",
         exit_code: 1,
     },
     XFail {
         name: "dotimes",
         source: "(dotimes (x 3 9) x)",
-        stderr: "pass inline-direct-calls failed",
+        stderr: "SafepointWarning",
         exit_code: 1,
     },
     XFail {

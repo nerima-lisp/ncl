@@ -7,7 +7,7 @@
 //! reaches a covering handler region, rather than through raw stack/register
 //! surgery.
 
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use ncl_asm_aarch64::{Assembler, Cond, Inst, Label, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
@@ -45,7 +45,23 @@ fn covering_regions(function: &Function, block: BlockId) -> Vec<&HandlerRegion> 
         .iter()
         .filter(|region| region.protected.contains(&block))
         .collect::<Vec<_>>();
-    regions.sort_by_key(|region| region.protected.len());
+    regions.sort_by(|left, right| {
+        let left_is_inner = left.protected.len() < right.protected.len()
+            && left
+                .protected
+                .iter()
+                .all(|block| right.protected.contains(block));
+        let right_is_inner = right.protected.len() < left.protected.len()
+            && right
+                .protected
+                .iter()
+                .all(|block| left.protected.contains(block));
+        match (left_is_inner, right_is_inner) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            _ => right.id.0.cmp(&left.id.0),
+        }
+    });
     regions
 }
 

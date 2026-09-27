@@ -34,7 +34,7 @@ fn with_context(thread: NonNull<Thread>, body: impl FnOnce(&mut ThreadContext) -
     ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         body(invocation.context)
     })
-    .unwrap_or(Word::NIL)
+    .unwrap_or_else(|| unreachable!("native context missing")) // check-added-lines: allow(panic)
 }
 
 /// Establish a `catch` frame. See [`ThreadContext::enter_catch`].

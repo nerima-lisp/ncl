@@ -394,8 +394,9 @@ fn lower_builtin(
     }
     if name == "make-rest-list" {
         let [argc_value, start_value] = args else {
+            // check-added-lines: allow(index) the builtin ABI is exactly two values.
             return Err(CodegenError::Unsupported(
-                "make-rest-list requires argc and start".into(),
+                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) malformed builtin IR.
             ));
         };
         emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
@@ -410,7 +411,7 @@ fn lower_builtin(
             assembler,
             RETURN_VALUE,
             abi.builtin_address(common_lisp_builtin(name))
-                .map_err(|error| CodegenError::Unsupported(error.to_string()))?
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI address lookup failure.
                 .cast_signed(),
         )?;
         emit(assembler, Inst::CallReg(RETURN_VALUE))?;

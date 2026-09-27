@@ -251,8 +251,8 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
 }
 
 fn multiple_value_bind(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+    // check-added-lines: allow(index) intentional
     let [variables, value, body @ ..] = values else {
-        /* check-added-lines: allow(index) intentional */
         return Err(ObjectError::TypeError);
     };
     let variables = elements(ctx, *variables)?;

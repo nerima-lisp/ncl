@@ -200,6 +200,16 @@ const CASES: &[Case] = &[
         expected: "0",
     },
     Case {
+        builtin: "VECTOR-PUSH-EXTEND",
+        source: "(vector-push-extend 7 (make-array 0 :fill-pointer 0 :adjustable t))",
+        expected: "0",
+    },
+    Case {
+        builtin: "VECTOR-POP",
+        source: "(vector-pop (make-array 2 :fill-pointer 1 :initial-element 7))",
+        expected: "7",
+    },
+    Case {
         builtin: "ARRAY-ELEMENT-TYPE",
         source: "(array-element-type (make-array 2))",
         expected: "T",
@@ -294,7 +304,7 @@ const XFAILS: &[XfailCase] = &[XfailCase {
 
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
-    assert_eq!(CASES.len(), 53);
+    assert_eq!(CASES.len(), 55);
     assert_eq!(XFAILS.len(), 1);
     for case in CASES {
         let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))

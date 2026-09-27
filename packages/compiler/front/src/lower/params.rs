@@ -60,14 +60,7 @@ impl Context<'_> {
                 Some(form) => self.lower_expr(f, form)?,
                 None => f.nil()?,
             };
-            let absent = f.fixnum(0)?;
-            let absent = f.one(
-                OpKind::Convert {
-                    op: Convert::I64ToWord,
-                    value: absent,
-                },
-                Ty::Word,
-            )?;
+            let absent = f.nil()?;
             f.terminate(Terminator::Jump {
                 target: merge,
                 args: vec![default_value, absent],
@@ -75,14 +68,7 @@ impl Context<'_> {
             f.position(supplied)?;
             let parameter = param_index(base + list.required.len() + offset)?;
             let supplied_value = f.one(OpKind::LoadArg { index: parameter }, Ty::Word)?;
-            let present_flag = f.fixnum(1)?;
-            let present_flag = f.one(
-                OpKind::Convert {
-                    op: Convert::I64ToWord,
-                    value: present_flag,
-                },
-                Ty::Word,
-            )?;
+            let present_flag = f.word_constant(ncl_ir::Constant::T)?;
             f.terminate(Terminator::Jump {
                 target: merge,
                 args: vec![supplied_value, present_flag],
@@ -116,11 +102,20 @@ impl Context<'_> {
             } else {
                 f.nil()?
             };
-            for keys in list.keys.chunks(2) {
-                let mut check_arguments = vec![rest, allow_other_keys];
-                for key in keys {
-                    check_arguments.push(f.symbol(&key.keyword)?);
-                }
+            let mut allowed = f.nil()?;
+            for key in list.keys.iter().rev() {
+                let keyword = f.symbol(&key.keyword)?;
+                f.safepoint()?;
+                allowed = f.one(
+                    OpKind::Builtin {
+                        name: "CONS".to_owned(),
+                        args: vec![keyword, allowed],
+                    },
+                    Ty::Word,
+                )?;
+            }
+            {
+                let check_arguments = vec![rest, allow_other_keys, allowed];
                 f.safepoint()?;
                 f.one(
                     OpKind::Builtin {

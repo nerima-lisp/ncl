@@ -298,9 +298,9 @@ fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {
         }
         OpKind::Prim { args, .. } => out.extend(args),
         OpKind::Compare { left, right, .. } => out.extend([*left, *right]),
+        OpKind::LoadArg { index } => out.push(ValueId(u32::from(*index))),
         OpKind::Const { .. }
         | OpKind::Alloc { .. }
-        | OpKind::LoadArg { .. }
         | OpKind::Safepoint
         | OpKind::EnterHandler { .. }
         | OpKind::LeaveHandler { .. } => {}

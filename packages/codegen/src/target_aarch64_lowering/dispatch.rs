@@ -59,7 +59,7 @@ fn covering_regions(function: &Function, block: BlockId) -> Vec<&HandlerRegion> 
         match (left_is_inner, right_is_inner) {
             (true, false) => Ordering::Less,
             (false, true) => Ordering::Greater,
-            _ => right.id.0.cmp(&left.id.0),
+            (false, false) | (true, true) => right.id.0.cmp(&left.id.0),
         }
     });
     regions

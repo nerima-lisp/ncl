@@ -18,32 +18,36 @@ const STANDARD_STREAMS: [(&str, StreamKind, &str); 7] = [
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ncl_object::ObjectError> {
     let mut package = runtime.ensure_package(ctx, "COMMON-LISP")?;
     with_root(ctx, &mut package, |ctx, package| {
-        for (name, kind, direction_name) in STANDARD_STREAMS {
-            let (mut symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
-            with_root(ctx, &mut symbol, |ctx, symbol| {
-                let (mut direction, _) =
-                    Package::from_word(*package).intern(ctx, runtime, direction_name)?;
-                with_root(ctx, &mut direction, |ctx, direction| {
-                    let state = make_simple_vector(
-                        ctx,
-                        runtime,
-                        &[Word::fixnum(kind.code()), Word::fixnum(0)],
-                    )?;
-                    let stream = make_stream(
-                        ctx,
-                        runtime,
-                        *direction,
-                        Word::NIL,
-                        Word::NIL,
-                        state,
-                        Word::TRUE,
-                    )?;
-                    set_symbol_special(ctx, *symbol, true)?;
-                    set_symbol_value(ctx, *symbol, stream.into())
-                })
-            })?;
-        }
-        Ok(())
+        let (mut element_type, _) =
+            Package::from_word(*package).intern(ctx, runtime, "CHARACTER")?;
+        with_root(ctx, &mut element_type, |ctx, element_type| {
+            for (name, kind, direction_name) in STANDARD_STREAMS {
+                let (mut symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
+                with_root(ctx, &mut symbol, |ctx, symbol| {
+                    let (mut direction, _) =
+                        Package::from_word(*package).intern(ctx, runtime, direction_name)?;
+                    with_root(ctx, &mut direction, |ctx, direction| {
+                        let state = make_simple_vector(
+                            ctx,
+                            runtime,
+                            &[Word::fixnum(kind.code()), Word::fixnum(0)],
+                        )?;
+                        let stream = make_stream(
+                            ctx,
+                            runtime,
+                            *direction,
+                            *element_type,
+                            Word::NIL,
+                            state,
+                            Word::TRUE,
+                        )?;
+                        set_symbol_special(ctx, *symbol, true)?;
+                        set_symbol_value(ctx, *symbol, stream.into())
+                    })
+                })?;
+            }
+            Ok(())
+        })
     })
 }
 

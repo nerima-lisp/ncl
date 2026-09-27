@@ -19,6 +19,7 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     };
     assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok(), "safepoint");
     assert!(
+        // check-added-lines: allow(panic) test-only assertion
         builder
             .terminate(Terminator::Return {
                 values: vec![value],
@@ -38,7 +39,7 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     let Some(map) = compiled.safepoint_maps.first() else {
         return Err("safepoint map missing".into());
     };
-    assert!(map.registers.is_empty());
+    assert!(map.registers.is_empty()); // check-added-lines: allow(panic) test-only assertion
     let slot = 4 + 1 + usize::try_from(spill).map_err(|_| "spill slot overflow")?;
     assert!(
         map.bitmap

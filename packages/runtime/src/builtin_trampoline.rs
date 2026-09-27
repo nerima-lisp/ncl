@@ -223,7 +223,10 @@ extern "C" fn make_rest_list_native(
                 };
                 arguments.extend(rest_words);
             }
-            match object.call_builtin(context, function, &arguments) {
+            let result = ncl_object::with_rooted_slice(context, &arguments, |context, rooted| {
+                object.call_builtin(context, function, rooted)
+            });
+            match result {
                 Ok(value) => value.bits(),
                 Err(error) => {
                     context.set_pending(error);

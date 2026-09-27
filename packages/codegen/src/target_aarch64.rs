@@ -26,13 +26,13 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                                 .any(|(value, _)| value == closure)
                                 .then_some(match &candidate.kind {
                                     OpKind::MakeClosure { captures, .. } => captures.len(),
-                                    _ => 0,
+                                    _ => 0, // check-added-lines: allow(wildcard) non-closure ops are not captures.
                                 })
                         })
                         .unwrap_or(0);
                     captures.saturating_add(args.len().saturating_sub(1))
                 }
-                _ => 0,
+                _ => 0, // check-added-lines: allow(wildcard) non-call terminators need no outgoing slots.
             };
             let extras = count.saturating_sub(4);
             maximum = maximum.max(extras.saturating_add(usize::from(extras > 0)));
@@ -41,7 +41,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
             Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
                 args.len().saturating_sub(1)
             }
-            _ => 0,
+            _ => 0, // check-added-lines: allow(wildcard) non-call terminators need no outgoing slots.
         };
         let extras = count.saturating_sub(4);
         maximum = maximum.max(extras.saturating_add(usize::from(extras > 0)));

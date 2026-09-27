@@ -117,6 +117,7 @@ pub fn lower_call(
             },
         )?;
     } else {
+        // check-added-lines: allow(index) the loop's extra-argument offset is bounded above.
         load_value(assembler, allocation, callee, Reg(16))?;
     }
     Ok(())

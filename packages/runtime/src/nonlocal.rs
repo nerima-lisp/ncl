@@ -58,7 +58,9 @@ pub extern "C" fn native_enter_catch(
 ///
 pub extern "C" fn native_leave_catch(thread: NonNull<Thread>, _region: u64) -> Word {
     with_context(thread, |ctx| {
-        ctx.leave_catch();
+        if let Err(error) = ctx.leave_catch() {
+            ctx.set_pending(error);
+        }
         Word::NIL
     })
 }

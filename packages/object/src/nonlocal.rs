@@ -132,14 +132,20 @@ impl ThreadContext {
     /// pending) and the caught-throw path (where this catch was the
     /// target); in both cases the exit, if any, is now fully handled, so
     /// the pending flag is cleared.
-    pub fn leave_catch(&mut self) {
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::RootStackCorrupted`] if the catch tag root
+    /// cannot be released from the thread's root stack.
+    pub fn leave_catch(&mut self) -> Result<(), ObjectError> {
+        let mut result = Ok(());
         if let Some(frame) = self.frames.pop() {
             self.thread.pop_control_depth(frame.kind());
             if let DynamicFrame::Catch { tag } = frame {
-                let _ = tag.release(self);
+                result = tag.release(self);
             }
         }
         self.thread.set_pending(false);
+        result
     }
 
     /// Establish an `unwind-protect` frame.
@@ -268,7 +274,7 @@ mod tests {
         assert_eq!(ctx.thread.mv_count(), 2); // check-added-lines: allow(panic)
         assert_eq!(ctx.thread.multiple_values()[0], tag); // check-added-lines: allow(panic,index)
         assert_eq!(ctx.thread.multiple_values()[1], Word::fixnum(42)); // check-added-lines: allow(panic,index)
-        ctx.leave_catch();
+        let _ = ctx.leave_catch();
         assert!(!ctx.thread.pending()); // check-added-lines: allow(panic)
     }
 
@@ -294,8 +300,8 @@ mod tests {
         ctx.throw(outer, Word::fixnum(99)).expect("throw");
         assert!(ctx.thread.pending());
         assert_eq!(ctx.thread.multiple_values()[0], outer);
-        ctx.leave_catch();
-        ctx.leave_catch();
+        let _ = ctx.leave_catch();
+        let _ = ctx.leave_catch();
     }
 
     #[test]
@@ -312,7 +318,7 @@ mod tests {
         assert!(ctx.thread.pending());
         assert_eq!(ctx.thread.multiple_values()[0], tag);
         assert_eq!(ctx.thread.multiple_values()[1], Word::fixnum(5));
-        ctx.leave_catch();
+        let _ = ctx.leave_catch();
         assert!(!ctx.thread.pending());
     }
 
@@ -364,7 +370,7 @@ mod tests {
         ctx.leave_unwind_protect();
         ctx.leave_unwind_protect();
         ctx.leave_unwind_protect();
-        ctx.leave_catch();
+        let _ = ctx.leave_catch();
         assert!(!ctx.thread.pending());
     }
 }

@@ -74,26 +74,25 @@ fn assert_case_result(
     end: Word,
     range: &[Word],
 ) {
-    ctx.set_gc_stress(false);
-    let mut input = ncl_object::make_string(ctx, runtime, source)
+    let mut scope = ncl_object::Scope::new(ctx);
+    scope.context_mut().set_gc_stress(false);
+    let input = scope
+        .make_string(runtime, source)
         .unwrap_or_else(|error| panic!("input string: {error:?}"));
-    let input_token = ncl_object::push_root(ctx, &mut input);
-    ctx.collect(false)
+    scope
+        .collect(false)
         .unwrap_or_else(|error| panic!("collect input: {error:?}"));
     let mut args = Vec::with_capacity(range.len() + 1);
-    args.push(input);
+    args.push(scope.get(input).as_word());
     args.extend_from_slice(range);
-    ctx.set_gc_stress(true);
-    let result = call_with_gc_stress(runtime, ctx, name, &args);
-    let mut result = result;
-    let result_token = ncl_object::push_root(ctx, &mut result);
+    scope.context_mut().set_gc_stress(true);
+    let result = call_with_gc_stress(runtime, scope.context_mut(), name, &args);
+    let result = scope.root::<Word>(ncl_object::Local::from_word(result));
     assert_eq!(
-        string_value(ctx, result),
+        string_value(scope.context(), scope.get(result).as_word()),
         expected,
         "{name} {start:?} {end:?}"
     );
-    assert!(ncl_object::pop_root(ctx, result_token));
-    assert!(ncl_object::pop_root(ctx, input_token));
 }
 #[test]
 fn generated_unicode_categories_cover_scalar_boundaries() {
@@ -310,20 +309,25 @@ fn string_allocations_survive_gc_stress_and_strict_forwarding() {
         "MAKE-STRING",
         &[Word::fixnum(4), Word::character('x' as u32)],
     );
-    let mut made = made;
-    let token = ncl_object::push_root(&mut ctx, &mut made);
-    assert_eq!(ncl_object::string_length(&ctx, made), Ok(4));
-    assert_eq!(ncl_object::string_ref(&ctx, made, 0), Ok('x'));
+    let mut scope = ncl_object::Scope::new(&mut ctx);
+    let made = scope.root::<Word>(ncl_object::Local::from_word(made));
+    assert_eq!(
+        ncl_object::string_length(scope.context(), scope.get(made).as_word()),
+        Ok(4)
+    );
+    assert_eq!(
+        ncl_object::string_ref(scope.context(), scope.get(made).as_word(), 0),
+        Ok('x')
+    );
     assert_eq!(
         call(
             &runtime,
-            &mut ctx,
+            scope.context_mut(),
             "DIGIT-CHAR-P",
             &[Word::character('A' as u32), Word::fixnum(16)],
         ),
         Word::fixnum(10)
     );
-    assert!(ncl_object::pop_root(&mut ctx, token));
 }
 
 #[test]
@@ -333,12 +337,13 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("context: {error:?}"));
     crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
-    let mut start = keyword(&mut ctx, &runtime, "START");
-    let start_token = ncl_object::push_root(&mut ctx, &mut start);
-    let mut end = keyword(&mut ctx, &runtime, "END");
-    let end_token = ncl_object::push_root(&mut ctx, &mut end);
-    ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(true);
+    let start = keyword(&mut ctx, &runtime, "START");
+    let end = keyword(&mut ctx, &runtime, "END");
+    let mut scope = ncl_object::Scope::new(&mut ctx);
+    let start = scope.root::<Word>(ncl_object::Local::from_word(start));
+    let end = scope.root::<Word>(ncl_object::Local::from_word(end));
+    scope.context_mut().set_gc_stress(true);
+    scope.context_mut().set_strict_forwarding(true);
 
     let source = ['a', 'B', ' ', 'C', 'D'];
     let ranges = ["full", "start", "end", "start-end"];
@@ -354,14 +359,19 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
         for (range_name, expected) in ranges.iter().zip(expected) {
             let range = match *range_name {
                 "full" => Vec::new(),
-                "start" => vec![start, Word::fixnum(1)],
-                "end" => vec![end, Word::fixnum(4)],
-                "start-end" => vec![start, Word::fixnum(1), end, Word::fixnum(4)],
+                "start" => vec![scope.get(start).as_word(), Word::fixnum(1)],
+                "end" => vec![scope.get(end).as_word(), Word::fixnum(4)],
+                "start-end" => vec![
+                    scope.get(start).as_word(),
+                    Word::fixnum(1),
+                    scope.get(end).as_word(),
+                    Word::fixnum(4),
+                ],
                 _ => unreachable!(),
             };
             assert_case_result(
                 &runtime,
-                &mut ctx,
+                scope.context_mut(),
                 name,
                 &source,
                 expected,
@@ -379,6 +389,4 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
             );
         }
     }
-    assert!(ncl_object::pop_root(&mut ctx, end_token));
-    assert!(ncl_object::pop_root(&mut ctx, start_token));
 }

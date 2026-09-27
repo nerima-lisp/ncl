@@ -6,11 +6,13 @@ pub mod initialization;
 pub mod mop;
 
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, Fixnum, Instance, LambdaList, Local, MultipleValues, ObjectError, ObjectRef,
-    ObjectType, Package, Runtime, Scope, ThreadContext, Word, car, cdr, classify_object,
-    instance_class, make_cons, make_instance as allocate_instance, simple_vector_length,
-    simple_vector_ref, slot_ref, slot_set, string_length, string_ref, symbol_name,
+    Arity, Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, CellError, Fixnum, FunctionArguments, FunctionCaller,
+    FunctionDesignator, FunctionObject, Instance, LambdaList, LispError, Local, MultipleValues,
+    ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, ThreadContext, Word, car, cdr,
+    classify_object, instance_class, make_cons, make_instance as allocate_instance,
+    set_symbol_value, simple_vector_length, simple_vector_ref, slot_ref, slot_set, string_length,
+    string_ref, symbol_name, symbol_value,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";
@@ -101,6 +103,202 @@ fn make_if(
         .intern(ctx, runtime, "IF")?
         .0;
     lisp_list(ctx, runtime, &[operator, test, consequent, alternate])
+}
+
+fn ncl_symbol(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
+    Package::from_word(runtime.ensure_package(ctx, "NCL")?)
+        .intern(ctx, runtime, name)
+        .map(|(symbol, _)| symbol)
+}
+
+fn common_lisp_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<Word, ObjectError> {
+    Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
+        .intern(ctx, runtime, name)
+        .map(|(symbol, _)| symbol)
+}
+
+fn method_registry_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    specializers: Word,
+    function: Word,
+) -> Result<Word, ObjectError> {
+    lisp_list(ctx, runtime, &[specializers, function])
+}
+
+fn eql_word(ctx: &ThreadContext, left: Word, right: Word) -> bool {
+    if left == right {
+        return true;
+    }
+    matches!(
+        (classify_object(ctx, left), classify_object(ctx, right)),
+        (ObjectRef::DoubleFloat(left), ObjectRef::DoubleFloat(right)) if left == right
+    )
+}
+
+fn class_depth(ctx: &ThreadContext, class: Word) -> Result<usize, ObjectError> {
+    let superclass = simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
+    if superclass == Word::NIL {
+        Ok(0)
+    } else {
+        Ok(class_depth(ctx, superclass)? + 1)
+    }
+}
+
+fn method_match(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    specializers: Word,
+    arguments: &[Word],
+) -> Result<Option<usize>, ObjectError> {
+    let specializers = form_elements(ctx, specializers)?;
+    if specializers.len() != arguments.len() {
+        return Ok(None);
+    }
+    let mut score = 0;
+    for (specializer, argument) in specializers.iter().zip(arguments) {
+        let fields = form_elements(ctx, *specializer)?;
+        let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
+        if designator.is_cons() {
+            let eql_fields = form_elements(ctx, designator)?;
+            let head = eql_fields.first().copied().ok_or(ObjectError::TypeError)?;
+            let head_name = symbol_name_string(ctx, head)?;
+            if head_name != "EQL"
+                || !eql_word(
+                    ctx,
+                    *argument,
+                    *eql_fields.get(1).ok_or(ObjectError::TypeError)?,
+                )
+            {
+                return Ok(None);
+            }
+            score += 10_000;
+            continue;
+        }
+        let expected = class_designator(ctx, runtime, designator)?;
+        let actual = class_of(ctx, runtime, *argument)?;
+        if !class_is_subclass(ctx, actual, expected)? {
+            return Ok(None);
+        }
+        score += class_depth(ctx, expected)?;
+    }
+    Ok(Some(score))
+}
+
+fn clos_define_generic_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = args.required(0)?;
+    set_symbol_value(ctx, name, Word::NIL)?;
+    Ok(name)
+}
+
+fn clos_add_method_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = args.required(0)?;
+    let specializers = args.required(1)?;
+    let function = FunctionObject::try_from(args.required(2)?)?.as_word();
+    let old = symbol_value(ctx, name)?;
+    let mut entries = Vec::new();
+    let mut cursor = old;
+    while cursor != Word::NIL {
+        entries.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
+    }
+    entries.retain(|entry| {
+        let Ok(entry_specializers) = car(ctx, *entry) else { return true };
+        entry_specializers != specializers
+    });
+    let entry = method_registry_entry(ctx, runtime, specializers, function)?;
+    entries.insert(0, entry);
+    let registry = lisp_list(ctx, runtime, &entries)?;
+    set_symbol_value(ctx, name, registry)?;
+    Ok(name)
+}
+
+fn clos_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = args.required(0)?;
+    let argument_list = args.required(1)?;
+    let arguments = form_elements(ctx, argument_list)?;
+    let mut matches = Vec::new();
+    let mut cursor = symbol_value(ctx, name)?;
+    while cursor != Word::NIL {
+        let entry = car(ctx, cursor)?;
+        let specializers = car(ctx, entry)?;
+        let function = cdr(ctx, entry)?;
+        let function = car(ctx, function)?;
+        if let Some(score) = method_match(ctx, runtime, specializers, &arguments)? {
+            matches.push((score, function));
+        }
+        cursor = cdr(ctx, cursor)?;
+    }
+    matches.sort_by(|left, right| right.0.cmp(&left.0));
+    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
+    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
+    let previous_next = symbol_value(ctx, next_symbol)?;
+    let previous_args = symbol_value(ctx, args_symbol)?;
+    let result = if let Some((_, function)) = matches.first().copied() {
+        let next = matches.get(1).map_or(Word::NIL, |(_, function)| *function);
+        set_symbol_value(ctx, next_symbol, next)?;
+        set_symbol_value(ctx, args_symbol, argument_list)?;
+        let mut caller = BuiltinFunctionCaller;
+        caller.call_function(
+            ctx,
+            runtime,
+            FunctionDesignator::Function(FunctionObject::try_from(function)?),
+            FunctionArguments::new(&arguments),
+            values,
+        )
+    } else {
+        ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction { name }));
+        Err(ObjectError::UndefinedFunction)
+    };
+    set_symbol_value(ctx, next_symbol, previous_next)?;
+    set_symbol_value(ctx, args_symbol, previous_args)?;
+    result
+}
+
+fn clos_call_next_method_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
+    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
+    let next = symbol_value(ctx, next_symbol)?;
+    if next == Word::NIL || next == Word::UNBOUND {
+        let call_next_name = common_lisp_symbol(ctx, runtime, "CALL-NEXT-METHOD")?;
+        ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction {
+            name: call_next_name,
+        }));
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let arguments = form_elements(ctx, symbol_value(ctx, args_symbol)?)?;
+    let mut caller = BuiltinFunctionCaller;
+    caller.call_function(
+        ctx,
+        runtime,
+        FunctionDesignator::Function(FunctionObject::try_from(next)?),
+        FunctionArguments::new(&arguments),
+        values,
+    )
 }
 
 fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
@@ -310,12 +508,23 @@ fn defgeneric_macro_builtin(
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, args.required(0)?)?;
     let name = *parts.get(1).ok_or(ObjectError::TypeError)?;
-    let lambda = *parts.get(2).ok_or(ObjectError::TypeError)?;
-    let defun = Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
-        .intern(ctx, runtime, "DEFUN")?
-        .0;
-    lisp_list(ctx, runtime, &[defun, name, lambda, Word::NIL])
+    let _lambda = *parts.get(2).ok_or(ObjectError::TypeError)?;
+    let defun = common_lisp_symbol(ctx, runtime, "DEFUN")?;
+    let progn = common_lisp_symbol(ctx, runtime, "PROGN")?;
+    let define = common_lisp_symbol(ctx, runtime, "%CLOS-DEFINE-GENERIC")?;
+    let dispatch = common_lisp_symbol(ctx, runtime, "%CLOS-DISPATCH")?;
+    let args = common_lisp_symbol(ctx, runtime, "ARGS")?;
+    let rest = common_lisp_symbol(ctx, runtime, "&REST")?;
+    let quoted_name = quoted(ctx, runtime, name)?;
+    let clear = lisp_list(ctx, runtime, &[define, quoted_name])?;
+    let dispatch_call = lisp_list(ctx, runtime, &[dispatch, quoted_name, args])?;
+    let lambda_list = lisp_list(ctx, runtime, &[rest, args])?;
+    let function = lisp_list(ctx, runtime, &[defun, name, lambda_list, dispatch_call])?;
+    lisp_list(ctx, runtime, &[progn, clear, function, name])
 }
+
+static METHOD_FUNCTION_COUNTER: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 fn defmethod_macro_builtin(
     ctx: &mut ThreadContext,
@@ -331,52 +540,37 @@ fn defmethod_macro_builtin(
         let fields = form_elements(ctx, specializer)?;
         lambda.push(*fields.first().ok_or(ObjectError::TypeError)?);
     }
-    let defun = Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
-        .intern(ctx, runtime, "DEFUN")?
-        .0;
+    let defun = common_lisp_symbol(ctx, runtime, "DEFUN")?;
     let lambda_words = lambda;
     let lambda = lisp_list(ctx, runtime, &lambda_words)?;
     let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
     let body = make_progn(ctx, runtime, body)?;
-    let mut dispatch = Word::NIL;
-    for (index, specializer) in form_elements(ctx, *parts.get(2).ok_or(ObjectError::TypeError)?)?
-        .into_iter()
-        .enumerate()
-        .rev()
-    {
-        let fields = form_elements(ctx, specializer)?;
-        let argument = *lambda_words.get(index).ok_or(ObjectError::TypeError)?;
-        let test = if fields
-            .first()
-            .is_some_and(|field| symbol_name_string(ctx, *field).is_ok_and(|name| name == "EQL"))
-        {
-            let eql = Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
-                .intern(ctx, runtime, "EQL")?
-                .0;
-            lisp_list(
-                ctx,
-                runtime,
-                &[eql, argument, *fields.get(1).ok_or(ObjectError::TypeError)?],
-            )?
-        } else {
-            let typep = Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
-                .intern(ctx, runtime, "TYPEP")?
-                .0;
-            let quoted_class = quoted(ctx, runtime, *fields.get(1).ok_or(ObjectError::TypeError)?)?;
-            lisp_list(ctx, runtime, &[typep, argument, quoted_class])?
-        };
-        dispatch = make_if(ctx, runtime, test, body, dispatch)?;
-    }
-    if dispatch == Word::NIL {
-        dispatch = body;
-    }
-    lisp_list(ctx, runtime, &[defun, name, lambda, dispatch])
+    let method_name = {
+        let id = METHOD_FUNCTION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let symbol_name = format!("%CLOS-METHOD-{id}");
+        ncl_symbol(ctx, runtime, &symbol_name)?
+    };
+    let function_operator = common_lisp_symbol(ctx, runtime, "FUNCTION")?;
+    let method_function = lisp_list(ctx, runtime, &[function_operator, method_name])?;
+    let specializer_form = *parts.get(2).ok_or(ObjectError::TypeError)?;
+    let quoted_specializers = quoted(ctx, runtime, specializer_form)?;
+    let add_method = common_lisp_symbol(ctx, runtime, "%CLOS-ADD-METHOD")?;
+    let quoted_name = quoted(ctx, runtime, name)?;
+    let registration = lisp_list(
+        ctx,
+        runtime,
+        &[add_method, quoted_name, quoted_specializers, method_function],
+    )?;
+    let method_definition = lisp_list(ctx, runtime, &[defun, method_name, lambda, body])?;
+    let progn = common_lisp_symbol(ctx, runtime, "PROGN")?;
+    lisp_list(ctx, runtime, &[progn, method_definition, registration, name])
 }
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
     ty: ncl_object::ParameterType::Any,
 };
+const ARGS_0: &[ncl_object::Parameter] = &[];
 const ARGS_1: &[ncl_object::Parameter] = &[ARGUMENT];
 const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];

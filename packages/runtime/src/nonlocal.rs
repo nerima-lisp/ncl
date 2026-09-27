@@ -85,7 +85,10 @@ pub extern "C" fn native_enter_unwind_protect(
 ///
 pub extern "C" fn native_leave_unwind_protect(thread: NonNull<Thread>, _region: u64) -> Word {
     with_context(thread, |ctx| {
-        ctx.leave_unwind_protect();
+        if let Err(error) = ctx.leave_unwind_protect() {
+            ctx.set_pending(error);
+            ctx.set_non_local_exit(true);
+        }
         Word::NIL
     })
 }

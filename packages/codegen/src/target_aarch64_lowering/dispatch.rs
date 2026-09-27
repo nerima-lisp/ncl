@@ -293,10 +293,6 @@ pub fn lower_pending_check(
     body_bytes: u32,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
-    let cleanup_block = function
-        .handler_regions
-        .iter()
-        .any(|region| region.cleanup == Some(block));
     let normal = assembler.new_label();
     emit(
         assembler,
@@ -312,9 +308,7 @@ pub fn lower_pending_check(
             label: normal,
         },
     )?;
-    if !cleanup_block {
-        try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
-    }
+    try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
     emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
     assembler
         .bind(normal)

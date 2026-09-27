@@ -181,9 +181,22 @@ pub fn check_keywords_builtin(
     }
     if !lambda_allows_other_keys && !call_allows_other_keys {
         // check-added-lines: allow(index) the lambda list requires 2 args before any allowed keyword.
-        let allowed = &args.as_slice()[2..];
+        let mut allowed_words = Vec::new();
+        if let Some(allowed_list) = args.as_slice().get(2).copied()
+            && allowed_list != Word::NIL
+            && matches!(classify_object(ctx, allowed_list), ObjectRef::Cons(_))
+        {
+            let mut cursor = allowed_list;
+            while cursor != Word::NIL {
+                let key = car(ctx, cursor).map_err(|_| ObjectError::TypeError)?;
+                allowed_words.push(key);
+                cursor = cdr(ctx, cursor).map_err(|_| ObjectError::TypeError)?;
+            }
+        } else {
+            allowed_words.extend_from_slice(&args.as_slice()[2..]);
+        }
         for (keyword, _) in &entries {
-            if !is_allow_other_keys(ctx, runtime, *keyword)? && !allowed.contains(keyword) {
+            if !is_allow_other_keys(ctx, runtime, *keyword)? && !allowed_words.contains(keyword) {
                 ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
                 return Err(ObjectError::TypeError);
             }

@@ -2,10 +2,64 @@ use super::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Runtime, STRING_INPUT,
     STRING_OUTPUT, Stream, StreamKind, ThreadContext, Word, car, cdr, classify_object,
     make_simple_vector, make_stream, make_string, peek_character, simple_vector_ref,
-    simple_vector_set, state_kind, stream_from_args, stream_or_default, string_length, string_ref,
-    with_root, write_to_stream,
+    simple_vector_set, state_kind, stream_from_args, stream_or_default, string_length,
+    string_output_at_line_start, string_ref, with_root, write_to_stream,
 };
 use ncl_object::{stream_state, with_roots};
+
+fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+    let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {
+        return Err(ObjectError::TypeError);
+    };
+    let name = ncl_object::symbol_name(ctx, symbol)?;
+    (0..ncl_object::string_length(ctx, name)?)
+        .map(|index| ncl_object::string_ref(ctx, name, index))
+        .collect()
+}
+
+fn bounds(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+    first_option: usize,
+    length: usize,
+) -> Result<(usize, usize), ObjectError> {
+    let mut start = 0;
+    let mut end = length;
+    let mut index = first_option;
+    if let Some(value) = args.get(index).and_then(Word::as_fixnum) {
+        start = usize::try_from(value).map_err(|_| ObjectError::TypeError)?;
+        end = args
+            .get(index + 1)
+            .and_then(Word::as_fixnum)
+            .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
+            .transpose()?
+            .unwrap_or(length);
+        if args.len() > index + 2 {
+            return Err(ObjectError::TypeError);
+        }
+        return if start > end || end > length {
+            Err(ObjectError::TypeError)
+        } else {
+            Ok((start, end))
+        };
+    }
+    while index < args.len() {
+        let name = keyword_name(ctx, args.get(index).ok_or(ObjectError::Layout)?)?;
+        let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
+        let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+            .map_err(|_| ObjectError::TypeError)?;
+        match name.as_str() {
+            "START" => start = number,
+            "END" => end = number,
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown keyword
+        }
+        index += 2;
+    }
+    if start > end || end > length {
+        return Err(ObjectError::TypeError);
+    }
+    Ok((start, end))
+}
 
 pub fn write_string_adapter(
     ctx: &mut ThreadContext,
@@ -15,21 +69,7 @@ pub fn write_string_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
-    let start = args
-        .get(2)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(0);
-    let end = args
-        .get(3)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(string_length(ctx, string)?);
-    if start > end || end > string_length(ctx, string)? {
-        return Err(ObjectError::TypeError);
-    }
+    let (start, end) = bounds(ctx, args, 2, string_length(ctx, string)?)?;
     with_roots(ctx, &[string, stream.into()], |ctx, roots| {
         for index in start..end {
             let string = roots.first().ok_or(ObjectError::Layout)?;
@@ -49,21 +89,7 @@ pub fn write_line_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
-    let start = args
-        .get(2)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(0);
-    let end = args
-        .get(3)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(string_length(ctx, string)?);
-    if start > end || end > string_length(ctx, string)? {
-        return Err(ObjectError::TypeError);
-    }
+    let (start, end) = bounds(ctx, args, 2, string_length(ctx, string)?)?;
     with_roots(ctx, &[string, stream.into()], |ctx, roots| {
         for index in start..end {
             let string = roots.first().ok_or(ObjectError::Layout)?;
@@ -95,7 +121,13 @@ pub fn fresh_line_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-OUTPUT*")?;
-    if peek_character(ctx, stream)? == Some('\n') {
+    let at_line_start = if state_kind(ctx, stream_state(ctx, stream)?)? == StreamKind::StringOutput
+    {
+        string_output_at_line_start(ctx, stream)?
+    } else {
+        peek_character(ctx, stream)? == Some('\n')
+    };
+    if at_line_start {
         return Ok(Word::NIL);
     }
     write_to_stream(ctx, runtime, stream, '\n')?;
@@ -110,21 +142,7 @@ pub fn make_string_input_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let length = string_length(ctx, string)?;
-    let start = args
-        .get(1)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(0);
-    let end = args
-        .get(2)
-        .and_then(Word::as_fixnum)
-        .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-        .transpose()?
-        .unwrap_or(length);
-    if start > end || end > length {
-        return Err(ObjectError::TypeError);
-    }
+    let (start, end) = bounds(ctx, args, 1, length)?;
     with_root(ctx, &mut string.clone(), |ctx, string| {
         let state = make_simple_vector(
             ctx,

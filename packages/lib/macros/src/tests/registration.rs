@@ -49,3 +49,4 @@ fn registration_marks_owned_macros_and_installs_function_cells() {
 mod gc_stress_tests;
 mod iteration_tests;
 mod loop_tests;
+mod string_stream_tests;

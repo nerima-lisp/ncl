@@ -120,6 +120,58 @@ fn output_stream_round_trips_write_operations_and_resets() {
 }
 
 #[test]
+fn fresh_line_observes_string_output_stream_line_state() {
+    let (runtime, mut ctx) = setup(false);
+    let make_output = function(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM");
+    let fresh_line = function(&runtime, &mut ctx, "FRESH-LINE");
+    let write_char = function(&runtime, &mut ctx, "WRITE-CHAR");
+    let get_output = function(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING");
+    let mut stream = runtime.call_builtin(&mut ctx, make_output, &[]).unwrap();
+    let stream_root = push_root(&mut ctx, &mut stream);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, fresh_line, &[stream]),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream])
+        .unwrap();
+    assert_eq!(string(&ctx, output), "");
+
+    runtime
+        .call_builtin(
+            &mut ctx,
+            write_char,
+            &[Word::character(u32::from('x')), stream],
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, fresh_line, &[stream]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, fresh_line, &[stream]),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream])
+        .unwrap();
+    assert_eq!(string(&ctx, output), "x\n");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, fresh_line, &[stream]),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream])
+        .unwrap();
+    assert_eq!(string(&ctx, output), "");
+    assert!(pop_root(&mut ctx, stream_root));
+}
+
+#[test]
 fn output_stream_survives_gc_stress_and_strict_forwarding() {
     let (runtime, mut ctx) = setup(false);
     let mut make_output = function(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM").as_word();

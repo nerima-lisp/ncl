@@ -260,6 +260,7 @@ dependencies = [
 name = "ncl-printer"
 version = "0.1.0"
 dependencies = [
+ "ncl-lib-streams",
  "ncl-object",
  "ncl-ownership",
 ]

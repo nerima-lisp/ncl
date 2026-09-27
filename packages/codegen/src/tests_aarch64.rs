@@ -6,6 +6,9 @@ use crate::{
 };
 use ncl_ir::{Constant, ConstantIndex, FunctionBuilder, OpKind, Terminator, Ty};
 
+#[path = "tests_aarch64_call.rs"]
+mod call_with_rest;
+
 fn decoded_text(bytes: [u8; 4], label: &str) -> String {
     let decoded = ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &bytes, 0);
     assert!(decoded.is_ok(), "{label}");

@@ -7,10 +7,10 @@ use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Parameter, ParameterType, Runtime, ThreadContext, Word,
     array_row_major_ref, array_row_major_set, classify_object, make_array, make_cons, pop_root,
-    push_root, simple_vector_ref,
+    push_root, simple_vector_ref, simple_vector_set,
 };
 
-use super::{register_one, symbol_text};
+use super::{register_one, register_one_ncl, symbol_text};
 use helpers::{array_element_type_symbol, array_shape, list_values};
 
 mod adjust;
@@ -386,6 +386,43 @@ fn aref_builtin(
     let array = args.required(0)?;
     let offset = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
     array_row_major_ref(ctx, array, offset)
+}
+
+/// `setf`-support: `(NCL-EXT::AREF-SET array subscript... value)`.
+///
+/// Mirrors [`aref_builtin`] but writes `value` at the computed row-major
+/// offset and returns `value`, so `(setf (aref ...) v)` can expand to a
+/// plain function call that already returns the stored value.
+fn aref_set_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let slice = args.as_slice();
+    let (array, rest) = slice.split_first().ok_or(ObjectError::TypeError)?;
+    let (value, subscripts) = rest.split_last().ok_or(ObjectError::TypeError)?;
+    let offset = row_major_index(&array_shape(ctx, *array)?, subscripts)?;
+    array_row_major_set(ctx, *array, offset, *value)?;
+    Ok(*value)
+}
+
+/// `setf`-support: `(NCL-EXT::SVREF-SET simple-vector index value)`.
+fn svref_set_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let index = usize::try_from(
+        args.required(1)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    let value = args.required(2)?;
+    simple_vector_set(ctx, args.required(0)?, index, value)?;
+    Ok(value)
 }
 
 fn array_element_type_builtin(

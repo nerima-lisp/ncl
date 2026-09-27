@@ -3,7 +3,8 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, symbol_name,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, symbol_name,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -233,8 +234,7 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     )
     .map_err(|_| ObjectError::TypeError)?;
     let form_value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
-    let mut lambda_list = Vec::with_capacity(index + 4);
-    lambda_list.push(symbol(ctx, runtime, "&OPTIONAL")?);
+    let mut lambda_list = Vec::with_capacity(index + 3);
     let mut selected = Word::NIL;
     for position in 0..=index {
         let variable = fresh_symbol(ctx, runtime)?;
@@ -248,6 +248,32 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     let lambda_list = list(ctx, runtime, &lambda_list)?;
     let lambda = form(ctx, runtime, "LAMBDA", &[lambda_list, selected])?;
     form(ctx, runtime, "MULTIPLE-VALUE-CALL", &[lambda, form_value])
+}
+
+fn multiple_value_bind(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+    let [variables, value, body @ ..] = values else {
+        return Err(ObjectError::TypeError);
+    };
+    let variables = elements(ctx, *variables)?;
+    for variable in &variables {
+        if !matches!(classify_object(ctx, *variable), ObjectRef::Symbol(_)) {
+            return Err(ObjectError::TypeError);
+        }
+    }
+    let rest = fresh_symbol(ctx, runtime)?;
+    let rest_marker = symbol(ctx, runtime, "&REST")?;
+    let lambda = list(
+        ctx,
+        runtime,
+        &variables
+            .iter()
+            .copied()
+            .chain([rest_marker, rest])
+            .collect::<Vec<_>>(),
+    )?;
+    let body = progn(ctx, runtime, body)?;
+    let lambda_form = form(ctx, runtime, "LAMBDA", &[lambda, body])?;
+    form(ctx, runtime, "MULTIPLE-VALUE-CALL", &[lambda_form, *value])
 }
 
 fn do_macro(
@@ -435,3 +461,39 @@ expand_return, expand_return_adapter, Kind::Return;
 expand_nth_value, expand_nth_value_adapter, Kind::NthValue;
 expand_do, expand_do_adapter, Kind::Do;
 expand_do_star, expand_do_star_adapter, Kind::DoStar }
+
+pub fn expand_multiple_value_list_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    input: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result {
+    let words = (0..input.len())
+        .filter_map(|index| input.get(index))
+        .collect::<Vec<_>>();
+    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let [value] = arguments.as_slice() else {
+        return Err(ObjectError::TypeError);
+    };
+    let list_symbol = symbol(ctx, runtime, "LIST")?;
+    let list_function = form(ctx, runtime, "FUNCTION", &[list_symbol])?;
+    form(
+        ctx,
+        runtime,
+        "MULTIPLE-VALUE-CALL",
+        &[list_function, *value],
+    )
+}
+
+pub fn expand_multiple_value_bind_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    input: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result {
+    let words = (0..input.len())
+        .filter_map(|index| input.get(index))
+        .collect::<Vec<_>>();
+    let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
+    multiple_value_bind(ctx, runtime, &arguments)
+}

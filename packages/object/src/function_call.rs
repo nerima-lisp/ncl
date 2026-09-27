@@ -125,7 +125,8 @@ fn call_native(
     for (register, argument) in args.iter().take(4).enumerate() {
         registers[register] = argument.bits();
     }
-    let argument_count = u64::try_from(args.len()).map_err(|_| ObjectError::Layout)?;
+    let argument_count =
+        Word::fixnum(i64::try_from(args.len()).map_err(|_| ObjectError::Layout)?).bits();
     let rest = args
         .get_mut(4..)
         .filter(|rest| !rest.is_empty())

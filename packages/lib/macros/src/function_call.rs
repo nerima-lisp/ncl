@@ -1,9 +1,11 @@
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter,
     ParameterType, Runtime, ThreadContext, Word, car, cdr,
 };
+
+use crate::list;
 
 const FUNCTION: Parameter = Parameter {
     name: BuiltinName::new("FUNCTION"),
@@ -108,6 +110,34 @@ fn apply(
     call_designator(ctx, runtime, designator, &arguments, values)
 }
 
+fn capture_multiple_values(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let values = ctx.values().to_vec();
+    list(ctx, runtime, &values)
+}
+
+fn multiple_value_call_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let designator = args.required(0)?;
+    let mut arguments = Vec::new();
+    for index in 1..args.len() {
+        append_list(
+            ctx,
+            args.get(index).ok_or(ObjectError::TypeError)?,
+            &mut arguments,
+        )?;
+    }
+    call_designator(ctx, runtime, designator, &arguments, values)
+}
+
 /// Register the function-calling builtins owned by this crate.
 ///
 /// # Errors
@@ -134,6 +164,35 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
                 convention: BuiltinConvention::Adapted,
             },
             apply,
+            |args| Ok(args.as_slice().to_vec()),
+        ),
+    )?;
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclExt,
+            BuiltinName::new("CAPTURE-MULTIPLE-VALUES"),
+        ),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(&[]),
+                convention: BuiltinConvention::Direct(Arity::exact(0)),
+            },
+            capture_multiple_values,
+        ),
+    )?;
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclExt,
+            BuiltinName::new("MULTIPLE-VALUE-CALL-LIST"),
+        ),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[FUNCTION], REST_ARGUMENT),
+                convention: BuiltinConvention::Adapted,
+            },
+            multiple_value_call_list,
             |args| Ok(args.as_slice().to_vec()),
         ),
     )?;

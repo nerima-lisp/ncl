@@ -241,7 +241,7 @@ extern "C" fn make_rest_list_native(
     result
 }
 
-pub fn make_rest_list_address() -> Result<u64, RuntimeError> {
+pub(super) fn make_rest_list_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(make_rest_list_native)
         .map_err(|error| RuntimeError::Native(error.to_string()))
 }

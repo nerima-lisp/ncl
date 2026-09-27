@@ -52,7 +52,7 @@ fn sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
     }
 }
 
-fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
+fn values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
     match sequence {
         Sequence::List(list) => {

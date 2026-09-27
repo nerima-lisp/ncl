@@ -12,12 +12,12 @@ fn empty_list_sequence_has_no_elements() {
     }
     let sequence = Sequence::List(List::Nil);
 
-    let length = match sequence_length(&mut ctx, sequence) {
+    let length = match sequence_length(&ctx, sequence) {
         Ok(length) => length,
         Err(error) => panic!("sequence_length failed: {error:?}"),
     };
     assert_eq!(length, 0);
-    assert!(sequence_elt(&mut ctx, sequence, Word::fixnum(0)).is_err());
+    assert!(sequence_elt(&ctx, sequence, Word::fixnum(0)).is_err());
 }
 
 #[test]

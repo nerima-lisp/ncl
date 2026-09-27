@@ -52,7 +52,7 @@ impl Printer<'_> {
     }
 
     /// Detect the `'` and `#'` reader abbreviations.
-    fn abbreviation(&mut self, list: Word) -> Result<Option<&'static str>, PrintError> {
+    fn abbreviation(&self, list: Word) -> Result<Option<&'static str>, PrintError> {
         let head = car(self.ctx, list)?;
         if !matches!(classify_object(self.ctx, head), ObjectRef::Symbol(_)) {
             return Ok(None);

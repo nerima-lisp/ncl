@@ -79,15 +79,13 @@ fn make_rest_list_builtin_survives_gc_stress_and_strict_forwarding() {
             &[Word::fixnum(3), Word::fixnum(1), first, second, third],
         )
         .unwrap_or_else(|error| panic!("make rest list: {error:?}"));
-    let first_result =
-        car(&mut ctx, list).unwrap_or_else(|error| panic!("first result: {error:?}"));
+    let first_result = car(&ctx, list).unwrap_or_else(|error| panic!("first result: {error:?}"));
     assert_eq!(ncl_object::string_ref(&ctx, first_result, 0), Ok('B'));
-    let tail = cdr(&mut ctx, list).unwrap_or_else(|error| panic!("first tail: {error:?}"));
-    let second_result =
-        car(&mut ctx, tail).unwrap_or_else(|error| panic!("second result: {error:?}"));
+    let tail = cdr(&ctx, list).unwrap_or_else(|error| panic!("first tail: {error:?}"));
+    let second_result = car(&ctx, tail).unwrap_or_else(|error| panic!("second result: {error:?}"));
     assert_eq!(ncl_object::string_ref(&ctx, second_result, 0), Ok('C'));
     assert_eq!(
-        cdr(&mut ctx, tail),
+        cdr(&ctx, tail),
         Ok(Word::NIL),
         "rest list has an unexpected tail"
     );
@@ -112,7 +110,7 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     let mut cons = make_cons(&mut ctx, &runtime, string, Word::fixnum(7))
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let cons_token = ncl_object::push_root(&mut ctx, &mut cons);
-    assert_eq!(car(&mut ctx, cons), Ok(string));
+    assert_eq!(car(&ctx, cons), Ok(string));
     let mut vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let vector_token = ncl_object::push_root(&mut ctx, &mut vector);

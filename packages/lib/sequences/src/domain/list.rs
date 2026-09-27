@@ -24,7 +24,7 @@ fn list_word(value: List) -> Word {
     }
 }
 
-fn proper_list(ctx: &mut ThreadContext, mut cursor: Word) -> Result<(), LispError> {
+fn proper_list(ctx: &ThreadContext, mut cursor: Word) -> Result<(), LispError> {
     while cursor.is_cons() {
         cursor = object_cdr(ctx, cursor)?;
     }
@@ -55,7 +55,7 @@ pub fn cons_p(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, L
     })
 }
 #[allow(clippy::unnecessary_wraps)]
-pub fn list_p(ctx: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
+pub fn list_p(ctx: &ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
     Ok(if proper_list(ctx, value).is_ok() {
         Word::TRUE
     } else {
@@ -73,10 +73,10 @@ pub fn end_p(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, Li
     }
 }
 
-pub fn car(ctx: &mut ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> {
+pub fn car(ctx: &ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> {
     Ok(object_car(ctx, list_word(value))?)
 }
-pub fn cdr(ctx: &mut ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> {
+pub fn cdr(ctx: &ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> {
     Ok(object_cdr(ctx, list_word(value))?)
 }
 pub fn cons(
@@ -252,7 +252,7 @@ pub fn length(ctx: &mut ThreadContext, _: &Runtime, value: Sequence) -> Result<W
     Ok(Word::fixnum(length))
 }
 pub fn elt(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     _: &Runtime,
     value: Sequence,
     index: ncl_object::Fixnum,
@@ -293,7 +293,7 @@ pub fn subseq(
     .map_err(LispError::from)
 }
 
-fn sequence_values(ctx: &mut ThreadContext, value: Sequence) -> Result<Vec<Word>, ObjectError> {
+fn sequence_values(ctx: &ThreadContext, value: Sequence) -> Result<Vec<Word>, ObjectError> {
     match value {
         Sequence::List(list) => {
             let mut out = Vec::new();
@@ -373,14 +373,10 @@ fn sequence_word(value: Sequence) -> Word {
     }
 }
 
-fn sequence_length(ctx: &mut ThreadContext, value: Sequence) -> Result<usize, ObjectError> {
+fn sequence_length(ctx: &ThreadContext, value: Sequence) -> Result<usize, ObjectError> {
     Ok(sequence_values(ctx, value)?.len())
 }
-fn sequence_elt(
-    ctx: &mut ThreadContext,
-    value: Sequence,
-    index: Word,
-) -> Result<Word, ObjectError> {
+fn sequence_elt(ctx: &ThreadContext, value: Sequence, index: Word) -> Result<Word, ObjectError> {
     let index = usize::try_from(index.as_fixnum().ok_or(ObjectError::TypeError)?)
         .map_err(|_| ObjectError::TypeError)?;
     sequence_values(ctx, value)?
@@ -431,6 +427,7 @@ fn sequence_subseq(
     }
     let mut scope = Scope::new(ctx);
     let _source = scope.root::<Word>(Local::from_word(sequence_word(value)));
+    // check-added-lines: allow(index)
     let result = sequence_result_scope(&mut scope, runtime, value, &values[start..end])?;
     Ok(scope.get(result).as_word())
 }

@@ -14,7 +14,7 @@ register(&Runtime)
 make_cons(&mut ThreadContext, &Runtime, Word, Word) -> Result<Word, ObjectError>
 allocate(&mut ThreadContext, &Runtime, u8, usize) -> Result<Word, ObjectError>
 make_symbol(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectError>
-car/cdr(&mut ThreadContext, Word) -> Result<Word, ObjectError>
+car/cdr(&ThreadContext, Word) -> Result<Word, ObjectError>
 rplaca/rplacd(&mut ThreadContext, Word, Word) -> Result<Word, ObjectError>
 symbol_value/symbol_function/symbol_plist/symbol_name(&ThreadContext, Word) -> Result<Word, ObjectError>
 set_symbol_value(&mut ThreadContext, Word, Word) -> Result<(), ObjectError>

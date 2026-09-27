@@ -13,7 +13,7 @@ fn empty_and_vector_sequences_are_read_as_one_common_view() {
     let mut caller = BuiltinFunctionCaller;
     let mut empty = Vec::new();
     assert_eq!(
-        selection::sequence_values(&mut ctx, Sequence::List(List::Nil)).unwrap(),
+        selection::sequence_values(&ctx, Sequence::List(List::Nil)).unwrap(),
         empty
     );
     assert_eq!(

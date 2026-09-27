@@ -35,7 +35,7 @@ impl CircleState {
     ///
     /// The scan reads object fields only, so it never allocates on the Lisp
     /// heap and the addresses it records stay valid until printing finishes.
-    pub fn scan(ctx: &mut ThreadContext, root: Word, not_shared: bool) -> Self {
+    pub fn scan(ctx: &ThreadContext, root: Word, not_shared: bool) -> Self {
         let mut counts = HashMap::new();
         let mut visited = HashSet::new();
         count_references(ctx, root, &mut counts, &mut visited);
@@ -92,7 +92,7 @@ pub fn labelable(ctx: &ThreadContext, object: Word) -> bool {
 }
 
 fn count_references(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     root: Word,
     counts: &mut HashMap<usize, usize>,
     visited: &mut HashSet<usize>,
@@ -112,7 +112,7 @@ fn count_references(
 }
 
 fn assign_labels(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     root: Word,
     counts: &HashMap<usize, usize>,
     not_shared: bool,
@@ -141,7 +141,7 @@ fn assign_labels(
 }
 
 /// Whether `start` is reachable from one of its own children.
-fn reaches_itself(ctx: &mut ThreadContext, start: Word) -> bool {
+fn reaches_itself(ctx: &ThreadContext, start: Word) -> bool {
     let target = start.address();
     let mut seen = HashSet::new();
     let mut stack = children(ctx, start);
@@ -165,7 +165,7 @@ fn reaches_itself(ctx: &mut ThreadContext, start: Word) -> bool {
 ///
 /// A cons contributes its `car` and `cdr` as two separate graph edges, so a
 /// cycle through either field is counted once per reference.
-fn children(ctx: &mut ThreadContext, object: Word) -> Vec<Word> {
+fn children(ctx: &ThreadContext, object: Word) -> Vec<Word> {
     let mut out = Vec::new();
     if object.is_cons() {
         if let Ok(head) = car(ctx, object) {

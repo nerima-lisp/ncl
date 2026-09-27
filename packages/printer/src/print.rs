@@ -61,7 +61,7 @@ impl<'a> Printer<'a> {
     /// Enable `*print-circle*` labelling for this print operation.
     pub fn enable_circle(&mut self, object: Word) {
         self.circle = Some(CircleState::scan(
-            &mut *self.ctx,
+            &*self.ctx,
             object,
             matches!(
                 self.options.circle_sharing_mode(),

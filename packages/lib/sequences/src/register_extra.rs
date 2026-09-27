@@ -3,6 +3,11 @@ use super::{
     ThreadContext, Word, callback_word, domain, selection_parse, sequence_arg,
 };
 use ncl_object::{Handle, HandleVec, Local, Scope};
+mod register_extra_tail;
+pub use register_extra_tail::{
+    adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
+    rassoc_entry, set_difference_entry, set_exclusive_or_entry, subsetp_entry,
+};
 
 fn root_args<'ctx>(
     scope: &mut Scope<'ctx>,
@@ -472,104 +477,4 @@ pub(super) fn intersection_entry(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     order_set_entry(ctx, runtime, args, values, domain::order_sets::intersection)
-}
-pub(super) fn set_difference_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(
-        ctx,
-        runtime,
-        args,
-        values,
-        domain::order_sets::set_difference,
-    )
-}
-pub(super) fn set_exclusive_or_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(
-        ctx,
-        runtime,
-        args,
-        values,
-        domain::order_sets::set_exclusive_or,
-    )
-}
-pub(super) fn subsetp_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(ctx, runtime, args, values, domain::order_sets::subsetp)
-}
-pub(super) fn adjoin_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(ctx, runtime, args, values, domain::order_sets::adjoin)
-}
-pub(super) fn assoc_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(ctx, runtime, args, values, domain::order_sets::assoc)
-}
-pub(super) fn rassoc_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(ctx, runtime, args, values, domain::order_sets::rassoc)
-}
-pub(super) fn member_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    order_set_entry(ctx, runtime, args, values, domain::order_sets::member)
-}
-pub(super) fn maplist_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    list_map_entry(ctx, runtime, args, values, domain::higher_order::maplist)
-}
-pub(super) fn mapl_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapl)
-}
-pub(super) fn mapcan_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapcan)
-}
-pub(super) fn mapcon_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    list_map_entry(ctx, runtime, args, values, domain::higher_order::mapcon)
 }

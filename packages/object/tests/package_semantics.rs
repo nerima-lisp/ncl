@@ -116,7 +116,7 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
         .shadowing_symbols(&ctx)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_ne!(shadowing, Word::NIL);
-    assert_eq!(cdr(&mut ctx, shadowing), Ok(Word::NIL));
+    assert_eq!(cdr(&ctx, shadowing), Ok(Word::NIL));
     Package::from_word(user)
         .use_package(&mut ctx, &runtime, base)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));

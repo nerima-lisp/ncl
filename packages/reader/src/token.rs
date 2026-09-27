@@ -127,7 +127,7 @@ impl TokenParts {
 /// before every use so a collection that moves the readtable cannot leave a
 /// stale value.
 pub fn read_token_chars(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     source: &mut dyn crate::input::CharSource,
     rt: &Word,
 ) -> Result<Option<Token>, ReadError> {

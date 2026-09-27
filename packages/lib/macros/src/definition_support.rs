@@ -82,7 +82,7 @@ fn set_macro_function_builtin(
     Ok(function)
 }
 
-fn get_property(ctx: &mut ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
+fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
     checked_symbol(ctx, name)?;
     let mut plist = symbol_plist(ctx, name)?;
     while plist != Word::NIL {

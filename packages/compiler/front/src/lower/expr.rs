@@ -2,7 +2,7 @@
 
 use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Terminator, Ty, ValueId};
 
-use crate::ast::{Expr, FunctionDesignator, LambdaExpr, Operator};
+use crate::ast::{EvalSituation, Expr, FunctionDesignator, LambdaExpr, Operator};
 use crate::symbols::SymbolRef;
 
 use super::super::env::Slot;
@@ -70,8 +70,16 @@ impl Context<'_> {
             Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {
                 self.lower_expr(f, value)
             }
-            Expr::EvalWhen { body, .. }
-            | Expr::Locally { body, .. }
+            Expr::EvalWhen { situations, body } => {
+                if situations.iter().any(|situation| {
+                    matches!(situation, EvalSituation::Execute | EvalSituation::Eval)
+                }) {
+                    self.lower_body(f, body)
+                } else {
+                    f.word_constant(Constant::Nil)
+                }
+            }
+            Expr::Locally { body, .. }
             | Expr::Macrolet { body, .. }
             | Expr::SymbolMacrolet { body, .. } => self.lower_body(f, body),
             Expr::Flet {

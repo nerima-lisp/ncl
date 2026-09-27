@@ -35,7 +35,10 @@ fn unhandled_error_reports_message() {
 #[test]
 fn handler_bind_pops_on_normal_exit() {
     let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", "(progn (handler-bind ((error (lambda (c) (throw 'x :stale)))) 1) (error \"e\"))"])
+        .args([
+            "--eval",
+            "(progn (handler-bind ((error (lambda (c) (throw 'x :stale)))) 1) (error \"e\"))",
+        ])
         .output()
         .expect("ncl executable");
     assert!(!output.status.success());

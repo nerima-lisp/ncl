@@ -249,7 +249,11 @@ pub fn compile_function_aarch64(
                 )?;
                 if matches!(
                     op.kind,
-                    OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::CallClosure { .. }
+                    OpKind::Call { .. }
+                        | OpKind::CallIndirect { .. }
+                        | OpKind::CallClosure { .. }
+                        | OpKind::MakeClosure { .. }
+                        | OpKind::Builtin { .. }
                 ) {
                     // A callee may be propagating a non-local exit (for
                     // example a closure crossed by `return-from`/`throw`)

@@ -11,8 +11,8 @@ use ncl_object::{
     FunctionDesignator, FunctionObject, Instance, LambdaList, LispError, Local, MultipleValues,
     ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, ThreadContext, Word, car, cdr,
     classify_object, instance_class, make_cons, make_instance as allocate_instance,
-    set_symbol_value, simple_vector_length, simple_vector_ref, slot_ref, slot_set, string_length,
-    string_ref, symbol_name, symbol_value,
+    set_symbol_plist, set_symbol_value, simple_vector_length, simple_vector_ref, slot_ref,
+    slot_set, string_length, string_ref, symbol_name, symbol_plist, symbol_value,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";
@@ -21,6 +21,14 @@ const CLASS_NAME: usize = 0;
 const CLASS_DIRECT_SUPERCLASS: usize = 1;
 const CLASS_SLOTS: usize = 2;
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
+const METHOD_QUALIFIER_PRIMARY: i64 = 0;
+const METHOD_QUALIFIER_BEFORE: i64 = 1;
+const METHOD_QUALIFIER_AFTER: i64 = 2;
+const METHOD_QUALIFIER_AROUND: i64 = 3;
+const CONTINUATION_AROUND: i64 = 0;
+const CONTINUATION_PRIMARY: i64 = 1;
+const CONTINUATION_CORE: i64 = 2;
+const METHOD_REGISTRY_KEY_NAME: &str = "%CLOS-METHODS";
 
 fn form_elements(ctx: &ThreadContext, mut form: Word) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
@@ -92,19 +100,6 @@ fn make_progn(
     lisp_list(ctx, runtime, &values)
 }
 
-fn make_if(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    test: Word,
-    consequent: Word,
-    alternate: Word,
-) -> Result<Word, ObjectError> {
-    let operator = Package::from_word(runtime.ensure_package(ctx, COMMON_LISP)?)
-        .intern(ctx, runtime, "IF")?
-        .0;
-    lisp_list(ctx, runtime, &[operator, test, consequent, alternate])
-}
-
 fn ncl_symbol(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
     Package::from_word(runtime.ensure_package(ctx, "NCL")?)
         .intern(ctx, runtime, name)
@@ -125,9 +120,104 @@ fn method_registry_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     specializers: Word,
+    qualifier: Word,
     function: Word,
 ) -> Result<Word, ObjectError> {
-    lisp_list(ctx, runtime, &[specializers, function])
+    lisp_list(ctx, runtime, &[specializers, qualifier, function])
+}
+
+fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, ObjectError> {
+    if !matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
+        return Ok(None);
+    }
+    let name = symbol_name_string(ctx, value)?;
+    let qualifier = match name.as_str() {
+        ":BEFORE" | "BEFORE" => METHOD_QUALIFIER_BEFORE,
+        ":AFTER" | "AFTER" => METHOD_QUALIFIER_AFTER,
+        ":AROUND" | "AROUND" => METHOD_QUALIFIER_AROUND,
+        _ => return Ok(None),
+    };
+    Ok(Some(Word::fixnum(qualifier)))
+}
+
+fn method_definition_parts(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    encoded: Word,
+) -> Result<(Word, Word), ObjectError> {
+    let fields = form_elements(ctx, encoded)?;
+    let tag = ncl_symbol(ctx, runtime, "*CLOS-METHOD-DEFINITION*")?;
+    if fields.first().copied() == Some(tag) {
+        let qualifier = *fields.get(1).ok_or(ObjectError::TypeError)?;
+        let specializers = *fields.get(2).ok_or(ObjectError::TypeError)?;
+        return Ok((specializers, qualifier));
+    }
+    Ok((encoded, Word::fixnum(METHOD_QUALIFIER_PRIMARY)))
+}
+
+fn method_registry_key(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
+    ncl_symbol(ctx, runtime, METHOD_REGISTRY_KEY_NAME)
+}
+
+fn method_registry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+) -> Result<Word, ObjectError> {
+    let key = method_registry_key(ctx, runtime)?;
+    let mut plist = symbol_plist(ctx, name)?;
+    while plist != Word::NIL {
+        let property = car(ctx, plist)?;
+        if car(ctx, property)? == key {
+            return cdr(ctx, property);
+        }
+        plist = cdr(ctx, plist)?;
+    }
+    Ok(Word::NIL)
+}
+
+fn has_method_registry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+) -> Result<bool, ObjectError> {
+    let key = method_registry_key(ctx, runtime)?;
+    let mut plist = symbol_plist(ctx, name)?;
+    while plist != Word::NIL {
+        let property = car(ctx, plist)?;
+        if car(ctx, property)? == key {
+            return Ok(true);
+        }
+        plist = cdr(ctx, plist)?;
+    }
+    Ok(false)
+}
+
+fn set_method_registry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+    registry: Word,
+) -> Result<(), ObjectError> {
+    let key = method_registry_key(ctx, runtime)?;
+    let old_plist = symbol_plist(ctx, name)?;
+    ncl_object::with_roots(ctx, &[name, key, registry, old_plist], |ctx, roots| {
+        let mut property = make_cons(
+            ctx,
+            runtime,
+            **roots.get(1).ok_or(ObjectError::Layout)?,
+            **roots.get(2).ok_or(ObjectError::Layout)?,
+        )?;
+        ncl_object::with_root(ctx, &mut property, |ctx, property| {
+            let plist = make_cons(
+                ctx,
+                runtime,
+                *property,
+                **roots.get(3).ok_or(ObjectError::Layout)?,
+            )?;
+            set_symbol_plist(ctx, **roots.first().ok_or(ObjectError::Layout)?, plist)
+        })
+    })
 }
 
 fn eql_word(ctx: &ThreadContext, left: Word, right: Word) -> bool {
@@ -191,12 +281,12 @@ fn method_match(
 
 fn clos_define_generic_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = args.required(0)?;
-    set_symbol_value(ctx, name, Word::NIL)?;
+    set_method_registry(ctx, runtime, name, Word::NIL)?;
     Ok(name)
 }
 
@@ -207,9 +297,10 @@ fn clos_add_method_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = args.required(0)?;
-    let specializers = args.required(1)?;
+    let encoded = args.required(1)?;
+    let (specializers, qualifier) = method_definition_parts(ctx, runtime, encoded)?;
     let function = FunctionObject::try_from(args.required(2)?)?.as_word();
-    let old = symbol_value(ctx, name)?;
+    let old = method_registry(ctx, runtime, name)?;
     let mut entries = Vec::new();
     let mut cursor = old;
     while cursor != Word::NIL {
@@ -217,14 +308,169 @@ fn clos_add_method_builtin(
         cursor = cdr(ctx, cursor)?;
     }
     entries.retain(|entry| {
-        let Ok(entry_specializers) = car(ctx, *entry) else { return true };
-        entry_specializers != specializers
+        let Ok(entry_specializers) = car(ctx, *entry) else {
+            return true;
+        };
+        let Ok(qualifier_pair) = cdr(ctx, *entry) else {
+            return true;
+        };
+        let Ok(entry_qualifier) = car(ctx, qualifier_pair) else {
+            return true;
+        };
+        entry_specializers != specializers || entry_qualifier != qualifier
     });
-    let entry = method_registry_entry(ctx, runtime, specializers, function)?;
+    let entry = method_registry_entry(ctx, runtime, specializers, qualifier, function)?;
     entries.insert(0, entry);
     let registry = lisp_list(ctx, runtime, &entries)?;
-    set_symbol_value(ctx, name, registry)?;
+    set_method_registry(ctx, runtime, name, registry)?;
     Ok(name)
+}
+
+fn continuation(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    kind: i64,
+    payload: Word,
+) -> Result<Word, ObjectError> {
+    let tag = ncl_symbol(ctx, runtime, "*CLOS-CONTINUATION*")?;
+    lisp_list(ctx, runtime, &[tag, Word::fixnum(kind), payload])
+}
+
+fn call_method(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    function: Word,
+    arguments: &[Word],
+    argument_list: Word,
+    next: Word,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
+    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
+    let previous_next = symbol_value(ctx, next_symbol)?;
+    let previous_args = symbol_value(ctx, args_symbol)?;
+    set_symbol_value(ctx, next_symbol, next)?;
+    set_symbol_value(ctx, args_symbol, argument_list)?;
+    let result = BuiltinFunctionCaller.call_function(
+        ctx,
+        runtime,
+        FunctionDesignator::Function(FunctionObject::try_from(function)?),
+        FunctionArguments::new(arguments),
+        values,
+    );
+    set_symbol_value(ctx, next_symbol, previous_next)?;
+    set_symbol_value(ctx, args_symbol, previous_args)?;
+    result
+}
+
+fn invoke_core(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    payload: Word,
+    arguments: &[Word],
+    argument_list: Word,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let fields = form_elements(ctx, payload)?;
+    let before = form_elements(ctx, fields.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let primary = form_elements(ctx, fields.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+    let after = form_elements(ctx, fields.get(2).copied().ok_or(ObjectError::TypeError)?)?;
+    for function in before {
+        call_method(
+            ctx,
+            runtime,
+            function,
+            arguments,
+            argument_list,
+            Word::NIL,
+            values,
+        )?;
+    }
+    let next = if primary.len() > 1 {
+        let rest = lisp_list(ctx, runtime, &primary[1..])?;
+        continuation(ctx, runtime, CONTINUATION_PRIMARY, rest)?
+    } else {
+        Word::NIL
+    };
+    let result = call_method(
+        ctx,
+        runtime,
+        *primary.first().ok_or(ObjectError::UndefinedFunction)?,
+        arguments,
+        argument_list,
+        next,
+        values,
+    )?;
+    let returned_values = values.as_slice().to_vec();
+    for function in after {
+        call_method(
+            ctx,
+            runtime,
+            function,
+            arguments,
+            argument_list,
+            Word::NIL,
+            values,
+        )?;
+    }
+    values.set(&returned_values);
+    Ok(result)
+}
+
+fn invoke_continuation(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+    arguments: &[Word],
+    argument_list: Word,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let fields = form_elements(ctx, value)?;
+    let kind = fields
+        .get(1)
+        .copied()
+        .ok_or(ObjectError::TypeError)?
+        .as_fixnum()
+        .ok_or(ObjectError::TypeError)?;
+    let payload = fields.get(2).copied().ok_or(ObjectError::TypeError)?;
+    match kind {
+        CONTINUATION_CORE => invoke_core(ctx, runtime, payload, arguments, argument_list, values),
+        CONTINUATION_AROUND | CONTINUATION_PRIMARY => {
+            let (methods, tail) = if kind == CONTINUATION_AROUND {
+                let fields = form_elements(ctx, payload)?;
+                (
+                    form_elements(ctx, fields.first().copied().ok_or(ObjectError::TypeError)?)?,
+                    fields.get(1).copied().ok_or(ObjectError::TypeError)?,
+                )
+            } else {
+                (form_elements(ctx, payload)?, Word::NIL)
+            };
+            let function = *methods.first().ok_or(ObjectError::UndefinedFunction)?;
+            let rest = lisp_list(ctx, runtime, &methods[1..])?;
+            let next = if rest == Word::NIL {
+                if kind == CONTINUATION_AROUND {
+                    tail
+                } else {
+                    Word::NIL
+                }
+            } else if kind == CONTINUATION_AROUND {
+                let next_payload = lisp_list(ctx, runtime, &[rest, tail])?;
+                continuation(ctx, runtime, kind, next_payload)?
+            } else {
+                continuation(ctx, runtime, kind, rest)?
+            };
+            call_method(
+                ctx,
+                runtime,
+                function,
+                arguments,
+                argument_list,
+                next,
+                values,
+            )
+        }
+        _ => Err(ObjectError::TypeError),
+    }
 }
 
 fn clos_dispatch_builtin(
@@ -236,42 +482,54 @@ fn clos_dispatch_builtin(
     let name = args.required(0)?;
     let argument_list = args.required(1)?;
     let arguments = form_elements(ctx, argument_list)?;
+    if !has_method_registry(ctx, runtime, name)? {
+        ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction { name }));
+        return Err(ObjectError::UndefinedFunction);
+    }
     let mut matches = Vec::new();
-    let mut cursor = symbol_value(ctx, name)?;
+    let mut cursor = method_registry(ctx, runtime, name)?;
     while cursor != Word::NIL {
         let entry = car(ctx, cursor)?;
-        let specializers = car(ctx, entry)?;
-        let function = cdr(ctx, entry)?;
-        let function = car(ctx, function)?;
+        let fields = form_elements(ctx, entry)?;
+        let specializers = *fields.first().ok_or(ObjectError::TypeError)?;
+        let qualifier = *fields.get(1).ok_or(ObjectError::TypeError)?;
+        let function = *fields.get(2).ok_or(ObjectError::TypeError)?;
         if let Some(score) = method_match(ctx, runtime, specializers, &arguments)? {
-            matches.push((score, function));
+            matches.push((score, qualifier, function));
         }
         cursor = cdr(ctx, cursor)?;
     }
-    matches.sort_by(|left, right| right.0.cmp(&left.0));
-    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
-    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
-    let previous_next = symbol_value(ctx, next_symbol)?;
-    let previous_args = symbol_value(ctx, args_symbol)?;
-    let result = if let Some((_, function)) = matches.first().copied() {
-        let next = matches.get(1).map_or(Word::NIL, |(_, function)| *function);
-        set_symbol_value(ctx, next_symbol, next)?;
-        set_symbol_value(ctx, args_symbol, argument_list)?;
-        let mut caller = BuiltinFunctionCaller;
-        caller.call_function(
-            ctx,
-            runtime,
-            FunctionDesignator::Function(FunctionObject::try_from(function)?),
-            FunctionArguments::new(&arguments),
-            values,
-        )
+    matches.sort_by_key(|left| std::cmp::Reverse(left.0));
+    let mut around = Vec::new();
+    let mut before = Vec::new();
+    let mut primary = Vec::new();
+    let mut after = Vec::new();
+    for (_, qualifier, function) in matches {
+        match qualifier.as_fixnum() {
+            Some(METHOD_QUALIFIER_AROUND) => around.push(function),
+            Some(METHOD_QUALIFIER_BEFORE) => before.push(function),
+            Some(METHOD_QUALIFIER_AFTER) => after.push(function),
+            _ => primary.push(function),
+        }
+    }
+    after.reverse();
+    if primary.is_empty() {
+        ctx.set_pending_lisp_error(LispError::Object(ObjectError::Unbound));
+        return Err(ObjectError::Unbound);
+    }
+    let before_list = lisp_list(ctx, runtime, &before)?;
+    let primary_list = lisp_list(ctx, runtime, &primary)?;
+    let after_list = lisp_list(ctx, runtime, &after)?;
+    let payload = lisp_list(ctx, runtime, &[before_list, primary_list, after_list])?;
+    let core = continuation(ctx, runtime, CONTINUATION_CORE, payload)?;
+    let around = lisp_list(ctx, runtime, &around)?;
+    if around == Word::NIL {
+        invoke_continuation(ctx, runtime, core, &arguments, argument_list, values)
     } else {
-        ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction { name }));
-        Err(ObjectError::UndefinedFunction)
-    };
-    set_symbol_value(ctx, next_symbol, previous_next)?;
-    set_symbol_value(ctx, args_symbol, previous_args)?;
-    result
+        let around_payload = lisp_list(ctx, runtime, &[around, core])?;
+        let wrapper = continuation(ctx, runtime, CONTINUATION_AROUND, around_payload)?;
+        invoke_continuation(ctx, runtime, wrapper, &arguments, argument_list, values)
+    }
 }
 
 fn clos_call_next_method_builtin(
@@ -290,15 +548,9 @@ fn clos_call_next_method_builtin(
         }));
         return Err(ObjectError::UndefinedFunction);
     }
-    let arguments = form_elements(ctx, symbol_value(ctx, args_symbol)?)?;
-    let mut caller = BuiltinFunctionCaller;
-    caller.call_function(
-        ctx,
-        runtime,
-        FunctionDesignator::Function(FunctionObject::try_from(next)?),
-        FunctionArguments::new(&arguments),
-        values,
-    )
+    let argument_list = symbol_value(ctx, args_symbol)?;
+    let arguments = form_elements(ctx, argument_list)?;
+    invoke_continuation(ctx, runtime, next, &arguments, argument_list, values)
 }
 
 fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
@@ -534,7 +786,15 @@ fn defmethod_macro_builtin(
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, args.required(0)?)?;
     let name = *parts.get(1).ok_or(ObjectError::TypeError)?;
-    let specializers = form_elements(ctx, *parts.get(2).ok_or(ObjectError::TypeError)?)?;
+    let (qualifier, specializer_index) = match parts.get(2).copied() {
+        Some(value) => method_qualifier(ctx, value)?.map_or_else(
+            || (Word::fixnum(METHOD_QUALIFIER_PRIMARY), 2),
+            |qualifier| (qualifier, 3),
+        ),
+        None => return Err(ObjectError::TypeError),
+    };
+    let specializer_form = *parts.get(specializer_index).ok_or(ObjectError::TypeError)?;
+    let specializers = form_elements(ctx, specializer_form)?;
     let mut lambda = Vec::with_capacity(specializers.len());
     for specializer in specializers {
         let fields = form_elements(ctx, specializer)?;
@@ -543,7 +803,9 @@ fn defmethod_macro_builtin(
     let defun = common_lisp_symbol(ctx, runtime, "DEFUN")?;
     let lambda_words = lambda;
     let lambda = lisp_list(ctx, runtime, &lambda_words)?;
-    let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
+    let body = parts
+        .get(specializer_index + 1..)
+        .ok_or(ObjectError::TypeError)?;
     let body = make_progn(ctx, runtime, body)?;
     let method_name = {
         let id = METHOD_FUNCTION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -552,25 +814,34 @@ fn defmethod_macro_builtin(
     };
     let function_operator = common_lisp_symbol(ctx, runtime, "FUNCTION")?;
     let method_function = lisp_list(ctx, runtime, &[function_operator, method_name])?;
-    let specializer_form = *parts.get(2).ok_or(ObjectError::TypeError)?;
-    let quoted_specializers = quoted(ctx, runtime, specializer_form)?;
+    let tag = ncl_symbol(ctx, runtime, "*CLOS-METHOD-DEFINITION*")?;
+    let definition = lisp_list(ctx, runtime, &[tag, qualifier, specializer_form])?;
+    let quoted_specializers = quoted(ctx, runtime, definition)?;
     let add_method = common_lisp_symbol(ctx, runtime, "%CLOS-ADD-METHOD")?;
     let quoted_name = quoted(ctx, runtime, name)?;
     let registration = lisp_list(
         ctx,
         runtime,
-        &[add_method, quoted_name, quoted_specializers, method_function],
+        &[
+            add_method,
+            quoted_name,
+            quoted_specializers,
+            method_function,
+        ],
     )?;
     let method_definition = lisp_list(ctx, runtime, &[defun, method_name, lambda, body])?;
     let progn = common_lisp_symbol(ctx, runtime, "PROGN")?;
-    lisp_list(ctx, runtime, &[progn, method_definition, registration, name])
+    lisp_list(
+        ctx,
+        runtime,
+        &[progn, method_definition, registration, name],
+    )
 }
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
     ty: ncl_object::ParameterType::Any,
 };
-const ARGS_0: &[ncl_object::Parameter] = &[];
 const ARGS_1: &[ncl_object::Parameter] = &[ARGUMENT];
 const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];

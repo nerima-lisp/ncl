@@ -69,6 +69,32 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
+    /// Number of handler regions currently open (entered but not yet left).
+    const fn active_len(&self) -> usize {
+        self.active.len()
+    }
+
+    /// Leave every handler region opened since `depth`, innermost first.
+    ///
+    /// Used by a lexically-visible `return-from`/`go` fast path (jumping
+    /// directly to the bound block rather than desugaring to `throw`) so
+    /// `unwind-protect` cleanup and `progv` restores still run for regions
+    /// nested between the jump and its target, even though no closure
+    /// boundary is crossed.
+    fn close_active_since(
+        &mut self,
+        f: &mut FunctionLowerer,
+        depth: usize,
+    ) -> Result<(), LowerError> {
+        while self.active.len() > depth {
+            let Some(id) = self.active.last().copied() else {
+                break;
+            };
+            self.leave(f, id)?;
+        }
+        Ok(())
+    }
+
     fn token(name: &SymbolRef, kind: &str) -> SymbolRef {
         SymbolRef::interned("NCL-NLX", format!("{kind}:{}", name.name))
     }

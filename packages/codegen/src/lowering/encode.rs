@@ -117,7 +117,8 @@ pub(super) fn encode(
                 )?;
                 emit_return(&mut assembler, &[], &machine.slots, abi)?;
             }
-            Terminator::Throw { .. } | Terminator::Unreachable => emit(&mut assembler, &Inst::Ud2)?,
+            Terminator::Throw { .. } => return Err(CodegenError::NonLocalExitUnsupported),
+            Terminator::Unreachable => emit(&mut assembler, &Inst::Ud2)?,
         }
     }
     let blob = assembler

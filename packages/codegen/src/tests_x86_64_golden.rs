@@ -1,13 +1,34 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
-use crate::{FLAG_CALL, compile_function_x86_64};
+use crate::{CodegenError, FLAG_CALL, compile_function_x86_64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+#[test]
+fn x86_64_rejects_non_local_exit_at_codegen_time() {
+    let mut builder =
+        ncl_ir::FunctionBuilder::new(ncl_ir::FunctionId(99), "x86-64-throw", Vec::new(), vec![]);
+    let constant = builder.add_constant(Constant::Fixnum(1));
+    let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
+    assert!(values.is_ok(), "constant lowering: {values:?}");
+    let Some(value) = values.ok().and_then(|ids| ids.first().copied()) else {
+        return;
+    };
+    assert!(
+        builder
+            .terminate(Terminator::Throw { condition: value })
+            .is_ok(),
+        "throw terminator"
+    );
+
+    let result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    assert!(matches!(result, Err(CodegenError::NonLocalExitUnsupported)));
 }
 
 fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {

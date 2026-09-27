@@ -78,6 +78,8 @@ pub enum CodegenError {
         /// Number of words available in the runtime area.
         capacity: usize,
     },
+    /// The x86-64 backend does not execute non-local exits.
+    NonLocalExitUnsupported,
     /// The fixed-template backend does not have the runtime contract needed for an operation.
     Unsupported(String),
 }
@@ -101,6 +103,9 @@ impl core::fmt::Display for CodegenError {
                     f,
                     "multiple-value area holds {capacity} words, function returns {count}"
                 )
+            }
+            Self::NonLocalExitUnsupported => {
+                f.write_str("non-local exits are unsupported on x86-64")
             }
             Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),
         }

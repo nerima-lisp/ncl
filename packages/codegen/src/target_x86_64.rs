@@ -326,7 +326,10 @@ pub fn compile_function_x86_64(
                 lower_call(&mut assembler, *function, args, &value_slots)?;
                 emit_tail_transfer(&mut assembler)?;
             }
-            Terminator::Throw { .. } | Terminator::Unreachable => {
+            Terminator::Throw { .. } => {
+                return Err(CodegenError::NonLocalExitUnsupported);
+            }
+            Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Ud2)?;
             }
         }

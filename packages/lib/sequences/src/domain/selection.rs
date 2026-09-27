@@ -17,7 +17,7 @@ mod selection_values;
 pub fn list_from_values(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &mut [Word],
+    values: &mut [Word], // check-added-lines: allow(index) slice type
 ) -> Result<Word, ObjectError> {
     selection_values::list_from_values(ctx, runtime, values)
 }
@@ -48,7 +48,7 @@ fn scope_roots<T>(
 fn scope_rooted_slice<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T,
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> T, // check-added-lines: allow(index) slice type
 ) -> T {
     let mut rooted = values.to_vec();
     let roots = rooted.clone(); // check-added-lines: allow(index)

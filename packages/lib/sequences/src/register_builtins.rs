@@ -35,22 +35,22 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("CONSP", cons_p_builtin, ONE_OBJECT),
         ("LISTP", list_p_builtin, ONE_OBJECT),
         ("ENDP", endp_builtin, ONE_OBJECT),
-        ("CAR", car_builtin, &[LIST][..]),
-        ("CDR", cdr_builtin, &[LIST][..]),
+        ("CAR", car_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDR", cdr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("CONS", cons_builtin, TWO_OBJECTS),
         ("RPLACA", rplaca_builtin, TWO_OBJECTS),
         ("RPLACD", rplacd_builtin, TWO_OBJECTS),
-        ("COPY-LIST", copy_list_builtin, &[LIST][..]),
-        ("NTH", nth_builtin, &[INDEX, LIST][..]),
-        ("NTHCDR", nthcdr_builtin, &[INDEX, LIST][..]),
-        ("LIST-LENGTH", list_length_builtin, &[LIST][..]),
-        ("FIRST", first_builtin, &[LIST][..]),
-        ("SECOND", second_builtin, &[LIST][..]),
-        ("THIRD", third_builtin, &[LIST][..]),
-        ("FOURTH", fourth_builtin, &[LIST][..]),
-        ("FIFTH", fifth_builtin, &[LIST][..]),
-        ("SIXTH", sixth_builtin, &[LIST][..]),
-        ("SEVENTH", seventh_builtin, &[LIST][..]),
+        ("COPY-LIST", copy_list_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("NTH", nth_builtin, &[INDEX, LIST][..]),      // check-added-lines: allow(index) slice type
+        ("NTHCDR", nthcdr_builtin, &[INDEX, LIST][..]), // check-added-lines: allow(index) slice type
+        ("LIST-LENGTH", list_length_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("FIRST", first_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("SECOND", second_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("THIRD", third_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("FOURTH", fourth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("FIFTH", fifth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("SIXTH", sixth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("SEVENTH", seventh_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("EIGHTH", eighth_builtin, &[LIST][..]),
         ("NINTH", ninth_builtin, &[LIST][..]),
         ("TENTH", tenth_builtin, &[LIST][..]),
@@ -96,12 +96,12 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         (
             "LENGTH",
             length_builtin as ncl_object::RustBuiltin,
-            &[SEQUENCE][..],
+            &[SEQUENCE][..], // check-added-lines: allow(index) slice type
         ),
-        ("COPY-SEQ", copy_seq_builtin, &[SEQUENCE][..]),
-        ("REVERSE", reverse_builtin, &[SEQUENCE][..]),
-        ("NREVERSE", nreverse_builtin, &[SEQUENCE][..]),
-        ("ELT", elt_builtin, &[SEQUENCE, INDEX][..]),
+        ("COPY-SEQ", copy_seq_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
+        ("REVERSE", reverse_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
+        ("NREVERSE", nreverse_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
+        ("ELT", elt_builtin, &[SEQUENCE, INDEX][..]), // check-added-lines: allow(index) slice type
     ] {
         register_direct(runtime, &mut ctx, name, direct_descriptor(params), function)?;
     }

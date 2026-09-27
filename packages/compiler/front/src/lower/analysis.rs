@@ -1,6 +1,6 @@
 //! Non-local return analysis for IR v2 control lowering.
 
-use crate::ast::{Expr, FunctionDesignator, Operator};
+use crate::ast::{Expr, FunctionDesignator, Operator, TagbodyItem};
 use crate::symbols::SymbolRef;
 
 pub(super) fn body_has_nested_return(forms: &[Expr], name: &SymbolRef) -> bool {
@@ -52,6 +52,22 @@ fn mentions_return_from(expr: &Expr, name: &SymbolRef) -> bool {
                 || mentions_return_from(values, name)
                 || body.iter().any(|form| mentions_return_from(form, name))
         }
+        Expr::If {
+            test,
+            then,
+            otherwise,
+        } => {
+            mentions_return_from(test, name)
+                || mentions_return_from(then, name)
+                || otherwise
+                    .as_deref()
+                    .is_some_and(|form| mentions_return_from(form, name))
+        }
+        Expr::Block { body, .. } => body.iter().any(|form| mentions_return_from(form, name)),
+        Expr::Tagbody(items) => items.iter().any(|item| match item {
+            TagbodyItem::Tag(_) => false,
+            TagbodyItem::Form(form) => mentions_return_from(form, name),
+        }),
         Expr::Call {
             operator,
             arguments,
@@ -66,9 +82,6 @@ fn mentions_return_from(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::Variable(_)
         | Expr::Lambda(_)
         | Expr::Function(_)
-        | Expr::If { .. }
-        | Expr::Block { .. }
-        | Expr::Tagbody(_)
         | Expr::Go { .. }
         | Expr::Throw { .. }
         | Expr::Setq(_)
@@ -112,6 +125,20 @@ fn has_unwind_protect(expr: &Expr) -> bool {
                 || has_unwind_protect(values)
                 || body.iter().any(has_unwind_protect)
         }
+        Expr::If {
+            test,
+            then,
+            otherwise,
+        } => {
+            has_unwind_protect(test)
+                || has_unwind_protect(then)
+                || otherwise.as_deref().is_some_and(has_unwind_protect)
+        }
+        Expr::Block { body, .. } => body.iter().any(has_unwind_protect),
+        Expr::Tagbody(items) => items.iter().any(|item| match item {
+            TagbodyItem::Tag(_) => false,
+            TagbodyItem::Form(form) => has_unwind_protect(form),
+        }),
         Expr::Call {
             operator,
             arguments,
@@ -125,10 +152,7 @@ fn has_unwind_protect(expr: &Expr) -> bool {
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Function(FunctionDesignator::Name(_))
-        | Expr::If { .. }
-        | Expr::Block { .. }
         | Expr::ReturnFrom { .. }
-        | Expr::Tagbody(_)
         | Expr::Go { .. }
         | Expr::Throw { .. }
         | Expr::Setq(_)
@@ -168,13 +192,26 @@ fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::SymbolMacrolet { body: forms, .. } => {
             forms.iter().any(|form| nested_return(form, name))
         }
+        Expr::If {
+            test,
+            then,
+            otherwise,
+        } => {
+            nested_return(test, name)
+                || nested_return(then, name)
+                || otherwise
+                    .as_deref()
+                    .is_some_and(|form| nested_return(form, name))
+        }
+        Expr::Block { body, .. } => body.iter().any(|form| nested_return(form, name)),
+        Expr::Tagbody(items) => items.iter().any(|item| match item {
+            TagbodyItem::Tag(_) => false,
+            TagbodyItem::Form(form) => nested_return(form, name),
+        }),
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Function(_)
-        | Expr::If { .. }
-        | Expr::Block { .. }
         | Expr::ReturnFrom { .. }
-        | Expr::Tagbody(_)
         | Expr::Go { .. }
         | Expr::Catch { .. }
         | Expr::Throw { .. }

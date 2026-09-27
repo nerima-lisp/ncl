@@ -33,6 +33,13 @@ pub(super) struct BlockEntry {
     pub name: SymbolRef,
     /// The exit block.
     pub target: BlockId,
+    /// Number of handler regions (`catch`/`unwind-protect`/`progv`) open at
+    /// the point this block was bound. A lexically-visible `return-from`
+    /// (the fast path that jumps straight to `target` rather than desugaring
+    /// to `throw`) must leave every region opened since, innermost first, so
+    /// `unwind-protect` cleanup and `progv` restores still run even though
+    /// no closure boundary is crossed.
+    pub active_depth: usize,
 }
 
 /// A `tagbody` tag target.
@@ -42,6 +49,8 @@ pub(super) struct TagEntry {
     pub name: SymbolRef,
     /// The block the tag labels.
     pub target: BlockId,
+    /// See [`BlockEntry::active_depth`]; the same reasoning applies to `go`.
+    pub active_depth: usize,
 }
 
 /// A local function bound by `flet` or `labels`.

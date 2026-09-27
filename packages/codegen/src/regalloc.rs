@@ -181,25 +181,26 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             .iter()
             .map(|(_, register)| *register)
             .collect::<BTreeSet<_>>();
-        let location = if interval.crosses_handler
-            || interval.crosses_call
-            || (interval.crosses_safepoint && target == AllocationTarget::AArch64)
-        {
-            let slot = next_spill;
-            next_spill = next_spill.saturating_add(1);
-            Location::Spill(slot)
-        } else if let Some(register) = registers
-            .iter()
-            .copied()
-            .find(|register| !occupied.contains(register))
-        {
-            active.push((interval, register));
-            Location::Register(register)
-        } else {
-            let slot = next_spill;
-            next_spill = next_spill.saturating_add(1);
-            Location::Spill(slot)
-        };
+        // x86-64 callee-saved registers are conservatively pinned by the
+        // runtime snapshot, so movable values must live in frame slots across
+        // safepoints where the collector can write the forwarded word back.
+        let location =
+            if interval.crosses_handler || interval.crosses_call || interval.crosses_safepoint {
+                let slot = next_spill;
+                next_spill = next_spill.saturating_add(1);
+                Location::Spill(slot)
+            } else if let Some(register) = registers
+                .iter()
+                .copied()
+                .find(|register| !occupied.contains(register))
+            {
+                active.push((interval, register));
+                Location::Register(register)
+            } else {
+                let slot = next_spill;
+                next_spill = next_spill.saturating_add(1);
+                Location::Spill(slot)
+            };
         locations.push((interval.value, location));
     }
 

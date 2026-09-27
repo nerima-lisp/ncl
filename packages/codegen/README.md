@@ -50,6 +50,9 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
   safepoint map PC.
 - When multiple registered threads share one OS thread, every thread other
   than the collector must be in native state during collection.
+- On x86-64, callee-saved registers are conservatively pinned; values that
+  cross a safepoint are therefore spilled so relocation writes back to a frame
+  slot rather than an unmodifiable live register.
 
 ## Module layout
 

@@ -83,11 +83,12 @@ impl ValueSlots {
             match self.allocation.location(interval.value) {
                 Some(Location::Register(register)) => registers.push(register),
                 Some(Location::Spill(spill)) => {
-                    if let Some(slot) = self.spill_base.checked_add(spill)
-                        && let Ok(slot) = u16::try_from(slot)
-                    {
-                        spills.push(slot);
-                    }
+                    spills.extend(
+                        self.spill_base
+                            .checked_add(spill)
+                            .and_then(|slot| slot.checked_add(4))
+                            .and_then(|slot| u16::try_from(slot).ok()),
+                    );
                 }
                 None => {}
             }

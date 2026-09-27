@@ -85,6 +85,7 @@ fn add_map(
                 u16::try_from(
                     outgoing_base
                         .checked_add(offset)
+                        .and_then(|slot| slot.checked_add(4))
                         .ok_or(CodegenError::FrameOverflow)?,
                 )
                 .map_err(|_| CodegenError::FrameOverflow)?,

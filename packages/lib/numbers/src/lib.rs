@@ -186,7 +186,6 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
         ("NUMERATOR", rational_float::numerator as RustBuiltin),
         ("DENOMINATOR", rational_float::denominator as RustBuiltin),
         ("RATIONAL", rational_float::rational as RustBuiltin),
-        ("FLOAT", rational_float::float as RustBuiltin),
         ("DECODE-FLOAT", rational_float::decode_float as RustBuiltin),
         (
             "INTEGER-DECODE-FLOAT",
@@ -222,6 +221,7 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
         runtime,
         ctx,
         &[
+            ("FLOAT", rational_float::float),
             ("RATIONALIZE", rational_float::rationalize),
             ("FLOAT-SIGN", rational_float::float_sign),
         ],

@@ -43,6 +43,8 @@ impl fmt::Debug for Word {
 impl Word {
     /// The canonical NIL value.
     pub const NIL: Self = Self(1);
+    /// The zero-valued return sentinel used when no ordinary values exist.
+    pub const ZERO: Self = Self(0);
     /// The canonical true value, represented as an other pointer placeholder until object layout is registered.
     pub const TRUE: Self = Self(7);
     /// The reserved unbound immediate. It is outside the 32-bit character payload.

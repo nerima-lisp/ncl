@@ -160,14 +160,6 @@ fn throw_builtin(
     Ok(value)
 }
 
-fn control_builtin_address(
-    function: extern "C" fn(NonNull<Thread>, Word, Word) -> Word,
-) -> Result<usize, ObjectError> {
-    let raw = function as *const (); // check-added-lines: allow(as-cast) function-pointer-to-address conversion, the same pattern `function_address!` uses internally.
-    let address = ncl_sys::function_address(raw).map_err(|_| ObjectError::Layout)?;
-    usize::try_from(address).map_err(|_| ObjectError::Layout)
-}
-
 /// Register `COMMON-LISP::throw` with both the safe Rust callback (used by
 /// `funcall`) and the native ABI trampoline (used by `OpKind::Builtin`).
 ///
@@ -195,8 +187,11 @@ pub fn register_control_builtins(
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("throw")),
-        BuiltinImplementation::direct(descriptor, throw_builtin)
-            .with_entry(control_builtin_address(native_throw)?),
+        BuiltinImplementation::direct(descriptor, throw_builtin).with_entry(
+            ncl_sys::function_address!(native_throw)
+                .map_err(|_| ObjectError::Layout)
+                .and_then(|address| usize::try_from(address).map_err(|_| ObjectError::Layout))?,
+        ),
     )?;
     Ok(())
 }

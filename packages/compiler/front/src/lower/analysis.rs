@@ -230,15 +230,80 @@ fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
 
 fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
     match expr {
-        Expr::ReturnFrom { name: target, .. } => target == name,
+        Expr::ReturnFrom {
+            name: target,
+            value,
+        } => {
+            target == name
+                || value
+                    .as_deref()
+                    .is_some_and(|form| contains_return(form, name))
+        }
         Expr::Progn(forms)
         | Expr::Locally { body: forms, .. }
         | Expr::Macrolet { body: forms, .. }
         | Expr::SymbolMacrolet { body: forms, .. } => {
             forms.iter().any(|form| contains_return(form, name))
         }
-        Expr::Call { arguments, .. } => arguments.iter().any(|form| contains_return(form, name)),
-        // check-added-lines: allow(wildcard) exhaustive fallback over unrelated Expr variants that cannot contain a nested form; not error-swallowing.
-        _ => false,
+        Expr::Let { bindings, body, .. } => {
+            bindings
+                .iter()
+                .filter_map(|binding| binding.value.as_ref())
+                .any(|form| contains_return(form, name))
+                || body.iter().any(|form| contains_return(form, name))
+        }
+        Expr::UnwindProtect { protected, cleanup } => {
+            contains_return(protected, name)
+                || cleanup.iter().any(|form| contains_return(form, name))
+        }
+        Expr::Catch { tag, body } => {
+            contains_return(tag, name) || body.iter().any(|form| contains_return(form, name))
+        }
+        Expr::Progv {
+            symbols,
+            values,
+            body,
+        } => {
+            contains_return(symbols, name)
+                || contains_return(values, name)
+                || body.iter().any(|form| contains_return(form, name))
+        }
+        Expr::If {
+            test,
+            then,
+            otherwise,
+        } => {
+            contains_return(test, name)
+                || contains_return(then, name)
+                || otherwise
+                    .as_deref()
+                    .is_some_and(|form| contains_return(form, name))
+        }
+        Expr::Block { body, .. } => body.iter().any(|form| contains_return(form, name)),
+        Expr::Tagbody(items) => items.iter().any(|item| match item {
+            TagbodyItem::Tag(_) => false,
+            TagbodyItem::Form(form) => contains_return(form, name),
+        }),
+        Expr::Call {
+            operator,
+            arguments,
+        } => {
+            let in_lambda = matches!(operator, Operator::Lambda(lambda) if lambda.body.iter().any(|form| contains_return(form, name)));
+            in_lambda || arguments.iter().any(|form| contains_return(form, name))
+        }
+        Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Lambda(_)
+        | Expr::Function(_)
+        | Expr::Go { .. }
+        | Expr::Throw { .. }
+        | Expr::Setq(_)
+        | Expr::MultipleValueCall { .. }
+        | Expr::MultipleValueProg1 { .. }
+        | Expr::The { .. }
+        | Expr::EvalWhen { .. }
+        | Expr::LoadTimeValue { .. }
+        | Expr::Flet { .. }
+        | Expr::Labels { .. } => false,
     }
 }

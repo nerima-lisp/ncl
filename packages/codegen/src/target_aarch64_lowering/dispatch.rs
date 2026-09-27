@@ -18,7 +18,6 @@ use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction}
 fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
     let base = abi
         .field_offset(ContextField::MultipleValueArea)
-        // check-added-lines: allow(unsupported) propagates an ABI lookup failure, matching every other call site in this module.
         .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
     let byte_offset = index
         .checked_mul(8)
@@ -98,7 +97,7 @@ pub(super) fn emit_epilogue(
     if let Some(value) = values.first() {
         load_value(assembler, allocation, *value, Reg(0))?;
     } else {
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::fixnum(0).bits()) {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::ZERO.bits()) {
             emit(assembler, instruction)?;
         }
     }

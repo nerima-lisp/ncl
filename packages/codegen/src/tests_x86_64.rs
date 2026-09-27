@@ -28,6 +28,7 @@ fn x86_64_lowering_spills_allocator_values_across_safepoints() {
     );
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
+    // check-added-lines: allow(panic) test-only assertion
     assert!(allocation.locations.iter().all(|(_, location)| {
         matches!(
             location,
@@ -37,6 +38,7 @@ fn x86_64_lowering_spills_allocator_values_across_safepoints() {
     let Some(expected) = allocation.safepoint_registers.get(&1) else {
         unreachable!("allocator safepoint roots");
     };
+    // check-added-lines: allow(panic) test-only assertion
     assert!(expected.is_empty());
     let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
         Ok(compiled) => compiled,

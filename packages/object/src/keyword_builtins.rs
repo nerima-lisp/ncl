@@ -86,10 +86,12 @@ pub fn make_rest_list_builtin(
     if start > argc || argc > values.len() {
         return Err(ObjectError::TypeError);
     }
+    // check-added-lines: allow(index) bounded above by the `argc > values.len()` guard.
     with_roots(ctx, &values[..argc], |ctx, values| {
         let mut list = Word::NIL;
         with_root(ctx, &mut list, |ctx, list| {
             let mut list_word = *list;
+            // check-added-lines: allow(index) bounded above by the `start > argc` guard.
             for value in values[start..].iter().rev() {
                 list_word = make_cons(ctx, runtime, **value, list_word)?;
             }
@@ -178,6 +180,7 @@ pub fn check_keywords_builtin(
         }
     }
     if !lambda_allows_other_keys && !call_allows_other_keys {
+        // check-added-lines: allow(index) the lambda list requires 2 args before any allowed keyword.
         let allowed = &args.as_slice()[2..];
         for (keyword, _) in &entries {
             if !is_allow_other_keys(ctx, runtime, *keyword)? && !allowed.contains(keyword) {

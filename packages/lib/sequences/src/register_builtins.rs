@@ -51,9 +51,9 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("FIFTH", fifth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("SIXTH", sixth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("SEVENTH", seventh_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("EIGHTH", eighth_builtin, &[LIST][..]),
-        ("NINTH", ninth_builtin, &[LIST][..]),
-        ("TENTH", tenth_builtin, &[LIST][..]),
+        ("EIGHTH", eighth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("NINTH", ninth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("TENTH", tenth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
     ] {
         runtime.register_builtin(
             ctx_ref(&mut ctx),
@@ -116,6 +116,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         subseq_builtin,
     )?;
     for name in ["FILL", "REPLACE"] {
+        // check-added-lines: allow(index) slice type
         let Some(implementation) = domain::filter::filter_entry(name) else {
             return Err(ObjectError::TypeError);
         };

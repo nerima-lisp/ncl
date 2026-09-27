@@ -159,8 +159,8 @@ fn snapshot_callee_saved() -> [u64; 16] {
     // snapshots in memory avoids an output register aliasing a later source register.
     unsafe {
         core::arch::asm!(
-            "mov [{0} + 0], rbx", "mov [{0} + 8], rbp", "mov [{0} + 16], r12",
-            "mov [{0} + 24], r13", "mov [{0} + 32], r14", "mov [{0} + 40], r15",
+            "mov [{0} + 80], rbx", "mov [{0} + 72], rbp", "mov [{0} + 88], r12",
+            "mov [{0} + 96], r13", "mov [{0} + 104], r14", "mov [{0} + 112], r15",
             in(reg) values.as_mut_ptr(),
             options(nostack, preserves_flags)
         );

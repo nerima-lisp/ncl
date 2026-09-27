@@ -105,6 +105,15 @@ pub(super) fn emit_epilogue(
     for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
         emit(assembler, instruction)?;
     }
+    if !values.is_empty() {
+        emit(
+            assembler,
+            Inst::Str {
+                rt: Reg(1),
+                mem: context_mem(abi, ContextField::MultipleValueCount)?,
+            },
+        )?;
+    }
     if body_bytes > 0 {
         emit(
             assembler,

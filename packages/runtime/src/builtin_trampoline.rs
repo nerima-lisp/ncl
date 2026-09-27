@@ -197,39 +197,43 @@ extern "C" fn make_rest_list_native(
                 context.set_pending(ncl_object::ObjectError::Layout);
                 return Word::NIL.bits();
             };
-            let Ok(function) = symbol_function(context, name) else {
+            let Ok(mut function) = symbol_function(context, name) else {
                 context.set_pending(ncl_object::ObjectError::Unbound);
                 return Word::NIL.bits();
             };
-            let Ok(function) = FunctionObject::try_from(function) else {
-                context.set_pending(ncl_object::ObjectError::Unbound);
-                return Word::NIL.bits();
-            };
-            let Ok(capacity) = count.checked_add(2).ok_or(ncl_object::ObjectError::Layout) else {
-                context.set_pending(ncl_object::ObjectError::Layout);
-                return Word::NIL.bits();
-            };
-            let mut arguments = Vec::with_capacity(capacity);
-            arguments.push(Word::from_bits(argc));
-            arguments.push(Word::from_bits(start));
-            arguments.extend(
-                [a0, a1, a2, a3]
-                    .into_iter()
-                    .take(count)
-                    .map(Word::from_bits),
-            );
-            if count > 4 {
-                let Ok(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
-                    context.set_pending(ncl_object::ObjectError::Layout);
-                    return Word::NIL.bits();
-                };
-                arguments.extend(rest_words);
-            }
-            let result = ncl_object::with_rooted_slice(context, &arguments, |context, rooted| {
-                object.call_builtin(context, function, rooted)
+            let result = ncl_object::with_root(context, &mut function, |context, function| {
+                let function = FunctionObject::try_from(*function)?;
+                let capacity = count
+                    .checked_add(2)
+                    .ok_or(ncl_object::ObjectError::Layout)?;
+                let mut arguments = Vec::with_capacity(capacity);
+                arguments.push(Word::from_bits(argc));
+                arguments.push(Word::from_bits(start));
+                arguments.extend(
+                    [a0, a1, a2, a3]
+                        .into_iter()
+                        .take(count)
+                        .map(Word::from_bits),
+                );
+                if count > 4 {
+                    let rest_words = ncl_sys::copy_native_words(rest, count - 4)
+                        .map_err(|_| ncl_object::ObjectError::Layout)?;
+                    arguments.extend(rest_words);
+                }
+                let result =
+                    ncl_object::with_rooted_slice(context, &arguments, |context, rooted| {
+                        object.call_builtin(context, function, rooted)
+                    });
+                Ok(match result {
+                    Ok(value) => value.bits(),
+                    Err(error) => {
+                        context.set_pending(error);
+                        Word::NIL.bits()
+                    }
+                })
             });
             match result {
-                Ok(value) => value.bits(),
+                Ok(value) => value,
                 Err(error) => {
                     context.set_pending(error);
                     Word::NIL.bits()

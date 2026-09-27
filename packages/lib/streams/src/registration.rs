@@ -23,6 +23,67 @@ const BYTE_PARAMETER: Parameter = Parameter {
     ty: ParameterType::Integer,
 };
 
+const OPEN_NAME: &str = "OPEN";
+const FILE_POSITION_NAME: &str = "FILE-POSITION";
+const FILE_LENGTH_NAME: &str = "FILE-LENGTH";
+const CLOSE_NAME: &str = "CLOSE";
+const FILE_STRING_LENGTH_NAME: &str = "FILE-STRING-LENGTH";
+const READ_BYTE_NAME: &str = "READ-BYTE";
+const STREAMP_NAME: &str = "STREAMP";
+const INPUT_STREAM_P_NAME: &str = "INPUT-STREAM-P";
+const OUTPUT_STREAM_P_NAME: &str = "OUTPUT-STREAM-P";
+const OPEN_STREAM_P_NAME: &str = "OPEN-STREAM-P";
+const INTERACTIVE_STREAM_P_NAME: &str = "INTERACTIVE-STREAM-P";
+const STREAM_ELEMENT_TYPE_NAME: &str = "STREAM-ELEMENT-TYPE";
+const STREAM_EXTERNAL_FORMAT_NAME: &str = "STREAM-EXTERNAL-FORMAT";
+const READ_CHAR_NAME: &str = "READ-CHAR";
+const READ_CHAR_NO_HANG_NAME: &str = "READ-CHAR-NO-HANG";
+const UNREAD_CHAR_NAME: &str = "UNREAD-CHAR";
+const PEEK_CHAR_NAME: &str = "PEEK-CHAR";
+const READ_LINE_NAME: &str = "READ-LINE";
+const WRITE_CHAR_NAME: &str = "WRITE-CHAR";
+const WRITE_BYTE_NAME: &str = "WRITE-BYTE";
+const WRITE_STRING_NAME: &str = "WRITE-STRING";
+const WRITE_LINE_NAME: &str = "WRITE-LINE";
+const TERPRI_NAME: &str = "TERPRI";
+const FRESH_LINE_NAME: &str = "FRESH-LINE";
+const FINISH_OUTPUT_NAME: &str = "FINISH-OUTPUT";
+const MAKE_STRING_INPUT_STREAM_NAME: &str = "MAKE-STRING-INPUT-STREAM";
+const MAKE_STRING_OUTPUT_STREAM_NAME: &str = "MAKE-STRING-OUTPUT-STREAM";
+const GET_OUTPUT_STREAM_STRING_NAME: &str = "GET-OUTPUT-STREAM-STRING";
+
+/// Names registered by this module, in registration order.
+pub const REGISTERED_BUILTINS: &[&str] = &[
+    OPEN_NAME,
+    FILE_POSITION_NAME,
+    FILE_LENGTH_NAME,
+    CLOSE_NAME,
+    FILE_STRING_LENGTH_NAME,
+    READ_BYTE_NAME,
+    STREAMP_NAME,
+    INPUT_STREAM_P_NAME,
+    OUTPUT_STREAM_P_NAME,
+    OPEN_STREAM_P_NAME,
+    INTERACTIVE_STREAM_P_NAME,
+    STREAM_ELEMENT_TYPE_NAME,
+    STREAM_EXTERNAL_FORMAT_NAME,
+    READ_CHAR_NAME,
+    READ_CHAR_NO_HANG_NAME,
+    UNREAD_CHAR_NAME,
+    PEEK_CHAR_NAME,
+    READ_LINE_NAME,
+    WRITE_CHAR_NAME,
+    WRITE_BYTE_NAME,
+    WRITE_STRING_NAME,
+    WRITE_LINE_NAME,
+    TERPRI_NAME,
+    FRESH_LINE_NAME,
+    FINISH_OUTPUT_NAME,
+    MAKE_STRING_INPUT_STREAM_NAME,
+    MAKE_STRING_OUTPUT_STREAM_NAME,
+    GET_OUTPUT_STREAM_STRING_NAME,
+];
+
 /// Register the implemented file-stream functions.
 ///
 /// # Errors
@@ -48,7 +109,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     runtime.register_builtin(
         &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("OPEN")),
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(OPEN_NAME)),
         open,
     )?;
     let position = BuiltinImplementation::adapted(
@@ -63,13 +124,16 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         &mut ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
-            BuiltinName::new("FILE-POSITION"),
+            BuiltinName::new(FILE_POSITION_NAME),
         ),
         position,
     )?;
     runtime.register_builtin(
         &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FILE-LENGTH")),
+        BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new(FILE_LENGTH_NAME),
+        ),
         BuiltinImplementation::direct(
             Builtin {
                 lambda_list: LambdaList::fixed(STREAM_PARAMETERS),
@@ -80,7 +144,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     )?;
     runtime.register_builtin(
         &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CLOSE")),
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(CLOSE_NAME)),
         BuiltinImplementation::adapted(
             Builtin {
                 lambda_list: LambdaList::with_rest(
@@ -100,7 +164,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         &mut ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
-            BuiltinName::new("FILE-STRING-LENGTH"),
+            BuiltinName::new(FILE_STRING_LENGTH_NAME),
         ),
         BuiltinImplementation::direct(
             Builtin {
@@ -112,7 +176,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     )?;
     runtime.register_builtin(
         &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("READ-BYTE")),
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(READ_BYTE_NAME)),
         BuiltinImplementation::adapted(
             Builtin {
                 lambda_list: LambdaList::with_rest(
@@ -129,14 +193,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     for (name, function) in [
-        ("STREAMP", streamp_adapter as _),
-        ("INPUT-STREAM-P", input_stream_p_adapter as _),
-        ("OUTPUT-STREAM-P", output_stream_p_adapter as _),
-        ("OPEN-STREAM-P", open_stream_p_adapter as _),
-        ("INTERACTIVE-STREAM-P", interactive_stream_p_adapter as _),
-        ("STREAM-ELEMENT-TYPE", stream_element_type_adapter as _),
+        (STREAMP_NAME, streamp_adapter as _),
+        (INPUT_STREAM_P_NAME, input_stream_p_adapter as _),
+        (OUTPUT_STREAM_P_NAME, output_stream_p_adapter as _),
+        (OPEN_STREAM_P_NAME, open_stream_p_adapter as _),
+        (INTERACTIVE_STREAM_P_NAME, interactive_stream_p_adapter as _),
+        (STREAM_ELEMENT_TYPE_NAME, stream_element_type_adapter as _),
         (
-            "STREAM-EXTERNAL-FORMAT",
+            STREAM_EXTERNAL_FORMAT_NAME,
             stream_external_format_adapter as _,
         ),
     ] {
@@ -164,7 +228,7 @@ fn register_character_builtins(
 ) -> Result<(), ObjectError> {
     let registrations: &[(&str, Builtin, ncl_object::RustBuiltin)] = &[
         (
-            "READ-CHAR",
+            READ_CHAR_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(
                     &[],
@@ -178,7 +242,7 @@ fn register_character_builtins(
             read_char_adapter,
         ),
         (
-            "READ-CHAR-NO-HANG",
+            READ_CHAR_NO_HANG_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(
                     &[],
@@ -192,7 +256,7 @@ fn register_character_builtins(
             read_char_adapter,
         ),
         (
-            "UNREAD-CHAR",
+            UNREAD_CHAR_NAME,
             Builtin {
                 lambda_list: LambdaList::fixed(CHARACTER_AND_STREAM),
                 convention: BuiltinConvention::Direct(Arity::exact(2)),
@@ -200,7 +264,7 @@ fn register_character_builtins(
             unread_char_adapter,
         ),
         (
-            "PEEK-CHAR",
+            PEEK_CHAR_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(
                     &[],
@@ -214,7 +278,7 @@ fn register_character_builtins(
             peek_char_adapter,
         ),
         (
-            "READ-LINE",
+            READ_LINE_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(
                     &[],
@@ -228,7 +292,7 @@ fn register_character_builtins(
             read_line_adapter,
         ),
         (
-            "WRITE-CHAR",
+            WRITE_CHAR_NAME,
             Builtin {
                 lambda_list: LambdaList::with_optional(CHARACTER_REQUIRED, STREAM_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
@@ -236,7 +300,7 @@ fn register_character_builtins(
             write_char_adapter,
         ),
         (
-            "WRITE-BYTE",
+            WRITE_BYTE_NAME,
             Builtin {
                 lambda_list: LambdaList::with_optional(&[BYTE_PARAMETER], STREAM_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
@@ -244,7 +308,7 @@ fn register_character_builtins(
             write_byte_adapter,
         ),
         (
-            "WRITE-STRING",
+            WRITE_STRING_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(&[STRING_PARAMETER], ARGUMENTS_PARAMETER),
                 convention: BuiltinConvention::Adapted,
@@ -252,7 +316,7 @@ fn register_character_builtins(
             write_string_adapter,
         ),
         (
-            "WRITE-LINE",
+            WRITE_LINE_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(&[STRING_PARAMETER], ARGUMENTS_PARAMETER),
                 convention: BuiltinConvention::Adapted,
@@ -260,7 +324,7 @@ fn register_character_builtins(
             write_line_adapter,
         ),
         (
-            "TERPRI",
+            TERPRI_NAME,
             Builtin {
                 lambda_list: LambdaList::with_optional(&[], STREAM_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
@@ -268,7 +332,7 @@ fn register_character_builtins(
             terpri_adapter,
         ),
         (
-            "FRESH-LINE",
+            FRESH_LINE_NAME,
             Builtin {
                 lambda_list: LambdaList::with_optional(&[], STREAM_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
@@ -276,7 +340,7 @@ fn register_character_builtins(
             fresh_line_adapter,
         ),
         (
-            "FINISH-OUTPUT",
+            FINISH_OUTPUT_NAME,
             Builtin {
                 lambda_list: LambdaList::with_optional(&[], STREAM_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
@@ -284,7 +348,7 @@ fn register_character_builtins(
             finish_output_adapter,
         ),
         (
-            "MAKE-STRING-INPUT-STREAM",
+            MAKE_STRING_INPUT_STREAM_NAME,
             Builtin {
                 lambda_list: LambdaList::with_rest(&[STRING_PARAMETER], ARGUMENTS_PARAMETER),
                 convention: BuiltinConvention::Adapted,
@@ -292,7 +356,7 @@ fn register_character_builtins(
             make_string_input_adapter,
         ),
         (
-            "MAKE-STRING-OUTPUT-STREAM",
+            MAKE_STRING_OUTPUT_STREAM_NAME,
             Builtin {
                 lambda_list: LambdaList::fixed(&[]),
                 convention: BuiltinConvention::Direct(Arity::exact(0)),
@@ -300,7 +364,7 @@ fn register_character_builtins(
             make_string_output_adapter,
         ),
         (
-            "GET-OUTPUT-STREAM-STRING",
+            GET_OUTPUT_STREAM_STRING_NAME,
             Builtin {
                 lambda_list: LambdaList::fixed(STREAM_PARAMETERS),
                 convention: BuiltinConvention::Direct(Arity::exact(1)),

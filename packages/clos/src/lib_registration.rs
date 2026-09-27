@@ -12,6 +12,15 @@ struct DirectBuiltin {
     callback: ncl_object::RustBuiltin,
 }
 
+const MACRO_FORM: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("FORM"),
+    ty: ncl_object::ParameterType::Any,
+};
+const MACRO_ENV: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("ENV"),
+    ty: ncl_object::ParameterType::Any,
+};
+
 fn direct_registration(
     package: BuiltinPackage,
     name: &'static str,
@@ -24,9 +33,10 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 8] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 9] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-BOUNDP"), arity: BuiltinArity::Two, callback: slot_boundp_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-EXISTS-P"), arity: BuiltinArity::Two, callback: slot_exists_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-MAKUNBOUND"), arity: BuiltinArity::Two, callback: slot_makunbound_builtin },
@@ -57,6 +67,16 @@ fn builtin_manifest() -> Vec<Registration> {
             });
         }
     }
+    let macro_builtin = Builtin {
+        lambda_list: LambdaList::with_rest(&[MACRO_FORM], MACRO_ENV),
+        convention: ncl_object::BuiltinConvention::Adapted,
+    };
+    registrations.push(Registration {
+        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("DEFCLASS")),
+        implementation: BuiltinImplementation::adapted(macro_builtin, defclass_macro_builtin, |args| {
+            Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
+        }),
+    });
     registrations
 }
 

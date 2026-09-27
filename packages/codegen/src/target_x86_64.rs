@@ -279,6 +279,7 @@ pub fn compile_function_x86_64(
                     OpKind::Call { .. }
                         | OpKind::CallIndirect { .. }
                         | OpKind::CallClosure { .. }
+                        | OpKind::MakeClosure { .. }
                         | OpKind::Builtin { .. }
                 ) {
                     lower_pending_check(

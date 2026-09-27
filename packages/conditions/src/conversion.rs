@@ -105,11 +105,15 @@ pub fn condition_from_lisp_error(
         LispError::CellError(error) => (
             match error {
                 CellError::UnboundVariable => ConditionIdentifier::UnboundVariable,
-                CellError::UndefinedFunction => ConditionIdentifier::UndefinedFunction,
+                CellError::UndefinedFunction { .. } => ConditionIdentifier::UndefinedFunction,
                 CellError::UnboundSlot => ConditionIdentifier::UnboundSlot,
                 _ => ConditionIdentifier::CellError,
             },
-            Vec::new(),
+            if let CellError::UndefinedFunction { name } = error {
+                words(&[name])
+            } else {
+                Vec::new()
+            },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),
         LispError::StreamError(_) => (ConditionIdentifier::StreamError, Vec::new()),

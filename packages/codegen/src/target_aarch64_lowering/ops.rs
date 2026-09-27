@@ -297,8 +297,20 @@ pub fn lower_op(
                 store_value(assembler, allocation, result, Reg(0))?;
             }
         }
-        OpKind::CallClosure { closure, args } => {
-            primitives::lower_closure_call(assembler, *closure, args, function, allocation)?;
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => {
+            primitives::lower_closure_call(
+                assembler,
+                *closure,
+                args,
+                function,
+                allocation,
+                *named_symbol,
+                abi,
+            )?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;

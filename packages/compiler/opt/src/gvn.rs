@@ -274,7 +274,7 @@ impl GlobalValueNumbering {
                 v(entry);
                 captures.iter_mut().for_each(v);
             }
-            OpKind::CallClosure { closure, args } => {
+            OpKind::CallClosure { closure, args, .. } => {
                 v(closure);
                 args.iter_mut().for_each(v);
             }

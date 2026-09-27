@@ -88,6 +88,8 @@ pub enum RuntimeFunction {
     Unwind,
     /// Fixed or variadic builtin entry.
     Builtin,
+    /// Shared entry for an unbound named function cell.
+    UndefinedFunction,
     /// Runtime constant table lookup.
     ConstantTable,
     /// Construct a closure object.

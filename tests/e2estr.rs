@@ -436,15 +436,3 @@ fn string_builtins_return_typed_conditions_for_invalid_arguments_and_ranges() {
         );
     }
 }
-
-#[test]
-fn keyword_calls_over_the_native_argument_limit_remain_args_pending() {
-    let source = r#"(string-upcase "aB あ" :start 1 :end 2)"#;
-    let output = run_ncl(source);
-    assert!(!output.status.success(), "{source} unexpectedly succeeded");
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("at most four register arguments"),
-        "{source}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}

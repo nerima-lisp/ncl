@@ -6,8 +6,8 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum,
-    Instance, LambdaList, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, instance_class, make_simple_vector, simple_vector_length, simple_vector_ref,
+    HandleVec, Instance, LambdaList, Local, MultipleValues, ObjectError, ObjectRef, Runtime, Scope,
+    ThreadContext, Word, classify_object, instance_class, simple_vector_length, simple_vector_ref,
     slot_ref, slot_set,
 };
 
@@ -128,11 +128,13 @@ pub fn make_slot_descriptor(
     name: Word,
     location: Option<Fixnum>,
 ) -> Result<Word, ObjectError> {
-    make_simple_vector(
-        ctx,
-        runtime,
-        &[name, location.map_or(Word::NIL, Fixnum::as_word)],
-    )
+    let mut scope = Scope::new(ctx);
+    let values = scope.root_many(&[
+        Local::from_word(name),
+        Local::from_word(location.map_or(Word::NIL, Fixnum::as_word)),
+    ]);
+    let result = scope.make_simple_vector(runtime, &values)?;
+    Ok(scope.get(result).as_word())
 }
 
 /// Make an EQL-specializer descriptor understood by this module.
@@ -144,7 +146,10 @@ pub fn make_eql_specializer(
     runtime: &Runtime,
     object: Word,
 ) -> Result<Word, ObjectError> {
-    make_simple_vector(ctx, runtime, &[Word::fixnum(1), object])
+    let mut scope = Scope::new(ctx);
+    let values = scope.root_many(&[Local::from_word(Word::fixnum(1)), Local::from_word(object)]);
+    let result = scope.make_simple_vector(runtime, &values)?;
+    Ok(scope.get(result).as_word())
 }
 
 fn vector_field(ctx: &ThreadContext, object: Word, field: usize) -> Result<Word, ObjectError> {
@@ -177,17 +182,21 @@ fn class_precedence_list(
     runtime: &Runtime,
     class: Word,
 ) -> Result<Word, ObjectError> {
-    let mut result = Vec::new();
-    let mut current = class;
-    for _ in 0..=simple_vector_length(ctx, class)? {
-        result.push(current);
-        let parent = class_field(ctx, current, CLASS_DIRECT_SUPERCLASS)?;
+    let mut scope = Scope::new(ctx);
+    let mut current = scope.root::<Word>(Local::from_word(class));
+    let limit = simple_vector_length(scope.context(), class)?;
+    let mut result: HandleVec<'_, Word> = scope.root_many(&[]);
+    for _ in 0..=limit {
+        let current_word = scope.get(current).as_word();
+        result.push(&mut scope, Local::from_word(current_word));
+        let parent = class_field(scope.context(), current_word, CLASS_DIRECT_SUPERCLASS)?;
         if parent == Word::NIL {
             break;
         }
-        current = parent;
+        current = scope.root(Local::from_word(parent));
     }
-    make_simple_vector(ctx, runtime, &result)
+    let result = scope.make_simple_vector(runtime, &result)?;
+    Ok(scope.get(result).as_word())
 }
 
 fn class_precedence_list_builtin(

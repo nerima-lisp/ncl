@@ -9,8 +9,8 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, Fixnum, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
     ObjectType, Package, Runtime, ThreadContext, Word, classify_object, instance_class,
-    make_instance as allocate_instance, make_simple_vector, simple_vector_length,
-    simple_vector_ref, slot_ref, slot_set, with_roots,
+    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_ref,
+    slot_set,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";

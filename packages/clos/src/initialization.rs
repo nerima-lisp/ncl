@@ -5,8 +5,8 @@ use ncl_object::{
     Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
     ParameterType, Runtime, ThreadContext, Word, classify_object,
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
-    with_root, with_roots,
 };
+use ncl_object::{Handle, HandleVec, Local, Scope};
 
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
 
@@ -156,22 +156,32 @@ fn class_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectErro
         .collect()
 }
 
-fn initialize_slots(
-    ctx: &mut ThreadContext,
+fn initialize_slots<'scope>(
+    scope: &mut Scope<'scope>,
     instance: Instance,
-    class: Word,
-    initargs: &InitArgList,
+    class: Handle<'scope, Word>,
+    initargs: &HandleVec<'scope, Word>,
 ) -> Result<(), ObjectError> {
-    for (index, slot) in class_slots(ctx, class)?.into_iter().enumerate() {
-        let key = if matches!(classify_object(ctx, slot), ObjectRef::SimpleVector(_))
-            && simple_vector_length(ctx, slot)? > 0
+    let class_word = scope.get(class).as_word();
+    let slots = class_slots(scope.context(), class_word)?;
+    let initarg_words = scope
+        .get_many(initargs)
+        .into_iter()
+        .map(Local::as_word)
+        .collect::<Vec<_>>();
+    let initargs = InitArgList::parse(&initarg_words)?;
+    for (index, slot) in slots.into_iter().enumerate() {
+        let key = if matches!(
+            classify_object(scope.context(), slot),
+            ObjectRef::SimpleVector(_)
+        ) && simple_vector_length(scope.context(), slot)? > 0
         {
-            simple_vector_ref(ctx, slot, 0)?
+            simple_vector_ref(scope.context(), slot, 0)?
         } else {
             slot
         };
         if let Some(value) = initargs.value_for(key) {
-            slot_set(ctx, instance, index, value.0)?;
+            slot_set(scope.context_mut(), instance, index, value.0)?;
         }
     }
     Ok(())
@@ -183,24 +193,32 @@ fn make_instance_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut class = args.required(0)?;
+    let mut scope = Scope::new(ctx);
+    let class = scope.root(Local::from_word(args.required(0)?));
+    let class_word = scope.get(class).as_word();
     let initarg_words = args
         .as_slice()
         .get(1..)
-        .ok_or_else(|| type_error(ctx, class, ObjectType::SimpleVector))?
-        .to_vec();
-    let slots = class_slots(ctx, class)?;
-    with_root(ctx, &mut class, |ctx, class| {
-        with_roots(ctx, &initarg_words, |ctx, initarg_words| {
-            let instance =
-                allocate_instance(ctx, runtime, *class, &vec![Word::UNBOUND; slots.len()])?;
-            let initargs =
-                InitArgList::parse(&initarg_words.iter().map(|word| **word).collect::<Vec<_>>())?;
-            initialize_slots(ctx, instance, *class, &initargs)?;
-            values.clear();
-            Ok(instance.as_word())
-        })
-    })
+        .ok_or_else(|| type_error(scope.context_mut(), class_word, ObjectType::SimpleVector))?;
+    let initarg_locals = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let initargs = scope.root_many(&initarg_locals);
+    let slot_count = class_slots(scope.context(), scope.get(class).as_word())?.len();
+    let class_word = scope.get(class).as_word();
+    let instance = allocate_instance(
+        scope.context_mut(),
+        runtime,
+        class_word,
+        &vec![Word::UNBOUND; slot_count],
+    )?;
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(instance.as_word()));
+    let instance = Instance::from_word(scope.get(instance_handle).as_word());
+    initialize_slots(&mut scope, instance, class, &initargs)?;
+    values.clear();
+    Ok(scope.get(instance_handle).as_word())
 }
 
 fn initialize_instance_builtin(
@@ -209,17 +227,27 @@ fn initialize_instance_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let instance_word = args.required(0)?;
-    let instance = instance_argument(ctx, instance_word)?;
-    let class = ncl_object::instance_class(ctx, instance)?;
-    let initargs = InitArgList::parse(
-        args.as_slice()
-            .get(1..)
-            .ok_or_else(|| type_error(ctx, instance_word, ObjectType::Instance))?,
-    )?;
-    initialize_slots(ctx, instance, class, &initargs)?;
+    let mut scope = Scope::new(ctx);
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let instance_word = scope.get(instance_handle).as_word();
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
+    let initarg_locals = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let initargs = scope.root_many(&initarg_locals);
+    let instance = instance_argument(scope.context_mut(), instance_word)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
+        scope.context(),
+        instance,
+    )?));
+    initialize_slots(&mut scope, instance, class, &initargs)?;
     values.clear();
-    Ok(instance_word)
+    Ok(scope.get(instance_handle).as_word())
 }
 
 fn shared_initialize_builtin(

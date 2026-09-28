@@ -1,9 +1,13 @@
 //! Registration of the printer's owned symbols and its dispatch table.
 
 use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, make_cons, pop_root, push_root,
-    set_symbol_special, set_symbol_value,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, FunctionObject, LambdaList, ObjectError, Package, Parameter, ParameterType,
+    Runtime, ThreadContext, Word, car, cdr, make_cons, pop_root, push_root, set_symbol_special,
+    set_symbol_value, symbol_value, with_root, with_roots,
 };
+
+use crate::{PrintError, PrintOptions, write_to_string};
 
 /// The `(package, name)` functions `ncl-printer` owns.
 const FUNCTIONS: [(&str, &str); 20] = [
@@ -28,6 +32,15 @@ const FUNCTIONS: [(&str, &str); 20] = [
     ("NCL-EXT", "PRINT-SYMBOL-WITH-PREFIX"),
     ("NCL-EXT", "PRINT-UNREADABLY"),
 ];
+
+const OBJECT_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("OBJECT"),
+    ty: ParameterType::Any,
+};
+const STREAM_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("OUTPUT-STREAM"),
+    ty: ParameterType::Any,
+};
 
 /// The `(package, name)` special variables `ncl-printer` owns.
 const VARIABLES: [(&str, &str); 4] = [
@@ -55,7 +68,11 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     for (package, name) in FUNCTIONS {
         let package_word = runtime.ensure_package(ctx, package)?;
         Package::from_word(package_word).intern(ctx, runtime, name)?;
-        runtime.define_function(ctx, package, name, Word::UNBOUND)?;
+        if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
+            register_print_builtin(ctx, runtime, name)?;
+        } else {
+            runtime.define_function(ctx, package, name, Word::UNBOUND)?;
+        }
     }
     for (package, name) in VARIABLES {
         let package = runtime.ensure_package(ctx, package)?;
@@ -66,6 +83,161 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         result?;
     }
     Ok(())
+}
+
+fn register_print_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<(), ObjectError> {
+    let descriptor = Builtin {
+        lambda_list: LambdaList::with_optional(&[OBJECT_PARAMETER], &[STREAM_PARAMETER]),
+        convention: BuiltinConvention::Adapted,
+    };
+    let (identifier, function): (BuiltinIdentifier, ncl_object::RustBuiltin) = match name {
+        "PRINC" => (
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("PRINC")),
+            princ,
+        ),
+        "PRIN1" => (
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("PRIN1")),
+            prin1,
+        ),
+        "PRINT" => (
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("PRINT")),
+            print,
+        ),
+        _ => return Err(ObjectError::Layout),
+    };
+    runtime.register_builtin(
+        ctx,
+        identifier,
+        BuiltinImplementation::adapted(descriptor, function, print_arguments),
+    )?;
+    Ok(())
+}
+
+fn print_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    (0..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::TypeError))
+        .collect()
+}
+
+fn princ(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let options = PrintOptions::from_specials(ctx, runtime).with_escape(false);
+    print_object(ctx, runtime, args, options, false)
+}
+
+fn prin1(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let options = PrintOptions::from_specials(ctx, runtime).with_escape(true);
+    print_object(ctx, runtime, args, options, false)
+}
+
+fn print(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let options = PrintOptions::from_specials(ctx, runtime).with_escape(true);
+    print_object(ctx, runtime, args, options, true)
+}
+
+fn print_object(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    options: PrintOptions,
+    surrounding_newlines: bool,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let stream = output_stream(ctx, runtime, args.get(1))?;
+    with_roots(ctx, &[object, stream], |ctx, roots| {
+        let object = **roots.first().ok_or(ObjectError::Layout)?;
+        let rendered =
+            write_to_string(ctx, runtime, object, &options).map_err(|error| print_error(&error))?;
+        let result = with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
+            if surrounding_newlines {
+                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+                call_builtin(ctx, runtime, "WRITE-CHAR", &[Word::character(u32::from('\n')), stream])?;
+            }
+            let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+            call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
+            if surrounding_newlines {
+                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+                call_builtin(ctx, runtime, "WRITE-CHAR", &[Word::character(u32::from('\n')), stream])?;
+            }
+            Ok(())
+        });
+        result?;
+        roots.first().map(|root| **root).ok_or(ObjectError::Layout)
+    })
+}
+
+fn output_stream(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    supplied: Option<Word>,
+) -> Result<Word, ObjectError> {
+    if supplied == Some(Word::TRUE) {
+        return output_stream_variable(ctx, runtime, "*TERMINAL-IO*");
+    }
+    if let Some(stream) = supplied.filter(|stream| *stream != Word::NIL) {
+        return Ok(stream);
+    }
+    output_stream_variable(ctx, runtime, "*STANDARD-OUTPUT*")
+}
+
+fn output_stream_variable(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<Word, ObjectError> {
+    let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
+    with_root(ctx, &mut package.clone(), |ctx, package| {
+        let (mut symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
+        with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
+    })
+}
+
+fn builtin_function(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<FunctionObject, ObjectError> {
+    let word = runtime
+        .function(ctx, "COMMON-LISP", name)
+        .ok_or(ObjectError::UndefinedFunction)?;
+    FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)
+}
+
+fn call_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = builtin_function(ctx, runtime, name)?;
+    runtime.call_builtin(ctx, function, args)
+}
+
+const fn print_error(error: &PrintError) -> ObjectError {
+    match error {
+        PrintError::Object(error) => *error,
+        PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
+            ObjectError::Layout
+        }
+    }
 }
 
 /// Mark one owned variable special and give it its initial value.

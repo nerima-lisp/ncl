@@ -15,6 +15,7 @@ mod setf;
 mod setf_places;
 mod setf_support;
 mod string_stream;
+pub(crate) mod with_open_file;
 
 pub use form::{elements, fresh_symbol, list, symbol};
 pub use place::{PlaceExpander, PlaceRegistry, SetfExpansion, register_place};
@@ -279,8 +280,11 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
         "HANDLER-BIND" => Some(control::expand_handler_bind_adapter),
+        "HANDLER-CASE" => Some(control::condition::expand_handler_case_adapter),
+        "IGNORE-ERRORS" => Some(control::condition::expand_ignore_errors_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
+        "WITH-OPEN-FILE" => Some(with_open_file::expand_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),

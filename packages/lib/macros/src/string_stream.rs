@@ -45,6 +45,44 @@ fn is_keyword_symbol(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Resu
     Ok(symbol_package(ctx, symbol)? == keyword_package)
 }
 
+fn quoted_symbol_name(ctx: &mut ThreadContext, value: Word) -> Result<Option<String>> {
+    let Ok(parts) = elements(ctx, value) else {
+        return Ok(None);
+    };
+    if parts.len() != 2 {
+        return Ok(None);
+    }
+    let Some(operator) = parts
+        .first()
+        .copied()
+        .map(|part| classify_object(ctx, part))
+    else {
+        return Ok(None);
+    };
+    let ObjectRef::Symbol(operator) = operator else {
+        return Ok(None);
+    };
+    let operator_name = ncl_object::symbol_name(ctx, operator)?;
+    let operator_name = (0..ncl_object::string_length(ctx, operator_name)?)
+        .map(|index| ncl_object::string_ref(ctx, operator_name, index))
+        .collect::<std::result::Result<String, _>>()?;
+    if operator_name != "QUOTE" {
+        return Ok(None);
+    }
+    let Some(symbol) = parts.get(1).copied().map(|part| classify_object(ctx, part)) else {
+        return Ok(None);
+    };
+    let ObjectRef::Symbol(symbol) = symbol else {
+        return Ok(None);
+    };
+    let name = ncl_object::symbol_name(ctx, symbol)?;
+    Ok(Some(
+        (0..ncl_object::string_length(ctx, name)?)
+            .map(|index| ncl_object::string_ref(ctx, name, index))
+            .collect::<std::result::Result<String, _>>()?,
+    ))
+}
+
 fn held_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -120,7 +158,10 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
             let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;
             let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
             if is_keyword(ctx, runtime, key, "ELEMENT-TYPE")? {
-                if value == Word::NIL {
+                if value == Word::NIL
+                    || quoted_symbol_name(ctx, value)?
+                        .is_some_and(|name| name != "CHARACTER" && name != "T")
+                {
                     return Err(ObjectError::TypeError);
                 }
             } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {

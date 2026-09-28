@@ -101,6 +101,11 @@ const CASES: &[Case] = &[
         expected: "#\\!",
     },
     Case {
+        builtin: "PEEK-CHAR",
+        source: "(let ((s (make-string-input-stream \" a\"))) (list (peek-char t s) (read-char s)))",
+        expected: "(#\\a #\\a)",
+    },
+    Case {
         builtin: "READ-LINE",
         source: "(multiple-value-list (read-line (make-string-input-stream \"abc\")))",
         expected: "(\"abc\" T)",

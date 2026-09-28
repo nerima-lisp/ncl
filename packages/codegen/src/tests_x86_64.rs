@@ -283,19 +283,26 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
         .enumerate()
         .position(|(offset, bytes)| {
             bytes == [0x41, 0xff, 0xd3]
-                && compiled.code.get(offset + 3..offset + 7) == Some(&[0x48, 0x83, 0xc4, 0x10][..])
-                && compiled.code.get(offset + 7..offset + 10) == Some(&[0x4d, 0x8b, 0x97][..])
+                && compiled.code.get(offset + 3..offset + 7) == Some([0x48, 0x83, 0xc4, 0x10].as_slice())
+                && compiled.code.get(offset + 7..offset + 10) == Some([0x4d, 0x8b, 0x97].as_slice())
         })
         .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
-    let catch_compare = compiled.code[cleanup_call + 3..]
+    let catch_bytes = compiled
+        .code
+        .get(cleanup_call + 3..)
+        .ok_or_else(|| "cleanup call extends past generated code".to_owned())?;
+    let catch_compare = catch_bytes
         .windows(3)
         .position(|bytes| bytes == [0x4d, 0x39, 0xda])
         .map(|offset| cleanup_call + 3 + offset)
         .ok_or_else(|| "catch tag comparison after cleanup builtin missing".to_owned())?;
-    assert_eq!(
-        &compiled.code[catch_compare + 3..catch_compare + 5],
-        [0x0f, 0x85]
-    );
+    let jump = compiled
+        .code
+        .get(catch_compare + 3..catch_compare + 5)
+        .ok_or_else(|| "catch comparison has no conditional branch".to_owned())?;
+    if jump != [0x0f, 0x85] {
+        return Err("catch comparison does not branch on mismatch".to_owned());
+    }
     Ok(())
 }
 
@@ -398,4 +405,40 @@ fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
             .windows(4)
             .any(|bytes| bytes == [0x48, 0x89, 0x75, 0xf0])
     );
+}
+
+#[test]
+fn x86_64_load_heap_constant_untags_each_indirection() -> Result<(), String> {
+    let mut builder = ncl_ir::FunctionBuilder::new(
+        ncl_ir::FunctionId(77),
+        "untag-heap-constant",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let constant = builder.add_constant(Constant::Symbol {
+        package: "COMMON-LISP".to_owned(),
+        name: "T".to_owned(),
+    });
+    let value = builder
+        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+        .map_err(|error| format!("heap constant: {error:?}"))?[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![value],
+        })
+        .map_err(|error| format!("return: {error:?}"))?;
+
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .map_err(|error| format!("compile: {error:?}"))?;
+    let untag_count = compiled
+        .code
+        .windows(4)
+        .filter(|bytes| matches!(bytes, [0x49, 0x83, _, 0xf8]))
+        .count();
+    if untag_count != 3 {
+        return Err(format!(
+            "heap constant indirections must be untagged: found {untag_count}"
+        ));
+    }
+    Ok(())
 }

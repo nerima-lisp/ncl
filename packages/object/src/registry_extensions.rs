@@ -22,9 +22,9 @@ impl Runtime {
     /// Returns an allocation or layout error.
     pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
         let canonical_name = if name == "CL" { "COMMON-LISP" } else { name };
-        if let Some(package) = self.resolve_package(ctx, canonical_name)? {
+        if let Some(mut package) = self.resolve_package(ctx, canonical_name)? {
             if canonical_name == "COMMON-LISP" && self.resolve_package(ctx, "CL")?.is_none() {
-                self.register_common_lisp_nickname(ctx, package)?;
+                self.register_common_lisp_nickname(ctx, &mut package)?;
             }
             return Ok(package);
         }
@@ -36,10 +36,10 @@ impl Runtime {
         }
         let mut name_word = make_string(ctx, self, &canonical_name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
-            if let Some(package) = self.resolve_package(context, canonical_name)? {
+            if let Some(mut package) = self.resolve_package(context, canonical_name)? {
                 if canonical_name == "COMMON-LISP" && self.resolve_package(context, "CL")?.is_none()
                 {
-                    self.register_common_lisp_nickname(context, package)?;
+                    self.register_common_lisp_nickname(context, &mut package)?;
                 }
                 return Ok(package);
             }
@@ -48,7 +48,7 @@ impl Runtime {
                 self.register_package_name(context, *package, *name_word, false)
             })?;
             if canonical_name == "COMMON-LISP" {
-                self.register_common_lisp_nickname(context, package)?;
+                self.register_common_lisp_nickname(context, &mut package)?;
             }
             Ok(package)
         })
@@ -57,10 +57,9 @@ impl Runtime {
     fn register_common_lisp_nickname(
         &self,
         ctx: &mut ThreadContext,
-        package: Word,
+        package: &mut Word,
     ) -> Result<(), ObjectError> {
-        let mut package = package;
-        crate::with_root(ctx, &mut package, |ctx, package| {
+        crate::with_root(ctx, package, |ctx, package| {
             let mut nickname = make_string(ctx, self, &['C', 'L'])?;
             crate::with_root(ctx, &mut nickname, |ctx, nickname| {
                 self.register_package_name(ctx, *package, *nickname, true)

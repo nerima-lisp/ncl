@@ -28,6 +28,12 @@ impl Runtime {
             }
             return Ok(package);
         }
+        if canonical_name == "COMMON-LISP" {
+            let mut nickname = make_string(ctx, self, &['C', 'L'])?;
+            crate::with_root(ctx, &mut nickname, |ctx, nickname| {
+                self.check_package_name(ctx, Word::NIL, *nickname)
+            })?;
+        }
         let mut name_word = make_string(ctx, self, &canonical_name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
             if let Some(package) = self.resolve_package(context, canonical_name)? {
@@ -39,8 +45,7 @@ impl Runtime {
             }
             let mut package = Package::new(context, self, canonical_name)?.as_word();
             crate::with_root(context, &mut package, |context, package| {
-                HashTable::from_word(Self::table(&self.packages)?)
-                    .insert(context, self, *name_word, *package)
+                self.register_package_name(context, *package, *name_word, false)
             })?;
             if canonical_name == "COMMON-LISP" {
                 self.register_common_lisp_nickname(context, package)?;
@@ -58,11 +63,37 @@ impl Runtime {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut nickname = make_string(ctx, self, &['C', 'L'])?;
             crate::with_root(ctx, &mut nickname, |ctx, nickname| {
-                Package::from_word(*package).add_nickname(ctx, self, *nickname)?;
-                HashTable::from_word(Self::table(&self.packages)?)
-                    .insert(ctx, self, *nickname, *package)
+                self.register_package_name(ctx, *package, *nickname, true)
             })
         })
+    }
+
+    fn check_package_name(
+        &self,
+        ctx: &mut ThreadContext,
+        package: Word,
+        name: Word,
+    ) -> Result<(), ObjectError> {
+        if let Some(found) = HashTable::from_word(Self::table(&self.packages)?).get(ctx, name)?
+            && found != package
+        {
+            return Err(ObjectError::PackageConflict);
+        }
+        Ok(())
+    }
+
+    fn register_package_name(
+        &self,
+        ctx: &mut ThreadContext,
+        package: Word,
+        name: Word,
+        nickname: bool,
+    ) -> Result<(), ObjectError> {
+        self.check_package_name(ctx, package, name)?;
+        if nickname {
+            Package::from_word(package).add_nickname(ctx, self, name)?;
+        }
+        HashTable::from_word(Self::table(&self.packages)?).insert(ctx, self, name, package)
     }
 
     /// Rename a package and replace its registered nicknames.
@@ -91,19 +122,11 @@ impl Runtime {
                         let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
                             .ok_or(ObjectError::Layout)?;
                         string_length(ctx, nickname)?;
-                        if let Some(found) = HashTable::from_word(table).get(ctx, nickname)?
-                            && found != *package
-                        {
-                            return Err(ObjectError::PackageConflict);
-                        }
+                        self.check_package_name(ctx, *package, nickname)?;
                         names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
                             .ok_or(ObjectError::Layout)?;
                     }
-                    if let Some(found) = HashTable::from_word(table).get(ctx, *name)?
-                        && found != *package
-                    {
-                        return Err(ObjectError::PackageConflict);
-                    }
+                    self.check_package_name(ctx, *package, *name)?;
 
                     let old_name = Package::from_word(*package).name(ctx)?;
                     HashTable::from_word(table).remove(ctx, self, old_name)?;
@@ -118,12 +141,12 @@ impl Runtime {
                     }
                     put(ctx, *package, NAME, *name)?;
                     put(ctx, *package, NICKNAMES, *nicknames)?;
-                    HashTable::from_word(table).insert(ctx, self, *name, *package)?;
+                    self.register_package_name(ctx, *package, *name, false)?;
                     let mut names = *nicknames;
                     while names != Word::NIL {
                         let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
                             .ok_or(ObjectError::Layout)?;
-                        HashTable::from_word(table).insert(ctx, self, nickname, *package)?;
+                        self.register_package_name(ctx, *package, nickname, true)?;
                         names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
                             .ok_or(ObjectError::Layout)?;
                     }

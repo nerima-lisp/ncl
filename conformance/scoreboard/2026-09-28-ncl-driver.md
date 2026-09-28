@@ -32,11 +32,14 @@ JSON で、`scripts/conformance_scoreboard.py` の cl-bench 入力形式に合�
 確認結果:
 
 - `package.lisp` のロードは exit 0 になりました。
-- 固定 checkout の `files/math.lisp` と `files/gabriel.lisp` は、各ファイルの
-  `DEFPACKAGE` 後の定義ロード中に `ncl: object error: TypeError` で exit 1
-  になりました。
-- したがって TAK（`files/gabriel.lisp:1561-1570`）、FIB
-  （`files/math.lisp:29-35`）、BOYER（`files/gabriel.lisp:565-584`）、
-  ACKERMANN（`files/math.lisp:54-62`）の関数本体には未到達で、値と時間は
-  未取得です。この停止点はパッケージ初期化後の Lisp 定義ロードであり、
-  lambda-list binding/CLOS/UNWIND-PROTECT の各本体には未到達です。
+- `DEFPACKAGE` の export リストを4引数以下の `CONS` 呼び出しへ分解する修正後、
+  `package.lisp` は exit 0 になりました。
+- TAK（`files/gabriel.lisp:1561-1570`）と BOYER（`files/gabriel.lisp:565-584`）は
+  `files/gabriel.lisp` の後続定義ロード中に `ncl: object error: TypeError` で
+  exit 1 になりました。
+- FIB（`files/math.lisp:29-35`）と ACKERMANN（`files/math.lisp:54-62`）は
+  `files/math.lisp` の `run-fib-ratio` 定義付近（44行）で
+  `ncl: native error: unsupported operation: function entry constant is unavailable`
+  となり exit 1 でした。
+- 4件とも関数本体の実行時間と値は未取得です。停止点は lambda-list の
+  `&optional`/`&key` ではなく、ベンチ本体前のロード/codegen 経路です。

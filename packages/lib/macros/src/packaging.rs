@@ -88,6 +88,20 @@ fn held_quote(
     held_form(ctx, runtime, held, "QUOTE", &[index])
 }
 
+fn held_list_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    indexes: &[usize],
+) -> Result<usize> {
+    let nil = held_symbol(ctx, runtime, held, "NIL")?;
+    let mut tail = held_quote(ctx, runtime, held, nil)?;
+    for index in indexes.iter().rev() {
+        tail = held_form(ctx, runtime, held, "CONS", &[*index, tail])?;
+    }
+    Ok(tail)
+}
+
 fn held_designator_string(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -129,15 +143,14 @@ fn held_make_package(
         .iter()
         .map(|index| held_designator_string(ctx, runtime, held, *index))
         .collect::<Result<Vec<_>>>()?;
-    let nickname_data = held_form(ctx, runtime, held, "LIST", &values)?;
-    let quoted_nicknames = held_quote(ctx, runtime, held, nickname_data)?;
+    let nickname_data = held_list_form(ctx, runtime, held, &values)?;
     let nicknames_key = held_string(ctx, runtime, held, "NICKNAMES")?;
     held_form(
         ctx,
         runtime,
         held,
         "MAKE-PACKAGE",
-        &[name, nicknames_key, quoted_nicknames],
+        &[name, nicknames_key, nickname_data],
     )
 }
 
@@ -266,7 +279,7 @@ pub(crate) fn defpackage(
                     &[export_designator, find_existing],
                 )?);
             }
-            let export_list = held_form(ctx, runtime, &mut held, "LIST", &interned)?;
+            let export_list = held_list_form(ctx, runtime, &mut held, &interned)?;
             statements.push(held_form(
                 ctx,
                 runtime,

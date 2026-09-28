@@ -78,6 +78,27 @@ fn make_package_builtin_creates_and_rejects_duplicate() -> Result<(), ObjectErro
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(25)]),
         Err(ObjectError::TypeError)
     );
+
+    let nickname_key = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &['N', 'I', 'C', 'K', 'N', 'A', 'M', 'E', 'S'],
+    )?;
+    let common_lisp_nickname = ncl_object::make_string(&mut ctx, &runtime, &['C', 'L'])?;
+    let nicknames = ncl_object::make_cons(&mut ctx, &runtime, common_lisp_nickname, Word::NIL)?;
+    let conflicting_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &['N', '2', '5', '-', 'C', 'L', '-', 'N', 'I', 'C', 'K'],
+    )?;
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            function,
+            &[conflicting_name, nickname_key, nicknames],
+        ),
+        Err(ObjectError::PackageConflict)
+    );
     Ok(())
 }
 

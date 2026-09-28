@@ -23,11 +23,12 @@ const BYTE_PARAMETER: Parameter = Parameter {
     ty: ParameterType::Integer,
 };
 
-const PEEK_CHAR_PARAMETERS: &[Parameter] = &[
-    Parameter {
-        name: BuiltinName::new("peek-type"),
-        ty: ParameterType::Any,
-    },
+const PEEK_CHAR_REQUIRED: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("peek-type"),
+    ty: ParameterType::Any,
+}];
+
+const PEEK_CHAR_OPTIONAL: &[Parameter] = &[
     Parameter {
         name: BuiltinName::new("input-stream"),
         ty: ParameterType::Any,
@@ -289,7 +290,7 @@ fn register_character_builtins(
         (
             PEEK_CHAR_NAME,
             Builtin {
-                lambda_list: LambdaList::with_optional(&[], PEEK_CHAR_PARAMETERS),
+                lambda_list: LambdaList::with_optional(PEEK_CHAR_REQUIRED, PEEK_CHAR_OPTIONAL),
                 convention: BuiltinConvention::Adapted,
             },
             peek_char_adapter,

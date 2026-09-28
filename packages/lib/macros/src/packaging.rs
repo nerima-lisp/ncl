@@ -336,7 +336,7 @@ pub(crate) fn defpackage(
             &[find_existing, make_call],
         )?];
 
-        for use_index in clauses.use_indexes {
+        for use_index in clauses.use_indexes.iter().copied() {
             let quoted_use = held_quote(ctx, runtime, &mut held, use_index)?;
             statements.push(held_form(
                 ctx,

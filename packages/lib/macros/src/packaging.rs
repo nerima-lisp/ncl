@@ -256,7 +256,7 @@ pub(crate) fn defpackage(
                 .iter()
                 .map(|index| held_designator_string(ctx, runtime, &mut held, *index))
                 .collect::<Result<Vec<_>>>()?;
-            let shadow_data = held_form(ctx, runtime, &mut held, "LIST", &shadow_names)?;
+            let shadow_data = held_list_form(ctx, runtime, &mut held, &shadow_names)?;
             statements.push(held_form(
                 ctx,
                 runtime,

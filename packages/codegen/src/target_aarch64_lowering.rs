@@ -429,6 +429,7 @@ fn lower_builtin(
                     shift: Shift::Lsl(0),
                 },
             )?;
+            // check-added-lines: allow(index) fixed five-register ABI table.
             for (index, register) in [Reg(1), Reg(2), Reg(3), Reg(4), Reg(5)]
                 .into_iter()
                 .enumerate()

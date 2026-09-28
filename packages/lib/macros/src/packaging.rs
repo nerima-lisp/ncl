@@ -193,6 +193,10 @@ fn designator_text(ctx: &ThreadContext, word: Word) -> Result<String> {
 ///
 /// Expands to a `PROGN` that creates the package (if it does not already
 /// exist), applies the package options, and returns the package.
+#[allow(
+    clippy::too_many_lines,
+    reason = "expands each DEFPACKAGE clause in order"
+)]
 pub(crate) fn defpackage(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -311,7 +315,7 @@ pub(crate) fn defpackage(
                 runtime,
                 &mut held,
                 "INTERN",
-                &[quoted_intern, quoted_name],
+                &[quoted_intern, name_designator],
             )?);
         }
 
@@ -334,7 +338,7 @@ pub(crate) fn defpackage(
                 runtime,
                 &mut held,
                 "IMPORT",
-                &[imported, quoted_name],
+                &[imported, name_designator],
             )?);
         }
 
@@ -357,7 +361,7 @@ pub(crate) fn defpackage(
                 runtime,
                 &mut held,
                 "SHADOWING-IMPORT",
-                &[imported, quoted_name],
+                &[imported, name_designator],
             )?);
         }
 

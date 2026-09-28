@@ -3,8 +3,8 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
-    Parameter, ParameterType, Runtime, ThreadContext, Word, make_cons, set_symbol_special,
-    slot_ref, string_length, string_ref, symbol_name, with_roots,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, make_cons,
+    set_symbol_special, slot_ref, string_length, string_ref, symbol_name, with_roots,
 };
 
 use crate::class::{HIERARCHY, install_class, wire_superclass};
@@ -166,8 +166,9 @@ fn condition_argument(
         let class_token = ncl_object::push_root(ctx, &mut class);
         let mut value = value;
         let value_token = ncl_object::push_root(ctx, &mut value);
-        let result = (|| {
-            let arguments = argument_list(ctx, runtime, format_arguments)?;
+        let result = with_roots(ctx, format_arguments, |ctx, roots| {
+            let format_arguments = roots.iter().map(|root| **root).collect::<Vec<_>>();
+            let arguments = argument_list(ctx, runtime, &format_arguments)?;
             with_roots(ctx, &[arguments], |ctx, roots| {
                 let arguments = **roots.first().ok_or(ObjectError::Layout)?;
                 crate::make_condition(
@@ -178,7 +179,7 @@ fn condition_argument(
                 )
                 .map_err(condition_object_error)
             })
-        })();
+        });
         ncl_object::pop_root(ctx, value_token);
         ncl_object::pop_root(ctx, class_token);
         return result;
@@ -207,19 +208,21 @@ fn argument_list(
     })
 }
 
+fn rest_arguments(args: &BuiltinArgs<'_>, start: usize) -> Result<Vec<Word>, ObjectError> {
+    (start..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::Layout))
+        .collect()
+}
+
 fn signal_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(
-        ctx,
-        runtime,
-        args.required(0)?,
-        "SIMPLE-CONDITION",
-        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
-    )?;
+    let value = args.required(0)?;
+    let format_arguments = rest_arguments(args, 1)?;
+    let condition = condition_argument(ctx, runtime, value, "SIMPLE-CONDITION", &format_arguments)?;
     let result = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
         crate::signal(ctx, condition).map_err(condition_object_error)
@@ -234,13 +237,9 @@ fn error_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
-    let condition = condition_argument(
-        ctx,
-        runtime,
-        value,
-        "SIMPLE-ERROR",
-        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
-    )?;
+    let format_arguments = rest_arguments(args, 1)?;
+    let condition = condition_argument(ctx, runtime, value, "SIMPLE-ERROR", &format_arguments)?;
+    let report = condition_report(ctx, condition);
     let result = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
         crate::error(ctx, condition).map_err(|error| match error {
@@ -260,7 +259,7 @@ fn error_builtin(
         Err(ObjectError::Unsupported) => {
             // check-added-lines: allow(unsupported) report unhandled condition
             // check-added-lines: allow(unsupported) report unhandled condition
-            if let Some(message) = string_text(ctx, value) {
+            if let Some(message) = report.or_else(|| string_text(ctx, value)) {
                 eprintln!("{message}");
             }
             // check-added-lines: allow(unsupported) unhandled condition propagation
@@ -276,13 +275,9 @@ fn warn_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(
-        ctx,
-        runtime,
-        args.required(0)?,
-        "SIMPLE-WARNING",
-        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
-    )?;
+    let value = args.required(0)?;
+    let format_arguments = rest_arguments(args, 1)?;
+    let condition = condition_argument(ctx, runtime, value, "SIMPLE-WARNING", &format_arguments)?;
     let result = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
         crate::warn(ctx, condition).map_err(condition_object_error)
@@ -297,19 +292,31 @@ fn cerror_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let continue_control = args.required(0)?;
-    let format_arguments = args.as_slice().get(2..).ok_or(ObjectError::Layout)?;
-    let continue_args = argument_list(ctx, runtime, format_arguments)?;
-    let condition = condition_argument(
-        ctx,
-        runtime,
-        args.required(1)?,
-        "SIMPLE-ERROR",
-        format_arguments,
-    )?;
-    let result = with_roots(ctx, &[condition], |ctx, roots| {
-        let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        crate::cerror(ctx, runtime, continue_control, continue_args, condition)
-            .map_err(condition_object_error)
+    let datum = args.required(1)?;
+    let format_arguments = rest_arguments(args, 2)?;
+    let result = with_roots(ctx, &[continue_control, datum], |outer_ctx, outer| {
+        with_roots(outer_ctx, &format_arguments, |ctx, format_roots| {
+            let format_values = format_roots.iter().map(|root| **root).collect::<Vec<_>>();
+            let condition = condition_argument(
+                ctx,
+                runtime,
+                **outer.get(1).ok_or(ObjectError::Layout)?,
+                "SIMPLE-ERROR",
+                &format_values,
+            )?;
+            with_roots(ctx, &[condition], |ctx, condition_roots| {
+                let refreshed_format_values =
+                    format_roots.iter().map(|root| **root).collect::<Vec<_>>();
+                let continue_args = argument_list(ctx, runtime, &refreshed_format_values)?;
+                with_roots(ctx, &[continue_args], |ctx, continue_roots| {
+                    let continue_control = **outer.first().ok_or(ObjectError::Layout)?;
+                    let continue_args = **continue_roots.first().ok_or(ObjectError::Layout)?;
+                    let condition = **condition_roots.first().ok_or(ObjectError::Layout)?;
+                    crate::cerror(ctx, runtime, continue_control, continue_args, condition)
+                        .map_err(condition_object_error)
+                })
+            })
+        })
     });
     result.map(|()| Word::NIL)
 }
@@ -331,6 +338,39 @@ fn string_text(ctx: &ThreadContext, value: Word) -> Option<String> {
         text.push(string_ref(ctx, value, index).ok()?);
     }
     Some(text)
+}
+
+fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> {
+    let instance = Instance::from_word(condition);
+    let control = string_text(ctx, slot_ref(ctx, instance, 0).ok()?)?;
+    let mut arguments = slot_ref(ctx, instance, 1).ok()?;
+    let mut report = String::new();
+    let mut chars = control.chars();
+    while let Some(character) = chars.next() {
+        if character == '~' {
+            if let Some(directive) = chars.next() {
+                if matches!(directive, 'a' | 'A') {
+                    let argument = car(ctx, arguments).ok()?;
+                    arguments = cdr(ctx, arguments).ok()?;
+                    if let Some(number) = argument.as_fixnum() {
+                        report.push_str(&number.to_string());
+                    } else if let Some(text) = string_text(ctx, argument) {
+                        report.push_str(&text);
+                    } else {
+                        report.push_str("#<OBJECT>");
+                    }
+                } else {
+                    report.push('~');
+                    report.push(directive);
+                }
+            } else {
+                report.push('~');
+            }
+        } else {
+            report.push(character);
+        }
+    }
+    Some(report)
 }
 
 fn push_handler_builtin(

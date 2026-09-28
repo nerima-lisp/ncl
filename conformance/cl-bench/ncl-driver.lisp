@@ -16,6 +16,7 @@
 (defparameter *benchmarks* nil)
 (defparameter *results* nil)
 (defparameter *load-results* nil)
+(defparameter *load-failed* nil)
 
 (defun ncl-gc ()
   ;; NCL's collector is deliberately called through its NCL extension.  This
@@ -56,13 +57,19 @@
   *results*)
 
 (defun load-benchmark-file (file)
-  (let ((start (get-internal-real-time))
-        (status :loaded))
-    (load (merge-pathnames file *misc-dir*))
-    (push (list file status
-                (elapsed-seconds start (get-internal-real-time)))
-          *load-results*)
-    status))
+  (let ((start (get-internal-real-time)))
+    (block load-file
+      (handler-bind ((error
+                       (lambda (condition)
+                         (declare (ignore condition))
+                         (setf *load-failed* t)
+                         (push (list file :failed) *load-results*)
+                         (return-from load-file :failed))))
+        (load (merge-pathnames file *misc-dir*)))
+      (push (list file :loaded
+                  (elapsed-seconds start (get-internal-real-time)))
+            *load-results*)
+      :loaded)))
 
 (dolist (file '("arrays.lisp"
                 "bignum.lisp"
@@ -82,4 +89,9 @@
 ;; tests.lisp supplies only benchmark metadata and function designators.  It
 ;; is safe to load after the replacement DEFBENCH has been installed.
 (load-benchmark-file "tests.lisp")
-(when *benchmarks* (bench-run))
+(if *load-failed*
+    (progn
+      (write-string "{\"status\":\"failed\",\"times\":[]}")
+      (finish-output)
+      (error "cl-bench benchmark load failed"))
+    (when *benchmarks* (bench-run)))

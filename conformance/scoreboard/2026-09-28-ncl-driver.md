@@ -44,6 +44,9 @@ JSON で、`scripts/conformance_scoreboard.py` の cl-bench 入力形式に合�
 - 4件とも関数本体の実行時間と値は未取得です。停止点は lambda-list の
   `&optional`/`&key` ではなく、ベンチ本体前のロード/codegen 経路です。
 
+driver の `times` は、ベンチ本体が未到達の場合に固定 checkout で観測した
+ロード停止までのプロセス経過時間を出力します。これは本体の性能値ではありません。
+
 個別ロードのプロセス経過時間（`target/debug/ncl --eval '(load "...")'`）は次のとおりです。
 
 | benchmark | status | elapsed | reason |

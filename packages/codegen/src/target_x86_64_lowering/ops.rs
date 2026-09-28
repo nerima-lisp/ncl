@@ -65,14 +65,17 @@ fn load_heap_constant(
         assembler,
         Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
     )?;
+    emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8))?;
     emit(
         assembler,
         Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, function_code_offset)),
     )?;
+    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
     emit(
         assembler,
         Inst::MovRM(ENTRY, Mem::base(ENTRY, code_constants_offset)),
     )?;
+    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
     emit(
         assembler,
         Inst::MovRM(FUNCTION_OBJECT, Mem::base(ENTRY, vector_element_offset)),

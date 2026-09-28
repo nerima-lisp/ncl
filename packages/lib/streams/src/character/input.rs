@@ -199,7 +199,7 @@ pub fn read_char_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
-    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_error_p = args.get(1).unwrap_or(Word::NIL);
     let eof_value = args.get(2).unwrap_or(Word::NIL);
     next_character(ctx, stream)?.map_or_else(
         || eof_result(ctx, eof_error_p, eof_value),
@@ -284,7 +284,7 @@ pub fn read_line_adapter(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
-    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_error_p = args.get(1).unwrap_or(Word::NIL);
     let eof_value = args.get(2).unwrap_or(Word::NIL);
     let mut characters = Vec::new();
     let mut ended = false;
@@ -312,7 +312,7 @@ pub fn read_byte_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
-    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_error_p = args.get(1).unwrap_or(Word::NIL);
     let eof_value = args.get(2).unwrap_or(Word::NIL);
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;

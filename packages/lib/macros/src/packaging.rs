@@ -26,6 +26,82 @@ fn held_value(held: &[Word], index: usize) -> Result<Word> {
     held.get(index).copied().ok_or(ObjectError::TypeError)
 }
 
+#[derive(Debug)]
+struct PackageClauses {
+    use_indexes: Vec<usize>,
+    export_indexes: Vec<usize>,
+    shadow_indexes: Vec<usize>,
+    nickname_indexes: Vec<usize>,
+    intern_indexes: Vec<usize>,
+    import_from: Vec<(usize, Vec<usize>)>,
+    shadowing_import_from: Vec<(usize, Vec<usize>)>,
+    documentation: Option<usize>,
+    size: Option<usize>,
+}
+
+fn collect_package_clauses(
+    ctx: &mut ThreadContext,
+    held: &mut Vec<Word>,
+) -> Result<PackageClauses> {
+    let mut clauses = PackageClauses {
+        use_indexes: Vec::new(),
+        export_indexes: Vec::new(),
+        shadow_indexes: Vec::new(),
+        nickname_indexes: Vec::new(),
+        intern_indexes: Vec::new(),
+        import_from: Vec::new(),
+        shadowing_import_from: Vec::new(),
+        documentation: None,
+        size: None,
+    };
+    for clause_index in 2..held.len() {
+        let clause = held_value(held, clause_index)?;
+        let clause_parts = form_elements(ctx, clause)?;
+        let clause_head = clause_parts
+            .first()
+            .copied()
+            .ok_or(ObjectError::TypeError)?;
+        let head_text = designator_text(ctx, clause_head)?;
+        let rest = clause_parts.get(1..).unwrap_or(&[]);
+        let base = held.len();
+        held.extend_from_slice(rest);
+        let indexes: Vec<usize> = (base..held.len()).collect();
+        match head_text.as_str() {
+            "USE" => clauses.use_indexes.extend(indexes),
+            "EXPORT" => clauses.export_indexes.extend(indexes),
+            "SHADOW" => clauses.shadow_indexes.extend(indexes),
+            "NICKNAMES" => clauses.nickname_indexes.extend(indexes),
+            "INTERN" => clauses.intern_indexes.extend(indexes),
+            "IMPORT-FROM" => {
+                let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                clauses
+                    .import_from
+                    .push((package, indexes.into_iter().skip(1).collect()));
+            }
+            "SHADOWING-IMPORT-FROM" => {
+                let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                clauses
+                    .shadowing_import_from
+                    .push((package, indexes.into_iter().skip(1).collect()));
+            }
+            "DOCUMENTATION" => {
+                let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                if indexes.len() != 1 || clauses.documentation.replace(index).is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+            }
+            "SIZE" => {
+                let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                if indexes.len() != 1 || clauses.size.replace(index).is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+            }
+            _ => return Err(ObjectError::TypeError),
+        }
+    }
+    Ok(clauses)
+}
+
 /// Verify that `held[0]` is the symbol `name`, re-rooting `held` across the
 /// (possibly allocating, first-use) lookup of that symbol.
 ///
@@ -177,72 +253,22 @@ pub(crate) fn defpackage(
         let name_index = 1;
         held_value(&held, name_index)?;
 
-        let mut use_indexes = Vec::new();
-        let mut export_indexes = Vec::new();
-        let mut shadow_indexes = Vec::new();
-        let mut nickname_indexes = Vec::new();
-        let mut intern_indexes = Vec::new();
-        let mut import_from_clauses: Vec<(usize, Vec<usize>)> = Vec::new();
-        let mut shadowing_import_from_clauses: Vec<(usize, Vec<usize>)> = Vec::new();
-        let mut documentation_index = None;
-        let mut size_index = None;
-        for clause_index in 2..held.len() {
-            let clause = held_value(&held, clause_index)?;
-            let clause_parts = form_elements(ctx, clause)?;
-            let clause_head = clause_parts
-                .first()
-                .copied()
-                .ok_or(ObjectError::TypeError)?;
-            let head_text = designator_text(ctx, clause_head)?;
-            let rest = clause_parts.get(1..).unwrap_or(&[]);
-            let base = held.len();
-            held.extend_from_slice(rest);
-            let indexes: Vec<usize> = (base..held.len()).collect();
-            match head_text.as_str() {
-                "USE" => use_indexes.extend(indexes),
-                "EXPORT" => export_indexes.extend(indexes),
-                "SHADOW" => shadow_indexes.extend(indexes),
-                "NICKNAMES" => nickname_indexes.extend(indexes),
-                "INTERN" => intern_indexes.extend(indexes),
-                "IMPORT-FROM" => {
-                    let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
-                    import_from_clauses.push((package, indexes.into_iter().skip(1).collect()));
-                }
-                "SHADOWING-IMPORT-FROM" => {
-                    let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
-                    shadowing_import_from_clauses
-                        .push((package, indexes.into_iter().skip(1).collect()));
-                }
-                "DOCUMENTATION" => {
-                    let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
-                    if indexes.len() != 1 || documentation_index.replace(index).is_some() {
-                        return Err(ObjectError::TypeError);
-                    }
-                }
-                "SIZE" => {
-                    let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
-                    if indexes.len() != 1 || size_index.replace(index).is_some() {
-                        return Err(ObjectError::TypeError);
-                    }
-                }
-                _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown defpackage options instead of ignoring them
-            }
-        }
+        let clauses = collect_package_clauses(ctx, &mut held)?;
 
         let quoted_name = held_quote(ctx, runtime, &mut held, name_index)?;
         let find_existing = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[quoted_name])?;
         let mut make_indexes = vec![quoted_name];
-        if !nickname_indexes.is_empty() {
-            let nickname_data = held_list(ctx, runtime, &mut held, &nickname_indexes)?;
+        if !clauses.nickname_indexes.is_empty() {
+            let nickname_data = held_list(ctx, runtime, &mut held, &clauses.nickname_indexes)?;
             let quoted_nicknames = held_quote(ctx, runtime, &mut held, nickname_data)?;
             let nicknames_key = held_string(ctx, runtime, &mut held, "NICKNAMES")?;
             make_indexes.extend([nicknames_key, quoted_nicknames]);
         }
-        if let Some(index) = documentation_index {
+        if let Some(index) = clauses.documentation {
             let key = held_string(ctx, runtime, &mut held, "DOCUMENTATION")?;
             make_indexes.extend([key, index]);
         }
-        if let Some(index) = size_index {
+        if let Some(index) = clauses.size {
             let key = held_string(ctx, runtime, &mut held, "SIZE")?;
             make_indexes.extend([key, index]);
         }
@@ -255,7 +281,7 @@ pub(crate) fn defpackage(
             &[find_existing, make_call],
         )?];
 
-        for use_index in use_indexes {
+        for use_index in clauses.use_indexes {
             let quoted_use = held_quote(ctx, runtime, &mut held, use_index)?;
             statements.push(held_form(
                 ctx,
@@ -266,8 +292,8 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        if !shadow_indexes.is_empty() {
-            let shadow_data = held_list(ctx, runtime, &mut held, &shadow_indexes)?;
+        if !clauses.shadow_indexes.is_empty() {
+            let shadow_data = held_list(ctx, runtime, &mut held, &clauses.shadow_indexes)?;
             let quoted_shadow = held_quote(ctx, runtime, &mut held, shadow_data)?;
             statements.push(held_form(
                 ctx,
@@ -278,7 +304,7 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        for intern_index in intern_indexes {
+        for intern_index in clauses.intern_indexes {
             let quoted_intern = held_quote(ctx, runtime, &mut held, intern_index)?;
             statements.push(held_form(
                 ctx,
@@ -289,7 +315,7 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        for (source_package, names) in import_from_clauses {
+        for (source_package, names) in clauses.import_from {
             let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
             let mut imported = Vec::with_capacity(names.len());
             for name in names {
@@ -312,7 +338,7 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        for (source_package, names) in shadowing_import_from_clauses {
+        for (source_package, names) in clauses.shadowing_import_from {
             let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
             let mut imported = Vec::with_capacity(names.len());
             for name in names {
@@ -335,9 +361,9 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        if !export_indexes.is_empty() {
-            let mut interned = Vec::with_capacity(export_indexes.len());
-            for export_index in export_indexes {
+        if !clauses.export_indexes.is_empty() {
+            let mut interned = Vec::with_capacity(clauses.export_indexes.len());
+            for export_index in clauses.export_indexes {
                 let quoted_export = held_quote(ctx, runtime, &mut held, export_index)?;
                 interned.push(held_form(
                     ctx,

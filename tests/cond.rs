@@ -33,6 +33,16 @@ fn unhandled_error_reports_message() {
 }
 
 #[test]
+fn error_formats_control_and_arguments_in_its_report() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
+        .args(["--eval", "(error \"boom ~a\" 7)"])
+        .output()
+        .expect("ncl executable");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("boom 7"));
+}
+
+#[test]
 fn handler_bind_pops_on_normal_exit() {
     let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args([

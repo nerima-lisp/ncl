@@ -105,7 +105,7 @@ pub(super) fn make_package(
                     use_packages.push(package_designator(ctx, runtime, used)?.as_word());
                 }
             }
-            "NICKNAMES" => {}
+            "NICKNAMES" | "DOCUMENTATION" | "SIZE" => {}
             _ => return Err(ObjectError::TypeError),
         }
         index += 2;
@@ -131,7 +131,7 @@ pub(super) fn make_package(
                                     ncl_object::make_cons(ctx, runtime, nickname, nicknames[0])?;
                             }
                         }
-                        "USE" => {}
+                        "USE" | "DOCUMENTATION" | "SIZE" => {}
                         _ => return Err(ObjectError::TypeError),
                     }
                     index += 2;

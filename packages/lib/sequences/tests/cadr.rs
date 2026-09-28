@@ -25,15 +25,29 @@ fn nested_argument(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
     functions: &HashMap<&str, FunctionObject>,
-    name: &str,
 ) -> Word {
-    let mut value = Word::fixnum(42);
-    let root = ncl_object::push_root(ctx, &mut value);
-    for _ in name[1..name.len() - 1].chars() {
-        value = call(runtime, ctx, functions, "LIST", &[value, value]);
+    fn build(
+        runtime: &Runtime,
+        ctx: &mut ThreadContext,
+        functions: &HashMap<&str, FunctionObject>,
+        depth: usize,
+        next_leaf: &mut i64,
+    ) -> Word {
+        if depth == 0 {
+            let value = Word::fixnum(*next_leaf);
+            *next_leaf += 1;
+            return value;
+        }
+        let mut left = build(runtime, ctx, functions, depth - 1, next_leaf);
+        let left_root = ncl_object::push_root(ctx, &mut left);
+        let right = build(runtime, ctx, functions, depth - 1, next_leaf);
+        let value = call(runtime, ctx, functions, "LIST", &[left, right]);
+        assert!(ncl_object::pop_root(ctx, left_root));
+        value
     }
-    assert!(ncl_object::pop_root(ctx, root));
-    value
+
+    let mut next_leaf = 0;
+    build(runtime, ctx, functions, 4, &mut next_leaf)
 }
 
 #[test]
@@ -58,7 +72,7 @@ fn registers_and_composes_all_cadr_family_builtins() {
             (
                 *name,
                 FunctionObject::try_from(word)
-                    .unwrap_or_else(|_| panic!("{name} is not a function")),
+                    .unwrap_or_else(|error| panic!("{name} is not a function: {error:?}")),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -70,11 +84,21 @@ fn registers_and_composes_all_cadr_family_builtins() {
     functions.insert("LIST", list);
 
     for name in names {
-        let argument = nested_argument(&runtime, &mut ctx, &functions, name);
+        let argument = nested_argument(&runtime, &mut ctx, &functions);
         ncl_object::with_roots(&mut ctx, &[argument], |ctx, roots| {
+            let mut expected = *roots[0];
+            for accessor in name[1..name.len() - 1].chars().rev() {
+                expected = match accessor {
+                    'A' => ncl_object::car(ctx, expected)
+                        .unwrap_or_else(|error| panic!("{name} CAR failed: {error:?}")),
+                    'D' => ncl_object::cdr(ctx, expected)
+                        .unwrap_or_else(|error| panic!("{name} CDR failed: {error:?}")),
+                    _ => panic!("unexpected accessor {accessor}"),
+                };
+            }
             let actual = call(&runtime, ctx, &functions, name, &[*roots[0]]);
-            assert_ne!(actual, Word::UNBOUND, "{name} returned an unbound value");
-            Ok::<_, ncl_object::ObjectError>(())
+            assert_eq!(actual, expected, "{name} returned the wrong value");
+            Ok::<(), ncl_object::ObjectError>(())
         })
         .unwrap_or_else(|error| panic!("{name} root failed: {error:?}"));
     }

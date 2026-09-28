@@ -16,8 +16,8 @@ use ncl_conditions::{
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FunctionObject, LispError, ObjectType, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length,
-    string_ref, typed_builtin,
+    Runtime, ThreadContext, Word, car, cdr, make_string, pop_root, push_root, slot_ref,
+    string_length, string_ref, typed_builtin,
 };
 
 const fn fail_type_error(
@@ -45,6 +45,39 @@ fn collect_during_handler(
     _condition: Word,
 ) -> Result<(), ncl_object::ObjectError> {
     ctx.collect(true)
+}
+
+#[allow(clippy::unnecessary_wraps, reason = "condition handler callback ABI")]
+fn assert_simple_condition_report(
+    _runtime: std::ptr::NonNull<()>,
+    ctx: &mut ThreadContext,
+    _handler: Word,
+    condition: Word,
+) -> Result<(), ncl_object::ObjectError> {
+    let condition = ncl_object::Instance::from_word(condition);
+    let format_control = slot_ref(ctx, condition, 0).unwrap();
+    assert_eq!(string_length(ctx, format_control).unwrap(), 10);
+    for (index, character) in "message ~a".chars().enumerate() {
+        assert_eq!(string_ref(ctx, format_control, index).unwrap(), character);
+    }
+    let arguments = slot_ref(ctx, condition, 1).unwrap();
+    assert_eq!(car(ctx, arguments).unwrap(), Word::fixnum(7));
+    assert_eq!(cdr(ctx, arguments).unwrap(), Word::NIL);
+    Ok(())
+}
+
+fn invoke_continue_restart_from_condition(
+    _runtime: std::ptr::NonNull<()>,
+    ctx: &mut ThreadContext,
+    _handler: Word,
+    condition: Word,
+) -> Result<(), ncl_object::ObjectError> {
+    let condition = ncl_object::Instance::from_word(condition);
+    let name = slot_ref(ctx, condition, 0)?;
+    let expected_control = slot_ref(ctx, condition, 1)?;
+    let function = invoke_restart_by_name(ctx, name).unwrap_or(Word::NIL);
+    ctx.set_values(&[expected_control, function]);
+    Ok(())
 }
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -223,72 +256,94 @@ fn cerror_signals_with_a_continue_restart() {
 }
 
 #[test]
-fn condition_builtins_accept_rest_and_condition_designators() {
+#[allow(
+    clippy::too_many_lines,
+    reason = "covers all condition builtin variants"
+)]
+fn condition_builtins_keep_string_report_values_and_ignore_condition_arguments() {
     let (runtime, mut ctx) = setup();
-    let program_error = class(&runtime, &mut ctx, "PROGRAM-ERROR");
-    let simple_condition = class(&runtime, &mut ctx, "SIMPLE-CONDITION");
-    let simple_error = class(&runtime, &mut ctx, "SIMPLE-ERROR");
-    let simple_warning = class(&runtime, &mut ctx, "SIMPLE-WARNING");
-    let argument =
+    ctx.set_strict_forwarding(true);
+    ctx.set_gc_stress(false);
+    let mut message = make_string(
+        &mut ctx,
+        &runtime,
+        &"message ~a".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let mut argument =
         make_string(&mut ctx, &runtime, &"argument".chars().collect::<Vec<_>>()).unwrap();
-    let message = make_string(&mut ctx, &runtime, &"message".chars().collect::<Vec<_>>()).unwrap();
-    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
-    let (program_error_symbol, _) = Package::from_word(package)
-        .intern(&mut ctx, &runtime, "PROGRAM-ERROR")
-        .unwrap();
-
+    let message_token = push_root(&mut ctx, &mut message);
+    let argument_token = push_root(&mut ctx, &mut argument);
+    ctx.set_evaluator_runtime(std::ptr::NonNull::<()>::dangling().as_ptr());
     let signal = builtin(&runtime, &mut ctx, "SIGNAL");
-    let descriptor = runtime.builtin_descriptor(signal).unwrap();
-    assert_eq!(descriptor.lambda_list.min_arity(), 1);
-    assert_eq!(descriptor.lambda_list.max_arity(), None);
-    let chain = push_handler(&mut ctx, &runtime, program_error, Word::NIL).unwrap();
+    let mut simple_condition = class(&runtime, &mut ctx, "SIMPLE-CONDITION").as_word();
+    let simple_condition_token = push_root(&mut ctx, &mut simple_condition);
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(simple_condition),
+        Word::NIL,
+    )
+    .unwrap();
+    ctx.set_condition_handler_invoker(assert_simple_condition_report);
     assert_eq!(
-        runtime.call_builtin(
-            &mut ctx,
-            signal,
-            &[program_error_symbol, argument, Word::fixnum(7)],
-        ),
+        runtime.call_builtin(&mut ctx, signal, &[message, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
+    pop_root(&mut ctx, simple_condition_token);
 
     let error = builtin(&runtime, &mut ctx, "ERROR");
-    let chain = push_handler(&mut ctx, &runtime, simple_error, Word::NIL).unwrap();
+    let mut simple_error = class(&runtime, &mut ctx, "SIMPLE-ERROR").as_word();
+    let simple_error_token = push_root(&mut ctx, &mut simple_error);
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(simple_error),
+        Word::NIL,
+    )
+    .unwrap();
     assert_eq!(
-        runtime.call_builtin(&mut ctx, error, &[message, argument, Word::fixnum(7)]),
+        runtime.call_builtin(&mut ctx, error, &[message, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
+    pop_root(&mut ctx, simple_error_token);
 
     let warn = builtin(&runtime, &mut ctx, "WARN");
-    let chain = push_handler(&mut ctx, &runtime, simple_warning, Word::NIL).unwrap();
+    let mut simple_warning = class(&runtime, &mut ctx, "SIMPLE-WARNING").as_word();
+    let simple_warning_token = push_root(&mut ctx, &mut simple_warning);
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(simple_warning),
+        Word::NIL,
+    )
+    .unwrap();
     assert_eq!(
-        runtime.call_builtin(&mut ctx, warn, &[message, argument, Word::fixnum(7)]),
+        runtime.call_builtin(&mut ctx, warn, &[message, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
+    pop_root(&mut ctx, simple_warning_token);
 
     let cerror = builtin(&runtime, &mut ctx, "CERROR");
-    let descriptor = runtime.builtin_descriptor(cerror).unwrap();
-    assert_eq!(descriptor.lambda_list.min_arity(), 2);
-    assert_eq!(descriptor.lambda_list.max_arity(), None);
-    let chain = push_handler(&mut ctx, &runtime, simple_error, Word::NIL).unwrap();
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(simple_error),
+        Word::NIL,
+    )
+    .unwrap();
+    ctx.set_condition_handler_invoker(assert_simple_condition_report);
     assert_eq!(
-        runtime.call_builtin(
-            &mut ctx,
-            cerror,
-            &[message, message, argument, Word::fixnum(7)],
-        ),
+        runtime.call_builtin(&mut ctx, cerror, &[message, message, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
 
-    let chain = push_handler(&mut ctx, &runtime, simple_condition, Word::NIL).unwrap();
-    assert_eq!(
-        runtime.call_builtin(&mut ctx, signal, &[message, argument, Word::fixnum(7)]),
-        Ok(Word::NIL)
-    );
-    pop_handler(&mut ctx, &runtime, chain);
+    pop_root(&mut ctx, argument_token);
+    pop_root(&mut ctx, message_token);
 }
 
 #[test]
@@ -310,6 +365,43 @@ fn unwind_marks_the_exit() {
     push_cleanup(&mut ctx, &runtime, Word::NIL).unwrap();
     unwind(&mut ctx);
     assert!(ctx.take_non_local_exit());
+}
+
+#[test]
+fn cerror_continue_restart_returns_the_supplied_control() {
+    let (runtime, mut ctx) = setup();
+    let mut continue_name =
+        make_string(&mut ctx, &runtime, &"CONTINUE".chars().collect::<Vec<_>>()).unwrap();
+    let name_token = push_root(&mut ctx, &mut continue_name);
+    let mut error_class = class(&runtime, &mut ctx, "ERROR").as_word();
+    let class_token = push_root(&mut ctx, &mut error_class);
+    ctx.set_evaluator_runtime(std::ptr::NonNull::<()>::dangling().as_ptr());
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(error_class),
+        Word::NIL,
+    )
+    .unwrap();
+    let mut condition = make_condition(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(error_class),
+        &[continue_name, Word::fixnum(42)],
+    )
+    .unwrap();
+    let condition_token = push_root(&mut ctx, &mut condition);
+    ctx.set_condition_handler_invoker(invoke_continue_restart_from_condition);
+    assert_eq!(
+        cerror(&mut ctx, &runtime, Word::fixnum(42), Word::NIL, condition),
+        Ok(())
+    );
+    assert_eq!(ctx.values(), &[Word::fixnum(42), Word::fixnum(42)]);
+    assert!(ctx.take_non_local_exit());
+    pop_handler(&mut ctx, &runtime, chain);
+    pop_root(&mut ctx, condition_token);
+    pop_root(&mut ctx, class_token);
+    pop_root(&mut ctx, name_token);
 }
 
 #[test]

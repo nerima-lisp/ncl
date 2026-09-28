@@ -458,12 +458,26 @@ fn bit_operations_preserve_inputs_and_results_across_gc() -> Result<(), ObjectEr
     assert_eq!(array_row_major_ref(&ctx, xor, 0)?, Word::fixnum(1));
     assert_eq!(array_row_major_ref(&ctx, xor, 1)?, Word::fixnum(1));
     assert_eq!(array_row_major_ref(&ctx, xor, 2)?, Word::fixnum(0));
+    ncl_object::with_roots(&mut ctx, &[left, right, destination], |ctx, arrays| {
+        assert_eq!(array_row_major_ref(ctx, *arrays[0], 0)?, Word::fixnum(0));
+        assert_eq!(array_row_major_ref(ctx, *arrays[0], 1)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[0], 2)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[1], 0)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[1], 1)?, Word::fixnum(0));
+        assert_eq!(array_row_major_ref(ctx, *arrays[1], 2)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[2], 0)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[2], 1)?, Word::fixnum(1));
+        assert_eq!(array_row_major_ref(ctx, *arrays[2], 2)?, Word::fixnum(0));
+        Ok::<_, ObjectError>(())
+    })?;
 
-    let not = runtime.call_builtin(
-        &mut ctx,
-        FunctionObject::try_from(not_function).map_err(|_| ObjectError::TypeError)?,
-        &[left],
-    )?;
+    let not = ncl_object::with_root(&mut ctx, &mut left, |ctx, left| {
+        runtime.call_builtin(
+            ctx,
+            FunctionObject::try_from(not_function).map_err(|_| ObjectError::TypeError)?,
+            &[*left],
+        )
+    })?;
     assert_eq!(array_row_major_ref(&ctx, not, 0)?, Word::fixnum(1));
     assert_eq!(array_row_major_ref(&ctx, not, 1)?, Word::fixnum(0));
     assert_eq!(array_row_major_ref(&ctx, not, 2)?, Word::fixnum(0));

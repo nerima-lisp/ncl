@@ -134,12 +134,16 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
         let spec = **roots.first().ok_or(ObjectError::TypeError)?;
         let spec_parts = elements(ctx, spec)?;
         let variable = spec_parts.first().copied().ok_or(ObjectError::TypeError)?;
-        let string = spec_parts.get(1).copied().ok_or(ObjectError::TypeError)?;
+        let string = spec_parts
+            .get(1)
+            .copied()
+            .unwrap_or(ncl_object::make_string(ctx, runtime, &[])?);
         if !matches!(classify_object(ctx, variable), ObjectRef::Symbol(_)) {
             return Err(ObjectError::TypeError);
         }
@@ -147,6 +151,8 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
         let mut end = Word::NIL;
         let mut has_start = false;
         let mut has_end = false;
+        let mut index = Word::NIL;
+        let mut has_index = false;
         let mut allow_other_keys = false;
         let mut unknown_keyword = false;
         let mut cursor = 2;
@@ -167,6 +173,12 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
                 end = value;
             } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
                 allow_other_keys |= value != Word::NIL;
+            } else if is_keyword(ctx, runtime, key, "INDEX")? {
+                if has_index || !matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
+                    return Err(ObjectError::TypeError);
+                }
+                has_index = true;
+                index = value;
             } else {
                 if !is_keyword_symbol(ctx, runtime, key)? {
                     ctx.set_pending_lisp_error(LispError::ProgramError(
@@ -192,6 +204,10 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
         held.push(start);
         let end_index = held.len();
         held.push(end);
+        let index_index = held.len();
+        held.push(index);
+        let index_value_index = held.len();
+        held.push(Word::NIL);
         let mut stream_indexes = vec![string_index];
         if has_start || has_end {
             if !has_start {
@@ -218,6 +234,20 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
             "PROGN",
             &(1..roots.len()).collect::<Vec<_>>(),
         )?;
+        let body = if has_index {
+            let position = held_form(ctx, runtime, &mut held, "FILE-POSITION", &[stream])?;
+            let update = held_form(ctx, runtime, &mut held, "SETQ", &[index_index, position])?;
+            held_form(ctx, runtime, &mut held, "PROG1", &[body, update])?
+        } else {
+            body
+        };
+        let bindings = if has_index {
+            let index_binding =
+                held_list(ctx, runtime, &mut held, &[index_index, index_value_index])?;
+            held_list(ctx, runtime, &mut held, &[binding, index_binding])?
+        } else {
+            bindings
+        };
         let expansion = held_form(ctx, runtime, &mut held, "LET", &[bindings, body])?;
         held.get(expansion).copied().ok_or(ObjectError::Layout)
     })

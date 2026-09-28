@@ -29,7 +29,7 @@
     `(push (list ',name ,function ,runs ,setup) *benchmarks*)))
 
 (defun elapsed-seconds (start finish)
-  (/ (- finish start) internal-time-units-per-second))
+  (/ (float (- finish start)) internal-time-units-per-second))
 
 (defun bench-run-1 (benchmark)
   (let* ((name (first benchmark))

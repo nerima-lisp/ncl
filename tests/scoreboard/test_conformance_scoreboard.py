@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 import sys
 import unittest
@@ -65,6 +66,30 @@ class ScoreboardTests(unittest.TestCase):
         result = scoreboard.make_scoreboard(ansi, None, bench, [])
         self.assertEqual(result["cl-bench"]["samples"], 0)
         self.assertNotIn("geometric_mean", result["cl-bench"])
+
+    def test_main_reads_driver_json_for_success_and_failure_results(self):
+        ansi_output = json.dumps({"passed": 1, "failed": 0, "unexecuted": 0})
+        bench_output = json.dumps({"times": [0.001, 0.002]})
+        with TemporaryDirectory() as directory:
+            with patch.object(scoreboard, "checkout_source", return_value=Path(directory)):
+                with patch.object(
+                    scoreboard,
+                    "run_command",
+                    side_effect=[
+                        scoreboard.ProcessResult("passed", 0, ansi_output),
+                        scoreboard.ProcessResult("failed", 1, bench_output),
+                    ],
+                ):
+                    with patch.object(sys, "stdout") as stdout:
+                        status = scoreboard.main([
+                            "--ansi-command", "ansi",
+                            "--cl-bench-command", "bench",
+                        ])
+        self.assertEqual(status, 0)
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(report["ansi-test"]["status"], "passed")
+        self.assertEqual(report["cl-bench"]["status"], "failed")
+        self.assertEqual(report["cl-bench"]["samples"], 2)
 
 
 if __name__ == "__main__":

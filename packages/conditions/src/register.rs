@@ -253,6 +253,7 @@ fn error_builtin(
     });
     match result {
         Ok(()) => Ok(Word::NIL),
+        // check-added-lines: allow(unsupported) report unhandled condition
         Err(ObjectError::Unsupported) => {
             // check-added-lines: allow(unsupported) report unhandled condition
             // check-added-lines: allow(unsupported) report unhandled condition

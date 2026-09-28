@@ -229,6 +229,75 @@ fn golden_x86_64_fixnum_constant_uses_imm32() {
 }
 
 #[test]
+fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(33),
+        "untag-memory-addresses",
+        vec![
+            ncl_ir::Param {
+                name: "address".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word; 2],
+    );
+    let load = builder
+        .push_op(
+            OpKind::Load {
+                address: ncl_ir::ValueId(0),
+            },
+            &[Ty::Word],
+        )
+        .expect("load address")[0];
+    let load_field = builder
+        .push_op(
+            OpKind::LoadField {
+                object: ncl_ir::ValueId(0),
+                field: 1,
+            },
+            &[Ty::Word],
+        )
+        .expect("load field address")[0];
+    builder
+        .push_op(
+            OpKind::Store {
+                address: ncl_ir::ValueId(0),
+                value: ncl_ir::ValueId(1),
+            },
+            &[],
+        )
+        .expect("store address");
+    builder
+        .push_op(
+            OpKind::StoreField {
+                object: ncl_ir::ValueId(0),
+                field: 1,
+                value: ncl_ir::ValueId(1),
+            },
+            &[],
+        )
+        .expect("store field address");
+    builder
+        .terminate(Terminator::Return {
+            values: vec![load, load_field],
+        })
+        .expect("return");
+
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .expect("x86-64 memory lowering");
+    let clear_lowtag = [0x49, 0x83, 0xe2, 0xf8];
+    assert_eq!(
+        count_occurrences(&compiled.code, &clear_lowtag),
+        4,
+        "each Load/LoadField/Store/StoreField address must be untagged"
+    );
+}
+
+#[test]
 fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(32), "call-map", Vec::new(), vec![]);
     let callee_constant = builder.add_constant(Constant::Fixnum(0));

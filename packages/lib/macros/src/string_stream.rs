@@ -169,6 +169,9 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
                 allow_other_keys |= value != Word::NIL;
             } else {
                 if !is_keyword_symbol(ctx, runtime, key)? {
+                    ctx.set_pending_lisp_error(LispError::ProgramError(
+                        ProgramError::UnknownKeyword,
+                    ));
                     return Err(ObjectError::TypeError);
                 }
                 unknown_keyword = true;

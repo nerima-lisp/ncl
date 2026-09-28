@@ -255,7 +255,7 @@ fn condition_builtins_accept_rest_and_condition_designators() {
     let error = builtin(&runtime, &mut ctx, "ERROR");
     let chain = push_handler(&mut ctx, &runtime, simple_error, Word::NIL).unwrap();
     assert_eq!(
-        runtime.call_builtin(&mut ctx, error, &[message, argument]),
+        runtime.call_builtin(&mut ctx, error, &[message, argument, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
@@ -263,7 +263,7 @@ fn condition_builtins_accept_rest_and_condition_designators() {
     let warn = builtin(&runtime, &mut ctx, "WARN");
     let chain = push_handler(&mut ctx, &runtime, simple_warning, Word::NIL).unwrap();
     assert_eq!(
-        runtime.call_builtin(&mut ctx, warn, &[message, argument]),
+        runtime.call_builtin(&mut ctx, warn, &[message, argument, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);
@@ -285,7 +285,7 @@ fn condition_builtins_accept_rest_and_condition_designators() {
 
     let chain = push_handler(&mut ctx, &runtime, simple_condition, Word::NIL).unwrap();
     assert_eq!(
-        runtime.call_builtin(&mut ctx, signal, &[message, argument]),
+        runtime.call_builtin(&mut ctx, signal, &[message, argument, Word::fixnum(7)]),
         Ok(Word::NIL)
     );
     pop_handler(&mut ctx, &runtime, chain);

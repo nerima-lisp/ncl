@@ -179,7 +179,7 @@ pub fn common_lisp_builtin(name: &str) -> ncl_object::BuiltinIdentifier {
         "check-keywords" | "keyword-value" | "keyword-supplied-p" => {
             ncl_object::BuiltinPackage::NclExt
         }
-        _ => ncl_object::BuiltinPackage::CommonLisp,
+        _ => ncl_object::BuiltinPackage::CommonLisp, // check-added-lines: allow(wildcard) all other names use Common Lisp
     };
     ncl_object::BuiltinIdentifier::new(
         package,

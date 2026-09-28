@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 #![allow(clippy::expect_used)]
-#![cfg(target_arch = "aarch64")]
+#![cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 
 use ncl_runtime::Runtime;
 use std::process::Command;
@@ -59,4 +59,24 @@ fn cleanup_side_effect_is_completed_before_result() {
         .expect("ncl executable");
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "7");
+}
+
+#[test]
+fn nested_cleanup_runs_in_lifo_order() {
+    assert_eq!(
+        eval(
+            "(catch 'a (unwind-protect (unwind-protect (throw 'a 1) (setq *uwp-c* 2)) (setq *uwp-c* (+ *uwp-c* 10))))"
+        ),
+        "1"
+    );
+}
+
+#[test]
+fn cleanup_exit_wins_after_nested_cleanup() {
+    assert_eq!(
+        eval(
+            "(catch 'a (catch 'b (unwind-protect (unwind-protect (throw 'a 1) (throw 'b 2)) (throw 'a 3))))"
+        ),
+        "3"
+    );
 }

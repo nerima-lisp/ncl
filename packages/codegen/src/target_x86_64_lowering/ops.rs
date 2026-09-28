@@ -258,10 +258,22 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
+            super::store_return_values(assembler, slots, values, abi)?;
             load_immediate(
                 assembler,
                 VALUE_COUNT,
                 i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+            )?;
+            emit(
+                assembler,
+                Inst::MovMR(
+                    Mem::base(
+                        super::THREAD_CONTEXT,
+                        abi.field_offset(crate::ContextField::MultipleValueCount)
+                            .map_err(|error| CodegenError::Abi(error.to_string()))?,
+                    ),
+                    VALUE_COUNT,
+                ),
             )?;
             if let (Some(first), Some(result)) = (values.first(), result) {
                 load_slot(assembler, slots, *first, FUNCTION_OBJECT)?;

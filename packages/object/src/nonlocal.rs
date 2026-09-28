@@ -136,6 +136,14 @@ impl ThreadContext {
         result
     }
 
+    fn restore_pending_unwind(&mut self, values: &[RootedWord]) {
+        if !self.thread.pending() {
+            let restored = values.iter().map(RootedWord::get).collect::<Vec<_>>();
+            self.thread.set_multiple_value_area(&restored);
+            self.thread.set_pending(true);
+        }
+    }
+
     /// Establish a `catch` frame for `tag`.
     pub fn enter_catch(&mut self, tag: Word) {
         let frame = DynamicFrame::Catch {
@@ -243,17 +251,8 @@ impl ThreadContext {
         let Some(saved) = self.pending_unwind.pop() else {
             return Ok(());
         };
-        let PendingExit {
-            region: saved_region,
-            values,
-            ..
-        } = saved;
-        debug_assert_eq!(saved_region, region);
-        if !self.thread.pending() {
-            let restored = values.iter().map(RootedWord::get).collect::<Vec<_>>();
-            self.thread.set_multiple_value_area(&restored);
-            self.thread.set_pending(true);
-        }
+        let PendingExit { values, .. } = saved;
+        self.restore_pending_unwind(&values);
         let mut result = Ok(());
         for value in values.into_iter().rev() {
             if let Err(error) = value.release(self) {

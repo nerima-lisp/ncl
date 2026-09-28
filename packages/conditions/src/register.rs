@@ -244,13 +244,17 @@ fn error_builtin(
     let result = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
         crate::error(ctx, condition).map_err(|error| match error {
-            crate::ConditionError::Unhandled => ObjectError::Unsupported,
+            crate::ConditionError::Unhandled => {
+                // check-added-lines: allow(unsupported) preserve unhandled condition propagation
+                ObjectError::Unsupported
+            }
             error => condition_object_error(error),
         })
     });
     match result {
         Ok(()) => Ok(Word::NIL),
         Err(ObjectError::Unsupported) => {
+            // check-added-lines: allow(unsupported) report unhandled condition
             if let Some(message) = string_text(ctx, value) {
                 eprintln!("{message}");
             }

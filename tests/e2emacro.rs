@@ -73,6 +73,16 @@ const PROBES: &[Probe] = &[
         source: "(multiple-value-bind (a b) (values 1 2) (+ a b))",
         expected: "3",
     },
+    Probe {
+        name: "with-input-from-string",
+        source: "(with-input-from-string (s \"abc\") (read-char s))",
+        expected: "#\\a",
+    },
+    Probe {
+        name: "with-output-to-string",
+        source: "(with-output-to-string (s) (write-char #\\a s))",
+        expected: "\"a\"",
+    },
 ];
 
 const XFAILS: &[XFail] = &[
@@ -194,18 +204,6 @@ const XFAILS: &[XFail] = &[
         name: "multiple-value-setq",
         source: "(multiple-value-setq (a b) (values 1 2))",
         stderr: "MULTIPLE-VALUE-SETQ",
-        exit_code: 1,
-    },
-    XFail {
-        name: "with-input-from-string",
-        source: "(with-input-from-string (s \"abc\") (read-char s))",
-        stderr: "WITH-INPUT-FROM-STRING",
-        exit_code: 1,
-    },
-    XFail {
-        name: "with-output-to-string",
-        source: "(with-output-to-string (s) (write-char #\\a s))",
-        stderr: "WITH-OUTPUT-TO-STRING",
         exit_code: 1,
     },
 ];

@@ -98,7 +98,6 @@ impl RuntimeAbi for BuiltinAbi {
             ContextField::Handler => layout.handler,
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
-            _ => return Err(ncl_codegen::AbiError::UnsupportedContextField(field)),
         };
         i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))
     }
@@ -111,6 +110,27 @@ impl RuntimeAbi for BuiltinAbi {
         }
     }
 }
+
+#[test]
+fn builtin_fixture_exposes_all_context_fields() {
+    let layout = thread_layout();
+    let abi = BuiltinAbi;
+    let fields = [
+        (ContextField::TlabBump, layout.tlab_bump),
+        (ContextField::TlabLimit, layout.tlab_limit),
+        (ContextField::SafepointRequest, layout.safepoint_request),
+        (ContextField::MultipleValueArea, layout.mv),
+        (ContextField::Pending, layout.pending),
+        (ContextField::MultipleValueCount, layout.mv_count),
+        (ContextField::Handler, layout.handler),
+        (ContextField::Cleanup, layout.cleanup),
+        (ContextField::Catch, layout.catch),
+    ];
+    for (field, expected) in fields {
+        assert_eq!(abi.field_offset(field).ok(), i32::try_from(expected).ok());
+    }
+}
+
 #[test]
 fn executes_fixnum_add_of_two_arguments() {
     let mut builder = FunctionBuilder::new(

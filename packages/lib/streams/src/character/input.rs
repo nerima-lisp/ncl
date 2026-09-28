@@ -142,12 +142,12 @@ fn classify_peek_type(ctx: &ThreadContext, value: Word) -> Result<PeekMode, Obje
     if value == Word::TRUE {
         return Ok(PeekMode::NonWhitespace);
     }
-    match classify_object(ctx, value) {
-        ObjectRef::Character(code) => char::from_u32(code)
+    if let ObjectRef::Character(code) = classify_object(ctx, value) {
+        return char::from_u32(code)
             .map(PeekMode::Character)
-            .ok_or(ObjectError::TypeError),
-        _ => Err(ObjectError::TypeError),
+            .ok_or(ObjectError::TypeError);
     }
+    Err(ObjectError::TypeError)
 }
 
 const fn is_peek_whitespace(character: char) -> bool {

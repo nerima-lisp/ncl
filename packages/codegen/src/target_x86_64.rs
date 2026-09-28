@@ -115,11 +115,12 @@ fn add_map(
 
 fn spill_arguments(
     assembler: &mut Assembler,
-    argument_words: u32,
+    argument_values: &[ncl_ir::ValueId],
     generated_lambda: bool,
     value_slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
-    for index in 0..argument_words {
+    for (index, value) in argument_values.iter().copied().enumerate() {
+        let index = u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?;
         let register_index = if generated_lambda {
             index.saturating_sub(1)
         } else {
@@ -133,7 +134,7 @@ fn spill_arguments(
                 .and_then(|slot| ARGUMENT_REGISTERS.get(slot).copied())
         };
         if let Some(register) = register {
-            lowering::store_slot(assembler, value_slots, ncl_ir::ValueId(index), register)?;
+            lowering::store_slot(assembler, value_slots, value, register)?;
         } else {
             let overflow_base = if generated_lambda { 5 } else { 4 };
             let source_offset =
@@ -143,7 +144,7 @@ fn spill_arguments(
                 assembler,
                 Inst::MovRM(ENTRY, Mem::base(REST_ARGUMENT, source_offset)),
             )?;
-            lowering::store_slot(assembler, value_slots, ncl_ir::ValueId(index), ENTRY)?;
+            lowering::store_slot(assembler, value_slots, value, ENTRY)?;
         }
     }
     Ok(())
@@ -243,6 +244,22 @@ pub fn compile_function_x86_64(
             .saturating_add(spill_words)
     });
     value_slots.incoming_args_base = incoming_args_base;
+    let mut argument_values = (0..argument_words)
+        .map(ncl_ir::ValueId)
+        .collect::<Vec<_>>();
+    for block in &function.blocks {
+        for op in &block.ops {
+            let OpKind::LoadArg { index } = op.kind else {
+                continue;
+            };
+            let Some(result) = op.results.first() else {
+                continue;
+            };
+            if let Some(value) = argument_values.get_mut(usize::from(index)) {
+                *value = result.0;
+            }
+        }
+    }
     if let Some(base) = incoming_args_base {
         for (index, register) in lowering::ARGUMENT_REGISTERS.into_iter().enumerate() {
             emit(
@@ -268,7 +285,7 @@ pub fn compile_function_x86_64(
     }
     spill_arguments(
         &mut assembler,
-        argument_words,
+        &argument_values,
         generated_lambda,
         &value_slots,
     )?;

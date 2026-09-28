@@ -471,6 +471,54 @@ fn x86_64_prologue_loads_overflow_arguments_from_r9() {
 }
 
 #[test]
+fn x86_64_prologue_uses_load_arg_result_values() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(78),
+        "load-arg-result-values",
+        vec![
+            ncl_ir::Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word, Ty::Word],
+    );
+    let left = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .unwrap_or_else(|error| panic!("left LoadArg: {error}"))[0];
+    let right = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .unwrap_or_else(|error| panic!("right LoadArg: {error}"))[0];
+    assert!(builder
+        .terminate(Terminator::Return {
+            values: vec![left, right],
+        })
+        .is_ok());
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert_eq!(allocation.location(left), Some(Location::Register(13)));
+    assert_eq!(allocation.location(right), Some(Location::Spill(0)));
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
+        .unwrap_or_else(|error| panic!("entry parameter lowering: {error:?}"));
+    assert!(
+        compiled
+            .code
+            .windows(3)
+            .any(|bytes| bytes == [0x49, 0x89, 0xf6])
+    );
+    assert!(
+        compiled
+            .code
+            .windows(4)
+            .any(|bytes| bytes == [0x48, 0x89, 0x55, 0xd8])
+    );
+}
+
+#[test]
 fn x86_64_load_heap_constant_untags_each_indirection() -> Result<(), String> {
     let mut builder = ncl_ir::FunctionBuilder::new(
         ncl_ir::FunctionId(77),

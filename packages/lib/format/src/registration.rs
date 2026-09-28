@@ -8,9 +8,18 @@ use ncl_printer::{CharSink, PrintError, StringSink};
 
 use crate::{execute, parse};
 
-const DESTINATION: Parameter = Parameter { name: BuiltinName::new("DESTINATION"), ty: ParameterType::Any };
-const CONTROL: Parameter = Parameter { name: BuiltinName::new("CONTROL"), ty: ParameterType::StringDesignator };
-const ARGUMENT: Parameter = Parameter { name: BuiltinName::new("ARGUMENT"), ty: ParameterType::Any };
+const DESTINATION: Parameter = Parameter {
+    name: BuiltinName::new("DESTINATION"),
+    ty: ParameterType::Any,
+};
+const CONTROL: Parameter = Parameter {
+    name: BuiltinName::new("CONTROL"),
+    ty: ParameterType::StringDesignator,
+};
+const ARGUMENT: Parameter = Parameter {
+    name: BuiltinName::new("ARGUMENT"),
+    ty: ParameterType::Any,
+};
 
 /// Register the Common Lisp FORMAT builtin.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
@@ -32,7 +41,9 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    (0..args.len()).map(|index| args.get(index).ok_or(ObjectError::TypeError)).collect()
+    (0..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::TypeError))
+        .collect()
 }
 
 fn format_builtin(
@@ -54,7 +65,11 @@ fn format_builtin(
                 let mut sink = StringSink::new();
                 execute(&parsed, arguments, ctx, runtime, &mut sink)
                     .map_err(|error| format_error_to_object_error(&error))?;
-                return make_string(ctx, runtime, &sink.into_string().chars().collect::<Vec<_>>());
+                return make_string(
+                    ctx,
+                    runtime,
+                    &sink.into_string().chars().collect::<Vec<_>>(),
+                );
             }
 
             let mut stream = if *destination == Word::TRUE {
@@ -87,7 +102,9 @@ fn format_builtin(
 
 fn string_value(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
     if let ObjectRef::Character(character) = classify_object(ctx, value) {
-        return char::from_u32(character).map(|character| character.to_string()).ok_or(ObjectError::TypeError);
+        return char::from_u32(character)
+            .map(|character| character.to_string())
+            .ok_or(ObjectError::TypeError);
     }
     let value = if matches!(classify_object(ctx, value), ObjectRef::String(_)) {
         value
@@ -96,13 +113,16 @@ fn string_value(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError>
     } else {
         return Err(ObjectError::TypeError);
     };
-    (0..string_length(ctx, value)?).map(|index| string_ref(ctx, value, index)).collect()
+    (0..string_length(ctx, value)?)
+        .map(|index| string_ref(ctx, value, index))
+        .collect()
 }
 
 fn standard_output(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
     let mut package = runtime.ensure_package(ctx, "COMMON-LISP")?;
     with_root(ctx, &mut package, |ctx, package| {
-        let (mut symbol, _) = ncl_object::Package::from_word(*package).intern(ctx, runtime, "*STANDARD-OUTPUT*")?;
+        let (mut symbol, _) =
+            ncl_object::Package::from_word(*package).intern(ctx, runtime, "*STANDARD-OUTPUT*")?;
         with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
     })
 }
@@ -125,12 +145,21 @@ struct WriteCharSink<'a> {
 }
 
 impl<'a> WriteCharSink<'a> {
-    fn new(ctx: &'a mut ThreadContext, runtime: &'a Runtime, stream: Word) -> Result<Self, ObjectError> {
+    fn new(
+        ctx: &'a mut ThreadContext,
+        runtime: &'a Runtime,
+        stream: Word,
+    ) -> Result<Self, ObjectError> {
         let function = runtime
             .function(ctx, "COMMON-LISP", "WRITE-CHAR")
             .ok_or(ObjectError::UndefinedFunction)
             .and_then(FunctionObject::try_from)?;
-        Ok(Self { ctx, runtime, function, stream })
+        Ok(Self {
+            ctx,
+            runtime,
+            function,
+            stream,
+        })
     }
 }
 
@@ -139,7 +168,9 @@ impl CharSink for WriteCharSink<'_> {
         let character = Word::character(u32::from(character));
         ncl_object::with_root(self.ctx, &mut self.stream, |ctx, stream| {
             let args = [character, *stream];
-            self.runtime.call_builtin(ctx, self.function, &args).map(|_| ())
+            self.runtime
+                .call_builtin(ctx, self.function, &args)
+                .map(|_| ())
         })
         .map_err(PrintError::Object)
     }

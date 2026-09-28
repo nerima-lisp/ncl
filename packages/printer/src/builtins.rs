@@ -169,13 +169,23 @@ fn print_object(
         let result = with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
             if surrounding_newlines {
                 let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
-                call_builtin(ctx, runtime, "WRITE-CHAR", &[Word::character(u32::from('\n')), stream])?;
+                call_builtin(
+                    ctx,
+                    runtime,
+                    "WRITE-CHAR",
+                    &[Word::character(u32::from('\n')), stream],
+                )?;
             }
             let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
             call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
             if surrounding_newlines {
                 let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
-                call_builtin(ctx, runtime, "WRITE-CHAR", &[Word::character(u32::from('\n')), stream])?;
+                call_builtin(
+                    ctx,
+                    runtime,
+                    "WRITE-CHAR",
+                    &[Word::character(u32::from('\n')), stream],
+                )?;
             }
             Ok(())
         });

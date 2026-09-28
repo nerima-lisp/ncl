@@ -24,10 +24,11 @@ pub(crate) fn lower_call(
     if extra_count > 0 {
         let rest_offset = allocation
             .outgoing_base
-            .checked_add(1)
+            .checked_add(u32::try_from(extra_count).map_err(|_| CodegenError::FrameOverflow)?)
+            .and_then(|slot| slot.checked_add(1))
             .and_then(|slot| slot.checked_mul(8))
             .ok_or(CodegenError::FrameOverflow)?;
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(6), u64::from(rest_offset)) {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), u64::from(rest_offset)) {
             emit(assembler, instruction)?;
         }
         emit(
@@ -35,7 +36,7 @@ pub(crate) fn lower_call(
             Inst::Sub {
                 rd: RegOrSp::Reg(Reg(5)),
                 rn: RegOrSp::Reg(Reg(29)),
-                rm: Reg(6),
+                rm: Reg(17),
                 shift: ncl_asm_aarch64::Shift::Lsl(0),
             },
         )?;

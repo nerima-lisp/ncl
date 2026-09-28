@@ -152,10 +152,14 @@ pub(super) fn lower_closure_call(
     if captures.len().saturating_add(rest.len()) > 4 {
         let rest_offset = allocation
             .outgoing_base
-            .checked_add(1)
+            .checked_add(
+                u32::try_from(captures.len().saturating_add(rest.len()).saturating_sub(4))
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+            )
+            .and_then(|slot| slot.checked_add(1))
             .and_then(|slot| slot.checked_mul(8))
             .ok_or(CodegenError::FrameOverflow)?;
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(6), u64::from(rest_offset)) {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(rest_offset)) {
             emit(assembler, instruction)?;
         }
         emit(
@@ -163,7 +167,7 @@ pub(super) fn lower_closure_call(
             Inst::Sub {
                 rd: RegOrSp::Reg(Reg(5)),
                 rn: RegOrSp::Reg(Reg(29)),
-                rm: Reg(6),
+                rm: Reg(16),
                 shift: Shift::Lsl(0),
             },
         )?;

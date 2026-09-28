@@ -21,6 +21,11 @@ impl Runtime {
     /// # Errors
     /// Returns an allocation or layout error.
     pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
+        if name == "CL"
+            && let Some(package) = self.resolve_package(ctx, name)?
+        {
+            return Ok(package);
+        }
         let canonical_name = if name == "CL" { "COMMON-LISP" } else { name };
         if let Some(mut package) = self.resolve_package(ctx, canonical_name)? {
             if canonical_name == "COMMON-LISP" && self.resolve_package(ctx, "CL")?.is_none() {

@@ -3,7 +3,7 @@ set -u
 
 ncl=${1:?usage: ncl-driver.sh /path/to/ncl}
 status=0
-times=
+load_times=
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ncl-cl-bench.XXXXXX")
 trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 
@@ -25,15 +25,15 @@ for entry in \
   if [ -z "$elapsed" ]; then
     elapsed=0
   fi
-  if [ -n "$times" ]; then
-    times="$times,$elapsed"
+  if [ -n "$load_times" ]; then
+    load_times="$load_times,$elapsed"
   else
-    times="$elapsed"
+    load_times="$elapsed"
   fi
   if [ "$command_status" -ne 0 ]; then
     status=1
   fi
 done
 
-printf '{"times":[%s]}\n' "$times"
+printf '{"times":[],"load_times":[%s],"completed":0}\n' "$load_times"
 exit "$status"

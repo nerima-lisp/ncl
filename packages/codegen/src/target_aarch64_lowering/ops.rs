@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, ValueId};
+use ncl_ir::{Compare, Function, Op, OpKind, ValueId};
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u64, CodegenError> {
     match constant {
@@ -381,116 +381,4 @@ pub fn lower_op(
         }
     }
     Ok(call_pc)
-}
-
-pub fn move_args(
-    assembler: &mut Assembler,
-    allocation: &Allocation,
-    args: &[ValueId],
-    params: &[BlockParam],
-) -> Result<(), CodegenError> {
-    if args.len() != params.len() {
-        return Err(CodegenError::Unsupported(
-            "block argument arity mismatch".into(),
-        ));
-    }
-    let mut moves = Vec::new();
-    for (argument, parameter) in args.iter().zip(params) {
-        let source = allocation
-            .location(*argument)
-            .ok_or(CodegenError::UnknownValue(*argument))?;
-        let destination = allocation
-            .location(parameter.value)
-            .ok_or(CodegenError::UnknownValue(parameter.value))?;
-        if source != destination {
-            moves.push((*argument, parameter.value));
-        }
-    }
-
-    let overlapping = moves.iter().any(|(argument, _)| {
-        moves
-            .iter()
-            .any(|(_, parameter)| allocation.location(*argument) == allocation.location(*parameter))
-    });
-    if overlapping {
-        // Stage all sources before writing any destination. This preserves a
-        // register/register cycle and also handles register/spill overlap.
-        let temporary_bytes = moves
-            .len()
-            .checked_mul(8)
-            .and_then(|bytes| bytes.checked_add(15))
-            .map(|bytes| bytes & !15)
-            .ok_or(CodegenError::FrameOverflow)?;
-        let temporary_bytes =
-            u16::try_from(temporary_bytes).map_err(|_| CodegenError::FrameOverflow)?;
-        if temporary_bytes <= 4095 {
-            emit(
-                assembler,
-                Inst::SubImm {
-                    rd: RegOrSp::Sp,
-                    rn: RegOrSp::Sp,
-                    imm: temporary_bytes,
-                    shift: false,
-                },
-            )?;
-        } else {
-            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(temporary_bytes)) {
-                emit(assembler, instruction)?;
-            }
-            emit(
-                assembler,
-                Inst::Sub {
-                    rd: RegOrSp::Sp,
-                    rn: RegOrSp::Sp,
-                    rm: Reg(16),
-                    shift: ncl_asm_aarch64::Shift::Lsl(0),
-                },
-            )?;
-        }
-        for (index, (argument, _)) in moves.iter().enumerate() {
-            load_value(assembler, allocation, *argument, Reg(16))?;
-            let offset =
-                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Sp,
-                        offset,
-                    },
-                },
-            )?;
-        }
-        for (index, (_, parameter)) in moves.iter().enumerate() {
-            let offset =
-                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Sp,
-                        offset,
-                    },
-                },
-            )?;
-            store_value(assembler, allocation, *parameter, Reg(16))?;
-        }
-        emit(
-            assembler,
-            Inst::AddImm {
-                rd: RegOrSp::Sp,
-                rn: RegOrSp::Sp,
-                imm: temporary_bytes,
-                shift: false,
-            },
-        )?;
-        return Ok(());
-    }
-    for (argument, parameter) in moves {
-        load_value(assembler, allocation, argument, Reg(17))?;
-        store_value(assembler, allocation, parameter, Reg(17))?;
-    }
-    Ok(())
 }

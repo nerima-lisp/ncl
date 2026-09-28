@@ -4,7 +4,7 @@ use crate::{
     common_lisp_builtin,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
-use ncl_ir::{Function, OpKind, ValueId};
+use ncl_ir::{Function, ValueId};
 
 /// Register carrying the callee function object on entry, stored as frame header word 2.
 pub(super) const FUNCTION_OBJECT: Reg = SCRATCH[0];
@@ -475,51 +475,10 @@ pub(super) use calls::{lower_call, lower_closure_call};
 pub(super) mod dispatch;
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 
+#[path = "target_x86_64_lowering/closure.rs"]
+mod closure;
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
-
-pub(super) fn closure_capture_count(
-    function: &Function,
-    closure: ValueId,
-) -> Result<Option<usize>, CodegenError> {
-    let mut current = closure;
-    let limit = function
-        .blocks
-        .iter()
-        .map(|block| block.ops.len())
-        .sum::<usize>();
-    for _ in 0..limit {
-        let definition = function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.ops)
-            .find(|op| op.results.iter().any(|(value, _)| *value == current))
-            .ok_or_else(|| CodegenError::Abi("closure value definition is unavailable".into()))?;
-        match &definition.kind {
-            OpKind::MakeClosure { captures, .. } => return Ok(Some(captures.len())),
-            OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
-            OpKind::Const { .. }
-            | OpKind::Load { .. }
-            | OpKind::Store { .. }
-            | OpKind::LoadField { .. }
-            | OpKind::StoreField { .. }
-            | OpKind::LoadArg { .. }
-            | OpKind::Alloc { .. }
-            | OpKind::Call { .. }
-            | OpKind::CallIndirect { .. }
-            | OpKind::CallClosure { .. }
-            | OpKind::Builtin { .. }
-            | OpKind::Prim { .. }
-            | OpKind::Compare { .. }
-            | OpKind::SetMultipleValues { .. }
-            | OpKind::Safepoint
-            | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. } => return Ok(None),
-        }
-    }
-    Err(CodegenError::Abi(
-        "closure value definition has a cycle".into(),
-    ))
-}
+pub(super) use closure::closure_capture_count;
 
 pub(super) use ops::{lower_op, move_args};

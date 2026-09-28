@@ -10,14 +10,7 @@ struct Case {
     expected: &'static str,
 }
 
-struct XFail {
-    builtin: &'static str,
-    source: &'static str,
-    stdout: &'static str,
-    stderr: &'static str,
-}
-
-const ANCILLARY_XFAILS: &[&str] = &[
+const ANCILLARY_BUILTINS: &[&str] = &[
     "WITH-OUTPUT-TO-STRING",
     "WITH-INPUT-FROM-STRING",
     "PRINC",
@@ -204,8 +197,6 @@ const CASES: &[Case] = &[
     },
 ];
 
-const XFAILS: &[XFail] = &[];
-
 fn run(source: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])
@@ -228,22 +219,15 @@ fn registered_stream_builtins_have_compiled_probes() {
     );
     for builtin in REGISTERED_BUILTINS {
         assert!(
-            CASES.iter().any(|case| case.builtin == *builtin)
-                || XFAILS.iter().any(|case| case.builtin == *builtin),
+            CASES.iter().any(|case| case.builtin == *builtin),
             "{builtin} has no compiled probe"
         );
     }
     for case in CASES {
         assert!(
-            REGISTERED_BUILTINS.contains(&case.builtin) || ANCILLARY_XFAILS.contains(&case.builtin),
+            REGISTERED_BUILTINS.contains(&case.builtin)
+                || ANCILLARY_BUILTINS.contains(&case.builtin),
             "unexpected probe: {}",
-            case.builtin
-        );
-    }
-    for case in XFAILS {
-        assert!(
-            REGISTERED_BUILTINS.contains(&case.builtin) || ANCILLARY_XFAILS.contains(&case.builtin),
-            "unexpected XFAIL: {}",
             case.builtin
         );
     }
@@ -260,26 +244,6 @@ fn registered_stream_builtins_have_compiled_probes() {
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             expected,
-            "{}",
-            case.builtin
-        );
-    }
-}
-
-#[test]
-fn known_stream_failures_keep_exit_status_and_stderr() {
-    for case in XFAILS {
-        let output = run(case.source);
-        assert_eq!(output.status.code(), Some(1), "{}", case.builtin);
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            case.stdout,
-            "{}: stdout",
-            case.builtin
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            case.stderr,
             "{}",
             case.builtin
         );

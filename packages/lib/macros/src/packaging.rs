@@ -106,8 +106,8 @@ fn append_import_statements(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     held: &mut Vec<Word>,
-    statements: &mut Vec<Word>,
-    quoted_name: Word,
+    statements: &mut Vec<usize>,
+    quoted_name: usize,
     clauses: &PackageClauses,
 ) -> Result<()> {
     for (source_package, names) in clauses.import_from.iter().cloned() {

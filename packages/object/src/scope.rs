@@ -267,6 +267,58 @@ impl<'ctx> Scope<'ctx> {
         Ok(self.root(Local::from_word(result)))
     }
 
+    /// Walk a proper Lisp list and root every element.
+    ///
+    /// # Errors
+    /// Returns `ObjectError::TypeError` when `list` is not a proper list.
+    pub fn list_to_handle_vec(
+        &mut self,
+        list: Local<'_>,
+    ) -> Result<HandleVec<'ctx>, crate::ObjectError> {
+        let mut words = Vec::new();
+        let mut cursor = list.as_word();
+        while cursor != Word::NIL {
+            if !cursor.is_cons() {
+                return Err(crate::ObjectError::TypeError);
+            }
+            words.push(crate::car(self.ctx, cursor)?);
+            cursor = crate::cdr(self.ctx, cursor)?;
+        }
+        Ok(self.root_many(&words.into_iter().map(Local::from_word).collect::<Vec<_>>()))
+    }
+
+    /// Build a proper Lisp list from rooted handles.
+    ///
+    /// # Errors
+    /// Returns the allocation error reported by the object heap.
+    pub fn make_list(
+        &mut self,
+        runtime: &crate::Runtime,
+        values: &HandleVec<'ctx>,
+    ) -> Result<Handle<'ctx>, crate::ObjectError> {
+        let mut result = self.root(Local::from_word(Word::NIL));
+        for handle in values.as_slice().iter().rev() {
+            result = self.make_cons(runtime, *handle, result)?;
+        }
+        Ok(result)
+    }
+
+    /// Intern a symbol by name in `package` and root the result.
+    ///
+    /// # Errors
+    /// Returns the package or allocation error reported by the object layer.
+    pub fn intern(
+        &mut self,
+        runtime: &crate::Runtime,
+        package: &str,
+        name: &str,
+    ) -> Result<Handle<'ctx>, crate::ObjectError> {
+        let package_word = runtime.ensure_package(self.ctx, package)?;
+        let (symbol, _) =
+            crate::Package::from_word(package_word).intern(self.ctx, runtime, name)?;
+        Ok(self.root(Local::from_word(symbol)))
+    }
+
     /// Root a word and return its typed handle.
     ///
     /// ```compile_fail
@@ -389,83 +441,5 @@ impl Drop for Scope<'_> {
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use super::{HandleVec, Local, Scope};
-    use crate::{Runtime, ThreadContext, Word, make_string};
-
-    #[test]
-    fn handles_read_the_forwarded_value_after_collection() {
-        let runtime = Runtime::new().expect("runtime");
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("register");
-        let word = make_string(&mut ctx, &runtime, &['x'; 64]).expect("string");
-        let mut scope = Scope::new(&mut ctx);
-        let handle = scope.root::<crate::StringObject>(Local::from_word(word));
-        scope.collect(true).expect("collection");
-        assert_ne!(word, scope.get(handle).as_word());
-    }
-
-    #[test]
-    fn vectors_keep_order_and_can_be_updated() {
-        let runtime = Runtime::new().expect("runtime");
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("register");
-        let mut scope = Scope::new(&mut ctx);
-        let handles = scope.root_many::<Word>(&[
-            Local::from_word(Word::fixnum(1)),
-            Local::from_word(Word::fixnum(2)),
-        ]);
-        assert_eq!(
-            scope
-                .get_many(&handles)
-                .into_iter()
-                .map(Local::as_word)
-                .collect::<Vec<_>>(),
-            vec![Word::fixnum(1), Word::fixnum(2)]
-        );
-        let second = handles.iter().nth(1).copied().expect("second handle");
-        scope.set(second, Local::from_word(Word::fixnum(3)));
-        assert_eq!(scope.get(second).as_word(), Word::fixnum(3));
-    }
-
-    #[test]
-    fn handle_vec_accumulates_under_gc_stress_and_strict_forwarding() {
-        let runtime = Runtime::new().expect("runtime");
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("register");
-        ctx.set_gc_stress(true);
-        ctx.set_strict_forwarding(true);
-        let mut scope = Scope::new(&mut ctx);
-        let mut values: HandleVec<'_, Word> = HandleVec {
-            handles: Vec::new(),
-        };
-        for _ in 0..40 {
-            let word = crate::make_string(scope.ctx, &runtime, &['x'; 8]).expect("string");
-            values.push(&mut scope, Local::from_word(word));
-        }
-        scope.collect(true).expect("collection");
-        assert_eq!(values.len(), 40);
-        assert!(values.iter().all(|handle| {
-            let word = scope.get(*handle).as_word();
-            matches!(
-                crate::classify_object(scope.ctx, word),
-                crate::ObjectRef::String(_)
-            )
-        }));
-    }
-
-    #[test]
-    fn list_construction_keeps_handle_arguments_rooted() {
-        let runtime = Runtime::new().expect("runtime");
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("register");
-        ctx.set_gc_stress(true);
-        ctx.set_strict_forwarding(true);
-        let mut scope = Scope::new(&mut ctx);
-        let car = scope.root(Local::from_word(Word::fixnum(1)));
-        let cdr = scope.root(Local::from_word(Word::NIL));
-        let cons = scope.make_cons(&runtime, car, cdr).expect("cons");
-        scope.collect(true).expect("collection");
-        let cons_word = cons.get(&scope).as_word();
-        assert_eq!(crate::car(scope.ctx, cons_word), Ok(Word::fixnum(1)));
-    }
+    include!("scope_tests.rs");
 }

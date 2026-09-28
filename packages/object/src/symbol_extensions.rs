@@ -59,6 +59,25 @@ pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectErr
     symbol_slot(ctx, symbol, symbol_offset::PLIST)
 }
 
+/// Set a symbol's property list.
+///
+/// # Errors
+/// Returns a type or storage error when the word is not a mutable symbol.
+pub fn set_symbol_plist(
+    ctx: &mut ThreadContext,
+    symbol: Word,
+    plist: Word,
+) -> Result<(), ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::PLIST)?;
+    if symbol == Word::NIL
+        || !ncl_sys::write_object_word(&mut ctx.thread, symbol, symbol_offset::PLIST, plist)
+    {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::PLIST);
+    Ok(())
+}
+
 /// Read a symbol's name object.
 ///
 /// # Errors

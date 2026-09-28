@@ -93,6 +93,11 @@ const PROBES: &[Probe] = &[
         source: "(with-output-to-string (s :element-type 'character) (write-char #\\c s))",
         expected: "\"c\"",
     },
+    Probe {
+        name: "typecase-type-test",
+        source: "(typecase nil (integer 11) (otherwise 12))",
+        expected: "12",
+    },
 ];
 
 const XFAILS: &[XFail] = &[
@@ -184,12 +189,6 @@ const XFAILS: &[XFail] = &[
         name: "defstruct",
         source: "(progn (defstruct point x y) (point-x (make-point :x 3 :y 4)))",
         stderr: "DEFSTRUCT",
-        exit_code: 1,
-    },
-    XFail {
-        name: "typecase-type-test",
-        source: "(typecase nil (integer 11) (otherwise 12))",
-        stderr: "undefined function UNDEFINED-FUNCTION: TYPEP",
         exit_code: 1,
     },
     XFail {

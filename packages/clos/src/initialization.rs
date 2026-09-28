@@ -1,10 +1,12 @@
 //! Typed adapters for the standard CLOS instance initialization protocol.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object,
+    Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller, FunctionDesignator,
+    FunctionObject, Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
+    ObjectType, Package, Parameter, ParameterType, Runtime, ThreadContext, Word, classify_object,
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
+    string_length, string_ref, symbol_name,
 };
 use ncl_object::{Handle, HandleVec, Local, Scope};
 
@@ -156,6 +158,33 @@ fn class_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectErro
         .collect()
 }
 
+fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
+    let name = symbol_name(ctx, symbol)?;
+    let length = string_length(ctx, name)?;
+    (0..length)
+        .map(|index| string_ref(ctx, name, index))
+        .collect()
+}
+
+fn resolve_class(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    if matches!(classify_object(ctx, value), ObjectRef::SimpleVector(_)) {
+        return Ok(value);
+    }
+    if matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
+        let name = symbol_name_string(ctx, value)?;
+        return runtime
+            .class(ctx, &name)
+            // check-added-lines: allow(unbound) class placeholder
+            .filter(|class| *class != Word::UNBOUND)
+            .ok_or(ObjectError::TypeError);
+    }
+    Err(type_error(ctx, value, ObjectType::SimpleVector))
+}
+
 fn initialize_slots<'scope>(
     scope: &mut Scope<'scope>,
     instance: Instance,
@@ -176,12 +205,31 @@ fn initialize_slots<'scope>(
             ObjectRef::SimpleVector(_)
         ) && simple_vector_length(scope.context(), slot)? > 0
         {
-            simple_vector_ref(scope.context(), slot, 0)?
+            let initarg = if simple_vector_length(scope.context(), slot)? > 1 {
+                simple_vector_ref(scope.context(), slot, 1)?
+            } else {
+                Word::NIL
+            };
+            if initarg == Word::NIL {
+                simple_vector_ref(scope.context(), slot, 0)?
+            } else {
+                initarg
+            }
         } else {
             slot
         };
         if let Some(value) = initargs.value_for(key) {
             slot_set(scope.context_mut(), instance, index, value.0)?;
+        } else if matches!(
+            classify_object(scope.context(), slot),
+            ObjectRef::SimpleVector(_)
+        ) && simple_vector_length(scope.context(), slot)? > 2
+        {
+            let default = simple_vector_ref(scope.context(), slot, 2)?;
+            // check-added-lines: allow(unbound) sentinel initialization
+            if default != Word::UNBOUND {
+                slot_set(scope.context_mut(), instance, index, default)?;
+            }
         }
     }
     Ok(())
@@ -194,13 +242,15 @@ fn make_instance_builtin(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut scope = Scope::new(ctx);
-    let class = scope.root(Local::from_word(args.required(0)?));
-    let class_word = scope.get(class).as_word();
+    let class: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let requested_class = scope.get(class).as_word();
+    let class_word = resolve_class(scope.context_mut(), runtime, requested_class)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(class_word));
     let initarg_words = args
         .as_slice()
         .get(1..)
         .ok_or_else(|| type_error(scope.context_mut(), class_word, ObjectType::SimpleVector))?;
-    let initarg_locals = initarg_words
+    let initarg_locals: Vec<Local<'_, Word>> = initarg_words
         .iter()
         .copied()
         .map(Local::from_word)
@@ -217,15 +267,34 @@ fn make_instance_builtin(
         &vec![Word::UNBOUND; slot_count], // check-added-lines: allow(unbound) sentinel initialization
     )?;
     let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(instance.as_word()));
-    let instance = Instance::from_word(scope.get(instance_handle).as_word());
-    initialize_slots(&mut scope, instance, class, &initargs)?;
     values.clear();
-    Ok(scope.get(instance_handle).as_word())
+    let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
+    let (initialize_name, _) = Package::from_word(common_lisp).intern(
+        scope.context_mut(),
+        runtime,
+        "INITIALIZE-INSTANCE",
+    )?;
+    let initialize_function = ncl_object::symbol_function(scope.context(), initialize_name)?;
+    // check-added-lines: allow(unbound) function cell absence is reported as an error
+    if initialize_function == Word::UNBOUND {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let initialize_function: Handle<'_, Word> = scope.root(Local::from_word(initialize_function));
+    let mut call_args = vec![scope.get(instance_handle).as_word()];
+    call_args.extend(scope.get_many(&initargs).into_iter().map(Local::as_word));
+    let initialize_function = FunctionObject::try_from(scope.get(initialize_function).as_word())?;
+    BuiltinFunctionCaller.call_function(
+        scope.context_mut(),
+        runtime,
+        FunctionDesignator::Function(initialize_function),
+        FunctionArguments::new(&call_args),
+        values,
+    )
 }
 
 fn initialize_instance_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
@@ -248,17 +317,59 @@ fn initialize_instance_builtin(
         instance,
     )?));
     initialize_slots(&mut scope, instance, class, &initargs)?;
+    let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
+    let (shared_name, _) = Package::from_word(common_lisp).intern(
+        scope.context_mut(),
+        runtime,
+        "SHARED-INITIALIZE",
+    )?;
+    let shared_function = ncl_object::symbol_function(scope.context(), shared_name)?;
+    // check-added-lines: allow(unbound) function cell absence is reported as an error
+    if shared_function == Word::UNBOUND {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let shared_function: Handle<'_, Word> = scope.root(Local::from_word(shared_function));
+    let mut call_args = vec![scope.get(instance_handle).as_word()];
+    call_args.extend(scope.get_many(&initargs).into_iter().map(Local::as_word));
+    let shared_function = FunctionObject::try_from(scope.get(shared_function).as_word())?;
+    BuiltinFunctionCaller.call_function(
+        scope.context_mut(),
+        runtime,
+        FunctionDesignator::Function(shared_function),
+        FunctionArguments::new(&call_args),
+        values,
+    )?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
 }
 
 fn shared_initialize_builtin(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    initialize_instance_builtin(ctx, runtime, args, values)
+    let mut scope = Scope::new(ctx);
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let instance_word = scope.get(instance_handle).as_word();
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
+    let initarg_locals: Vec<Local<'_, Word>> = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect();
+    let initargs = scope.root_many(&initarg_locals);
+    let instance = instance_argument(scope.context_mut(), instance_word)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
+        scope.context(),
+        instance,
+    )?));
+    initialize_slots(&mut scope, instance, class, &initargs)?;
+    values.clear();
+    Ok(scope.get(instance_handle).as_word())
 }
 
 /// Build the adapted implementation for an initialization descriptor.

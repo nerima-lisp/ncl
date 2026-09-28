@@ -79,12 +79,14 @@ fn clos_add_method_builtin(
                 entry_specializers != specializers || entry_qualifier != qualifier
             });
             ncl_object::with_roots(ctx, &entries, |ctx, roots| {
-                let entry = method_registry_entry(ctx, runtime, specializers, qualifier, function)?;
-                let mut next_entries = roots.iter().map(|root| **root).collect::<Vec<_>>();
-                next_entries.insert(0, entry);
-                let registry = lisp_list(ctx, runtime, &next_entries)?;
-                set_method_registry(ctx, runtime, *name, registry)?;
-                Ok(*name)
+                let mut entry = method_registry_entry(ctx, runtime, specializers, qualifier, function)?;
+                ncl_object::with_root(ctx, &mut entry, |ctx, entry| {
+                    let mut next_entries = roots.iter().map(|root| **root).collect::<Vec<_>>();
+                    next_entries.insert(0, *entry);
+                    let registry = lisp_list(ctx, runtime, &next_entries)?;
+                    set_method_registry(ctx, runtime, *name, registry)?;
+                    Ok(*name)
+                })
             })
         })
     })
@@ -252,7 +254,7 @@ fn clos_dispatch_builtin(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = args.required(0)?;
-    let argument_list = args.required(1)?;
+    let mut argument_list = args.required(1)?;
     let arguments = form_elements(ctx, argument_list)?;
     if !has_method_registry(ctx, runtime, name)? {
         ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction { name }));
@@ -292,19 +294,103 @@ fn clos_dispatch_builtin(
         ctx.set_pending_lisp_error(LispError::Object(ObjectError::Unbound));
         return Err(ObjectError::Unbound);
     }
-    let before_list = lisp_list(ctx, runtime, &before)?;
-    let primary_list = lisp_list(ctx, runtime, &primary)?;
-    let after_list = lisp_list(ctx, runtime, &after)?;
-    let payload = lisp_list(ctx, runtime, &[before_list, primary_list, after_list])?;
-    let core = continuation(ctx, runtime, CONTINUATION_CORE, payload)?;
-    let around = lisp_list(ctx, runtime, &around)?;
-    if around == Word::NIL {
-        invoke_continuation(ctx, runtime, core, &arguments, argument_list, values)
-    } else {
-        let around_payload = lisp_list(ctx, runtime, &[around, core])?;
-        let wrapper = continuation(ctx, runtime, CONTINUATION_AROUND, around_payload)?;
-        invoke_continuation(ctx, runtime, wrapper, &arguments, argument_list, values)
-    }
+    let mut method_words = Vec::new();
+    method_words.extend_from_slice(&before);
+    let primary_start = method_words.len();
+    method_words.extend_from_slice(&primary);
+    let after_start = method_words.len();
+    method_words.extend_from_slice(&after);
+    let around_start = method_words.len();
+    method_words.extend_from_slice(&around);
+    ncl_object::with_root(ctx, &mut argument_list, |ctx, argument_list| {
+        ncl_object::with_roots(ctx, &arguments, |ctx, argument_roots| {
+            ncl_object::with_roots(ctx, &method_words, |ctx, method_roots| {
+                let before = method_roots
+                    .get(..primary_start)
+                    .ok_or(ObjectError::Layout)?
+                    .iter()
+                    .map(|root| **root)
+                    .collect::<Vec<_>>();
+                let primary = method_roots
+                    .get(primary_start..after_start)
+                    .ok_or(ObjectError::Layout)?
+                    .iter()
+                    .map(|root| **root)
+                    .collect::<Vec<_>>();
+                let after = method_roots
+                    .get(after_start..around_start)
+                    .ok_or(ObjectError::Layout)?
+                    .iter()
+                    .map(|root| **root)
+                    .collect::<Vec<_>>();
+                let around = method_roots
+                    .get(around_start..)
+                    .ok_or(ObjectError::Layout)?
+                    .iter()
+                    .map(|root| **root)
+                    .collect::<Vec<_>>();
+                let before_list = lisp_list(ctx, runtime, &before)?;
+                let primary_list = lisp_list(ctx, runtime, &primary)?;
+                let after_list = lisp_list(ctx, runtime, &after)?;
+            ncl_object::with_roots(
+                ctx,
+                &[before_list, primary_list, after_list],
+                |ctx, list_roots| {
+                    let mut payload = lisp_list(
+                        ctx,
+                        runtime,
+                        &[
+                            **list_roots.first().ok_or(ObjectError::Layout)?,
+                            **list_roots.get(1).ok_or(ObjectError::Layout)?,
+                            **list_roots.get(2).ok_or(ObjectError::Layout)?,
+                        ],
+                    )?;
+                    ncl_object::with_root(ctx, &mut payload, |ctx, payload| {
+                        let mut core = continuation(ctx, runtime, CONTINUATION_CORE, *payload)?;
+                        ncl_object::with_root(ctx, &mut core, |ctx, core| {
+                            let mut around_list = lisp_list(ctx, runtime, &around)?;
+                            ncl_object::with_root(ctx, &mut around_list, |ctx, around| {
+                                if *around == Word::NIL {
+                                    return invoke_continuation(
+                                        ctx,
+                                        runtime,
+                                        *core,
+                                        &argument_roots.iter().map(|root| **root).collect::<Vec<_>>(),
+                                        *argument_list,
+                                        values,
+                                    );
+                                }
+                                let mut around_payload =
+                                    lisp_list(ctx, runtime, &[*around, *core])?;
+                                ncl_object::with_root(ctx, &mut around_payload, |ctx, payload| {
+                                    let mut wrapper = continuation(
+                                        ctx,
+                                        runtime,
+                                        CONTINUATION_AROUND,
+                                        *payload,
+                                    )?;
+                                    ncl_object::with_root(ctx, &mut wrapper, |ctx, wrapper| {
+                                        invoke_continuation(
+                                            ctx,
+                                            runtime,
+                                            *wrapper,
+                                            &argument_roots
+                                                .iter()
+                                                .map(|root| **root)
+                                                .collect::<Vec<_>>(),
+                                            *argument_list,
+                                            values,
+                                        )
+                                    })
+                                })
+                            })
+                        })
+                    })
+                },
+            )
+            })
+        })
+    })
 }
 
 fn clos_call_next_method_builtin(

@@ -193,6 +193,7 @@ pub fn check_keywords_builtin(
                 cursor = cdr(ctx, cursor).map_err(|_| ObjectError::TypeError)?;
             }
         } else {
+            // check-added-lines: allow(index) the lambda list requires 2 args before any allowed keyword.
             allowed_words.extend_from_slice(&args.as_slice()[2..]);
         }
         for (keyword, _) in &entries {

@@ -244,6 +244,7 @@ extern "C" fn make_rest_list_native(
                     for word in rest_words {
                         arguments.push(word);
                         let index = arguments.len().saturating_sub(1);
+                        // check-added-lines: allow(index) index is the element just pushed above.
                         let token = ncl_object::push_heap_root(object, &mut arguments[index]);
                         argument_tokens.push(token);
                     }

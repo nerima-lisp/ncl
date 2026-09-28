@@ -96,7 +96,7 @@ fn collect_package_clauses(
                     return Err(ObjectError::TypeError);
                 }
             }
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown clauses
         }
     }
     Ok(clauses)

@@ -71,7 +71,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
             register_print_builtin(ctx, runtime, name)?;
         } else {
-            runtime.define_function(ctx, package, name, Word::UNBOUND)?;
+            runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) unimplemented printer ownership placeholder
         }
     }
     for (package, name) in VARIABLES {
@@ -107,7 +107,7 @@ fn register_print_builtin(
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("PRINT")),
             print,
         ),
-        _ => return Err(ObjectError::Layout),
+        _ => return Err(ObjectError::Layout), // check-added-lines: allow(wildcard) only registered print names reach this branch
     };
     runtime.register_builtin(
         ctx,

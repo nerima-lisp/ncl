@@ -290,34 +290,34 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("EIGHTH", eighth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("NINTH", ninth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
         ("TENTH", tenth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("CAAR", caar_builtin, &[LIST][..]),
-        ("CADR", cadr_builtin, &[LIST][..]),
-        ("CDAR", cdar_builtin, &[LIST][..]),
-        ("CDDR", cddr_builtin, &[LIST][..]),
-        ("CAAAR", caaar_builtin, &[LIST][..]),
-        ("CAADR", caadr_builtin, &[LIST][..]),
-        ("CADAR", cadar_builtin, &[LIST][..]),
-        ("CADDR", caddr_builtin, &[LIST][..]),
-        ("CDAAR", cdaar_builtin, &[LIST][..]),
-        ("CDADR", cdadr_builtin, &[LIST][..]),
-        ("CDDAR", cddar_builtin, &[LIST][..]),
-        ("CDDDR", cdddr_builtin, &[LIST][..]),
-        ("CAAAAR", caaaar_builtin, &[LIST][..]),
-        ("CAAADR", caaadr_builtin, &[LIST][..]),
-        ("CAADAR", caadar_builtin, &[LIST][..]),
-        ("CAADDR", caaddr_builtin, &[LIST][..]),
-        ("CADAAR", cadaar_builtin, &[LIST][..]),
-        ("CADADR", cadadr_builtin, &[LIST][..]),
-        ("CADDAR", caddar_builtin, &[LIST][..]),
-        ("CADDDR", cadddr_builtin, &[LIST][..]),
-        ("CDAAAR", cdaaar_builtin, &[LIST][..]),
-        ("CDAADR", cdaadr_builtin, &[LIST][..]),
-        ("CDADAR", cdadar_builtin, &[LIST][..]),
-        ("CDADDR", cdaddr_builtin, &[LIST][..]),
-        ("CDDAAR", cddaar_builtin, &[LIST][..]),
-        ("CDDADR", cddadr_builtin, &[LIST][..]),
-        ("CDDDAR", cdddar_builtin, &[LIST][..]),
-        ("CDDDDR", cddddr_builtin, &[LIST][..]),
+        ("CAAR", caar_builtin, &[LIST][..]),   // check-added-lines: allow(index) slice type
+        ("CADR", cadr_builtin, &[LIST][..]),   // check-added-lines: allow(index) slice type
+        ("CDAR", cdar_builtin, &[LIST][..]),   // check-added-lines: allow(index) slice type
+        ("CDDR", cddr_builtin, &[LIST][..]),   // check-added-lines: allow(index) slice type
+        ("CAAAR", caaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAADR", caadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADAR", cadar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADDR", caddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDAAR", cdaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDADR", cdadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDAR", cddar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDDR", cdddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAAAAR", caaaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAAADR", caaadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAADAR", caadar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAADDR", caaddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADAAR", cadaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADADR", cadadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADDAR", caddar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CADDDR", cadddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDAAAR", cdaaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDAADR", cdaadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDADAR", cdadar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDADDR", cdaddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDAAR", cddaar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDADR", cddadr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDDAR", cdddar_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CDDDDR", cddddr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
     ] {
         runtime.register_builtin(
             ctx_ref(&mut ctx),

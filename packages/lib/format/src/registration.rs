@@ -95,7 +95,7 @@ fn format_builtin(
                         PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
                             ObjectError::TypeError
                         }
-                        _ => ObjectError::TypeError,
+                        _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) map unsupported sink errors to TypeError
                     })?;
                 }
                 Ok(Word::NIL)

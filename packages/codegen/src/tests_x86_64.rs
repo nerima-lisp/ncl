@@ -283,10 +283,8 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
         .enumerate()
         .position(|(offset, bytes)| {
             bytes == [0x41, 0xff, 0xd3]
-                && compiled.code.get(offset + 3..offset + 7)
-                    == Some(&[0x48, 0x83, 0xc4, 0x10][..])
-                && compiled.code.get(offset + 7..offset + 10)
-                    == Some(&[0x4d, 0x8b, 0x97][..])
+                && compiled.code.get(offset + 3..offset + 7) == Some(&[0x48, 0x83, 0xc4, 0x10][..])
+                && compiled.code.get(offset + 7..offset + 10) == Some(&[0x4d, 0x8b, 0x97][..])
         })
         .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
     let catch_compare = compiled.code[cleanup_call + 3..]
@@ -294,7 +292,10 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
         .position(|bytes| bytes == [0x4d, 0x39, 0xda])
         .map(|offset| cleanup_call + 3 + offset)
         .ok_or_else(|| "catch tag comparison after cleanup builtin missing".to_owned())?;
-    assert_eq!(&compiled.code[catch_compare + 3..catch_compare + 5], [0x0f, 0x85]);
+    assert_eq!(
+        &compiled.code[catch_compare + 3..catch_compare + 5],
+        [0x0f, 0x85]
+    );
     Ok(())
 }
 

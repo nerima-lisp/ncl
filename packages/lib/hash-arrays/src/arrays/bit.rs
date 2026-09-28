@@ -63,12 +63,7 @@ fn bit_binary_builtin(
         {
             return Err(ObjectError::TypeError);
         }
-        let result = bit_result(
-            ctx,
-            runtime,
-            &dimensions,
-            has_result.then_some(*roots[2]),
-        )?;
+        let result = bit_result(ctx, runtime, &dimensions, has_result.then_some(*roots[2]))?;
         with_roots(ctx, &[result], |ctx, result| {
             let total = dimensions
                 .iter()
@@ -103,12 +98,7 @@ pub(super) fn bit_not_builtin(
         if array_element_type(ctx, *roots[0])? != ArrayElementType::Bit {
             return Err(ObjectError::TypeError);
         }
-        let result = bit_result(
-            ctx,
-            runtime,
-            &dimensions,
-            has_result.then_some(*roots[1]),
-        )?;
+        let result = bit_result(ctx, runtime, &dimensions, has_result.then_some(*roots[1]))?;
         with_roots(ctx, &[result], |ctx, result| {
             let total = dimensions
                 .iter()

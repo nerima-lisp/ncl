@@ -419,11 +419,11 @@ fn build_x86_64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
     )?;
     emit(
         &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 0), X86Reg::R10),
+        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 8), X86Reg::R10),
     )?;
     emit(
         &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 8), X86Reg::R15),
+        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 16), X86Reg::R15),
     )?;
     emit(
         &mut assembler,

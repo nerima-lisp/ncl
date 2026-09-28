@@ -73,6 +73,11 @@ const PROBES: &[Probe] = &[
         source: "(multiple-value-bind (a b) (values 1 2) (+ a b))",
         expected: "3",
     },
+    Probe {
+        name: "typecase-type-test",
+        source: "(typecase nil (integer 11) (otherwise 12))",
+        expected: "12",
+    },
 ];
 
 const XFAILS: &[XFail] = &[
@@ -164,12 +169,6 @@ const XFAILS: &[XFail] = &[
         name: "defstruct",
         source: "(progn (defstruct point x y) (point-x (make-point :x 3 :y 4)))",
         stderr: "DEFSTRUCT",
-        exit_code: 1,
-    },
-    XFail {
-        name: "typecase-type-test",
-        source: "(typecase nil (integer 11) (otherwise 12))",
-        stderr: "undefined function UNDEFINED-FUNCTION: TYPEP",
         exit_code: 1,
     },
     XFail {

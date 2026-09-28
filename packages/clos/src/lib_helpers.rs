@@ -115,16 +115,18 @@ fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, Ob
 fn method_definition_parts(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    encoded: Word,
+    mut encoded: Word,
 ) -> Result<(Word, Word), ObjectError> {
-    let fields = form_elements(ctx, encoded)?;
-    let tag = ncl_symbol(ctx, runtime, "*CLOS-METHOD-DEFINITION*")?;
-    if fields.first().copied() == Some(tag) {
-        let qualifier = *fields.get(1).ok_or(ObjectError::TypeError)?;
-        let specializers = *fields.get(2).ok_or(ObjectError::TypeError)?;
-        return Ok((specializers, qualifier));
-    }
-    Ok((encoded, Word::fixnum(METHOD_QUALIFIER_PRIMARY)))
+    ncl_object::with_root(ctx, &mut encoded, |ctx, encoded| {
+        let fields = form_elements(ctx, *encoded)?;
+        let tag = ncl_symbol(ctx, runtime, "*CLOS-METHOD-DEFINITION*")?;
+        if fields.first().copied() == Some(tag) {
+            let qualifier = *fields.get(1).ok_or(ObjectError::TypeError)?;
+            let specializers = *fields.get(2).ok_or(ObjectError::TypeError)?;
+            return Ok((specializers, qualifier));
+        }
+        Ok((*encoded, Word::fixnum(METHOD_QUALIFIER_PRIMARY)))
+    })
 }
 
 fn method_registry_key(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
@@ -134,60 +136,66 @@ fn method_registry_key(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Wor
 fn method_registry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    name: Word,
+    mut name: Word,
 ) -> Result<Word, ObjectError> {
-    let key = method_registry_key(ctx, runtime)?;
-    let mut plist = symbol_plist(ctx, name)?;
-    while plist != Word::NIL {
-        let property = car(ctx, plist)?;
-        if car(ctx, property)? == key {
-            return cdr(ctx, property);
+    ncl_object::with_root(ctx, &mut name, |ctx, name| {
+        let key = method_registry_key(ctx, runtime)?;
+        let mut plist = symbol_plist(ctx, *name)?;
+        while plist != Word::NIL {
+            let property = car(ctx, plist)?;
+            if car(ctx, property)? == key {
+                return cdr(ctx, property);
+            }
+            plist = cdr(ctx, plist)?;
         }
-        plist = cdr(ctx, plist)?;
-    }
-    Ok(Word::NIL)
+        Ok(Word::NIL)
+    })
 }
 
 fn has_method_registry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    name: Word,
+    mut name: Word,
 ) -> Result<bool, ObjectError> {
-    let key = method_registry_key(ctx, runtime)?;
-    let mut plist = symbol_plist(ctx, name)?;
-    while plist != Word::NIL {
-        let property = car(ctx, plist)?;
-        if car(ctx, property)? == key {
-            return Ok(true);
+    ncl_object::with_root(ctx, &mut name, |ctx, name| {
+        let key = method_registry_key(ctx, runtime)?;
+        let mut plist = symbol_plist(ctx, *name)?;
+        while plist != Word::NIL {
+            let property = car(ctx, plist)?;
+            if car(ctx, property)? == key {
+                return Ok(true);
+            }
+            plist = cdr(ctx, plist)?;
         }
-        plist = cdr(ctx, plist)?;
-    }
-    Ok(false)
+        Ok(false)
+    })
 }
 
 fn set_method_registry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    name: Word,
+    mut name: Word,
     registry: Word,
 ) -> Result<(), ObjectError> {
-    let key = method_registry_key(ctx, runtime)?;
-    let old_plist = symbol_plist(ctx, name)?;
-    ncl_object::with_roots(ctx, &[name, key, registry, old_plist], |ctx, roots| {
-        let mut property = make_cons(
-            ctx,
-            runtime,
-            **roots.get(1).ok_or(ObjectError::Layout)?,
-            **roots.get(2).ok_or(ObjectError::Layout)?,
-        )?;
-        ncl_object::with_root(ctx, &mut property, |ctx, property| {
-            let plist = make_cons(
+    ncl_object::with_root(ctx, &mut name, |ctx, name| {
+        let key = method_registry_key(ctx, runtime)?;
+        let old_plist = symbol_plist(ctx, *name)?;
+        ncl_object::with_roots(ctx, &[*name, key, registry, old_plist], |ctx, roots| {
+            let mut property = make_cons(
                 ctx,
                 runtime,
-                *property,
-                **roots.get(3).ok_or(ObjectError::Layout)?,
+                **roots.get(1).ok_or(ObjectError::Layout)?,
+                **roots.get(2).ok_or(ObjectError::Layout)?,
             )?;
-            set_symbol_plist(ctx, **roots.first().ok_or(ObjectError::Layout)?, plist)
+            ncl_object::with_root(ctx, &mut property, |ctx, property| {
+                let plist = make_cons(
+                    ctx,
+                    runtime,
+                    *property,
+                    **roots.get(3).ok_or(ObjectError::Layout)?,
+                )?;
+                set_symbol_plist(ctx, **roots.first().ok_or(ObjectError::Layout)?, plist)
+            })
         })
     })
 }

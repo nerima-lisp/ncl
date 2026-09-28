@@ -135,6 +135,8 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
         }
         let mut start = Word::NIL;
         let mut end = Word::NIL;
+        let mut has_start = false;
+        let mut has_end = false;
         let mut allow_other_keys = false;
         let mut unknown_keyword = false;
         let mut cursor = 2;
@@ -142,14 +144,16 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
             let key = *spec_parts.get(cursor).ok_or(ObjectError::Layout)?;
             let value = *spec_parts.get(cursor + 1).ok_or(ObjectError::TypeError)?;
             if is_keyword(ctx, runtime, key, "START")? {
-                if start != Word::NIL {
+                if has_start {
                     return Err(ObjectError::TypeError);
                 }
+                has_start = true;
                 start = value;
             } else if is_keyword(ctx, runtime, key, "END")? {
-                if end != Word::NIL {
+                if has_end {
                     return Err(ObjectError::TypeError);
                 }
+                has_end = true;
                 end = value;
             } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
                 allow_other_keys |= value != Word::NIL;
@@ -173,13 +177,13 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
         let end_index = held.len();
         held.push(end);
         let mut stream_indexes = vec![string_index];
-        if start != Word::NIL || end != Word::NIL {
-            if start == Word::NIL {
+        if has_start || has_end {
+            if !has_start {
                 *held.get_mut(start_index).ok_or(ObjectError::Layout)? = Word::fixnum(0);
             }
             stream_indexes.push(start_index);
         }
-        if end != Word::NIL {
+        if has_end {
             stream_indexes.push(end_index);
         }
         let stream = held_form(

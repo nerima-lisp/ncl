@@ -471,7 +471,7 @@ fn x86_64_prologue_loads_overflow_arguments_from_r9() {
 }
 
 #[test]
-fn x86_64_prologue_uses_load_arg_result_values() {
+fn x86_64_prologue_initializes_load_arg_sources() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(78),
         "load-arg-result-values",
@@ -502,21 +502,27 @@ fn x86_64_prologue_uses_load_arg_result_values() {
     );
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
-    assert_eq!(allocation.location(left), Some(Location::Register(13)));
-    assert_eq!(allocation.location(right), Some(Location::Register(11)));
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(1)),
+        Some(Location::Register(12))
+    );
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(2)),
+        Some(Location::Register(13))
+    );
     let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
         .unwrap_or_else(|error| panic!("entry parameter lowering: {error:?}"));
     assert!(
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xf6])
+            .any(|bytes| bytes == [0x49, 0x89, 0xf4])
     );
     assert!(
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xd4])
+            .any(|bytes| bytes == [0x49, 0x89, 0xd5])
     );
 }
 

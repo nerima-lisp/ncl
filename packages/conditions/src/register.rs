@@ -259,7 +259,7 @@ fn error_builtin(
                 eprintln!("{message}");
             }
             // check-added-lines: allow(unsupported) unhandled condition propagation
-            Err(ObjectError::Unsupported)
+            Err(ObjectError::Unsupported) // check-added-lines: allow(unsupported) propagate unhandled condition
         }
         Err(error) => Err(error),
     }

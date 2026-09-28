@@ -44,39 +44,218 @@ macro_rules! define_composed_builtin {
     };
 }
 
-define_composed_builtin!(caar_builtin, caar_implementation, domain::list::car, domain::list::car);
-fn cadr_implementation(ctx: &ThreadContext, runtime: &Runtime, value: List) -> Result<ncl_object::Word, LispError> {
+define_composed_builtin!(
+    caar_builtin,
+    caar_implementation,
+    domain::list::car,
+    domain::list::car
+);
+fn cadr_implementation(
+    ctx: &ThreadContext,
+    runtime: &Runtime,
+    value: List,
+) -> Result<ncl_object::Word, LispError> {
     let value = domain::list::cdr(ctx, runtime, value)?;
     let value = List::from_lisp_arg(ctx, value)?;
     domain::list::car(ctx, runtime, value)
 }
 ncl_object::typed_builtin!(cadr_builtin, cadr_implementation, (value: List));
-define_composed_builtin!(cdar_builtin, cdar_implementation, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cddr_builtin, cddr_implementation, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(caaar_builtin, caaar_implementation, domain::list::car, domain::list::car, domain::list::car);
-define_composed_builtin!(caadr_builtin, caadr_implementation, domain::list::cdr, domain::list::car, domain::list::car);
-define_composed_builtin!(cadar_builtin, cadar_implementation, domain::list::car, domain::list::cdr, domain::list::car);
-define_composed_builtin!(caddr_builtin, caddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::car);
-define_composed_builtin!(cdaar_builtin, cdaar_implementation, domain::list::car, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cdadr_builtin, cdadr_implementation, domain::list::cdr, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cddar_builtin, cddar_implementation, domain::list::car, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(cdddr_builtin, cdddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(caaaar_builtin, caaaar_implementation, domain::list::car, domain::list::car, domain::list::car, domain::list::car);
-define_composed_builtin!(caaadr_builtin, caaadr_implementation, domain::list::cdr, domain::list::car, domain::list::car, domain::list::car);
-define_composed_builtin!(caadar_builtin, caadar_implementation, domain::list::car, domain::list::cdr, domain::list::car, domain::list::car);
-define_composed_builtin!(caaddr_builtin, caaddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::car, domain::list::car);
-define_composed_builtin!(cadaar_builtin, cadaar_implementation, domain::list::car, domain::list::car, domain::list::cdr, domain::list::car);
-define_composed_builtin!(cadadr_builtin, cadadr_implementation, domain::list::cdr, domain::list::car, domain::list::cdr, domain::list::car);
-define_composed_builtin!(caddar_builtin, caddar_implementation, domain::list::car, domain::list::cdr, domain::list::cdr, domain::list::car);
-define_composed_builtin!(cadddr_builtin, cadddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::cdr, domain::list::car);
-define_composed_builtin!(cdaaar_builtin, cdaaar_implementation, domain::list::car, domain::list::car, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cdaadr_builtin, cdaadr_implementation, domain::list::cdr, domain::list::car, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cdadar_builtin, cdadar_implementation, domain::list::car, domain::list::cdr, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cdaddr_builtin, cdaddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::car, domain::list::cdr);
-define_composed_builtin!(cddaar_builtin, cddaar_implementation, domain::list::car, domain::list::car, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(cddadr_builtin, cddadr_implementation, domain::list::cdr, domain::list::car, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(cdddar_builtin, cdddar_implementation, domain::list::car, domain::list::cdr, domain::list::cdr, domain::list::cdr);
-define_composed_builtin!(cddddr_builtin, cddddr_implementation, domain::list::cdr, domain::list::cdr, domain::list::cdr, domain::list::cdr);
+define_composed_builtin!(
+    cdar_builtin,
+    cdar_implementation,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cddr_builtin,
+    cddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    caaar_builtin,
+    caaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    caadr_builtin,
+    caadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    cadar_builtin,
+    cadar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    caddr_builtin,
+    caddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    cdaar_builtin,
+    cdaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdadr_builtin,
+    cdadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cddar_builtin,
+    cddar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdddr_builtin,
+    cdddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    caaaar_builtin,
+    caaaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    caaadr_builtin,
+    caaadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    caadar_builtin,
+    caadar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    caaddr_builtin,
+    caaddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::car
+);
+define_composed_builtin!(
+    cadaar_builtin,
+    cadaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    cadadr_builtin,
+    cadadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    caddar_builtin,
+    caddar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    cadddr_builtin,
+    cadddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::car
+);
+define_composed_builtin!(
+    cdaaar_builtin,
+    cdaaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdaadr_builtin,
+    cdaadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdadar_builtin,
+    cdadar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdaddr_builtin,
+    cdaddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cddaar_builtin,
+    cddaar_implementation,
+    domain::list::car,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cddadr_builtin,
+    cddadr_implementation,
+    domain::list::cdr,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cdddar_builtin,
+    cdddar_implementation,
+    domain::list::car,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::cdr
+);
+define_composed_builtin!(
+    cddddr_builtin,
+    cddddr_implementation,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::cdr,
+    domain::list::cdr
+);
 
 #[allow(clippy::too_many_lines)]
 /// Register the implemented list and sequence builtins.

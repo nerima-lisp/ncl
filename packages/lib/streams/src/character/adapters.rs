@@ -5,12 +5,18 @@ use super::{
     simple_vector_set, state_kind, stream_from_args, stream_or_default, string_length,
     string_output_at_line_start, string_ref, with_root, write_to_stream,
 };
-use ncl_object::{stream_state, with_roots};
+use ncl_object::{stream_state, symbol_package, with_roots};
 
-fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+fn keyword_name(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<String, ObjectError> {
     let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {
         return Err(ObjectError::TypeError);
     };
+    let keyword_package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::TypeError)?;
+    if symbol_package(ctx, symbol)? != keyword_package {
+        return Err(ObjectError::TypeError);
+    }
     let name = ncl_object::symbol_name(ctx, symbol)?;
     (0..ncl_object::string_length(ctx, name)?)
         .map(|index| ncl_object::string_ref(ctx, name, index))
@@ -19,6 +25,7 @@ fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> 
 
 fn bounds(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     first_option: usize,
     length: usize,
@@ -42,7 +49,7 @@ fn bounds(
         };
     }
     while index < args.len() {
-        let name = keyword_name(ctx, args.get(index).ok_or(ObjectError::Layout)?)?;
+        let name = keyword_name(ctx, runtime, args.get(index).ok_or(ObjectError::Layout)?)?;
         let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
         let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
@@ -67,7 +74,7 @@ pub fn write_string_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
-    let (start, end) = bounds(ctx, args, 2, string_length(ctx, string)?)?;
+    let (start, end) = bounds(ctx, runtime, args, 2, string_length(ctx, string)?)?;
     with_roots(ctx, &[string, stream.into()], |ctx, roots| {
         for index in start..end {
             let string = roots.first().ok_or(ObjectError::Layout)?;
@@ -87,7 +94,7 @@ pub fn write_line_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
-    let (start, end) = bounds(ctx, args, 2, string_length(ctx, string)?)?;
+    let (start, end) = bounds(ctx, runtime, args, 2, string_length(ctx, string)?)?;
     with_roots(ctx, &[string, stream.into()], |ctx, roots| {
         for index in start..end {
             let string = roots.first().ok_or(ObjectError::Layout)?;
@@ -140,7 +147,7 @@ pub fn make_string_input_adapter(
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
     let length = string_length(ctx, string)?;
-    let (start, end) = bounds(ctx, args, 1, length)?;
+    let (start, end) = bounds(ctx, runtime, args, 1, length)?;
     with_root(ctx, &mut string.clone(), |ctx, string| {
         let state = make_simple_vector(
             ctx,

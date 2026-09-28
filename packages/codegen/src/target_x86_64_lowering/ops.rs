@@ -100,12 +100,14 @@ fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(),
 }
 
 fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
+    let mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
+        .map_err(|_| CodegenError::FrameOverflow)?;
     emit(
         assembler,
         Inst::BinRI(
             BinOp::And,
             FUNCTION_OBJECT,
-            i32::from_ne_bytes((!ncl_sys::LOWTAG_MASK as u32).to_ne_bytes()),
+            mask,
         ),
     )
 }

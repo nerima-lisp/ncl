@@ -203,7 +203,10 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
     let tag = builder.add_constant(Constant::Fixnum(1));
     let tag = builder
         .push_op(OpKind::Const { result: tag }, &[Ty::Word])
-        .map_err(|error| format!("catch tag: {error:?}"))?[0];
+        .map_err(|error| format!("catch tag: {error:?}"))?
+        .first()
+        .copied()
+        .ok_or_else(|| "catch tag result missing".to_owned())?;
     let protected = builder.create_block(Vec::new());
     let cleanup = builder.create_block(Vec::new());
     let catch_handler = builder.create_block(Vec::new());
@@ -277,14 +280,16 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
 
     let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
         .map_err(|error| format!("compile: {error:?}"))?;
+    const CLEANUP_EPILOGUE: &[u8] = &[0x48, 0x83, 0xc4, 0x10];
+    const CATCH_TAG_LOAD: &[u8] = &[0x4d, 0x8b, 0x97];
     let cleanup_call = compiled
         .code
         .windows(3)
         .enumerate()
         .position(|(offset, bytes)| {
-            bytes == [0x41, 0xff, 0xd3]
-                && compiled.code.get(offset + 3..offset + 7) == Some([0x48, 0x83, 0xc4, 0x10].as_slice())
-                && compiled.code.get(offset + 7..offset + 10) == Some([0x4d, 0x8b, 0x97].as_slice())
+            matches!(bytes, [0x41, 0xff, 0xd3])
+                && compiled.code.get(offset + 3..offset + 7) == Some(CLEANUP_EPILOGUE)
+                && compiled.code.get(offset + 7..offset + 10) == Some(CATCH_TAG_LOAD)
         })
         .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
     let catch_bytes = compiled

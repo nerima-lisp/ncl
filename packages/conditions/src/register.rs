@@ -3,8 +3,8 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
-    Parameter, ParameterType, Runtime, ThreadContext, Word, set_symbol_special, slot_ref,
-    string_length, string_ref, symbol_name,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, make_cons, set_symbol_special,
+    slot_ref, string_length, string_ref, symbol_name, with_roots,
 };
 
 use crate::class::{HIERARCHY, install_class, wire_superclass};
@@ -154,6 +154,7 @@ fn condition_argument(
     runtime: &Runtime,
     value: Word,
     default_class: &str,
+    format_arguments: &[Word],
 ) -> Result<Word, ObjectError> {
     if crate::condition_class_of(ctx, value).is_ok() {
         return Ok(value);
@@ -161,12 +162,49 @@ fn condition_argument(
     if string_text(ctx, value).is_some() {
         let class =
             crate::condition_class(ctx, runtime, default_class).ok_or(ObjectError::Layout)?;
-        return crate::make_condition(ctx, runtime, class, &[value])
-            .map_err(condition_object_error);
+        let mut class = class.as_word();
+        let class_token = ncl_object::push_root(ctx, &mut class);
+        let mut value = value;
+        let value_token = ncl_object::push_root(ctx, &mut value);
+        let result = (|| {
+            let arguments = argument_list(ctx, runtime, format_arguments)?;
+            with_roots(ctx, &[arguments], |ctx, roots| {
+                let arguments = **roots.first().ok_or(ObjectError::Layout)?;
+                crate::make_condition(
+                    ctx,
+                    runtime,
+                    crate::ConditionClass::from_word(class),
+                    &[value, arguments],
+                )
+                .map_err(condition_object_error)
+            })
+        })();
+        ncl_object::pop_root(ctx, value_token);
+        ncl_object::pop_root(ctx, class_token);
+        return result;
     }
     let class_name = symbol_text(ctx, value)?;
     let class = crate::condition_class(ctx, runtime, &class_name).ok_or(ObjectError::TypeError)?;
     crate::make_condition(ctx, runtime, class, &[]).map_err(condition_object_error)
+}
+
+fn argument_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
+    with_roots(ctx, values, |ctx, roots| {
+        let mut list = Word::NIL;
+        let token = ncl_object::push_root(ctx, &mut list);
+        let result = (|| {
+            for value in roots.iter().rev() {
+                list = make_cons(ctx, runtime, **value, list)?;
+            }
+            Ok(list)
+        })();
+        ncl_object::pop_root(ctx, token);
+        result
+    })
 }
 
 fn signal_builtin(
@@ -175,10 +213,18 @@ fn signal_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(ctx, runtime, args.required(0)?, "SIMPLE-CONDITION")?;
-    crate::signal(ctx, condition)
-        .map(|()| Word::NIL)
-        .map_err(condition_object_error)
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        args.required(0)?,
+        "SIMPLE-CONDITION",
+        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
+    )?;
+    let result = with_roots(ctx, &[condition], |ctx, roots| {
+        let condition = **roots.first().ok_or(ObjectError::Layout)?;
+        crate::signal(ctx, condition).map_err(condition_object_error)
+    });
+    result.map(|()| Word::NIL)
 }
 
 fn error_builtin(
@@ -188,17 +234,30 @@ fn error_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
-    let condition = condition_argument(ctx, runtime, value, "SIMPLE-ERROR")?;
-    match crate::error(ctx, condition) {
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        value,
+        "SIMPLE-ERROR",
+        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
+    )?;
+    let result = with_roots(ctx, &[condition], |ctx, roots| {
+        let condition = **roots.first().ok_or(ObjectError::Layout)?;
+        crate::error(ctx, condition).map_err(|error| match error {
+            crate::ConditionError::Unhandled => ObjectError::Unsupported,
+            error => condition_object_error(error),
+        })
+    });
+    match result {
         Ok(()) => Ok(Word::NIL),
-        Err(crate::ConditionError::Unhandled) => {
+        Err(ObjectError::Unsupported) => {
             if let Some(message) = string_text(ctx, value) {
                 eprintln!("{message}");
             }
             // check-added-lines: allow(unsupported) unhandled condition propagation
             Err(ObjectError::Unsupported)
         }
-        Err(error) => Err(condition_object_error(error)),
+        Err(error) => Err(error),
     }
 }
 
@@ -208,10 +267,18 @@ fn warn_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(ctx, runtime, args.required(0)?, "SIMPLE-WARNING")?;
-    crate::warn(ctx, condition)
-        .map(|()| Word::NIL)
-        .map_err(condition_object_error)
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        args.required(0)?,
+        "SIMPLE-WARNING",
+        args.as_slice().get(1..).ok_or(ObjectError::Layout)?,
+    )?;
+    let result = with_roots(ctx, &[condition], |ctx, roots| {
+        let condition = **roots.first().ok_or(ObjectError::Layout)?;
+        crate::warn(ctx, condition).map_err(condition_object_error)
+    });
+    result.map(|()| Word::NIL)
 }
 
 fn cerror_builtin(
@@ -220,10 +287,22 @@ fn cerror_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(ctx, runtime, args.required(1)?, "SIMPLE-ERROR")?;
-    crate::cerror(ctx, runtime, Word::NIL, Word::NIL, condition)
-        .map(|()| Word::NIL)
-        .map_err(condition_object_error)
+    let continue_control = args.required(0)?;
+    let format_arguments = args.as_slice().get(2..).ok_or(ObjectError::Layout)?;
+    let continue_args = argument_list(ctx, runtime, format_arguments)?;
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        args.required(1)?,
+        "SIMPLE-ERROR",
+        format_arguments,
+    )?;
+    let result = with_roots(ctx, &[condition], |ctx, roots| {
+        let condition = **roots.first().ok_or(ObjectError::Layout)?;
+        crate::cerror(ctx, runtime, continue_control, continue_args, condition)
+            .map_err(condition_object_error)
+    });
+    result.map(|()| Word::NIL)
 }
 
 fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {

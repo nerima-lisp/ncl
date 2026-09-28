@@ -72,7 +72,8 @@ fn registers_and_composes_all_cadr_family_builtins() {
     for name in names {
         let argument = nested_argument(&runtime, &mut ctx, &functions, name);
         ncl_object::with_roots(&mut ctx, &[argument], |ctx, roots| {
-            let _ = call(&runtime, ctx, &functions, name, &[*roots[0]]);
+            let actual = call(&runtime, ctx, &functions, name, &[*roots[0]]);
+            assert_eq!(actual, Word::fixnum(42), "{name}");
             Ok::<_, ncl_object::ObjectError>(())
         })
         .unwrap_or_else(|error| panic!("{name} root failed: {error:?}"));

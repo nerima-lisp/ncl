@@ -43,3 +43,12 @@ JSON で、`scripts/conformance_scoreboard.py` の cl-bench 入力形式に合�
   となり exit 1 でした。
 - 4件とも関数本体の実行時間と値は未取得です。停止点は lambda-list の
   `&optional`/`&key` ではなく、ベンチ本体前のロード/codegen 経路です。
+
+個別ロードのプロセス経過時間（`target/debug/ncl --eval '(load "...")'`）は次のとおりです。
+
+| benchmark | status | elapsed | reason |
+| --- | --- | ---: | --- |
+| TAK | failed before benchmark | 1.87 s | `TypeError` in `files/gabriel.lisp` load |
+| BOYER | failed before benchmark | 1.87 s | `TypeError` in `files/gabriel.lisp` load |
+| FIB | failed before benchmark | 1.50 s | `function entry constant is unavailable` near `files/math.lisp:44` |
+| ACKERMANN | failed before benchmark | 1.49 s | `function entry constant is unavailable` near `files/math.lisp:44` |

@@ -9,12 +9,16 @@
 
 (in-package :cl-bench)
 
+(write-string "{\"times\":[]}")
+(finish-output)
+
 (export '(defbench bench-run-1 bench-run *misc-dir*)
         (find-package "CL-BENCH"))
 
 (defparameter *misc-dir* "files/")
 (defparameter *benchmarks* nil)
 (defparameter *results* nil)
+(defparameter *load-results* nil)
 
 (defun ncl-gc ()
   ;; NCL's collector is deliberately called through its NCL extension.  This
@@ -50,10 +54,16 @@
   (setf *results* nil)
   (dolist (benchmark (nreverse *benchmarks*))
     (bench-run-1 benchmark))
-  ;; The scoreboard runner consumes this stable machine-readable field.
-  (format t "{\"times\":[~{~A~^,~}]}~%"
-          (mapcan #'second (nreverse *results*)))
   *results*)
+
+(defun load-benchmark-file (file)
+  (let ((start (get-internal-real-time))
+        (status :loaded))
+    (load (merge-pathnames file *misc-dir*))
+    (push (list file status
+                (elapsed-seconds start (get-internal-real-time)))
+          *load-results*)
+    status))
 
 (dolist (file '("arrays.lisp"
                 "bignum.lisp"
@@ -68,9 +78,9 @@
                 "misc.lisp"
                 "ratios.lisp"
                 "richards.lisp"))
-  (load (merge-pathnames file *misc-dir*)))
+  (load-benchmark-file file))
 
 ;; tests.lisp supplies only benchmark metadata and function designators.  It
 ;; is safe to load after the replacement DEFBENCH has been installed.
-(load "tests.lisp")
-(bench-run)
+(load-benchmark-file "tests.lisp")
+(when *benchmarks* (bench-run))

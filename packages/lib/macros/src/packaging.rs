@@ -359,7 +359,7 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        for intern_index in clauses.intern_indexes {
+        for intern_index in clauses.intern_indexes.iter().copied() {
             let quoted_intern = held_quote(ctx, runtime, &mut held, intern_index)?;
             statements.push(held_form(
                 ctx,

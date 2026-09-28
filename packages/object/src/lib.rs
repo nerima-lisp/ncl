@@ -53,7 +53,6 @@ pub use code::{
 };
 pub use cons::{rplaca, rplacd};
 pub use context::ThreadContext;
-pub use ncl_sys::RootSlot;
 pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
 };
@@ -67,6 +66,7 @@ pub use layout::{
     symbol_flag, symbol_offset, widetag,
 };
 pub use load::LoadPort;
+pub use ncl_sys::RootSlot;
 pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,

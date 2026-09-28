@@ -200,10 +200,25 @@ pub fn read_char_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
+    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_value = args.get(2).unwrap_or(Word::NIL);
     next_character(ctx, stream)?.map_or_else(
-        || Ok(args.get(2).unwrap_or(Word::NIL)),
+        || eof_result(ctx, eof_error_p, eof_value),
         |character| Ok(Word::character(u32::from(character))),
     )
+}
+
+fn eof_result(
+    ctx: &mut ThreadContext,
+    eof_error_p: Word,
+    eof_value: Word,
+) -> Result<Word, ObjectError> {
+    if eof_error_p == Word::NIL {
+        Ok(eof_value)
+    } else {
+        ctx.set_pending_lisp_error(ncl_object::LispError::EndOfFile);
+        Err(ObjectError::TypeError)
+    }
 }
 
 pub fn unread_char_adapter(
@@ -270,6 +285,8 @@ pub fn read_line_adapter(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
+    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_value = args.get(2).unwrap_or(Word::NIL);
     let mut characters = Vec::new();
     let mut ended = false;
     while let Some(character) = next_character(ctx, stream)? {
@@ -278,6 +295,11 @@ pub fn read_line_adapter(
             break;
         }
         characters.push(character);
+    }
+    if characters.is_empty() && !ended {
+        let value = eof_result(ctx, eof_error_p, eof_value)?;
+        values.set(&[value, Word::NIL]);
+        return Ok(value);
     }
     let line = make_string(ctx, runtime, &characters)?;
     values.set(&[line, if ended { Word::NIL } else { Word::TRUE }]);
@@ -291,6 +313,8 @@ pub fn read_byte_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
+    let eof_error_p = args.get(1).unwrap_or(Word::TRUE);
+    let eof_value = args.get(2).unwrap_or(Word::NIL);
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;
     let kind = state_kind(ctx, state)?;
@@ -299,7 +323,7 @@ pub fn read_byte_adapter(
         let mut byte = [0_u8; 1];
         let count = std::io::Read::read(&mut input, &mut byte).map_err(|_| ObjectError::Layout)?;
         return byte.first().copied().filter(|_| count != 0).map_or_else(
-            || Ok(args.get(2).unwrap_or(Word::NIL)),
+            || eof_result(ctx, eof_error_p, eof_value),
             |value| Ok(Word::fixnum(i64::from(value))),
         );
     }
@@ -310,7 +334,7 @@ pub fn read_byte_adapter(
             set_position(ctx, state, POSITION, position.saturating_add(1))?;
             return Ok(Word::fixnum(i64::from(byte)));
         }
-        return Ok(args.get(2).unwrap_or(Word::NIL));
+        return eof_result(ctx, eof_error_p, eof_value);
     }
     if kind != StreamKind::Data {
         return Err(ObjectError::TypeError);
@@ -318,7 +342,7 @@ pub fn read_byte_adapter(
     let position = position(ctx, state, POSITION)?;
     let length = simple_vector_length(ctx, state)?.saturating_sub(DATA);
     if position >= length {
-        return Ok(args.get(2).unwrap_or(Word::NIL));
+        return eof_result(ctx, eof_error_p, eof_value);
     }
     let byte = simple_vector_ref(ctx, state, DATA + position)?
         .as_fixnum()

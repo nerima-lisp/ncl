@@ -181,11 +181,9 @@ pub fn peek_char_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream_index = usize::from(args.len() > 1);
-    let stream = if args.is_empty() {
-        crate::standard::lookup(ctx, runtime, "*STANDARD-INPUT*")?
-    } else {
-        stream_from_args(args, stream_index)?
+    let stream = match args.get(0) {
+        None | Some(Word::NIL) => crate::standard::lookup(ctx, runtime, "*STANDARD-INPUT*")?,
+        Some(_) => stream_from_args(args, 0)?,
     };
     peek_character(ctx, stream)?.map_or_else(
         || Ok(args.get(3).unwrap_or(Word::NIL)),

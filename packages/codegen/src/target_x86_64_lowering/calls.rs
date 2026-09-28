@@ -25,26 +25,31 @@ pub fn lower_call(
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
     emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    let overflow_count = u32::try_from(rest.len().saturating_sub(ARGUMENT_REGISTERS.len()))
+        .map_err(|_| CodegenError::FrameOverflow)?;
+    if overflow_count > 0 {
+        emit(
+            assembler,
+            Inst::Lea(
+                REST_ARGUMENT,
+                slot_mem_of(
+                    slots
+                        .outgoing_base
+                        .checked_add(overflow_count - 1)
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )?,
+            ),
+        )?;
+    }
     for (index, argument) in rest.iter().enumerate() {
         if let Some(register) = ARGUMENT_REGISTERS.get(index) {
             load_slot(assembler, slots, *argument, *register)?;
         } else {
             let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
                 .map_err(|_| CodegenError::FrameOverflow)?;
-            if extra == 0 {
-                emit(
-                    assembler,
-                    Inst::Lea(
-                        REST_ARGUMENT,
-                        slot_mem_of(
-                            slots
-                                .outgoing_base
-                                .checked_add(extra)
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                    ),
-                )?;
-            }
+            let slot = overflow_count
+                .checked_sub(extra.checked_add(1).ok_or(CodegenError::FrameOverflow)?)
+                .ok_or(CodegenError::FrameOverflow)?;
             load_slot(assembler, slots, *argument, FUNCTION_OBJECT)?;
             emit(
                 assembler,
@@ -52,7 +57,7 @@ pub fn lower_call(
                     slot_mem_of(
                         slots
                             .outgoing_base
-                            .checked_add(extra)
+                            .checked_add(slot)
                             .ok_or(CodegenError::FrameOverflow)?,
                     )?,
                     FUNCTION_OBJECT,
@@ -132,22 +137,24 @@ pub fn lower_closure_call(
     let total = capture_count
         .checked_add(rest.len())
         .ok_or(CodegenError::FrameOverflow)?;
+    let overflow_count = u32::try_from(total.saturating_sub(ARGUMENT_REGISTERS.len()))
+        .map_err(|_| CodegenError::FrameOverflow)?;
+    if overflow_count > 0 {
+        emit(
+            assembler,
+            Inst::Lea(
+                REST_ARGUMENT,
+                slot_mem_of(
+                    slots
+                        .outgoing_base
+                        .checked_add(overflow_count - 1)
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )?,
+            ),
+        )?;
+    }
     for index in 0..total {
         let target = ARGUMENT_REGISTERS.get(index).copied();
-        if target.is_none() && index == ARGUMENT_REGISTERS.len() {
-            emit(
-                assembler,
-                Inst::Lea(
-                    REST_ARGUMENT,
-                    slot_mem_of(
-                        slots
-                            .outgoing_base
-                            .checked_add(0)
-                            .ok_or(CodegenError::FrameOverflow)?,
-                    )?,
-                ),
-            )?;
-        }
         if index < capture_count {
             let offset = i32::try_from(
                 ncl_object::function_offset::CAPTURES
@@ -174,13 +181,16 @@ pub fn lower_closure_call(
             } else {
                 let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
                     .map_err(|_| CodegenError::FrameOverflow)?;
+                let slot = overflow_count
+                    .checked_sub(extra.checked_add(1).ok_or(CodegenError::FrameOverflow)?)
+                    .ok_or(CodegenError::FrameOverflow)?;
                 emit(
                     assembler,
                     Inst::MovMR(
                         slot_mem_of(
                             slots
                                 .outgoing_base
-                                .checked_add(extra)
+                                .checked_add(slot)
                                 .ok_or(CodegenError::FrameOverflow)?,
                         )?,
                         ENTRY,

@@ -234,7 +234,14 @@ fn x86_64_closure_call_keeps_captures_in_argument_registers() -> Result<(), Stri
         .push_op(
             OpKind::CallClosure {
                 closure,
-                args: vec![argc, argument, second_argument],
+                args: vec![
+                    argc,
+                    argument,
+                    second_argument,
+                    argument,
+                    second_argument,
+                    argument,
+                ],
                 named_symbol: None,
             },
             &[Ty::Word],
@@ -275,6 +282,18 @@ fn x86_64_closure_call_keeps_captures_in_argument_registers() -> Result<(), Stri
     assert!(
         code.windows(3).any(|bytes| bytes == [0x4c, 0x89, 0x5d]),
         "fifth closure argument was not spilled through the outgoing ABI area: {code:02x?}"
+    );
+    let outgoing_store_displacements = code
+        .windows(4)
+        .filter_map(|bytes| (bytes[..3] == [0x4c, 0x89, 0x5d]).then_some(bytes[3]))
+        .collect::<Vec<_>>();
+    assert!(
+        outgoing_store_displacements.windows(4).any(|window| {
+            window[1] == window[0].wrapping_add(8)
+                && window[2] == window[1].wrapping_add(8)
+                && window[3] == window[2].wrapping_add(8)
+        }),
+        "closure overflow arguments must pack from the lowest address: {outgoing_store_displacements:02x?} in {code:02x?}"
     );
     Ok(())
 }

@@ -51,6 +51,8 @@
   (setf *results* nil)
   (dolist (benchmark (nreverse *benchmarks*))
     (bench-run-1 benchmark))
+  (format t "{\"times\":[~{~A~^,~}]}~%"
+          (mapcan #'second (nreverse *results*)))
   *results*)
 
 (defun load-benchmark-file (file)

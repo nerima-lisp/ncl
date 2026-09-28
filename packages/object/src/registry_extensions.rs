@@ -21,18 +21,47 @@ impl Runtime {
     /// # Errors
     /// Returns an allocation or layout error.
     pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
-        let mut name_word = make_string(ctx, self, &name.chars().collect::<Vec<_>>())?;
+        let canonical_name = if name == "CL" { "COMMON-LISP" } else { name };
+        if let Some(package) = self.resolve_package(ctx, canonical_name)? {
+            if canonical_name == "COMMON-LISP" && self.resolve_package(ctx, "CL")?.is_none() {
+                self.register_common_lisp_nickname(ctx, package)?;
+            }
+            return Ok(package);
+        }
+        let mut name_word = make_string(ctx, self, &canonical_name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
-            let table = Self::table(&self.packages)?;
-            if let Some(package) = HashTable::from_word(table).get(context, *name_word)? {
+            if let Some(package) = self.resolve_package(context, canonical_name)? {
+                if canonical_name == "COMMON-LISP" && self.resolve_package(context, "CL")?.is_none()
+                {
+                    self.register_common_lisp_nickname(context, package)?;
+                }
                 return Ok(package);
             }
-            let mut package = Package::new(context, self, name)?.as_word();
+            let mut package = Package::new(context, self, canonical_name)?.as_word();
             crate::with_root(context, &mut package, |context, package| {
                 HashTable::from_word(Self::table(&self.packages)?)
                     .insert(context, self, *name_word, *package)
             })?;
+            if canonical_name == "COMMON-LISP" {
+                self.register_common_lisp_nickname(context, package)?;
+            }
             Ok(package)
+        })
+    }
+
+    fn register_common_lisp_nickname(
+        &self,
+        ctx: &mut ThreadContext,
+        package: Word,
+    ) -> Result<(), ObjectError> {
+        let mut package = package;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut nickname = make_string(ctx, self, &['C', 'L'])?;
+            crate::with_root(ctx, &mut nickname, |ctx, nickname| {
+                Package::from_word(*package).add_nickname(ctx, self, *nickname)?;
+                HashTable::from_word(Self::table(&self.packages)?)
+                    .insert(ctx, self, *nickname, *package)
+            })
         })
     }
 
@@ -144,82 +173,73 @@ impl Runtime {
         })
     }
 
-    #[must_use]
-    pub fn find_package(&self, context: &ThreadContext, name: &str) -> Option<Word> {
-        let table = Self::table(&self.packages).ok()?;
+    fn resolve_package(
+        &self,
+        context: &ThreadContext,
+        name: &str,
+    ) -> Result<Option<Word>, ObjectError> {
+        let table = Self::table(&self.packages)?;
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;
-        let mut common_lisp_alias = None;
         let mut failure = None;
-        HashTable::from_word(table)
-            .for_each_entry(context, |_, package| {
-                if result.is_some() || failure.is_some() {
+        HashTable::from_word(table).for_each_entry(context, |_, package| {
+            if result.is_some() || failure.is_some() {
+                return;
+            }
+            let package = match Package::try_from_word(context, package) {
+                Ok(package) => package,
+                Err(error) => {
+                    failure = Some(error);
                     return;
                 }
-                let package = match Package::try_from_word(context, package) {
-                    Ok(package) => package,
-                    Err(error) => {
-                        failure = Some(error);
-                        return;
-                    }
+            };
+            let matches = |word: Word| {
+                string_length(context, word).ok() == Some(name_chars.len())
+                    && name_chars
+                        .iter()
+                        .enumerate()
+                        .all(|(i, c)| string_ref(context, word, i) == Ok(*c))
+            };
+            let package_name = match package.name(context) {
+                Ok(package_name) => package_name,
+                Err(error) => {
+                    failure = Some(error);
+                    return;
+                }
+            };
+            if matches(package_name) {
+                result = Some(package.as_word());
+                return;
+            }
+            let mut nicknames = match package.nicknames(context) {
+                Ok(nicknames) => nicknames,
+                Err(error) => {
+                    failure = Some(error);
+                    return;
+                }
+            };
+            while nicknames != Word::NIL {
+                let Some(nickname) = ncl_sys::read_cons_word(&context.thread, nicknames, 0) else {
+                    failure = Some(ObjectError::Layout);
+                    return;
                 };
-                let matches = |word: Word| {
-                    string_length(context, word).ok() == Some(name_chars.len())
-                        && name_chars
-                            .iter()
-                            .enumerate()
-                            .all(|(i, c)| string_ref(context, word, i) == Ok(*c))
-                };
-                let package_name = match package.name(context) {
-                    Ok(package_name) => package_name,
-                    Err(error) => {
-                        failure = Some(error);
-                        return;
-                    }
-                };
-                if matches(package_name) {
+                if matches(nickname) {
                     result = Some(package.as_word());
+                    break;
+                }
+                let Some(next) = ncl_sys::read_cons_word(&context.thread, nicknames, 1) else {
+                    failure = Some(ObjectError::Layout);
                     return;
-                }
-                if name == "CL"
-                    && string_length(context, package_name).ok() == Some(11)
-                    && (0..11)
-                        .zip("COMMON-LISP".chars())
-                        .all(|(index, character)| {
-                            string_ref(context, package_name, index) == Ok(character)
-                        })
-                {
-                    common_lisp_alias = Some(package.as_word());
-                }
-                let mut nicknames = match package.nicknames(context) {
-                    Ok(nicknames) => nicknames,
-                    Err(error) => {
-                        failure = Some(error);
-                        return;
-                    }
                 };
-                while nicknames != Word::NIL {
-                    let Some(nickname) = ncl_sys::read_cons_word(&context.thread, nicknames, 0)
-                    else {
-                        failure = Some(ObjectError::Layout);
-                        return;
-                    };
-                    if matches(nickname) {
-                        result = Some(package.as_word());
-                        break;
-                    }
-                    let Some(next) = ncl_sys::read_cons_word(&context.thread, nicknames, 1) else {
-                        failure = Some(ObjectError::Layout);
-                        return;
-                    };
-                    nicknames = next;
-                }
-            })
-            .ok()?;
-        if failure.is_some() {
-            return None;
-        }
-        result.or(common_lisp_alias)
+                nicknames = next;
+            }
+        })?;
+        failure.map_or(Ok(result), Err)
+    }
+
+    #[must_use]
+    pub fn find_package(&self, context: &ThreadContext, name: &str) -> Option<Word> {
+        self.resolve_package(context, name).ok().flatten()
     }
 
     #[must_use]

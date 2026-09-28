@@ -193,6 +193,112 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
 }
 
 #[test]
+fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), String> {
+    let mut builder = ncl_ir::FunctionBuilder::new(
+        ncl_ir::FunctionId(76),
+        "catch-unwind-cleanup-dispatch",
+        Vec::new(),
+        vec![],
+    );
+    let tag = builder.add_constant(Constant::Fixnum(1));
+    let tag = builder
+        .push_op(OpKind::Const { result: tag }, &[Ty::Word])
+        .map_err(|error| format!("catch tag: {error:?}"))?[0];
+    let protected = builder.create_block(Vec::new());
+    let cleanup = builder.create_block(Vec::new());
+    let catch_handler = builder.create_block(Vec::new());
+
+    let catch = ncl_ir::HandlerRegionId(1);
+    let unwind = ncl_ir::HandlerRegionId(2);
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: catch,
+        kind: ncl_ir::HandlerKind::Catch,
+        protected: vec![ncl_ir::BlockId(0), protected, cleanup],
+        handler: catch_handler,
+        cleanup: None,
+        catch_tag: Some(tag),
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: unwind,
+        kind: ncl_ir::HandlerKind::UnwindProtect,
+        protected: vec![protected],
+        handler: cleanup,
+        cleanup: Some(cleanup),
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: Some(catch),
+    });
+    builder
+        .push_op(OpKind::EnterHandler { region: catch }, &[])
+        .map_err(|error| format!("enter catch: {error:?}"))?;
+    builder
+        .push_op(OpKind::EnterHandler { region: unwind }, &[])
+        .map_err(|error| format!("enter unwind-protect: {error:?}"))?;
+    builder
+        .terminate(Terminator::Jump {
+            target: protected,
+            args: Vec::new(),
+        })
+        .map_err(|error| format!("entry jump: {error:?}"))?;
+
+    builder
+        .position_at(protected)
+        .map_err(|error| format!("protected block: {error}"))?;
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .map_err(|error| format!("protected return: {error:?}"))?;
+
+    builder
+        .position_at(cleanup)
+        .map_err(|error| format!("cleanup block: {error}"))?;
+    builder
+        .push_op(
+            OpKind::Builtin {
+                name: "cleanup-test".to_owned(),
+                args: Vec::new(),
+            },
+            &[],
+        )
+        .map_err(|error| format!("cleanup builtin: {error:?}"))?;
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .map_err(|error| format!("cleanup return: {error:?}"))?;
+
+    builder
+        .position_at(catch_handler)
+        .map_err(|error| format!("catch handler: {error}"))?;
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .map_err(|error| format!("catch return: {error:?}"))?;
+
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .map_err(|error| format!("compile: {error:?}"))?;
+    let cleanup_call = compiled
+        .code
+        .windows(3)
+        .enumerate()
+        .position(|(offset, bytes)| {
+            bytes == [0x41, 0xff, 0xd3]
+                && compiled.code.get(offset + 3..offset + 7)
+                    == Some(&[0x48, 0x83, 0xc4, 0x10][..])
+                && compiled.code.get(offset + 7..offset + 10)
+                    == Some(&[0x4d, 0x8b, 0x97][..])
+        })
+        .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
+    let catch_compare = compiled.code[cleanup_call + 3..]
+        .windows(3)
+        .position(|bytes| bytes == [0x4d, 0x39, 0xda])
+        .map(|offset| cleanup_call + 3 + offset)
+        .ok_or_else(|| "catch tag comparison after cleanup builtin missing".to_owned())?;
+    assert_eq!(&compiled.code[catch_compare + 3..catch_compare + 5], [0x0f, 0x85]);
+    Ok(())
+}
+
+#[test]
 fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(73),

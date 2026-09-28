@@ -39,6 +39,7 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(eighth '(a b))", "NIL"),
         ("(ninth '(a b))", "NIL"),
         ("(tenth '(a b))", "NIL"),
+        ("(cadr '(a b))", "COMMON-LISP-USER:B"),
         ("(list 1 2)", "(1 2)"),
         ("(append '(1) '(2))", "(1 2)"),
         ("(nconc (list 1) (list 2))", "(1 2)"),
@@ -87,7 +88,7 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(rassoc 1 '((a . 1)))", "(COMMON-LISP-USER:A . 1)"),
         ("(member 2 '(1 2))", "(2)"),
     ];
-    assert_eq!(cases.len(), 67);
+    assert_eq!(cases.len(), 68);
     for (source, expected) in cases {
         let (success, actual) = eval(source);
         assert!(success, "{source} failed");

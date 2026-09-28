@@ -88,8 +88,13 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
             let handler_class = handler.class(ctx).map_err(ConditionError::from)?;
             if class_matches(ctx, class.as_word(), handler_class)? {
                 let previous = handler.previous(ctx).map_err(ConditionError::from)?;
+                let cluster_head = records::cluster_head(ctx);
                 records::set_cluster_head(ctx, previous);
-                let result = ncl_object::with_roots(ctx, &[head], |ctx, head_root| {
+                let result = ncl_object::with_roots(ctx, &[head, cluster_head], |ctx, roots| {
+                    records::set_cluster_head(
+                        ctx,
+                        **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?,
+                    );
                     let result = handler.function(ctx).and_then(|function| {
                         ncl_object::with_roots(ctx, &[function, condition], |ctx, roots| {
                             ctx.invoke_condition_handler(
@@ -100,7 +105,7 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
                     });
                     records::set_cluster_head(
                         ctx,
-                        **head_root.first().ok_or(ncl_object::ObjectError::Layout)?,
+                        **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?,
                     );
                     result
                 });

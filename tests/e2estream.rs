@@ -279,3 +279,11 @@ fn file_stream_round_trip_uses_a_temporary_file() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "(T 4 \"abc\" T)\n");
     std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
 }
+
+#[test]
+fn format_t_writes_to_standard_output() {
+    let output = run("(format t \"hi~%\")");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "hi\nNIL\n");
+}

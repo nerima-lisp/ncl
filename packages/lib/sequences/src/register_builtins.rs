@@ -6,20 +6,22 @@ use super::register_extra::{
     substitute_entry, union_entry,
 };
 use super::{
-    DESTINATION_TYPE, INDEX, LIST, ONE_OBJECT, REST, SEQUENCE, TWO_OBJECTS, append_builtin,
-    atom_builtin, car_builtin, cdr_builtin, concatenate_builtin, cons_builtin, cons_p_builtin,
-    copy_list_builtin, copy_seq_builtin, count_entry, direct_descriptor, domain, eighth_builtin,
-    elt_builtin, endp_builtin, fifth_builtin, find_entry, first_builtin, fourth_builtin,
-    length_builtin, list_builtin, list_length_builtin, list_p_builtin, list_star_builtin,
-    mismatch_entry, nconc_builtin, ninth_builtin, nreverse_builtin, nth_builtin, nthcdr_builtin,
-    position_entry, register_adapted, register_direct, reverse_builtin, rplaca_builtin,
-    rplacd_builtin, search_entry, second_builtin, seventh_builtin, sixth_builtin, subseq_builtin,
-    tenth_builtin, third_builtin,
+    DESTINATION_TYPE, INDEX, LIST, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
+    append_builtin, atom_builtin, car_builtin, cdr_builtin, concatenate_builtin, cons_builtin,
+    cons_p_builtin, copy_list_builtin, copy_seq_builtin, count_entry, direct_descriptor, domain,
+    eighth_builtin, elt_builtin, endp_builtin, fifth_builtin, find_entry, first_builtin,
+    fourth_builtin, length_builtin, list_builtin, list_length_builtin, list_p_builtin,
+    list_star_builtin, mismatch_entry, nconc_builtin, ninth_builtin, nreverse_builtin, nth_builtin,
+    nthcdr_builtin, position_entry, register_adapted, register_direct, reverse_builtin,
+    rplaca_builtin, rplacd_builtin, search_entry, second_builtin, seventh_builtin, sixth_builtin,
+    subseq_builtin, tenth_builtin, third_builtin,
 };
 use ncl_object::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FromLispArg, LambdaList, LispError, List, ObjectError, Runtime, ThreadContext,
 };
+
+const LIST_PARAMETERS: &[Parameter] = &[LIST];
 
 macro_rules! composed_list_accessor {
     ($name:ident, $($accessor:path),+ $(,)?) => {
@@ -271,53 +273,53 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("CONSP", cons_p_builtin, ONE_OBJECT),
         ("LISTP", list_p_builtin, ONE_OBJECT),
         ("ENDP", endp_builtin, ONE_OBJECT),
-        ("CAR", car_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("CDR", cdr_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
+        ("CAR", car_builtin, LIST_PARAMETERS),
+        ("CDR", cdr_builtin, LIST_PARAMETERS),
         ("CONS", cons_builtin, TWO_OBJECTS),
         ("RPLACA", rplaca_builtin, TWO_OBJECTS),
         ("RPLACD", rplacd_builtin, TWO_OBJECTS),
-        ("COPY-LIST", copy_list_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("NTH", nth_builtin, &[INDEX, LIST][..]),      // check-added-lines: allow(index) slice type
+        ("COPY-LIST", copy_list_builtin, LIST_PARAMETERS),
+        ("NTH", nth_builtin, &[INDEX, LIST][..]), // check-added-lines: allow(index) slice type
         ("NTHCDR", nthcdr_builtin, &[INDEX, LIST][..]), // check-added-lines: allow(index) slice type
-        ("LIST-LENGTH", list_length_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("FIRST", first_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("SECOND", second_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("THIRD", third_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("FOURTH", fourth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("FIFTH", fifth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("SIXTH", sixth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("SEVENTH", seventh_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("EIGHTH", eighth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("NINTH", ninth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("TENTH", tenth_builtin, &[LIST][..]), // check-added-lines: allow(index) slice type
-        ("CAAR", caar_builtin, &[LIST][..]),
-        ("CADR", cadr_builtin, &[LIST][..]),
-        ("CDAR", cdar_builtin, &[LIST][..]),
-        ("CDDR", cddr_builtin, &[LIST][..]),
-        ("CAAAR", caaar_builtin, &[LIST][..]),
-        ("CAADR", caadr_builtin, &[LIST][..]),
-        ("CADAR", cadar_builtin, &[LIST][..]),
-        ("CADDR", caddr_builtin, &[LIST][..]),
-        ("CDAAR", cdaar_builtin, &[LIST][..]),
-        ("CDADR", cdadr_builtin, &[LIST][..]),
-        ("CDDAR", cddar_builtin, &[LIST][..]),
-        ("CDDDR", cdddr_builtin, &[LIST][..]),
-        ("CAAAAR", caaaar_builtin, &[LIST][..]),
-        ("CAAADR", caaadr_builtin, &[LIST][..]),
-        ("CAADAR", caadar_builtin, &[LIST][..]),
-        ("CAADDR", caaddr_builtin, &[LIST][..]),
-        ("CADAAR", cadaar_builtin, &[LIST][..]),
-        ("CADADR", cadadr_builtin, &[LIST][..]),
-        ("CADDAR", caddar_builtin, &[LIST][..]),
-        ("CADDDR", cadddr_builtin, &[LIST][..]),
-        ("CDAAAR", cdaaar_builtin, &[LIST][..]),
-        ("CDAADR", cdaadr_builtin, &[LIST][..]),
-        ("CDADAR", cdadar_builtin, &[LIST][..]),
-        ("CDADDR", cdaddr_builtin, &[LIST][..]),
-        ("CDDAAR", cddaar_builtin, &[LIST][..]),
-        ("CDDADR", cddadr_builtin, &[LIST][..]),
-        ("CDDDAR", cdddar_builtin, &[LIST][..]),
-        ("CDDDDR", cddddr_builtin, &[LIST][..]),
+        ("LIST-LENGTH", list_length_builtin, LIST_PARAMETERS),
+        ("FIRST", first_builtin, LIST_PARAMETERS),
+        ("SECOND", second_builtin, LIST_PARAMETERS),
+        ("THIRD", third_builtin, LIST_PARAMETERS),
+        ("FOURTH", fourth_builtin, LIST_PARAMETERS),
+        ("FIFTH", fifth_builtin, LIST_PARAMETERS),
+        ("SIXTH", sixth_builtin, LIST_PARAMETERS),
+        ("SEVENTH", seventh_builtin, LIST_PARAMETERS),
+        ("EIGHTH", eighth_builtin, LIST_PARAMETERS),
+        ("NINTH", ninth_builtin, LIST_PARAMETERS),
+        ("TENTH", tenth_builtin, LIST_PARAMETERS),
+        ("CAAR", caar_builtin, LIST_PARAMETERS),
+        ("CADR", cadr_builtin, LIST_PARAMETERS),
+        ("CDAR", cdar_builtin, LIST_PARAMETERS),
+        ("CDDR", cddr_builtin, LIST_PARAMETERS),
+        ("CAAAR", caaar_builtin, LIST_PARAMETERS),
+        ("CAADR", caadr_builtin, LIST_PARAMETERS),
+        ("CADAR", cadar_builtin, LIST_PARAMETERS),
+        ("CADDR", caddr_builtin, LIST_PARAMETERS),
+        ("CDAAR", cdaar_builtin, LIST_PARAMETERS),
+        ("CDADR", cdadr_builtin, LIST_PARAMETERS),
+        ("CDDAR", cddar_builtin, LIST_PARAMETERS),
+        ("CDDDR", cdddr_builtin, LIST_PARAMETERS),
+        ("CAAAAR", caaaar_builtin, LIST_PARAMETERS),
+        ("CAAADR", caaadr_builtin, LIST_PARAMETERS),
+        ("CAADAR", caadar_builtin, LIST_PARAMETERS),
+        ("CAADDR", caaddr_builtin, LIST_PARAMETERS),
+        ("CADAAR", cadaar_builtin, LIST_PARAMETERS),
+        ("CADADR", cadadr_builtin, LIST_PARAMETERS),
+        ("CADDAR", caddar_builtin, LIST_PARAMETERS),
+        ("CADDDR", cadddr_builtin, LIST_PARAMETERS),
+        ("CDAAAR", cdaaar_builtin, LIST_PARAMETERS),
+        ("CDAADR", cdaadr_builtin, LIST_PARAMETERS),
+        ("CDADAR", cdadar_builtin, LIST_PARAMETERS),
+        ("CDADDR", cdaddr_builtin, LIST_PARAMETERS),
+        ("CDDAAR", cddaar_builtin, LIST_PARAMETERS),
+        ("CDDADR", cddadr_builtin, LIST_PARAMETERS),
+        ("CDDDAR", cdddar_builtin, LIST_PARAMETERS),
+        ("CDDDDR", cddddr_builtin, LIST_PARAMETERS),
     ] {
         runtime.register_builtin(
             ctx_ref(&mut ctx),

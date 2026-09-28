@@ -54,6 +54,7 @@ pub fn stream_or_default(
     name: &str,
 ) -> Result<Stream, ObjectError> {
     match args.get(index) {
+        Some(word) if word == Word::TRUE => crate::standard::lookup(ctx, runtime, "*TERMINAL-IO*"),
         Some(word) if word != Word::NIL => Ok(Stream::from_word(word)),
         Some(_) | None => crate::standard::lookup(ctx, runtime, name),
     }

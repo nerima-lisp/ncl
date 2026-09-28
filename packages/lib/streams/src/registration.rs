@@ -23,6 +23,29 @@ const BYTE_PARAMETER: Parameter = Parameter {
     ty: ParameterType::Integer,
 };
 
+const PEEK_CHAR_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("peek-type"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("input-stream"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("eof-error-p"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("eof-value"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("recursive-p"),
+        ty: ParameterType::Any,
+    },
+];
+
 const OPEN_NAME: &str = "OPEN";
 const FILE_POSITION_NAME: &str = "FILE-POSITION";
 const FILE_LENGTH_NAME: &str = "FILE-LENGTH";
@@ -266,13 +289,7 @@ fn register_character_builtins(
         (
             PEEK_CHAR_NAME,
             Builtin {
-                lambda_list: LambdaList::with_rest(
-                    &[],
-                    Parameter {
-                        name: BuiltinName::new("arguments"),
-                        ty: ParameterType::Any,
-                    },
-                ),
+                lambda_list: LambdaList::with_optional(&[], PEEK_CHAR_PARAMETERS),
                 convention: BuiltinConvention::Adapted,
             },
             peek_char_adapter,

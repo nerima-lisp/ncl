@@ -48,7 +48,7 @@ fn input_stream_honors_bounds_peek_unread_and_read_line() {
         .unwrap();
 
     assert_eq!(
-        runtime.call_builtin(&mut ctx, peek_char, &[stream]),
+        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, stream]),
         Ok(Word::character(u32::from('o')))
     );
     assert_eq!(

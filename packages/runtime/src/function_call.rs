@@ -232,6 +232,28 @@ mod tests {
     }
 
     #[test]
+    fn generic_builtin_trampoline_forwards_all_list_arguments() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        for (count, expected) in [
+            (7, "(1 2 3 4 5 6 7)"),
+            (8, "(1 2 3 4 5 6 7 8)"),
+            (10, "(1 2 3 4 5 6 7 8 9 10)"),
+        ] {
+            let form = format!(
+                "(list {})",
+                (1..=count)
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            let value = runtime
+                .eval(&form)
+                .unwrap_or_else(|error| panic!("evaluating {form}: {error:?}"));
+            assert_eq!(runtime.format_result(value), expected);
+        }
+    }
+
+    #[test]
     #[cfg(target_arch = "aarch64")]
     fn make_rest_list_survives_gc_stress_and_strict_forwarding() {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

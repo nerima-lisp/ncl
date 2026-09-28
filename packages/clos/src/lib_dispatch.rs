@@ -255,18 +255,14 @@ fn invoke_dispatch(
     mut argument_list: Word,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let before = methods.first().ok_or(ObjectError::Layout)?;
-    let primary = methods.get(1).ok_or(ObjectError::Layout)?;
-    let after = methods.get(2).ok_or(ObjectError::Layout)?;
-    let around = methods.get(3).ok_or(ObjectError::Layout)?;
     let mut method_words = Vec::new();
-    method_words.extend_from_slice(before);
+    method_words.extend_from_slice(methods.first().ok_or(ObjectError::Layout)?);
     let primary_start = method_words.len();
-    method_words.extend_from_slice(primary);
+    method_words.extend_from_slice(methods.get(1).ok_or(ObjectError::Layout)?);
     let after_start = method_words.len();
-    method_words.extend_from_slice(after);
+    method_words.extend_from_slice(methods.get(2).ok_or(ObjectError::Layout)?);
     let around_start = method_words.len();
-    method_words.extend_from_slice(around);
+    method_words.extend_from_slice(methods.get(3).ok_or(ObjectError::Layout)?);
     ncl_object::with_root(ctx, &mut argument_list, |ctx, argument_list| {
         ncl_object::with_roots(ctx, arguments, |ctx, argument_roots| {
             ncl_object::with_roots(ctx, &method_words, |ctx, method_roots| {

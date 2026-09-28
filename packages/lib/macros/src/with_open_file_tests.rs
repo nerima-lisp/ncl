@@ -21,20 +21,21 @@ fn expands_open_once_and_closes_only_a_non_nil_stream() -> Result<(), ObjectErro
 
     let expansion = expand(&mut ctx, &runtime, input)?;
     let let_parts = elements(&mut ctx, expansion)?;
-    assert_eq!(let_parts[0], symbol(&mut ctx, &runtime, "LET")?);
-    let bindings = elements(&mut ctx, let_parts[1])?;
-    let binding = elements(&mut ctx, bindings[0])?;
-    assert_eq!(binding[0], stream);
-    let open = elements(&mut ctx, binding[1])?;
-    assert_eq!(open[0], symbol(&mut ctx, &runtime, "OPEN")?);
-    assert_eq!(open[1], path);
+    let let_head = *let_parts.first().ok_or(ObjectError::TypeError)?;
+    if let_head != symbol(&mut ctx, &runtime, "LET")? { return Err(ObjectError::TypeError); }
+    let bindings = elements(&mut ctx, *let_parts.get(1).ok_or(ObjectError::TypeError)?)?;
+    let binding = elements(&mut ctx, *bindings.first().ok_or(ObjectError::TypeError)?)?;
+    if *binding.first().ok_or(ObjectError::TypeError)? != stream { return Err(ObjectError::TypeError); }
+    let open = elements(&mut ctx, *binding.get(1).ok_or(ObjectError::TypeError)?)?;
+    if *open.first().ok_or(ObjectError::TypeError)? != symbol(&mut ctx, &runtime, "OPEN")? { return Err(ObjectError::TypeError); }
+    if *open.get(1).ok_or(ObjectError::TypeError)? != path { return Err(ObjectError::TypeError); }
 
-    let unwind = elements(&mut ctx, let_parts[2])?;
-    assert_eq!(unwind[0], symbol(&mut ctx, &runtime, "UNWIND-PROTECT")?);
-    let cleanup = elements(&mut ctx, unwind[2])?;
-    assert_eq!(cleanup[0], symbol(&mut ctx, &runtime, "WHEN")?);
-    let close = elements(&mut ctx, cleanup[2])?;
-    assert_eq!(close, vec![symbol(&mut ctx, &runtime, "CLOSE")?, stream]);
+    let unwind = elements(&mut ctx, *let_parts.get(2).ok_or(ObjectError::TypeError)?)?;
+    if *unwind.first().ok_or(ObjectError::TypeError)? != symbol(&mut ctx, &runtime, "UNWIND-PROTECT")? { return Err(ObjectError::TypeError); }
+    let cleanup = elements(&mut ctx, *unwind.get(2).ok_or(ObjectError::TypeError)?)?;
+    if *cleanup.first().ok_or(ObjectError::TypeError)? != symbol(&mut ctx, &runtime, "WHEN")? { return Err(ObjectError::TypeError); }
+    let close = elements(&mut ctx, *cleanup.get(2).ok_or(ObjectError::TypeError)?)?;
+    if close != vec![symbol(&mut ctx, &runtime, "CLOSE")?, stream] { return Err(ObjectError::TypeError); }
     Ok(())
 }
 
@@ -45,9 +46,8 @@ fn rejects_missing_stream_spec() -> Result<(), ObjectError> {
     ctx.register(&runtime)?;
     let operator = symbol(&mut ctx, &runtime, "WITH-OPEN-FILE")?;
     let input = list(&mut ctx, &runtime, &[operator])?;
-    assert_eq!(
-        expand(&mut ctx, &runtime, input),
-        Err(ObjectError::TypeError)
-    );
+    if expand(&mut ctx, &runtime, input) != Err(ObjectError::TypeError) {
+        return Err(ObjectError::TypeError);
+    }
     Ok(())
 }

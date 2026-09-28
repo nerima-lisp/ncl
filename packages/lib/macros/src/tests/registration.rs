@@ -46,6 +46,57 @@ fn registration_marks_owned_macros_and_installs_function_cells() {
     );
 }
 
+#[test]
+fn owned_macro_declarations_are_registered_or_explicitly_allowlisted() {
+    const INTENTIONALLY_UNIMPLEMENTED: &[&str] = &[
+        "CALL-METHOD",
+        "DEFINE-MODIFY-MACRO",
+        "DO-ALL-SYMBOLS",
+        "DO-EXTERNAL-SYMBOLS",
+        "DO-SYMBOLS",
+        "FORMATTER",
+        "LAMBDA",
+        "LOOP-FINISH",
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED",
+        "PPRINT-LOGICAL-BLOCK",
+        "PPRINT-POP",
+        "PRINT-UNREADABLE-OBJECT",
+        "RESTART-BIND",
+        "STEP",
+        "TIME",
+        "TRACE",
+        "UNTRACE",
+        "WITH-ACCESSORS",
+        "WITH-COMPILATION-UNIT",
+        "WITH-CONDITION-RESTARTS",
+        "WITH-HASH-TABLE-ITERATOR",
+        "WITH-INPUT-FROM-STRING",
+        "WITH-OPEN-STREAM",
+        "WITH-PACKAGE-ITERATOR",
+        "WITH-SIMPLE-RESTART",
+        "WITH-SLOTS",
+    ];
+    let runtime = Runtime::new().expect("runtime");
+    register(&runtime).expect("macro registration");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context registration");
+    let package = runtime.find_package(&ctx, CL).expect("COMMON-LISP");
+    let mut missing = Vec::new();
+    for name in OWNED_MACROS {
+        let symbol = Package::from_word(package)
+            .intern(&mut ctx, &runtime, name)
+            .expect(name)
+            .0;
+        let registered = ncl_object::symbol_function(&ctx, symbol).expect(name) != Word::UNBOUND;
+        let allowed = INTENTIONALLY_UNIMPLEMENTED.contains(name);
+        assert!(registered || allowed, "{name} is declared but unregistered");
+        if allowed && !registered {
+            missing.push(*name);
+        }
+    }
+    assert!(!missing.is_empty(), "allowlist must report remaining work");
+}
+
 mod gc_stress_tests;
 mod iteration_tests;
 mod loop_tests;

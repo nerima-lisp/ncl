@@ -7,17 +7,25 @@ use ncl_object::{
     ThreadContext, Word, classify_object, string_length, string_ref, symbol_name,
 };
 
+mod assert;
 pub(crate) mod condition;
+mod declaim;
 mod handler_bind;
+mod multiple_value_setq;
+mod restart_case;
 mod typecase;
 
 mod multiple_value_bind;
 mod multiple_values;
 
+pub(crate) use assert::{expand_assert_adapter, expand_check_type_adapter};
+pub(crate) use declaim::expand_declaim_adapter;
 pub(crate) use handler_bind::{binding, bindings};
+pub(crate) use multiple_value_setq::expand_multiple_value_setq_adapter;
 pub(crate) use multiple_values::{
     expand_multiple_value_bind_adapter, expand_multiple_value_list_adapter,
 };
+pub(crate) use restart_case::expand_restart_case_adapter;
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 

@@ -113,7 +113,8 @@ def cfg_test_lines(lines: list[tuple[Path, int, str]]) -> set[tuple[Path, int]]:
 def violations(lines: list[tuple[Path, int, str]]) -> list[str]:
     failures, excluded = [], cfg_test_lines(lines)
     for index, (path, number, text) in enumerate(lines):
-        if path.suffix != ".rs" or "tests" in path.parts or path.name.endswith("_test.rs") or (path, number) in excluded:
+        test_only = "tests" in path.parts or path.name.startswith("tests_") or path.name.endswith("_test.rs")
+        if path.suffix != ".rs" or test_only or (path, number) in excluded:
             continue
         location, code = f"{path}:{number}", code_only(text)
         allowed = set()

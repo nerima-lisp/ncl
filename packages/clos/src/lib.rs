@@ -7,12 +7,11 @@ pub mod mop;
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, CellError, Fixnum, FunctionArguments, FunctionCaller,
-    FunctionDesignator, FunctionObject, Instance, LambdaList, LispError, Local, MultipleValues,
-    ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, ThreadContext, Word, car, cdr,
-    classify_object, instance_class, make_cons, make_instance as allocate_instance,
-    set_symbol_plist, set_symbol_value, simple_vector_length, simple_vector_ref, slot_ref,
-    slot_set, string_length, string_ref, symbol_function, symbol_name, symbol_plist, symbol_value,
+    BuiltinName, BuiltinPackage, CellError, Fixnum, FunctionObject, Instance, LambdaList,
+    LispError, Local, MultipleValues, ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope,
+    ThreadContext, Word, car, cdr, classify_object, instance_class, make_cons,
+    make_instance as allocate_instance, set_symbol_plist, simple_vector_length, simple_vector_ref,
+    slot_ref, slot_set, string_length, string_ref, symbol_function, symbol_name, symbol_plist,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";

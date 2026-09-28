@@ -173,3 +173,33 @@ fn compiled_clos_initialization_after_methods_run_from_make_instance() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
 }
+
+#[test]
+fn compiled_clos_method_combination_and_next_method_p_are_observable() {
+    let cases = [
+        (
+            "(progn (defgeneric combine (x)) (defmethod combine :around ((x integer)) (+ 100 (call-next-method))) (defmethod combine :before ((x integer)) (set 'clos-before 4)) (defmethod combine :after ((x integer)) (set 'clos-after 8)) (defmethod combine ((x integer)) (if (next-method-p) 0 3)) (list (combine 1) clos-before clos-after))",
+            "(103 4 8)",
+        ),
+        (
+            "(progn (defgeneric eql-case (x)) (defmethod eql-case ((x integer)) 1) (defmethod eql-case ((x (eql 3))) 9) (eql-case 3))",
+            "9",
+        ),
+    ];
+    for (source, expected) in cases {
+        let output = run_ncl(source);
+        assert_eq!(output.status.code(), Some(0), "{source}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim_end(),
+            expected,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn compiled_clos_no_applicable_method_is_a_condition() {
+    let output = run_ncl("(progn (defgeneric missing (x)) (missing 1))");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(!output.stderr.is_empty());
+}

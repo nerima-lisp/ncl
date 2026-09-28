@@ -111,16 +111,26 @@ fn call_method(
     next: Word,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
-    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
-    let previous_next = symbol_value(ctx, next_symbol)?;
-    let previous_args = symbol_value(ctx, args_symbol)?;
-    set_symbol_value(ctx, next_symbol, next)?;
-    set_symbol_value(ctx, args_symbol, argument_list)?;
-    let result = BuiltinFunctionCaller.call_function(ctx, runtime, FunctionDesignator::Function(FunctionObject::try_from(function)?), FunctionArguments::new(arguments), values);
-    set_symbol_value(ctx, next_symbol, previous_next)?;
-    set_symbol_value(ctx, args_symbol, previous_args)?;
-    result
+    let mut scope = Scope::new(ctx);
+    let designator = scope.root(Local::from_word(function));
+    let function_object = FunctionObject::try_from(function)?;
+    let call_values = if runtime.builtin_descriptor(function_object).is_some() {
+        arguments.to_vec()
+    } else {
+        std::iter::once(next)
+            .chain(std::iter::once(argument_list))
+            .chain(arguments.iter().copied())
+            .collect()
+    };
+    let call_args = scope.root_many(
+        &call_values
+            .into_iter()
+            .map(Local::from_word)
+            .collect::<Vec<_>>(),
+    );
+    let mut caller = BuiltinFunctionCaller;
+    let result = scope.call_function(runtime, designator, &call_args, &mut caller, values)?;
+    Ok(scope.get(result).as_word())
 }
 
 fn invoke_core(
@@ -274,8 +284,8 @@ fn clos_dispatch_builtin(
     }
     after.reverse();
     if primary.is_empty() {
-        ctx.set_pending_lisp_error(LispError::Object(ObjectError::Unbound));
-        return Err(ObjectError::Unbound);
+        ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction { name }));
+        return Err(ObjectError::UndefinedFunction);
     }
     invoke_dispatch(
         ctx,
@@ -290,24 +300,39 @@ fn clos_dispatch_builtin(
 fn clos_call_next_method_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
+    args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let next_symbol = ncl_symbol(ctx, runtime, "*CLOS-NEXT-METHOD*")?;
-    let args_symbol = ncl_symbol(ctx, runtime, "*CLOS-CURRENT-ARGS*")?;
-    let next = symbol_value(ctx, next_symbol)?;
-    // An unbound dynamic variable means CALL-NEXT-METHOD has no continuation.
-    // check-added-lines: allow(unbound) dynamic sentinel for missing continuation
-    if next == Word::NIL || next == Word::UNBOUND {
+    let next = args.required(0)?;
+    let current_args = args.required(1)?;
+    let supplied = args.required(2)?;
+    let argument_list = if supplied == Word::NIL {
+        current_args
+    } else {
+        supplied
+    };
+    if next == Word::NIL {
         let call_next_name = common_lisp_symbol(ctx, runtime, "CALL-NEXT-METHOD")?;
         ctx.set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction {
             name: call_next_name,
         }));
         return Err(ObjectError::UndefinedFunction);
     }
-    let argument_list = symbol_value(ctx, args_symbol)?;
     let arguments = form_elements(ctx, argument_list)?;
     invoke_continuation(ctx, runtime, next, &arguments, argument_list, values)
+}
+
+fn clos_next_method_p_builtin(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(if args.required(0)? == Word::NIL {
+        Word::NIL
+    } else {
+        Word::TRUE
+    })
 }
 
 fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {

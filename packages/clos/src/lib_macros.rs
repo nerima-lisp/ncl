@@ -242,11 +242,10 @@ fn defmethod_macro_builtin(
     let args_symbol = common_lisp_symbol(ctx, runtime, "ARGS")?;
     let rest = common_lisp_symbol(ctx, runtime, "&REST")?;
     let lambda_words = lambda;
-    let lambda = lisp_list(ctx, runtime, &lambda_words)?;
     let body = parts
         .get(specializer_index + 1..)
         .ok_or(ObjectError::TypeError)?;
-    let body = make_progn(ctx, runtime, body)?;
+    let body_forms = body;
     let method_name = {
         let id = METHOD_FUNCTION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let symbol_name = format!("%CLOS-METHOD-{id}");
@@ -269,19 +268,23 @@ fn defmethod_macro_builtin(
             method_function,
         ],
     )?;
-    let method_definition = lisp_list(ctx, runtime, &[defun, method_name, lambda, body])?;
+    let hidden_next = ncl_symbol(ctx, runtime, "%CLOS-NEXT")?;
+    let hidden_current_args = ncl_symbol(ctx, runtime, "%CLOS-CURRENT-ARGS")?;
+    let next_name = ncl_symbol(ctx, runtime, "%CLOS-NEXT")?;
+    let current_args_name = ncl_symbol(ctx, runtime, "%CLOS-CURRENT-ARGS")?;
+    let method_body = rewrite_method_body(ctx, runtime, body_forms, next_name, current_args_name)?;
+    let method_lambda_list = method_lambda_list(
+        ctx,
+        runtime,
+        hidden_next,
+        hidden_current_args,
+        &lambda_words,
+    )?;
+    let method_definition = lisp_list(ctx, runtime, &[defun, method_name, method_lambda_list, method_body])?;
     let dispatch_call = lisp_list(ctx, runtime, &[dispatch, quoted_name, args_symbol])?;
     let wrapper_lambda = lisp_list(ctx, runtime, &[rest, args_symbol])?;
     let wrapper = lisp_list(ctx, runtime, &[defun, name, wrapper_lambda, dispatch_call])?;
-    let name_text = symbol_name_string(ctx, name)?;
-    let initialization_base = if name_text == "INITIALIZE-INSTANCE"
-        || name_text == "SHARED-INITIALIZE"
-    {
-        let ensure = common_lisp_symbol(ctx, runtime, "%CLOS-ENSURE-INITIALIZATION-BASE")?;
-        Some(lisp_list(ctx, runtime, &[ensure, quoted_name])?)
-    } else {
-        None
-    };
+    let initialization_base = initialization_base(ctx, runtime, name, quoted_name)?;
     let progn = common_lisp_symbol(ctx, runtime, "PROGN")?;
     let mut forms = Vec::with_capacity(6);
     forms.push(progn);
@@ -297,4 +300,125 @@ fn defmethod_macro_builtin(
         runtime,
         &forms,
     )
+}
+
+fn initialization_base(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+    quoted_name: Word,
+) -> Result<Option<Word>, ObjectError> {
+    let name_text = symbol_name_string(ctx, name)?;
+    if name_text != "INITIALIZE-INSTANCE" && name_text != "SHARED-INITIALIZE" {
+        return Ok(None);
+    }
+    let ensure = common_lisp_symbol(ctx, runtime, "%CLOS-ENSURE-INITIALIZATION-BASE")?;
+    Ok(Some(lisp_list(ctx, runtime, &[ensure, quoted_name])?))
+}
+
+fn method_lambda_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    next: Word,
+    current_args: Word,
+    user_args: &[Word],
+) -> Result<Word, ObjectError> {
+    let mut words = vec![next, current_args];
+    words.extend_from_slice(user_args);
+    lisp_list(ctx, runtime, &words)
+}
+
+#[derive(Clone, Copy)]
+struct MethodRewrite {
+    next: Word,
+    current_args: Word,
+    call_next_name: Word,
+    next_method_p_name: Word,
+    call_next: Word,
+    eq: Word,
+    if_symbol: Word,
+    true_symbol: Word,
+}
+
+fn rewrite_method_body(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    forms: &[Word],
+    next: Word,
+    current_args: Word,
+) -> Result<Word, ObjectError> {
+    let rewrite = MethodRewrite {
+        next,
+        current_args,
+        call_next_name: common_lisp_symbol(ctx, runtime, "CALL-NEXT-METHOD")?,
+        next_method_p_name: common_lisp_symbol(ctx, runtime, "NEXT-METHOD-P")?,
+        call_next: common_lisp_symbol(ctx, runtime, "%CLOS-CALL-NEXT-METHOD")?,
+        eq: common_lisp_symbol(ctx, runtime, "EQ")?,
+        if_symbol: common_lisp_symbol(ctx, runtime, "IF")?,
+        true_symbol: common_lisp_symbol(ctx, runtime, "T")?,
+    };
+    let rewritten = forms
+        .iter()
+        .map(|form| rewrite_method_form(ctx, runtime, *form, rewrite))
+        .collect::<Result<Vec<_>, _>>()?;
+    make_progn(ctx, runtime, &rewritten)
+}
+
+fn rewrite_method_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    form: Word,
+    rewrite: MethodRewrite,
+) -> Result<Word, ObjectError> {
+    if !form.is_cons() {
+        return Ok(form);
+    }
+    let fields = form_elements(ctx, form)?;
+    let Some(operator) = fields.first().copied() else {
+        return Err(ObjectError::TypeError);
+    };
+    if operator == rewrite.call_next_name {
+        let rewritten_args = fields
+            .get(1..)
+            .ok_or(ObjectError::Layout)?
+            .iter()
+            .map(|argument| {
+                rewrite_method_form(
+                    ctx,
+                    runtime,
+                    *argument,
+                    rewrite,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let supplied = lisp_list(ctx, runtime, &rewritten_args)?;
+        return lisp_list(
+            ctx,
+            runtime,
+            &[rewrite.call_next, rewrite.next, rewrite.current_args, supplied],
+        );
+    }
+    let is_next_method_p = operator == rewrite.next_method_p_name
+        || (matches!(classify_object(ctx, operator), ObjectRef::Symbol(_))
+            && symbol_name_string(ctx, operator)? == "NEXT-METHOD-P");
+    if is_next_method_p {
+        let is_empty = lisp_list(ctx, runtime, &[rewrite.eq, rewrite.next, Word::NIL])?;
+        return lisp_list(
+            ctx,
+            runtime,
+            &[rewrite.if_symbol, is_empty, Word::NIL, rewrite.true_symbol],
+        );
+    }
+    let rewritten = fields
+        .iter()
+        .map(|field| {
+            rewrite_method_form(
+                ctx,
+                runtime,
+                *field,
+                rewrite,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    lisp_list(ctx, runtime, &rewritten)
 }

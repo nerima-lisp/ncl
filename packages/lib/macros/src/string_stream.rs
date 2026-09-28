@@ -35,6 +35,16 @@ fn is_keyword(ctx: &ThreadContext, runtime: &Runtime, word: Word, expected: &str
     Ok(actual == expected)
 }
 
+fn is_keyword_symbol(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<bool> {
+    let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {
+        return Ok(false);
+    };
+    let Some(keyword_package) = runtime.find_package(ctx, "KEYWORD") else {
+        return Ok(false);
+    };
+    Ok(symbol_package(ctx, symbol)? == keyword_package)
+}
+
 fn held_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -158,6 +168,9 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
             } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
                 allow_other_keys |= value != Word::NIL;
             } else {
+                if !is_keyword_symbol(ctx, runtime, key)? {
+                    return Err(ObjectError::TypeError);
+                }
                 unknown_keyword = true;
             }
             cursor += 2;

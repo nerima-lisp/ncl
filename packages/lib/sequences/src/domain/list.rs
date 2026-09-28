@@ -1,5 +1,5 @@
 use ncl_object::{
-    Handle, LispError, List, Local, ObjectError, ObjectRef, Runtime, Scope, Sequence,
+    BuiltinArgs, Handle, LispError, List, Local, ObjectError, ObjectRef, Runtime, Scope, Sequence,
     ThreadContext, Word, car as object_car, cdr as object_cdr, rplaca as object_rplaca,
     rplacd as object_rplacd, simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
@@ -161,30 +161,47 @@ pub fn list_star(
 pub fn append(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &[Word],
+    args: BuiltinArgs<'_>,
 ) -> Result<Word, LispError> {
-    let (last, lists) = values
-        .split_last()
-        .map_or((Word::NIL, &[][..]), |(last, lists)| (*last, lists));
-    let mut result = last;
-    for &list in lists.iter().rev() {
+    let mut scope = Scope::new(ctx);
+    let argument_words = (0..args.len())
+        .map(|index| args.get(index).unwrap_or(Word::NIL))
+        .collect::<Vec<_>>();
+    let arguments = scope.root_many(
+        &argument_words
+            .iter()
+            .copied()
+            .map(Local::<Word>::from_word)
+            .collect::<Vec<_>>(),
+    );
+    let Some(last) = arguments.as_slice().last().copied() else {
+        return Ok(Word::NIL);
+    };
+    let mut result = scope.root(Local::<Word>::from_word(scope.get(last).as_word()));
+    for list in arguments.as_slice().iter().rev().skip(1) {
+        let cursor = scope.root(Local::<Word>::from_word(scope.get(*list).as_word()));
         let mut items = Vec::new();
-        let mut cursor = list;
-        while cursor.is_cons() {
-            items.push(object_car(ctx, cursor)?);
-            cursor = object_cdr(ctx, cursor)?;
-        }
-        if cursor != Word::NIL {
-            return Err(LispError::TypeError {
-                datum: cursor,
-                expected: ncl_object::ObjectType::Cons,
-            });
+        loop {
+            let current = scope.get(cursor).as_word();
+            if !current.is_cons() {
+                if current != Word::NIL {
+                    return Err(LispError::TypeError {
+                        datum: current,
+                        expected: ncl_object::ObjectType::Cons,
+                    });
+                }
+                break;
+            }
+            let item = object_car(scope.context(), current)?;
+            items.push(scope.root(Local::from_word(item)));
+            let next = object_cdr(scope.context(), current)?;
+            scope.set(cursor, Local::from_word(next));
         }
         for item in items.into_iter().rev() {
-            result = make_cons_rooted(ctx, runtime, item, result)?;
+            result = scope.make_cons(runtime, item, result)?;
         }
     }
-    Ok(result)
+    Ok(scope.get(result).as_word())
 }
 pub fn nconc(ctx: &mut ThreadContext, _: &Runtime, values: &[Word]) -> Result<Word, LispError> {
     let Some((&last, lists)) = values.split_last() else {

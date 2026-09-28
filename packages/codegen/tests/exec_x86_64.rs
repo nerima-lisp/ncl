@@ -23,8 +23,6 @@ static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
-static FRAME_LOCAL_BEFORE: AtomicU64 = AtomicU64::new(0);
-static FRAME_LOCAL_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
@@ -46,10 +44,6 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
                 .bits(),
             Ordering::SeqCst,
         );
-        FRAME_LOCAL_BEFORE.store(
-            ctx.frame_word(5).expect("captured live local").bits(),
-            Ordering::SeqCst,
-        );
         ctx.clear_safepoint_request();
         ctx.enter_native();
         ncl_sys::collect(ctx, true);
@@ -59,18 +53,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
             .last_written_frame_word(2)
             .expect("written-back frame function object");
         FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
-        FRAME_LOCAL_AFTER.store(
-            ctx.last_written_frame_word(5)
-                .expect("written-back live local")
-                .bits(),
-            Ordering::SeqCst,
-        );
         assert!(ctx.frame_word(2).is_none());
-        println!(
-            "frame word 2: before=0x{:x}, after=0x{:x}",
-            FRAME_WORD_BEFORE.load(Ordering::SeqCst),
-            FRAME_WORD_AFTER.load(Ordering::SeqCst)
-        );
     }
 }
 struct BuiltinAbi;

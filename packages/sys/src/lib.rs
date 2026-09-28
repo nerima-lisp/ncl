@@ -129,6 +129,12 @@ impl<'a> RootSlot<'a> {
     pub const fn new(cell: &'a core::cell::Cell<Word>) -> Self {
         Self { cell }
     }
+
+    /// Read the current value from the collector-owned root slot.
+    #[must_use]
+    pub const fn get(self) -> Word {
+        self.cell.get()
+    }
 }
 
 impl core::ops::Deref for RootSlot<'_> {

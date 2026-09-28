@@ -93,6 +93,11 @@ impl RuntimeAbi for BuiltinAbi {
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
+            ContextField::Pending => layout.pending,
+            ContextField::MultipleValueCount => layout.mv_count,
+            ContextField::Handler => layout.handler,
+            ContextField::Cleanup => layout.cleanup,
+            ContextField::Catch => layout.catch,
             _ => return Err(ncl_codegen::AbiError::UnsupportedContextField(field)),
         };
         i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))

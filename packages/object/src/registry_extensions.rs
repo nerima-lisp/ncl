@@ -27,7 +27,12 @@ impl Runtime {
             return Ok(package);
         }
         let canonical_name = if name == "CL" { "COMMON-LISP" } else { name };
-        if let Some(mut package) = self.resolve_package(ctx, canonical_name)? {
+        let existing = if canonical_name == "COMMON-LISP" {
+            self.resolve_package_name(ctx, canonical_name)?
+        } else {
+            self.resolve_package(ctx, canonical_name)?
+        };
+        if let Some(mut package) = existing {
             if canonical_name == "COMMON-LISP" && self.resolve_package(ctx, "CL")?.is_none() {
                 self.register_common_lisp_nickname(ctx, &mut package)?;
             }
@@ -41,7 +46,12 @@ impl Runtime {
         }
         let mut name_word = make_string(ctx, self, &canonical_name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
-            if let Some(mut package) = self.resolve_package(context, canonical_name)? {
+            let existing = if canonical_name == "COMMON-LISP" {
+                self.resolve_package_name(context, canonical_name)?
+            } else {
+                self.resolve_package(context, canonical_name)?
+            };
+            if let Some(mut package) = existing {
                 if canonical_name == "COMMON-LISP" && self.resolve_package(context, "CL")?.is_none()
                 {
                     self.register_common_lisp_nickname(context, &mut package)?;
@@ -259,6 +269,44 @@ impl Runtime {
                     return;
                 };
                 nicknames = next;
+            }
+        })?;
+        failure.map_or(Ok(result), Err)
+    }
+
+    fn resolve_package_name(
+        &self,
+        context: &ThreadContext,
+        name: &str,
+    ) -> Result<Option<Word>, ObjectError> {
+        let table = Self::table(&self.packages)?;
+        let name_chars = name.chars().collect::<Vec<_>>();
+        let mut result = None;
+        let mut failure = None;
+        HashTable::from_word(table).for_each_entry(context, |_, package| {
+            if result.is_some() || failure.is_some() {
+                return;
+            }
+            let package = match Package::try_from_word(context, package) {
+                Ok(package) => package,
+                Err(error) => {
+                    failure = Some(error);
+                    return;
+                }
+            };
+            let package_name = match package.name(context) {
+                Ok(package_name) => package_name,
+                Err(error) => {
+                    failure = Some(error);
+                    return;
+                }
+            };
+            let matches = string_length(context, package_name).ok() == Some(name_chars.len())
+                && name_chars.iter().enumerate().all(|(index, character)| {
+                    string_ref(context, package_name, index) == Ok(*character)
+                });
+            if matches {
+                result = Some(package.as_word());
             }
         })?;
         failure.map_or(Ok(result), Err)

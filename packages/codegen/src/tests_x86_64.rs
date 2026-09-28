@@ -194,6 +194,41 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
 
 #[test]
 fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), String> {
+    let compiled = compile_function_x86_64(&cleanup_dispatch_function()?, &X86_64FixtureAbi)
+        .map_err(|error| format!("compile: {error:?}"))?;
+    let cleanup_call = compiled
+        .code
+        .windows(3)
+        .enumerate()
+        .position(|(offset, bytes)| {
+            matches!(bytes, [0x41, 0xff, 0xd3])
+                && compiled.code.get(offset + 3..offset + 7) == Some(CLEANUP_EPILOGUE)
+                && compiled.code.get(offset + 7..offset + 10) == Some(CATCH_TAG_LOAD)
+        })
+        .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
+    let catch_bytes = compiled
+        .code
+        .get(cleanup_call + 3..)
+        .ok_or_else(|| "cleanup call extends past generated code".to_owned())?;
+    let catch_compare = catch_bytes
+        .windows(3)
+        .position(|bytes| bytes == [0x4d, 0x39, 0xda])
+        .map(|offset| cleanup_call + 3 + offset)
+        .ok_or_else(|| "catch tag comparison after cleanup builtin missing".to_owned())?;
+    let jump = compiled
+        .code
+        .get(catch_compare + 3..catch_compare + 5)
+        .ok_or_else(|| "catch comparison has no conditional branch".to_owned())?;
+    if jump != [0x0f, 0x85] {
+        return Err("catch comparison does not branch on mismatch".to_owned());
+    }
+    Ok(())
+}
+
+const CLEANUP_EPILOGUE: &[u8] = &[0x48, 0x83, 0xc4, 0x10];
+const CATCH_TAG_LOAD: &[u8] = &[0x4d, 0x8b, 0x97];
+
+fn cleanup_dispatch_function() -> Result<ncl_ir::Function, String> {
     let mut builder = ncl_ir::FunctionBuilder::new(
         ncl_ir::FunctionId(76),
         "catch-unwind-cleanup-dispatch",
@@ -278,37 +313,7 @@ fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), 
         .terminate(Terminator::Return { values: Vec::new() })
         .map_err(|error| format!("catch return: {error:?}"))?;
 
-    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
-        .map_err(|error| format!("compile: {error:?}"))?;
-    const CLEANUP_EPILOGUE: &[u8] = &[0x48, 0x83, 0xc4, 0x10];
-    const CATCH_TAG_LOAD: &[u8] = &[0x4d, 0x8b, 0x97];
-    let cleanup_call = compiled
-        .code
-        .windows(3)
-        .enumerate()
-        .position(|(offset, bytes)| {
-            matches!(bytes, [0x41, 0xff, 0xd3])
-                && compiled.code.get(offset + 3..offset + 7) == Some(CLEANUP_EPILOGUE)
-                && compiled.code.get(offset + 7..offset + 10) == Some(CATCH_TAG_LOAD)
-        })
-        .ok_or_else(|| "cleanup builtin call missing".to_owned())?;
-    let catch_bytes = compiled
-        .code
-        .get(cleanup_call + 3..)
-        .ok_or_else(|| "cleanup call extends past generated code".to_owned())?;
-    let catch_compare = catch_bytes
-        .windows(3)
-        .position(|bytes| bytes == [0x4d, 0x39, 0xda])
-        .map(|offset| cleanup_call + 3 + offset)
-        .ok_or_else(|| "catch tag comparison after cleanup builtin missing".to_owned())?;
-    let jump = compiled
-        .code
-        .get(catch_compare + 3..catch_compare + 5)
-        .ok_or_else(|| "catch comparison has no conditional branch".to_owned())?;
-    if jump != [0x0f, 0x85] {
-        return Err("catch comparison does not branch on mismatch".to_owned());
-    }
-    Ok(())
+    Ok(builder.finish())
 }
 
 #[test]

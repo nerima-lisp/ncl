@@ -167,11 +167,11 @@ fn print_object(
     let stream = output_stream(ctx, runtime, args.get(1))?;
     with_roots(ctx, &[object, stream], |ctx, roots| {
         let object = **roots.first().ok_or(ObjectError::Layout)?;
-        let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
         let rendered =
             write_to_string(ctx, runtime, object, &options).map_err(|error| print_error(&error))?;
         let result = with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
             if surrounding_newlines {
+                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
                 call_builtin(
                     ctx,
                     runtime,
@@ -179,8 +179,10 @@ fn print_object(
                     &[Word::character(u32::from('\n')), stream],
                 )?;
             }
+            let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
             call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
             if surrounding_newlines {
+                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
                 call_builtin(
                     ctx,
                     runtime,

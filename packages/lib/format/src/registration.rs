@@ -57,45 +57,53 @@ fn format_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let destination = args.required(0)?;
+    let mut destination = args.required(0)?;
     let control = args.required(1)?;
     let control = string_value(ctx, control)?;
     let parsed = parse(&control).map_err(|_| ObjectError::TypeError)?;
-    let arguments = args.as_slice().get(2..).ok_or(ObjectError::TypeError)?;
+    let arguments = (2..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::TypeError))
+        .collect::<Result<Vec<_>, _>>()?;
 
-    if destination == Word::NIL {
-        let mut sink = StringSink::new();
-        execute(&parsed, arguments, ctx, runtime, &mut sink)
-            .map_err(|error| format_error_to_object_error(&error))?;
-        return make_string(
-            ctx,
-            runtime,
-            &sink.into_string().chars().collect::<Vec<_>>(),
-        );
-    }
-
-    let stream = if destination == Word::TRUE {
-        standard_output(ctx, runtime)?
-    } else if matches!(classify_object(ctx, destination), ObjectRef::Stream(_)) {
-        destination
-    } else {
-        return Err(ObjectError::TypeError);
-    };
-    let mut sink = StringSink::new();
-    execute(&parsed, arguments, ctx, runtime, &mut sink)
-        .map_err(|error| format_error_to_object_error(&error))?;
-    let output = sink.into_string();
-    let mut writer = WriteCharSink::new(ctx, runtime, stream)?;
-    for character in output.chars() {
-        writer.write_char(character).map_err(|error| match error {
-            PrintError::Object(error) => error,
-            PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
-                ObjectError::TypeError
+    ncl_object::with_rooted_slice(ctx, &arguments, |ctx, arguments| {
+        ncl_object::with_root(ctx, &mut destination, |ctx, destination| {
+            if *destination == Word::NIL {
+                let mut sink = StringSink::new();
+                execute(&parsed, arguments, ctx, runtime, &mut sink)
+                    .map_err(|error| format_error_to_object_error(&error))?;
+                return make_string(
+                    ctx,
+                    runtime,
+                    &sink.into_string().chars().collect::<Vec<_>>(),
+                );
             }
-            _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) non-exhaustive error mapping
-        })?;
-    }
-    Ok(Word::NIL)
+
+            let mut stream = if *destination == Word::TRUE {
+                standard_output(ctx, runtime)?
+            } else if matches!(classify_object(ctx, *destination), ObjectRef::Stream(_)) {
+                *destination
+            } else {
+                return Err(ObjectError::TypeError);
+            };
+            ncl_object::with_root(ctx, &mut stream, |ctx, stream| {
+                let mut sink = StringSink::new();
+                execute(&parsed, arguments, ctx, runtime, &mut sink)
+                    .map_err(|error| format_error_to_object_error(&error))?;
+                let output = sink.into_string();
+                let mut writer = WriteCharSink::new(ctx, runtime, *stream)?;
+                for character in output.chars() {
+                    writer.write_char(character).map_err(|error| match error {
+                        PrintError::Object(error) => error,
+                        PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
+                            ObjectError::TypeError
+                        }
+                        _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) non-exhaustive error mapping
+                    })?;
+                }
+                Ok(Word::NIL)
+            })
+        })
+    })
 }
 
 fn string_value(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {

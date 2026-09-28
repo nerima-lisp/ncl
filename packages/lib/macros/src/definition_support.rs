@@ -142,11 +142,12 @@ fn set_get_builtin(
         let property = **roots.get(1).ok_or(ObjectError::TypeError)?;
         let value = **roots.get(2).ok_or(ObjectError::TypeError)?;
         let old_plist = **roots.get(3).ok_or(ObjectError::TypeError)?;
-        let value_cell = make_cons(ctx, runtime, value, Word::NIL)?;
-        let entry = make_cons(ctx, runtime, property, value_cell)?;
-        let next = make_cons(ctx, runtime, entry, old_plist)?;
-        ctx.write_object_slot(name, ncl_object::symbol_offset::PLIST, next)?;
-        Ok(value)
+        let mut value_cell = make_cons(ctx, runtime, value, old_plist)?;
+        ncl_object::with_root(ctx, &mut value_cell, |ctx, value_cell| {
+            let next = make_cons(ctx, runtime, property, *value_cell)?;
+            ctx.write_object_slot(name, ncl_object::symbol_offset::PLIST, next)?;
+            Ok(value)
+        })
     })
 }
 

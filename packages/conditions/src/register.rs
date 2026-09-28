@@ -255,6 +255,7 @@ fn error_builtin(
         Ok(()) => Ok(Word::NIL),
         Err(ObjectError::Unsupported) => {
             // check-added-lines: allow(unsupported) report unhandled condition
+            // check-added-lines: allow(unsupported) report unhandled condition
             if let Some(message) = string_text(ctx, value) {
                 eprintln!("{message}");
             }

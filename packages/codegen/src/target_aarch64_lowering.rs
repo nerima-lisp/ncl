@@ -31,18 +31,9 @@ pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), C
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-fn spill_offset(allocation: &Allocation, value: ValueId) -> Result<u16, CodegenError> {
-    let Location::Spill(index) = allocation
-        .location(value)
-        .ok_or(CodegenError::UnknownValue(value))?
-    else {
-        return Err(CodegenError::Unsupported(
-            "register value has no spill slot".into(),
-        ));
-    };
-    u16::try_from((index.saturating_add(1)).saturating_mul(8))
-        .map_err(|_| CodegenError::FrameOverflow)
-}
+#[path = "target_aarch64_lowering/offsets.rs"]
+mod offsets;
+pub(super) use offsets::{spill_offset, spill_slot_offset};
 
 pub(super) fn load_value(
     assembler: &mut Assembler,
@@ -64,7 +55,7 @@ pub(super) fn load_value(
             },
         ),
         Location::Spill(_) => {
-            let offset = spill_offset(allocation, value)?;
+            let offset = spill_slot_offset(allocation, value)?;
             if offset <= 4095 {
                 emit(
                     assembler,
@@ -128,7 +119,7 @@ pub(super) fn store_value(
             },
         ),
         Location::Spill(_) => {
-            let offset = spill_offset(allocation, value)?;
+            let offset = spill_slot_offset(allocation, value)?;
             let source = if register == Reg(16) {
                 emit(
                     assembler,
@@ -440,8 +431,7 @@ fn lower_builtin(
                         rt: register,
                         mem: MemOperand::Unscaled {
                             base: RegOrSp::Reg(Reg(16)),
-                            offset: i16::try_from(index.saturating_mul(8))
-                                .map_err(|_| CodegenError::FrameOverflow)?,
+                            offset: spill_offset(index)?,
                         },
                     },
                 )?;
@@ -482,10 +472,13 @@ fn lower_builtin(
 pub(super) mod calls;
 #[path = "target_aarch64_lowering/dispatch.rs"]
 pub(super) mod dispatch;
+#[path = "target_aarch64_lowering/moves.rs"]
+mod moves;
 #[path = "target_aarch64_lowering/ops.rs"]
 pub(super) mod ops;
+pub(super) use moves::move_args;
 #[path = "target_aarch64_lowering/primitives.rs"]
 pub(super) mod primitives;
 pub(super) use calls::{lower_call, lower_closure_call};
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
-pub(super) use ops::{lower_op, move_args};
+pub(super) use ops::lower_op;

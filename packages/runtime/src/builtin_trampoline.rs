@@ -43,6 +43,13 @@ use std::ptr::NonNull;
 use crate::RuntimeError;
 use crate::support::NativeInvocation;
 
+#[path = "builtin_trampoline_dispatch.rs"]
+mod dispatch_impl;
+use dispatch_impl::dispatch_with_context;
+#[path = "builtin_trampoline_keywords.rs"]
+mod keyword_impl;
+use keyword_impl::install_keyword_builtins;
+
 /// `(primary value, value count)`, the pair a native entry already returns to
 /// `invoke_entry_with_function_address` (value in the first return register,
 /// count in the second): `#[repr(C)]` with two eight-byte integer fields is
@@ -100,81 +107,6 @@ extern "C" fn dispatch(
     }) {
         Some(result) => result,
         None => error_result(),
-    }
-}
-
-fn dispatch_with_context(
-    invocation: &mut NativeInvocation<'_>,
-    argc: u64,
-    registers: [u64; 4],
-    rest: u64,
-    function_object: u64,
-) -> NativeCallResult {
-    let context: &mut ThreadContext = invocation.context;
-    let object: &ObjectRuntime = invocation.object;
-    let Some(count) = Word::from_bits(argc)
-        .as_fixnum()
-        .and_then(|value| usize::try_from(value).ok())
-        .filter(|count| *count <= ncl_sys::CALL_ARGUMENTS_LIMIT)
-    else {
-        context.set_pending(ncl_object::ObjectError::Layout);
-        return error_result();
-    };
-    let Ok(function) = FunctionObject::try_from(Word::from_bits(function_object)) else {
-        context.set_pending(ncl_object::ObjectError::Unbound);
-        return error_result();
-    };
-    let mut call_words: Vec<Word> = registers
-        .iter()
-        .take(count)
-        .copied()
-        .map(Word::from_bits)
-        .collect();
-    if count > registers.len() {
-        let Ok(rest_words) = ncl_sys::copy_native_words(rest, count - registers.len()) else {
-            context.set_pending(ncl_object::ObjectError::Layout);
-            return error_result();
-        };
-        call_words.extend(rest_words);
-    }
-    let mut rooted_function = function.as_word();
-    let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
-    let mut rooted_words = call_words;
-    let argument_tokens = rooted_words
-        .iter_mut()
-        .map(|word| ncl_object::push_heap_root(object, word))
-        .collect::<Vec<_>>();
-    let result = FunctionObject::try_from(rooted_function)
-        .and_then(|function| object.call_builtin(context, function, &rooted_words));
-    let arguments_popped = argument_tokens
-        .into_iter()
-        .rev()
-        .all(|token| ncl_object::pop_heap_root(object, token));
-    let function_popped = ncl_object::pop_heap_root(object, function_token);
-    if !arguments_popped || !function_popped {
-        context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
-        return error_result();
-    }
-    match result {
-        Ok(value) => ok_result(value, context.values().len()),
-        Err(error) => {
-            if let Some(condition) = context.take_pending_condition() {
-                match ncl_conditions::error(context, condition) {
-                    Ok(()) => return ok_result(Word::NIL, context.values().len()),
-                    Err(condition_error) => {
-                        let error = match condition_error {
-                            ncl_conditions::ConditionError::Object(error) => error,
-                            // check-added-lines: allow(wildcard) preserve builtin error for non-object condition failures
-                            _ => error,
-                        };
-                        context.set_pending(error);
-                        return error_result();
-                    }
-                }
-            }
-            context.set_pending(error);
-            error_result()
-        }
     }
 }
 
@@ -540,27 +472,7 @@ pub fn install(
             .map_err(|_| RuntimeError::Native("make-rest-list address overflow".to_owned()))?,
     );
     let builtin_address = dispatch_address()?;
-    let keyword_addresses = [
-        (
-            "check-keywords",
-            ncl_sys::function_address!(keyword_check_native),
-        ),
-        (
-            "keyword-value",
-            ncl_sys::function_address!(keyword_value_native),
-        ),
-        (
-            "keyword-supplied-p",
-            ncl_sys::function_address!(keyword_supplied_native),
-        ),
-    ];
-    for (name, address) in keyword_addresses {
-        object.register_builtin_address(
-            BuiltinIdentifier::new(BuiltinPackage::NclExt, BuiltinName::new(name)),
-            usize::try_from(address.map_err(|error| RuntimeError::Native(error.to_string()))?)
-                .map_err(|_| RuntimeError::Native("builtin address overflow".to_owned()))?,
-        );
-    }
+    install_keyword_builtins(object)?;
     let undefined_address = undefined_function_dispatch_address()?;
     let build = |address| {
         if cfg!(target_arch = "aarch64") {

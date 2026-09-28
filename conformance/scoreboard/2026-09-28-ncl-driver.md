@@ -23,11 +23,9 @@
 <repo>/conformance/cl-bench/ncl-driver.sh <ncl>
 ```
 
-shell driver は TAK、BOYER、FIB、ACKERMANN を別プロセスでロードし、各プロセスの
-`/usr/bin/time -p` の `real` 値を JSON の `load_times` に出力します。benchmark 本体の
-`times` は実行できたものだけを表すため、ロード停止時は空配列、`completed` は0です。
-プロセスが失敗しても全4件を実行し、終了ステータスは失敗のまま保持します。Lisp driver
-は全ベンチを完走できる場合のハーネス本体です。
+shell driver は cl-bench checkout をカレントディレクトリとして Lisp driver を起動し、
+`bench-run` が出力する実測サンプルを JSON の `times` に出力します。ロードまたはベンチ
+マークが失敗した場合は非ゼロ終了にし、部分的な値を成功した測定結果として扱いません。
 
 scoreboard runner に渡す場合は、cl-bench checkout を current directory
 として同じ `--load` コマンドを指定します。標準出力は `times` 配列を含む

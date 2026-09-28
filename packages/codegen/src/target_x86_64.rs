@@ -117,11 +117,9 @@ fn spill_arguments(
     assembler: &mut Assembler,
     argument_words: u32,
     generated_lambda: bool,
+    value_slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     for index in 0..argument_words {
-        let offset = i32::try_from((index + 1).saturating_mul(8))
-            .map_err(|_| CodegenError::FrameOverflow)?;
-        let destination = Mem::base(FRAME_POINTER, -offset);
         let register_index = if generated_lambda {
             index.saturating_sub(1)
         } else {
@@ -135,7 +133,7 @@ fn spill_arguments(
                 .and_then(|slot| ARGUMENT_REGISTERS.get(slot).copied())
         };
         if let Some(register) = register {
-            emit(assembler, Inst::MovMR(destination, register))?;
+            lowering::store_slot(assembler, value_slots, ncl_ir::ValueId(index), register)?;
         } else {
             let overflow_base = if generated_lambda { 5 } else { 4 };
             let source_offset =
@@ -145,7 +143,7 @@ fn spill_arguments(
                 assembler,
                 Inst::MovRM(ENTRY, Mem::base(REST_ARGUMENT, source_offset)),
             )?;
-            emit(assembler, Inst::MovMR(destination, ENTRY))?;
+            lowering::store_slot(assembler, value_slots, ncl_ir::ValueId(index), ENTRY)?;
         }
     }
     Ok(())
@@ -245,7 +243,6 @@ pub fn compile_function_x86_64(
             .saturating_add(spill_words)
     });
     value_slots.incoming_args_base = incoming_args_base;
-    spill_arguments(&mut assembler, argument_words, generated_lambda)?;
     if let Some(base) = incoming_args_base {
         for (index, register) in lowering::ARGUMENT_REGISTERS.into_iter().enumerate() {
             emit(
@@ -269,22 +266,12 @@ pub fn compile_function_x86_64(
             ),
         )?;
     }
-    for (index, parameter) in function
-        .blocks
-        .first()
-        .map(|block| block.params.iter())
-        .into_iter()
-        .flatten()
-        .enumerate()
-    {
-        let offset = i32::try_from(index.saturating_add(1).saturating_mul(8))
-            .map_err(|_| CodegenError::FrameOverflow)?;
-        emit(
-            &mut assembler,
-            Inst::MovRM(ENTRY, Mem::base(FRAME_POINTER, -offset)),
-        )?;
-        lowering::store_slot(&mut assembler, &value_slots, parameter.value, ENTRY)?;
-    }
+    spill_arguments(
+        &mut assembler,
+        argument_words,
+        generated_lambda,
+        &value_slots,
+    )?;
     let mut position = 0u32;
     for block in &function.blocks {
         assembler.bind(labels[&block.id]);

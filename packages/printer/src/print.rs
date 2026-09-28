@@ -4,7 +4,8 @@ use std::collections::HashSet;
 
 use ncl_object::{
     Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object,
-    make_string, string_length, string_ref, symbol_name,
+    make_string, simple_vector_length, simple_vector_ref, string_length, string_ref,
+    structure_layout, structure_ref, symbol_name,
 };
 
 use crate::circle::{CircleLabel, CircleState, labelable};
@@ -218,7 +219,7 @@ impl<'a> Printer<'a> {
             ObjectRef::DoubleFloat(number) => self.print_double(DoubleFloat::from_word(number)),
             ObjectRef::Complex(number) => self.print_complex(Complex::from_word(number)),
             ObjectRef::HashTable(word) => self.print_opaque("HASH-TABLE", word),
-            ObjectRef::Structure(word) => self.print_opaque("STRUCTURE", word),
+            ObjectRef::Structure(word) => self.print_structure(word),
             ObjectRef::Instance(word) => self.print_opaque("INSTANCE", word),
             ObjectRef::Function(word) => self.print_opaque("FUNCTION", word),
             ObjectRef::Closure(word) => self.print_opaque("CLOSURE", word),
@@ -228,6 +229,29 @@ impl<'a> Printer<'a> {
             ObjectRef::Code(word) => self.print_opaque("CODE", word),
             _ => self.print_opaque("OBJECT", object),
         }
+    }
+
+    fn print_structure(&mut self, object: Word) -> Result<(), PrintError> {
+        let Some(layout) = structure_layout(&*self.ctx, object).ok() else {
+            return self.print_opaque("STRUCTURE", object);
+        };
+        let Some(class) = self.runtime.structure_class(self.ctx, layout) else {
+            return self.print_opaque("STRUCTURE", object);
+        };
+        let name = simple_vector_ref(&*self.ctx, class, 0)?;
+        self.write_str("#S(")?;
+        self.write_str(&self.symbol_text(name)?)?;
+        let slots = simple_vector_ref(&*self.ctx, class, 4)?;
+        for index in 0..simple_vector_length(&*self.ctx, slots)? {
+            let descriptor = simple_vector_ref(&*self.ctx, slots, index)?;
+            let slot_name = simple_vector_ref(&*self.ctx, descriptor, 0)?;
+            self.write_char(' ')?;
+            self.write_str(":")?;
+            self.write_str(&self.symbol_text(slot_name)?)?;
+            self.write_char(' ')?;
+            self.print(structure_ref(&*self.ctx, object, index)?)?;
+        }
+        self.write_char(')')
     }
 }
 

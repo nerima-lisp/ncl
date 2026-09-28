@@ -25,6 +25,7 @@ pub struct Runtime {
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
+    structure_classes: Mutex<HashMap<u32, String>>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<Vec<crate::builtin::BuiltinEntry>>,
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
@@ -87,6 +88,7 @@ impl Runtime {
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
+            structure_classes: Mutex::new(HashMap::new()),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(Vec::new()),
             builtin_addresses: Mutex::new(HashMap::new()),
@@ -114,6 +116,40 @@ impl Runtime {
         context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
+    }
+
+    /// Associate a structure layout with its rooted structure class.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Layout` if the runtime registry lock is poisoned.
+    pub fn register_structure_class(
+        &self,
+        layout: crate::StructureLayout,
+        name: impl Into<String>,
+    ) -> Result<(), ObjectError> {
+        self.structure_classes
+            .lock()
+            .map_err(|_| ObjectError::Layout)?
+            .insert(layout.into(), name.into());
+        Ok(())
+    }
+
+    /// Return the class associated with a structure layout, if any.
+    ///
+    /// The class is resolved at lookup time so the managed class word is
+    /// obtained through the runtime's rooted class registry.
+    #[must_use]
+    pub fn structure_class(
+        &self,
+        ctx: &mut ThreadContext,
+        layout: crate::StructureLayout,
+    ) -> Option<Word> {
+        self.structure_classes
+            .lock()
+            .ok()
+            .and_then(|classes| classes.get(&layout.into()).cloned())
+            .and_then(|name| self.class(ctx, &name))
     }
 
     /// Install the evaluator service used by the Common Lisp `LOAD` builtin.

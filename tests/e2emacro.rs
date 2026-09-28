@@ -186,12 +186,6 @@ const XFAILS: &[XFail] = &[
         exit_code: 1,
     },
     XFail {
-        name: "defstruct",
-        source: "(progn (defstruct point x y) (point-x (make-point :x 3 :y 4)))",
-        stderr: "DEFSTRUCT",
-        exit_code: 1,
-    },
-    XFail {
         name: "psetq",
         source: "(let ((a 1) (b 2)) (psetq a b b a) (list a b))",
         stderr: "PSETQ",

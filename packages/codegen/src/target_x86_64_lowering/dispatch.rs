@@ -177,10 +177,6 @@ pub fn lower_pending_check(
     abi: &dyn RuntimeAbi,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
-    let cleanup_block = function
-        .handler_regions
-        .iter()
-        .any(|region| region.cleanup == Some(block));
     let normal = assembler.new_label();
     emit(
         assembler,
@@ -191,9 +187,7 @@ pub fn lower_pending_check(
     )?;
     emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
     emit(assembler, Inst::Jcc(Cond::E, normal))?;
-    if !cleanup_block {
-        try_dispatch_candidates(assembler, function, block, slots, abi, labels)?;
-    }
+    try_dispatch_candidates(assembler, function, block, slots, abi, labels)?;
     emit_epilogue(assembler, slots, abi, &[], true)?;
     assembler.bind(normal);
     Ok(())

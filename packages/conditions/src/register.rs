@@ -1,14 +1,14 @@
 //! Registration of the owned symbols and the standard condition hierarchy.
 
 use ncl_object::{
-    set_symbol_special, slot_ref, string_length, string_ref, symbol_name, Arity, Builtin,
-    BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package, Parameter,
-    ParameterType, Runtime, ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, set_symbol_special, slot_ref,
+    string_length, string_ref, symbol_name,
 };
 
-use crate::class::{install_class, wire_superclass, HIERARCHY};
-use crate::symbols::{symbols, SymbolKind, SymbolRow};
+use crate::class::{HIERARCHY, install_class, wire_superclass};
+use crate::symbols::{SymbolKind, SymbolRow, symbols};
 
 const ONE_ANY: &[Parameter] = &[Parameter {
     name: BuiltinName::new("VALUE"),
@@ -151,8 +151,8 @@ fn condition_argument(
         return Ok(value);
     }
     if string_text(ctx, value).is_some() {
-        let class = crate::condition_class(ctx, runtime, default_class)
-            .ok_or(ObjectError::Layout)?;
+        let class =
+            crate::condition_class(ctx, runtime, default_class).ok_or(ObjectError::Layout)?;
         return crate::make_condition(ctx, runtime, class, &[value])
             .map_err(condition_object_error);
     }

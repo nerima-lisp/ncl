@@ -53,14 +53,15 @@ fn register_all_registers_strings() {
 }
 
 #[test]
-fn register_all_registers_format() {
+fn register_all_registers_callable_printer_and_format_builtins() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
-    assert!(
-        runtime
-            .function(&mut ctx, "COMMON-LISP", "FORMAT")
-            .is_some()
-    );
+    for name in ["PRINC", "PRIN1", "PRINT", "FORMAT"] {
+        let function = runtime
+            .function(&mut ctx, "COMMON-LISP", name)
+            .and_then(|word| ncl_object::FunctionObject::try_from(word).ok());
+        assert!(function.is_some(), "{name} must be callable");
+    }
 }

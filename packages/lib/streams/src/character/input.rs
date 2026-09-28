@@ -177,7 +177,6 @@ fn peek_until(
         POSITION
     };
     let initial_position = position(ctx, state, position_index)?;
-    let mut before_character = initial_position;
     loop {
         let Some(character) = next_character(ctx, stream)? else {
             set_position(ctx, state, position_index, initial_position)?;
@@ -189,10 +188,9 @@ fn peek_until(
             PeekMode::Character(target) => character == target,
         };
         if matches {
-            set_position(ctx, state, position_index, before_character)?;
+            set_position(ctx, state, position_index, initial_position)?;
             return Ok(Some(character));
         }
-        before_character = position(ctx, state, position_index)?;
     }
 }
 

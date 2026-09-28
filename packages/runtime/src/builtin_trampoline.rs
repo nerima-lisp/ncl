@@ -128,6 +128,14 @@ extern "C" fn make_rest_list_native(
         ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
             let context = &mut *invocation.context;
             let object = invocation.object;
+            let Some(count) = Word::from_bits(argc)
+                .as_fixnum()
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|count| *count <= ncl_sys::CALL_ARGUMENTS_LIMIT)
+            else {
+                context.set_pending(ncl_object::ObjectError::Layout);
+                return Word::NIL.bits();
+            };
             let mut arguments = vec![
                 Word::from_bits(argc),
                 Word::from_bits(start),
@@ -136,19 +144,19 @@ extern "C" fn make_rest_list_native(
                 Word::from_bits(a2),
                 Word::from_bits(a3),
             ];
-            let mut argument_tokens = arguments
+            arguments.truncate(2 + count.min(4));
+            if count > 4 {
+                let Ok(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
+                    context.set_pending(ncl_object::ObjectError::Layout);
+                    return Word::NIL.bits();
+                };
+                arguments.extend(rest_words);
+            }
+            let argument_tokens = arguments
                 .iter_mut()
                 .map(|word| ncl_object::push_heap_root(object, word))
                 .collect::<Vec<_>>();
             let result = (|| {
-                let Some(count) = Word::from_bits(argc)
-                    .as_fixnum()
-                    .and_then(|value| usize::try_from(value).ok())
-                    .filter(|count| *count <= ncl_sys::CALL_ARGUMENTS_LIMIT)
-                else {
-                    context.set_pending(ncl_object::ObjectError::Layout);
-                    return Word::NIL.bits();
-                };
                 let Some(package) = object.find_package(context, "NCL-EXT") else {
                     context.set_pending(ncl_object::ObjectError::Layout);
                     return Word::NIL.bits();
@@ -167,20 +175,6 @@ extern "C" fn make_rest_list_native(
                     context.set_pending(ncl_object::ObjectError::Unbound);
                     return Word::NIL.bits();
                 };
-                arguments.truncate(2 + count.min(4));
-                if count > 4 {
-                    let Ok(rest_words) = ncl_sys::copy_native_words(rest, count - 4) else {
-                        context.set_pending(ncl_object::ObjectError::Layout);
-                        return Word::NIL.bits();
-                    };
-                    for word in rest_words {
-                        arguments.push(word);
-                        let index = arguments.len().saturating_sub(1);
-                        // check-added-lines: allow(index) index is the element just pushed above.
-                        let token = ncl_object::push_heap_root(object, &mut arguments[index]);
-                        argument_tokens.push(token);
-                    }
-                }
                 let mut rooted_function = function.as_word();
                 let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
                 let result = FunctionObject::try_from(rooted_function)

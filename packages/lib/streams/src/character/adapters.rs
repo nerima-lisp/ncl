@@ -28,12 +28,10 @@ fn bounds(
     let mut index = first_option;
     if let Some(value) = args.get(index).and_then(Word::as_fixnum) {
         start = usize::try_from(value).map_err(|_| ObjectError::TypeError)?;
-        end = args
-            .get(index + 1)
-            .and_then(Word::as_fixnum)
-            .map(|value| usize::try_from(value).map_err(|_| ObjectError::TypeError))
-            .transpose()?
-            .unwrap_or(length);
+        if let Some(value) = args.get(index + 1) {
+            let value = value.as_fixnum().ok_or(ObjectError::TypeError)?;
+            end = usize::try_from(value).map_err(|_| ObjectError::TypeError)?;
+        }
         if args.len() > index + 2 {
             return Err(ObjectError::TypeError);
         }

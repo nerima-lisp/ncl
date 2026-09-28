@@ -2,7 +2,7 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef, Parameter,
     ParameterType, Runtime, ThreadContext, Word, classify_object, make_string, string_length,
-    string_ref, symbol_value, with_root,
+    string_ref, symbol_name, symbol_value, with_root,
 };
 use ncl_printer::{CharSink, PrintError, StringSink};
 
@@ -99,9 +99,18 @@ fn format_builtin(
 }
 
 fn string_value(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
-    if !matches!(classify_object(ctx, value), ObjectRef::String(_)) {
-        return Err(ObjectError::TypeError);
+    if let ObjectRef::Character(character) = classify_object(ctx, value) {
+        return char::from_u32(character)
+            .map(|character| character.to_string())
+            .ok_or(ObjectError::TypeError);
     }
+    let value = if matches!(classify_object(ctx, value), ObjectRef::String(_)) {
+        value
+    } else if matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
+        symbol_name(ctx, value)?
+    } else {
+        return Err(ObjectError::TypeError);
+    };
     (0..string_length(ctx, value)?)
         .map(|index| string_ref(ctx, value, index))
         .collect()

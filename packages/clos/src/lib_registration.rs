@@ -20,6 +20,10 @@ const MACRO_ENV: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ENV"),
     ty: ncl_object::ParameterType::Any,
 };
+const STRUCTURE_REST: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("SLOT"),
+    ty: ncl_object::ParameterType::Any,
+};
 
 fn direct_registration(
     package: BuiltinPackage,
@@ -33,7 +37,7 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 16] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 20] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
@@ -43,6 +47,10 @@ const DIRECT_BUILTINS: [DirectBuiltin; 16] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-REF"), arity: BuiltinArity::Two, callback: structure_ref_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-SET"), arity: BuiltinArity::Three, callback: structure_set_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-P"), arity: BuiltinArity::Two, callback: structure_predicate_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-COPY"), arity: BuiltinArity::One, callback: structure_copy_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DEFINE-GENERIC"), arity: BuiltinArity::One, callback: clos_define_generic_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ADD-METHOD"), arity: BuiltinArity::Three, callback: clos_add_method_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ENSURE-INITIALIZATION-BASE"), arity: BuiltinArity::One, callback: clos_ensure_initialization_base_builtin },
@@ -87,6 +95,18 @@ fn builtin_manifest() -> Vec<Registration> {
     registrations.push(macro_registration("DEFCLASS", defclass_macro_builtin));
     registrations.push(macro_registration("DEFGENERIC", defgeneric_macro_builtin));
     registrations.push(macro_registration("DEFMETHOD", defmethod_macro_builtin));
+    registrations.push(Registration {
+        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("%STRUCTURE-MAKE")),
+        implementation: BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[MACRO_FORM], STRUCTURE_REST),
+                convention: ncl_object::BuiltinConvention::Adapted,
+            },
+            structure_make_builtin,
+            |args| Ok((0..args.len()).filter_map(|index| args.get(index)).collect()),
+        ),
+    });
+    registrations.push(macro_registration("DEFSTRUCT", defstruct_macro_builtin));
     registrations
 }
 

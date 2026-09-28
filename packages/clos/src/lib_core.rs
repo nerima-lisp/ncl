@@ -5,6 +5,75 @@ enum BuiltinArity {
     Three,
 }
 
+fn structure_make_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let layout = ncl_object::StructureLayout::from(
+        u32::try_from(Fixnum::try_from_word(args.required(0)?).map_err(|_| ObjectError::TypeError)?.value())
+            .map_err(|_| ObjectError::TypeError)?,
+    );
+    let slots = (1..args.len())
+        .filter_map(|index| args.get(index))
+        .collect::<Vec<_>>();
+    ncl_object::make_structure(ctx, runtime, layout, &slots)
+}
+
+fn structure_ref_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let index = usize::try_from(Fixnum::try_from_word(args.required(1)?).map_err(|_| ObjectError::TypeError)?.value())
+        .map_err(|_| ObjectError::TypeError)?;
+    ncl_object::structure_ref(ctx, args.required(0)?, index)
+}
+
+fn structure_set_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let index = usize::try_from(Fixnum::try_from_word(args.required(1)?).map_err(|_| ObjectError::TypeError)?.value())
+        .map_err(|_| ObjectError::TypeError)?;
+    let value = args.required(2)?;
+    ncl_object::structure_set(ctx, args.required(0)?, index, value)?;
+    Ok(value)
+}
+
+fn structure_predicate_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let expected = u32::try_from(Fixnum::try_from_word(args.required(1)?).map_err(|_| ObjectError::TypeError)?.value())
+        .map_err(|_| ObjectError::TypeError)?;
+    Ok(if let Ok(layout) = ncl_object::structure_layout(ctx, object)
+        && layout.as_u32() == expected
+    { Word::TRUE } else { Word::NIL })
+}
+
+fn structure_copy_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let layout = ncl_object::structure_layout(ctx, object)?;
+    let count = runtime.structure_layout_size(layout).ok_or(ObjectError::Layout)?;
+    let slots = (0..count)
+        .map(|index| ncl_object::structure_ref(ctx, object, index))
+        .collect::<Result<Vec<_>, _>>()?;
+    ncl_object::make_structure(ctx, runtime, layout, &slots)
+}
+
 const fn descriptor(arity: BuiltinArity) -> Builtin {
     match arity {
         BuiltinArity::One => Builtin {
@@ -182,6 +251,11 @@ pub fn class_of(
         } else if matches!(object_ref, ObjectRef::Stream(_)) {
             "STREAM"
         } else if matches!(object_ref, ObjectRef::Structure(_)) {
+            if let Ok(layout) = ncl_object::structure_layout(ctx, object)
+                && runtime.structure_class(ctx, layout).is_some()
+            {
+                return runtime.structure_class(ctx, layout).ok_or(ObjectError::Layout);
+            }
             "STRUCTURE-OBJECT"
         } else if matches!(object_ref, ObjectRef::Bignum(_)) {
             "BIGNUM"

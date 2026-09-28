@@ -130,7 +130,7 @@ fn append_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let result = domain::list::append(ctx, runtime, args.as_slice());
+    let result = domain::list::append(ctx, runtime, *args);
     finish(ctx, values, result)
 }
 fn nconc_builtin(

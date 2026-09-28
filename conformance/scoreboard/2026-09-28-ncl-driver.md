@@ -24,9 +24,10 @@
 ```
 
 shell driver は TAK、BOYER、FIB、ACKERMANN を別プロセスでロードし、各プロセスの
-`/usr/bin/time -p` の `real` 値を JSON の `times` に出力します。プロセスが失敗しても
-全4件を実行し、終了ステータスは失敗のまま保持します。Lisp driver は全ベンチを完走
-できる場合のハーネス本体です。
+`/usr/bin/time -p` の `real` 値を JSON の `load_times` に出力します。benchmark 本体の
+`times` は実行できたものだけを表すため、ロード停止時は空配列、`completed` は0です。
+プロセスが失敗しても全4件を実行し、終了ステータスは失敗のまま保持します。Lisp driver
+は全ベンチを完走できる場合のハーネス本体です。
 
 scoreboard runner に渡す場合は、cl-bench checkout を current directory
 として同じ `--load` コマンドを指定します。標準出力は `times` 配列を含む
@@ -49,8 +50,8 @@ JSON で、`scripts/conformance_scoreboard.py` の cl-bench 入力形式に合�
 - 4件とも関数本体の実行時間と値は未取得です。停止点は lambda-list の
   `&optional`/`&key` ではなく、ベンチ本体前のロード/codegen 経路です。
 
-driver の `times` は、ベンチ本体が未到達の場合はロード停止までの実測プロセス経過時間
-です。これは本体の性能値ではありません。
+`load_times` は、ベンチ本体が未到達の場合のロード停止までの実測プロセス経過時間
+です。benchmark の性能値ではありません。
 
 個別ロードのプロセス経過時間（`target/debug/ncl --eval '(load "...")'`）は次のとおりです。
 

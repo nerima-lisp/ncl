@@ -226,12 +226,14 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             &[Word::fixnum(0), *list_root],
         );
         let root = ncl_object::push_root(ctx, &mut result);
-        let list = *list_root;
         assert_eq!(
             call(&runtime, ctx, &functions, "CAR", &[result]),
             Word::fixnum(0)
         );
-        assert_eq!(ncl_object::cdr(ctx, result), Ok(list));
+        assert_eq!(
+            ncl_object::cdr(ctx, result).and_then(|cdr| ncl_object::car(ctx, cdr)),
+            Ok(one)
+        );
         assert!(ncl_object::pop_root(ctx, root));
     });
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list_root| {

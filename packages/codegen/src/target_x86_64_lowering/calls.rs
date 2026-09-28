@@ -23,6 +23,7 @@ pub fn lower_call(
     };
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     for (index, argument) in rest.iter().enumerate() {
         if let Some(register) = ARGUMENT_REGISTERS.get(index) {

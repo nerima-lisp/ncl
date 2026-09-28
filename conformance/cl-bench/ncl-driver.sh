@@ -8,4 +8,15 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # ncl-driver.lisp loads every pinned benchmark file and calls BENCH-RUN after
 # TESTS.LISP has registered the benchmark functions, so the emitted times are
 # actual benchmark samples rather than source-load timings.
-exec "$ncl" --eval "(load \"$script_dir/ncl-driver.lisp\")"
+output=$(mktemp)
+trap 'rm -f "$output"' EXIT HUP INT TERM
+
+set +e
+"$ncl" --eval "(load \"$script_dir/ncl-driver.lisp\")" >"$output"
+status=$?
+set -e
+if [ "$status" -ne 0 ]; then
+    printf '%s\n' '{"status":"failed","times":[]}'
+    exit "$status"
+fi
+cat "$output"

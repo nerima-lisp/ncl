@@ -72,7 +72,7 @@ fn input_stream_honors_bounds_peek_unread_and_read_line() {
         .unwrap();
     assert_eq!(string(&ctx, line), "ne");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, read_char, &[stream]),
+        runtime.call_builtin(&mut ctx, read_char, &[stream, Word::NIL]),
         Ok(Word::NIL)
     );
 }

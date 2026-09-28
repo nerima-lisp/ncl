@@ -202,13 +202,23 @@ fn output_stream(
     runtime: &Runtime,
     supplied: Option<Word>,
 ) -> Result<Word, ObjectError> {
+    if supplied == Some(Word::TRUE) {
+        return output_stream_variable(ctx, runtime, "*TERMINAL-IO*");
+    }
     if let Some(stream) = supplied.filter(|stream| *stream != Word::NIL) {
         return Ok(stream);
     }
+    output_stream_variable(ctx, runtime, "*STANDARD-OUTPUT*")
+}
+
+fn output_stream_variable(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<Word, ObjectError> {
     let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
     with_root(ctx, &mut package.clone(), |ctx, package| {
-        let (mut symbol, _) =
-            Package::from_word(*package).intern(ctx, runtime, "*STANDARD-OUTPUT*")?;
+        let (mut symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
         with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
     })
 }

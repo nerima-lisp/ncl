@@ -99,11 +99,45 @@ fn held_list(
 fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
         let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
-        if spec.len() != 1 {
-            return Err(ObjectError::TypeError);
-        }
         let variable = spec.first().copied().ok_or(ObjectError::Layout)?;
         if !matches!(classify_object(ctx, variable), ObjectRef::Symbol(_)) {
+            return Err(ObjectError::TypeError);
+        }
+
+        let mut initial_string = Word::NIL;
+        let mut has_initial_string = false;
+        let mut allow_other_keys = false;
+        let mut unknown_keyword = false;
+        let mut cursor = 1;
+        if let Some(value) = spec.get(cursor).copied() {
+            if !is_keyword_symbol(ctx, runtime, value)? {
+                initial_string = value;
+                has_initial_string = true;
+                cursor += 1;
+            }
+        }
+        while cursor < spec.len() {
+            let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;
+            let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+            if is_keyword(ctx, runtime, key, "ELEMENT-TYPE")? {
+                if value == Word::NIL {
+                    return Err(ObjectError::TypeError);
+                }
+            } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
+                allow_other_keys |= value != Word::NIL;
+            } else {
+                if !is_keyword_symbol(ctx, runtime, key)? {
+                    ctx.set_pending_lisp_error(LispError::ProgramError(
+                        ProgramError::UnknownKeyword,
+                    ));
+                    return Err(ObjectError::TypeError);
+                }
+                unknown_keyword = true;
+            }
+            cursor += 2;
+        }
+        if unknown_keyword && !allow_other_keys {
+            ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
             return Err(ObjectError::TypeError);
         }
 
@@ -111,6 +145,8 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
         let body_end = held.len();
         let variable_index = held.len();
         held.push(variable);
+        let initial_string_index = held.len();
+        held.push(initial_string);
         let stream = held_form(ctx, runtime, &mut held, "MAKE-STRING-OUTPUT-STREAM", &[])?;
         let binding = held_list(ctx, runtime, &mut held, &[variable_index, stream])?;
         let bindings = held_list(ctx, runtime, &mut held, &[binding])?;
@@ -121,6 +157,18 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
             "PROGN",
             &(1..body_end).collect::<Vec<_>>(),
         )?;
+        let body = if has_initial_string {
+            let write_initial = held_form(
+                ctx,
+                runtime,
+                &mut held,
+                "WRITE-STRING",
+                &[initial_string_index, variable_index],
+            )?;
+            held_form(ctx, runtime, &mut held, "PROGN", &[write_initial, body])?
+        } else {
+            body
+        };
         let output = held_form(
             ctx,
             runtime,

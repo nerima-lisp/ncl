@@ -83,6 +83,16 @@ const PROBES: &[Probe] = &[
         source: "(with-output-to-string (s) (write-char #\\a s))",
         expected: "\"a\"",
     },
+    Probe {
+        name: "with-output-to-string-optional-string",
+        source: "(with-output-to-string (s \"a\" :element-type 'character) (write-char #\\b s))",
+        expected: "\"ab\"",
+    },
+    Probe {
+        name: "with-output-to-string-keyword-only",
+        source: "(with-output-to-string (s :element-type 'character) (write-char #\\c s))",
+        expected: "\"c\"",
+    },
 ];
 
 const XFAILS: &[XFail] = &[

@@ -79,7 +79,7 @@ fn defpackage_rejects_unknown_options() -> Result<()> {
     let defpackage = symbol(&mut ctx, &runtime, "DEFPACKAGE")?;
     let name = symbol(&mut ctx, &runtime, "CL-TEST")?;
     let bad_clause = {
-        let head = symbol(&mut ctx, &runtime, "DOCUMENTATION")?;
+        let head = symbol(&mut ctx, &runtime, "BOGUS")?;
         let text = symbol(&mut ctx, &runtime, "IGNORED")?;
         list(&mut ctx, &runtime, &[head, text])?
     };
@@ -88,6 +88,72 @@ fn defpackage_rejects_unknown_options() -> Result<()> {
         expand(&mut ctx, &runtime, defpackage_adapter, form),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn defpackage_expands_clhs_package_clauses() -> Result<()> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let defpackage = symbol(&mut ctx, &runtime, "DEFPACKAGE")?;
+    let name = symbol(&mut ctx, &runtime, "CLHS-CLAUSES")?;
+    let clause = |ctx: &mut ThreadContext, head: &str, args: &[Word]| -> Result<Word> {
+        let mut values = vec![symbol(ctx, &runtime, head)?];
+        values.extend_from_slice(args);
+        list(ctx, &runtime, &values)
+    };
+    let source = symbol(&mut ctx, &runtime, "COMMON-LISP")?;
+    let imported = symbol(&mut ctx, &runtime, "CAR")?;
+    let shadowed = symbol(&mut ctx, &runtime, "CDR")?;
+    let interned = symbol(&mut ctx, &runtime, "LOCAL")?;
+    let documentation = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"docs".chars().collect::<Vec<_>>(),
+    )?;
+    let size = Word::fixnum(32);
+    let import_from = clause(&mut ctx, "IMPORT-FROM", &[source, imported])?;
+    let shadowing_import_from =
+        clause(&mut ctx, "SHADOWING-IMPORT-FROM", &[source, shadowed])?;
+    let intern = clause(&mut ctx, "INTERN", &[interned])?;
+    let documentation_clause = clause(&mut ctx, "DOCUMENTATION", &[documentation])?;
+    let size_clause = clause(&mut ctx, "SIZE", &[size])?;
+    let form = list(
+        &mut ctx,
+        &runtime,
+        &[
+            defpackage,
+            name,
+            import_from,
+            shadowing_import_from,
+            intern,
+            documentation_clause,
+            size_clause,
+        ],
+    )?;
+
+    let expansion = expand(&mut ctx, &runtime, defpackage_adapter, form)?;
+    let elements = crate::form::elements(&mut ctx, expansion)?;
+    let statements = &elements[1..];
+    assert_eq!(head(&mut ctx, statements[0])?, symbol(&mut ctx, &runtime, "OR")?);
+
+    let make_package = crate::form::elements(&mut ctx, statements[0])?[2];
+    let make_package = crate::form::elements(&mut ctx, make_package)?;
+    assert_eq!(make_package.len(), 6);
+    assert_eq!(designator_text(&ctx, make_package[2])?, "DOCUMENTATION");
+    assert_eq!(designator_text(&ctx, make_package[4])?, "SIZE");
+
+    let statement_heads = statements
+        .iter()
+        .map(|statement| head(&mut ctx, *statement))
+        .collect::<Result<Vec<_>>>()?;
+    let expected = ["OR", "INTERN", "IMPORT", "SHADOWING-IMPORT", "FIND-PACKAGE"];
+    assert_eq!(statement_heads.len(), expected.len());
+    for (actual, expected) in statement_heads.iter().zip(expected) {
+        assert_eq!(*actual, symbol(&mut ctx, &runtime, expected)?);
+    }
     Ok(())
 }
 

@@ -67,3 +67,85 @@ fn string_stream_macros_expand_to_stream_builtin_forms() -> Result<(), ObjectErr
     assert_eq!(stream_call[0], make_input_symbol);
     Ok(())
 }
+
+#[test]
+fn input_stream_macro_rejects_unknown_keywords_as_program_errors() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let input = symbol(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['a'])?;
+    let read = symbol(&mut ctx, &runtime, "READ-CHAR")?;
+    let body = list(&mut ctx, &runtime, &[read, stream])?;
+    let non_keyword_start = symbol(&mut ctx, &runtime, "START")?;
+    let unknown = runtime.ensure_package(&mut ctx, "KEYWORD")?;
+    let unknown = ncl_object::Package::from_word(unknown)
+        .intern(&mut ctx, &runtime, "UNKNOWN")?
+        .0;
+    let input_spec = list(
+        &mut ctx,
+        &runtime,
+        &[
+            stream,
+            text,
+            non_keyword_start,
+            Word::TRUE,
+            unknown,
+            Word::TRUE,
+        ],
+    )?;
+    let input_form = list(&mut ctx, &runtime, &[input, input_spec, body])?;
+
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", input_form),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ctx.take_pending_lisp_error(),
+        Some(ncl_object::LispError::ProgramError(
+            ncl_object::ProgramError::UnknownKeyword
+        ))
+    );
+    Ok(())
+}
+
+#[test]
+fn input_stream_macro_allows_unknown_keywords_with_allow_other_keys() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let input = symbol(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['a'])?;
+    let read = symbol(&mut ctx, &runtime, "READ-CHAR")?;
+    let body = list(&mut ctx, &runtime, &[read, stream])?;
+    let keyword_package = runtime.ensure_package(&mut ctx, "KEYWORD")?;
+    let unknown = ncl_object::Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "UNKNOWN")?
+        .0;
+    let allow_other_keys = ncl_object::Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "ALLOW-OTHER-KEYS")?
+        .0;
+    let input_spec = list(
+        &mut ctx,
+        &runtime,
+        &[
+            stream,
+            text,
+            unknown,
+            Word::TRUE,
+            allow_other_keys,
+            Word::TRUE,
+        ],
+    )?;
+    let input_form = list(&mut ctx, &runtime, &[input, input_spec, body])?;
+
+    assert!(expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", input_form).is_ok());
+    assert_eq!(ctx.take_pending_lisp_error(), None);
+    Ok(())
+}

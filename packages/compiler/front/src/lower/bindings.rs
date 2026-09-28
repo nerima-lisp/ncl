@@ -1,7 +1,8 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
 use ncl_ir::{
-    Convert, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId,
+    Constant, Convert, FunctionId, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator,
+    Ty, ValueId,
 };
 
 use crate::ast::Expr;
@@ -13,7 +14,7 @@ use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::super::lambda;
 use super::Context;
-use super::params::bind_let;
+use super::params::{bind_captures, bind_let, bind_required, lambda_params};
 
 impl Context<'_> {
     pub(super) fn lower_progv(
@@ -216,12 +217,115 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         definitions: &[crate::ast::LocalFunction],
         body: &[Expr],
+        recursive: bool,
     ) -> Result<ValueId, LowerError> {
         f.env().push();
+        if recursive {
+            return self.lower_recursive_functions(f, definitions, body);
+        }
         for definition in definitions {
             let captures = lambda::collect_captures(f, &definition.lambda);
             let closure = self.lower_lambda_value(f, &definition.lambda)?;
             let _ = captures;
+            f.env().bind_function(FunctionEntry {
+                name: definition.name.clone(),
+                callee: closure,
+            });
+        }
+        let value = self.lower_body(f, body)?;
+        f.env().pop();
+        Ok(value)
+    }
+
+    fn lower_recursive_functions(
+        &mut self,
+        f: &mut FunctionLowerer,
+        definitions: &[crate::ast::LocalFunction],
+        body: &[Expr],
+    ) -> Result<ValueId, LowerError> {
+        let ids = definitions
+            .iter()
+            .map(|_| self.module.fresh_function())
+            .collect::<Vec<FunctionId>>();
+        for (definition, id) in definitions.iter().zip(ids.iter().copied()) {
+            let captures = lambda::collect_captures(f, &definition.lambda);
+            let params = lambda_params(&definition.lambda.lambda_list, &captures)?;
+            let mut nested =
+                FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
+            bind_captures(&mut nested, &captures)?;
+            bind_required(
+                &mut nested,
+                &definition.lambda.lambda_list,
+                1 + captures.len(),
+            )?;
+            let mut child = Context::with_targets(self.module, self.targets.clone());
+            child.bind_optional(
+                &mut nested,
+                &definition.lambda.lambda_list,
+                1 + captures.len(),
+            )?;
+            child.bind_rest_and_keys(&mut nested, &definition.lambda.lambda_list)?;
+            child.bind_aux(&mut nested, &definition.lambda.lambda_list)?;
+            for (target, target_id) in definitions.iter().zip(ids.iter().copied()) {
+                let target_captures = lambda::collect_captures(f, &target.lambda);
+                let capture_values = target_captures
+                    .iter()
+                    .map(|(name, _slot)| match nested.env().lookup_variable(name) {
+                        Some(Slot::Value(value)) => Ok(value),
+                        Some(Slot::Cell(address)) => nested.one(
+                            OpKind::Convert {
+                                op: Convert::AddressToWord,
+                                value: address,
+                            },
+                            Ty::Word,
+                        ),
+                        None => Err(LowerError::Ir {
+                            detail: format!("recursive function capture is unavailable: {name}"),
+                        }),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let entry = nested.word_constant(Constant::FunctionEntry(target_id))?;
+                let closure = nested.one(
+                    OpKind::MakeClosure {
+                        entry,
+                        captures: capture_values,
+                    },
+                    Ty::Word,
+                )?;
+                nested.env().bind_function(FunctionEntry {
+                    name: target.name.clone(),
+                    callee: closure,
+                });
+            }
+            let value = child.lower_body(&mut nested, &definition.lambda.body)?;
+            if !nested.is_terminated() {
+                nested.return_value(value)?;
+            }
+            let mut function = nested.into_function();
+            function.handler_regions = child.regions;
+            child.module.push_function(function);
+
+            let entry = f.word_constant(Constant::FunctionEntry(id))?;
+            let capture_values = captures
+                .iter()
+                .map(|(_, slot)| match slot {
+                    Slot::Value(value) => Ok(*value),
+                    Slot::Cell(address) => f.one(
+                        OpKind::Convert {
+                            op: Convert::AddressToWord,
+                            value: *address,
+                        },
+                        Ty::Word,
+                    ),
+                })
+                .collect::<Result<Vec<_>, LowerError>>()?;
+            let closure = f.one(
+                OpKind::MakeClosure {
+                    entry,
+                    captures: capture_values,
+                },
+                Ty::Word,
+            )?;
             f.env().bind_function(FunctionEntry {
                 name: definition.name.clone(),
                 callee: closure,

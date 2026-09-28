@@ -77,6 +77,7 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 impl std::error::Error for RuntimeError {}
+
 impl RuntimeError {
     /// Returns whether reading can continue after receiving more input.
     #[must_use]
@@ -84,6 +85,7 @@ impl RuntimeError {
         matches!(self, Self::Read(ncl_reader::ReadError::UnexpectedEof))
     }
 }
+
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
@@ -162,18 +164,10 @@ impl Runtime {
             rooted_functions: Vec::new(),
         })
     }
-    /// Enables or disables collection before each allocation.
-    pub const fn set_gc_stress(&mut self, on: bool) {
-        self.context.set_gc_stress(on);
-    }
-    /// Enables or disables strict forwarding checks.
-    pub fn set_strict_forwarding(&self, on: bool) {
-        self.context.set_strict_forwarding(on);
-    }
-    /// Evaluates source through the native compiler.
+    /// Evaluate source by compiling it to native code and invoking the entry.
     ///
     /// # Errors
-    /// Returns reader, front-end, lowering, or native execution errors.
+    /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
@@ -183,7 +177,10 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Compiles and executes a source string through the native pipeline.
+    /// Compile and execute a source string through the native pipeline.
+    ///
+    /// The current native pipeline publishes code as it compiles it, so this
+    /// is intentionally equivalent to [`Self::eval`].
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
@@ -196,7 +193,7 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Compiles and executes all forms in a source file.
+    /// Compile and execute all forms in a source file.
     ///
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
@@ -212,14 +209,14 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Loads and executes all forms in a source string.
+    /// Load and execute all forms in a source string.
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn load(&mut self, source: &str) -> Result<Word, RuntimeError> {
         self.eval(source)
     }
-    /// Loads and executes all forms in a source file.
+    /// Load and execute all forms in a source file.
     ///
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
@@ -258,26 +255,35 @@ impl Runtime {
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
-        for function in module.functions.iter().skip(1) {
-            self.publish_function(function)?;
+        let mut compiled = Vec::with_capacity(module.functions.len());
+        for function in &module.functions {
+            compiled.push((function, self.compile_native(function)?));
         }
-        let compiled = self.compile_native(&entry)?;
-        let entry_metadata = compiled.1.clone();
-        let entry_address = compiled
-            .0
+        for (function, (code, metadata)) in &compiled {
+            let entry = code.address().saturating_add(metadata.entry_offset);
+            self.functions
+                .insert(function.id.0, PublishedFunction { entry });
+        }
+        for (function, (code, metadata)) in compiled.iter().skip(1) {
+            let entry = code.address().saturating_add(metadata.entry_offset);
+            let (_function_object, entry_code) =
+                self.make_function_object(function, &(code, metadata))?;
+            self.root_entry_code(entry, entry_code);
+        }
+        let (entry_code, entry_metadata) = &compiled
+            .first()
+            .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
+            .1;
+        let (entry_function, entry_constants) =
+            self.make_function_object(&entry, &(entry_code, entry_metadata))?;
+        let entry_address = entry_code
             .address()
             .saturating_add(entry_metadata.entry_offset);
-        let (entry_function, entry_code) =
-            self.make_function_object(&entry, &(&compiled.0, &compiled.1))?;
-        self.root_entry_code(entry_address, entry_code);
-        self.functions.insert(
-            entry.id.0,
-            PublishedFunction {
-                entry: entry_address,
-            },
-        );
-        let value = self.invoke_compiled(&compiled.0, &compiled.1, entry_function)?;
-        self.code.push(compiled.0);
+        self.root_entry_code(entry_address, entry_constants);
+        let value = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
+        for (_, (code, _)) in compiled {
+            self.code.push(code);
+        }
         Ok(value)
     }
     fn compile_native(
@@ -368,8 +374,10 @@ impl Runtime {
                             RuntimeError::Native(format!("function entry {} is unavailable", id.0))
                         })?
                         .entry;
-                    Word::fixnum(i64::try_from(entry).map_err(|_| {
-                        RuntimeError::Native("function entry does not fit fixnum".to_owned())
+                    Word::from_bits(u64::try_from(entry).map_err(|_| {
+                        RuntimeError::Native(
+                            "function entry does not fit a machine word".to_owned(),
+                        )
                     })?)
                 }
                 _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?, // check-added-lines: allow(wildcard) delegate all non-entry constants
@@ -386,17 +394,6 @@ impl Runtime {
             let _ = ncl_object::pop_root(&mut self.context, token);
         }
         result
-    }
-    fn publish_function(&mut self, function: &ncl_ir::Function) -> Result<(), RuntimeError> {
-        let id = function.id;
-        let (code, metadata) = self.compile_native(function)?;
-        let entry = code.address().saturating_add(metadata.entry_offset);
-        let (_function_object, code_object) =
-            self.make_function_object(function, &(&code, &metadata))?;
-        self.root_entry_code(entry, code_object);
-        self.functions.insert(id.0, PublishedFunction { entry });
-        self.code.push(code);
-        Ok(())
     }
     fn invoke_compiled(
         &mut self,
@@ -429,7 +426,11 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // End the borrow before reusing the context after the opaque raw pointer call.
+        // Not a `Drop` type; this only marks the mutable borrow of
+        // `self.context` as no longer needed before `context` is used again
+        // below (`native_context` is opaque to the caller once cast to a raw
+        // pointer, so the compiler cannot infer that its last real use was
+        // the `NonNull::from` cast above).
         let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {

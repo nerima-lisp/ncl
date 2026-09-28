@@ -488,20 +488,22 @@ fn x86_64_prologue_uses_load_arg_result_values() {
         vec![Ty::Word, Ty::Word],
     );
     let left = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .unwrap_or_else(|error| panic!("left LoadArg: {error}"))[0];
     let right = builder
-        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
         .unwrap_or_else(|error| panic!("right LoadArg: {error}"))[0];
-    assert!(builder
-        .terminate(Terminator::Return {
-            values: vec![left, right],
-        })
-        .is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return {
+                values: vec![left, right],
+            })
+            .is_ok()
+    );
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert_eq!(allocation.location(left), Some(Location::Register(13)));
-    assert_eq!(allocation.location(right), Some(Location::Spill(0)));
+    assert_eq!(allocation.location(right), Some(Location::Register(11)));
     let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
         .unwrap_or_else(|error| panic!("entry parameter lowering: {error:?}"));
     assert!(
@@ -513,8 +515,8 @@ fn x86_64_prologue_uses_load_arg_result_values() {
     assert!(
         compiled
             .code
-            .windows(4)
-            .any(|bytes| bytes == [0x48, 0x89, 0x55, 0xd8])
+            .windows(3)
+            .any(|bytes| bytes == [0x49, 0x89, 0xd4])
     );
 }
 

@@ -244,18 +244,25 @@ pub fn compile_function_x86_64(
             .saturating_add(spill_words)
     });
     value_slots.incoming_args_base = incoming_args_base;
-    let mut argument_values = (0..argument_words)
-        .map(ncl_ir::ValueId)
-        .collect::<Vec<_>>();
+    let mut argument_values = (0..argument_words).map(ncl_ir::ValueId).collect::<Vec<_>>();
     for block in &function.blocks {
         for op in &block.ops {
-            let OpKind::LoadArg { index } = op.kind else {
+            let OpKind::LoadArg { index } = &op.kind else {
                 continue;
             };
             let Some(result) = op.results.first() else {
                 continue;
             };
-            if let Some(value) = argument_values.get_mut(usize::from(index)) {
+            let logical_index = if generated_lambda {
+                usize::from(*index)
+            } else {
+                let index = usize::from(*index);
+                if index == 0 {
+                    continue;
+                }
+                index - 1
+            };
+            if let Some(value) = argument_values.get_mut(logical_index) {
                 *value = result.0;
             }
         }

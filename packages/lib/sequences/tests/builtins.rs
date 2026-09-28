@@ -206,7 +206,10 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         assert_eq!(call(&runtime, ctx, &functions, "THIRD", &[*list]), three);
         assert_eq!(call(&runtime, ctx, &functions, "FOURTH", &[*list]), four);
         assert_eq!(call(&runtime, ctx, &functions, "FIFTH", &[*list]), five);
-        assert_eq!(call(&runtime, ctx, &functions, "SIXTH", &[*list]), Word::NIL);
+        assert_eq!(
+            call(&runtime, ctx, &functions, "SIXTH", &[*list]),
+            Word::NIL
+        );
         assert_eq!(
             call(&runtime, ctx, &functions, "SEVENTH", &[*list]),
             Word::NIL
@@ -215,17 +218,17 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             call(&runtime, ctx, &functions, "EIGHTH", &[*list]),
             Word::NIL
         );
-        assert_eq!(call(&runtime, ctx, &functions, "NINTH", &[*list]), Word::NIL);
-        assert_eq!(call(&runtime, ctx, &functions, "TENTH", &[*list]), Word::NIL);
+        assert_eq!(
+            call(&runtime, ctx, &functions, "NINTH", &[*list]),
+            Word::NIL
+        );
+        assert_eq!(
+            call(&runtime, ctx, &functions, "TENTH", &[*list]),
+            Word::NIL
+        );
     });
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list| {
-        let mut result = call(
-            &runtime,
-            ctx,
-            &functions,
-            "CONS",
-            &[Word::fixnum(0), *list],
-        );
+        let mut result = call(&runtime, ctx, &functions, "CONS", &[Word::fixnum(0), *list]);
         let root = ncl_object::push_root(ctx, &mut result);
         assert_eq!(
             call(&runtime, ctx, &functions, "CAR", &[result]),

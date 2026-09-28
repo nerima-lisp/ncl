@@ -108,15 +108,11 @@ fn defpackage_expands_clhs_package_clauses() -> Result<()> {
     let imported = symbol(&mut ctx, &runtime, "CAR")?;
     let shadowed = symbol(&mut ctx, &runtime, "CDR")?;
     let interned = symbol(&mut ctx, &runtime, "LOCAL")?;
-    let documentation = ncl_object::make_string(
-        &mut ctx,
-        &runtime,
-        &"docs".chars().collect::<Vec<_>>(),
-    )?;
+    let documentation =
+        ncl_object::make_string(&mut ctx, &runtime, &"docs".chars().collect::<Vec<_>>())?;
     let size = Word::fixnum(32);
     let import_from = clause(&mut ctx, "IMPORT-FROM", &[source, imported])?;
-    let shadowing_import_from =
-        clause(&mut ctx, "SHADOWING-IMPORT-FROM", &[source, shadowed])?;
+    let shadowing_import_from = clause(&mut ctx, "SHADOWING-IMPORT-FROM", &[source, shadowed])?;
     let intern = clause(&mut ctx, "INTERN", &[interned])?;
     let documentation_clause = clause(&mut ctx, "DOCUMENTATION", &[documentation])?;
     let size_clause = clause(&mut ctx, "SIZE", &[size])?;
@@ -137,7 +133,10 @@ fn defpackage_expands_clhs_package_clauses() -> Result<()> {
     let expansion = expand(&mut ctx, &runtime, defpackage_adapter, form)?;
     let elements = crate::form::elements(&mut ctx, expansion)?;
     let statements = &elements[1..];
-    assert_eq!(head(&mut ctx, statements[0])?, symbol(&mut ctx, &runtime, "OR")?);
+    assert_eq!(
+        head(&mut ctx, statements[0])?,
+        symbol(&mut ctx, &runtime, "OR")?
+    );
 
     let make_package = crate::form::elements(&mut ctx, statements[0])?[2];
     let make_package = crate::form::elements(&mut ctx, make_package)?;

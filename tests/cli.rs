@@ -145,10 +145,7 @@ fn common_lisp_load_is_a_callable_builtin() {
 
 #[test]
 fn setf_get_retains_the_written_value_and_evaluates_place_once() {
-    let direct = output(ncl().args([
-        "--eval",
-        "(progn (setf (get 'x 'y) 42) (get 'x 'y))",
-    ]));
+    let direct = output(ncl().args(["--eval", "(progn (setf (get 'x 'y) 42) (get 'x 'y))"]));
     assert!(direct.status.success(), "{direct:?}");
     assert_eq!(String::from_utf8_lossy(&direct.stdout).trim(), "42");
 

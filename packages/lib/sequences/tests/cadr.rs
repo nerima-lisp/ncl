@@ -45,10 +45,9 @@ fn registers_and_composes_all_cadr_family_builtins() {
     ncl_lib_sequences::register(&runtime).unwrap_or_else(|error| panic!("sequences: {error:?}"));
 
     let names = [
-        "CAAR", "CADR", "CDAR", "CDDR", "CAAAR", "CAADR", "CADAR", "CADDR", "CDAAR",
-        "CDADR", "CDDAR", "CDDDR", "CAAAAR", "CAAADR", "CAADAR", "CAADDR", "CADAAR",
-        "CADADR", "CADDAR", "CADDDR", "CDAAAR", "CDAADR", "CDADAR", "CDADDR", "CDDAAR",
-        "CDDADR", "CDDDAR", "CDDDDR",
+        "CAAR", "CADR", "CDAR", "CDDR", "CAAAR", "CAADR", "CADAR", "CADDR", "CDAAR", "CDADR",
+        "CDDAR", "CDDDR", "CAAAAR", "CAAADR", "CAADAR", "CAADDR", "CADAAR", "CADADR", "CADDAR",
+        "CADDDR", "CDAAAR", "CDAADR", "CDADAR", "CDADDR", "CDDAAR", "CDDADR", "CDDDAR", "CDDDDR",
     ];
     let functions = names
         .iter()

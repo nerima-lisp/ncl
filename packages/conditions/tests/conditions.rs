@@ -8,16 +8,16 @@
 //! type-specific signal dispatch.
 
 use ncl_conditions::{
-    cerror, compute_restarts, condition_class, error, find_restart, invoke_restart_by_name,
-    make_condition, make_typed_condition, pop_handler, pop_restart, push_cleanup, push_handler,
-    push_restart, signal, unwind, ConditionClass, ConditionError, ConditionIdentifier,
-    ConditionSlotValue,
+    ConditionClass, ConditionError, ConditionIdentifier, ConditionSlotValue, cerror,
+    compute_restarts, condition_class, error, find_restart, invoke_restart_by_name, make_condition,
+    make_typed_condition, pop_handler, pop_restart, push_cleanup, push_handler, push_restart,
+    signal, unwind,
 };
 use ncl_object::{
-    make_string, pop_root, push_root, slot_ref, string_length, string_ref, typed_builtin, Arity,
-    Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FunctionObject, LispError, ObjectType, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word,
+    Runtime, ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length,
+    string_ref, typed_builtin,
 };
 
 const fn fail_type_error(

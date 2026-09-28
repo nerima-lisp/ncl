@@ -159,14 +159,11 @@ fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
 fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
-    // Keep the caller's return address at [rsp]. The callee prologue pushes
-    // rbp and reads its function-object and flags header at [rsp+8] and
-    // [rsp+16], respectively.
+    emit(assembler, Inst::MovRM(RETURN_VALUE, Mem::base(Reg::Rsp, 0)))?;
     emit(
         assembler,
         Inst::MovMR(Mem::base(Reg::Rsp, 8), FUNCTION_OBJECT),
     )?;
-    emit(assembler, Inst::MovRI(RETURN_VALUE, Imm::I32(0)))?;
     emit(
         assembler,
         Inst::MovMR(Mem::base(Reg::Rsp, 16), RETURN_VALUE),

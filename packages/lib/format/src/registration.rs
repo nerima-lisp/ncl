@@ -22,6 +22,10 @@ const ARGUMENT: Parameter = Parameter {
 };
 
 /// Register the Common Lisp FORMAT builtin.
+///
+/// # Errors
+///
+/// Returns an object error when the builtin cannot be registered.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

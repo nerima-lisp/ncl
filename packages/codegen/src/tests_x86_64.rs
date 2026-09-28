@@ -399,21 +399,74 @@ fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
             .is_ok()
     );
 
-    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(0)),
+        Some(Location::Register(11))
+    );
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(1)),
+        Some(Location::Register(12))
+    );
+    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("argc lowering: {error:?}"),
     };
     assert!(
         compiled
             .code
+            .windows(3)
+            .any(|bytes| bytes == [0x49, 0x89, 0xfc])
+    );
+    assert!(
+        compiled
+            .code
+            .windows(3)
+            .any(|bytes| bytes == [0x49, 0x89, 0xf5])
+    );
+}
+
+#[test]
+fn x86_64_prologue_loads_overflow_arguments_from_r9() {
+    let params = (0..6)
+        .map(|index| ncl_ir::Param {
+            name: format!("arg{index}"),
+            ty: Ty::Word,
+        })
+        .collect();
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(76),
+        "overflow-arguments",
+        params,
+        Vec::new(),
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert!(matches!(
+        allocation.location(ncl_ir::ValueId(4)),
+        Some(Location::Spill(_))
+    ));
+    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("overflow argument lowering: {error:?}"),
+    };
+    assert!(
+        compiled
+            .code
             .windows(4)
-            .any(|bytes| bytes == [0x48, 0x89, 0x7d, 0xf8])
+            .any(|bytes| bytes == [0x4d, 0x8b, 0x19, 0x4c])
     );
     assert!(
         compiled
             .code
             .windows(4)
-            .any(|bytes| bytes == [0x48, 0x89, 0x75, 0xf0])
+            .any(|bytes| bytes == [0x4d, 0x8b, 0x59, 0x08])
     );
 }
 

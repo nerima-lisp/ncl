@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
-use crate::{FLAG_CALL, compile_function_x86_64};
+use crate::{AllocationTarget, FLAG_CALL, Location, allocate, compile_function_x86_64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -114,13 +114,23 @@ fn golden_x86_64_prologue_spills_register_arguments() {
             .terminate(Terminator::Return { values: Vec::new() })
             .is_ok()
     );
-    let compiled_result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(0)),
+        Some(Location::Register(11))
+    );
+    assert_eq!(
+        allocation.location(ncl_ir::ValueId(1)),
+        Some(Location::Register(12))
+    );
+    let compiled_result = compile_function_x86_64(&function, &X86_64FixtureAbi);
     assert!(compiled_result.is_ok());
     let Some(compiled) = compiled_result.ok() else {
         return;
     };
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0; mov [rbp+24], r11;
-    // sub rsp, 32; mov [rbp-8], rsi; mov [rbp-16], rdx
+    // sub rsp, 32; mov r12, rsi; mov r13, rdx
     assert_eq!(compiled.code[0], 0x55);
     assert_eq!(compiled.code[1..4], [0x48, 0x89, 0xE5]);
     assert_eq!(compiled.code[4..8], [0x4C, 0x89, 0x55, 0x10]);
@@ -130,8 +140,8 @@ fn golden_x86_64_prologue_spills_register_arguments() {
     );
     assert_eq!(compiled.code[15..19], [0x4C, 0x89, 0x5D, 0x18]);
     assert_eq!(compiled.code[19..23], [0x48, 0x83, 0xEC, 0x20]);
-    assert_eq!(compiled.code[23..27], [0x48, 0x89, 0x75, 0xF8]);
-    assert_eq!(compiled.code[27..31], [0x48, 0x89, 0x55, 0xF0]);
+    assert_eq!(compiled.code[23..26], [0x49, 0x89, 0xF4]);
+    assert_eq!(compiled.code[26..29], [0x49, 0x89, 0xD5]);
 }
 
 #[test]

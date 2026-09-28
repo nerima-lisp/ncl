@@ -53,6 +53,7 @@ pub use code::{
 };
 pub use cons::{rplaca, rplacd};
 pub use context::ThreadContext;
+pub use ncl_sys::RootSlot;
 pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
 };

@@ -318,7 +318,7 @@ impl<'a> BuiltinArgs<'a> {
     #[must_use]
     pub fn get(self, index: usize) -> Option<Word> {
         self.rooted
-            .and_then(|rooted| rooted.get(index).map(|value| **value))
+            .and_then(|rooted| rooted.get(index).map(|value| value.get()))
             .or_else(|| self.words.get(index).copied())
     }
 

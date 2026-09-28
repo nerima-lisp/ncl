@@ -80,15 +80,21 @@ fn register_condition_builtins(
     for (name, implementation) in [
         (
             "SIGNAL",
-            BuiltinImplementation::adapted(condition_and_rest, signal_builtin, pass_arguments),
+            BuiltinImplementation::adapted(condition_and_rest, signal_builtin, |args| {
+                Ok(args.as_slice().to_vec())
+            }),
         ),
         (
             "ERROR",
-            BuiltinImplementation::adapted(condition_and_rest, error_builtin, pass_arguments),
+            BuiltinImplementation::adapted(condition_and_rest, error_builtin, |args| {
+                Ok(args.as_slice().to_vec())
+            }),
         ),
         (
             "WARN",
-            BuiltinImplementation::adapted(condition_and_rest, warn_builtin, pass_arguments),
+            BuiltinImplementation::adapted(condition_and_rest, warn_builtin, |args| {
+                Ok(args.as_slice().to_vec())
+            }),
         ),
         (
             "CELL-ERROR-NAME",
@@ -96,7 +102,9 @@ fn register_condition_builtins(
         ),
         (
             "CERROR",
-            BuiltinImplementation::adapted(cerror, cerror_builtin, pass_arguments),
+            BuiltinImplementation::adapted(cerror, cerror_builtin, |args| {
+                Ok(args.as_slice().to_vec())
+            }),
         ),
     ] {
         runtime.register_builtin(
@@ -159,10 +167,6 @@ fn condition_argument(
     let class_name = symbol_text(ctx, value)?;
     let class = crate::condition_class(ctx, runtime, &class_name).ok_or(ObjectError::TypeError)?;
     crate::make_condition(ctx, runtime, class, &[]).map_err(condition_object_error)
-}
-
-fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    Ok(args.as_slice().to_vec())
 }
 
 fn signal_builtin(

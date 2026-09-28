@@ -169,24 +169,24 @@ pub fn lower_closure_call(
         } else {
             // check-added-lines: allow(index) capture layout bounds the rest offset.
             load_slot(assembler, slots, rest[index - capture_count], ENTRY)?;
-        }
-        if let Some(register) = target {
-            emit(assembler, Inst::MovRR(register, ENTRY))?;
-        } else {
-            let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
-                .map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::MovMR(
-                    slot_mem_of(
-                        slots
-                            .outgoing_base
-                            .checked_add(extra)
-                            .ok_or(CodegenError::FrameOverflow)?,
-                    )?,
-                    ENTRY,
-                ),
-            )?;
+            if let Some(register) = target {
+                emit(assembler, Inst::MovRR(register, ENTRY))?;
+            } else {
+                let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
+                    .map_err(|_| CodegenError::FrameOverflow)?;
+                emit(
+                    assembler,
+                    Inst::MovMR(
+                        slot_mem_of(
+                            slots
+                                .outgoing_base
+                                .checked_add(extra)
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )?,
+                        ENTRY,
+                    ),
+                )?;
+            }
         }
     }
     emit(

@@ -255,7 +255,10 @@ fn invoke_dispatch(
     mut argument_list: Word,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let [before, primary, after, around] = methods;
+    let before = methods.first().ok_or(ObjectError::Layout)?;
+    let primary = methods.get(1).ok_or(ObjectError::Layout)?;
+    let after = methods.get(2).ok_or(ObjectError::Layout)?;
+    let around = methods.get(3).ok_or(ObjectError::Layout)?;
     let mut method_words = Vec::new();
     method_words.extend_from_slice(before);
     let primary_start = method_words.len();

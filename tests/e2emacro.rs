@@ -74,6 +74,11 @@ const PROBES: &[Probe] = &[
         expected: "3",
     },
     Probe {
+        name: "multiple-value-setq",
+        source: "(progn (setq a 0 b 0) (multiple-value-setq (a b) (values 7 9)))",
+        expected: "7",
+    },
+    Probe {
         name: "with-input-from-string",
         source: "(with-input-from-string (s \"abc\") (read-char s))",
         expected: "#\\a",
@@ -208,12 +213,6 @@ const XFAILS: &[XFail] = &[
         name: "shiftf",
         source: "(let ((a 1) (b 2)) (shiftf a b 3) (list a b))",
         stderr: "SHIFTF",
-        exit_code: 1,
-    },
-    XFail {
-        name: "multiple-value-setq",
-        source: "(multiple-value-setq (a b) (values 1 2))",
-        stderr: "MULTIPLE-VALUE-SETQ",
         exit_code: 1,
     },
 ];

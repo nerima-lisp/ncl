@@ -152,6 +152,16 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut handler_clause);
     let mut handler_clauses = list(&mut ctx, &runtime, &[handler_clause])?;
     root!(&mut handler_clauses);
+    let mut handler_variables = list(&mut ctx, &runtime, &[x])?;
+    root!(&mut handler_variables);
+    let mut handler_case_clause = list(&mut ctx, &runtime, &[t, handler_variables, x])?;
+    root!(&mut handler_case_clause);
+    let mut open_file_spec = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut open_file_spec);
+    let mut mvsetq_variables = list(&mut ctx, &runtime, &[x, y])?;
+    root!(&mut mvsetq_variables);
+    let mut declaim_spec = list(&mut ctx, &runtime, &[t, x])?;
+    root!(&mut declaim_spec);
     let mut do_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0), one])?;
     root!(&mut do_variable);
     let mut do_variables = list(&mut ctx, &runtime, &[do_variable])?;
@@ -164,6 +174,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut prog_variables);
     let mut destructuring_lambda_list = list(&mut ctx, &runtime, &[x])?;
     root!(&mut destructuring_lambda_list);
+    let mut restart_clause = list(&mut ctx, &runtime, &[x, destructuring_lambda_list, x])?;
+    root!(&mut restart_clause);
     let mut dolist_spec = list(&mut ctx, &runtime, &[x, Word::NIL])?;
     root!(&mut dolist_spec);
     let mut dotimes_spec = list(&mut ctx, &runtime, &[x, one])?;
@@ -191,10 +203,12 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         }};
     }
     case!("AND", "AND", [t, x]);
+    case!("ASSERT", "ASSERT", [t]);
     case!("CASE", "CASE", [x, clause]);
     case!("CCASE", "CCASE", [x, clause]);
     case!("COND", "COND", [clause]);
     case!("CTYPECASE", "CTYPECASE", [x, type_clause]);
+    case!("CHECK-TYPE", "CHECK-TYPE", [x, t]);
     case!("DECF", "DECF", [x, one]);
     case!("DEFCONSTANT", "DEFCONSTANT", [x, one]);
     case!("DEFINE-COMPILER-MACRO", "DEFMACRO", [x, nil, t]);
@@ -206,6 +220,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
     case!("DEFSETF", "DEFSETF", [x, y]);
     case!("DEFVAR", "DEFVAR", [x, one]);
+    case!("DECLAIM", "DECLAIM", [declaim_spec]);
     case!(
         "DESTRUCTURING-BIND",
         "DESTRUCTURING-BIND",
@@ -220,6 +235,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
+    case!("HANDLER-CASE", "HANDLER-CASE", [x, handler_case_clause]);
+    case!("IGNORE-ERRORS", "IGNORE-ERRORS", [x]);
     case!(
         "LOOP",
         "LOOP",
@@ -240,6 +257,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         [destructuring_lambda_list, x, x]
     );
     case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);
+    case!("MULTIPLE-VALUE-SETQ", "MULTIPLE-VALUE-SETQ", [mvsetq_variables, x]);
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
     case!("OR", "OR", [x, y]);
     case!("POP", "POP", [x]);
@@ -252,10 +270,12 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("PUSHNEW", "PUSHNEW", [one, x]);
     case!("REMF", "REMF", [x, y]);
     case!("RETURN", "RETURN", [x]);
+    case!("RESTART-CASE", "RESTART-CASE", [x, restart_clause]);
     case!("SETF", "SETF", [x, one]);
     case!("TYPECASE", "TYPECASE", [x, type_clause]);
     case!("UNLESS", "UNLESS", [x, y]);
     case!("WHEN", "WHEN", [x, y]);
+    case!("WITH-OPEN-FILE", "WITH-OPEN-FILE", [open_file_spec, x]);
     case!(
         "WITH-INPUT-FROM-STRING",
         "WITH-INPUT-FROM-STRING",
@@ -274,7 +294,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
             let mut values = ncl_object::MultipleValues::new();
             let arg_words = [**input_root];
             let args = ncl_object::BuiltinArgs::new(&arg_words);
-            let expanded = callback_for(name).ok_or(ObjectError::UndefinedFunction)?(
+            let callback = callback_for(name).ok_or(ObjectError::UndefinedFunction)?;
+            let expanded = callback(
                 ctx,
                 &runtime,
                 &args,

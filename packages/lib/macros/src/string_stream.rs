@@ -109,12 +109,12 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
         let mut allow_other_keys = false;
         let mut unknown_keyword = false;
         let mut cursor = 1;
-        if let Some(value) = spec.get(cursor).copied() {
-            if !is_keyword_symbol(ctx, runtime, value)? {
-                initial_string = value;
-                has_initial_string = true;
-                cursor += 1;
-            }
+        if let Some(value) = spec.get(cursor).copied()
+            && !is_keyword_symbol(ctx, runtime, value)?
+        {
+            initial_string = value;
+            has_initial_string = true;
+            cursor += 1;
         }
         while cursor < spec.len() {
             let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;

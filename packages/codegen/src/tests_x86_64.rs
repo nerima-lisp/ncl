@@ -193,6 +193,93 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
 }
 
 #[test]
+fn x86_64_closure_call_keeps_captures_in_argument_registers() -> Result<(), String> {
+    let mut builder = ncl_ir::FunctionBuilder::new(
+        ncl_ir::FunctionId(77),
+        "closure-capture-abi",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
+    let entry = builder
+        .push_op(OpKind::Const { result: entry }, &[Ty::Word])
+        .map_err(|error| format!("entry: {error:?}"))?[0];
+    let argc = builder.add_constant(Constant::Fixnum(0));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .map_err(|error| format!("argc: {error:?}"))?[0];
+    let argument = builder.add_constant(Constant::Fixnum(1));
+    let argument = builder
+        .push_op(OpKind::Const { result: argument }, &[Ty::Word])
+        .map_err(|error| format!("argument: {error:?}"))?[0];
+    let second_argument = builder.add_constant(Constant::Fixnum(2));
+    let second_argument = builder
+        .push_op(
+            OpKind::Const {
+                result: second_argument,
+            },
+            &[Ty::Word],
+        )
+        .map_err(|error| format!("second argument: {error:?}"))?[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry,
+                captures: vec![entry; 3],
+            },
+            &[Ty::Word],
+        )
+        .map_err(|error| format!("closure: {error:?}"))?[0];
+    let result = builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: vec![argc, argument, second_argument],
+                named_symbol: None,
+            },
+            &[Ty::Word],
+        )
+        .map_err(|error| format!("call closure: {error:?}"))?[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .map_err(|error| format!("return: {error:?}"))?;
+
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .map_err(|error| format!("compile: {error:?}"))?;
+    let code = &compiled.code;
+    for capture_load in [
+        [0x48, 0x8b, 0x70, 0x28], // mov 40(%rax), %rsi
+        [0x48, 0x8b, 0x50, 0x30], // mov 48(%rax), %rdx
+        [0x48, 0x8b, 0x48, 0x38], // mov 56(%rax), %rcx
+    ] {
+        assert!(
+            code.windows(capture_load.len())
+                .any(|bytes| bytes == capture_load),
+            "capture load missing: {capture_load:02x?} in {code:02x?}"
+        );
+    }
+    for capture_overwrite in [
+        [0x4c, 0x89, 0xde], // mov %r11, %rsi
+        [0x4c, 0x89, 0xda], // mov %r11, %rdx
+        [0x4c, 0x89, 0xd9], // mov %r11, %rcx
+    ] {
+        assert!(
+            !code
+                .windows(capture_overwrite.len())
+                .any(|bytes| bytes == capture_overwrite),
+            "capture was overwritten by ENTRY: {capture_overwrite:02x?} in {code:02x?}"
+        );
+    }
+    assert!(
+        code.windows(3).any(|bytes| bytes == [0x4c, 0x89, 0x5d]),
+        "fifth closure argument was not spilled through the outgoing ABI area: {code:02x?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn x86_64_dispatches_catch_after_unwind_protect_cleanup_builtin() -> Result<(), String> {
     let compiled = compile_function_x86_64(&cleanup_dispatch_function()?, &X86_64FixtureAbi)
         .map_err(|error| format!("compile: {error:?}"))?;

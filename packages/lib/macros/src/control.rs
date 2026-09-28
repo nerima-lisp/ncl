@@ -7,6 +7,7 @@ use ncl_object::{
     ThreadContext, Word, classify_object, string_length, string_ref, symbol_name,
 };
 
+pub(crate) mod condition;
 mod handler_bind;
 mod typecase;
 

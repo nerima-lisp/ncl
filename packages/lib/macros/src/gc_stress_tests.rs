@@ -152,6 +152,12 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut handler_clause);
     let mut handler_clauses = list(&mut ctx, &runtime, &[handler_clause])?;
     root!(&mut handler_clauses);
+    let mut handler_variables = list(&mut ctx, &runtime, &[x])?;
+    root!(&mut handler_variables);
+    let mut handler_case_clause = list(&mut ctx, &runtime, &[t, handler_variables, x])?;
+    root!(&mut handler_case_clause);
+    let mut open_file_spec = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut open_file_spec);
     let mut do_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0), one])?;
     root!(&mut do_variable);
     let mut do_variables = list(&mut ctx, &runtime, &[do_variable])?;
@@ -212,6 +218,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
+    case!("HANDLER-CASE", "HANDLER-CASE", [x, handler_case_clause]);
+    case!("IGNORE-ERRORS", "IGNORE-ERRORS", [x]);
     case!("LOOP", "LOOP", [for_keyword, x, from_keyword, one, to_keyword, one, do_keyword, x]);
     case!("MULTIPLE-VALUE-BIND", "MULTIPLE-VALUE-BIND", [destructuring_lambda_list, x, x]);
     case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);
@@ -231,6 +239,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("TYPECASE", "TYPECASE", [x, type_clause]);
     case!("UNLESS", "UNLESS", [x, y]);
     case!("WHEN", "WHEN", [x, y]);
+    case!("WITH-OPEN-FILE", "WITH-OPEN-FILE", [open_file_spec, x]);
     assert_eq!(cases.len(), MACROS.len());
     ctx.set_gc_stress(true);
     let case_words: Vec<_> = cases.iter().map(|(_, input)| **input).collect();

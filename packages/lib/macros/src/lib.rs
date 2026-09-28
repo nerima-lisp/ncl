@@ -14,6 +14,7 @@ mod place;
 mod setf;
 mod setf_places;
 mod setf_support;
+pub(crate) mod with_open_file;
 
 pub use form::{elements, fresh_symbol, list, symbol};
 pub use place::{PlaceExpander, PlaceRegistry, SetfExpansion, register_place};
@@ -278,10 +279,13 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
         "HANDLER-BIND" => Some(control::expand_handler_bind_adapter),
+        "HANDLER-CASE" => Some(control::condition::expand_handler_case_adapter),
+        "IGNORE-ERRORS" => Some(control::condition::expand_ignore_errors_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),
         "LOOP" => Some(r#loop::expand_loop_callback),
+        "WITH-OPEN-FILE" => Some(with_open_file::expand_adapter),
         _ => None,
     }
 }
@@ -350,6 +354,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 #[path = "tests/registration.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "with_open_file_tests.rs"]
+mod with_open_file_tests;
+
 const MACROS: &[&str] = &[
     "AND",
     "CASE",
@@ -377,6 +385,9 @@ const MACROS: &[&str] = &[
     "IN-PACKAGE",
     "INCF",
     "HANDLER-BIND",
+    "HANDLER-CASE",
+    "IGNORE-ERRORS",
+    "WITH-OPEN-FILE",
     "LOOP",
     "NTH-VALUE",
     "MULTIPLE-VALUE-BIND",

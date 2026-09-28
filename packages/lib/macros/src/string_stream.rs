@@ -2,8 +2,8 @@
 
 use crate::{elements, list, symbol};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object,
+    BuiltinArgs, LispError, MultipleValues, ObjectError, ObjectRef, ProgramError, Runtime,
+    ThreadContext, Word, classify_object, symbol_package,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -18,10 +18,16 @@ fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -
     })
 }
 
-fn is_keyword(ctx: &ThreadContext, word: Word, expected: &str) -> Result<bool> {
+fn is_keyword(ctx: &ThreadContext, runtime: &Runtime, word: Word, expected: &str) -> Result<bool> {
     let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {
         return Ok(false);
     };
+    let Some(keyword_package) = runtime.find_package(ctx, "KEYWORD") else {
+        return Ok(false);
+    };
+    if symbol_package(ctx, symbol)? != keyword_package {
+        return Ok(false);
+    }
     let name = ncl_object::symbol_name(ctx, symbol)?;
     let actual = (0..ncl_object::string_length(ctx, name)?)
         .map(|index| ncl_object::string_ref(ctx, name, index))
@@ -129,25 +135,32 @@ fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> 
         }
         let mut start = Word::NIL;
         let mut end = Word::NIL;
+        let mut allow_other_keys = false;
+        let mut unknown_keyword = false;
         let mut cursor = 2;
         while cursor < spec_parts.len() {
             let key = *spec_parts.get(cursor).ok_or(ObjectError::Layout)?;
-            if is_keyword(ctx, key, "START")? {
-                let value = *spec_parts.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+            let value = *spec_parts.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+            if is_keyword(ctx, runtime, key, "START")? {
                 if start != Word::NIL {
                     return Err(ObjectError::TypeError);
                 }
                 start = value;
-            } else if is_keyword(ctx, key, "END")? {
-                let value = *spec_parts.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+            } else if is_keyword(ctx, runtime, key, "END")? {
                 if end != Word::NIL {
                     return Err(ObjectError::TypeError);
                 }
                 end = value;
+            } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
+                allow_other_keys |= value != Word::NIL;
             } else {
-                break;
+                unknown_keyword = true;
             }
             cursor += 2;
+        }
+        if unknown_keyword && !allow_other_keys {
+            ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
+            return Err(ObjectError::TypeError);
         }
 
         let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();

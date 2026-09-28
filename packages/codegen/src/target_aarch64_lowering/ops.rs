@@ -413,84 +413,91 @@ pub fn move_args(
             .any(|(_, parameter)| allocation.location(*argument) == allocation.location(*parameter))
     });
     if overlapping {
-        // Stage all sources before writing any destination. This preserves a
-        // register/register cycle and also handles register/spill overlap.
-        let temporary_bytes = moves
-            .len()
-            .checked_mul(8)
-            .and_then(|bytes| bytes.checked_add(15))
-            .map(|bytes| bytes & !15)
-            .ok_or(CodegenError::FrameOverflow)?;
-        let temporary_bytes =
-            u16::try_from(temporary_bytes).map_err(|_| CodegenError::FrameOverflow)?;
-        if temporary_bytes <= 4095 {
-            emit(
-                assembler,
-                Inst::SubImm {
-                    rd: RegOrSp::Sp,
-                    rn: RegOrSp::Sp,
-                    imm: temporary_bytes,
-                    shift: false,
-                },
-            )?;
-        } else {
-            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(temporary_bytes)) {
-                emit(assembler, instruction)?;
-            }
-            emit(
-                assembler,
-                Inst::Sub {
-                    rd: RegOrSp::Sp,
-                    rn: RegOrSp::Sp,
-                    rm: Reg(16),
-                    shift: ncl_asm_aarch64::Shift::Lsl(0),
-                },
-            )?;
-        }
-        for (index, (argument, _)) in moves.iter().enumerate() {
-            load_value(assembler, allocation, *argument, Reg(16))?;
-            let offset =
-                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Sp,
-                        offset,
-                    },
-                },
-            )?;
-        }
-        for (index, (_, parameter)) in moves.iter().enumerate() {
-            let offset =
-                i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Sp,
-                        offset,
-                    },
-                },
-            )?;
-            store_value(assembler, allocation, *parameter, Reg(16))?;
-        }
-        emit(
-            assembler,
-            Inst::AddImm {
-                rd: RegOrSp::Sp,
-                rn: RegOrSp::Sp,
-                imm: temporary_bytes,
-                shift: false,
-            },
-        )?;
+        stage_parallel_moves(assembler, allocation, &moves)?;
         return Ok(());
     }
     for (argument, parameter) in moves {
         load_value(assembler, allocation, argument, Reg(17))?;
         store_value(assembler, allocation, parameter, Reg(17))?;
     }
+    Ok(())
+}
+
+fn stage_parallel_moves(
+    assembler: &mut Assembler,
+    allocation: &Allocation,
+    moves: &[(ValueId, ValueId)],
+) -> Result<(), CodegenError> {
+    let temporary_bytes = moves
+        .len()
+        .checked_mul(8)
+        .and_then(|bytes| bytes.checked_add(15))
+        .map(|bytes| bytes & !15)
+        .ok_or(CodegenError::FrameOverflow)?;
+    let temporary_bytes =
+        u16::try_from(temporary_bytes).map_err(|_| CodegenError::FrameOverflow)?;
+    if temporary_bytes <= 4095 {
+        emit(
+            assembler,
+            Inst::SubImm {
+                rd: RegOrSp::Sp,
+                rn: RegOrSp::Sp,
+                imm: temporary_bytes,
+                shift: false,
+            },
+        )?;
+    } else {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(temporary_bytes)) {
+            emit(assembler, instruction)?;
+        }
+        emit(
+            assembler,
+            Inst::Sub {
+                rd: RegOrSp::Sp,
+                rn: RegOrSp::Sp,
+                rm: Reg(16),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            },
+        )?;
+    }
+    for (index, (argument, _)) in moves.iter().enumerate() {
+        load_value(assembler, allocation, *argument, Reg(16))?;
+        let offset =
+            i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::Str {
+                rt: Reg(16),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Sp,
+                    offset,
+                },
+            },
+        )?;
+    }
+    for (index, (_, parameter)) in moves.iter().enumerate() {
+        let offset =
+            i16::try_from(index.saturating_mul(8)).map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::Ldr {
+                rt: Reg(16),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Sp,
+                    offset,
+                },
+            },
+        )?;
+        store_value(assembler, allocation, *parameter, Reg(16))?;
+    }
+    emit(
+        assembler,
+        Inst::AddImm {
+            rd: RegOrSp::Sp,
+            rn: RegOrSp::Sp,
+            imm: temporary_bytes,
+            shift: false,
+        },
+    )?;
     Ok(())
 }

@@ -177,7 +177,6 @@ fn peek_until(
     let mut before_character = initial_position;
     loop {
         let Some(character) = next_character(ctx, stream)? else {
-            set_position(ctx, state, position_index, initial_position)?;
             return Ok(None);
         };
         let matches = match mode {

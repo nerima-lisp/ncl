@@ -59,6 +59,13 @@ class ScoreboardTests(unittest.TestCase):
         self.assertIn("3 passed, 1 failed, 2 unexecuted", markdown)
         self.assertIn(scoreboard.SOURCES["cl-bench"]["commit"], markdown)
 
+    def test_empty_benchmark_samples_are_reported_without_a_mean(self):
+        ansi = scoreboard.ProcessResult("passed", 0)
+        bench = scoreboard.ProcessResult("failed", 1)
+        result = scoreboard.make_scoreboard(ansi, None, bench, [])
+        self.assertEqual(result["cl-bench"]["samples"], 0)
+        self.assertNotIn("geometric_mean", result["cl-bench"])
+
 
 if __name__ == "__main__":
     unittest.main()

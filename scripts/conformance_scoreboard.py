@@ -305,7 +305,8 @@ def make_scoreboard(
     bench_data: dict[str, Any] = {"status": bench.status}
     if bench_times is not None:
         bench_data["samples"] = len(bench_times)
-        bench_data["geometric_mean"] = geometric_mean(bench_times)
+        if bench_times:
+            bench_data["geometric_mean"] = geometric_mean(bench_times)
     return {
         "schema_version": 1,
         "measured_on": date.today().isoformat(),

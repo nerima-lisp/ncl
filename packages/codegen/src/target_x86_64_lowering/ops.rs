@@ -181,6 +181,7 @@ pub fn lower_op(
                     | ncl_ir::Constant::Structure { .. }
                     | ncl_ir::Constant::SingleFloat(_)
                     | ncl_ir::Constant::DoubleFloat(_)
+                    | ncl_ir::Constant::FunctionEntry(_)
             ) {
                 load_heap_constant(assembler, *constant)?;
             } else {

@@ -8,16 +8,16 @@
 //! type-specific signal dispatch.
 
 use ncl_conditions::{
-    ConditionClass, ConditionError, ConditionIdentifier, ConditionSlotValue, cerror,
-    compute_restarts, condition_class, error, find_restart, invoke_restart_by_name, make_condition,
-    make_typed_condition, pop_handler, pop_restart, push_cleanup, push_handler, push_restart,
-    signal, unwind,
+    cerror, compute_restarts, condition_class, error, find_restart, invoke_restart_by_name,
+    make_condition, make_typed_condition, pop_handler, pop_restart, push_cleanup, push_handler,
+    push_restart, signal, unwind, ConditionClass, ConditionError, ConditionIdentifier,
+    ConditionSlotValue,
 };
 use ncl_object::{
-    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    make_string, pop_root, push_root, slot_ref, string_length, string_ref, typed_builtin, Arity,
+    Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FunctionObject, LispError, ObjectType, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length,
-    string_ref, typed_builtin,
+    Runtime, ThreadContext, Word,
 };
 
 const fn fail_type_error(
@@ -57,6 +57,13 @@ fn setup() -> (Runtime, ThreadContext) {
 
 fn class(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> ConditionClass {
     condition_class(ctx, runtime, name).unwrap()
+}
+
+fn builtin(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
+    runtime
+        .function(ctx, "COMMON-LISP", name)
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap()
 }
 
 #[test]
@@ -213,6 +220,88 @@ fn cerror_signals_with_a_continue_restart() {
     cerror(&mut ctx, &runtime, Word::NIL, Word::NIL, condition).unwrap();
 
     pop_handler(&mut ctx, &runtime, chain);
+}
+
+#[test]
+fn condition_builtins_accept_rest_and_condition_designators() {
+    let (runtime, mut ctx) = setup();
+    let program_error = class(&runtime, &mut ctx, "PROGRAM-ERROR");
+    let simple_condition = class(&runtime, &mut ctx, "SIMPLE-CONDITION");
+    let simple_error = class(&runtime, &mut ctx, "SIMPLE-ERROR");
+    let simple_warning = class(&runtime, &mut ctx, "SIMPLE-WARNING");
+    let argument =
+        make_string(&mut ctx, &runtime, &"argument".chars().collect::<Vec<_>>()).unwrap();
+    let message = make_string(&mut ctx, &runtime, &"message".chars().collect::<Vec<_>>()).unwrap();
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let (program_error_symbol, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "PROGRAM-ERROR")
+        .unwrap();
+
+    let signal = builtin(&runtime, &mut ctx, "SIGNAL");
+    let descriptor = runtime.builtin_descriptor(signal).unwrap();
+    assert_eq!(descriptor.lambda_list.min_arity(), 1);
+    assert_eq!(descriptor.lambda_list.max_arity(), None);
+    let chain = push_handler(&mut ctx, &runtime, program_error, Word::NIL).unwrap();
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            signal,
+            &[program_error_symbol, argument, Word::fixnum(7)],
+        ),
+        Ok(Word::NIL)
+    );
+    pop_handler(&mut ctx, &runtime, chain);
+
+    let error = builtin(&runtime, &mut ctx, "ERROR");
+    let chain = push_handler(&mut ctx, &runtime, simple_error, Word::NIL).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, error, &[message, argument]),
+        Ok(Word::NIL)
+    );
+    pop_handler(&mut ctx, &runtime, chain);
+
+    let warn = builtin(&runtime, &mut ctx, "WARN");
+    let chain = push_handler(&mut ctx, &runtime, simple_warning, Word::NIL).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, warn, &[message, argument]),
+        Ok(Word::NIL)
+    );
+    pop_handler(&mut ctx, &runtime, chain);
+
+    let cerror = builtin(&runtime, &mut ctx, "CERROR");
+    let descriptor = runtime.builtin_descriptor(cerror).unwrap();
+    assert_eq!(descriptor.lambda_list.min_arity(), 2);
+    assert_eq!(descriptor.lambda_list.max_arity(), None);
+    let chain = push_handler(&mut ctx, &runtime, simple_error, Word::NIL).unwrap();
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            cerror,
+            &[message, message, argument, Word::fixnum(7)],
+        ),
+        Ok(Word::NIL)
+    );
+    pop_handler(&mut ctx, &runtime, chain);
+
+    let chain = push_handler(&mut ctx, &runtime, simple_condition, Word::NIL).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, signal, &[message, argument]),
+        Ok(Word::NIL)
+    );
+    pop_handler(&mut ctx, &runtime, chain);
+}
+
+#[test]
+fn unhandled_plain_error_reports_unsupported_after_condition_unwinds() {
+    let (runtime, mut ctx) = setup();
+    let error = builtin(&runtime, &mut ctx, "ERROR");
+    let message =
+        make_string(&mut ctx, &runtime, &"unhandled".chars().collect::<Vec<_>>()).unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, error, &[message, Word::fixnum(1)]),
+        Err(ncl_object::ObjectError::Unsupported)
+    );
 }
 
 #[test]

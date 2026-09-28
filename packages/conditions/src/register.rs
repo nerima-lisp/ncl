@@ -1,14 +1,14 @@
 //! Registration of the owned symbols and the standard condition hierarchy.
 
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
-    Parameter, ParameterType, Runtime, ThreadContext, Word, set_symbol_special, slot_ref,
-    string_length, string_ref, symbol_name,
+    set_symbol_special, slot_ref, string_length, string_ref, symbol_name, Arity, Builtin,
+    BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word,
 };
 
-use crate::class::{HIERARCHY, install_class, wire_superclass};
-use crate::symbols::{SymbolKind, SymbolRow, symbols};
+use crate::class::{install_class, wire_superclass, HIERARCHY};
+use crate::symbols::{symbols, SymbolKind, SymbolRow};
 
 const ONE_ANY: &[Parameter] = &[Parameter {
     name: BuiltinName::new("VALUE"),
@@ -24,6 +24,18 @@ const TWO_ANY: &[Parameter] = &[
         ty: ParameterType::Any,
     },
 ];
+const CONDITION_ARGUMENT: Parameter = Parameter {
+    name: BuiltinName::new("CONDITION"),
+    ty: ParameterType::Any,
+};
+const CONTINUE_FORMAT_CONTROL: Parameter = Parameter {
+    name: BuiltinName::new("CONTINUE-FORMAT-CONTROL"),
+    ty: ParameterType::Any,
+};
+const FORMAT_ARGUMENT: Parameter = Parameter {
+    name: BuiltinName::new("FORMAT-ARGUMENT"),
+    ty: ParameterType::Any,
+};
 
 /// Register every owned symbol and the standard condition hierarchy.
 ///
@@ -54,13 +66,37 @@ fn register_condition_builtins(
         lambda_list: LambdaList::fixed(ONE_ANY),
         convention: BuiltinConvention::Direct(Arity::exact(1)),
     };
+    let condition_and_rest = Builtin {
+        lambda_list: LambdaList::with_rest(&[CONDITION_ARGUMENT], FORMAT_ARGUMENT),
+        convention: BuiltinConvention::Adapted,
+    };
+    let cerror = Builtin {
+        lambda_list: LambdaList::with_rest(
+            &[CONTINUE_FORMAT_CONTROL, CONDITION_ARGUMENT],
+            FORMAT_ARGUMENT,
+        ),
+        convention: BuiltinConvention::Adapted,
+    };
     for (name, implementation) in [
-        ("SIGNAL", BuiltinImplementation::direct(one, signal_builtin)),
-        ("ERROR", BuiltinImplementation::direct(one, error_builtin)),
-        ("WARN", BuiltinImplementation::direct(one, warn_builtin)),
+        (
+            "SIGNAL",
+            BuiltinImplementation::adapted(condition_and_rest, signal_builtin, pass_arguments),
+        ),
+        (
+            "ERROR",
+            BuiltinImplementation::adapted(condition_and_rest, error_builtin, pass_arguments),
+        ),
+        (
+            "WARN",
+            BuiltinImplementation::adapted(condition_and_rest, warn_builtin, pass_arguments),
+        ),
         (
             "CELL-ERROR-NAME",
             BuiltinImplementation::direct(one, cell_error_name_builtin),
+        ),
+        (
+            "CERROR",
+            BuiltinImplementation::adapted(cerror, cerror_builtin, pass_arguments),
         ),
     ] {
         runtime.register_builtin(
@@ -109,21 +145,34 @@ fn condition_argument(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     value: Word,
+    default_class: &str,
 ) -> Result<Word, ObjectError> {
     if crate::condition_class_of(ctx, value).is_ok() {
         return Ok(value);
     }
-    let class = crate::condition_class(ctx, runtime, "SIMPLE-ERROR").ok_or(ObjectError::Layout)?;
-    crate::make_condition(ctx, runtime, class, &[value]).map_err(condition_object_error)
+    if string_text(ctx, value).is_some() {
+        let class = crate::condition_class(ctx, runtime, default_class)
+            .ok_or(ObjectError::Layout)?;
+        return crate::make_condition(ctx, runtime, class, &[value])
+            .map_err(condition_object_error);
+    }
+    let class_name = symbol_text(ctx, value)?;
+    let class = crate::condition_class(ctx, runtime, &class_name).ok_or(ObjectError::TypeError)?;
+    crate::make_condition(ctx, runtime, class, &[]).map_err(condition_object_error)
+}
+
+fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    Ok(args.as_slice().to_vec())
 }
 
 fn signal_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    crate::signal(ctx, args.required(0)?)
+    let condition = condition_argument(ctx, runtime, args.required(0)?, "SIMPLE-CONDITION")?;
+    crate::signal(ctx, condition)
         .map(|()| Word::NIL)
         .map_err(condition_object_error)
 }
@@ -135,7 +184,7 @@ fn error_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
-    let condition = condition_argument(ctx, runtime, value)?;
+    let condition = condition_argument(ctx, runtime, value, "SIMPLE-ERROR")?;
     match crate::error(ctx, condition) {
         Ok(()) => Ok(Word::NIL),
         Err(crate::ConditionError::Unhandled) => {
@@ -155,8 +204,20 @@ fn warn_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let condition = condition_argument(ctx, runtime, args.required(0)?)?;
+    let condition = condition_argument(ctx, runtime, args.required(0)?, "SIMPLE-WARNING")?;
     crate::warn(ctx, condition)
+        .map(|()| Word::NIL)
+        .map_err(condition_object_error)
+}
+
+fn cerror_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let condition = condition_argument(ctx, runtime, args.required(1)?, "SIMPLE-ERROR")?;
+    crate::cerror(ctx, runtime, Word::NIL, Word::NIL, condition)
         .map(|()| Word::NIL)
         .map_err(condition_object_error)
 }

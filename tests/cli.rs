@@ -144,6 +144,16 @@ fn common_lisp_load_is_a_callable_builtin() {
 }
 
 #[test]
+fn setf_get_retains_the_written_value_and_evaluates_place_once() {
+    let output = output(ncl().args([
+        "--eval",
+        "(let ((n 0)) (setf (get (progn (incf n) 'foo) (progn (incf n) 'bar)) 7) (list n (get 'foo 'bar)))",
+    ]));
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "(2 7)");
+}
+
+#[test]
 fn repl_continues_forms_and_errors() {
     let mut repl = match ncl()
         .stdin(Stdio::piped())

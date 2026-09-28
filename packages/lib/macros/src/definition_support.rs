@@ -238,21 +238,28 @@ fn get_place(
         ncl_object::with_root(ctx, &mut store, |ctx, store| {
             let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
             ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                let second = **roots.get(1).ok_or(ObjectError::TypeError)?;
-                let mut store_form = list(ctx, runtime, &[*store, first, second, *variable])?;
-                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let mut get = symbol(ctx, runtime, "GET")?;
-                    ncl_object::with_root(ctx, &mut get, |ctx, get| {
-                        let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                        let second = **roots.get(1).ok_or(ObjectError::TypeError)?;
-                        let access_form = list(ctx, runtime, &[*get, first, second])?;
-                        Ok(ncl_object::SetfExpansion {
-                            temporary_variables: Vec::new(),
-                            value_forms: Vec::new(),
-                            store_variables: vec![*variable],
-                            store_form: *store_form,
-                            access_form,
+                let temporary_variables = roots
+                    .iter()
+                    .map(|_| crate::fresh_symbol(ctx, runtime))
+                    .collect::<Result<Vec<_>, _>>()?;
+                ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
+                    let first = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                    let second = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                    let mut store_form = list(ctx, runtime, &[*store, first, second, *variable])?;
+                    ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                        let mut get = symbol(ctx, runtime, "GET")?;
+                        ncl_object::with_root(ctx, &mut get, |ctx, get| {
+                            let access_form = list(ctx, runtime, &[*get, first, second])?;
+                            Ok(ncl_object::SetfExpansion {
+                                temporary_variables: temporaries
+                                    .iter()
+                                    .map(|value| **value)
+                                    .collect(),
+                                value_forms: roots.iter().map(|value| **value).collect(),
+                                store_variables: vec![*variable],
+                                store_form: *store_form,
+                                access_form,
+                            })
                         })
                     })
                 })

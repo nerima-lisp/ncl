@@ -87,8 +87,18 @@ const CASES: &[Case] = &[
     },
     Case {
         builtin: "PEEK-CHAR",
-        source: "(let ((s (make-string-input-stream \"a\"))) (list (peek-char nil s) (read-char s)))",
-        expected: "(#\\a #\\a)",
+        source: "(peek-char t (make-string-input-stream \" a\") nil (code-char 33))",
+        expected: "#\\a",
+    },
+    Case {
+        builtin: "PEEK-CHAR",
+        source: "(peek-char (code-char 90) (make-string-input-stream \"aZ\") nil (code-char 33) nil)",
+        expected: "#\\Z",
+    },
+    Case {
+        builtin: "PEEK-CHAR",
+        source: "(peek-char nil (make-string-input-stream \"\") nil (code-char 33))",
+        expected: "#\\!",
     },
     Case {
         builtin: "READ-LINE",

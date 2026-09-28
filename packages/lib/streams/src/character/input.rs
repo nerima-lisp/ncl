@@ -129,6 +129,71 @@ pub fn peek_character(
     Ok(result)
 }
 
+enum PeekMode {
+    Next,
+    NonWhitespace,
+    Character(char),
+}
+
+fn classify_peek_type(ctx: &ThreadContext, value: Word) -> Result<PeekMode, ObjectError> {
+    if value == Word::NIL {
+        return Ok(PeekMode::Next);
+    }
+    if value == Word::TRUE {
+        return Ok(PeekMode::NonWhitespace);
+    }
+    match classify_object(ctx, value) {
+        ObjectRef::Character(code) => char::from_u32(code)
+            .map(PeekMode::Character)
+            .ok_or(ObjectError::TypeError),
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+const fn is_peek_whitespace(character: char) -> bool {
+    matches!(character, ' ' | '\t' | '\n' | '\x0c' | '\r')
+}
+
+fn peek_until(
+    ctx: &mut ThreadContext,
+    stream: Stream,
+    peek_type: Word,
+) -> Result<Option<char>, ObjectError> {
+    let state = stream_state(ctx, stream)?;
+    let kind = state_kind(ctx, state)?;
+    let mode = classify_peek_type(ctx, peek_type)?;
+    if matches!(kind, StreamKind::StandardInput | StreamKind::StandardTwoWay) {
+        return Err(ObjectError::TypeError);
+    }
+    let position_index = if matches!(
+        kind,
+        StreamKind::StringInput
+            | StreamKind::StringOutput
+            | StreamKind::StandardInput
+            | StreamKind::StandardTwoWay
+    ) {
+        1
+    } else {
+        POSITION
+    };
+    let mut before_character = position(ctx, state, position_index)?;
+    loop {
+        let Some(character) = next_character(ctx, stream)? else {
+            return Ok(None);
+        };
+        let matches = match mode {
+            PeekMode::Next => true,
+            PeekMode::NonWhitespace => !is_peek_whitespace(character),
+            PeekMode::Character(target) => character == target,
+        };
+        if matches {
+            set_position(ctx, state, position_index, before_character)?;
+            return Ok(Some(character));
+        }
+        before_character = position(ctx, state, position_index)?;
+    }
+}
+
 pub fn read_char_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -181,12 +246,20 @@ pub fn peek_char_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream = match args.get(0) {
-        None | Some(Word::NIL) => crate::standard::lookup(ctx, runtime, "*STANDARD-INPUT*")?,
-        Some(_) => stream_from_args(args, 0)?,
-    };
-    peek_character(ctx, stream)?.map_or_else(
-        || Ok(args.get(3).unwrap_or(Word::NIL)),
+    let peek_type_value = args.get(0).unwrap_or(Word::NIL);
+    let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-INPUT*")?;
+    let eof_error_p = args.get(2).unwrap_or(Word::TRUE);
+    let eof_value = args.get(3).unwrap_or(Word::NIL);
+    let result = peek_until(ctx, stream, peek_type_value)?;
+    result.map_or_else(
+        || {
+            if eof_error_p == Word::NIL {
+                Ok(eof_value)
+            } else {
+                ctx.set_pending_lisp_error(ncl_object::LispError::EndOfFile);
+                Err(ObjectError::TypeError)
+            }
+        },
         |character| Ok(Word::character(u32::from(character))),
     )
 }

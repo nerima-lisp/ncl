@@ -252,7 +252,6 @@ fn error_builtin(
             | crate::ConditionError::RestartNotFound
             | crate::ConditionError::ChainCorrupt
             | crate::ConditionError::Object(_)) => condition_object_error(error),
-            _ => ObjectError::Layout, // check-added-lines: allow(wildcard) safe fallback for non-exhaustive condition errors
         })
     });
     match result {

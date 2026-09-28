@@ -371,11 +371,11 @@ fn build_x86_64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
     )?;
     emit(
         &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 8), X86Reg::R10),
+        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 0), X86Reg::R10),
     )?;
     emit(
         &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 16), X86Reg::R15),
+        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 8), X86Reg::R15),
     )?;
     emit(
         &mut assembler,
@@ -451,14 +451,14 @@ mod tests {
         let bytes = build_x86_64_stub(0x1122_3344_5566_7788)
             .map_err(|error| format!("x86 stub assembly: {error}"))?;
         if !bytes
-            .windows(5)
-            .any(|window| window == [0x4c, 0x89, 0x54, 0x24, 0x08])
+            .windows(4)
+            .any(|window| window == [0x4c, 0x89, 0x14, 0x24])
         {
             return Err("function object is not stored in the seventh argument slot".to_owned());
         }
         if !bytes
-            .windows(5)
-            .any(|window| window == [0x4c, 0x89, 0x7c, 0x24, 0x10])
+            .windows(4)
+            .any(|window| window == [0x4c, 0x89, 0x7c, 0x24])
         {
             return Err("thread context is not stored in the eighth argument slot".to_owned());
         }

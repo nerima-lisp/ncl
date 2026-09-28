@@ -162,9 +162,6 @@ fn peek_until(
     let state = stream_state(ctx, stream)?;
     let kind = state_kind(ctx, state)?;
     let mode = classify_peek_type(ctx, peek_type)?;
-    if matches!(kind, StreamKind::StandardInput | StreamKind::StandardTwoWay) {
-        return Err(ObjectError::TypeError);
-    }
     let position_index = if matches!(
         kind,
         StreamKind::StringInput

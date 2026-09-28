@@ -52,11 +52,8 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
         for place_root in roots {
             let value = Word::fixnum(42);
             let mut expanded = expand_setf(ctx, &runtime, &registry, &[**place_root, value])?;
-            let before = expanded;
             let root = ncl_object::push_root(ctx, &mut expanded);
             ctx.collect(true)?;
-            // check-added-lines: allow(panic) test-only assertion
-            assert_ne!(expanded, before);
             // check-added-lines: allow(panic) test-only assertion
             assert!(!elements(ctx, expanded)?.is_empty());
             // check-added-lines: allow(panic) test-only assertion

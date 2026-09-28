@@ -2,7 +2,8 @@
 //!
 //! Both macros rewrite their form into ordinary calls on the package
 //! builtins registered by `ncl-lib-packages` (`MAKE-PACKAGE`,
-//! `FIND-PACKAGE`, `USE-PACKAGE`, `SHADOW`, `EXPORT`, `INTERN`). Neither
+//! `FIND-PACKAGE`, `USE-PACKAGE`, `SHADOW`, `EXPORT`, `IMPORT`,
+//! `SHADOWING-IMPORT`, `INTERN`, and `FIND-SYMBOL`). Neither
 //! macro performs a heap mutation itself; like the other expanders in this
 //! crate, they only build a new form for the evaluator to run.
 //!
@@ -159,12 +160,10 @@ fn designator_text(ctx: &ThreadContext, word: Word) -> Result<String> {
         .collect()
 }
 
-/// `(DEFPACKAGE name (:use ...) (:export ...) (:nicknames ...) (:shadow ...))`.
+/// `(DEFPACKAGE name options...)`.
 ///
 /// Expands to a `PROGN` that creates the package (if it does not already
-/// exist), applies `USE-PACKAGE`/`SHADOW`/`EXPORT`, and returns the package.
-/// Only `:use`, `:export`, `:nicknames`, and `:shadow` are recognized; any
-/// other option is rejected rather than silently ignored.
+/// exist), applies the package options, and returns the package.
 pub(crate) fn defpackage(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -182,6 +181,11 @@ pub(crate) fn defpackage(
         let mut export_indexes = Vec::new();
         let mut shadow_indexes = Vec::new();
         let mut nickname_indexes = Vec::new();
+        let mut intern_indexes = Vec::new();
+        let mut import_from_clauses: Vec<(usize, Vec<usize>)> = Vec::new();
+        let mut shadowing_import_from_clauses: Vec<(usize, Vec<usize>)> = Vec::new();
+        let mut documentation_index = None;
+        let mut size_index = None;
         for clause_index in 2..held.len() {
             let clause = held_value(&held, clause_index)?;
             let clause_parts = form_elements(ctx, clause)?;
@@ -199,26 +203,50 @@ pub(crate) fn defpackage(
                 "EXPORT" => export_indexes.extend(indexes),
                 "SHADOW" => shadow_indexes.extend(indexes),
                 "NICKNAMES" => nickname_indexes.extend(indexes),
+                "INTERN" => intern_indexes.extend(indexes),
+                "IMPORT-FROM" => {
+                    let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                    import_from_clauses.push((package, indexes.into_iter().skip(1).collect()));
+                }
+                "SHADOWING-IMPORT-FROM" => {
+                    let package = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                    shadowing_import_from_clauses
+                        .push((package, indexes.into_iter().skip(1).collect()));
+                }
+                "DOCUMENTATION" => {
+                    let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                    if indexes.len() != 1 || documentation_index.replace(index).is_some() {
+                        return Err(ObjectError::TypeError);
+                    }
+                }
+                "SIZE" => {
+                    let index = indexes.first().copied().ok_or(ObjectError::TypeError)?;
+                    if indexes.len() != 1 || size_index.replace(index).is_some() {
+                        return Err(ObjectError::TypeError);
+                    }
+                }
                 _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown defpackage options instead of ignoring them
             }
         }
 
         let quoted_name = held_quote(ctx, runtime, &mut held, name_index)?;
         let find_existing = held_form(ctx, runtime, &mut held, "FIND-PACKAGE", &[quoted_name])?;
-        let make_call = if nickname_indexes.is_empty() {
-            held_form(ctx, runtime, &mut held, "MAKE-PACKAGE", &[quoted_name])?
-        } else {
+        let mut make_indexes = vec![quoted_name];
+        if !nickname_indexes.is_empty() {
             let nickname_data = held_list(ctx, runtime, &mut held, &nickname_indexes)?;
             let quoted_nicknames = held_quote(ctx, runtime, &mut held, nickname_data)?;
             let nicknames_key = held_string(ctx, runtime, &mut held, "NICKNAMES")?;
-            held_form(
-                ctx,
-                runtime,
-                &mut held,
-                "MAKE-PACKAGE",
-                &[quoted_name, nicknames_key, quoted_nicknames],
-            )?
-        };
+            make_indexes.extend([nicknames_key, quoted_nicknames]);
+        }
+        if let Some(index) = documentation_index {
+            let key = held_string(ctx, runtime, &mut held, "DOCUMENTATION")?;
+            make_indexes.extend([key, index]);
+        }
+        if let Some(index) = size_index {
+            let key = held_string(ctx, runtime, &mut held, "SIZE")?;
+            make_indexes.extend([key, index]);
+        }
+        let make_call = held_form(ctx, runtime, &mut held, "MAKE-PACKAGE", &make_indexes)?;
         let mut statements = vec![held_form(
             ctx,
             runtime,
@@ -247,6 +275,63 @@ pub(crate) fn defpackage(
                 &mut held,
                 "SHADOW",
                 &[quoted_shadow, quoted_name],
+            )?);
+        }
+
+        for intern_index in intern_indexes {
+            let quoted_intern = held_quote(ctx, runtime, &mut held, intern_index)?;
+            statements.push(held_form(
+                ctx,
+                runtime,
+                &mut held,
+                "INTERN",
+                &[quoted_intern, quoted_name],
+            )?);
+        }
+
+        for (source_package, names) in import_from_clauses {
+            let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
+            let mut imported = Vec::with_capacity(names.len());
+            for name in names {
+                let quoted_name = held_quote(ctx, runtime, &mut held, name)?;
+                imported.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "FIND-SYMBOL",
+                    &[quoted_name, source_package],
+                )?);
+            }
+            let imported = held_form(ctx, runtime, &mut held, "LIST", &imported)?;
+            statements.push(held_form(
+                ctx,
+                runtime,
+                &mut held,
+                "IMPORT",
+                &[imported, quoted_name],
+            )?);
+        }
+
+        for (source_package, names) in shadowing_import_from_clauses {
+            let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
+            let mut imported = Vec::with_capacity(names.len());
+            for name in names {
+                let quoted_name = held_quote(ctx, runtime, &mut held, name)?;
+                imported.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "FIND-SYMBOL",
+                    &[quoted_name, source_package],
+                )?);
+            }
+            let imported = held_form(ctx, runtime, &mut held, "LIST", &imported)?;
+            statements.push(held_form(
+                ctx,
+                runtime,
+                &mut held,
+                "SHADOWING-IMPORT",
+                &[imported, quoted_name],
             )?);
         }
 

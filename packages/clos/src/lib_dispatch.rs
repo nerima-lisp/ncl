@@ -117,13 +117,7 @@ fn call_method(
     let previous_args = symbol_value(ctx, args_symbol)?;
     set_symbol_value(ctx, next_symbol, next)?;
     set_symbol_value(ctx, args_symbol, argument_list)?;
-    let result = BuiltinFunctionCaller.call_function(
-        ctx,
-        runtime,
-        FunctionDesignator::Function(FunctionObject::try_from(function)?),
-        FunctionArguments::new(arguments),
-        values,
-    );
+    let result = BuiltinFunctionCaller.call_function(ctx, runtime, FunctionDesignator::Function(FunctionObject::try_from(function)?), FunctionArguments::new(arguments), values);
     set_symbol_value(ctx, next_symbol, previous_next)?;
     set_symbol_value(ctx, args_symbol, previous_args)?;
     result
@@ -142,46 +136,16 @@ fn invoke_core(
     let primary = form_elements(ctx, fields.get(1).copied().ok_or(ObjectError::TypeError)?)?;
     let after = form_elements(ctx, fields.get(2).copied().ok_or(ObjectError::TypeError)?)?;
     for function in before {
-        call_method(
-            ctx,
-            runtime,
-            function,
-            arguments,
-            argument_list,
-            Word::NIL,
-            values,
-        )?;
+        call_method(ctx, runtime, function, arguments, argument_list, Word::NIL, values)?;
     }
     let next = if primary.len() > 1 {
-        let rest = lisp_list(
-            ctx,
-            runtime,
-            primary.get(1..).ok_or(ObjectError::Layout)?,
-        )?;
+        let rest = lisp_list(ctx, runtime, primary.get(1..).ok_or(ObjectError::Layout)?)?;
         continuation(ctx, runtime, CONTINUATION_PRIMARY, rest)?
-    } else {
-        Word::NIL
-    };
-    let result = call_method(
-        ctx,
-        runtime,
-        *primary.first().ok_or(ObjectError::UndefinedFunction)?,
-        arguments,
-        argument_list,
-        next,
-        values,
-    )?;
+    } else { Word::NIL };
+    let result = call_method(ctx, runtime, *primary.first().ok_or(ObjectError::UndefinedFunction)?, arguments, argument_list, next, values)?;
     let returned_values = values.as_slice().to_vec();
     for function in after {
-        call_method(
-            ctx,
-            runtime,
-            function,
-            arguments,
-            argument_list,
-            Word::NIL,
-            values,
-        )?;
+        call_method(ctx, runtime, function, arguments, argument_list, Word::NIL, values)?;
     }
     values.set(&returned_values);
     Ok(result)
@@ -196,53 +160,20 @@ fn invoke_continuation(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let fields = form_elements(ctx, value)?;
-    let kind = fields
-        .get(1)
-        .copied()
-        .ok_or(ObjectError::TypeError)?
-        .as_fixnum()
-        .ok_or(ObjectError::TypeError)?;
+    let kind = fields.get(1).copied().ok_or(ObjectError::TypeError)?.as_fixnum().ok_or(ObjectError::TypeError)?;
     let payload = fields.get(2).copied().ok_or(ObjectError::TypeError)?;
     if kind == CONTINUATION_CORE {
         return invoke_core(ctx, runtime, payload, arguments, argument_list, values);
     }
     if kind == CONTINUATION_AROUND || kind == CONTINUATION_PRIMARY {
-            let (methods, tail) = if kind == CONTINUATION_AROUND {
-                let fields = form_elements(ctx, payload)?;
-                (
-                    form_elements(ctx, fields.first().copied().ok_or(ObjectError::TypeError)?)?,
-                    fields.get(1).copied().ok_or(ObjectError::TypeError)?,
-                )
-            } else {
-                (form_elements(ctx, payload)?, Word::NIL)
-            };
-            let function = *methods.first().ok_or(ObjectError::UndefinedFunction)?;
-            let rest = lisp_list(
-                ctx,
-                runtime,
-                methods.get(1..).ok_or(ObjectError::Layout)?,
-            )?;
-            let next = if rest == Word::NIL {
-                if kind == CONTINUATION_AROUND {
-                    tail
-                } else {
-                    Word::NIL
-                }
-            } else if kind == CONTINUATION_AROUND {
-                let next_payload = lisp_list(ctx, runtime, &[rest, tail])?;
-                continuation(ctx, runtime, kind, next_payload)?
-            } else {
-                continuation(ctx, runtime, kind, rest)?
-            };
-            return call_method(
-                ctx,
-                runtime,
-                function,
-                arguments,
-                argument_list,
-                next,
-                values,
-            );
+        let (methods, tail) = if kind == CONTINUATION_AROUND {
+            let fields = form_elements(ctx, payload)?;
+            (form_elements(ctx, fields.first().copied().ok_or(ObjectError::TypeError)?)?, fields.get(1).copied().ok_or(ObjectError::TypeError)?)
+        } else { (form_elements(ctx, payload)?, Word::NIL) };
+        let function = *methods.first().ok_or(ObjectError::UndefinedFunction)?;
+        let rest = lisp_list(ctx, runtime, methods.get(1..).ok_or(ObjectError::Layout)?)?;
+        let next = if rest == Word::NIL { if kind == CONTINUATION_AROUND { tail } else { Word::NIL } } else if kind == CONTINUATION_AROUND { let next_payload = lisp_list(ctx, runtime, &[rest, tail])?; continuation(ctx, runtime, kind, next_payload)? } else { continuation(ctx, runtime, kind, rest)? };
+        return call_method(ctx, runtime, function, arguments, argument_list, next, values);
     }
     Err(ObjectError::TypeError)
 }
@@ -266,90 +197,34 @@ fn invoke_dispatch(
     ncl_object::with_root(ctx, &mut argument_list, |ctx, argument_list| {
         ncl_object::with_roots(ctx, arguments, |ctx, argument_roots| {
             ncl_object::with_roots(ctx, &method_words, |ctx, method_roots| {
-                let before = method_roots
-                    .get(..primary_start)
-                    .ok_or(ObjectError::Layout)?
-                    .iter()
-                    .map(|root| **root)
-                    .collect::<Vec<_>>();
-                let primary = method_roots
-                    .get(primary_start..after_start)
-                    .ok_or(ObjectError::Layout)?
-                    .iter()
-                    .map(|root| **root)
-                    .collect::<Vec<_>>();
-                let after = method_roots
-                    .get(after_start..around_start)
-                    .ok_or(ObjectError::Layout)?
-                    .iter()
-                    .map(|root| **root)
-                    .collect::<Vec<_>>();
-                let around = method_roots
-                    .get(around_start..)
-                    .ok_or(ObjectError::Layout)?
-                    .iter()
-                    .map(|root| **root)
-                    .collect::<Vec<_>>();
+                let before = method_roots.get(..primary_start).ok_or(ObjectError::Layout)?.iter().map(|root| **root).collect::<Vec<_>>();
+                let primary = method_roots.get(primary_start..after_start).ok_or(ObjectError::Layout)?.iter().map(|root| **root).collect::<Vec<_>>();
+                let after = method_roots.get(after_start..around_start).ok_or(ObjectError::Layout)?.iter().map(|root| **root).collect::<Vec<_>>();
+                let around = method_roots.get(around_start..).ok_or(ObjectError::Layout)?.iter().map(|root| **root).collect::<Vec<_>>();
                 let before_list = lisp_list(ctx, runtime, &before)?;
                 let primary_list = lisp_list(ctx, runtime, &primary)?;
                 let after_list = lisp_list(ctx, runtime, &after)?;
-                ncl_object::with_roots(
-                    ctx,
-                    &[before_list, primary_list, after_list],
-                    |ctx, list_roots| {
-                        let mut payload = lisp_list(
-                            ctx,
-                            runtime,
-                            &[
-                                **list_roots.first().ok_or(ObjectError::Layout)?,
-                                **list_roots.get(1).ok_or(ObjectError::Layout)?,
-                                **list_roots.get(2).ok_or(ObjectError::Layout)?,
-                            ],
-                        )?;
-                        ncl_object::with_root(ctx, &mut payload, |ctx, payload| {
-                            let mut core = continuation(ctx, runtime, CONTINUATION_CORE, *payload)?;
-                            ncl_object::with_root(ctx, &mut core, |ctx, core| {
-                                let mut around_list = lisp_list(ctx, runtime, &around)?;
-                                ncl_object::with_root(ctx, &mut around_list, |ctx, around| {
-                                    let rooted_arguments = argument_roots
-                                        .iter()
-                                        .map(|root| **root)
-                                        .collect::<Vec<_>>();
-                                    if *around == Word::NIL {
-                                        return invoke_continuation(
-                                            ctx,
-                                            runtime,
-                                            *core,
-                                            &rooted_arguments,
-                                            *argument_list,
-                                            values,
-                                        );
-                                    }
-                                    let mut around_payload =
-                                        lisp_list(ctx, runtime, &[*around, *core])?;
-                                    ncl_object::with_root(ctx, &mut around_payload, |ctx, payload| {
-                                        let mut wrapper = continuation(
-                                            ctx,
-                                            runtime,
-                                            CONTINUATION_AROUND,
-                                            *payload,
-                                        )?;
-                                        ncl_object::with_root(ctx, &mut wrapper, |ctx, wrapper| {
-                                            invoke_continuation(
-                                                ctx,
-                                                runtime,
-                                                *wrapper,
-                                                &rooted_arguments,
-                                                *argument_list,
-                                                values,
-                                            )
-                                        })
-                                    })
+                ncl_object::with_roots(ctx, &[before_list, primary_list, after_list], |ctx, list_roots| {
+                    let payload_values = [**list_roots.first().ok_or(ObjectError::Layout)?, **list_roots.get(1).ok_or(ObjectError::Layout)?, **list_roots.get(2).ok_or(ObjectError::Layout)?];
+                    let mut payload = lisp_list(ctx, runtime, &payload_values)?;
+                    ncl_object::with_root(ctx, &mut payload, |ctx, payload| {
+                        let mut core = continuation(ctx, runtime, CONTINUATION_CORE, *payload)?;
+                        ncl_object::with_root(ctx, &mut core, |ctx, core| {
+                            let mut around_list = lisp_list(ctx, runtime, &around)?;
+                            ncl_object::with_root(ctx, &mut around_list, |ctx, around| {
+                                let rooted_arguments = argument_roots.iter().map(|root| **root).collect::<Vec<_>>();
+                                if *around == Word::NIL {
+                                    return invoke_continuation(ctx, runtime, *core, &rooted_arguments, *argument_list, values);
+                                }
+                                let mut around_payload = lisp_list(ctx, runtime, &[*around, *core])?;
+                                ncl_object::with_root(ctx, &mut around_payload, |ctx, payload| {
+                                    let mut wrapper = continuation(ctx, runtime, CONTINUATION_AROUND, *payload)?;
+                                    ncl_object::with_root(ctx, &mut wrapper, |ctx, wrapper| invoke_continuation(ctx, runtime, *wrapper, &rooted_arguments, *argument_list, values))
                                 })
                             })
                         })
-                    },
-                )
+                    })
+                })
             })
         })
     })
@@ -461,4 +336,103 @@ fn class_designator(
             .ok_or(ObjectError::TypeError);
     }
     Err(ObjectError::TypeError)
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "test setup")]
+mod tests {
+    use super::{COMMON_LISP, lisp_list, ncl_symbol};
+    use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, pop_root, push_root};
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context");
+        super::register(&runtime).expect("clos registration");
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn generic_dispatch_survives_gc_stress_and_strict_forwarding() {
+        let (runtime, mut ctx) = setup();
+        let package = runtime.find_package(&ctx, COMMON_LISP).expect("package");
+        let (mut generic, _) = Package::from_word(package)
+            .intern(&mut ctx, &runtime, "GC-STRESS-DISPATCH")
+            .expect("generic symbol");
+        let class = Package::from_word(package)
+            .intern(&mut ctx, &runtime, "INTEGER")
+            .expect("class symbol")
+            .0;
+        let variable = ncl_symbol(&mut ctx, &runtime, "VALUE").expect("variable symbol");
+        let specializer = lisp_list(&mut ctx, &runtime, &[variable, class]).expect("specializer");
+        let specializers = lisp_list(&mut ctx, &runtime, &[specializer]).expect("specializers");
+        let arguments = lisp_list(&mut ctx, &runtime, &[Word::fixnum(7)]).expect("arguments");
+        let define = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, COMMON_LISP, "%CLOS-DEFINE-GENERIC")
+                .expect("define builtin"),
+        )
+        .expect("define function");
+        let add = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, COMMON_LISP, "%CLOS-ADD-METHOD")
+                .expect("add builtin"),
+        )
+        .expect("add function");
+        let dispatch = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, COMMON_LISP, "%CLOS-DISPATCH")
+                .expect("dispatch builtin"),
+        )
+        .expect("dispatch function");
+        let method = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, COMMON_LISP, "CLASS-OF")
+                .expect("method builtin"),
+        )
+        .expect("method function");
+        let mut specializers = specializers;
+        let mut arguments = arguments;
+        let mut define_word = define.as_word();
+        let mut add_word = add.as_word();
+        let mut dispatch_word = dispatch.as_word();
+        let mut method_word = method.as_word();
+        let tokens = [
+            push_root(&mut ctx, &mut generic),
+            push_root(&mut ctx, &mut specializers),
+            push_root(&mut ctx, &mut arguments),
+            push_root(&mut ctx, &mut define_word),
+            push_root(&mut ctx, &mut add_word),
+            push_root(&mut ctx, &mut dispatch_word),
+            push_root(&mut ctx, &mut method_word),
+        ];
+        ctx.set_gc_stress(false);
+        ctx.set_strict_forwarding(true);
+        let define = FunctionObject::try_from(define_word).expect("define function");
+        let add = FunctionObject::try_from(add_word).expect("add function");
+        let dispatch = FunctionObject::try_from(dispatch_word).expect("dispatch function");
+        runtime
+            .call_builtin(&mut ctx, define, &[generic])
+            .expect("define generic");
+        runtime
+            .call_builtin(&mut ctx, add, &[generic, specializers, method_word])
+            .expect("add method");
+        let mut result = runtime
+            .call_builtin(&mut ctx, dispatch, &[generic, arguments])
+            .expect("dispatch");
+        let result_token = push_root(&mut ctx, &mut result);
+        ctx.set_gc_stress(true);
+        ctx.collect(false).expect("stress collection");
+        let mut integer = runtime.class(&mut ctx, "INTEGER").expect("integer class");
+        let integer_token = push_root(&mut ctx, &mut integer);
+        assert_eq!(
+            super::class_name(&ctx, result).expect("result class name"),
+            super::class_name(&ctx, integer).expect("integer class name")
+        );
+        assert!(pop_root(&mut ctx, integer_token));
+        assert!(pop_root(&mut ctx, result_token));
+        for token in tokens.into_iter().rev() {
+            assert!(pop_root(&mut ctx, token));
+        }
+    }
 }

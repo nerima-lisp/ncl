@@ -84,7 +84,7 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
     let Some(rest_roots) = map.bitmap.get(1) else {
         return Err("outgoing roots were not represented".into());
     };
-    if *rest_roots & 0b1100 == 0 {
+    if *rest_roots & 0b1100 != 0b1100 {
         return Err("rest roots were not marked".into());
     }
     Ok(())

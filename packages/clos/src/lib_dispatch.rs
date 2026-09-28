@@ -50,34 +50,44 @@ fn clos_add_method_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = args.required(0)?;
-    let encoded = args.required(1)?;
-    let (specializers, qualifier) = method_definition_parts(ctx, runtime, encoded)?;
-    let function = FunctionObject::try_from(args.required(2)?)?.as_word();
-    let old = method_registry(ctx, runtime, name)?;
-    let mut entries = Vec::new();
-    let mut cursor = old;
-    while cursor != Word::NIL {
-        entries.push(car(ctx, cursor)?);
-        cursor = cdr(ctx, cursor)?;
-    }
-    entries.retain(|entry| {
-        let Ok(entry_specializers) = car(ctx, *entry) else {
-            return true;
-        };
-        let Ok(qualifier_pair) = cdr(ctx, *entry) else {
-            return true;
-        };
-        let Ok(entry_qualifier) = car(ctx, qualifier_pair) else {
-            return true;
-        };
-        entry_specializers != specializers || entry_qualifier != qualifier
-    });
-    let entry = method_registry_entry(ctx, runtime, specializers, qualifier, function)?;
-    entries.insert(0, entry);
-    let registry = lisp_list(ctx, runtime, &entries)?;
-    set_method_registry(ctx, runtime, name, registry)?;
-    Ok(name)
+    let mut name = args.required(0)?;
+    ncl_object::with_root(ctx, &mut name, |ctx, name| {
+        let encoded = args.required(1)?;
+        let (specializers, qualifier) = method_definition_parts(ctx, runtime, encoded)?;
+        let function = FunctionObject::try_from(args.required(2)?)?.as_word();
+        ncl_object::with_roots(ctx, &[specializers, qualifier, function], |ctx, method_roots| {
+            let specializers = **method_roots.first().ok_or(ObjectError::Layout)?;
+            let qualifier = **method_roots.get(1).ok_or(ObjectError::Layout)?;
+            let function = **method_roots.get(2).ok_or(ObjectError::Layout)?;
+            let old = method_registry(ctx, runtime, *name)?;
+            let mut entries = Vec::new();
+            let mut cursor = old;
+            while cursor != Word::NIL {
+                entries.push(car(ctx, cursor)?);
+                cursor = cdr(ctx, cursor)?;
+            }
+            entries.retain(|entry| {
+                let Ok(entry_specializers) = car(ctx, *entry) else {
+                    return true;
+                };
+                let Ok(qualifier_pair) = cdr(ctx, *entry) else {
+                    return true;
+                };
+                let Ok(entry_qualifier) = car(ctx, qualifier_pair) else {
+                    return true;
+                };
+                entry_specializers != specializers || entry_qualifier != qualifier
+            });
+            ncl_object::with_roots(ctx, &entries, |ctx, roots| {
+                let entry = method_registry_entry(ctx, runtime, specializers, qualifier, function)?;
+                let mut next_entries = roots.iter().map(|root| **root).collect::<Vec<_>>();
+                next_entries.insert(0, entry);
+                let registry = lisp_list(ctx, runtime, &next_entries)?;
+                set_method_registry(ctx, runtime, *name, registry)?;
+                Ok(*name)
+            })
+        })
+    })
 }
 
 fn continuation(

@@ -99,6 +99,17 @@ fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(),
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
 }
 
+fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
+    emit(
+        assembler,
+        Inst::BinRI(
+            BinOp::And,
+            FUNCTION_OBJECT,
+            i32::from_ne_bytes((!ncl_sys::LOWTAG_MASK as u32).to_ne_bytes()),
+        ),
+    )
+}
+
 #[allow(clippy::too_many_lines)]
 fn lower_prim(
     assembler: &mut Assembler,
@@ -204,6 +215,7 @@ pub fn lower_op(
             object: address, ..
         } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
+            untag_function_object(assembler)?;
             let offset = match &op.kind {
                 OpKind::LoadField { field, .. } => {
                     i32::try_from(field.saturating_add(1).saturating_mul(8))
@@ -226,6 +238,7 @@ pub fn lower_op(
             ..
         } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
+            untag_function_object(assembler)?;
             load_slot(assembler, slots, *value, ENTRY)?;
             let offset = match &op.kind {
                 OpKind::StoreField { field, .. } => {

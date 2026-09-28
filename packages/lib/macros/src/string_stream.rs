@@ -158,9 +158,10 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) ->
             let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;
             let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
             if is_keyword(ctx, runtime, key, "ELEMENT-TYPE")? {
-                if value == Word::NIL
-                    || quoted_symbol_name(ctx, value)?
-                        .is_some_and(|name| name != "CHARACTER" && name != "T")
+                if !has_initial_string
+                    && (value == Word::NIL
+                        || quoted_symbol_name(ctx, value)?
+                            .is_some_and(|name| name != "CHARACTER" && name != "T"))
                 {
                     return Err(ObjectError::TypeError);
                 }

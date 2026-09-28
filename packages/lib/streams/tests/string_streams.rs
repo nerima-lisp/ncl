@@ -117,6 +117,14 @@ fn output_stream_round_trips_write_operations_and_resets() {
         .call_builtin(&mut ctx, get_output, &[stream])
         .unwrap();
     assert_eq!(string(&ctx, empty), "");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_string,
+            &[text, stream, Word::fixnum(1), Word::TRUE]
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }
 
 #[test]

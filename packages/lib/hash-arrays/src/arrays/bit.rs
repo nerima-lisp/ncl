@@ -56,15 +56,32 @@ fn bit_binary_builtin(
     ];
     let has_result = args.get(2).is_some();
     with_roots(ctx, &roots, |ctx, roots| {
-        let dimensions = array_shape(ctx, *roots[0])?;
-        if array_element_type(ctx, *roots[0])? != ArrayElementType::Bit
-            || array_element_type(ctx, *roots[1])? != ArrayElementType::Bit
-            || array_shape(ctx, *roots[1])? != dimensions
+        let Some(left) = roots.first() else {
+            return Err(ObjectError::Layout);
+        };
+        let Some(right) = roots.get(1) else {
+            return Err(ObjectError::Layout);
+        };
+        let Some(result_arg) = roots.get(2) else {
+            return Err(ObjectError::Layout);
+        };
+        let dimensions = array_shape(ctx, **left)?;
+        if array_element_type(ctx, **left)? != ArrayElementType::Bit
+            || array_element_type(ctx, **right)? != ArrayElementType::Bit
+            || array_shape(ctx, **right)? != dimensions
         {
             return Err(ObjectError::TypeError);
         }
-        let result = bit_result(ctx, runtime, &dimensions, has_result.then_some(*roots[2]))?;
+        let result = bit_result(
+            ctx,
+            runtime,
+            &dimensions,
+            has_result.then_some(**result_arg),
+        )?;
         with_roots(ctx, &[result], |ctx, result| {
+            let Some(result) = result.first() else {
+                return Err(ObjectError::Layout);
+            };
             let total = dimensions
                 .iter()
                 .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
@@ -72,15 +89,15 @@ fn bit_binary_builtin(
             for index in 0..total {
                 array_row_major_set(
                     ctx,
-                    *result[0],
+                    **result,
                     index,
                     Word::fixnum(i64::from(op(
-                        bit_value(ctx, *roots[0], index)?,
-                        bit_value(ctx, *roots[1], index)?,
+                        bit_value(ctx, **left, index)?,
+                        bit_value(ctx, **right, index)?,
                     ))),
                 )?;
             }
-            Ok(*result[0])
+            Ok(**result)
         })
     })
 }
@@ -94,21 +111,35 @@ pub(super) fn bit_not_builtin(
     let roots = [args.required(0)?, args.get(1).unwrap_or(Word::NIL)];
     let has_result = args.get(1).is_some();
     with_roots(ctx, &roots, |ctx, roots| {
-        let dimensions = array_shape(ctx, *roots[0])?;
-        if array_element_type(ctx, *roots[0])? != ArrayElementType::Bit {
+        let Some(source) = roots.first() else {
+            return Err(ObjectError::Layout);
+        };
+        let Some(result_arg) = roots.get(1) else {
+            return Err(ObjectError::Layout);
+        };
+        let dimensions = array_shape(ctx, **source)?;
+        if array_element_type(ctx, **source)? != ArrayElementType::Bit {
             return Err(ObjectError::TypeError);
         }
-        let result = bit_result(ctx, runtime, &dimensions, has_result.then_some(*roots[1]))?;
+        let result = bit_result(
+            ctx,
+            runtime,
+            &dimensions,
+            has_result.then_some(**result_arg),
+        )?;
         with_roots(ctx, &[result], |ctx, result| {
+            let Some(result) = result.first() else {
+                return Err(ObjectError::Layout);
+            };
             let total = dimensions
                 .iter()
                 .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
                 .ok_or(ObjectError::Layout)?;
             for index in 0..total {
-                let value = bit_value(ctx, *roots[0], index)?;
-                array_row_major_set(ctx, *result[0], index, Word::fixnum(i64::from(1 - value)))?;
+                let value = bit_value(ctx, **source, index)?;
+                array_row_major_set(ctx, **result, index, Word::fixnum(i64::from(1 - value)))?;
             }
-            Ok(*result[0])
+            Ok(**result)
         })
     })
 }

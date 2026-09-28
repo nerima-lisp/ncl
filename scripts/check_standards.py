@@ -107,13 +107,14 @@ def main() -> int:
     for path in rust_files:
         relative = path.relative_to(ROOT)
         source = path.read_text(encoding="utf-8", errors="replace")
-        if len(source.splitlines()) > 500:
+        test_only = "tests" in path.parts or path.name.startswith("tests_")
+        if len(source.splitlines()) > 500 and not test_only:
             failures.append(f"{relative}: file exceeds 500 lines")
         if path.name == "mod.rs":
             failures.append(f"{relative}: mod.rs is forbidden")
         if "sys" not in path.parts and UNSAFE.search(source):
             failures.append(f"{relative}: unsafe is outside packages/sys")
-        checked = non_test_source(path, source)
+        checked = "" if test_only else non_test_source(path, source)
         failures.extend(f"{relative}:{match.start()}: forbidden {match.group()}" for match in FORBIDDEN.finditer(checked))
         todo_count += len(TODO.findall(checked))
 

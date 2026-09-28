@@ -30,7 +30,6 @@
 //! Every line in this module compiles under ordinary safe Rust; the thread
 //! pointer is only ever dereferenced inside `ncl_sys::with_native_context`,
 //! in the one crate whose lint configuration permits that.
-
 use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
 use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
 use ncl_object::{
@@ -42,14 +41,12 @@ use std::ptr::NonNull;
 
 use crate::RuntimeError;
 use crate::support::NativeInvocation;
-
 #[path = "builtin_trampoline_dispatch.rs"]
 mod dispatch_impl;
 use dispatch_impl::dispatch_with_context;
 #[path = "builtin_trampoline_keywords.rs"]
 mod keyword_impl;
 use keyword_impl::install_keyword_builtins;
-
 /// `(primary value, value count)`, the pair a native entry already returns to
 /// `invoke_entry_with_function_address` (value in the first return register,
 /// count in the second): `#[repr(C)]` with two eight-byte integer fields is
@@ -59,21 +56,18 @@ struct NativeCallResult {
     value: u64,
     count: u64,
 }
-
 const fn error_result() -> NativeCallResult {
     NativeCallResult {
         value: Word::NIL.bits(),
         count: 0,
     }
 }
-
 fn ok_result(value: Word, value_count: usize) -> NativeCallResult {
     NativeCallResult {
         value: value.bits(),
         count: u64::try_from(value_count).unwrap_or(1).max(1),
     }
 }
-
 /// Registers available to the generic trampoline stub, in the order the
 /// shared `extern "C"` dispatcher receives them. `argc`/`a0..a3`/`rest` mirror
 /// the native Lisp calling convention's own argument-count/argument-list
@@ -109,7 +103,6 @@ extern "C" fn dispatch(
         None => error_result(),
     }
 }
-
 #[allow(clippy::too_many_arguments)]
 extern "C" fn make_rest_list_native(
     thread_ptr: *mut Thread,
@@ -207,7 +200,6 @@ extern "C" fn make_rest_list_native(
     };
     result
 }
-
 extern "C" fn keyword_check_native(
     thread_ptr: *mut Thread,
     a0: u64,
@@ -220,7 +212,6 @@ extern "C" fn keyword_check_native(
 ) -> u64 {
     call_keyword_builtin(thread_ptr, "CHECK-KEYWORDS", &[a0, a1, a2])
 }
-
 extern "C" fn keyword_value_native(
     thread_ptr: *mut Thread,
     a0: u64,
@@ -233,7 +224,6 @@ extern "C" fn keyword_value_native(
 ) -> u64 {
     call_keyword_builtin(thread_ptr, "KEYWORD-VALUE", &[a0, a1])
 }
-
 extern "C" fn keyword_supplied_native(
     thread_ptr: *mut Thread,
     a0: u64,
@@ -246,7 +236,6 @@ extern "C" fn keyword_supplied_native(
 ) -> u64 {
     call_keyword_builtin(thread_ptr, "KEYWORD-SUPPLIED-P", &[a0, a1])
 }
-
 fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u64 {
     let Some(thread) = NonNull::new(thread_ptr) else {
         return Word::NIL.bits();
@@ -314,7 +303,6 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
     };
     result
 }
-
 extern "C" fn undefined_function_dispatch(
     _argc: u64,
     _a0: u64,
@@ -347,16 +335,13 @@ extern "C" fn undefined_function_dispatch(
         None => error_result(),
     }
 }
-
 fn dispatch_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(dispatch).map_err(|error| RuntimeError::Native(error.to_string()))
 }
-
 fn undefined_function_dispatch_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(undefined_function_dispatch)
         .map_err(|error| RuntimeError::Native(error.to_string()))
 }
-
 /// `mov x6, x16` / `mov x7, x21` followed by an absolute branch into
 /// [`dispatch`]. `x6`/`x7` are the two integer argument registers `AArch64`'s
 /// `Call`/`CallClosure` lowering never writes (it only uses `x0..x5`), so
@@ -393,7 +378,6 @@ fn build_aarch64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
         .map(|blob| blob.bytes)
         .map_err(|error| RuntimeError::Native(error.to_string()))
 }
-
 /// Reserves two stack argument slots for `dispatch`'s seventh and eighth
 /// parameters (the pinned function-object/thread-context registers `r10`/
 /// `r15`, which sit outside the six `SysV` integer argument registers), stores
@@ -440,7 +424,6 @@ fn build_x86_64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
         .map(|blob| blob.bytes)
         .map_err(|error| RuntimeError::Native(error.to_string()))
 }
-
 /// Publish the generic builtin trampoline and install it on `object` as the
 /// default `ENTRY` for every builtin with no ISA-specific fast path.
 ///

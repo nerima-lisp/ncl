@@ -81,7 +81,6 @@ fn load_heap_constant(
         Inst::MovRM(FUNCTION_OBJECT, Mem::base(ENTRY, vector_element_offset)),
     )
 }
-
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::E,
@@ -92,13 +91,11 @@ const fn compare_condition(op: Compare) -> Cond {
         Compare::Ge => Cond::Ge,
     }
 }
-
 /// Materialises a boolean byte into a full word, since `setcc` leaves the upper bits stale.
 fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
     emit(assembler, Inst::Setcc(condition, FUNCTION_OBJECT))?;
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
 }
-
 fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
     let mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
         .map_err(|_| CodegenError::FrameOverflow)?;

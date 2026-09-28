@@ -1,4 +1,9 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![allow(
+    missing_docs,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::unwrap_used
+)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
 use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};

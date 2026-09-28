@@ -442,22 +442,26 @@ pub fn install(
     Ok((code, undefined_code))
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
+#[cfg(test)]
 mod tests {
     use super::build_x86_64_stub;
 
     #[test]
-    fn x86_stub_places_pinned_arguments_in_sysv_stack_slots() {
-        let bytes = build_x86_64_stub(0x1122_3344_5566_7788).expect("x86 stub assembly");
-        assert!(
-            bytes
-                .windows(5)
-                .any(|window| window == [0x4c, 0x89, 0x54, 0x24, 0x08,])
-        );
-        assert!(
-            bytes
-                .windows(5)
-                .any(|window| window == [0x4c, 0x89, 0x7c, 0x24, 0x10,])
-        );
+    fn x86_stub_places_pinned_arguments_in_sysv_stack_slots() -> Result<(), String> {
+        let bytes = build_x86_64_stub(0x1122_3344_5566_7788)
+            .map_err(|error| format!("x86 stub assembly: {error}"))?;
+        if !bytes
+            .windows(5)
+            .any(|window| window == [0x4c, 0x89, 0x54, 0x24, 0x08])
+        {
+            return Err("function object is not stored in the seventh argument slot".to_owned());
+        }
+        if !bytes
+            .windows(5)
+            .any(|window| window == [0x4c, 0x89, 0x7c, 0x24, 0x10])
+        {
+            return Err("thread context is not stored in the eighth argument slot".to_owned());
+        }
+        Ok(())
     }
 }

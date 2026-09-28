@@ -188,7 +188,14 @@ fn call_native(
         rest,
     );
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
+    let non_local_exit = ctx.take_non_local_exit();
+    let non_local_values = ctx.thread_mut().multiple_values().to_vec();
     values.clear();
+    if non_local_exit {
+        values.set(&non_local_values);
+        ctx.set_non_local_exit(true);
+        return Err(ObjectError::NonLocalExit);
+    }
     let result = match count {
         0 => Word::NIL,
         1 => {
@@ -205,10 +212,6 @@ fn call_native(
             Word::from_bits(result)
         }
     };
-    if ctx.take_non_local_exit() {
-        ctx.set_non_local_exit(true);
-        return Err(ObjectError::NonLocalExit);
-    }
     Ok(result)
 }
 

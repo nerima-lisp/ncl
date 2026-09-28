@@ -251,8 +251,28 @@ fn instance_arg(ctx: &mut ThreadContext, word: Word) -> Result<Instance, ObjectE
     }
 }
 
-fn fixnum_arg(ctx: &mut ThreadContext, word: Word) -> Result<Fixnum, ObjectError> {
-    Fixnum::try_from_word(word).map_err(|error| typed_error(ctx, error.into()))
+fn slot_index(
+    ctx: &ThreadContext,
+    instance: Instance,
+    designator: Word,
+) -> Result<usize, ObjectError> {
+    if let Ok(index) = Fixnum::try_from_word(designator) {
+        return usize::try_from(index.value()).map_err(|_| ObjectError::TypeError);
+    }
+    let class = instance_class(ctx, instance)?;
+    let slots = simple_vector_ref(ctx, class, CLASS_EFFECTIVE_SLOTS)?;
+    for index in 0..simple_vector_length(ctx, slots)? {
+        let descriptor = simple_vector_ref(ctx, slots, index)?;
+        let name = if matches!(classify_object(ctx, descriptor), ObjectRef::SimpleVector(_)) {
+            simple_vector_ref(ctx, descriptor, 0)?
+        } else {
+            descriptor
+        };
+        if name == designator {
+            return Ok(index);
+        }
+    }
+    Err(ObjectError::TypeError)
 }
 
 fn slot_value_builtin(
@@ -262,11 +282,11 @@ fn slot_value_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     slot_ref(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
     )
 }
 
@@ -277,12 +297,12 @@ fn slot_set_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     let value = args.required(2)?;
     slot_set(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
         value,
     )?;
     Ok(value)
@@ -309,11 +329,11 @@ fn slot_makunbound_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
-    let index = fixnum_arg(ctx, args.required(1)?)?;
+    let index = slot_index(ctx, instance, args.required(1)?)?;
     slot_set(
         ctx,
         instance,
-        usize::try_from(index.value()).map_err(|_| ObjectError::TypeError)?,
+        index,
         Word::UNBOUND,
     )?;
     Ok(instance.as_word())
@@ -369,6 +389,37 @@ fn class_of_builtin(
     class_of(ctx, runtime, args.required(0)?)
 }
 
+fn class_is_subclass(
+    ctx: &ThreadContext,
+    actual: Word,
+    expected: Word,
+) -> Result<bool, ObjectError> {
+    if actual == expected {
+        return Ok(true);
+    }
+    let superclass = simple_vector_ref(ctx, actual, CLASS_DIRECT_SUPERCLASS)?;
+    if superclass == Word::NIL {
+        return Ok(false);
+    }
+    class_is_subclass(ctx, superclass, expected)
+}
+
+fn typep_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let expected = class_designator(ctx, runtime, args.required(1)?)?;
+    let actual = class_of(ctx, runtime, object)?;
+    Ok(if class_is_subclass(ctx, actual, expected)? {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
 fn class_name_builtin(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -377,3 +428,7 @@ fn class_name_builtin(
 ) -> Result<Word, ObjectError> {
     class_name(ctx, args.required(0)?)
 }
+
+// Dispatch metadata is kept in a symbol plist rather than in a Rust-side
+// registry. The latter would retain moving heap words without a GC root and
+// would also duplicate the runtime's function registry.

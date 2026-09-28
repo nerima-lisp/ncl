@@ -12,6 +12,15 @@ struct DirectBuiltin {
     callback: ncl_object::RustBuiltin,
 }
 
+const MACRO_FORM: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("FORM"),
+    ty: ncl_object::ParameterType::Any,
+};
+const MACRO_ENV: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("ENV"),
+    ty: ncl_object::ParameterType::Any,
+};
+
 fn direct_registration(
     package: BuiltinPackage,
     name: &'static str,
@@ -24,14 +33,22 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 8] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 16] = [
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-BOUNDP"), arity: BuiltinArity::Two, callback: slot_boundp_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-EXISTS-P"), arity: BuiltinArity::Two, callback: slot_exists_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-MAKUNBOUND"), arity: BuiltinArity::Two, callback: slot_makunbound_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
     DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DEFINE-GENERIC"), arity: BuiltinArity::One, callback: clos_define_generic_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ADD-METHOD"), arity: BuiltinArity::Three, callback: clos_add_method_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ENSURE-INITIALIZATION-BASE"), arity: BuiltinArity::One, callback: clos_ensure_initialization_base_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DISPATCH"), arity: BuiltinArity::Two, callback: clos_dispatch_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-CALL-NEXT-METHOD"), arity: BuiltinArity::Two, callback: clos_call_next_method_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-NEXT-METHOD-P"), arity: BuiltinArity::One, callback: clos_next_method_p_builtin },
     DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
 ];
 
@@ -57,6 +74,19 @@ fn builtin_manifest() -> Vec<Registration> {
             });
         }
     }
+    let macro_builtin = Builtin {
+        lambda_list: LambdaList::with_rest(&[MACRO_FORM], MACRO_ENV),
+        convention: ncl_object::BuiltinConvention::Adapted,
+    };
+    let macro_registration = |name, callback| Registration {
+        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+        implementation: BuiltinImplementation::adapted(macro_builtin, callback, |args| {
+            Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
+        }),
+    };
+    registrations.push(macro_registration("DEFCLASS", defclass_macro_builtin));
+    registrations.push(macro_registration("DEFGENERIC", defgeneric_macro_builtin));
+    registrations.push(macro_registration("DEFMETHOD", defmethod_macro_builtin));
     registrations
 }
 

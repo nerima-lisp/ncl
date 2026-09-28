@@ -102,6 +102,61 @@ fn collect_package_clauses(
     Ok(clauses)
 }
 
+fn append_import_statements(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    statements: &mut Vec<Word>,
+    quoted_name: Word,
+    clauses: &PackageClauses,
+) -> Result<()> {
+    for (source_package, names) in clauses.import_from.iter().cloned() {
+        let source_package = held_quote(ctx, runtime, held, source_package)?;
+        let mut imported = Vec::with_capacity(names.len());
+        for name in names {
+            let quoted_name = held_quote(ctx, runtime, held, name)?;
+            imported.push(held_form(
+                ctx,
+                runtime,
+                held,
+                "FIND-SYMBOL",
+                &[quoted_name, source_package],
+            )?);
+        }
+        let imported = held_form(ctx, runtime, held, "LIST", &imported)?;
+        statements.push(held_form(
+            ctx,
+            runtime,
+            held,
+            "IMPORT",
+            &[imported, quoted_name],
+        )?);
+    }
+    for (source_package, names) in clauses.shadowing_import_from.iter().cloned() {
+        let source_package = held_quote(ctx, runtime, held, source_package)?;
+        let mut imported = Vec::with_capacity(names.len());
+        for name in names {
+            let quoted_name = held_quote(ctx, runtime, held, name)?;
+            imported.push(held_form(
+                ctx,
+                runtime,
+                held,
+                "FIND-SYMBOL",
+                &[quoted_name, source_package],
+            )?);
+        }
+        let imported = held_form(ctx, runtime, held, "LIST", &imported)?;
+        statements.push(held_form(
+            ctx,
+            runtime,
+            held,
+            "SHADOWING-IMPORT",
+            &[imported, quoted_name],
+        )?);
+    }
+    Ok(())
+}
+
 /// Verify that `held[0]` is the symbol `name`, re-rooting `held` across the
 /// (possibly allocating, first-use) lookup of that symbol.
 ///
@@ -315,51 +370,14 @@ pub(crate) fn defpackage(
             )?);
         }
 
-        for (source_package, names) in clauses.import_from {
-            let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
-            let mut imported = Vec::with_capacity(names.len());
-            for name in names {
-                let quoted_name = held_quote(ctx, runtime, &mut held, name)?;
-                imported.push(held_form(
-                    ctx,
-                    runtime,
-                    &mut held,
-                    "FIND-SYMBOL",
-                    &[quoted_name, source_package],
-                )?);
-            }
-            let imported = held_form(ctx, runtime, &mut held, "LIST", &imported)?;
-            statements.push(held_form(
-                ctx,
-                runtime,
-                &mut held,
-                "IMPORT",
-                &[imported, quoted_name],
-            )?);
-        }
-
-        for (source_package, names) in clauses.shadowing_import_from {
-            let source_package = held_quote(ctx, runtime, &mut held, source_package)?;
-            let mut imported = Vec::with_capacity(names.len());
-            for name in names {
-                let quoted_name = held_quote(ctx, runtime, &mut held, name)?;
-                imported.push(held_form(
-                    ctx,
-                    runtime,
-                    &mut held,
-                    "FIND-SYMBOL",
-                    &[quoted_name, source_package],
-                )?);
-            }
-            let imported = held_form(ctx, runtime, &mut held, "LIST", &imported)?;
-            statements.push(held_form(
-                ctx,
-                runtime,
-                &mut held,
-                "SHADOWING-IMPORT",
-                &[imported, quoted_name],
-            )?);
-        }
+        append_import_statements(
+            ctx,
+            runtime,
+            &mut held,
+            &mut statements,
+            quoted_name,
+            &clauses,
+        )?;
 
         if !clauses.export_indexes.is_empty() {
             let mut interned = Vec::with_capacity(clauses.export_indexes.len());

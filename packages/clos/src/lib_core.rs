@@ -157,7 +157,8 @@ pub fn make_class(
                 }
             }
             if let Some(position) = position {
-                effective[position] = direct_slot_handle;
+                let slot = effective.get_mut(position).ok_or(ObjectError::Layout)?;
+                *slot = direct_slot_handle;
             } else {
                 effective.push(direct_slot_handle);
             }

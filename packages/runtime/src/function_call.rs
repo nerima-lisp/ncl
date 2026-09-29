@@ -315,6 +315,23 @@ mod tests {
     }
 
     #[test]
+    fn native_callback_throw_preserves_fresh_value_through_unwind_protect() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        runtime.context.set_gc_stress(true);
+        runtime.context.set_strict_forwarding(true);
+        let value = runtime
+            .eval(
+                "(let ((tag (gensym))) \
+                    (catch tag \
+                      (unwind-protect \
+                        (mapcar (lambda (v) (throw tag (list v v))) (list 7 8)) \
+                        (list 99 100))))",
+            )
+            .unwrap_or_else(|error| panic!("native callback evaluation: {error:?}"));
+        assert_eq!(runtime.format_result(value), "(7 7)");
+    }
+
+    #[test]
     #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     fn calls_a_published_simple_fun_through_the_native_abi() {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

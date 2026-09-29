@@ -241,14 +241,20 @@ fn expansion(name: &ncl_compiler_front::SymbolRef, detail: &str) -> ncl_compiler
 
 pub extern "C" fn native_make_closure(
     thread: NonNull<Thread>,
+    capture_count: Word,
     entry: Word,
-    capture0: Word,
-    capture1: Word,
-    capture2: Word,
 ) -> Word {
     ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         let ctx = &mut *invocation.context;
         let Ok(entry) = usize::try_from(entry.bits()) else {
+            ctx.set_pending(ObjectError::Layout);
+            return Word::NIL;
+        };
+        let Ok(capture_count) = capture_count
+            .as_fixnum()
+            .ok_or(ObjectError::Layout)
+            .and_then(|count| usize::try_from(count).map_err(|_| ObjectError::Layout))
+        else {
             ctx.set_pending(ObjectError::Layout);
             return Word::NIL;
         };
@@ -261,6 +267,7 @@ pub extern "C" fn native_make_closure(
             .entry_codes
             .get(&entry)
             .map_or(invocation.code, |(word, _)| CodeObject::from_word(**word));
+        let captures = vec![Word::NIL; capture_count];
         match make_closure(
             ctx,
             invocation.object,
@@ -268,7 +275,7 @@ pub extern "C" fn native_make_closure(
             Word::NIL,
             Word::NIL,
             code,
-            &[capture0, capture1, capture2],
+            &captures,
         ) {
             Ok(function) => function.as_word(),
             Err(error) => {

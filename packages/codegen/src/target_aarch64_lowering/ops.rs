@@ -104,6 +104,41 @@ fn load_heap_constant(
     )
 }
 
+fn store_closure_capture(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    index: usize,
+    capture: ValueId,
+    allocation: &Allocation,
+) -> Result<(), CodegenError> {
+    let offset = ncl_object::function_offset::CAPTURES
+        .checked_add(index)
+        .and_then(|slot| slot.checked_add(1))
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|offset| i16::try_from(offset).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    load_value(assembler, allocation, closure, Reg(16))?;
+    load_value(assembler, allocation, capture, Reg(17))?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Str {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset,
+            },
+        },
+    )
+}
+
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::Eq,
@@ -228,12 +263,7 @@ pub fn lower_op(
             }
         }
         OpKind::LoadCapture { index } => {
-            primitives::lower_load_capture(
-                assembler,
-                u32::from(*index),
-                result,
-                allocation,
-            )?;
+            primitives::lower_load_capture(assembler, u32::from(*index), result, allocation)?;
         }
         OpKind::Prim { op, args, .. } => {
             primitives::lower_prim(assembler, op, args, result, allocation)?;
@@ -281,20 +311,24 @@ pub fn lower_op(
             }
         }
         OpKind::MakeClosure { entry, captures } => {
-            let values = std::iter::once(*entry)
-                .chain(captures.iter().copied())
-                .collect::<Vec<_>>();
             lower_runtime_builtin(
                 assembler,
                 RuntimeFunction::MakeClosure,
-                &[],
-                &values,
+                &[ncl_sys::Word::fixnum(
+                    i64::try_from(captures.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                )
+                .bits()],
+                &[*entry],
                 allocation,
                 abi,
             )?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;
+                // No allocation or safepoint occurs before these stores, so the new object cannot move.
+                for (index, capture) in captures.iter().copied().enumerate() {
+                    store_closure_capture(assembler, result, index, capture, allocation)?;
+                }
             }
         }
         OpKind::CallClosure {

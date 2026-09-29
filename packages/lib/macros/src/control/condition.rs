@@ -8,13 +8,12 @@ fn handler_clause(ctx: &mut ThreadContext, runtime: &Runtime, tag: Word, clause:
     let parts = elements(ctx, clause)?;
     let condition = parts.first().copied().ok_or(ObjectError::TypeError)?;
     let variables = elements(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
-    if variables.len() != 1 {
+    if variables.len() > 1 {
         return Err(ObjectError::TypeError);
     }
-    ncl_object::symbol_name(
-        ctx,
-        variables.first().copied().ok_or(ObjectError::TypeError)?,
-    )?;
+    if let Some(variable) = variables.first().copied() {
+        ncl_object::symbol_name(ctx, variable)?;
+    }
     let body = progn(ctx, runtime, parts.get(2..).ok_or(ObjectError::TypeError)?)?;
     let return_form = form(ctx, runtime, "RETURN-FROM", &[tag, body])?;
     let lambda_list = parts.get(1).copied().ok_or(ObjectError::TypeError)?;

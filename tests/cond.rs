@@ -23,6 +23,24 @@ fn handler_bind_catches_division_by_zero() {
 }
 
 #[test]
+fn handler_case_accepts_empty_variable_list_and_returns_typed_value() {
+    for (source, expected) in [
+        ("(handler-case (error \"e\") (error () :caught))", ":CAUGHT"),
+        (
+            "(typep (handler-case (error \"e\") (error () 42)) 'integer)",
+            "T",
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
+            .args(["--eval", source])
+            .output()
+            .expect("ncl executable");
+        assert!(output.status.success(), "{source}: {output:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    }
+}
+
+#[test]
 fn unhandled_error_reports_message() {
     let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", "(error \"x\")"])

@@ -35,6 +35,14 @@ fn defun_nested_function_entries_are_linked_before_execution() {
             "(progn (defun fib-ratio (n) (labels ((fib (x) (if (< x 2) x (+ (fib (- x 1)) (fib (- x 2)))))) (fib n))) (fib-ratio 10))",
             "55",
         ),
+        (
+            "(progn (defun labels-capture-cycle (n) (let ((x n)) (labels ((first (n) (if (= n 0) x (second (- n 1)))) (second (n) (if (= n 0) x (third (- n 1)))) (third (n) (if (= n 0) (+ x 1) (first (- n 1))))) (first 2)))) (labels-capture-cycle 41))",
+            "42",
+        ),
+        (
+            "(progn (defun flet-labels-capture (n) (let ((x n)) (flet ((outer () (labels ((inner () (+ x 1))) (inner)))) (outer)))) (flet-labels-capture 41))",
+            "42",
+        ),
     ] {
         let output = run_ncl(source);
         assert!(output.status.success(), "{source}: {output:?}");

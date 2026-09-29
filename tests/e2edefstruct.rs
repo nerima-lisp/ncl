@@ -88,8 +88,8 @@ fn defstruct_read_only_does_not_define_a_setf_writer() {
 #[test]
 fn defstruct_boa_constructor_and_conc_name_nil_are_observable() {
     assert_eval(
-        "(progn (defstruct (pair (:constructor make-pair (left &optional right &key tag &aux (ignored 99)))) left right tag) (defstruct (bare (:conc-name nil)) value) (let ((p (make-pair 1 2 :tag 3)) (b (make-bare :value 7))) (list (pair-left p) (pair-right p) (pair-tag p) (value b))))",
-        "(1 2 3 7)",
+        "(progn (defstruct (pair (:constructor make-pair (left &optional right &key tag &aux (ignored 99)))) left right tag) (defstruct (bare (:conc-name nil)) value) (let ((p (make-pair 'alpha '(1 2 3) :tag 3)) (b (make-bare :value 7))) (list (pair-left p) (pair-right p) (pair-tag p) (value b))))",
+        "(COMMON-LISP-USER:ALPHA (1 2 3) 3 7)",
     );
 }
 

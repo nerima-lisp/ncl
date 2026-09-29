@@ -77,7 +77,6 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 impl std::error::Error for RuntimeError {}
-
 impl RuntimeError {
     /// Returns whether reading can continue after receiving more input.
     #[must_use]
@@ -85,7 +84,6 @@ impl RuntimeError {
         matches!(self, Self::Read(ncl_reader::ReadError::UnexpectedEof))
     }
 }
-
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
@@ -164,21 +162,18 @@ impl Runtime {
             rooted_functions: Vec::new(),
         })
     }
-
-    /// Enable or disable collection before each allocation.
+    /// Enables or disables collection before each allocation.
     pub const fn set_gc_stress(&mut self, on: bool) {
         self.context.set_gc_stress(on);
     }
-
-    /// Enable or disable strict forwarding checks for this runtime's thread.
+    /// Enables or disables strict forwarding checks.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.context.set_strict_forwarding(on);
     }
-
-    /// Evaluate source by compiling it to native code and invoking the entry.
+    /// Evaluates source through the native compiler.
     ///
     /// # Errors
-    /// Returns a reader, front-end, lowering, or native publication error.
+    /// Returns reader, front-end, lowering, or native execution errors.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
@@ -188,10 +183,7 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Compile and execute a source string through the native pipeline.
-    ///
-    /// The current native pipeline publishes code as it compiles it, so this
-    /// is intentionally equivalent to [`Self::eval`].
+    /// Compiles and executes a source string through the native pipeline.
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
@@ -204,7 +196,7 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Compile and execute all forms in a source file.
+    /// Compiles and executes all forms in a source file.
     ///
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
@@ -220,14 +212,14 @@ impl Runtime {
         self.context.clear_evaluator_runtime();
         result
     }
-    /// Load and execute all forms in a source string.
+    /// Loads and executes all forms in a source string.
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn load(&mut self, source: &str) -> Result<Word, RuntimeError> {
         self.eval(source)
     }
-    /// Load and execute all forms in a source file.
+    /// Loads and executes all forms in a source file.
     ///
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
@@ -401,7 +393,6 @@ impl Runtime {
         let entry = code.address().saturating_add(metadata.entry_offset);
         let (_function_object, code_object) =
             self.make_function_object(function, &(&code, &metadata))?;
-        // Preserve this entry's own constants table for `MakeClosure`.
         self.root_entry_code(entry, code_object);
         self.functions.insert(id.0, PublishedFunction { entry });
         self.code.push(code);
@@ -438,11 +429,7 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // Not a `Drop` type; this only marks the mutable borrow of
-        // `self.context` as no longer needed before `context` is used again
-        // below (`native_context` is opaque to the caller once cast to a raw
-        // pointer, so the compiler cannot infer that its last real use was
-        // the `NonNull::from` cast above).
+        // End the borrow before reusing the context after the opaque raw pointer call.
         let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {

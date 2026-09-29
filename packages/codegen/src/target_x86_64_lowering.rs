@@ -475,7 +475,13 @@ pub(super) use calls::{lower_call, lower_closure_call, lower_load_capture};
 pub(super) mod dispatch;
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 
+#[path = "target_x86_64_lowering/closure.rs"]
+mod closure;
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
+#[path = "target_x86_64_lowering/ops_support.rs"]
+mod ops_support;
+pub(super) use closure::closure_capture_count;
+pub(super) use ops_support::{load_heap_constant, store_closure_capture};
 
 pub(super) use ops::{lower_op, move_args};

@@ -1,10 +1,44 @@
 use super::{
-    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FUNCTION_OBJECT, REST_ARGUMENT, RETURN_VALUE,
-    ValueSlots, emit, load_immediate, load_slot, slot_mem_of,
+    ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
+    RETURN_VALUE, ValueSlots, emit, load_immediate, load_slot, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem, Shift};
 use ncl_ir::ValueId;
+
+pub fn lower_load_capture(
+    assembler: &mut Assembler,
+    index: u8,
+    result: Option<ValueId>,
+    slots: &ValueSlots,
+) -> Result<(), CodegenError> {
+    let offset = i32::try_from(
+        ncl_object::function_offset::CAPTURES
+            .checked_add(usize::from(index))
+            .and_then(|slot| slot.checked_add(1))
+            .and_then(|slot| slot.checked_mul(8))
+            .ok_or(CodegenError::FrameOverflow)?,
+    )
+    .map_err(|_| CodegenError::FrameOverflow)?;
+    emit(
+        assembler,
+        Inst::MovRM(RETURN_VALUE, Mem::base(FRAME_POINTER, 16)),
+    )?;
+    load_immediate(
+        assembler,
+        ENTRY,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, RETURN_VALUE, ENTRY))?;
+    emit(
+        assembler,
+        Inst::MovRM(FUNCTION_OBJECT, Mem::base(RETURN_VALUE, offset)),
+    )?;
+    if let Some(result) = result {
+        store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
+    }
+    Ok(())
+}
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
@@ -23,33 +57,41 @@ pub fn lower_call(
     };
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
-    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
-    let overflow_count = u32::try_from(rest.len().saturating_sub(ARGUMENT_REGISTERS.len()))
-        .map_err(|_| CodegenError::FrameOverflow)?;
-    if overflow_count > 0 {
-        emit(
-            assembler,
-            Inst::Lea(
-                REST_ARGUMENT,
-                slot_mem_of(
-                    slots
-                        .outgoing_base
-                        .checked_add(overflow_count - 1)
-                        .ok_or(CodegenError::FrameOverflow)?,
-                )?,
-            ),
-        )?;
-    }
+    // `slot_mem_of(i)` addresses `rbp - (i + 1) * 8`, so it grows *downward*
+    // (higher `i` means a lower address). `REST_ARGUMENT` must nonetheless
+    // check-added-lines: allow(index) point at the start of an ascending array (`rest[0]`, `rest[1]`, ... at
+    // increasing addresses) because every consumer on the other end (the
+    // callee's own prologue, and the native-builtin dispatcher's
+    // `copy_native_words`) reads it that way, matching aarch64's
+    // `lower_call`. So the *last* overflow argument is stored at the lowest
+    // address/outgoing slot (`outgoing_base + extra_count - 1`) and
+    // `REST_ARGUMENT` is anchored there; earlier overflow arguments live at
+    // increasing addresses (decreasing outgoing-slot indices) above it.
+    let extra_count = rest.len().saturating_sub(ARGUMENT_REGISTERS.len());
     for (index, argument) in rest.iter().enumerate() {
         if let Some(register) = ARGUMENT_REGISTERS.get(index) {
             load_slot(assembler, slots, *argument, *register)?;
         } else {
-            let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
-                .map_err(|_| CodegenError::FrameOverflow)?;
-            let slot = overflow_count
-                .checked_sub(extra.checked_add(1).ok_or(CodegenError::FrameOverflow)?)
-                .ok_or(CodegenError::FrameOverflow)?;
+            let extra = index - ARGUMENT_REGISTERS.len();
+            if extra == 0 {
+                emit(
+                    assembler,
+                    Inst::Lea(
+                        REST_ARGUMENT,
+                        slot_mem_of(
+                            slots
+                                .outgoing_base
+                                .checked_add(
+                                    u32::try_from(extra_count.saturating_sub(1))
+                                        .map_err(|_| CodegenError::FrameOverflow)?,
+                                )
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )?,
+                    ),
+                )?;
+            }
+            let physical = extra_count.saturating_sub(1).saturating_sub(extra);
             load_slot(assembler, slots, *argument, FUNCTION_OBJECT)?;
             emit(
                 assembler,
@@ -57,7 +99,9 @@ pub fn lower_call(
                     slot_mem_of(
                         slots
                             .outgoing_base
-                            .checked_add(slot)
+                            .checked_add(
+                                u32::try_from(physical).map_err(|_| CodegenError::FrameOverflow)?,
+                            )
                             .ok_or(CodegenError::FrameOverflow)?,
                     )?,
                     FUNCTION_OBJECT,
@@ -90,9 +134,7 @@ pub fn lower_closure_call(
             "closure calls require a tagged argc argument".into(),
         ));
     };
-    let undefined_done = if capture_count == 0
-        && let Some(symbol) = named_symbol
-    {
+    let undefined_done = if let Some(symbol) = named_symbol {
         load_slot(assembler, slots, symbol, FUNCTION_OBJECT)?;
         load_slot(assembler, slots, closure, ENTRY)?;
         load_immediate(
@@ -133,70 +175,107 @@ pub fn lower_closure_call(
     )?;
     emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
     emit(assembler, Inst::MovRR(RETURN_VALUE, ENTRY))?;
-    load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
-    let total = capture_count
-        .checked_add(rest.len())
-        .ok_or(CodegenError::FrameOverflow)?;
-    let overflow_count = u32::try_from(total.saturating_sub(ARGUMENT_REGISTERS.len()))
+    for (capture_index, register) in ARGUMENT_REGISTERS
+        .iter()
+        .copied()
+        .enumerate()
+        .take(capture_count)
+    {
+        // check-added-lines: allow(index) intentional
+        let offset = i32::try_from(
+            ncl_object::function_offset::CAPTURES
+                .checked_add(capture_index)
+                .and_then(|slot| slot.checked_add(1))
+                .and_then(|slot| slot.checked_mul(8))
+                .ok_or(CodegenError::FrameOverflow)?,
+        )
         .map_err(|_| CodegenError::FrameOverflow)?;
-    if overflow_count > 0 {
         emit(
             assembler,
-            Inst::Lea(
-                REST_ARGUMENT,
+            Inst::MovRM(register, Mem::base(RETURN_VALUE, offset)),
+        )?;
+    }
+    load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    // See the matching comment in `lower_call`: `REST_ARGUMENT` must point at
+    // an ascending array, so it is anchored at the lowest-address outgoing
+    // slot (`extra_count - 1`) and each overflow argument's physical slot
+    // index is mirrored (`extra_count - 1 - extra`) so that later arguments
+    // land at increasing addresses above it.
+    let extra_count = rest.len().saturating_sub(ARGUMENT_REGISTERS.len());
+    let total_overflow = capture_count
+        .checked_add(extra_count)
+        .ok_or(CodegenError::FrameOverflow)?;
+    // check-added-lines: allow(index) capture layout iteration is bounded above.
+    for (capture_index, _) in (0..capture_count).enumerate() {
+        let offset = i32::try_from(
+            ncl_object::function_offset::CAPTURES
+                .checked_add(capture_index)
+                .and_then(|slot| slot.checked_add(1))
+                .and_then(|slot| slot.checked_mul(8))
+                .ok_or(CodegenError::FrameOverflow)?,
+        )
+        .map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::MovRM(ENTRY, Mem::base(RETURN_VALUE, offset)),
+        )?;
+        let physical = total_overflow
+            .checked_sub(capture_index + 1)
+            .ok_or(CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::MovMR(
                 slot_mem_of(
                     slots
                         .outgoing_base
-                        .checked_add(overflow_count - 1)
+                        .checked_add(
+                            u32::try_from(physical).map_err(|_| CodegenError::FrameOverflow)?,
+                        )
                         .ok_or(CodegenError::FrameOverflow)?,
                 )?,
+                ENTRY,
             ),
         )?;
     }
-    for index in 0..total {
+    for (index, argument) in rest.iter().copied().enumerate() {
         let target = ARGUMENT_REGISTERS.get(index).copied();
-        if index < capture_count {
-            let offset = i32::try_from(
-                ncl_object::function_offset::CAPTURES
-                    .checked_add(index)
-                    .and_then(|slot| slot.checked_add(1))
-                    .and_then(|slot| slot.checked_mul(8))
-                    .ok_or(CodegenError::FrameOverflow)?,
-            )
-            .map_err(|_| CodegenError::FrameOverflow)?;
+        if target.is_none() && index == ARGUMENT_REGISTERS.len() {
             emit(
                 assembler,
-                Inst::MovRM(
-                    *ARGUMENT_REGISTERS
-                        .get(index)
-                        .ok_or(CodegenError::FrameOverflow)?,
-                    Mem::base(RETURN_VALUE, offset),
+                Inst::Lea(
+                    REST_ARGUMENT,
+                    slot_mem_of(
+                        slots
+                            .outgoing_base
+                            .checked_add(
+                                u32::try_from(extra_count.saturating_sub(1))
+                                    .map_err(|_| CodegenError::FrameOverflow)?,
+                            )
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )?,
                 ),
             )?;
+        }
+        if let Some(register) = target {
+            load_slot(assembler, slots, argument, register)?;
         } else {
-            // check-added-lines: allow(index) capture layout bounds the rest offset.
-            load_slot(assembler, slots, rest[index - capture_count], ENTRY)?;
-            if let Some(register) = target {
-                emit(assembler, Inst::MovRR(register, ENTRY))?;
-            } else {
-                let extra = u32::try_from(index - ARGUMENT_REGISTERS.len())
-                    .map_err(|_| CodegenError::FrameOverflow)?;
-                let slot = overflow_count
-                    .checked_sub(extra.checked_add(1).ok_or(CodegenError::FrameOverflow)?)
-                    .ok_or(CodegenError::FrameOverflow)?;
-                emit(
-                    assembler,
-                    Inst::MovMR(
-                        slot_mem_of(
-                            slots
-                                .outgoing_base
-                                .checked_add(slot)
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                        ENTRY,
-                    ),
-                )?;
-            }
+            let extra = index.saturating_sub(ARGUMENT_REGISTERS.len());
+            let physical = extra_count.saturating_sub(1).saturating_sub(extra);
+            load_slot(assembler, slots, argument, ENTRY)?;
+            emit(
+                assembler,
+                Inst::MovMR(
+                    slot_mem_of(
+                        slots
+                            .outgoing_base
+                            .checked_add(
+                                u32::try_from(physical).map_err(|_| CodegenError::FrameOverflow)?,
+                            )
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )?,
+                    ENTRY,
+                ),
+            )?;
         }
     }
     emit(

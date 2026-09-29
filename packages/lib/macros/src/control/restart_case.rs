@@ -9,8 +9,8 @@
 use super::{args, form};
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    classify_object, string_length, string_ref, symbol_name, symbol_package, BuiltinArgs,
-    MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, string_length, string_ref, symbol_name, symbol_package,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;

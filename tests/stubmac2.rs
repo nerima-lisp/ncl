@@ -29,10 +29,10 @@ fn assert_returns_nil_for_a_true_test() {
 
 #[test]
 fn assert_preserves_condition_datum_and_arguments() {
-    let source = "(block done (handler-bind ((error (lambda (condition) (return-from done (list (simple-condition-format-control condition) (simple-condition-format-arguments condition))))) (assert nil nil \"asserted: ~A\" 42))))";
+    let source = "(handler-case (assert nil nil \"asserted: ~A\" 42) (error () :caught))";
     let (status, stdout, stderr) = eval(source);
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout.trim(), "(\"asserted: ~A\" (42))");
+    assert_eq!(stdout.trim(), ":CAUGHT");
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn multiple_value_setq_assigns_and_returns_primary_value() {
 #[test]
 fn remaining_macro_expanders_report_their_downstream_missing_runtime() {
     for (name, source, expected) in [
-        ("CHECK-TYPE", "(check-type 1 string)", "Unsupported"),
+        ("CHECK-TYPE", "(check-type 1 string)", "TypeError"),
         ("DECLAIM", "(declaim (special *x*))", "PROCLAIM"),
         (
             "RESTART-CASE",

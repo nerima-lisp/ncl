@@ -21,6 +21,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::LoadCapture { .. }
                 | OpKind::LoadFunctionObject
                 | OpKind::MakeClosure { .. }
+                | OpKind::MakeValueCell { .. }
                 | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }
                 | OpKind::Compare { .. }

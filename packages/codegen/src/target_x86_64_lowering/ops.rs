@@ -298,6 +298,20 @@ pub fn lower_op(
                 }
             }
         }
+        OpKind::MakeValueCell { value } => {
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeValueCell,
+                &[],
+                &[*value],
+                slots,
+                abi,
+            )?;
+            call_pc = Some(emit_call(assembler)?);
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, RETURN_VALUE)?;
+            }
+        }
         OpKind::CallClosure {
             closure,
             args,

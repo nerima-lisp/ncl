@@ -59,6 +59,7 @@ pub fn remap_kind(
             value: v(*value),
         },
         OpKind::Alloc { words } => OpKind::Alloc { words: *words },
+        OpKind::MakeValueCell { value } => OpKind::MakeValueCell { value: v(*value) },
         OpKind::LoadArg { index } => OpKind::LoadArg { index: *index },
         OpKind::LoadCapture { index } => OpKind::LoadCapture { index: *index },
         OpKind::Builtin { name, args } => OpKind::Builtin {
@@ -140,7 +141,8 @@ pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {
     match &mut op.kind {
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. } => v(value),
+        | OpKind::Convert { value, .. }
+        | OpKind::MakeValueCell { value } => v(value),
         OpKind::Store { address, value }
         | OpKind::StoreField {
             object: address,

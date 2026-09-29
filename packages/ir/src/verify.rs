@@ -134,10 +134,7 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
         }
         match region.kind {
             crate::HandlerKind::Catch => {
-                if region.catch_tag.is_none()
-                    || region.cleanup.is_some()
-                    || !region.binding_targets.is_empty()
-                {
+                if region.catch_tag.is_none() || region.cleanup.is_some() {
                     errors.push(VerifyError::HandlerMismatch(region.handler));
                 }
             }
@@ -154,6 +151,17 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
                     errors.push(VerifyError::HandlerMismatch(region.handler));
                 }
             }
+        }
+        let handler_params = blocks
+            .get(&region.handler)
+            .map_or(&[][..], |block| block.params.as_slice());
+        let expected_bindings = match region.kind {
+            crate::HandlerKind::Catch => handler_params.len().saturating_sub(1),
+            // check-added-lines: allow(wildcard) non-catch handlers have no payload.
+            _ => region.binding_targets.len(),
+        };
+        if expected_bindings != region.binding_targets.len() {
+            errors.push(VerifyError::HandlerMismatch(region.handler));
         }
         for target in &region.binding_targets {
             if definitions.get(target).map(|(ty, _, _)| *ty) != Some(Ty::Word) {

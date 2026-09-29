@@ -253,6 +253,9 @@ pub enum OpKind {
         entry: ValueId,
         captures: Vec<ValueId>,
     },
+    MakeValueCell {
+        value: ValueId,
+    },
     CallClosure {
         closure: ValueId,
         args: Vec<ValueId>,

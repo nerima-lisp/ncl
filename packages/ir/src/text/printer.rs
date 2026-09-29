@@ -215,6 +215,7 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::Safepoint => 17,
         OpKind::EnterHandler { .. } => 18,
         OpKind::LeaveHandler { .. } => 19,
+        OpKind::MakeValueCell { .. } => 22,
     };
     w.u(tag);
     op_payload(w, o);
@@ -225,7 +226,8 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         OpKind::Const { result } => w.u(result.0.into()),
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. } => w.u(value.0.into()),
+        | OpKind::Convert { value, .. }
+        | OpKind::MakeValueCell { value } => w.u(value.0.into()),
         OpKind::Store { address, value } => {
             w.u(address.0.into());
             w.u(value.0.into());

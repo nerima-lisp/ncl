@@ -124,6 +124,15 @@ fn try_dispatch_candidates(
                     emit(assembler, Inst::MovRM(super::ENTRY, mv_area_mem(abi, 1)?))?;
                     store_slot(assembler, slots, param.value, super::ENTRY)?;
                 }
+                for (param, source) in handler
+                    .params
+                    .iter()
+                    .skip(1)
+                    .zip(region.binding_targets.iter())
+                {
+                    load_slot(assembler, slots, *source, super::ENTRY)?;
+                    store_slot(assembler, slots, param.value, super::ENTRY)?;
+                }
                 emit(assembler, Inst::Jmp(target))?;
                 assembler.bind(mismatch);
                 super::lower_runtime_builtin(

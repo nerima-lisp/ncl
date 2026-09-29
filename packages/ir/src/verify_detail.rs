@@ -102,6 +102,10 @@ pub(super) fn check_op(
             require_word_args(captures, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }
+        OpKind::MakeValueCell { value } => {
+            require_type(use_one(*value, errors), Ty::Word, block.id, errors);
+            require_results(op, &[Ty::Word], block.id, errors);
+        }
         OpKind::CallClosure {
             closure,
             args,

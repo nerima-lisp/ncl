@@ -253,6 +253,15 @@ fn try_dispatch_candidates(
                     )?;
                     store_value(assembler, allocation, param.value, Reg(16))?;
                 }
+                for (param, source) in handler
+                    .params
+                    .iter()
+                    .skip(1)
+                    .zip(region.binding_targets.iter())
+                {
+                    load_value(assembler, allocation, *source, Reg(16))?;
+                    store_value(assembler, allocation, param.value, Reg(16))?;
+                }
                 emit(assembler, Inst::B { label: target })?;
                 assembler
                     .bind(mismatch)

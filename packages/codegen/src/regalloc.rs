@@ -255,6 +255,7 @@ const fn is_call(kind: &OpKind) -> bool {
             | OpKind::CallClosure { .. }
             | OpKind::Builtin { .. }
             | OpKind::MakeClosure { .. }
+            | OpKind::MakeValueCell { .. }
     )
 }
 
@@ -262,7 +263,8 @@ fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {
     match kind {
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. } => out.push(*value),
+        | OpKind::Convert { value, .. }
+        | OpKind::MakeValueCell { value } => out.push(*value),
         OpKind::Store { address, value }
         | OpKind::StoreField {
             object: address,

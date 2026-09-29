@@ -105,6 +105,10 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
         (widetag::SPECIALIZED_ARRAY, vec![]),
         (widetag::NON_SIMPLE_ARRAY, vec![]),
+        (
+            widetag::VALUE_CELL,
+            vec![crate::layout::value_cell_offset::VALUE],
+        ),
     ] {
         let layout = match tag {
             widetag::HASH_TABLE => hash_table_layout(),

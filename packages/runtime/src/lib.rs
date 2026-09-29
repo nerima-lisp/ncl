@@ -427,17 +427,13 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // Not a `Drop` type; this only marks the mutable borrow of
-        // `self.context` as no longer needed before `context` is used again
-        // below (`native_context` is opaque to the caller once cast to a raw
-        // pointer, so the compiler cannot infer that its last real use was
-        // the `NonNull::from` cast above).
+        // End the opaque native-context borrow before reusing `context`.
+        // The raw pointer cast hides its last use from borrow checking.
         let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }
-        let escaped = context.take_non_local_exit();
         if let Some(error) = context.take_pending_lisp_error()
             && let Some(converter) = self.object.lisp_error_converter()
         {
@@ -462,7 +458,7 @@ impl Runtime {
             }
             return Err(error.into());
         }
-        if escaped {
+        if context.take_non_local_exit() {
             return Err(ObjectError::ControlError.into());
         }
         Ok(Word::from_bits(value))

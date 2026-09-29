@@ -43,7 +43,7 @@ use crate::RuntimeError;
 use crate::support::NativeInvocation;
 #[path = "builtin_trampoline_dispatch.rs"]
 mod dispatch_impl;
-use dispatch_impl::dispatch_with_context;
+use dispatch_impl::{dispatch_with_context, record_boundary_error};
 #[path = "builtin_trampoline_keywords.rs"]
 mod keyword_impl;
 use keyword_impl::install_keyword_builtins;
@@ -60,16 +60,6 @@ const fn error_result() -> NativeCallResult {
     NativeCallResult {
         value: Word::NIL.bits(),
         count: 0,
-    }
-}
-/// Record a builtin error at the native boundary.
-pub(super) fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
-    match error {
-        ncl_object::ObjectError::NonLocalExit if context.is_unwinding() => {}
-        ncl_object::ObjectError::NonLocalExit => {
-            context.set_pending(ncl_object::ObjectError::ControlError);
-        }
-        other => context.set_pending(other),
     }
 }
 fn ok_result(value: Word, value_count: usize) -> NativeCallResult {

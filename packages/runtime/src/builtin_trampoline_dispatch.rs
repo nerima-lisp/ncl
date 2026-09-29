@@ -3,6 +3,17 @@ use super::{
     error_result, ok_result, record_boundary_error,
 };
 
+/// Record an error at the native boundary without retaining a transient exit.
+pub(super) fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
+    match error {
+        ncl_object::ObjectError::NonLocalExit if context.is_unwinding() => {}
+        ncl_object::ObjectError::NonLocalExit => {
+            context.set_pending(ncl_object::ObjectError::ControlError);
+        }
+        other => context.set_pending(other),
+    }
+}
+
 pub(super) fn dispatch_with_context(
     invocation: &mut NativeInvocation<'_>,
     argc: u64,

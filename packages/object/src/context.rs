@@ -147,6 +147,11 @@ impl ThreadContext {
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
     }
+    /// Whether no Rust-side boundary error is pending.
+    #[must_use]
+    pub const fn pending_is_none(&self) -> bool {
+        self.pending.is_none()
+    }
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         self.pending_lisp_error = Some(error);
     }

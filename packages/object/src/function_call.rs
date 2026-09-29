@@ -226,6 +226,10 @@ impl Runtime {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
+        debug_assert!(
+            ctx.pending_is_none(),
+            "stale ThreadContext::pending entering a builtin"
+        );
         let function_word = self
             .heap
             .forwarded_word(function.as_word())
@@ -239,20 +243,53 @@ impl Runtime {
             .map(|entry| entry.implementation)
             .ok_or(ObjectError::Unbound)?;
         if implementation.nested_evaluation {
-            let original = args.to_vec();
-            let callback_args = if let Some(adapter) = implementation.keyword_adapter {
-                adapter(&crate::BuiltinArgs::new(&original))?
-            } else {
-                original
-            };
-            let callback_args = crate::BuiltinArgs::new(&callback_args);
-            let result = (implementation.function)(ctx, self, &callback_args, values);
+            let mut rooted_values = Vec::with_capacity(args.len() + 1);
+            rooted_values.push(function.as_word());
+            rooted_values.extend_from_slice(args);
+            let result = crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
+                let argument_count = rooted_values.len() - 1;
+                if argument_count < implementation.descriptor.lambda_list.min_arity()
+                    || implementation
+                        .descriptor
+                        .lambda_list
+                        .max_arity()
+                        .is_some_and(|max| argument_count > max)
+                {
+                    ctx.set_pending_lisp_error(LispError::ProgramError(
+                        ProgramError::WrongNumberOfArguments {
+                            minimum: implementation.descriptor.lambda_list.min_arity(),
+                            maximum: implementation.descriptor.lambda_list.max_arity(),
+                        },
+                    ));
+                    return Ok(Err(ObjectError::TypeError));
+                }
+                let original: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
+                let args = crate::BuiltinArgs::from_rooted(&original, &rooted_values[1..]);
+                let adapted = if let Some(adapter) = implementation.keyword_adapter {
+                    adapter(&args)?
+                } else {
+                    original
+                };
+                Ok(crate::with_roots(ctx, &adapted, |ctx, rooted_adapted| {
+                    let callback_args: Vec<Word> =
+                        rooted_adapted.iter().map(|value| **value).collect();
+                    let callback_args =
+                        crate::BuiltinArgs::from_rooted(&callback_args, rooted_adapted);
+                    (implementation.function)(ctx, self, &callback_args, values)
+                }))
+            })?;
             ctx.set_values(values.as_slice());
             if let Some(error) = ctx.take_pending_lisp_error()
                 && let Some(converter) = self.lisp_error_converter()
             {
                 let condition = converter(ctx, self, error)?;
                 ctx.set_pending_condition(condition);
+            }
+            if ctx.take_non_local_exit() {
+                let payload = ctx.thread_mut().multiple_values().to_vec();
+                values.set(&payload);
+                ctx.set_non_local_exit(true);
+                return Err(ObjectError::NonLocalExit);
             }
             let pending = ctx.take_pending();
             return pending.map_or(result, Err);

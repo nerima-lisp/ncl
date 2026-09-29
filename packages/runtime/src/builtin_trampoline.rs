@@ -62,6 +62,16 @@ const fn error_result() -> NativeCallResult {
         count: 0,
     }
 }
+/// Record a builtin error at the native boundary.
+pub(super) fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
+    match error {
+        ncl_object::ObjectError::NonLocalExit if context.is_unwinding() => {}
+        ncl_object::ObjectError::NonLocalExit => {
+            context.set_pending(ncl_object::ObjectError::ControlError);
+        }
+        other => context.set_pending(other),
+    }
+}
 fn ok_result(value: Word, value_count: usize) -> NativeCallResult {
     NativeCallResult {
         value: value.bits(),
@@ -180,7 +190,7 @@ extern "C" fn make_rest_list_native(
                 match result {
                     Ok(value) => value.bits(),
                     Err(error) => {
-                        context.set_pending(error);
+                        record_boundary_error(context, error);
                         Word::NIL.bits()
                     }
                 }
@@ -283,7 +293,7 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
                 match result {
                     Ok(value) => value.bits(),
                     Err(error) => {
-                        context.set_pending(error);
+                        record_boundary_error(context, error);
                         Word::NIL.bits()
                     }
                 }

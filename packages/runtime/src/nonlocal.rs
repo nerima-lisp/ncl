@@ -160,7 +160,7 @@ fn throw_builtin(
     let tag = args.required(0)?;
     let value = args.required(1)?;
     ctx.throw(tag, value)?;
-    Ok(value)
+    Err(ObjectError::NonLocalExit)
 }
 
 /// Register `COMMON-LISP::throw` with both the safe Rust callback (used by

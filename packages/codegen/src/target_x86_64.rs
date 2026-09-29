@@ -56,8 +56,8 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call,
-    lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
+    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call, lower_op,
+    lower_pending_check, lower_return_or_throw, move_args, slots, store_slot,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -143,6 +143,56 @@ fn spill_arguments(
                 Inst::MovRM(ENTRY, Mem::base(REST_ARGUMENT, source_offset)),
             )?;
             emit(assembler, Inst::MovMR(destination, ENTRY))?;
+        }
+    }
+    Ok(())
+}
+
+/// Connects the ABI-delivered incoming argument registers/stack words to the
+/// register-allocated location of each `ValueId(index)` that `OpKind::LoadArg`
+/// reads, mirroring aarch64's `initialize_arguments`
+/// (`target_aarch64_support.rs`). `spill_arguments` above writes the same
+/// incoming values to a fixed, unrelated frame-relative slot that nothing
+/// else reads; this is the piece that was missing on x86-64.
+fn initialize_arguments(
+    assembler: &mut Assembler,
+    function: &Function,
+    value_slots: &ValueSlots,
+) -> Result<(), CodegenError> {
+    let generated_lambda = function
+        .params
+        .first()
+        .is_some_and(|parameter| parameter.name == "argc");
+    for (index, _parameter) in function.params.iter().enumerate() {
+        let value = ncl_ir::ValueId(u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?);
+        let register_index = if generated_lambda {
+            index
+        } else {
+            index.saturating_add(1)
+        };
+        if register_index == 0 {
+            store_slot(assembler, value_slots, value, ARGUMENT_COUNT)?;
+        } else if let Some(register) = ARGUMENT_REGISTERS.get(register_index.saturating_sub(1)) {
+            store_slot(assembler, value_slots, value, *register)?;
+        } else {
+            // The call site (`lower_closure_call`/`lower_call` in
+            // `target_x86_64_lowering/calls.rs`) points `REST_ARGUMENT` at the
+            // ascending base of the overflow-argument array (matching
+            // aarch64 and the native-builtin dispatcher's
+            // `copy_native_words`), so later overflow arguments read at
+            // strictly increasing, positive offsets from it.
+            let rest_offset = i32::try_from(
+                register_index
+                    .saturating_sub(1)
+                    .saturating_sub(ARGUMENT_REGISTERS.len())
+                    .saturating_mul(8),
+            )
+            .map_err(|_| CodegenError::FrameOverflow)?;
+            emit(
+                assembler,
+                Inst::MovRM(ENTRY, Mem::base(REST_ARGUMENT, rest_offset)),
+            )?;
+            store_slot(assembler, value_slots, value, ENTRY)?;
         }
     }
     Ok(())
@@ -266,22 +316,7 @@ pub fn compile_function_x86_64(
             ),
         )?;
     }
-    for (index, parameter) in function
-        .blocks
-        .first()
-        .map(|block| block.params.iter())
-        .into_iter()
-        .flatten()
-        .enumerate()
-    {
-        let offset = i32::try_from(index.saturating_add(1).saturating_mul(8))
-            .map_err(|_| CodegenError::FrameOverflow)?;
-        emit(
-            &mut assembler,
-            Inst::MovRM(ENTRY, Mem::base(FRAME_POINTER, -offset)),
-        )?;
-        lowering::store_slot(&mut assembler, &value_slots, parameter.value, ENTRY)?;
-    }
+    initialize_arguments(&mut assembler, function, &value_slots)?;
     let mut position = 0u32;
     for block in &function.blocks {
         assembler.bind(labels[&block.id]);

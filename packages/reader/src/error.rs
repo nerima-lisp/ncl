@@ -47,7 +47,7 @@ pub enum ReadError {
     InvalidFeatureExpression,
     /// Array reader syntax is not available yet.
     ArraySyntax,
-    /// Structure reader syntax is not available yet.
+    /// A `#S` structure literal is malformed or names an unknown structure.
     StructureSyntax,
     /// Pathname reader syntax is not available yet.
     PathnameSyntax,
@@ -84,7 +84,7 @@ impl std::fmt::Display for ReadError {
             }
             Self::InvalidFeatureExpression => f.write_str("invalid feature expression"),
             Self::ArraySyntax => f.write_str("array reader syntax is unavailable"),
-            Self::StructureSyntax => f.write_str("structure reader syntax is unavailable"),
+            Self::StructureSyntax => f.write_str("invalid structure reader syntax"),
             Self::PathnameSyntax => f.write_str("pathname reader syntax is unavailable"),
             Self::NotDispatchMacro(ch) => write!(f, "{ch} is not a dispatch macro character"),
             Self::Object(error) => write!(f, "object error: {error}"),

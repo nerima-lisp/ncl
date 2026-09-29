@@ -4,8 +4,10 @@ use std::cell::Cell;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, Runtime, ThreadContext, Word, car, cdr, make_complex, make_cons,
-    make_simple_vector, make_specialized_array, make_string, make_symbol, pop_root, push_root,
+    ArrayElementType, ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify_object,
+    make_complex, make_cons, make_simple_vector, make_specialized_array, make_string,
+    make_structure, make_symbol, pop_root, push_root, simple_vector_length, simple_vector_ref,
+    string_length, string_ref, symbol_name,
 };
 
 use crate::error::ReadError;
@@ -65,7 +67,7 @@ pub fn read_sharp(
         'd' | 'D' => read_radix(ctx, runtime, source, 10).map(Some),
         'c' | 'C' => read_complex(ctx, runtime, source, opts, rt, labels).map(Some),
         'a' | 'A' => Err(ReadError::ArraySyntax),
-        's' | 'S' => Err(ReadError::StructureSyntax),
+        's' | 'S' => read_structure(ctx, runtime, source, opts, rt, labels).map(Some),
         'p' | 'P' => Err(ReadError::PathnameSyntax),
         '0'..='9' => {
             source.unread_char(sub);
@@ -92,6 +94,81 @@ pub fn read_sharp(
         }
         other => Err(ReadError::UndefinedDispatchMacro(other)),
     }
+}
+
+/// Read a `#S(name :slot value ...)` structure literal.
+fn read_structure(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    source: &mut dyn CharSource,
+    opts: &ReadOptions,
+    rt: &Word,
+    labels: &mut Word,
+) -> Result<Word, ReadError> {
+    if source.read_char() != Some('(') {
+        return Err(ReadError::StructureSyntax);
+    }
+    let form = read_list(ctx, runtime, source, opts, rt, labels)?;
+    let mut fields = Vec::new();
+    let mut cursor = form;
+    while cursor != Word::NIL {
+        if !cursor.is_cons() {
+            return Err(ReadError::StructureSyntax);
+        }
+        fields.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
+    }
+    let name = *fields.first().ok_or(ReadError::StructureSyntax)?;
+    if !matches!(classify_object(ctx, name), ObjectRef::Symbol(_)) {
+        return Err(ReadError::StructureSyntax);
+    }
+    let layout = runtime
+        .structure_layout_for_symbol(ctx, name)
+        .ok_or(ReadError::StructureSyntax)?;
+    let class = runtime
+        .structure_class(ctx, layout)
+        .ok_or(ReadError::StructureSyntax)?;
+    let slots = simple_vector_ref(ctx, class, 4)?;
+    let slot_count = simple_vector_length(ctx, slots)?;
+    let mut values = vec![Word::NIL; slot_count];
+    let mut seen = vec![false; slot_count];
+    let mut index = 1;
+    while index < fields.len() {
+        let key = *fields.get(index).ok_or(ReadError::StructureSyntax)?;
+        let value = *fields.get(index + 1).ok_or(ReadError::StructureSyntax)?;
+        if !matches!(classify_object(ctx, key), ObjectRef::Symbol(_)) {
+            return Err(ReadError::StructureSyntax);
+        }
+        let key_name = symbol_text(ctx, key)?;
+        let key_name = key_name.strip_prefix(':').unwrap_or(&key_name);
+        let mut found = None;
+        for slot_index in 0..slot_count {
+            let descriptor = simple_vector_ref(ctx, slots, slot_index)?;
+            let slot_name = simple_vector_ref(ctx, descriptor, 0)?;
+            if symbol_text(ctx, slot_name)? == key_name {
+                found = Some(slot_index);
+                break;
+            }
+        }
+        let slot_index = found.ok_or(ReadError::StructureSyntax)?;
+        if *seen.get(slot_index).ok_or(ReadError::StructureSyntax)? {
+            return Err(ReadError::StructureSyntax);
+        }
+        *seen.get_mut(slot_index).ok_or(ReadError::StructureSyntax)? = true;
+        *values
+            .get_mut(slot_index)
+            .ok_or(ReadError::StructureSyntax)? = value;
+        index += 2;
+    }
+    Ok(make_structure(ctx, runtime, layout, &values)?)
+}
+
+fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ReadError> {
+    let name = symbol_name(ctx, symbol)?;
+    let length = string_length(ctx, name)?;
+    Ok((0..length)
+        .map(|index| string_ref(ctx, name, index))
+        .collect::<Result<String, _>>()?)
 }
 
 /// Convert a proper list into a simple vector.

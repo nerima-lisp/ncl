@@ -2,18 +2,7 @@
 
 mod common;
 
-use common::run_ncl;
-
-fn assert_eval_with_stress(source: &str, expected: &str) {
-    let mut runtime = ncl_runtime::Runtime::new()
-        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
-    runtime.set_gc_stress(true);
-    runtime.set_strict_forwarding(true);
-    let value = runtime
-        .compile(source)
-        .unwrap_or_else(|error| panic!("compile failed for {source}: {error:?}"));
-    assert_eq!(runtime.format_result(value), expected, "{source}");
-}
+use common::{assert_eval_with_stress, run_ncl};
 
 fn assert_eval(source: &str, expected: &str) {
     let output = run_ncl(source);

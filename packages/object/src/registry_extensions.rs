@@ -340,8 +340,10 @@ impl Runtime {
         crate::with_root(ctx, &mut class, |context, class| {
             let mut name = make_string(context, self, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(context, &mut name, |context, name| {
-                let table = Self::table(&self.classes)?;
-                HashTable::from_word(table).insert(context, self, *name, *class)
+                let mut table = Self::table(&self.classes)?;
+                crate::with_root(context, &mut table, |context, table| {
+                    HashTable::from_word(*table).insert(context, self, *name, *class)
+                })
             })
         })
     }

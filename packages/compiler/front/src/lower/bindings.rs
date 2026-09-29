@@ -118,7 +118,11 @@ impl Context<'_> {
         for (name, form) in pairs {
             let value = self.lower_expr(f, form)?;
             match f.env().lookup_variable(name) {
-                Some(Slot::Cell(address)) => f.none(OpKind::Store { address, value })?,
+                Some(Slot::Cell(cell)) => f.none(OpKind::StoreField {
+                    object: cell,
+                    field: 0,
+                    value,
+                })?,
                 Some(Slot::Value(_)) => {
                     f.env().rebind_variable(name, Slot::Value(value));
                 }
@@ -293,13 +297,7 @@ impl Context<'_> {
                     .iter()
                     .map(|(name, _slot)| match nested.env().lookup_variable(name) {
                         Some(Slot::Value(value)) => Ok(value),
-                        Some(Slot::Cell(address)) => nested.one(
-                            OpKind::Convert {
-                                op: Convert::AddressToWord,
-                                value: address,
-                            },
-                            Ty::Word,
-                        ),
+                        Some(Slot::Cell(cell)) => Ok(cell),
                         None => Err(LowerError::Ir {
                             detail: format!("recursive function capture is unavailable: {name}"),
                         }),
@@ -347,13 +345,7 @@ impl Context<'_> {
                 .iter()
                 .map(|(_, slot)| match slot {
                     Slot::Value(value) => Ok(*value),
-                    Slot::Cell(address) => f.one(
-                        OpKind::Convert {
-                            op: Convert::AddressToWord,
-                            value: *address,
-                        },
-                        Ty::Word,
-                    ),
+                    Slot::Cell(cell) => Ok(*cell),
                 })
                 .collect::<Result<Vec<_>, LowerError>>()?;
             capture_values.extend(

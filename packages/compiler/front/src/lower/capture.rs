@@ -16,6 +16,8 @@ use crate::symbols::SymbolRef;
 pub(super) struct Analysis {
     assigned: BTreeSet<SymbolRef>,
     captured: BTreeSet<SymbolRef>,
+    lambda_escape: bool,
+    lambda_depth: usize,
 }
 
 impl Analysis {
@@ -25,7 +27,7 @@ impl Analysis {
     /// lambda, because two closures must observe each other's writes through
     /// one shared cell.
     pub(super) fn needs_cell(&self, name: &SymbolRef) -> bool {
-        self.assigned.contains(name) && self.captured.contains(name)
+        self.assigned.contains(name) && (self.captured.contains(name) || self.lambda_escape)
     }
 
     pub(super) fn assigned_names(&self) -> Vec<SymbolRef> {
@@ -286,11 +288,13 @@ fn scan_lambda(lambda: &LambdaExpr, bound: &mut Vec<SymbolRef>, analysis: &mut A
         }
     }
     let mark = bound.len();
+    analysis.lambda_depth += 1;
     bound.extend(lambda_bindings(&lambda.lambda_list));
     for form in &lambda.body {
         scan(form, bound, analysis);
     }
     bound.truncate(mark);
+    analysis.lambda_depth -= 1;
 }
 
 #[allow(
@@ -299,7 +303,12 @@ fn scan_lambda(lambda: &LambdaExpr, bound: &mut Vec<SymbolRef>, analysis: &mut A
 )]
 fn scan(expr: &Expr, bound: &mut Vec<SymbolRef>, analysis: &mut Analysis) {
     match expr {
-        Expr::Constant(_) | Expr::Go { .. } | Expr::Variable(_) => {}
+        Expr::Constant(_) | Expr::Variable(_) => {}
+        Expr::Go { .. } => {
+            if analysis.lambda_depth > 0 {
+                analysis.lambda_escape = true;
+            }
+        }
         Expr::Setq(pairs) => {
             for (name, value) in pairs {
                 analysis.assigned.insert(name.clone());
@@ -345,6 +354,9 @@ fn scan(expr: &Expr, bound: &mut Vec<SymbolRef>, analysis: &mut Analysis) {
             }
         }
         Expr::ReturnFrom { value, .. } => {
+            if analysis.lambda_depth > 0 {
+                analysis.lambda_escape = true;
+            }
             if let Some(value) = value {
                 scan(value, bound, analysis);
             }

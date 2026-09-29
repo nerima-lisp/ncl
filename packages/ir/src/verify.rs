@@ -154,6 +154,7 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
         }
         let handler_params = blocks
             .get(&region.handler)
+            // check-added-lines: allow(index) empty slice is the missing-handler case.
             .map_or(&[][..], |block| block.params.as_slice());
         let expected_bindings = match region.kind {
             crate::HandlerKind::Catch => handler_params.len().saturating_sub(1),

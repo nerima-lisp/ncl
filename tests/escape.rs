@@ -45,6 +45,10 @@ fn wait_with_timeout(mut child: Child, source: &str) -> Output {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "table keeps the escape matrix readable"
+)]
 fn non_local_escape_values_are_observable_through_the_cli() {
     let cases = [
         Case {
@@ -112,6 +116,71 @@ fn non_local_escape_values_are_observable_through_the_cli() {
             source: "(block done (funcall (lambda () (return-from done (length (list (list 1 2 3) (list 4 5 6) (list 7 8 9)))))))",
             expected: "3",
         },
+        Case {
+            name: "block-assignment-survives-normal-exit",
+            source: "(let ((x 0)) (block b (setq x 5) (return-from b 9)) x)",
+            expected: "5",
+        },
+        Case {
+            name: "block-assignment-preserves-unassigned-value",
+            source: "(let ((x 0) (y 0)) (block b (setq x 1) (when t (return-from b nil)) (setq y 2)) (list x y))",
+            expected: "(1 0)",
+        },
+        Case {
+            name: "flet-assignment-through-closure",
+            source: "(let ((x 0)) (flet ((bump () (setq x (1+ x)))) (bump) (bump)) x)",
+            expected: "2",
+        },
+        Case {
+            name: "block-lambda-return-preserves-assignment",
+            source: "(let ((x 0)) (block b (setq x 1) (funcall (lambda () (return-from b nil))) (setq x 2)) x)",
+            expected: "1",
+        },
+        Case {
+            name: "block-mapcar-return-preserves-unassigned-value",
+            source: "(let ((x 0) (y 0)) (block b (setq x 1) (mapcar (lambda (v) (return-from b v)) '(7)) (setq y 2)) (list x y))",
+            expected: "(1 0)",
+        },
+        Case {
+            name: "tagbody-assignment-through-lambda-go",
+            source: "(let ((x 0)) (tagbody (setq x 5) (funcall (lambda () (go done))) done) x)",
+            expected: "5",
+        },
+        Case {
+            name: "tagbody-mapcar-go-preserves-unassigned-value",
+            source: "(let ((x 0) (y 0)) (tagbody (setq x 1) (mapcar (lambda (v) (go done)) '(7)) (setq y 2) done) (list x y))",
+            expected: "(1 0)",
+        },
+        Case {
+            name: "dotimes-value-loop",
+            source: "(dotimes (i 5) i)",
+            expected: "NIL",
+        },
+        Case {
+            name: "dotimes-setq-loop",
+            source: "(let ((s 0)) (dotimes (i 10) (setq s (+ s i))) s)",
+            expected: "45",
+        },
+        Case {
+            name: "tagbody-backedge-loop",
+            source: "(let ((x 0)) (tagbody top (setq x (1+ x)) (when (< x 5) (go top))) x)",
+            expected: "5",
+        },
+        Case {
+            name: "tagbody-go-preserves-unassigned-value",
+            source: "(let ((x 0) (y 0)) (tagbody (setq x 1) (when t (go end)) (setq y 2) end) (list x y))",
+            expected: "(1 0)",
+        },
+        Case {
+            name: "do-parallel-updates",
+            source: "(do ((i 0 (1+ i)) (acc nil (cons i acc))) ((= i 3) acc))",
+            expected: "(2 1 0)",
+        },
+        Case {
+            name: "dotimes-closures-do-not-crash",
+            source: "(let ((fs nil)) (dotimes (i 3) (push (lambda () i) fs)) (mapcar #'funcall fs))",
+            expected: "(3 3 3)",
+        },
     ];
 
     for case in cases {
@@ -133,12 +202,37 @@ fn non_local_escape_values_are_observable_through_the_cli() {
 }
 
 #[test]
+fn loops_with_tagbody_and_closures_survive_gc_stress() {
+    let mut runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    for (source, expected) in [
+        ("(let ((s 0)) (dotimes (i 10) (setq s (+ s i))) s)", "45"),
+        (
+            "(let ((x 0)) (tagbody top (setq x (1+ x)) (when (< x 5) (go top))) x)",
+            "5",
+        ),
+    ] {
+        let value = runtime
+            .compile(source)
+            .unwrap_or_else(|error| panic!("compile failed for {source}: {error:?}"));
+        assert_eq!(runtime.format_result(value), expected, "{source}");
+    }
+}
+
+#[test]
 fn expired_closure_reports_control_error_through_the_cli() {
     let cases = [
         "(progn (setq *escape-closure* nil) (block done (setq *escape-closure* (lambda () (return-from done 17)))) (funcall *escape-closure*))",
         "(let ((f nil)) (block b (setq f (lambda () (return-from b 1)))) (funcall f))",
+        "(let ((f nil) (n 0)) (block b (setq n 3) (setq f (lambda () (return-from b 1)))) (funcall f))",
+        "(let ((f nil) (n 0) (m 0)) (block b (setq n 3) (setq m 4) (setq f (lambda () (return-from b 1)))) (funcall f))",
         "(let ((f nil)) (block b (flet ((make () (lambda () (return-from b 1)))) (setq f (make)))) (funcall f))",
         "(let ((f nil)) (block b (labels ((make () (lambda () (return-from b 1)))) (setq f (make)))) (funcall f))",
+        "(let ((f nil) (n 0)) (tagbody (setq n 3) (setq f (lambda () (go done))) done) (funcall f))",
+        "(let ((f nil)) (tagbody (setq f (flet ((jump () (go done))) (lambda () (jump)))) done) (funcall f))",
+        "(let ((f nil)) (tagbody (setq f (labels ((jump () (go done))) (lambda () (jump)))) done) (funcall f))",
     ];
     for source in cases {
         let output = run_ncl(source);

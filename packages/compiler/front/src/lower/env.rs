@@ -13,7 +13,7 @@ use crate::symbols::SymbolRef;
 pub(super) enum Slot {
     /// The variable is an SSA value of type `Word`.
     Value(ValueId),
-    /// The variable is boxed in a one-word cell; the slot is an `Address`.
+    /// The variable is boxed in a GC-managed value cell.
     Cell(ValueId),
 }
 
@@ -40,6 +40,7 @@ pub(super) struct BlockEntry {
     /// `unwind-protect` cleanup and `progv` restores still run even though
     /// no closure boundary is crossed.
     pub active_depth: usize,
+    pub live: Vec<SymbolRef>,
 }
 
 /// A `tagbody` tag target.
@@ -51,6 +52,7 @@ pub(super) struct TagEntry {
     pub target: BlockId,
     /// See [`BlockEntry::active_depth`]; the same reasoning applies to `go`.
     pub active_depth: usize,
+    pub live: Vec<SymbolRef>,
 }
 
 /// A local function bound by `flet` or `labels`.

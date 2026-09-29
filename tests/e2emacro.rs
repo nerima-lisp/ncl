@@ -69,6 +69,11 @@ const PROBES: &[Probe] = &[
         expected: "9",
     },
     Probe {
+        name: "loop-in-now-lowers",
+        source: "(loop for x in (quote (1 2 3)) collect x)",
+        expected: "(1 2 3)",
+    },
+    Probe {
         name: "multiple-value-bind",
         source: "(multiple-value-bind (a b) (values 1 2) (+ a b))",
         expected: "3",
@@ -102,24 +107,6 @@ const PROBES: &[Probe] = &[
 
 const XFAILS: &[XFail] = &[
     XFail {
-        name: "loop-in",
-        source: "(loop for x in (quote (1 2 3)) collect x)",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
-        name: "loop-on",
-        source: "(loop for x on (quote (1 2 3)) collect (car x))",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
-        name: "loop-from-below-by",
-        source: "(loop for x from 1 below 4 by 2 sum x)",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
         name: "loop-count",
         source: "(loop for x from 1 below 4 count (oddp x))",
         stderr: "UndefinedValue",
@@ -132,26 +119,8 @@ const XFAILS: &[XFail] = &[
         exit_code: 1,
     },
     XFail {
-        name: "loop-while",
-        source: "(loop for x from 1 below 4 while (< x 3) collect x)",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
-        name: "loop-until",
-        source: "(loop for x from 1 below 4 until (= x 3) collect x)",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
         name: "loop-with-finally",
         source: "(loop with x = 2 finally (return x))",
-        stderr: "SafepointWarning",
-        exit_code: 1,
-    },
-    XFail {
-        name: "loop-nested",
-        source: "(loop for x from 1 below 3 collect (loop for y from 1 below 3 sum (+ x y)))",
         stderr: "UndefinedValue",
         exit_code: 1,
     },
@@ -159,36 +128,6 @@ const XFAILS: &[XFail] = &[
         name: "destructuring-bind",
         source: "(destructuring-bind (a (b &optional c) &rest d) (list 1 (list 2 3) 4 5) (list a b c d))",
         stderr: "UnknownLambdaListKeyword",
-        exit_code: 1,
-    },
-    XFail {
-        name: "do",
-        source: "(do ((x 0 (1+ x))) ((= x 3) x))",
-        stderr: "PSETQ",
-        exit_code: 1,
-    },
-    XFail {
-        name: "do-star",
-        source: "(do* ((x 0 (1+ x))) ((= x 3) x))",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
-        name: "dolist",
-        source: "(dolist (x (list 1 2 3) 9) x)",
-        stderr: "SafepointWarning",
-        exit_code: 1,
-    },
-    XFail {
-        name: "dotimes",
-        source: "(dotimes (x 3 9) x)",
-        stderr: "SafepointWarning",
-        exit_code: 1,
-    },
-    XFail {
-        name: "psetq",
-        source: "(let ((a 1) (b 2)) (psetq a b b a) (list a b))",
-        stderr: "PSETQ",
         exit_code: 1,
     },
     XFail {

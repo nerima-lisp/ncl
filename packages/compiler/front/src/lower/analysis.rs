@@ -383,7 +383,6 @@ fn nested_go(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::Macrolet { .. }
         | Expr::SymbolMacrolet { .. }
         | Expr::Let { .. }
-        | Expr::Setq(_)
         | Expr::If { .. }
         | Expr::Block { .. }
         | Expr::Tagbody(_)
@@ -401,6 +400,7 @@ fn nested_go(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::EvalWhen { .. }
         | Expr::LoadTimeValue { .. }
         | Expr::Function(FunctionDesignator::Name(_)) => false,
+        Expr::Setq(bindings) => bindings.iter().any(|(_, form)| nested_go(form, name)),
     }
 }
 

@@ -113,7 +113,13 @@ impl Context<'_> {
     fn lower_variable(f: &mut FunctionLowerer, name: &SymbolRef) -> Result<ValueId, LowerError> {
         match f.env().lookup_variable(name) {
             Some(Slot::Value(value)) => Ok(value),
-            Some(Slot::Cell(address)) => f.one(OpKind::Load { address }, Ty::Word),
+            Some(Slot::Cell(cell)) => f.one(
+                OpKind::LoadField {
+                    object: cell,
+                    field: 0,
+                },
+                Ty::Word,
+            ),
             None => {
                 let symbol = f.symbol(name)?;
                 f.one(
@@ -353,13 +359,7 @@ impl Context<'_> {
             .iter()
             .map(|(_, slot)| match slot {
                 Slot::Value(value) => Ok(*value),
-                Slot::Cell(address) => f.one(
-                    OpKind::Convert {
-                        op: Convert::AddressToWord,
-                        value: *address,
-                    },
-                    Ty::Word,
-                ),
+                Slot::Cell(cell) => Ok(*cell),
             })
             .collect::<Result<Vec<_>, LowerError>>()?;
         let mut capture_values = capture_values;

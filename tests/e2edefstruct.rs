@@ -1,13 +1,8 @@
 #![allow(missing_docs)]
 
-use std::process::{Command, Output};
+mod common;
 
-fn run_ncl(source: &str) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .output()
-        .unwrap_or_else(|error| panic!("{source}: {error}"))
-}
+use common::{assert_eval_with_stress_on, run_ncl};
 
 fn assert_eval(source: &str, expected: &str) {
     let output = run_ncl(source);
@@ -27,6 +22,27 @@ fn assert_error(source: &str, expected: &str) {
         String::from_utf8_lossy(&output.stderr).contains(expected),
         "{source}: {output:?}"
     );
+}
+
+#[test]
+fn defstruct_boa_constructor_values_survive_gc_stress_and_strict_forwarding() {
+    let mut runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    runtime
+        .compile("(progn (defstruct (pt (:constructor make-pt (a &optional (b (list 1 2)) &key (c 'sym) &aux (ignored 9)))) a b c) (defparameter *boa-symbol* 'x) (defparameter *boa-symbol-2* 'y) (defparameter *boa-list* (list 4 5)))")
+        .unwrap_or_else(|error| panic!("setup compile failed: {error:?}"));
+    for (source, expected) in [
+        (
+            "(let ((p (make-pt *boa-symbol* *boa-list*))) (list (pt-a p) (pt-b p) (pt-c p)))",
+            "(COMMON-LISP-USER:X (4 5) COMMON-LISP-USER:SYM)",
+        ),
+        (
+            "(let ((p (make-pt *boa-symbol-2* *boa-list*))) (list (pt-a p) (pt-b p) (pt-c p)))",
+            "(COMMON-LISP-USER:Y (4 5) COMMON-LISP-USER:SYM)",
+        ),
+    ] {
+        assert_eval_with_stress_on(&mut runtime, source, expected);
+    }
 }
 
 #[test]

@@ -69,25 +69,18 @@ fn boxes_a_variable_captured_and_assigned_by_two_lambdas() {
     assert!(
         any_op(&lowered.entry, |kind| matches!(
             kind,
-            OpKind::Alloc { words: 1 }
+            OpKind::MakeValueCell { .. }
         )),
         "the shared variable is boxed in a one-word cell"
     );
     for nested in &lowered.nested {
         assert_verifies(nested);
         assert!(
-            any_op(nested, |kind| matches!(kind, OpKind::Store { .. })),
-            "each closure writes the shared cell"
-        );
-        assert!(
             any_op(nested, |kind| matches!(
                 kind,
-                OpKind::Convert {
-                    op: ncl_ir::Convert::WordToAddress,
-                    ..
-                }
+                OpKind::StoreField { field: 0, .. }
             )),
-            "the captured cell arrives as a word and is used as an address"
+            "each closure writes the shared cell"
         );
     }
 }

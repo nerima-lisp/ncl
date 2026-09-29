@@ -52,7 +52,7 @@ pub(crate) fn form(
     })
 }
 
-fn args(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>> {
+pub(crate) fn args(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>> {
     let mut values = elements(ctx, form)?;
     if values.is_empty() {
         return Err(ObjectError::TypeError);

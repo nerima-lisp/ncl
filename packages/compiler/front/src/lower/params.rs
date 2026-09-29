@@ -289,16 +289,7 @@ pub(super) fn bind_captures(
         let loaded = f.one(OpKind::LoadCapture { index: capture }, Ty::Word)?;
         match slot {
             Slot::Value(_) => f.env().bind_variable(name.clone(), Slot::Value(loaded)),
-            Slot::Cell(_) => {
-                let address = f.one(
-                    OpKind::Convert {
-                        op: Convert::WordToAddress,
-                        value: loaded,
-                    },
-                    Ty::Address,
-                )?;
-                f.env().bind_variable(name.clone(), Slot::Cell(address));
-            }
+            Slot::Cell(_) => f.env().bind_variable(name.clone(), Slot::Cell(loaded)),
         }
     }
     Ok(())
@@ -329,10 +320,8 @@ pub(super) fn bind_let(
     analysis: &capture::Analysis,
 ) -> Result<(), LowerError> {
     if analysis.needs_cell(name) {
-        let address = f.one(OpKind::Alloc { words: 1 }, Ty::Address)?;
-        f.safepoint()?;
-        f.none(OpKind::Store { address, value })?;
-        f.env().bind_variable(name.clone(), Slot::Cell(address));
+        let cell = f.one(OpKind::MakeValueCell { value }, Ty::Word)?;
+        f.env().bind_variable(name.clone(), Slot::Cell(cell));
     } else {
         f.env().bind_variable(name.clone(), Slot::Value(value));
     }

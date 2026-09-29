@@ -11,6 +11,7 @@ mod iteration;
 mod r#loop;
 mod packaging;
 mod place;
+mod psetq;
 mod setf;
 mod setf_places;
 mod setf_support;
@@ -278,6 +279,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "MULTIPLE-VALUE-BIND" => Some(control::expand_multiple_value_bind_adapter),
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
+        "PSETQ" => Some(psetq::expand),
         "HANDLER-BIND" => Some(control::expand_handler_bind_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
@@ -373,6 +375,7 @@ const MACROS: &[&str] = &[
     "DESTRUCTURING-BIND",
     "DO",
     "DO*",
+    "PSETQ",
     "DOLIST",
     "DOTIMES",
     "ECASE",
@@ -427,6 +430,7 @@ const OWNED_MACROS: &[&str] = &[
     "DESTRUCTURING-BIND",
     "DO",
     "DO*",
+    "PSETQ",
     "DO-ALL-SYMBOLS",
     "DO-EXTERNAL-SYMBOLS",
     "DO-SYMBOLS",

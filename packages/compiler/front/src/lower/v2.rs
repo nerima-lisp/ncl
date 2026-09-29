@@ -13,6 +13,8 @@ mod analysis;
 mod bindings;
 #[path = "control.rs"]
 mod control;
+#[path = "control_escape.rs"]
+mod control_escape;
 #[path = "control_regions.rs"]
 mod control_regions;
 #[path = "expr.rs"]

@@ -248,6 +248,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("PROG1", "PROG1", [x, y]);
     case!("PROG2", "PROG2", [x, y]);
     case!("PSETF", "PSETF", [x, one]);
+    case!("PSETQ", "PSETQ", [x, one, y, one]);
     case!("PUSH", "PUSH", [one, x]);
     case!("PUSHNEW", "PUSHNEW", [one, x]);
     case!("REMF", "REMF", [x, y]);

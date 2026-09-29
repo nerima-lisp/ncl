@@ -25,7 +25,9 @@ fn boundary_non_local_exit_is_dropped_during_unwind() {
     let mut context = ThreadContext::new();
     context.set_non_local_exit(true);
     record_boundary_error(&mut context, ObjectError::NonLocalExit);
+    // check-added-lines: allow(panic) test-only assertion
     assert!(context.take_pending().is_none());
+    // check-added-lines: allow(panic) test-only assertion
     assert!(context.is_unwinding());
 }
 
@@ -33,6 +35,7 @@ fn boundary_non_local_exit_is_dropped_during_unwind() {
 fn boundary_non_local_exit_without_unwind_becomes_control_error() {
     let mut context = ThreadContext::new();
     record_boundary_error(&mut context, ObjectError::NonLocalExit);
+    // check-added-lines: allow(panic) test-only assertion
     assert_eq!(context.take_pending(), Some(ObjectError::ControlError));
 }
 
@@ -40,5 +43,6 @@ fn boundary_non_local_exit_without_unwind_becomes_control_error() {
 fn boundary_regular_error_is_recorded() {
     let mut context = ThreadContext::new();
     record_boundary_error(&mut context, ObjectError::TypeError);
+    // check-added-lines: allow(panic) test-only assertion
     assert_eq!(context.take_pending(), Some(ObjectError::TypeError));
 }

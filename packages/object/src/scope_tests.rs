@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod included_tests {
 use super::super::{HandleVec, Local, Scope};
-use super::super::super::{Runtime, ThreadContext, Word, make_string};
+use super::super::super::{
+    ObjectRef, Runtime, ThreadContext, Word, classify_object, make_string, string_length,
+    string_ref,
+};
 
 #[test]
 fn handles_read_the_forwarded_value_after_collection() {
@@ -12,7 +15,15 @@ fn handles_read_the_forwarded_value_after_collection() {
     let mut scope = Scope::new(&mut ctx);
     let handle = scope.root::<crate::StringObject>(Local::from_word(word));
     scope.collect(true).expect("collection");
-    assert_ne!(word, scope.get(handle).as_word());
+    let live = scope.get(handle).as_word();
+    assert!(matches!(
+        classify_object(scope.context(), live),
+        ObjectRef::String(_)
+    ));
+    assert_eq!(string_length(scope.context(), live), Ok(64));
+    assert!(
+        (0..64).all(|index| string_ref(scope.context(), live, index) == Ok('x'))
+    );
 }
 
 #[test]

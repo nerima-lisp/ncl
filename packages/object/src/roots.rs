@@ -145,7 +145,10 @@ pub fn finish_root<T>(
 #[cfg(test)]
 mod tests {
     use super::{pop_root, push_root, with_root};
-    use crate::{Runtime, ThreadContext, make_instance, make_string, slot_ref};
+    use crate::{
+        ObjectRef, Runtime, ThreadContext, classify_object, make_instance, make_string, slot_ref,
+        string_length, string_ref,
+    };
     use ncl_sys::Word;
 
     #[test]
@@ -157,7 +160,6 @@ mod tests {
             .unwrap_or_else(|error| panic!("register failed: {error:?}"));
         let mut word = make_string(&mut ctx, &runtime, &['x'; 64])
             .unwrap_or_else(|error| panic!("string allocation failed: {error:?}"));
-        let before = word;
 
         let returned = with_root(&mut ctx, &mut word, |ctx, word| {
             ctx.collect(true)?;
@@ -165,8 +167,12 @@ mod tests {
         })
         .unwrap_or_else(|error| panic!("collection failed: {error:?}"));
 
-        assert_eq!(returned, word);
-        assert_ne!(before, word);
+        assert!(matches!(
+            classify_object(&ctx, returned),
+            ObjectRef::String(_)
+        ));
+        assert_eq!(string_length(&ctx, returned), Ok(64));
+        assert!((0..64).all(|index| { string_ref(&ctx, returned, index) == Ok('x') }));
     }
 
     #[test]

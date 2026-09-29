@@ -127,10 +127,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     let interned = package
         .intern(&mut ctx, &runtime, "SAME")
         .map_or(Word::NIL, |pair| pair.0);
-    let mut weak = ncl_object::allocate(&mut ctx, &runtime, 99, 1).unwrap_or(Word::NIL);
-    let referent = make_cons(&mut ctx, &runtime, Word::fixnum(7), Word::NIL).unwrap_or(Word::NIL);
-    assert!(ctx.write_object_slot(weak, 0, referent).is_ok());
-    weak = ctx.make_weak(weak, ncl_sys::Weakness::Value);
+    let weak = make_weak_cons(&mut ctx, &runtime);
     let mut roots = symbols;
     roots.push(list);
     roots.push(interned);
@@ -177,6 +174,14 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
     assert!(ncl_object::pop_root(&mut ctx, package_token));
+}
+
+fn make_weak_cons(ctx: &mut ThreadContext, runtime: &Runtime) -> Word {
+    let mut weak = ncl_object::allocate(ctx, runtime, 99, 1).unwrap_or(Word::NIL);
+    let referent = make_cons(ctx, runtime, Word::fixnum(7), Word::NIL).unwrap_or(Word::NIL);
+    assert!(ctx.write_object_slot(weak, 0, referent).is_ok());
+    weak = ctx.make_weak(weak, ncl_sys::Weakness::Value);
+    weak
 }
 
 #[test]

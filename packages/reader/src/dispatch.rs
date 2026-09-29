@@ -1,5 +1,7 @@
 //! Dispatch macro character (`#`) handling.
 
+use std::cell::Cell;
+
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, Runtime, ThreadContext, Word, car, cdr, make_complex, make_cons,
@@ -21,8 +23,8 @@ pub fn read_sharp(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
 ) -> Result<Option<Word>, ReadError> {
     let Some(sub) = source.read_char() else {
         return Err(ReadError::UnexpectedEof);
@@ -140,12 +142,12 @@ fn read_uninterned(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
-    rt: &Word,
+    rt: &Cell<Word>,
 ) -> Result<Word, ReadError> {
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Err(ReadError::UnexpectedEof);
     };
-    let case = readtable_from_word(*rt)?.case_mode(ctx)?;
+    let case = readtable_from_word(rt.get())?.case_mode(ctx)?;
     let range = 0..token.characters().len();
     let name = token.fold_name(&range, case);
     let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
@@ -158,8 +160,8 @@ fn read_feature_conditional(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
     positive: bool,
 ) -> Result<Option<Word>, ReadError> {
     let features = runtime.features();
@@ -264,8 +266,8 @@ fn read_complex(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
 ) -> Result<Word, ReadError> {
     if source.read_char() != Some('(') {
         return Err(ReadError::InvalidNumber(
@@ -289,35 +291,35 @@ fn read_label(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
     label: i64,
 ) -> Result<Option<Word>, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;
     let Some(form) = form else {
         return Err(ReadError::UnexpectedEof);
     };
+    let mut form = Cell::new(form);
+    let token = push_root(ctx, form.get_mut());
     let table = ensure_labels_table(ctx, runtime, labels)?;
-    let mut form = form;
-    let token = push_root(ctx, &mut form);
-    let result = HashTable::from_word(table).insert(ctx, runtime, Word::fixnum(label), form);
+    let result = HashTable::from_word(table).insert(ctx, runtime, Word::fixnum(label), form.get());
     let _ = pop_root(ctx, token);
     result?;
-    Ok(Some(form))
+    Ok(Some(form.get()))
 }
 
 /// Read a `#n#` reference to a previously read labelled form.
 fn read_label_ref(
     ctx: &mut ThreadContext,
-    labels: &Word,
+    labels: &Cell<Word>,
     label: i64,
 ) -> Result<Option<Word>, ReadError> {
-    if *labels == Word::NIL {
+    if labels.get() == Word::NIL {
         return Err(ReadError::InvalidNumber(format!(
             "undefined label #{label}"
         )));
     }
-    let mut table = *labels;
+    let mut table = labels.get();
     let token = push_root(ctx, &mut table);
     let value = HashTable::from_word(table).get(ctx, Word::fixnum(label))?;
     let _ = pop_root(ctx, token);
@@ -330,13 +332,13 @@ fn read_label_ref(
 fn ensure_labels_table(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    labels: &mut Word,
+    labels: &Cell<Word>,
 ) -> Result<Word, ReadError> {
-    if *labels == Word::NIL {
+    if labels.get() == Word::NIL {
         let table = HashTable::new(ctx, runtime, HashTest::Eq, Weakness::None)?.as_word();
-        *labels = table;
+        labels.set(table);
     }
-    Ok(*labels)
+    Ok(labels.get())
 }
 
 /// Read an unsigned decimal label number.

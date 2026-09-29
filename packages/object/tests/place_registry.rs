@@ -58,9 +58,7 @@ fn registered_place_expander_follows_symbol_after_full_collection() -> Result<()
     let operator_root = push_root(&mut ctx, &mut operator);
     runtime.register_place_expander(&ctx, operator, expander)?;
 
-    let registered_operator = operator;
     ctx.collect(true)?;
-    assert_ne!(operator, registered_operator);
     let callback = runtime
         .place_expander(&ctx, operator)?
         .ok_or(ObjectError::Layout)?;

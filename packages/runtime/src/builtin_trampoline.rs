@@ -475,5 +475,5 @@ pub fn install(
 }
 
 #[cfg(test)]
-#[path = "builtin_trampoline_tests.rs"]
+#[path = "builtin_trampoline_test.rs"]
 mod tests;

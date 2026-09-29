@@ -1,10 +1,12 @@
 //! Registration of the printer's owned symbols and its dispatch table.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FunctionObject, LambdaList, ObjectError, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, car, cdr, make_cons, pop_root, push_root, set_symbol_special,
-    set_symbol_value, symbol_value, with_root, with_roots,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
+    FunctionDesignator, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
+    Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
+    make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, simple_vector_ref,
+    structure_layout, symbol_plist, symbol_value, with_root, with_roots,
 };
 
 use crate::{PrintError, PrintOptions, write_to_string};
@@ -165,6 +167,12 @@ fn print_object(
 ) -> Result<Word, ObjectError> {
     let object = args.required(0)?;
     let stream = output_stream(ctx, runtime, args.get(1))?;
+    if matches!(classify_object(ctx, object), ObjectRef::Structure(_))
+        && (invoke_structure_print_function(ctx, runtime, object, stream)?
+            || invoke_print_object_method(ctx, runtime, object, stream)?)
+    {
+        return Ok(object);
+    }
     with_roots(ctx, &[object, stream], |ctx, roots| {
         let object = **roots.first().ok_or(ObjectError::Layout)?;
         let rendered =
@@ -194,6 +202,94 @@ fn print_object(
         });
         result?;
         roots.first().map(|root| **root).ok_or(ObjectError::Layout)
+    })
+}
+
+fn invoke_structure_print_function(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+    stream: Word,
+) -> Result<bool, ObjectError> {
+    with_roots(ctx, &[object, stream], |ctx, roots| {
+        let object = **roots.first().ok_or(ObjectError::Layout)?;
+        let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+        let layout = structure_layout(ctx, object)?;
+        let Some(class) = runtime.structure_class(ctx, layout) else {
+            return Ok(false);
+        };
+        let name = simple_vector_ref(ctx, class, 0)?;
+        let key = Package::from_word(runtime.ensure_package(ctx, "NCL")?)
+            .intern(ctx, runtime, "%STRUCTURE-PRINT-FUNCTION")?
+            .0;
+        let mut plist = symbol_plist(ctx, name)?;
+        while plist != Word::NIL {
+            let property = car(ctx, plist)?;
+            if car(ctx, property)? == key {
+                let mut function = cdr(ctx, property)?;
+                if function.is_cons() {
+                    let operator = car(ctx, function)?;
+                    let common_lisp = runtime.ensure_package(ctx, "COMMON-LISP")?;
+                    let function_operator = Package::from_word(common_lisp)
+                        .intern(ctx, runtime, "FUNCTION")?
+                        .0;
+                    if operator == function_operator {
+                        function = car(ctx, cdr(ctx, function)?)?;
+                    }
+                }
+                let designator = FunctionDesignator::try_from_word(ctx, function)?;
+                let words = [object, stream, Word::fixnum(0)];
+                let mut caller = BuiltinFunctionCaller;
+                let mut values = MultipleValues::new();
+                caller.call_function(
+                    ctx,
+                    runtime,
+                    designator,
+                    FunctionArguments::new(&words),
+                    &mut values,
+                )?;
+                return Ok(true);
+            }
+            plist = cdr(ctx, plist)?;
+        }
+        Ok(false)
+    })
+}
+
+/// Invoke a user-defined `PRINT-OBJECT` method when the CLOS generic exists.
+/// The generic wrapper reports `UndefinedFunction` until its method registry
+/// has a primary method; that is the signal to use the built-in structure
+/// printer below.
+fn invoke_print_object_method(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+    stream: Word,
+) -> Result<bool, ObjectError> {
+    with_roots(ctx, &[object, stream], |ctx, roots| {
+        let object = **roots.first().ok_or(ObjectError::Layout)?;
+        let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+        let Some(function_word) = runtime.function(ctx, "COMMON-LISP", "PRINT-OBJECT") else {
+            return Ok(false);
+        };
+        let Ok(function) = FunctionObject::try_from(function_word) else {
+            return Ok(false);
+        };
+        let mut caller = BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        let designator = FunctionDesignator::Function(function);
+        let words = [object, stream];
+        match caller.call_function(
+            ctx,
+            runtime,
+            designator,
+            FunctionArguments::new(&words),
+            &mut values,
+        ) {
+            Ok(_) => Ok(true),
+            Err(ObjectError::UndefinedFunction) => Ok(false),
+            Err(error) => Err(error),
+        }
     })
 }
 

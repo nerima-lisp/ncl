@@ -39,6 +39,7 @@ mod capture;
 mod env;
 mod error;
 mod function;
+mod function_refs;
 mod lambda;
 mod literal;
 mod v2;

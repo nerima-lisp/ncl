@@ -1,5 +1,7 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use ncl_ir::{
     Constant, Convert, FunctionId, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator,
     Ty, ValueId,
@@ -12,6 +14,7 @@ use super::super::capture;
 use super::super::env::{FunctionEntry, Slot};
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
+use super::super::function_refs;
 use super::super::lambda;
 use super::Context;
 use super::params::{bind_captures, bind_let, bind_required, lambda_params};
@@ -247,27 +250,34 @@ impl Context<'_> {
             .iter()
             .map(|_| self.module.fresh_function())
             .collect::<Vec<FunctionId>>();
-        for (definition, id) in definitions.iter().zip(ids.iter().copied()) {
-            let captures = lambda::collect_captures(f, &definition.lambda);
-            let params = lambda_params(&definition.lambda.lambda_list, &captures)?;
+        let captures = Self::recursive_captures(f, definitions);
+        for ((definition, id), function_captures) in definitions
+            .iter()
+            .zip(ids.iter().copied())
+            .zip(captures.iter())
+        {
+            let params = lambda_params(&definition.lambda.lambda_list)?;
             let mut nested =
                 FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
-            bind_captures(&mut nested, &captures)?;
+            bind_captures(&mut nested, function_captures)?;
             bind_required(
                 &mut nested,
                 &definition.lambda.lambda_list,
-                1 + captures.len(),
+                1,
             )?;
             let mut child = Context::with_targets(self.module, self.targets.clone());
             child.bind_optional(
                 &mut nested,
                 &definition.lambda.lambda_list,
-                1 + captures.len(),
+                1,
             )?;
             child.bind_rest_and_keys(&mut nested, &definition.lambda.lambda_list)?;
             child.bind_aux(&mut nested, &definition.lambda.lambda_list)?;
-            for (target, target_id) in definitions.iter().zip(ids.iter().copied()) {
-                let target_captures = lambda::collect_captures(f, &target.lambda);
+            for ((target, target_id), target_captures) in definitions
+                .iter()
+                .zip(ids.iter().copied())
+                .zip(captures.iter())
+            {
                 let capture_values = target_captures
                     .iter()
                     .map(|(name, _slot)| match nested.env().lookup_variable(name) {
@@ -306,7 +316,7 @@ impl Context<'_> {
             child.module.push_function(function);
 
             let entry = f.word_constant(Constant::FunctionEntry(id))?;
-            let capture_values = captures
+            let capture_values = function_captures
                 .iter()
                 .map(|(_, slot)| match slot {
                     Slot::Value(value) => Ok(*value),
@@ -334,5 +344,62 @@ impl Context<'_> {
         let value = self.lower_body(f, body)?;
         f.env().pop();
         Ok(value)
+    }
+
+    fn recursive_captures(
+        f: &mut FunctionLowerer,
+        definitions: &[crate::ast::LocalFunction],
+    ) -> Vec<Vec<(SymbolRef, Slot)>> {
+        let local_names = definitions
+            .iter()
+            .map(|definition| definition.name.clone())
+            .collect::<BTreeSet<_>>();
+        let local_indices = definitions
+            .iter()
+            .enumerate()
+            .map(|(index, definition)| (definition.name.clone(), index))
+            .collect::<BTreeMap<_, _>>();
+        let mut capture_names = definitions
+            .iter()
+            .map(|definition| capture::free_variables(&definition.lambda))
+            .collect::<Vec<_>>();
+        let references = definitions
+            .iter()
+            .map(|definition| {
+                function_refs::local_function_references(&definition.lambda, &local_names)
+            })
+            .collect::<Vec<_>>();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (index, names) in references.iter().enumerate() {
+                for name in names.clone() {
+                    let Some(&target) = local_indices.get(&name) else {
+                        continue;
+                    };
+                    let Some(inherited) = capture_names.get(target).cloned() else {
+                        continue;
+                    };
+                    for inherited_name in inherited {
+                        if let Some(names) = capture_names.get_mut(index) {
+                            changed |= names.insert(inherited_name);
+                        }
+                    }
+                }
+            }
+        }
+        capture_names
+            .iter()
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|name| {
+                        f.env()
+                            .lookup_variable(name)
+                            .map(|slot| (name.clone(), slot))
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }

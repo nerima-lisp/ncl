@@ -240,7 +240,19 @@ impl<'a> Printer<'a> {
         };
         let name = simple_vector_ref(&*self.ctx, class, 0)?;
         self.write_str("#S(")?;
-        self.write_str(&self.symbol_text(name)?)?;
+        let qualified_name = self.runtime.structure_class_name(&*self.ctx, name).ok();
+        if let Some(qualified_name) = qualified_name {
+            let mut parts = qualified_name.splitn(2, "::");
+            let package = parts.next().unwrap_or_default();
+            let symbol = parts.next().unwrap_or_default();
+            if package != "COMMON-LISP-USER" {
+                self.write_str(package)?;
+                self.write_char(':')?;
+            }
+            self.write_str(symbol)?;
+        } else {
+            self.write_str(&self.symbol_text(name)?)?;
+        }
         let slots = simple_vector_ref(&*self.ctx, class, 4)?;
         for index in 0..simple_vector_length(&*self.ctx, slots)? {
             let descriptor = simple_vector_ref(&*self.ctx, slots, index)?;

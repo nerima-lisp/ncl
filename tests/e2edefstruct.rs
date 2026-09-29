@@ -108,3 +108,11 @@ fn defstruct_gc_stress_constructor_access_and_copy() {
         "(39 40)",
     );
 }
+
+#[test]
+fn defstruct_same_names_are_package_specific_through_the_cli() {
+    assert_eval(
+        "(defpackage \"NCL-DEFSTRUCT5-P1\" (:use #:cl)) (defpackage \"NCL-DEFSTRUCT5-P2\" (:use #:cl)) (in-package :NCL-DEFSTRUCT5-P1) (defstruct point (x 11) (y 12)) (in-package :NCL-DEFSTRUCT5-P2) (defstruct point (x 21) (y 22) (z 23)) (defstruct (child (:include NCL-DEFSTRUCT5-P1::POINT)) (z 31)) (let* ((p1 (funcall (symbol-function (intern \"MAKE-POINT\" \"NCL-DEFSTRUCT5-P1\")) :x 3)) (p2 (funcall (symbol-function (intern \"MAKE-POINT\" \"NCL-DEFSTRUCT5-P2\")) :z 9)) (child (funcall (symbol-function (intern \"MAKE-CHILD\" \"NCL-DEFSTRUCT5-P2\")) :x 7))) (list (funcall (symbol-function (intern \"POINT-X\" \"NCL-DEFSTRUCT5-P1\")) p1) (funcall (symbol-function (intern \"POINT-Y\" \"NCL-DEFSTRUCT5-P1\")) p1) (funcall (symbol-function (intern \"POINT-X\" \"NCL-DEFSTRUCT5-P2\")) p2) (funcall (symbol-function (intern \"POINT-Y\" \"NCL-DEFSTRUCT5-P2\")) p2) (funcall (symbol-function (intern \"POINT-Z\" \"NCL-DEFSTRUCT5-P2\")) p2) (funcall (symbol-function (intern \"POINT-P\" \"NCL-DEFSTRUCT5-P1\")) p2) (funcall (symbol-function (intern \"POINT-P\" \"NCL-DEFSTRUCT5-P2\")) p2) (typep p1 (intern \"POINT\" \"NCL-DEFSTRUCT5-P1\")) (typep p1 (intern \"POINT\" \"NCL-DEFSTRUCT5-P2\")) (class-name (class-of p1)) (class-name (class-of p2)) (funcall (symbol-function (intern \"POINT-X\" \"NCL-DEFSTRUCT5-P1\")) child) (funcall (symbol-function (intern \"CHILD-Z\" \"NCL-DEFSTRUCT5-P2\")) child) (funcall (symbol-function (intern \"POINT-P\" \"NCL-DEFSTRUCT5-P1\")) child) (with-output-to-string (stream) (princ p1 stream))))",
+        "(3 12 21 22 9 NIL T T NIL NCL-DEFSTRUCT5-P1:POINT NCL-DEFSTRUCT5-P2:POINT 7 31 T \"#S(NCL-DEFSTRUCT5-P1:POINT :X 3 :Y 12)\")",
+    );
+}

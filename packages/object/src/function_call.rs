@@ -226,10 +226,11 @@ impl Runtime {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
-        debug_assert!(
-            ctx.pending_is_none(),
-            "stale ThreadContext::pending entering a builtin"
-        );
+        #[cfg(debug_assertions)]
+        if !ctx.pending_is_none() {
+            ctx.set_pending(ObjectError::ControlError);
+            return Err(ObjectError::ControlError);
+        }
         let function_word = self
             .heap
             .forwarded_word(function.as_word())

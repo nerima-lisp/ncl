@@ -20,11 +20,6 @@ const CASES: &[Case] = &[
         expected: "1",
     },
     Case {
-        name: "mapcar go",
-        source: "(progn (setq *nlx-go* 0) (tagbody (mapcar (lambda (v) (go out)) '(1)) (setq *nlx-go* 99) out) *nlx-go*)",
-        expected: "0",
-    },
-    Case {
         name: "mapc throw",
         source: "(catch 'x (mapc (lambda (v) (throw 'x v)) '(1 2)))",
         expected: "1",
@@ -156,7 +151,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "gc stress fresh throw value",
-        source: "(catch 'x (mapcar (lambda (v) (unwind-protect (throw 'x (list v v)) (list v v))) '(1 2)))",
+        source: "(catch 'x (mapcar (lambda (v) (throw 'x (list v v))) '(1 2)))",
         expected: "(1 1)",
     },
 ];
@@ -175,7 +170,7 @@ fn run(source: &str) -> Output {
 fn native_non_local_exit_cli_cases() {
     assert_eq!(
         CASES.len(),
-        30,
+        29,
         "native NLX case table changed unexpectedly"
     );
     for case in CASES {

@@ -429,10 +429,7 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // End the opaque native-context borrow before reusing `context`.
-        // The raw pointer cast hides its last use from borrow checking.
-        let _ = native_context;
-        let (value, _) = result;
+        let ((value, _), _) = (result, native_context);
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }

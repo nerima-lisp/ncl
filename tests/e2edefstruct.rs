@@ -29,13 +29,14 @@ fn defstruct_boa_constructor_values_survive_gc_stress_and_strict_forwarding() {
     let mut runtime = ncl_runtime::Runtime::new()
         .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
     runtime
-        .compile("(progn (defstruct (pt-symbol (:constructor make-pt-symbol (a))) a) (defstruct (pt-list (:constructor make-pt-list (b))) b) (defparameter *boa-symbol* 'x) (defparameter *boa-list* (list 4 5)))")
+        .compile("(progn (defparameter *boa-default* (list 1 2)) (defstruct (pt (:constructor make-pt (a &optional (b *boa-default*)))) a b) (defstruct (key-pt (:constructor make-key-pt (a &key (c 'sym) &aux (ignored 9)))) a c) (defparameter *boa-symbol* 'x) (defparameter *boa-tag* 'tag) (defparameter *boa-p* (make-pt *boa-symbol*)) (defparameter *boa-key-p* (make-key-pt *boa-symbol* :c *boa-tag*)))")
         .unwrap_or_else(|error| panic!("setup compile failed: {error:?}"));
     runtime.set_gc_stress(true);
     runtime.set_strict_forwarding(true);
     for (source, expected) in [
-        ("(not (null (make-pt-symbol *boa-symbol*)))", "T"),
-        ("(not (null (make-pt-list *boa-list*)))", "T"),
+        ("(pt-a *boa-p*)", "COMMON-LISP-USER:X"),
+        ("(pt-b *boa-p*)", "(1 2)"),
+        ("(key-pt-c *boa-key-p*)", "COMMON-LISP-USER:TAG"),
     ] {
         assert_eval_with_stress_on(&mut runtime, source, expected);
     }

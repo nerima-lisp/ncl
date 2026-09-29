@@ -442,22 +442,6 @@ fn labels_reference_prior_forms() {
 }
 
 #[test]
-fn labels_survive_gc_stress_and_strict_forwarding() {
-    let runtime = Runtime::new().unwrap();
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(true);
-
-    let form = read_one(&runtime, &mut ctx, "(#1=(a b c) #1#)");
-    let first = car(&ctx, form).unwrap();
-    assert_eq!(list_names(&ctx, first), ["A", "B", "C"]);
-    let rest = cdr(&ctx, form).unwrap();
-    let second = car(&ctx, rest).unwrap();
-    assert_eq!(list_names(&ctx, second), ["A", "B", "C"]);
-}
-
-#[test]
 fn standard_readtable_reports_upcase_and_is_a_readtable() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

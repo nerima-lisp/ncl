@@ -63,13 +63,55 @@ fn structure_copy_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let object = args.required(0)?;
-    let layout = ncl_object::structure_layout(ctx, object)?;
+    copy_structure(ctx, runtime, args.required(0)?)
+}
+
+fn copy_structure(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    source: Word,
+) -> Result<Word, ObjectError> {
+    let mut scope = ncl_object::Scope::new(ctx);
+    let object: ncl_object::Handle<'_, Word> =
+        scope.root(ncl_object::Local::from_word(source));
+    let object_word = scope.get(object).as_word();
+    let layout = ncl_object::structure_layout(scope.context(), object_word)?;
     let count = runtime.structure_layout_size(layout).ok_or(ObjectError::Layout)?;
-    let slots = (0..count)
-        .map(|index| ncl_object::structure_ref(ctx, object, index))
-        .collect::<Result<Vec<_>, _>>()?;
-    ncl_object::make_structure(ctx, runtime, layout, &slots)
+    let mut slots: ncl_object::HandleVec<'_, Word> = scope.root_many(&[]);
+    for index in 0..count {
+        let value = ncl_object::structure_ref(scope.context(), object_word, index)?;
+        slots.push(&mut scope, ncl_object::Local::from_word(value));
+    }
+    let slot_words = slots
+        .iter()
+        .map(|slot| scope.get(*slot).as_word())
+        .collect::<Vec<_>>();
+    ncl_object::make_structure(scope.context_mut(), runtime, layout, &slot_words)
+}
+
+#[cfg(test)]
+mod structure_tests {
+    use super::*;
+
+    #[test]
+    fn structure_copy_survives_gc_stress_and_strict_forwarding() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        let layout = runtime.register_structure_layout(2)?;
+        let source = ncl_object::make_structure(
+            &mut context,
+            &runtime,
+            layout,
+            &[Word::fixnum(11), Word::fixnum(22)],
+        )?;
+        context.set_strict_forwarding(true);
+        context.set_gc_stress(true);
+        let copy = copy_structure(&mut context, &runtime, source)?;
+        assert_eq!(ncl_object::structure_ref(&context, copy, 0), Ok(Word::fixnum(11)));
+        assert_eq!(ncl_object::structure_ref(&context, copy, 1), Ok(Word::fixnum(22)));
+        Ok(())
+    }
 }
 
 const fn descriptor(arity: BuiltinArity) -> Builtin {

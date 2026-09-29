@@ -204,6 +204,7 @@ impl Sccp {
             | OpKind::LoadField { .. }
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
+            | OpKind::LoadCapture { .. }
             | OpKind::Call { .. }
             | OpKind::CallIndirect { .. }
             | OpKind::MakeClosure { .. }

@@ -348,12 +348,12 @@ impl Context<'_> {
         captures: &[super::super::lambda::Capture],
     ) -> Result<FunctionId, LowerError> {
         let id = self.module.fresh_function();
-        let params = lambda_params(&lambda.lambda_list, captures)?;
+        let params = lambda_params(&lambda.lambda_list)?;
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
         bind_captures(&mut nested, captures)?;
-        bind_required(&mut nested, &lambda.lambda_list, 1 + captures.len())?;
+        bind_required(&mut nested, &lambda.lambda_list, 1)?;
         let mut child = Context::with_targets(self.module, self.targets.clone());
-        child.bind_optional(&mut nested, &lambda.lambda_list, 1 + captures.len())?;
+        child.bind_optional(&mut nested, &lambda.lambda_list, 1)?;
         child.bind_rest_and_keys(&mut nested, &lambda.lambda_list)?;
         child.bind_aux(&mut nested, &lambda.lambda_list)?;
         let value = child.lower_body(&mut nested, &lambda.body)?;

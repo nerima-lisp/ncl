@@ -1,4 +1,3 @@
-use super::lowering::{ClosureLayout, closure_layout};
 use crate::CodegenError;
 use ncl_ir::{Function, OpKind, Terminator};
 
@@ -10,13 +9,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
                     args.len().saturating_sub(1)
                 }
-                OpKind::CallClosure { closure, args, .. } => {
-                    let arguments = args.len().saturating_sub(1);
-                    match closure_layout(function, *closure)? {
-                        ClosureLayout::Static(captures) => captures.len().saturating_add(arguments),
-                        ClosureLayout::Dynamic => arguments,
-                    }
-                }
+                OpKind::CallClosure { args, .. } => args.len().saturating_sub(1),
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
                 | OpKind::Load { .. }
@@ -25,6 +18,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::StoreField { .. }
                 | OpKind::Alloc { .. }
                 | OpKind::LoadArg { .. }
+                | OpKind::LoadCapture { .. }
                 | OpKind::MakeClosure { .. }
                 | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }

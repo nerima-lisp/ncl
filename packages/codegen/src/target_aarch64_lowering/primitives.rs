@@ -1,7 +1,7 @@
 use super::{emit, load_value, store_value};
 use crate::{Allocation, CodegenError};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{Function, OpKind, Prim, ValueId};
+use ncl_ir::{Prim, ValueId};
 
 pub(super) fn load_callable_address(
     assembler: &mut Assembler,
@@ -40,57 +40,52 @@ pub(super) fn decode_function_entry(
     )
 }
 
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) enum ClosureLayout<'a> {
-    Static(&'a [ValueId]), // check-added-lines: allow(index) slice type
-    Dynamic,
-}
-
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn closure_layout(
-    function: &Function,
-    closure: ValueId,
-) -> Result<ClosureLayout<'_>, CodegenError> {
-    let mut current = closure;
-    for _ in 0..function
-        .blocks
-        .iter()
-        .map(|block| block.ops.len())
-        .sum::<usize>()
-    {
-        let definition = function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.ops)
-            .find(|op| op.results.iter().any(|(value, _)| *value == current))
-            .ok_or_else(|| CodegenError::Abi("closure value definition is unavailable".into()))?;
-        match &definition.kind {
-            OpKind::MakeClosure { captures, .. } => {
-                return Ok(ClosureLayout::Static(captures.as_slice()));
-            }
-            OpKind::Move { value } | OpKind::Convert { value, .. } => current = *value,
-            OpKind::Const { .. }
-            | OpKind::Load { .. }
-            | OpKind::LoadField { .. }
-            | OpKind::LoadArg { .. }
-            | OpKind::Store { .. }
-            | OpKind::StoreField { .. }
-            | OpKind::Call { .. }
-            | OpKind::CallIndirect { .. }
-            | OpKind::CallClosure { .. }
-            | OpKind::Builtin { .. }
-            | OpKind::Prim { .. }
-            | OpKind::Compare { .. }
-            | OpKind::SetMultipleValues { .. }
-            | OpKind::Safepoint
-            | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. }
-            | OpKind::Alloc { .. } => return Ok(ClosureLayout::Dynamic),
-        }
+/// Loads a lexical capture from the closure object retained in the generated
+/// frame.
+pub(super) fn lower_load_capture(
+    assembler: &mut Assembler,
+    index: u32,
+    result: Option<ValueId>,
+    allocation: &Allocation,
+) -> Result<(), CodegenError> {
+    let offset = ncl_object::function_offset::CAPTURES
+        .checked_add(usize::try_from(index).map_err(|_| CodegenError::FrameOverflow)?)
+        .and_then(|slot| slot.checked_add(1))
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|offset| i16::try_from(offset).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(29)),
+                offset: 16,
+            },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset,
+            },
+        },
+    )?;
+    if let Some(result) = result {
+        store_value(assembler, allocation, result, Reg(16))?;
     }
-    Err(CodegenError::Abi(
-        "closure value definition has a cycle".into(),
-    ))
+    Ok(())
 }
 
 fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
@@ -119,140 +114,11 @@ pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],
-    function: &Function,
     allocation: &Allocation,
     named_symbol: Option<ValueId>,
     abi: &dyn crate::RuntimeAbi,
 ) -> Result<(), CodegenError> {
-    if named_symbol.is_some() {
-        return super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi);
-    }
-    let captures = match closure_layout(function, closure)? {
-        ClosureLayout::Static(captures) => captures,
-        ClosureLayout::Dynamic => {
-            return super::lower_closure_call(
-                assembler,
-                closure,
-                args,
-                allocation,
-                named_symbol,
-                abi,
-            );
-        }
-    };
-    let Some((argc, rest)) = args.split_first() else {
-        // check-added-lines: allow(unsupported) malformed IR lacks the required argc value.
-        return Err(CodegenError::Unsupported(
-            "closure calls require a tagged argc argument".into(),
-        ));
-    };
-    load_value(assembler, allocation, closure, Reg(16))?;
-    load_callable_address(assembler, Reg(16), Reg(17))?;
-    load_value(assembler, allocation, *argc, Reg(0))?;
-    if captures.len().saturating_add(rest.len()) > 4 {
-        let rest_offset = allocation
-            .outgoing_base
-            .checked_add(
-                u32::try_from(captures.len().saturating_add(rest.len()).saturating_sub(4))
-                    .map_err(|_| CodegenError::FrameOverflow)?,
-            )
-            .and_then(|slot| slot.checked_add(1))
-            .and_then(|slot| slot.checked_mul(8))
-            .ok_or(CodegenError::FrameOverflow)?;
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(rest_offset)) {
-            emit(assembler, instruction)?;
-        }
-        emit(
-            assembler,
-            Inst::Sub {
-                rd: RegOrSp::Reg(Reg(5)),
-                rn: RegOrSp::Reg(Reg(29)),
-                rm: Reg(16),
-                shift: Shift::Lsl(0),
-            },
-        )?;
-    }
-    for (index, _) in captures.iter().enumerate() {
-        let offset = ncl_object::function_offset::CAPTURES
-            .checked_add(index)
-            .and_then(|slot| slot.checked_add(1))
-            .and_then(|slot| slot.checked_mul(8))
-            .and_then(|offset| i16::try_from(offset).ok())
-            .ok_or(CodegenError::FrameOverflow)?;
-        if index < 4 {
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(17)),
-                        offset,
-                    },
-                },
-            )?;
-        } else {
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(17)),
-                        offset,
-                    },
-                },
-            )?;
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(5)),
-                        offset: i16::try_from((index - 4).saturating_mul(8))
-                            .map_err(|_| CodegenError::FrameOverflow)?,
-                    },
-                },
-            )?;
-        }
-    }
-    for (index, argument) in rest.iter().enumerate() {
-        let register_index = captures
-            .len()
-            .checked_add(index + 1)
-            .ok_or(CodegenError::FrameOverflow)?;
-        if register_index < 5 {
-            let register =
-                Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
-            load_value(assembler, allocation, *argument, register)?;
-        } else {
-            load_value(assembler, allocation, *argument, Reg(16))?;
-            let extra_index = index
-                .saturating_sub(4usize.saturating_sub(captures.len()))
-                .saturating_add(captures.len().saturating_sub(4));
-            emit(
-                assembler,
-                Inst::Str {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(5)),
-                        offset: i16::try_from(extra_index.saturating_mul(8))
-                            .map_err(|_| CodegenError::FrameOverflow)?,
-                    },
-                },
-            )?;
-        }
-    }
-    emit(
-        assembler,
-        Inst::Ldr {
-            rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(17)),
-                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
-                    .map_err(|_| CodegenError::FrameOverflow)?,
-            },
-        },
-    )?;
-    decode_function_entry(assembler, Reg(17))
+    super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi)
 }
 
 #[allow(clippy::too_many_lines)]

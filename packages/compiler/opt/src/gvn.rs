@@ -282,6 +282,7 @@ impl GlobalValueNumbering {
             OpKind::Const { .. }
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
+            | OpKind::LoadCapture { .. }
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. } => {}
@@ -331,6 +332,7 @@ impl GlobalValueNumbering {
             | OpKind::LoadField { .. }
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
+            | OpKind::LoadCapture { .. }
             | OpKind::Compare { .. }
             | OpKind::Convert { .. }
             | OpKind::SetMultipleValues { .. }

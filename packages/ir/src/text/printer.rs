@@ -201,6 +201,7 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::StoreField { .. } => 5,
         OpKind::Alloc { .. } => 6,
         OpKind::LoadArg { .. } => 7,
+        OpKind::LoadCapture { .. } => 20,
         OpKind::Call { .. } => 8,
         OpKind::CallIndirect { .. } => 9,
         OpKind::MakeClosure { .. } => 10,
@@ -242,7 +243,7 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
             w.u(value.0.into());
         }
         OpKind::Alloc { words } => w.u((*words).into()),
-        OpKind::LoadArg { index } => w.u((*index).into()),
+        OpKind::LoadArg { index } | OpKind::LoadCapture { index } => w.u((*index).into()),
         OpKind::Call { function, args }
         | OpKind::CallIndirect {
             callee: function,

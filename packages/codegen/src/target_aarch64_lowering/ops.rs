@@ -227,6 +227,14 @@ pub fn lower_op(
                 store_value(assembler, allocation, result, Reg(16))?;
             }
         }
+        OpKind::LoadCapture { index } => {
+            primitives::lower_load_capture(
+                assembler,
+                u32::from(*index),
+                result,
+                allocation,
+            )?;
+        }
         OpKind::Prim { op, args, .. } => {
             primitives::lower_prim(assembler, op, args, result, allocation)?;
         }
@@ -298,7 +306,6 @@ pub fn lower_op(
                 assembler,
                 *closure,
                 args,
-                function,
                 allocation,
                 *named_symbol,
                 abi,

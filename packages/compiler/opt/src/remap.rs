@@ -60,6 +60,7 @@ pub fn remap_kind(
         },
         OpKind::Alloc { words } => OpKind::Alloc { words: *words },
         OpKind::LoadArg { index } => OpKind::LoadArg { index: *index },
+        OpKind::LoadCapture { index } => OpKind::LoadCapture { index: *index },
         OpKind::Builtin { name, args } => OpKind::Builtin {
             name: name.clone(),
             args: args.iter().map(|x| v(*x)).collect(),
@@ -183,6 +184,7 @@ pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {
         OpKind::Const { .. }
         | OpKind::Alloc { .. }
         | OpKind::LoadArg { .. }
+        | OpKind::LoadCapture { .. }
         | OpKind::Safepoint
         | OpKind::EnterHandler { .. }
         | OpKind::LeaveHandler { .. } => {}

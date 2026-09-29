@@ -263,6 +263,7 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
             words: u32(r.u()?)?,
         },
         7 => OpKind::LoadArg { index: u8(r.u()?)? },
+        20 => OpKind::LoadCapture { index: u8(r.u()?)? },
         8 => OpKind::Call {
             function: v(r)?,
             args: vals(r)?,

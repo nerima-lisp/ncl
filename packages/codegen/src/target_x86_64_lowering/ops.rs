@@ -1,6 +1,7 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call,
     load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
+    lower_load_capture,
     lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
@@ -247,6 +248,9 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
+        OpKind::LoadCapture { index } => {
+            lower_load_capture(assembler, *index, result, slots)?;
+        }
         OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, slots)?,
         OpKind::Compare { op, left, right } => {
             load_slot(assembler, slots, *left, FUNCTION_OBJECT)?;
@@ -323,7 +327,6 @@ pub fn lower_op(
                 assembler,
                 *closure,
                 args,
-                super::closure_capture_count(function, *closure)?.unwrap_or(0),
                 slots,
                 *named_symbol,
                 abi,

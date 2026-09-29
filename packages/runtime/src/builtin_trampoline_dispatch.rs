@@ -1,6 +1,6 @@
 use super::{
     FunctionObject, NativeCallResult, NativeInvocation, ObjectRuntime, ThreadContext, Word,
-    error_result, ok_result,
+    error_result, ok_result, record_boundary_error,
 };
 
 pub(super) fn dispatch_with_context(
@@ -57,6 +57,10 @@ pub(super) fn dispatch_with_context(
     }
     match result {
         Ok(value) => ok_result(value, context.values().len()),
+        Err(ncl_object::ObjectError::NonLocalExit) => {
+            record_boundary_error(context, ncl_object::ObjectError::NonLocalExit);
+            error_result()
+        }
         Err(error) => {
             if let Some(condition) = context.take_pending_condition() {
                 match ncl_conditions::error(context, condition) {
@@ -67,12 +71,12 @@ pub(super) fn dispatch_with_context(
                             // check-added-lines: allow(wildcard) preserve the original error.
                             _ => error,
                         };
-                        context.set_pending(error);
+                        record_boundary_error(context, error);
                         return error_result();
                     }
                 }
             }
-            context.set_pending(error);
+            record_boundary_error(context, error);
             error_result()
         }
     }

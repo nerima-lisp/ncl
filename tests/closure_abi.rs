@@ -4,6 +4,14 @@ mod common;
 
 use common::run_ncl;
 
+fn assert_eval_with_stress(source: &str, expected: &str) {
+    let mut runtime = ncl_runtime::Runtime::new().expect("runtime");
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    let value = runtime.compile(source).expect("compile");
+    assert_eq!(runtime.format_result(value), expected, "{source}");
+}
+
 fn assert_eval(source: &str, expected: &str) {
     let output = run_ncl(source);
     assert!(output.status.success(), "{source}: {output:?}");
@@ -82,6 +90,102 @@ fn allocation_between_closure_creation_and_call_does_not_change_capture() {
     assert_eval(
         "(let ((a 41)) (let ((closure (lambda () a))) (progn (list 1 2 3 4) (funcall closure))))",
         "41",
+    );
+}
+
+#[test]
+fn closures_preserve_more_than_four_captures() {
+    assert_eval(
+        "(let ((a 1) (b 2) (c 3) (d 4) (e 5)) (funcall (lambda () (+ a (+ b (+ c (+ d e)))))))",
+        "15",
+    );
+}
+
+#[test]
+fn closures_preserve_eight_captures() {
+    assert_eval(
+        "(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8)) (funcall (lambda () (list a b c d e f g h))))",
+        "(1 2 3 4 5 6 7 8)",
+    );
+}
+
+#[test]
+fn closures_preserve_captures_with_more_than_four_arguments() {
+    assert_eval(
+        "(let ((offset 10)) (funcall (lambda (a b c d e f) (list offset a b c d e f)) 1 2 3 4 5 6))",
+        "(10 1 2 3 4 5 6)",
+    );
+}
+
+#[test]
+fn closures_preserve_eight_captures_with_six_arguments() {
+    assert_eval(
+        "(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8)) (funcall (lambda (i j k l m n) (list a b c d e f g h i j k l m n)) 9 10 11 12 13 14))",
+        "(1 2 3 4 5 6 7 8 9 10 11 12 13 14)",
+    );
+}
+
+#[test]
+fn closures_read_the_fifth_and_later_arguments_through_the_last_one() {
+    assert_eval(
+        "(funcall (lambda (a b c d e f) (list e f)) 1 2 3 4 5 6)",
+        "(5 6)",
+    );
+}
+
+#[test]
+fn closures_preserve_fifth_and_later_arguments_as_values() {
+    assert_eval(
+        "(funcall (lambda (a b c d e f g h) (list e f g h)) 1 2 3 4 5 6 7 8)",
+        "(5 6 7 8)",
+    );
+}
+
+#[test]
+fn closures_preserve_captures_and_arguments_across_allocation_heavy_calls() {
+    for (source, expected) in [
+        (
+            "(let ((a 1) (b 2) (c 3)) (progn (list 20 21 22) (funcall (lambda () (+ a (+ b c))))))",
+            "6",
+        ),
+        (
+            "(let ((a 1) (b 2) (offset 10)) (progn (list 20 21 22) (funcall (lambda (x y z u v w) (+ offset (+ a (+ b (+ x (+ y (+ z (+ u (+ v w))))))))) 1 2 3 4 5 6)))",
+            "34",
+        ),
+    ] {
+        assert_eval(source, expected);
+    }
+}
+
+#[test]
+fn closures_preserve_captures_and_arguments_with_gc_stress_and_strict_forwarding() {
+    assert_eval_with_stress(
+        "(let ((a 1) (b 2) (offset 10)) (progn (list 20 21 22) (funcall (lambda (x y z u v w) (+ offset (+ a (+ b (+ x (+ y (+ z (+ u (+ v w))))))))) 1 2 3 4 5 6)))",
+        "34",
+    );
+}
+
+#[test]
+fn closures_preserve_eight_captures_with_gc_stress_and_strict_forwarding() {
+    assert_eval_with_stress(
+        "(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8)) (funcall (lambda () (list a b c d e f g h))))",
+        "(1 2 3 4 5 6 7 8)",
+    );
+}
+
+#[test]
+fn closures_preserve_eight_captures_and_six_arguments_with_gc_stress_and_strict_forwarding() {
+    assert_eval_with_stress(
+        "(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8)) (funcall (lambda (i j k l m n) (list a b c d e f g h i j k l m n)) 9 10 11 12 13 14))",
+        "(1 2 3 4 5 6 7 8 9 10 11 12 13 14)",
+    );
+}
+
+#[test]
+fn closures_preserve_fifth_and_later_arguments_with_gc_stress_and_strict_forwarding() {
+    assert_eval_with_stress(
+        "(funcall (lambda (a b c d e f g h) (list e f g h)) 1 2 3 4 5 6 7 8)",
+        "(5 6 7 8)",
     );
 }
 

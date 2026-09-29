@@ -163,9 +163,13 @@ impl Runtime {
         })
     }
     /// Enables or disables collection before each allocation.
-    pub const fn set_gc_stress(&mut self, on: bool) { self.context.set_gc_stress(on); }
+    pub const fn set_gc_stress(&mut self, on: bool) {
+        self.context.set_gc_stress(on);
+    }
     /// Enables or disables strict forwarding checks.
-    pub fn set_strict_forwarding(&self, on: bool) { self.context.set_strict_forwarding(on); }
+    pub fn set_strict_forwarding(&self, on: bool) {
+        self.context.set_strict_forwarding(on);
+    }
     /// Evaluate source by compiling it to native code and invoking the entry.
     ///
     /// # Errors
@@ -427,11 +431,7 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // Not a `Drop` type; this only marks the mutable borrow of
-        // `self.context` as no longer needed before `context` is used again
-        // below (`native_context` is opaque to the caller once cast to a raw
-        // pointer, so the compiler cannot infer that its last real use was
-        // the `NonNull::from` cast above).
+        // End the borrow before reusing the context.
         let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {

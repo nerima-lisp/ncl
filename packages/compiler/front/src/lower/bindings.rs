@@ -15,6 +15,7 @@ use super::super::env::{FunctionEntry, Slot};
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
+use super::analysis::mentions_exit;
 use super::params::{bind_captures, bind_let, bind_required, lambda_params};
 
 type RecursiveCaptures = (Vec<(SymbolRef, Slot)>, Vec<SymbolRef>);
@@ -252,7 +253,7 @@ impl Context<'_> {
             .iter()
             .map(|_| self.module.fresh_function())
             .collect::<Vec<FunctionId>>();
-        let captures = Self::recursive_captures(f, definitions);
+        let captures = self.recursive_captures(f, definitions);
         for ((definition, id), (variable_captures, function_captures)) in definitions
             .iter()
             .zip(ids.iter().copied())
@@ -388,6 +389,7 @@ impl Context<'_> {
     }
 
     fn recursive_captures(
+        &self,
         f: &mut FunctionLowerer,
         definitions: &[crate::ast::LocalFunction],
     ) -> Vec<RecursiveCaptures> {
@@ -400,6 +402,15 @@ impl Context<'_> {
             .iter()
             .map(|definition| capture::free_names(&definition.lambda).variables)
             .collect::<Vec<_>>();
+        for (index, definition) in definitions.iter().enumerate() {
+            for target in &self.targets {
+                if mentions_exit(&definition.lambda.body, &target.name)
+                    && let Some(names) = capture_names.get_mut(index)
+                {
+                    names.insert(target.capture.clone());
+                }
+            }
+        }
         let mut function_names = definitions
             .iter()
             .map(|definition| capture::free_names(&definition.lambda).functions)

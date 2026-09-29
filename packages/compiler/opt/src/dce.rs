@@ -112,6 +112,7 @@ impl DeadCodeElimination {
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
             | OpKind::LoadCapture { .. }
+            | OpKind::LoadFunctionObject
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. } => Vec::new(),
@@ -158,6 +159,7 @@ impl DeadCodeElimination {
             | OpKind::LoadField { .. }
             | OpKind::LoadArg { .. }
             | OpKind::LoadCapture { .. }
+            | OpKind::LoadFunctionObject
             | OpKind::Compare { .. }
             | OpKind::Convert { .. } => true,
             OpKind::Prim { op, condition, .. } => {

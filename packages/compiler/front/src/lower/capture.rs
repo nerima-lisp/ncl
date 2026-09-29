@@ -27,6 +27,10 @@ impl Analysis {
     pub(super) fn needs_cell(&self, name: &SymbolRef) -> bool {
         self.assigned.contains(name) && self.captured.contains(name)
     }
+
+    pub(super) fn assigned_names(&self) -> Vec<SymbolRef> {
+        self.assigned.iter().cloned().collect()
+    }
 }
 
 /// Analyze a body for assignments and captures.

@@ -266,6 +266,21 @@ pub fn lower_op(
         OpKind::LoadCapture { index } => {
             primitives::lower_load_capture(assembler, u32::from(*index), result, allocation)?;
         }
+        OpKind::LoadFunctionObject => {
+            if let Some(result) = result {
+                emit(
+                    assembler,
+                    Inst::Ldr {
+                        rt: Reg(16),
+                        mem: MemOperand::Unscaled {
+                            base: RegOrSp::Reg(Reg(29)),
+                            offset: 16,
+                        },
+                    },
+                )?;
+                store_value(assembler, allocation, result, Reg(16))?;
+            }
+        }
         OpKind::Prim { op, args, .. } => {
             primitives::lower_prim(assembler, op, args, result, allocation)?;
         }

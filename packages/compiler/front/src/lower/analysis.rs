@@ -332,7 +332,7 @@ fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
                     .lambda
                     .body
                     .iter()
-                    .any(|form| contains_return(form, name))
+                    .any(|form| contains_return(form, name) || nested_return(form, name))
             }) || body.iter().any(|form| nested_return(form, name))
         }
         Expr::Constant(_)
@@ -378,7 +378,29 @@ fn nested_go(expr: &Expr, name: &SymbolRef) -> bool {
                     .any(|form| contains_go(form, name))
             }) || body.iter().any(|form| nested_go(form, name))
         }
-        _ => false,
+        Expr::Progn(_)
+        | Expr::Locally { .. }
+        | Expr::Macrolet { .. }
+        | Expr::SymbolMacrolet { .. }
+        | Expr::Let { .. }
+        | Expr::Setq(_)
+        | Expr::If { .. }
+        | Expr::Block { .. }
+        | Expr::Tagbody(_)
+        | Expr::Catch { .. }
+        | Expr::UnwindProtect { .. }
+        | Expr::Progv { .. }
+        | Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::ReturnFrom { .. }
+        | Expr::Go { .. }
+        | Expr::Throw { .. }
+        | Expr::MultipleValueCall { .. }
+        | Expr::MultipleValueProg1 { .. }
+        | Expr::The { .. }
+        | Expr::EvalWhen { .. }
+        | Expr::LoadTimeValue { .. }
+        | Expr::Function(FunctionDesignator::Name(_)) => false,
     }
 }
 

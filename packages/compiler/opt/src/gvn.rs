@@ -283,6 +283,7 @@ impl GlobalValueNumbering {
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
             | OpKind::LoadCapture { .. }
+            | OpKind::LoadFunctionObject
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. } => {}
@@ -338,7 +339,8 @@ impl GlobalValueNumbering {
             | OpKind::SetMultipleValues { .. }
             | OpKind::Safepoint
             | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. } => false,
+            | OpKind::LeaveHandler { .. }
+            | OpKind::LoadFunctionObject => false,
         }
     }
 }

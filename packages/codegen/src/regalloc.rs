@@ -302,6 +302,7 @@ fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {
         OpKind::Compare { left, right, .. } => out.extend([*left, *right]),
         OpKind::LoadArg { index } => out.push(ValueId(u32::from(*index))),
         OpKind::LoadCapture { .. }
+        | OpKind::LoadFunctionObject
         | OpKind::Const { .. }
         | OpKind::Alloc { .. }
         | OpKind::Safepoint

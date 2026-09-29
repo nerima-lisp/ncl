@@ -72,7 +72,7 @@ pub const fn op_template(op: &OpKind) -> TemplateKind {
         OpKind::StoreField { .. } => TemplateKind::StoreField,
         OpKind::Alloc { .. } => TemplateKind::Alloc,
         OpKind::LoadArg { .. } => TemplateKind::LoadArg,
-        OpKind::LoadCapture { .. } => TemplateKind::LoadCapture,
+        OpKind::LoadCapture { .. } | OpKind::LoadFunctionObject => TemplateKind::LoadCapture,
         OpKind::Call { .. } => TemplateKind::Call,
         OpKind::CallIndirect { .. } => TemplateKind::CallIndirect,
         OpKind::MakeClosure { .. } => TemplateKind::MakeClosure,

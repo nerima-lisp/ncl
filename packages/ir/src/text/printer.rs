@@ -202,6 +202,7 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::Alloc { .. } => 6,
         OpKind::LoadArg { .. } => 7,
         OpKind::LoadCapture { .. } => 20,
+        OpKind::LoadFunctionObject => 21,
         OpKind::Call { .. } => 8,
         OpKind::CallIndirect { .. } => 9,
         OpKind::MakeClosure { .. } => 10,
@@ -243,6 +244,7 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
             w.u(value.0.into());
         }
         OpKind::Alloc { words } => w.u((*words).into()),
+        OpKind::LoadFunctionObject | OpKind::Safepoint => {}
         OpKind::LoadArg { index } | OpKind::LoadCapture { index } => w.u((*index).into()),
         OpKind::Call { function, args }
         | OpKind::CallIndirect {
@@ -304,7 +306,6 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
                 w.u(v.0.into());
             }
         }
-        OpKind::Safepoint => {}
         OpKind::EnterHandler { region } | OpKind::LeaveHandler { region } => w.u(region.0.into()),
     }
 }

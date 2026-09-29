@@ -52,8 +52,8 @@ fn defun_nested_function_entries_are_linked_before_execution() {
             "99",
         ),
         (
-            "(progn (defun flet-labels-calls-outer (n) (flet ((outer (x) (if (= x 0) 99 (labels ((inner () (outer 0))) (inner))))) (outer n))) (flet-labels-calls-outer 1))",
-            "99",
+            "(labels ((outer () 41)) (flet ((outer () (outer))) (outer)))",
+            "41",
         ),
         (
             "(progn (defun transitive-label-capture (n) (let ((x n)) (labels ((first (n) (if (= n 0) x (second (- n 1)))) (second (n) (if (= n 0) 0 (third (- n 1)) )) (third (n) (if (= n 0) 1 (first (- n 1))))) (first 3)))) (transitive-label-capture 41))",

@@ -101,8 +101,8 @@ impl Context<'_> {
             | Expr::SymbolMacrolet { body, .. } => self.lower_body(f, body),
             Expr::Flet {
                 definitions, body, ..
-            }
-            | Expr::Labels {
+            } => self.lower_local_functions(f, definitions, body, false),
+            Expr::Labels {
                 definitions, body, ..
             } => self.lower_local_functions(f, definitions, body, true),
         }

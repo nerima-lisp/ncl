@@ -369,7 +369,8 @@ pub fn lower_op(
                 &[ncl_sys::Word::fixnum(
                     i64::try_from(captures.len()).map_err(|_| CodegenError::FrameOverflow)?,
                 )
-                .bits() as i64],
+                .bits()
+                .cast_signed()],
                 &[*entry],
                 slots,
                 abi,

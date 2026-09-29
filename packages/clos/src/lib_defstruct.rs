@@ -291,7 +291,14 @@ fn defstruct_macro_builtin(
         runtime.structure_layout_for_symbol(scope.context(), include_word)
     };
     let superclass = if let Some(include_name) = include_name.as_deref() {
-        runtime.class(scope.context_mut(), include_name).ok_or(ObjectError::TypeError)?
+        let qualified_name = runtime
+            .structure_class_name(scope.context(), include_word)
+            .ok();
+        qualified_name
+            .as_deref()
+            .and_then(|name| runtime.class(scope.context_mut(), name))
+            .or_else(|| runtime.class(scope.context_mut(), include_name))
+            .ok_or(ObjectError::TypeError)?
     } else {
         runtime.class(scope.context_mut(), "STRUCTURE-OBJECT").ok_or(ObjectError::Layout)?
     };

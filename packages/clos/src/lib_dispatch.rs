@@ -465,8 +465,11 @@ fn class_designator(
     }
     if matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
         let name = symbol_name_string(ctx, value)?;
-        return runtime
-            .class(ctx, &name)
+        let qualified_name = runtime.structure_class_name(ctx, value).ok();
+        return qualified_name
+            .as_deref()
+            .and_then(|qualified| runtime.class(ctx, qualified))
+            .or_else(|| runtime.class(ctx, &name))
             .filter(|class| *class != Word::UNBOUND) // check-added-lines: allow(unbound) sentinel check
             .ok_or(ObjectError::TypeError);
     }

@@ -34,6 +34,7 @@ pub mod scope;
 mod specialized_array;
 mod stream;
 mod structure;
+mod structure_registry;
 mod symbol_extensions;
 pub mod typed;
 pub use array::{

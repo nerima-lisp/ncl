@@ -40,6 +40,66 @@ fn defstruct_is_nil(ctx: &ThreadContext, value: Word) -> Result<bool, ObjectErro
     Ok(package_name == COMMON_LISP && symbol_name_string(ctx, value)? == "NIL")
 }
 
+fn defstruct_name_or_nil(
+    scope: &ncl_object::Scope<'_>,
+    value: Word,
+) -> Result<Option<String>, ObjectError> {
+    if defstruct_is_nil(scope.context(), value)? {
+        Ok(None)
+    } else {
+        symbol_name_string(scope.context(), value).map(Some)
+    }
+}
+
+fn defstruct_boa_parameter(
+    scope: &mut ncl_object::Scope<'_>,
+    value: Word,
+) -> Result<Option<Word>, ObjectError> {
+    if !value.is_cons() {
+        return Ok(Some(value));
+    }
+    let fields = scope.list_to_handle_vec(ncl_object::Local::from_word(value))?;
+    let first = scope
+        .get(*fields.as_slice().first().ok_or(ObjectError::TypeError)?)
+        .as_word();
+    if first.is_cons() {
+        let key_fields = scope.list_to_handle_vec(ncl_object::Local::from_word(first))?;
+        Ok(key_fields.as_slice().get(1).map(|handle| scope.get(*handle).as_word()))
+    } else {
+        Ok(Some(first))
+    }
+}
+
+fn defstruct_boa_slot_parameters(
+    scope: &mut ncl_object::Scope<'_>,
+    lambda: Word,
+) -> Result<Vec<(String, Word)>, ObjectError> {
+    let fields = scope.list_to_handle_vec(ncl_object::Local::from_word(lambda))?;
+    let mut parameters = Vec::new();
+    let mut aux = false;
+    for field in fields.iter().copied() {
+        let value = scope.get(field).as_word();
+        let name = if matches!(ncl_object::classify_object(scope.context(), value), ObjectRef::Symbol(_)) {
+            symbol_name_string(scope.context(), value)?
+        } else {
+            String::new()
+        };
+        if name.starts_with('&') {
+            aux = name == "&AUX";
+            continue;
+        }
+        if aux {
+            continue;
+        }
+        let Some(parameter) = defstruct_boa_parameter(scope, value)? else {
+            continue;
+        };
+        let parameter_name = symbol_name_string(scope.context(), parameter)?;
+        parameters.push((parameter_name, parameter));
+    }
+    Ok(parameters)
+}
+
 #[allow(clippy::too_many_lines)]
 fn defstruct_macro_builtin(
     ctx: &mut ThreadContext,
@@ -55,8 +115,12 @@ fn defstruct_macro_builtin(
         scope.root(ncl_object::Local::from_word(Word::NIL));
     let mut include_overrides = Vec::new();
     let mut conc_name = None;
+    let mut conc_name_specified = false;
+    let mut constructors = Vec::new();
+    let mut constructor_specified = false;
     let mut predicate_name = None;
     let mut copier_name = None;
+    let mut print_function = None;
     let mut predicate_disabled = false;
     let mut copier_disabled = false;
     let (name, mut option_index) = if scope.get(name_form).as_word().is_cons() {
@@ -100,7 +164,21 @@ fn defstruct_macro_builtin(
                     Some(symbol_name_string(scope.context(), scope.get(value).as_word())?)
                 };
             } else if key_name == ":CONC-NAME" || key_name == "CONC-NAME" {
-                conc_name = Some(symbol_name_string(scope.context(), scope.get(value).as_word())?);
+                let value_word = scope.get(value).as_word();
+                conc_name = defstruct_name_or_nil(&scope, value_word)?;
+                conc_name_specified = true;
+            } else if key_name == ":CONSTRUCTOR" || key_name == "CONSTRUCTOR" {
+                let value_word = scope.get(value).as_word();
+                let constructor_name = defstruct_name_or_nil(&scope, value_word)?;
+                let lambda = fields.as_slice().get(2).copied().map(|value| {
+                    scope.root(ncl_object::Local::from_word(scope.get(value).as_word()))
+                });
+                constructors.push((constructor_name, lambda));
+                constructor_specified = true;
+            } else if key_name == ":PRINT-FUNCTION" || key_name == "PRINT-FUNCTION" {
+                print_function = Some(scope.root(ncl_object::Local::from_word(
+                    scope.get(value).as_word(),
+                )));
             } else {
                 return Err(ObjectError::TypeError);
             }
@@ -137,10 +215,9 @@ fn defstruct_macro_builtin(
         }
         option_index += 1;
     }
-    if conc_name.is_none() { conc_name = Some(format!("{name_text}-")); }
+    if !conc_name_specified { conc_name = Some(format!("{name_text}-")); }
     if predicate_name.is_none() { predicate_name = Some(format!("{name_text}-P")); }
     if copier_name.is_none() { copier_name = Some(format!("COPY-{name_text}")); }
-    let mut conc_name = conc_name.ok_or(ObjectError::Layout)?;
     let mut predicate_name = predicate_name.ok_or(ObjectError::Layout)?;
     let mut copier_name = copier_name.ok_or(ObjectError::Layout)?;
     let mut index = option_index;
@@ -148,7 +225,27 @@ fn defstruct_macro_builtin(
         let option_name = symbol_name_string(scope.context(), scope.get(option).as_word())?;
         let value = parts.as_slice().get(index + 1).copied().ok_or(ObjectError::TypeError)?;
         match option_name.as_str() {
-            ":CONC-NAME" | "CONC-NAME" => conc_name = symbol_name_string(scope.context(), scope.get(value).as_word())?,
+            ":CONC-NAME" | "CONC-NAME" => {
+                let value_word = scope.get(value).as_word();
+                conc_name = defstruct_name_or_nil(&scope, value_word)?;
+            }
+            ":CONSTRUCTOR" | "CONSTRUCTOR" => {
+                let value_word = scope.get(value).as_word();
+                let constructor_name = defstruct_name_or_nil(&scope, value_word)?;
+                let lambda = parts.as_slice().get(index + 2).copied().map(|value| {
+                    scope.root(ncl_object::Local::from_word(scope.get(value).as_word()))
+                });
+                constructors.push((constructor_name, lambda));
+                constructor_specified = true;
+                if lambda.is_some() {
+                    index += 1;
+                }
+            }
+            ":PRINT-FUNCTION" | "PRINT-FUNCTION" => {
+                print_function = Some(scope.root(ncl_object::Local::from_word(
+                    scope.get(value).as_word(),
+                )));
+            }
             ":PREDICATE" | "PREDICATE" => {
                 if defstruct_is_nil(scope.context(), scope.get(value).as_word())? {
                     predicate_disabled = true;
@@ -185,11 +282,14 @@ fn defstruct_macro_builtin(
         }
         index += 2;
     }
+    let conc_name = conc_name.unwrap_or_default();
     let include_word = scope.get(include).as_word();
     let include_name = if include_word == Word::NIL { None } else { Some(symbol_name_string(scope.context(), include_word)?) };
-    let parent_layout = include_name
-        .as_deref()
-        .and_then(|name| runtime.structure_layout_for_name(name));
+    let parent_layout = if include_word == Word::NIL {
+        None
+    } else {
+        runtime.structure_layout_for_symbol(scope.context(), include_word)
+    };
     let superclass = if let Some(include_name) = include_name.as_deref() {
         runtime.class(scope.context_mut(), include_name).ok_or(ObjectError::TypeError)?
     } else {
@@ -214,10 +314,27 @@ fn defstruct_macro_builtin(
     let class: ncl_object::Handle<'_, Word> = scope.root(ncl_object::Local::from_word(class));
     let class_word = scope.get(class).as_word();
     runtime.define_class(scope.context_mut(), name_text.clone(), class_word)?;
+    let qualified_class_name = runtime.structure_class_name(scope.context(), name_word)?;
+    runtime.define_class(scope.context_mut(), qualified_class_name, class_word)?;
+    if let Some(print_function) = print_function {
+        let key = scope.intern(runtime, "NCL", "%STRUCTURE-PRINT-FUNCTION")?;
+        let old_plist = scope.root(ncl_object::Local::from_word(
+            ncl_object::symbol_plist(scope.context(), name_word)?,
+        ));
+        let property = scope.make_cons(runtime, key, print_function)?;
+        let plist = scope.make_cons(runtime, property, old_plist)?;
+        let plist_word = scope.get(plist).as_word();
+        ncl_object::set_symbol_plist(scope.context_mut(), name_word, plist_word)?;
+    }
     let effective = ncl_object::simple_vector_ref(scope.context(), class_word, CLASS_EFFECTIVE_SLOTS)?;
     let effective_count = ncl_object::simple_vector_length(scope.context(), effective)?;
     let layout = runtime.register_structure_layout(effective_count)?;
-    runtime.register_structure_class_with_parent(layout, parent_layout, name_text.clone())?;
+    runtime.register_structure_class_with_parent(
+        scope.context(),
+        layout,
+        parent_layout,
+        name_word,
+    )?;
     let layout_word = Word::fixnum(i64::from(layout.as_u32()));
 
     let defun = scope.intern(runtime, COMMON_LISP, "DEFUN")?;
@@ -237,32 +354,72 @@ fn defstruct_macro_builtin(
         effective_names.push(&mut scope, ncl_object::Local::from_word(name));
     }
     let mut forms = scope.root_many(&[]);
-    let mut lambda = scope.root_many(&[ncl_object::Local::from_word(scope.get(key_marker).as_word())]);
-    for slot in effective_names.iter().copied() {
-        let slot_word = scope.get(slot).as_word();
-        let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, effective_names.iter().position(|name| scope.get(*name).as_word() == slot_word).ok_or(ObjectError::Layout)?)?;
-        let initform = ncl_object::simple_vector_ref(scope.context(), descriptor, 1)?;
-        if initform == Word::NIL {
-            lambda.push(&mut scope, ncl_object::Local::from_word(slot_word));
+    if !constructor_specified {
+        constructors.push((Some(format!("MAKE-{name_text}")), None));
+    }
+    for (constructor_name, boa_lambda) in constructors {
+        let Some(constructor_name) = constructor_name else {
+            continue;
+        };
+        let constructor = scope.intern(runtime, &definition_package, &constructor_name)?;
+        let lambda_form = if let Some(boa_lambda) = boa_lambda {
+            boa_lambda
         } else {
-            let binding_values = scope.root_many(&[
-                ncl_object::Local::from_word(slot_word),
-                ncl_object::Local::from_word(initform),
-            ]);
-            let binding = scope.make_list(runtime, &binding_values)?;
-            macro_push_handle(&mut scope, &mut lambda, binding);
+            let mut lambda = scope.root_many(&[ncl_object::Local::from_word(scope.get(key_marker).as_word())]);
+            for slot in effective_names.iter().copied() {
+                let slot_word = scope.get(slot).as_word();
+                let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, effective_names.iter().position(|name| scope.get(*name).as_word() == slot_word).ok_or(ObjectError::Layout)?)?;
+                let initform = ncl_object::simple_vector_ref(scope.context(), descriptor, 1)?;
+                if initform == Word::NIL {
+                    lambda.push(&mut scope, ncl_object::Local::from_word(slot_word));
+                } else {
+                    let binding_values = scope.root_many(&[
+                        ncl_object::Local::from_word(slot_word),
+                        ncl_object::Local::from_word(initform),
+                    ]);
+                    let binding = scope.make_list(runtime, &binding_values)?;
+                    macro_push_handle(&mut scope, &mut lambda, binding);
+                }
+            }
+            scope.make_list(runtime, &lambda)?
+        };
+        let parameters = if boa_lambda.is_some() {
+            let lambda_word = scope.get(lambda_form).as_word();
+            defstruct_boa_slot_parameters(&mut scope, lambda_word)?
+        } else {
+            Vec::new()
+        };
+        let mut body = scope.root_many(&[
+            ncl_object::Local::from_word(scope.get(make).as_word()),
+            ncl_object::Local::from_word(layout_word),
+        ]);
+        for slot in effective_names.iter().copied() {
+            let slot_word = scope.get(slot).as_word();
+            let slot_name = symbol_name_string(scope.context(), slot_word)?;
+            let value = if boa_lambda.is_none() {
+                slot_word
+            } else {
+                parameters
+                    .iter()
+                    .find(|(name, _)| name == &slot_name)
+                    .map_or_else(
+                        || {
+                            let index = effective_names
+                                .iter()
+                                .position(|name| scope.get(*name).as_word() == slot_word)
+                                .ok_or(ObjectError::Layout)?;
+                            let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, index)?;
+                            ncl_object::simple_vector_ref(scope.context(), descriptor, 1)
+                        },
+                        |(_, value)| Ok(*value),
+                    )?
+            };
+            body.push(&mut scope, ncl_object::Local::from_word(value));
         }
+        let body_form = scope.make_list(runtime, &body)?;
+        let definition = make_form(&mut scope, runtime, &[defun, constructor, lambda_form, body_form])?;
+        macro_push_handle(&mut scope, &mut forms, definition);
     }
-    let mut body = scope.root_many(&[ncl_object::Local::from_word(scope.get(make).as_word()), ncl_object::Local::from_word(layout_word)]);
-    for slot in effective_names.iter().copied() {
-        let slot_word = scope.get(slot).as_word();
-        body.push(&mut scope, ncl_object::Local::from_word(slot_word));
-    }
-    let constructor = scope.intern(runtime, &definition_package, &format!("MAKE-{name_text}"))?;
-    let lambda_form = scope.make_list(runtime, &lambda)?;
-    let body_form = scope.make_list(runtime, &body)?;
-    let definition = make_form(&mut scope, runtime, &[defun, constructor, lambda_form, body_form])?;
-    macro_push_handle(&mut scope, &mut forms, definition);
     let object = scope.intern(runtime, "NCL", "OBJECT")?;
     let structure_p = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-P")?;
     let layout_handle = scope.root(ncl_object::Local::from_word(layout_word));

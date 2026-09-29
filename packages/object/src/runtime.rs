@@ -6,6 +6,7 @@ use crate::keyword_builtins::{
     check_keywords_builtin, keyword_supplied_p_builtin, keyword_value_builtin,
     make_rest_list_builtin,
 };
+use crate::structure_registry::{StructureDescription, StructureRegistry, StructureSymbol};
 use crate::{
     BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LispErrorConverter,
     ObjectError, PlaceExpander, ThreadContext, Word, make_string, with_root,
@@ -25,9 +26,7 @@ pub struct Runtime {
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
-    structure_layout_parents: Mutex<HashMap<u32, Option<u32>>>,
-    structure_classes: Mutex<HashMap<u32, String>>,
-    structure_layout_names: Mutex<HashMap<String, u32>>,
+    structure_registry: Mutex<StructureRegistry>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<Vec<crate::builtin::BuiltinEntry>>,
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
@@ -90,9 +89,7 @@ impl Runtime {
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
-            structure_layout_parents: Mutex::new(HashMap::new()),
-            structure_classes: Mutex::new(HashMap::new()),
-            structure_layout_names: Mutex::new(HashMap::new()),
+            structure_registry: Mutex::new(StructureRegistry::default()),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(Vec::new()),
             builtin_addresses: Mutex::new(HashMap::new()),
@@ -127,18 +124,6 @@ impl Runtime {
     /// # Errors
     ///
     /// Returns `Layout` if the runtime registry lock is poisoned.
-    pub fn register_structure_class(
-        &self,
-        layout: crate::StructureLayout,
-        name: impl Into<String>,
-    ) -> Result<(), ObjectError> {
-        self.structure_classes
-            .lock()
-            .map_err(|_| ObjectError::Layout)?
-            .insert(layout.into(), name.into());
-        Ok(())
-    }
-
     /// Associate a structure layout with its parent layout and rooted class.
     ///
     /// The parent relation is kept as numeric layout metadata so structure
@@ -148,29 +133,48 @@ impl Runtime {
     /// Returns `Layout` if a runtime registry lock is poisoned.
     pub fn register_structure_class_with_parent(
         &self,
+        ctx: &ThreadContext,
         layout: crate::StructureLayout,
         parent: Option<crate::StructureLayout>,
-        name: impl Into<String>,
+        name: Word,
     ) -> Result<(), ObjectError> {
-        self.structure_layout_parents
+        let name = StructureSymbol::from_word(ctx, name)?;
+        self.structure_registry
             .lock()
             .map_err(|_| ObjectError::Layout)?
-            .insert(layout.into(), parent.map(Into::into));
-        let name = name.into();
-        self.structure_layout_names
-            .lock()
-            .map_err(|_| ObjectError::Layout)?
-            .insert(name.clone(), layout.into());
-        self.register_structure_class(layout, name)
+            .register(
+                name.clone(),
+                StructureDescription {
+                    layout,
+                    parent,
+                    name,
+                },
+            );
+        Ok(())
     }
 
-    /// Resolve a registered structure name to its numeric layout metadata.
+    /// # Errors
+    /// Returns `Layout` if the symbol is not a valid structure name.
+    pub fn structure_class_name(
+        &self,
+        ctx: &ThreadContext,
+        symbol: Word,
+    ) -> Result<String, ObjectError> {
+        Ok(StructureSymbol::from_word(ctx, symbol)?.qualified_name())
+    }
+
+    /// Resolve a registered structure symbol to its numeric layout metadata.
     #[must_use]
-    pub fn structure_layout_for_name(&self, name: &str) -> Option<crate::StructureLayout> {
-        self.structure_layout_names
+    pub fn structure_layout_for_symbol(
+        &self,
+        ctx: &ThreadContext,
+        symbol: Word,
+    ) -> Option<crate::StructureLayout> {
+        let symbol = StructureSymbol::from_word(ctx, symbol).ok()?;
+        self.structure_registry
             .lock()
             .ok()
-            .and_then(|names| names.get(name).copied())
+            .and_then(|registry| registry.by_symbol.get(&symbol).copied())
             .map(crate::StructureLayout::from)
     }
 
@@ -181,7 +185,7 @@ impl Runtime {
         layout: crate::StructureLayout,
         expected: crate::StructureLayout,
     ) -> bool {
-        let Ok(parents) = self.structure_layout_parents.lock() else {
+        let Ok(registry) = self.structure_registry.lock() else {
             return false;
         };
         let mut current = Some(layout.into());
@@ -196,27 +200,30 @@ impl Runtime {
                 result = true;
                 break;
             }
-            current = parents.get(&id).copied().flatten();
+            current = registry
+                .by_layout
+                .get(&id)
+                .and_then(|description| description.parent.map(Into::into));
         }
-        drop(parents);
         result
     }
 
     /// Return the class associated with a structure layout, if any.
     ///
-    /// The class is resolved at lookup time so the managed class word is
-    /// obtained through the runtime's rooted class registry.
+    /// The class word is returned from the registry's rooted class entry.
     #[must_use]
     pub fn structure_class(
         &self,
         ctx: &mut ThreadContext,
         layout: crate::StructureLayout,
     ) -> Option<Word> {
-        self.structure_classes
-            .lock()
-            .ok()
-            .and_then(|classes| classes.get(&layout.into()).cloned())
-            .and_then(|name| self.class(ctx, &name))
+        let registry = self.structure_registry.lock().ok()?;
+        let name = registry
+            .by_layout
+            .get(&layout.into())
+            .map(|description| description.name.qualified_name())?;
+        drop(registry);
+        self.class(ctx, &name)
     }
 
     /// Install the evaluator service used by the Common Lisp `LOAD` builtin.

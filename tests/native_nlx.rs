@@ -149,11 +149,6 @@ const CASES: &[Case] = &[
         source: "(progn (setq *nlx-a* 0) (defmethod nlx-gf ((x integer)) (throw 'k x)) (defmethod nlx-gf :after ((x integer)) (setq *nlx-a* 1)) (list (catch 'k (nlx-gf 5)) *nlx-a*))",
         expected: "(5 0)",
     },
-    Case {
-        name: "gc stress fresh throw value",
-        source: "(catch 'x (mapcar (lambda (v) (throw 'x (list v v))) '(1 2)))",
-        expected: "(1 1)",
-    },
 ];
 
 fn run(source: &str) -> Output {
@@ -170,7 +165,7 @@ fn run(source: &str) -> Output {
 fn native_non_local_exit_cli_cases() {
     assert_eq!(
         CASES.len(),
-        29,
+        28,
         "native NLX case table changed unexpectedly"
     );
     for case in CASES {
@@ -189,6 +184,24 @@ fn native_non_local_exit_cli_cases() {
             case.name
         );
     }
+}
+
+#[test]
+fn native_callback_throw_preserves_fresh_value_under_gc_stress() {
+    let mut runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    runtime
+        .compile("(defun native-nlx-stress-callback (v) (throw 'x (list v v)))")
+        .unwrap_or_else(|error| panic!("callback definition failed: {error:?}"));
+    runtime
+        .compile("(defun native-nlx-stress-run () (catch 'x (mapcar #'native-nlx-stress-callback '(1 2))))")
+        .unwrap_or_else(|error| panic!("stress wrapper definition failed: {error:?}"));
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    let value = runtime
+        .compile("(native-nlx-stress-run)")
+        .unwrap_or_else(|error| panic!("stress evaluation failed: {error:?}"));
+    assert_eq!(runtime.format_result(value), "(1 1)");
 }
 
 #[test]

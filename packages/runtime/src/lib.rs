@@ -185,7 +185,6 @@ impl Runtime {
     }
     /// Compile and execute a source string through the native pipeline.
     ///
-    /// This is intentionally equivalent to [`Self::eval`].
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
@@ -431,7 +430,6 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // End the borrow before reusing the context.
         let ((value, _), _) = (result, native_context);
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));

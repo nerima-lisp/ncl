@@ -47,7 +47,15 @@ mod defstruct_tests {
         let mut left = intern("LEFT", &mut ctx)?;
         let mut right = intern("RIGHT", &mut ctx)?;
         let optional = intern("&OPTIONAL", &mut ctx)?;
-        let lambda = list(&mut ctx, &runtime, &[left, optional, right])?;
+        let key = intern("&KEY", &mut ctx)?;
+        let c = intern("C", &mut ctx)?;
+        let aux = intern("&AUX", &mut ctx)?;
+        let ignored = intern("IGNORED", &mut ctx)?;
+        let lambda = list(
+            &mut ctx,
+            &runtime,
+            &[left, optional, right, key, c, aux, ignored],
+        )?;
         let constructor_option = list(&mut ctx, &runtime, &[constructor, make_pair, lambda])?;
         let name = list(&mut ctx, &runtime, &[pair, constructor_option])?;
         let form = list(&mut ctx, &runtime, &[defstruct, name, left, right])?;
@@ -79,9 +87,10 @@ mod defstruct_tests {
                 scope.root(ncl_object::Local::from_word(lambda));
             let lambda_word = scope.get(lambda_root).as_word();
             let parameters = defstruct_boa_slot_parameters(&mut scope, lambda_word)?;
-            assert_eq!(parameters.len(), 2);
+            assert_eq!(parameters.len(), 3);
             assert_eq!(parameters[0].0, "LEFT");
             assert_eq!(parameters[1].0, "RIGHT");
+            assert_eq!(parameters[2].0, "C");
             let left_parameter = scope.get(parameters[0].1).as_word();
             let right_parameter = scope.get(parameters[1].1).as_word();
             assert_eq!(symbol_name_string(scope.context(), left_parameter)?, "LEFT");

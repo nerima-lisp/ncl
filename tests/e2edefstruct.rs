@@ -29,7 +29,7 @@ fn defstruct_boa_constructor_values_survive_gc_stress_and_strict_forwarding() {
     let mut runtime = ncl_runtime::Runtime::new()
         .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
     runtime
-        .compile("(progn (defstruct (pt (:constructor make-pt (a &optional (b *boa-default*)))) a b) (defstruct (key-pt (:constructor make-key-pt (a &key (c 'sym) &aux (ignored 9)))) a c) (defparameter *boa-default* (list 1 2)) (defparameter *boa-symbol* 'x) (defparameter *boa-symbol-2* 'y) (defparameter *boa-tag* 'tag) (defparameter *boa-list* (list 4 5)))")
+        .compile("(progn (defparameter *boa-default* (list 1 2)) (defstruct (pt (:constructor make-pt (a &optional (b *boa-default*)))) a b) (defstruct (key-pt (:constructor make-key-pt (a &key (c 'sym) &aux (ignored 9)))) a c) (defparameter *boa-symbol* 'x) (defparameter *boa-symbol-2* 'y) (defparameter *boa-tag* 'tag) (defparameter *boa-list* (list 4 5)))")
         .unwrap_or_else(|error| panic!("setup compile failed: {error:?}"));
     for (source, expected) in [
         (

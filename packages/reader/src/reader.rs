@@ -1,5 +1,7 @@
 //! The recursive reader and its public entry points.
 
+use std::cell::Cell;
+
 use ncl_object::{
     Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root, rplacd,
 };
@@ -203,11 +205,11 @@ pub fn read(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
 ) -> Result<Option<Word>, ReadError> {
-    let mut rt = opts.readtable.object().as_word();
-    let rt_token = push_root(ctx, &mut rt);
-    let mut labels = Word::NIL;
-    let labels_token = push_root(ctx, &mut labels);
-    let result = read_form(ctx, runtime, source, opts, &rt, &mut labels);
+    let mut rt = Cell::new(opts.readtable.object().as_word());
+    let rt_token = push_root(ctx, rt.get_mut());
+    let mut labels = Cell::new(Word::NIL);
+    let labels_token = push_root(ctx, labels.get_mut());
+    let result = read_form(ctx, runtime, source, opts, &rt, &labels);
     let _ = pop_root(ctx, labels_token);
     let _ = pop_root(ctx, rt_token);
     result
@@ -256,11 +258,11 @@ pub fn read_delimited_list(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
 ) -> Result<Word, ReadError> {
-    let mut rt = opts.readtable.object().as_word();
-    let rt_token = push_root(ctx, &mut rt);
-    let mut labels = Word::NIL;
-    let labels_token = push_root(ctx, &mut labels);
-    let result = read_list(ctx, runtime, source, opts, &rt, &mut labels);
+    let mut rt = Cell::new(opts.readtable.object().as_word());
+    let rt_token = push_root(ctx, rt.get_mut());
+    let mut labels = Cell::new(Word::NIL);
+    let labels_token = push_root(ctx, labels.get_mut());
+    let result = read_list(ctx, runtime, source, opts, &rt, &labels);
     let _ = pop_root(ctx, labels_token);
     let _ = pop_root(ctx, rt_token);
     result
@@ -276,15 +278,15 @@ pub fn read_form(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
 ) -> Result<Option<Word>, ReadError> {
     loop {
         skip_whitespace(ctx, source, opts, rt)?;
         let Some(c) = source.peek_char() else {
             return Ok(None);
         };
-        let kind = syntax_kind(ctx, readtable_from_word(*rt)?, c)?;
+        let kind = syntax_kind(ctx, readtable_from_word(rt.get())?, c)?;
         match kind {
             SyntaxKind::Constituent | SyntaxKind::SingleEscape | SyntaxKind::MultipleEscape => {
                 let form = read_token(ctx, runtime, source, opts, rt)?;
@@ -317,13 +319,13 @@ fn skip_whitespace(
     ctx: &ThreadContext,
     source: &mut dyn CharSource,
     _opts: &ReadOptions,
-    rt: &Word,
+    rt: &Cell<Word>,
 ) -> Result<(), ReadError> {
     loop {
         let Some(c) = source.peek_char() else {
             return Ok(());
         };
-        let kind = syntax_kind(ctx, readtable_from_word(*rt)?, c)?;
+        let kind = syntax_kind(ctx, readtable_from_word(rt.get())?, c)?;
         match kind {
             SyntaxKind::Whitespace => {
                 source.read_char();
@@ -353,8 +355,8 @@ fn read_macro_char(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
     c: char,
 ) -> Result<Option<Word>, ReadError> {
     match c {
@@ -382,8 +384,8 @@ fn read_quoted(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
     name: &str,
 ) -> Result<Word, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;
@@ -424,14 +426,14 @@ pub fn read_list(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
 ) -> Result<Word, ReadError> {
-    let mut head = Word::NIL;
-    let mut tail = Word::NIL;
-    let head_token = push_root(ctx, &mut head);
-    let tail_token = push_root(ctx, &mut tail);
-    let result = read_list_inner(ctx, runtime, source, opts, rt, labels, &mut head, &mut tail);
+    let mut head = Cell::new(Word::NIL);
+    let mut tail = Cell::new(Word::NIL);
+    let head_token = push_root(ctx, head.get_mut());
+    let tail_token = push_root(ctx, tail.get_mut());
+    let result = read_list_inner(ctx, runtime, source, opts, rt, labels, &head, &tail);
     let _ = pop_root(ctx, tail_token);
     let _ = pop_root(ctx, head_token);
     result
@@ -443,10 +445,10 @@ fn read_list_inner(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Word,
-    labels: &mut Word,
-    head: &mut Word,
-    tail: &mut Word,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
+    head: &Cell<Word>,
+    tail: &Cell<Word>,
 ) -> Result<Word, ReadError> {
     loop {
         skip_whitespace(ctx, source, opts, rt)?;
@@ -461,14 +463,14 @@ fn read_list_inner(
             source.read_char();
             let follower = source.peek_char();
             if follower.is_none_or(|n| n.is_whitespace() || n == ')') {
-                if *head == Word::NIL {
+                if head.get() == Word::NIL {
                     return Err(ReadError::DotWithoutCdr);
                 }
                 let cdr = read_form(ctx, runtime, source, opts, rt, labels)?;
                 let Some(cdr) = cdr else {
                     return Err(ReadError::DotWithoutCdr);
                 };
-                rplacd(ctx, *tail, cdr)?;
+                rplacd(ctx, tail.get(), cdr)?;
                 skip_whitespace(ctx, source, opts, rt)?;
                 if source.read_char() != Some(')') {
                     return Err(ReadError::UnmatchedRightParen);
@@ -482,12 +484,12 @@ fn read_list_inner(
             return Err(ReadError::UnexpectedEof);
         };
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;
-        if *head == Word::NIL {
-            *head = cell;
+        if head.get() == Word::NIL {
+            head.set(cell);
         } else {
-            rplacd(ctx, *tail, cell)?;
+            rplacd(ctx, tail.get(), cell)?;
         }
-        *tail = cell;
+        tail.set(cell);
     }
-    Ok(*head)
+    Ok(head.get())
 }

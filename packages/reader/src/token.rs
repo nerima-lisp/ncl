@@ -1,5 +1,7 @@
 //! Token reading: symbol and number tokens, escapes, and package prefixes.
 
+use std::cell::Cell;
+
 use ncl_object::{
     Package, Runtime, StringObject, ThreadContext, Word, make_string, pop_root, push_root,
 };
@@ -129,12 +131,12 @@ impl TokenParts {
 pub fn read_token_chars(
     ctx: &ThreadContext,
     source: &mut dyn crate::input::CharSource,
-    rt: &Word,
+    rt: &Cell<Word>,
 ) -> Result<Option<Token>, ReadError> {
     let mut chars: Vec<char> = Vec::new();
     let mut escaped: Vec<bool> = Vec::new();
     while let Some(next) = source.peek_char() {
-        let kind = syntax_kind(ctx, readtable_from_word(*rt)?, next)?;
+        let kind = syntax_kind(ctx, readtable_from_word(rt.get())?, next)?;
         match kind {
             SyntaxKind::Constituent | SyntaxKind::NonTerminatingMacro => {
                 source.read_char();
@@ -180,7 +182,7 @@ pub fn read_token(
     runtime: &Runtime,
     source: &mut dyn crate::input::CharSource,
     opts: &ReadOptions,
-    rt: &Word,
+    rt: &Cell<Word>,
 ) -> Result<Option<Word>, ReadError> {
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Ok(None);
@@ -325,9 +327,9 @@ fn intern_symbol(
     resolver: &impl PackageResolver,
     token: &Token,
     opts: &ReadOptions,
-    rt: &Word,
+    rt: &Cell<Word>,
 ) -> Result<Word, ReadError> {
-    let case = readtable_from_word(*rt)?.case_mode(ctx)?;
+    let case = readtable_from_word(rt.get())?.case_mode(ctx)?;
     let parts = token.split()?;
     let symbol_name = token.fold_name(parts.name(), case);
     let package_name = match parts.marker() {

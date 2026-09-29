@@ -173,11 +173,20 @@ fn run(source: &str) -> Output {
 
 #[test]
 fn native_non_local_exit_cli_cases() {
-    assert_eq!(CASES.len(), 30, "native NLX case table changed unexpectedly");
+    assert_eq!(
+        CASES.len(),
+        30,
+        "native NLX case table changed unexpectedly"
+    );
     for case in CASES {
         let output = run(case.source);
         assert_eq!(output.status.code(), Some(0), "{}: {output:?}", case.name);
-        assert!(output.stderr.is_empty(), "{}: {:?}", case.name, output.stderr);
+        assert!(
+            output.stderr.is_empty(),
+            "{}: {:?}",
+            case.name,
+            output.stderr
+        );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout).trim(),
             case.expected,

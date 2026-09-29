@@ -263,8 +263,9 @@ impl Runtime {
                     ));
                     return Ok(Err(ObjectError::TypeError));
                 }
-                let original: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
-                let args = crate::BuiltinArgs::from_rooted(&original, &rooted_values[1..]);
+                let rooted_args = rooted_values.get(1..).ok_or(ObjectError::Layout)?;
+                let original: Vec<Word> = rooted_args.iter().map(|value| **value).collect();
+                let args = crate::BuiltinArgs::from_rooted(&original, rooted_args);
                 let adapted = if let Some(adapter) = implementation.keyword_adapter {
                     adapter(&args)?
                 } else {

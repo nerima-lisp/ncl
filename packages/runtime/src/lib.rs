@@ -437,7 +437,6 @@ impl Runtime {
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }
-        let escaped = context.take_non_local_exit();
         if let Some(error) = context.take_pending_lisp_error()
             && let Some(converter) = self.object.lisp_error_converter()
         {
@@ -462,7 +461,7 @@ impl Runtime {
             }
             return Err(error.into());
         }
-        if escaped {
+        if context.take_non_local_exit() {
             return Err(ObjectError::ControlError.into());
         }
         Ok(Word::from_bits(value))

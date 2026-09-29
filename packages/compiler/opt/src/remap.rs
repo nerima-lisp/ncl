@@ -185,6 +185,7 @@ pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {
         | OpKind::Alloc { .. }
         | OpKind::LoadArg { .. }
         | OpKind::LoadCapture { .. }
+        | OpKind::LoadFunctionObject
         | OpKind::Safepoint
         | OpKind::EnterHandler { .. }
         | OpKind::LeaveHandler { .. } => {}

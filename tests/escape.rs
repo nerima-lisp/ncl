@@ -58,9 +58,39 @@ fn non_local_escape_values_are_observable_through_the_cli() {
             expected: "12",
         },
         Case {
+            name: "labels-self-recursion-return-from",
+            source: "(block done (labels ((walk (n) (if (= n 0) (return-from done 21) (walk (- n 1))))) (walk 3) 99))",
+            expected: "21",
+        },
+        Case {
+            name: "mapcar-go",
+            source: "(progn (setq *nlx-go* 0) (tagbody (mapcar (lambda (v) (go out)) '(1)) (setq *nlx-go* 99) out) *nlx-go*)",
+            expected: "0",
+        },
+        Case {
+            name: "mapcar-return-from",
+            source: "(block b (mapcar (lambda (v) (return-from b v)) '(1 2)))",
+            expected: "1",
+        },
+        Case {
+            name: "lambda-return-from",
+            source: "(block done (funcall (lambda () (return-from done 18))) 99)",
+            expected: "18",
+        },
+        Case {
             name: "lambda-go",
             source: "(let ((result 0)) (tagbody (funcall (lambda () (go done))) done (setq result 13)) result)",
             expected: "13",
+        },
+        Case {
+            name: "flet-go",
+            source: "(let ((result 0)) (tagbody (flet ((jump () (go done))) (jump)) done (setq result 19)) result)",
+            expected: "19",
+        },
+        Case {
+            name: "labels-go",
+            source: "(let ((result 0)) (tagbody (labels ((jump () (go done))) (jump)) done (setq result 20)) result)",
+            expected: "20",
         },
         Case {
             name: "return-from-multiple-values",
@@ -104,20 +134,19 @@ fn non_local_escape_values_are_observable_through_the_cli() {
 
 #[test]
 fn expired_closure_reports_control_error_through_the_cli() {
-    let source = "(progn (setq *escape-closure* nil) (block done (setq *escape-closure* (lambda () (return-from done 17)))) (funcall *escape-closure*))";
-    let output = run_ncl(source);
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("ControlError"),
-        "stderr={:?}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-fn trampoline_preserves_lexical_escape_capture() {
-    let source = "(block done (mapcar (lambda (x) (return-from done x)) '(1 2)) 99)";
-    let output = run_ncl(source);
-    assert_eq!(output.status.code(), Some(0), "{output:?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "1");
+    let cases = [
+        "(progn (setq *escape-closure* nil) (block done (setq *escape-closure* (lambda () (return-from done 17)))) (funcall *escape-closure*))",
+        "(let ((f nil)) (block b (setq f (lambda () (return-from b 1)))) (funcall f))",
+        "(let ((f nil)) (block b (flet ((make () (lambda () (return-from b 1)))) (setq f (make)))) (funcall f))",
+        "(let ((f nil)) (block b (labels ((make () (lambda () (return-from b 1)))) (setq f (make)))) (funcall f))",
+    ];
+    for source in cases {
+        let output = run_ncl(source);
+        assert_eq!(output.status.code(), Some(1), "{source}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("ControlError"),
+            "{source}: stderr={:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }

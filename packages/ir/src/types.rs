@@ -240,6 +240,7 @@ pub enum OpKind {
     LoadCapture {
         index: u8,
     },
+    LoadFunctionObject,
     Call {
         function: ValueId,
         args: Vec<ValueId>,

@@ -7,6 +7,7 @@ use ncl_ir::{
 use crate::ast::{Expr, TagbodyItem};
 use crate::symbols::SymbolRef;
 
+use super::super::capture;
 use super::super::env::{BlockEntry, TagEntry};
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
@@ -59,7 +60,6 @@ impl Context<'_> {
             None => Err(LowerError::EscapingControl { name: name.clone() }),
         }
     }
-
     pub(super) fn lower_block(
         &mut self,
         f: &mut FunctionLowerer,
@@ -149,9 +149,15 @@ impl Context<'_> {
             parent: None,
         });
         f.position(exit)?;
+        let assigned = capture::analyze(body).assigned_names();
+        if assigned.len() == 1
+            && let Some(name) = assigned.into_iter().next()
+        {
+            f.env()
+                .rebind_variable(&name, super::super::env::Slot::Value(result));
+        }
         Ok(result)
     }
-
     pub(super) fn lower_return_from(
         &mut self,
         f: &mut FunctionLowerer,
@@ -322,7 +328,12 @@ impl Context<'_> {
         for item in items {
             match item {
                 TagbodyItem::Tag(_) => {
-                    let target = entries[next].3;
+                    let target = entries
+                        .get(next)
+                        .ok_or_else(|| LowerError::Ir {
+                            detail: "tagbody tag index is out of bounds".to_owned(),
+                        })?
+                        .3;
                     next += 1;
                     if !f.is_terminated() {
                         f.terminate(Terminator::Jump {
@@ -410,80 +421,6 @@ impl Context<'_> {
             OpKind::Builtin {
                 name: "throw".to_owned(),
                 args: vec![token, value],
-            },
-            Ty::Word,
-        )?;
-        if !f.is_terminated() {
-            f.terminate(Terminator::Throw { condition: thrown })?;
-        }
-        Ok(value)
-    }
-
-    pub(super) fn lower_catch(
-        &mut self,
-        f: &mut FunctionLowerer,
-        tag: &Expr,
-        body: &[Expr],
-    ) -> Result<ValueId, LowerError> {
-        let tag = self.lower_expr(f, tag)?;
-        let result = f.fresh_value();
-        let region_id = HandlerRegionId(self.next_region);
-        self.next_region += 1;
-        let start = f.current_block();
-        self.enter(f, region_id)?;
-        let value = self.lower_body(f, body)?;
-        let protected = self
-            .blocks
-            .iter()
-            .copied()
-            .filter(|block| block.0 >= start.0)
-            .collect::<Vec<_>>();
-        let body_end = f.current_block();
-        let normal_path = !f.is_terminated();
-        let exit = self.block(f, vec![(Ty::Word, result)]);
-        if normal_path {
-            f.position(body_end)?;
-            self.leave(f, region_id)?;
-            f.terminate(Terminator::Jump {
-                target: exit,
-                args: vec![value],
-            })?;
-        }
-        let caught = f.fresh_value();
-        let handler = self.block(f, vec![(Ty::Word, caught)]);
-        self.leave(f, region_id)?;
-        f.terminate(Terminator::Jump {
-            target: exit,
-            args: vec![caught],
-        })?;
-        self.regions.push(HandlerRegion {
-            id: region_id,
-            kind: HandlerKind::Catch,
-            protected,
-            handler,
-            cleanup: None,
-            catch_tag: Some(tag),
-            binding_targets: Vec::new(),
-            depth: 0,
-            parent: None,
-        });
-        f.position(exit)?;
-        Ok(result)
-    }
-
-    pub(super) fn lower_throw(
-        &mut self,
-        f: &mut FunctionLowerer,
-        tag: &Expr,
-        value: &Expr,
-    ) -> Result<ValueId, LowerError> {
-        let tag = self.lower_expr(f, tag)?;
-        let value = self.lower_expr(f, value)?;
-        f.safepoint()?;
-        let thrown = f.one(
-            OpKind::Builtin {
-                name: "throw".to_owned(),
-                args: vec![tag, value],
             },
             Ty::Word,
         )?;

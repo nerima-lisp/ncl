@@ -195,6 +195,7 @@ pub fn compile_function_aarch64(
                 OpKind::Call { .. }
                     | OpKind::CallIndirect { .. }
                     | OpKind::MakeClosure { .. }
+                    | OpKind::MakeValueCell { .. }
                     | OpKind::CallClosure { .. }
                     | OpKind::Builtin { .. }
                     | OpKind::Safepoint
@@ -215,6 +216,7 @@ pub fn compile_function_aarch64(
                         | OpKind::CallIndirect { .. }
                         | OpKind::CallClosure { .. }
                         | OpKind::MakeClosure { .. }
+                        | OpKind::MakeValueCell { .. }
                         | OpKind::Builtin { .. }
                 ) {
                     // A callee may be propagating a non-local exit (for

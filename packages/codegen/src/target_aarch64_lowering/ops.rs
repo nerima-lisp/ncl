@@ -347,6 +347,20 @@ pub fn lower_op(
                 }
             }
         }
+        OpKind::MakeValueCell { value } => {
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeValueCell,
+                &[],
+                &[*value],
+                allocation,
+                abi,
+            )?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+            if let Some(result) = result {
+                store_value(assembler, allocation, result, Reg(0))?;
+            }
+        }
         OpKind::CallClosure {
             closure,
             args,

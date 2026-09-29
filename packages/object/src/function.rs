@@ -80,6 +80,23 @@ pub fn make_closure(
     })
 }
 
+/// Allocate a GC-managed value cell containing `value`.
+///
+/// # Errors
+/// Returns an error when allocation or storing the initial value fails.
+pub fn make_value_cell(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    let mut value = value;
+    with_root(ctx, &mut value, |ctx, value| {
+        let object = allocate(ctx, runtime, widetag::VALUE_CELL, 1)?;
+        put(ctx, object, crate::value_cell_offset::VALUE, *value)?;
+        Ok(object)
+    })
+}
+
 /// Read a function entry address.
 ///
 /// # Errors

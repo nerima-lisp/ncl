@@ -208,6 +208,7 @@ impl Sccp {
             | OpKind::Call { .. }
             | OpKind::CallIndirect { .. }
             | OpKind::MakeClosure { .. }
+            | OpKind::MakeValueCell { .. }
             | OpKind::CallClosure { .. }
             | OpKind::Builtin { .. }
             | OpKind::Convert { .. } => State::Overdefined,

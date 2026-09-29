@@ -26,6 +26,11 @@ pub mod widetag {
     pub const CODE: u8 = 17;
     pub const SPECIALIZED_ARRAY: u8 = 18;
     pub const NON_SIMPLE_ARRAY: u8 = 19;
+    pub const VALUE_CELL: u8 = 20;
+}
+
+pub mod value_cell_offset {
+    pub const VALUE: usize = 0;
 }
 
 pub mod string_offset {

@@ -251,6 +251,7 @@ impl InlineDirectCalls {
                 matches!(
                     op.kind,
                     OpKind::MakeClosure { .. }
+                        | OpKind::MakeValueCell { .. }
                         | OpKind::CallClosure { .. }
                         | OpKind::SetMultipleValues { .. }
                 )

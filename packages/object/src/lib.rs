@@ -55,6 +55,7 @@ pub use cons::{rplaca, rplacd};
 pub use context::ThreadContext;
 pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
+    make_value_cell,
 };
 pub use function::{function_code, function_lambda_list};
 pub use function_call::{BuiltinFunctionCaller, FunctionArguments, FunctionCaller};
@@ -63,7 +64,7 @@ pub use instance::{Instance, instance_class, make_instance, slot_ref, slot_set};
 pub use layout::{
     array_offset, code_offset, function_offset, instance_offset, number_offset, readtable_offset,
     simple_vector_offset, specialized_array_offset, stream_offset, string_offset, structure_offset,
-    symbol_flag, symbol_offset, widetag,
+    symbol_flag, symbol_offset, value_cell_offset, widetag,
 };
 pub use load::LoadPort;
 pub use ncl_sys::RootSlot;

@@ -94,6 +94,8 @@ pub enum RuntimeFunction {
     ConstantTable,
     /// Construct a closure object.
     MakeClosure,
+    /// Construct a GC-managed value cell object.
+    MakeValueCell,
     /// Enter a catch handler.
     EnterCatch,
     /// Enter an unwind-protect handler.

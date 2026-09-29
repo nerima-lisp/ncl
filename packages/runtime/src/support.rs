@@ -6,7 +6,8 @@ use ncl_compiler_front::MacroCaller;
 use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
-    make_closure, make_cons, make_double, make_simple_vector, make_string, symbol_function,
+    make_closure, make_cons, make_double, make_simple_vector, make_string, make_value_cell,
+    symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
@@ -58,6 +59,9 @@ impl RuntimeAbi for NativeAbi<'_> {
                 .map_err(|error| RuntimeError::Native(error.to_string()))
                 .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
             RuntimeFunction::MakeClosure => ncl_sys::function_address!(native_make_closure)
+                .map_err(|error| RuntimeError::Native(error.to_string()))
+                .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::MakeValueCell => ncl_sys::function_address!(native_make_value_cell)
                 .map_err(|error| RuntimeError::Native(error.to_string()))
                 .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
             RuntimeFunction::EnterCatch => {
@@ -280,6 +284,19 @@ pub extern "C" fn native_make_closure(
             Ok(function) => function.as_word(),
             Err(error) => {
                 ctx.set_pending(error);
+                Word::NIL
+            }
+        }
+    })
+    .unwrap_or(Word::NIL)
+}
+
+pub extern "C" fn native_make_value_cell(thread: NonNull<Thread>, value: Word) -> Word {
+    ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        match make_value_cell(invocation.context, invocation.object, value) {
+            Ok(cell) => cell,
+            Err(error) => {
+                invocation.context.set_pending(error);
                 Word::NIL
             }
         }

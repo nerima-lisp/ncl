@@ -23,6 +23,7 @@ pub fn skeleton(kind: TemplateKind) -> Vec<Inst> {
         | TemplateKind::Call
         | TemplateKind::CallIndirect
         | TemplateKind::MakeClosure
+        | TemplateKind::MakeValueCell
         | TemplateKind::CallClosure
         | TemplateKind::Builtin
         | TemplateKind::Prim

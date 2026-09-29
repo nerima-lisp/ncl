@@ -277,6 +277,7 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
             entry: v(r)?,
             captures: vals(r)?,
         },
+        22 => OpKind::MakeValueCell { value: v(r)? },
         11 => OpKind::CallClosure {
             closure: v(r)?,
             named_symbol: match r.u()? {

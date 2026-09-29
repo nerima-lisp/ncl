@@ -25,7 +25,9 @@ pub struct Runtime {
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
+    structure_layout_parents: Mutex<HashMap<u32, Option<u32>>>,
     structure_classes: Mutex<HashMap<u32, String>>,
+    structure_layout_names: Mutex<HashMap<String, u32>>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<Vec<crate::builtin::BuiltinEntry>>,
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
@@ -88,7 +90,9 @@ impl Runtime {
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
+            structure_layout_parents: Mutex::new(HashMap::new()),
             structure_classes: Mutex::new(HashMap::new()),
+            structure_layout_names: Mutex::new(HashMap::new()),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(Vec::new()),
             builtin_addresses: Mutex::new(HashMap::new()),
@@ -133,6 +137,59 @@ impl Runtime {
             .map_err(|_| ObjectError::Layout)?
             .insert(layout.into(), name.into());
         Ok(())
+    }
+
+    /// Associate a structure layout with its parent layout and rooted class.
+    ///
+    /// The parent relation is kept as numeric layout metadata so structure
+    /// predicates do not need to retain or compare class names.
+    pub fn register_structure_class_with_parent(
+        &self,
+        layout: crate::StructureLayout,
+        parent: Option<crate::StructureLayout>,
+        name: impl Into<String>,
+    ) -> Result<(), ObjectError> {
+        self.structure_layout_parents
+            .lock()
+            .map_err(|_| ObjectError::Layout)?
+            .insert(layout.into(), parent.map(Into::into));
+        let name = name.into();
+        self.structure_layout_names
+            .lock()
+            .map_err(|_| ObjectError::Layout)?
+            .insert(name.clone(), layout.into());
+        self.register_structure_class(layout, name)
+    }
+
+    /// Resolve a registered structure name to its numeric layout metadata.
+    #[must_use]
+    pub fn structure_layout_for_name(&self, name: &str) -> Option<crate::StructureLayout> {
+        self.structure_layout_names
+            .lock()
+            .ok()
+            .and_then(|names| names.get(name).copied())
+            .map(crate::StructureLayout::from)
+    }
+
+    /// Return whether `layout` is `expected` or derives from it.
+    #[must_use]
+    pub fn structure_layout_is_a(
+        &self,
+        layout: crate::StructureLayout,
+        expected: crate::StructureLayout,
+    ) -> bool {
+        let parents = self
+            .structure_layout_parents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut current = Some(layout.into());
+        while let Some(id) = current {
+            if id == expected.into() {
+                return true;
+            }
+            current = parents.get(&id).copied().flatten();
+        }
+        false
     }
 
     /// Return the class associated with a structure layout, if any.

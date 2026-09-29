@@ -5,6 +5,7 @@ use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Terminator, Ty, Val
 use crate::ast::{EvalSituation, Expr, FunctionDesignator, LambdaExpr, Operator};
 use crate::symbols::SymbolRef;
 
+use super::super::env::FunctionEntry;
 use super::super::env::Slot;
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
@@ -296,6 +297,9 @@ impl Context<'_> {
     ) -> Result<ValueId, LowerError> {
         match designator {
             FunctionDesignator::Name(name) => {
+                if let Some(entry) = f.env().lookup_function(name) {
+                    return Ok(entry.callee);
+                }
                 let symbol = f.symbol(name)?;
                 f.one(
                     OpKind::LoadField {
@@ -318,7 +322,23 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         lambda: &LambdaExpr,
     ) -> Result<ValueId, LowerError> {
+        self.lower_lambda_value_with(f, lambda, &[], None)
+    }
+
+    pub(super) fn lower_lambda_value_with(
+        &mut self,
+        f: &mut FunctionLowerer,
+        lambda: &LambdaExpr,
+        extra_captures: &[(SymbolRef, Slot)],
+        self_name: Option<&SymbolRef>,
+    ) -> Result<ValueId, LowerError> {
         let mut captures = lambda::collect_captures(f, lambda);
+        for (name, slot) in extra_captures {
+            if !captures.iter().any(|(capture, _)| capture == name) {
+                captures.push((name.clone(), *slot));
+            }
+        }
+        let function_captures = lambda::collect_function_captures(f, lambda);
         for target in &self.targets {
             if mentions_exit(&lambda.body, &target.name)
                 && !captures.iter().any(|(name, _)| name == &target.capture)
@@ -327,7 +347,7 @@ impl Context<'_> {
                 captures.push((target.capture.clone(), slot));
             }
         }
-        let id = self.lower_lambda(lambda, &captures)?;
+        let id = self.lower_lambda(lambda, &captures, &function_captures, self_name)?;
         let entry = f.word_constant(Constant::FunctionEntry(id))?;
         let capture_values = captures
             .iter()
@@ -342,6 +362,8 @@ impl Context<'_> {
                 ),
             })
             .collect::<Result<Vec<_>, LowerError>>()?;
+        let mut capture_values = capture_values;
+        capture_values.extend(function_captures.iter().map(|(_, value)| *value));
         f.one(
             OpKind::MakeClosure {
                 entry,
@@ -355,13 +377,36 @@ impl Context<'_> {
         &mut self,
         lambda: &LambdaExpr,
         captures: &[super::super::lambda::Capture],
+        function_captures: &[super::super::lambda::FunctionCapture],
+        self_name: Option<&SymbolRef>,
     ) -> Result<FunctionId, LowerError> {
         let id = self.module.fresh_function();
         let params = lambda_params(&lambda.lambda_list)?;
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
         bind_captures(&mut nested, captures)?;
+        for (index, (name, _)) in function_captures.iter().enumerate() {
+            let value = nested.one(
+                OpKind::LoadCapture {
+                    index: u8::try_from(captures.len() + index).map_err(|_| LowerError::Ir {
+                        detail: "function capture index does not fit u8".to_owned(),
+                    })?,
+                },
+                Ty::Word,
+            )?;
+            nested.env().bind_function(FunctionEntry {
+                name: name.clone(),
+                callee: value,
+            });
+        }
         bind_required(&mut nested, &lambda.lambda_list, 1)?;
         let mut child = Context::with_targets(self.module, self.targets.clone());
+        if let Some(name) = self_name {
+            let callee = nested.one(OpKind::LoadFunctionObject, Ty::Word)?;
+            nested.env().bind_function(FunctionEntry {
+                name: name.clone(),
+                callee,
+            });
+        }
         child.bind_optional(&mut nested, &lambda.lambda_list, 1)?;
         child.bind_rest_and_keys(&mut nested, &lambda.lambda_list)?;
         child.bind_aux(&mut nested, &lambda.lambda_list)?;

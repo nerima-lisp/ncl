@@ -19,6 +19,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::Alloc { .. }
                 | OpKind::LoadArg { .. }
                 | OpKind::LoadCapture { .. }
+                | OpKind::LoadFunctionObject
                 | OpKind::MakeClosure { .. }
                 | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }

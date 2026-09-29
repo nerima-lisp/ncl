@@ -50,6 +50,11 @@ const CASES: &[Case] = &[
         expected: "1",
     },
     Case {
+        name: "stable-sort predicate throw",
+        source: "(catch 'x (stable-sort (list 3 1 2) (lambda (a b) (throw 'x a))))",
+        expected: "1",
+    },
+    Case {
         name: "sort key throw",
         source: "(catch 'x (sort (list 3 1 2) #'< :key (lambda (v) (throw 'x v))))",
         expected: "3",
@@ -68,6 +73,11 @@ const CASES: &[Case] = &[
         name: "builtin funcall throw",
         source: "(catch 'x (funcall #'funcall (lambda () (throw 'x 3))))",
         expected: "3",
+    },
+    Case {
+        name: "builtin mapcar throw",
+        source: "(catch 'x (funcall #'mapcar (lambda (v) (throw 'x v)) '(8)))",
+        expected: "8",
     },
     Case {
         name: "some throw",
@@ -105,6 +115,16 @@ const CASES: &[Case] = &[
         expected: "(1 10)",
     },
     Case {
+        name: "unwind-protect in maphash return-from",
+        source: "(progn (setq *nlx-c* 0) (setq *nlx-r* (block b (let ((h (make-hash-table))) (setf (gethash 1 h) 2) (maphash (lambda (k v) (unwind-protect (return-from b v) (setq *nlx-c* 3))) h)))) (list *nlx-r* *nlx-c*))",
+        expected: "(2 3)",
+    },
+    Case {
+        name: "builtin in cleanup",
+        source: "(catch 'x (unwind-protect 1 (mapcar (lambda (v) (throw 'x v)) '(7))))",
+        expected: "7",
+    },
+    Case {
         name: "mismatched inner catch",
         source: "(catch 'x (catch 'y (mapcar (lambda (v) (throw 'x v)) '(3))))",
         expected: "3",
@@ -113,6 +133,26 @@ const CASES: &[Case] = &[
         name: "stale marker regression",
         source: "(catch 'outer (list (catch 'y (mapcar (lambda (v) (throw 'y v)) '(1))) (car '(2))))",
         expected: "(1 2)",
+    },
+    Case {
+        name: "nested builtins sort mapcar",
+        source: "(progn (defun nlx-thr (w) (throw 'x w)) (defun nlx-pred (a b) (mapcar #'nlx-thr (list a b))) (catch 'x (sort (list 3 1 2) #'nlx-pred)))",
+        expected: "1",
+    },
+    Case {
+        name: "nested builtins mapcar mapcar",
+        source: "(progn (defun nlx-w6 (xs) (mapcar #'nlx-w6b xs)) (defun nlx-w6b (v) (if (consp v) (nlx-w6 v) (throw 'x v))) (catch 'x (nlx-w6 '(((9))))))",
+        expected: "9",
+    },
+    Case {
+        name: "repeated exits then builtins",
+        source: "(progn (defun nlx-len3 (v) (throw 'x (length (list v v v)))) (defun nlx-once () (catch 'x (mapcar #'nlx-len3 '(1 2)))) (defun nlx-rep (n acc) (if (= n 0) acc (nlx-rep (- n 1) (+ acc (nlx-once))))) (nlx-rep 200 0))",
+        expected: "600",
+    },
+    Case {
+        name: "clos after not run",
+        source: "(progn (setq *nlx-a* 0) (defmethod nlx-gf ((x integer)) (throw 'k x)) (defmethod nlx-gf :after ((x integer)) (setq *nlx-a* 1)) (list (catch 'k (nlx-gf 5)) *nlx-a*))",
+        expected: "(5 0)",
     },
     Case {
         name: "gc stress fresh throw value",
@@ -133,7 +173,7 @@ fn run(source: &str) -> Output {
 
 #[test]
 fn native_non_local_exit_cli_cases() {
-    assert!(!CASES.is_empty(), "native NLX case table must not be empty");
+    assert_eq!(CASES.len(), 30, "native NLX case table changed unexpectedly");
     for case in CASES {
         let output = run(case.source);
         assert_eq!(output.status.code(), Some(0), "{}: {output:?}", case.name);

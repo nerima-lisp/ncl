@@ -218,41 +218,73 @@ fn invoke_structure_print_function(
         let Some(class) = runtime.structure_class(ctx, layout) else {
             return Ok(false);
         };
-        let name = simple_vector_ref(ctx, class, 0)?;
-        let key = Package::from_word(runtime.ensure_package(ctx, "NCL")?)
-            .intern(ctx, runtime, "%STRUCTURE-PRINT-FUNCTION")?
-            .0;
-        let mut plist = symbol_plist(ctx, name)?;
-        while plist != Word::NIL {
-            let property = car(ctx, plist)?;
-            if car(ctx, property)? == key {
-                let mut function = cdr(ctx, property)?;
-                if function.is_cons() {
-                    let operator = car(ctx, function)?;
-                    let common_lisp = runtime.ensure_package(ctx, "COMMON-LISP")?;
-                    let function_operator = Package::from_word(common_lisp)
-                        .intern(ctx, runtime, "FUNCTION")?
-                        .0;
-                    if operator == function_operator {
-                        function = car(ctx, cdr(ctx, function)?)?;
-                    }
-                }
-                let designator = FunctionDesignator::try_from_word(ctx, function)?;
-                let words = [object, stream, Word::fixnum(0)];
-                let mut caller = BuiltinFunctionCaller;
-                let mut values = MultipleValues::new();
-                caller.call_function(
-                    ctx,
-                    runtime,
-                    designator,
-                    FunctionArguments::new(&words),
-                    &mut values,
-                )?;
-                return Ok(true);
-            }
-            plist = cdr(ctx, plist)?;
-        }
-        Ok(false)
+        let mut class = class;
+        with_root(ctx, &mut class, |ctx, class| {
+            let mut name = simple_vector_ref(ctx, *class, 0)?;
+            with_root(ctx, &mut name, |ctx, name| {
+                let mut key = Package::from_word(runtime.ensure_package(ctx, "NCL")?)
+                    .intern(ctx, runtime, "%STRUCTURE-PRINT-FUNCTION")?
+                    .0;
+                with_root(ctx, &mut key, |ctx, key| {
+                    let mut plist = symbol_plist(ctx, *name)?;
+                    with_root(ctx, &mut plist, |ctx, plist| {
+                        let mut plist_word = *plist;
+                        while plist_word != Word::NIL {
+                            let (found, next) = with_root(ctx, &mut plist_word, |ctx, plist| {
+                                let mut property = car(ctx, *plist)?;
+                                let found = with_root(ctx, &mut property, |ctx, property| {
+                                    if car(ctx, *property)? == *key {
+                                        let mut function = cdr(ctx, *property)?;
+                                        with_root(ctx, &mut function, |ctx, function| {
+                                            let mut function_word = *function;
+                                            if (*function).is_cons() {
+                                                let mut operator = car(ctx, *function)?;
+                                                with_root(ctx, &mut operator, |ctx, operator| {
+                                                    let common_lisp = runtime
+                                                        .ensure_package(ctx, "COMMON-LISP")?;
+                                                    let function_operator =
+                                                        Package::from_word(common_lisp)
+                                                            .intern(ctx, runtime, "FUNCTION")?
+                                                            .0;
+                                                    if *operator == function_operator {
+                                                        function_word =
+                                                            car(ctx, cdr(ctx, *function)?)?;
+                                                    }
+                                                    Ok(())
+                                                })?;
+                                            }
+                                            let designator = FunctionDesignator::try_from_word(
+                                                ctx,
+                                                function_word,
+                                            )?;
+                                            let words = [object, stream, Word::fixnum(0)];
+                                            let mut caller = BuiltinFunctionCaller;
+                                            let mut values = MultipleValues::new();
+                                            caller.call_function(
+                                                ctx,
+                                                runtime,
+                                                designator,
+                                                FunctionArguments::new(&words),
+                                                &mut values,
+                                            )?;
+                                            Ok(true)
+                                        })
+                                    } else {
+                                        Ok(false)
+                                    }
+                                })?;
+                                Ok((found, cdr(ctx, *plist)?))
+                            })?;
+                            if found {
+                                return Ok(true);
+                            }
+                            plist_word = next;
+                        }
+                        Ok(false)
+                    })
+                })
+            })
+        })
     })
 }
 
@@ -456,16 +488,4 @@ pub fn copy_pprint_dispatch(
     Ok(copied)
 }
 
-fn copy_entries(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    source: &mut Word,
-    copied: &mut Word,
-) -> Result<(), ObjectError> {
-    while *source != Word::NIL {
-        let entry = car(ctx, *source)?;
-        *copied = make_cons(ctx, runtime, entry, *copied)?;
-        *source = cdr(ctx, *source)?;
-    }
-    Ok(())
-}
+include!("pprint_dispatch.rs");

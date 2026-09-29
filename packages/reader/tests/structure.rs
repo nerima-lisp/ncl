@@ -38,6 +38,8 @@ fn reads_structure_dispatch_literal_into_registered_layout() {
         .register_structure_class_with_parent(&ctx, layout, None, name)
         .unwrap();
     let opts = ReadOptions::standard(&mut ctx, &runtime).unwrap();
+    ctx.set_strict_forwarding(true);
+    ctx.set_gc_stress(true);
     let structure = read_from_string(&mut ctx, &runtime, "#S(POINT :X 8)", &opts)
         .unwrap()
         .unwrap();

@@ -88,8 +88,8 @@ fn defstruct_read_only_does_not_define_a_setf_writer() {
 #[test]
 fn defstruct_boa_constructor_and_conc_name_nil_are_observable() {
     assert_eval(
-        "(progn (defstruct (pair (:constructor make-pair (left &optional right &key tag &aux (ignored 99)))) left right tag) (defstruct (bare (:conc-name nil)) value) (let ((p (make-pair 1 2 :tag 3)) (b (make-bare :value 7))) (list (pair-left p) (pair-right p) (pair-tag p) (value b))))",
-        "(1 2 3 7)",
+        "(progn (defstruct (pair (:constructor make-pair (left &optional right &key tag &aux (ignored 99)))) left right tag) (defstruct (bare (:conc-name nil)) value) (let ((p (make-pair 'alpha '(1 2 3) :tag 3)) (b (make-bare :value 7))) (list (pair-left p) (pair-right p) (pair-tag p) (value b))))",
+        "(COMMON-LISP-USER:ALPHA (1 2 3) 3 7)",
     );
 }
 
@@ -102,7 +102,7 @@ fn defstruct_print_function_is_used() {
 }
 
 #[test]
-fn defstruct_gc_stress_constructor_access_and_copy() {
+fn defstruct_constructor_access_and_copy() {
     assert_eval(
         "(progn (defstruct point x y) (let* ((p (make-point :x 39 :y 40)) (copy (copy-point p))) (list (point-x copy) (point-y copy))))",
         "(39 40)",

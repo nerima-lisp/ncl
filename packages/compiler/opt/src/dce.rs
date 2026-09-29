@@ -190,6 +190,13 @@ impl DeadCodeElimination {
 
     fn eliminate(function: &mut Function, reachable: &HashSet<BlockId>) -> bool {
         let mut live = HashSet::new();
+        for tag in function
+            .handler_regions
+            .iter()
+            .filter_map(|region| region.catch_tag)
+        {
+            live.insert(tag);
+        }
         for block in function
             .blocks
             .iter()

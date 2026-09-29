@@ -1,6 +1,8 @@
 //! Dynamic control lowering for the IR v2 path.
 
-use ncl_ir::{HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{
+    Convert, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId,
+};
 
 use crate::ast::{Expr, TagbodyItem};
 use crate::symbols::SymbolRef;
@@ -10,9 +12,54 @@ use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
 use super::NonLocalTarget;
-use super::analysis::body_has_nested_return;
+use super::analysis::{body_has_nested_go, body_has_nested_return};
 
 impl Context<'_> {
+    fn fresh_token(f: &mut FunctionLowerer) -> Result<ValueId, LowerError> {
+        let symbol = f.symbol(&SymbolRef::interned("COMMON-LISP", "GENSYM"))?;
+        let function = f.one(
+            OpKind::LoadField {
+                object: symbol,
+                field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                    LowerError::Ir {
+                        detail: "gensym function offset does not fit u32".to_owned(),
+                    }
+                })?,
+            },
+            Ty::Word,
+        )?;
+        let zero = f.fixnum(0)?;
+        let argc = f.one(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: zero,
+            },
+            Ty::Word,
+        )?;
+        f.safepoint()?;
+        f.one(
+            OpKind::CallClosure {
+                closure: function,
+                args: vec![argc],
+                named_symbol: None,
+            },
+            Ty::Word,
+        )
+    }
+
+    fn target_value(
+        f: &mut FunctionLowerer,
+        target: &NonLocalTarget,
+        name: &SymbolRef,
+    ) -> Result<ValueId, LowerError> {
+        match f.env().lookup_variable(&target.capture) {
+            Some(super::super::env::Slot::Value(value) | super::super::env::Slot::Cell(value)) => {
+                Ok(value)
+            }
+            None => Err(LowerError::EscapingControl { name: name.clone() }),
+        }
+    }
+
     pub(super) fn lower_block(
         &mut self,
         f: &mut FunctionLowerer,
@@ -51,17 +98,21 @@ impl Context<'_> {
     ) -> Result<ValueId, LowerError> {
         let result = f.fresh_value();
         let start = f.current_block();
-        let token_name = Context::token(name, "BLOCK");
-        let token = f.symbol(&token_name)?;
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
+        let token_name = Context::token(name, "BLOCK", region_id);
+        let token = Self::fresh_token(f)?;
         self.enter(f, region_id)?;
+        f.env().push();
+        f.env()
+            .bind_variable(token_name.clone(), super::super::env::Slot::Value(token));
         self.targets.push(NonLocalTarget {
             name: name.clone(),
-            token: token_name,
+            capture: token_name,
         });
         let value = self.lower_body(f, body)?;
         self.targets.pop();
+        f.env().pop();
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let protected = self
@@ -130,7 +181,7 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
-        let token = f.symbol(&target.token)?;
+        let token = Self::target_value(f, &target, name)?;
         f.safepoint()?;
         let thrown = f.one(
             OpKind::Builtin {
@@ -150,6 +201,24 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         items: &[TagbodyItem],
     ) -> Result<ValueId, LowerError> {
+        let tags = items
+            .iter()
+            .filter_map(|item| match item {
+                TagbodyItem::Tag(tag) => Some(tag),
+                TagbodyItem::Form(_) => None,
+            })
+            .collect::<Vec<_>>();
+        let forms = items
+            .iter()
+            .filter_map(|item| match item {
+                TagbodyItem::Tag(_) => None,
+                TagbodyItem::Form(form) => Some(form),
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if tags.iter().any(|tag| body_has_nested_go(&forms, tag)) {
+            return self.lower_escaping_tagbody(f, items);
+        }
         let start = f.current_block();
         let exit = self.block(f, Vec::new());
         f.position(start)?;
@@ -174,7 +243,7 @@ impl Context<'_> {
         for (name, _) in &targets {
             self.targets.push(NonLocalTarget {
                 name: name.clone(),
-                token: Context::token(name, "TAG"),
+                capture: Context::token(name, "TAG", HandlerRegionId(0)),
             });
         }
         let mut next = 0;
@@ -214,6 +283,105 @@ impl Context<'_> {
         f.nil()
     }
 
+    fn lower_escaping_tagbody(
+        &mut self,
+        f: &mut FunctionLowerer,
+        items: &[TagbodyItem],
+    ) -> Result<ValueId, LowerError> {
+        let start = f.current_block();
+        let exit = self.block(f, Vec::new());
+        f.position(start)?;
+        f.env().push();
+        let tags = items
+            .iter()
+            .filter_map(|item| match item {
+                TagbodyItem::Tag(tag) => Some(tag.clone()),
+                TagbodyItem::Form(_) => None,
+            })
+            .collect::<Vec<_>>();
+        let mut entries = Vec::new();
+        for tag in &tags {
+            let id = HandlerRegionId(self.next_region);
+            self.next_region += 1;
+            let capture = Context::token(tag, "TAG", id);
+            let token = Self::fresh_token(f)?;
+            f.env()
+                .bind_variable(capture.clone(), super::super::env::Slot::Value(token));
+            self.enter(f, id)?;
+            let target = self.block(f, Vec::new());
+            entries.push((tag.clone(), id, capture, target, token));
+        }
+        for (tag, _, capture, _, _) in &entries {
+            self.targets.push(NonLocalTarget {
+                name: tag.clone(),
+                capture: capture.clone(),
+            });
+        }
+        f.position(start)?;
+        let mut next = 0;
+        for item in items {
+            match item {
+                TagbodyItem::Tag(_) => {
+                    let target = entries[next].3;
+                    next += 1;
+                    if !f.is_terminated() {
+                        f.terminate(Terminator::Jump {
+                            target,
+                            args: Vec::new(),
+                        })?;
+                    }
+                    f.position(target)?;
+                }
+                TagbodyItem::Form(form) => {
+                    if !f.is_terminated() {
+                        self.lower_expr(f, form)?;
+                    }
+                }
+            }
+        }
+        self.targets
+            .truncate(self.targets.len().saturating_sub(entries.len()));
+        let protected = self
+            .blocks
+            .iter()
+            .copied()
+            .filter(|block| block.0 >= start.0 && *block != exit)
+            .collect::<Vec<_>>();
+        let normal_path = !f.is_terminated();
+        if normal_path {
+            for (_, id, _, _, _) in entries.iter().rev() {
+                self.leave(f, *id)?;
+            }
+            f.terminate(Terminator::Jump {
+                target: exit,
+                args: Vec::new(),
+            })?;
+        }
+        for (_, id, _capture, target, token) in &entries {
+            let value = f.fresh_value();
+            let handler = self.block(f, vec![(Ty::Word, value)]);
+            self.leave(f, *id)?;
+            f.terminate(Terminator::Jump {
+                target: *target,
+                args: Vec::new(),
+            })?;
+            self.regions.push(HandlerRegion {
+                id: *id,
+                kind: HandlerKind::Catch,
+                protected: protected.clone(),
+                handler,
+                cleanup: None,
+                catch_tag: Some(*token),
+                binding_targets: Vec::new(),
+                depth: 0,
+                parent: None,
+            });
+        }
+        f.position(exit)?;
+        f.env().pop();
+        f.nil()
+    }
+
     pub(super) fn lower_go(
         &mut self,
         f: &mut FunctionLowerer,
@@ -236,7 +404,7 @@ impl Context<'_> {
             .target(tag)
             .ok_or_else(|| LowerError::EscapingControl { name: tag.clone() })?;
         let value = f.nil()?;
-        let token = f.symbol(&target.token)?;
+        let token = Self::target_value(f, &target, tag)?;
         f.safepoint()?;
         let thrown = f.one(
             OpKind::Builtin {

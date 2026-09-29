@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
-    let mut callee_builder = FunctionBuilder::new(
+    let mut target_builder = FunctionBuilder::new(
         ncl_ir::FunctionId(91),
         "tail-callee",
         vec![Param {
@@ -11,21 +11,21 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
         }],
         vec![Ty::Word],
     );
-    let value = callee_builder
+    let value = target_builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("callee value")[0];
-    callee_builder
+    target_builder
         .terminate(Terminator::Return {
             values: vec![value],
         })
         .expect("callee return");
     let abi = X86_64Abi;
-    let callee = compile_function_x86_64(&callee_builder.finish(), &abi).expect("callee lowering");
-    let mut callee_code = alloc_code(callee.code.len()).expect("callee code allocation");
-    write_code(&mut callee_code, 0, &callee.code).expect("callee code write");
-    publish_code(&mut callee_code).expect("callee code publication");
+    let target = compile_function_x86_64(&target_builder.finish(), &abi).expect("callee lowering");
+    let mut target_code = alloc_code(target.code.len()).expect("callee code allocation");
+    write_code(&mut target_code, 0, &target.code).expect("callee code write");
+    publish_code(&mut target_code).expect("callee code publication");
 
-    let mut caller_builder = FunctionBuilder::new(
+    let mut entry_builder = FunctionBuilder::new(
         ncl_ir::FunctionId(92),
         "tail-caller",
         vec![
@@ -40,31 +40,31 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
         ],
         vec![Ty::Word],
     );
-    let callee_value = caller_builder
+    let target_value = entry_builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
         .expect("callee argument")[0];
-    let value = caller_builder
+    let value = entry_builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("value argument")[0];
-    caller_builder
+    entry_builder
         .terminate(Terminator::TailCall {
-            function: callee_value,
-            args: vec![callee_value, value],
+            function: target_value,
+            args: vec![target_value, value],
         })
         .expect("tail call");
-    let caller = compile_function_x86_64(&caller_builder.finish(), &abi).expect("caller lowering");
-    let mut caller_code = alloc_code(caller.code.len()).expect("caller code allocation");
-    write_code(&mut caller_code, 0, &caller.code).expect("caller code write");
-    publish_code(&mut caller_code).expect("caller code publication");
+    let entry = compile_function_x86_64(&entry_builder.finish(), &abi).expect("caller lowering");
+    let mut entry_code = alloc_code(entry.code.len()).expect("caller code allocation");
+    write_code(&mut entry_code, 0, &entry.code).expect("caller code write");
+    publish_code(&mut entry_code).expect("caller code publication");
 
     let mut thread = Thread::new();
     let value = Word::fixnum(37).bits();
     let result = invoke_entry(
-        &caller_code,
-        caller.entry_offset as usize,
+        &entry_code,
+        entry.entry_offset as usize,
         &mut thread,
         2,
-        [callee_code.address() as u64, value, 0, 0],
+        [target_code.address() as u64, value, 0, 0],
         0,
     );
     assert_eq!(result, (value, 1));

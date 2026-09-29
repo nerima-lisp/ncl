@@ -19,6 +19,7 @@ pub fn skeleton(kind: TemplateKind) -> Vec<Inst> {
         | TemplateKind::StoreField
         | TemplateKind::Alloc
         | TemplateKind::LoadArg
+        | TemplateKind::LoadCapture
         | TemplateKind::Call
         | TemplateKind::CallIndirect
         | TemplateKind::MakeClosure

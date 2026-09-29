@@ -237,6 +237,9 @@ pub enum OpKind {
     LoadArg {
         index: u8,
     },
+    LoadCapture {
+        index: u8,
+    },
     Call {
         function: ValueId,
         args: Vec<ValueId>,

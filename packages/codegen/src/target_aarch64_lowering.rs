@@ -5,8 +5,6 @@ use crate::{
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Constant, ConstantIndex, ValueId};
 
-pub(super) use primitives::{ClosureLayout, closure_layout};
-
 pub(super) fn constant_table_entry(
     constants: &[Constant],
     index: ConstantIndex,

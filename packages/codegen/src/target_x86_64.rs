@@ -14,11 +14,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
                     args.len().saturating_sub(1)
                 }
-                OpKind::CallClosure { closure, args, .. } => {
-                    closure_capture_count(function, *closure)?
-                        .unwrap_or(0)
-                        .saturating_add(args.len().saturating_sub(1))
-                }
+                OpKind::CallClosure { args, .. } => args.len().saturating_sub(1),
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
                 | OpKind::Load { .. }
@@ -27,6 +23,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::StoreField { .. }
                 | OpKind::Alloc { .. }
                 | OpKind::LoadArg { .. }
+                | OpKind::LoadCapture { .. }
                 | OpKind::MakeClosure { .. }
                 | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }
@@ -59,7 +56,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
+    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call,
     lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
 };
 

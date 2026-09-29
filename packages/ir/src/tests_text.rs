@@ -393,6 +393,23 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
             ),
         ),
         (
+            "load-capture",
+            finish(
+                "capture",
+                Vec::new(),
+                vec![Ty::Word],
+                Vec::new(),
+                vec![block(
+                    0,
+                    vec![op(&[(0, Ty::Word)], OpKind::LoadCapture { index: 2 })],
+                    Terminator::Return {
+                        values: vec![ValueId(0)],
+                    },
+                )],
+                Vec::new(),
+            ),
+        ),
+        (
             "closure-and-handler-ops",
             finish(
                 "closure",

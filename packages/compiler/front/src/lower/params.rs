@@ -260,20 +260,11 @@ fn param_name(name: &ParamName) -> Result<SymbolRef, LowerError> {
     }
 }
 
-pub(super) fn lambda_params(
-    list: &LambdaList,
-    captures: &[super::super::lambda::Capture],
-) -> Result<Vec<Param>, LowerError> {
+pub(super) fn lambda_params(list: &LambdaList) -> Result<Vec<Param>, LowerError> {
     let mut params = vec![Param {
         name: "argc".to_owned(),
         ty: Ty::Word,
     }];
-    for (name, _) in captures {
-        params.push(Param {
-            name: name.name.clone(),
-            ty: Ty::Word,
-        });
-    }
     for name in &list.required {
         params.push(Param {
             name: param_name(name)?.name,
@@ -294,8 +285,8 @@ pub(super) fn bind_captures(
     captures: &[super::super::lambda::Capture],
 ) -> Result<(), LowerError> {
     for (index, (name, slot)) in captures.iter().enumerate() {
-        let parameter = param_index(1 + index)?;
-        let loaded = f.one(OpKind::LoadArg { index: parameter }, Ty::Word)?;
+        let capture = param_index(index)?;
+        let loaded = f.one(OpKind::LoadCapture { index: capture }, Ty::Word)?;
         match slot {
             Slot::Value(_) => f.env().bind_variable(name.clone(), Slot::Value(loaded)),
             Slot::Cell(_) => {

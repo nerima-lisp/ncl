@@ -469,16 +469,13 @@ fn lower_builtin(
 
 #[path = "target_x86_64_lowering/calls.rs"]
 mod calls;
-pub(super) use calls::{lower_call, lower_closure_call};
+pub(super) use calls::{lower_call, lower_closure_call, lower_load_capture};
 
 #[path = "target_x86_64_lowering/dispatch.rs"]
 pub(super) mod dispatch;
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 
-#[path = "target_x86_64_lowering/closure.rs"]
-mod closure;
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
-pub(super) use closure::closure_capture_count;
 
 pub(super) use ops::{lower_op, move_args};

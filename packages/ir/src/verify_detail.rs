@@ -85,6 +85,7 @@ pub(super) fn check_op(
                 errors.push(VerifyError::TypeMismatch(block.id));
             }
         }
+        OpKind::LoadCapture { .. } => require_results(op, &[Ty::Word], block.id, errors),
         OpKind::Call { function, args }
         | OpKind::CallIndirect {
             callee: function,

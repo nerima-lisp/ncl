@@ -11,6 +11,7 @@ use super::super::function::FunctionLowerer;
 use super::super::lambda;
 use super::super::literal::lower_literal;
 use super::Context;
+use super::analysis::mentions_exit;
 use super::params::{bind_captures, bind_required, lambda_params};
 
 fn is_closure_designator(expr: &Expr) -> bool {
@@ -295,9 +296,6 @@ impl Context<'_> {
     ) -> Result<ValueId, LowerError> {
         match designator {
             FunctionDesignator::Name(name) => {
-                if let Some(entry) = f.env().lookup_function(name) {
-                    return Ok(entry.callee);
-                }
                 let symbol = f.symbol(name)?;
                 f.one(
                     OpKind::LoadField {
@@ -320,9 +318,16 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         lambda: &LambdaExpr,
     ) -> Result<ValueId, LowerError> {
-        let captures = lambda::collect_captures(f, lambda);
-        let function_captures = lambda::collect_function_captures(f, lambda);
-        let id = self.lower_lambda(lambda, &captures, &function_captures)?;
+        let mut captures = lambda::collect_captures(f, lambda);
+        for target in &self.targets {
+            if mentions_exit(&lambda.body, &target.name)
+                && !captures.iter().any(|(name, _)| name == &target.capture)
+                && let Some(slot) = f.env().lookup_variable(&target.capture)
+            {
+                captures.push((target.capture.clone(), slot));
+            }
+        }
+        let id = self.lower_lambda(lambda, &captures)?;
         let entry = f.word_constant(Constant::FunctionEntry(id))?;
         let capture_values = captures
             .iter()
@@ -337,12 +342,6 @@ impl Context<'_> {
                 ),
             })
             .collect::<Result<Vec<_>, LowerError>>()?;
-        let function_values = function_captures
-            .iter()
-            .map(|(_, value)| *value)
-            .collect::<Vec<_>>();
-        let mut capture_values = capture_values;
-        capture_values.extend(function_values);
         f.one(
             OpKind::MakeClosure {
                 entry,
@@ -356,28 +355,11 @@ impl Context<'_> {
         &mut self,
         lambda: &LambdaExpr,
         captures: &[super::super::lambda::Capture],
-        function_captures: &[super::super::lambda::FunctionCapture],
     ) -> Result<FunctionId, LowerError> {
         let id = self.module.fresh_function();
         let params = lambda_params(&lambda.lambda_list)?;
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
         bind_captures(&mut nested, captures)?;
-        for (index, (name, _)) in function_captures.iter().enumerate() {
-            let value = nested.one(
-                OpKind::LoadCapture {
-                    index: u8::try_from(captures.len() + index).map_err(|_| LowerError::Ir {
-                        detail: "function capture index does not fit u8".to_owned(),
-                    })?,
-                },
-                Ty::Word,
-            )?;
-            nested
-                .env()
-                .bind_function(super::super::env::FunctionEntry {
-                    name: name.clone(),
-                    callee: value,
-                });
-        }
         bind_required(&mut nested, &lambda.lambda_list, 1)?;
         let mut child = Context::with_targets(self.module, self.targets.clone());
         child.bind_optional(&mut nested, &lambda.lambda_list, 1)?;

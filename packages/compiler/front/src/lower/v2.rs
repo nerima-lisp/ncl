@@ -19,9 +19,9 @@ mod expr;
 mod params;
 
 #[derive(Clone, Debug)]
-struct NonLocalTarget {
-    name: SymbolRef,
-    token: SymbolRef,
+pub(super) struct NonLocalTarget {
+    pub(super) name: SymbolRef,
+    pub(super) capture: SymbolRef,
 }
 
 /// Per-function state not represented by the frozen `FunctionLowerer` API.
@@ -95,8 +95,8 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    fn token(name: &SymbolRef, kind: &str) -> SymbolRef {
-        SymbolRef::interned("NCL-NLX", format!("{kind}:{}", name.name))
+    fn token(name: &SymbolRef, kind: &str, id: HandlerRegionId) -> SymbolRef {
+        SymbolRef::interned("NCL-NLX", format!("{kind}:{}:{}", name.name, id.0))
     }
 
     fn target(&self, name: &SymbolRef) -> Option<NonLocalTarget> {

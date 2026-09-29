@@ -164,6 +164,17 @@ impl Runtime {
             rooted_functions: Vec::new(),
         })
     }
+
+    /// Enable or disable collection before each allocation.
+    pub fn set_gc_stress(&mut self, on: bool) {
+        self.context.set_gc_stress(on);
+    }
+
+    /// Enable or disable strict forwarding checks for this runtime's thread.
+    pub fn set_strict_forwarding(&self, on: bool) {
+        self.context.set_strict_forwarding(on);
+    }
+
     /// Evaluate source by compiling it to native code and invoking the entry.
     ///
     /// # Errors

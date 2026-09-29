@@ -1,11 +1,11 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call,
     load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_load_capture, lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
+    lower_load_capture, lower_runtime_builtin, lower_safepoint, store_slot,
 };
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
-use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
+use ncl_ir::{Compare, Function, Op, OpKind, Prim, ValueId};
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
     match constant {
@@ -461,94 +461,4 @@ pub fn lower_op(
         }
     }
     Ok(call_pc)
-}
-
-pub fn move_args(
-    assembler: &mut Assembler,
-    slots: &ValueSlots,
-    args: &[ValueId],
-    params: &[BlockParam],
-) -> Result<(), CodegenError> {
-    if args.len() != params.len() {
-        return Err(CodegenError::Unsupported(
-            "block argument arity mismatch".into(),
-        ));
-    }
-    let mut moves = Vec::new();
-    for (argument, parameter) in args.iter().zip(params) {
-        let source = slots.location(*argument)?;
-        let destination = slots.location(parameter.value)?;
-        if source != destination {
-            moves.push((source, destination));
-        }
-    }
-    // When a destination location is also a source location, stage every source
-    // first so register and spill moves remain parallel-copy safe.
-    let overlapping = moves
-        .iter()
-        .any(|(source, _)| moves.iter().any(|(_, destination)| destination == source));
-    if overlapping {
-        for (source, _) in &moves {
-            match source {
-                crate::Location::Register(register) => emit(
-                    assembler,
-                    Inst::MovRR(
-                        ENTRY,
-                        ncl_asm_x86_64::Reg::from_id(
-                            u8::try_from(*register).map_err(|_| CodegenError::FrameOverflow)?,
-                        )
-                        .ok_or(CodegenError::FrameOverflow)?,
-                    ),
-                )?,
-                crate::Location::Spill(spill) => emit(
-                    assembler,
-                    Inst::MovRM(
-                        ENTRY,
-                        slot_mem_of(
-                            slots
-                                .spill_base
-                                .checked_add(*spill)
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                    ),
-                )?,
-            }
-            emit(assembler, Inst::Push(ENTRY))?;
-        }
-        for (_, destination) in moves.iter().rev() {
-            emit(assembler, Inst::Pop(ENTRY))?;
-            match destination {
-                crate::Location::Register(register) => emit(
-                    assembler,
-                    Inst::MovRR(
-                        ncl_asm_x86_64::Reg::from_id(
-                            u8::try_from(*register).map_err(|_| CodegenError::FrameOverflow)?,
-                        )
-                        .ok_or(CodegenError::FrameOverflow)?,
-                        ENTRY,
-                    ),
-                )?,
-                crate::Location::Spill(spill) => emit(
-                    assembler,
-                    Inst::MovMR(
-                        slot_mem_of(
-                            slots
-                                .spill_base
-                                .checked_add(*spill)
-                                .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                        ENTRY,
-                    ),
-                )?,
-            }
-        }
-        return Ok(());
-    }
-    for (argument, parameter) in args.iter().zip(params) {
-        if slots.location(*argument)? != slots.location(parameter.value)? {
-            load_slot(assembler, slots, *argument, ENTRY)?;
-            store_slot(assembler, slots, parameter.value, ENTRY)?;
-        }
-    }
-    Ok(())
 }

@@ -5,7 +5,6 @@ use crate::{
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
-
 fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     let mut maximum = 0_usize;
     for block in &function.blocks {
@@ -51,7 +50,6 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     }
     u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
 }
-
 #[path = "target_x86_64_lowering.rs"]
 mod lowering;
 use lowering::{
@@ -60,13 +58,10 @@ use lowering::{
     lower_pending_check, lower_return_or_throw, move_args, slots, store_slot,
 };
 
-/// Offset of the frame header's function-object word from the frame pointer.
+/// Frame-header offsets and inherited bytes.
 const HEADER_FUNCTION_OBJECT_OFFSET: i32 = 16;
-/// Offset of the frame header's flags word from the frame pointer.
 const HEADER_FLAGS_OFFSET: i32 = 24;
-/// Bytes of frame header materialised by `push rbp` and the caller's return address.
 const INHERITED_HEADER_BYTES: u32 = 16;
-
 fn add_map(
     maps: &mut Vec<SafepointMap>,
     pc: u32,
@@ -109,7 +104,6 @@ fn add_map(
         .map(|map| maps.push(map))
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
-
 fn spill_arguments(
     assembler: &mut Assembler,
     argument_words: u32,
@@ -147,13 +141,6 @@ fn spill_arguments(
     }
     Ok(())
 }
-
-/// Connects the ABI-delivered incoming argument registers/stack words to the
-/// register-allocated location of each `ValueId(index)` that `OpKind::LoadArg`
-/// reads, mirroring aarch64's `initialize_arguments`
-/// (`target_aarch64_support.rs`). `spill_arguments` above writes the same
-/// incoming values to a fixed, unrelated frame-relative slot that nothing
-/// else reads; this is the piece that was missing on x86-64.
 fn initialize_arguments(
     assembler: &mut Assembler,
     function: &Function,
@@ -197,13 +184,11 @@ fn initialize_arguments(
     }
     Ok(())
 }
-
 fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
     emit(assembler, Inst::Ret)
 }
-
 fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
@@ -219,13 +204,10 @@ fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
     emit(assembler, Inst::BinRI(BinOp::Sub, Reg::Rsp, 16))?;
     emit(assembler, Inst::JmpReg(ENTRY))
 }
-
 /// Lowers an IR function to x86-64 machine code using the native frame ABI.
 ///
 /// # Errors
-///
-/// Returns [`CodegenError`] when the function cannot be represented by the
-/// fixed frame and instruction templates.
+/// Returns an error when the function exceeds the native frame ABI limits.
 #[allow(clippy::too_many_lines)]
 pub fn compile_function_x86_64(
     function: &Function,

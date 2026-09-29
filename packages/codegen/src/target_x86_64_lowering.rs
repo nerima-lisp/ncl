@@ -6,6 +6,10 @@ use crate::{
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};
 
+#[path = "target_x86_64_lowering/moves.rs"]
+mod moves;
+pub(super) use moves::move_args;
+
 /// Register carrying the callee function object on entry, stored as frame header word 2.
 pub(super) const FUNCTION_OBJECT: Reg = SCRATCH[0];
 /// Scratch register holding the indirect call target.
@@ -478,4 +482,4 @@ pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
 
-pub(super) use ops::{lower_op, move_args};
+pub(super) use ops::lower_op;

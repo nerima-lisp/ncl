@@ -32,8 +32,17 @@ fn expand_assert_values(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
         let test: Handle<'_, Word> = scope.root(Local::from_word(
             **roots.first().ok_or(ObjectError::TypeError)?,
         ));
-        let datum = roots.get(2).map_or(Word::NIL, |value| **value);
-        let error = rooted_form(&mut scope, runtime, "ERROR", &[datum])?;
+        let error_values = roots
+            .iter()
+            .skip(2)
+            .map(|value| **value)
+            .collect::<Vec<_>>();
+        let error_values = if error_values.is_empty() {
+            vec![Word::NIL]
+        } else {
+            error_values
+        };
+        let error = rooted_form(&mut scope, runtime, "ERROR", &error_values)?;
         let test_word = scope.get(test).as_word();
         let error_word = scope.get(error).as_word();
         let result = rooted_form(

@@ -28,6 +28,14 @@ fn assert_returns_nil_for_a_true_test() {
 }
 
 #[test]
+fn assert_preserves_condition_datum_and_arguments() {
+    let source = "(block done (handler-bind ((error (lambda (condition) (return-from done (list (simple-condition-format-control condition) (simple-condition-format-arguments condition))))) (assert nil nil \"asserted: ~A\" 42))))";
+    let (status, stdout, stderr) = eval(source);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout.trim(), "(\"asserted: ~A\" (42))");
+}
+
+#[test]
 fn multiple_value_setq_assigns_and_returns_primary_value() {
     let (status, stdout, stderr) =
         eval("(progn (setq a 0 b 0) (multiple-value-setq (a b) (values 7 9)) (list a b))");

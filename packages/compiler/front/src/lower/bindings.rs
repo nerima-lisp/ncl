@@ -17,6 +17,8 @@ use super::super::function::FunctionLowerer;
 use super::Context;
 use super::params::{bind_captures, bind_let, bind_required, lambda_params};
 
+type RecursiveCaptures = (Vec<(SymbolRef, Slot)>, Vec<SymbolRef>);
+
 impl Context<'_> {
     pub(super) fn lower_progv(
         &mut self,
@@ -236,6 +238,10 @@ impl Context<'_> {
         Ok(value)
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "keeps recursive closure construction together"
+    )]
     fn lower_recursive_functions(
         &mut self,
         f: &mut FunctionLowerer,
@@ -247,7 +253,7 @@ impl Context<'_> {
             .map(|_| self.module.fresh_function())
             .collect::<Vec<FunctionId>>();
         let captures = Self::recursive_captures(f, definitions);
-        for ((definition, id), function_captures) in definitions
+        for ((definition, id), (variable_captures, function_captures)) in definitions
             .iter()
             .zip(ids.iter().copied())
             .zip(captures.iter())
@@ -255,26 +261,34 @@ impl Context<'_> {
             let params = lambda_params(&definition.lambda.lambda_list)?;
             let mut nested =
                 FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
-            bind_captures(&mut nested, function_captures)?;
-            bind_required(
-                &mut nested,
-                &definition.lambda.lambda_list,
-                1,
-            )?;
+            bind_captures(&mut nested, variable_captures)?;
+            for (index, name) in function_captures.iter().enumerate() {
+                let value = nested.one(
+                    OpKind::LoadCapture {
+                        index: u8::try_from(variable_captures.len() + index).map_err(|_| {
+                            LowerError::Ir {
+                                detail: "function capture index does not fit u8".to_owned(),
+                            }
+                        })?,
+                    },
+                    Ty::Word,
+                )?;
+                nested.env().bind_function(FunctionEntry {
+                    name: name.clone(),
+                    callee: value,
+                });
+            }
+            bind_required(&mut nested, &definition.lambda.lambda_list, 1)?;
             let mut child = Context::with_targets(self.module, self.targets.clone());
-            child.bind_optional(
-                &mut nested,
-                &definition.lambda.lambda_list,
-                1,
-            )?;
+            child.bind_optional(&mut nested, &definition.lambda.lambda_list, 1)?;
             child.bind_rest_and_keys(&mut nested, &definition.lambda.lambda_list)?;
             child.bind_aux(&mut nested, &definition.lambda.lambda_list)?;
-            for ((target, target_id), target_captures) in definitions
+            for ((target, target_id), (target_variables, target_functions)) in definitions
                 .iter()
                 .zip(ids.iter().copied())
                 .zip(captures.iter())
             {
-                let capture_values = target_captures
+                let mut capture_values = target_variables
                     .iter()
                     .map(|(name, _slot)| match nested.env().lookup_variable(name) {
                         Some(Slot::Value(value)) => Ok(value),
@@ -290,6 +304,22 @@ impl Context<'_> {
                         }),
                     })
                     .collect::<Result<Vec<_>, _>>()?;
+                capture_values.extend(
+                    target_functions
+                        .iter()
+                        .map(|name| {
+                            nested
+                                .env()
+                                .lookup_function(name)
+                                .map(|entry| entry.callee)
+                                .ok_or_else(|| LowerError::Ir {
+                                    detail: format!(
+                                        "recursive function capture is unavailable: {name}"
+                                    ),
+                                })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
                 let entry = nested.word_constant(Constant::FunctionEntry(target_id))?;
                 let closure = nested.one(
                     OpKind::MakeClosure {
@@ -312,7 +342,7 @@ impl Context<'_> {
             child.module.push_function(function);
 
             let entry = f.word_constant(Constant::FunctionEntry(id))?;
-            let capture_values = function_captures
+            let mut capture_values = variable_captures
                 .iter()
                 .map(|(_, slot)| match slot {
                     Slot::Value(value) => Ok(*value),
@@ -325,6 +355,21 @@ impl Context<'_> {
                     ),
                 })
                 .collect::<Result<Vec<_>, LowerError>>()?;
+            capture_values.extend(
+                function_captures
+                    .iter()
+                    .map(|name| {
+                        f.env()
+                            .lookup_function(name)
+                            .map(|entry| entry.callee)
+                            .ok_or_else(|| LowerError::Ir {
+                                detail: format!(
+                                    "recursive function capture is unavailable: {name}"
+                                ),
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
             let closure = f.one(
                 OpKind::MakeClosure {
                     entry,
@@ -345,7 +390,7 @@ impl Context<'_> {
     fn recursive_captures(
         f: &mut FunctionLowerer,
         definitions: &[crate::ast::LocalFunction],
-    ) -> Vec<Vec<(SymbolRef, Slot)>> {
+    ) -> Vec<RecursiveCaptures> {
         let local_indices = definitions
             .iter()
             .enumerate()
@@ -355,10 +400,11 @@ impl Context<'_> {
             .iter()
             .map(|definition| capture::free_names(&definition.lambda).variables)
             .collect::<Vec<_>>();
-        let references = definitions
+        let mut function_names = definitions
             .iter()
             .map(|definition| capture::free_names(&definition.lambda).functions)
             .collect::<Vec<_>>();
+        let references = function_names.clone();
         let mut changed = true;
         while changed {
             changed = false;
@@ -376,19 +422,40 @@ impl Context<'_> {
                         }
                     }
                 }
+                for name in names {
+                    let Some(&target) = local_indices.get(name) else {
+                        continue;
+                    };
+                    let inherited = function_names[target].clone();
+                    if let Some(current) = function_names.get_mut(index) {
+                        for inherited_name in inherited {
+                            changed |= current.insert(inherited_name);
+                        }
+                    }
+                }
             }
         }
         capture_names
             .iter()
-            .map(|names| {
-                names
-                    .iter()
-                    .filter_map(|name| {
-                        f.env()
-                            .lookup_variable(name)
-                            .map(|slot| (name.clone(), slot))
-                    })
-                    .collect()
+            .zip(function_names)
+            .map(|(names, functions)| {
+                (
+                    names
+                        .iter()
+                        .filter_map(|name| {
+                            f.env()
+                                .lookup_variable(name)
+                                .map(|slot| (name.clone(), slot))
+                        })
+                        .collect(),
+                    functions
+                        .into_iter()
+                        .filter(|name| {
+                            !local_indices.contains_key(name)
+                                && f.env().lookup_function(name).is_some()
+                        })
+                        .collect(),
+                )
             })
             .collect()
     }

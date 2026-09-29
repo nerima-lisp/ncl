@@ -101,8 +101,8 @@ impl Context<'_> {
             | Expr::SymbolMacrolet { body, .. } => self.lower_body(f, body),
             Expr::Flet {
                 definitions, body, ..
-            } => self.lower_local_functions(f, definitions, body, false),
-            Expr::Labels {
+            }
+            | Expr::Labels {
                 definitions, body, ..
             } => self.lower_local_functions(f, definitions, body, true),
         }
@@ -363,15 +363,20 @@ impl Context<'_> {
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
         bind_captures(&mut nested, captures)?;
         for (index, (name, _)) in function_captures.iter().enumerate() {
-            let value = nested.one(OpKind::LoadCapture {
-                index: u8::try_from(captures.len() + index).map_err(|_| LowerError::Ir {
-                    detail: "function capture index does not fit u8".to_owned(),
-                })?,
-            }, Ty::Word)?;
-            nested.env().bind_function(super::super::env::FunctionEntry {
-                name: name.clone(),
-                callee: value,
-            });
+            let value = nested.one(
+                OpKind::LoadCapture {
+                    index: u8::try_from(captures.len() + index).map_err(|_| LowerError::Ir {
+                        detail: "function capture index does not fit u8".to_owned(),
+                    })?,
+                },
+                Ty::Word,
+            )?;
+            nested
+                .env()
+                .bind_function(super::super::env::FunctionEntry {
+                    name: name.clone(),
+                    callee: value,
+                });
         }
         bind_required(&mut nested, &lambda.lambda_list, 1)?;
         let mut child = Context::with_targets(self.module, self.targets.clone());

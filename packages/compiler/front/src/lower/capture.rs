@@ -254,10 +254,8 @@ fn collect_free(
             for definition in definitions {
                 collect_lambda_free(&definition.lambda, bound_variables, bound_functions, free);
             }
-            let names = definitions
-                .iter()
-                .map(|definition| definition.name.clone())
-                .collect::<Vec<_>>();
+            let mut names = bound_functions.to_vec();
+            names.extend(definitions.iter().map(|definition| definition.name.clone()));
             for form in body {
                 collect_free(form, bound_variables, &names, free);
             }

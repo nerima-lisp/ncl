@@ -1,6 +1,6 @@
 use super::{
     FunctionObject, NativeCallResult, NativeInvocation, ObjectRuntime, ThreadContext, Word,
-    error_result, ok_result, record_boundary_error,
+    error_result, ok_result,
 };
 
 /// Record an error at the native boundary without retaining a transient exit.

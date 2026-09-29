@@ -139,6 +139,14 @@ fn defstruct_slot_spec<'a>(
     Ok((slot, initform, read_only))
 }
 
+fn defstruct_is_nil(ctx: &ThreadContext, value: Word) -> Result<bool, ObjectError> {
+    if value == Word::NIL {
+        return Ok(true);
+    }
+    Ok(matches!(ncl_object::classify_object(ctx, value), ObjectRef::Symbol(_))
+        && symbol_name_string(ctx, value)? == "NIL")
+}
+
 #[allow(clippy::too_many_lines)]
 fn defstruct_macro_builtin(
     ctx: &mut ThreadContext,
@@ -155,6 +163,8 @@ fn defstruct_macro_builtin(
     let mut conc_name = None;
     let mut predicate_name = None;
     let mut copier_name = None;
+    let mut predicate_disabled = false;
+    let mut copier_disabled = false;
     let (name, mut option_index) = if scope.get(name_form).as_word().is_cons() {
         let header = macro_list_to_handles(&mut scope, name_form)?;
         let name = *header.as_slice().first().ok_or(ObjectError::TypeError)?;
@@ -181,13 +191,15 @@ fn defstruct_macro_builtin(
                     }
                 }
             } else if key_name == ":PREDICATE" || key_name == "PREDICATE" {
-                predicate_name = if scope.get(value).as_word() == Word::NIL {
+                predicate_name = if defstruct_is_nil(scope.context(), scope.get(value).as_word())? {
+                    predicate_disabled = true;
                     None
                 } else {
                     Some(symbol_name_string(scope.context(), scope.get(value).as_word())?)
                 };
             } else if key_name == ":COPIER" || key_name == "COPIER" {
-                copier_name = if scope.get(value).as_word() == Word::NIL {
+                copier_name = if defstruct_is_nil(scope.context(), scope.get(value).as_word())? {
+                    copier_disabled = true;
                     None
                 } else {
                     Some(symbol_name_string(scope.context(), scope.get(value).as_word())?)
@@ -227,16 +239,28 @@ fn defstruct_macro_builtin(
         option_index += 1;
     }
     let mut conc_name = conc_name.unwrap_or_else(|| format!("{name_text}-"));
-    let mut predicate_name = predicate_name.or_else(|| Some(format!("{name_text}-P")));
-    let mut copier_name = copier_name.or_else(|| Some(format!("COPY-{name_text}")));
+    let mut predicate_name = predicate_name.unwrap_or_else(|| format!("{name_text}-P"));
+    let mut copier_name = copier_name.unwrap_or_else(|| format!("COPY-{name_text}"));
     let mut index = option_index;
     while let Some(option) = parts.as_slice().get(index).copied() {
         let option_name = symbol_name_string(scope.context(), scope.get(option).as_word())?;
         let value = parts.as_slice().get(index + 1).copied().ok_or(ObjectError::TypeError)?;
         match option_name.as_str() {
             ":CONC-NAME" | "CONC-NAME" => conc_name = symbol_name_string(scope.context(), scope.get(value).as_word())?,
-            ":PREDICATE" | "PREDICATE" => predicate_name = if scope.get(value).as_word() == Word::NIL { None } else { Some(symbol_name_string(scope.context(), scope.get(value).as_word())?) },
-            ":COPIER" | "COPIER" => copier_name = if scope.get(value).as_word() == Word::NIL { None } else { Some(symbol_name_string(scope.context(), scope.get(value).as_word())?) },
+            ":PREDICATE" | "PREDICATE" => {
+                if defstruct_is_nil(scope.context(), scope.get(value).as_word())? {
+                    predicate_disabled = true;
+                } else {
+                    predicate_name = symbol_name_string(scope.context(), scope.get(value).as_word())?;
+                }
+            }
+            ":COPIER" | "COPIER" => {
+                if defstruct_is_nil(scope.context(), scope.get(value).as_word())? {
+                    copier_disabled = true;
+                } else {
+                    copier_name = symbol_name_string(scope.context(), scope.get(value).as_word())?;
+                }
+            }
             ":INCLUDE" | "INCLUDE" => {
                 include = scope.get(value).as_word();
                 if include != Word::NIL && include.is_cons() {
@@ -296,13 +320,11 @@ fn defstruct_macro_builtin(
     let defsetf = scope.intern(runtime, COMMON_LISP, "DEFSETF")?;
     let key_marker = scope.intern(runtime, COMMON_LISP, "&KEY")?;
     let make = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-MAKE")?;
-    let predicate = predicate_name
-        .as_deref()
-        .map(|name| scope.intern(runtime, &definition_package, name))
+    let predicate = (!predicate_disabled)
+        .then(|| scope.intern(runtime, &definition_package, &predicate_name))
         .transpose()?;
-    let copier = copier_name
-        .as_deref()
-        .map(|name| scope.intern(runtime, &definition_package, name))
+    let copier = (!copier_disabled)
+        .then(|| scope.intern(runtime, &definition_package, &copier_name))
         .transpose()?;
     let mut effective_names = Vec::new();
     for slot in 0..effective_count {

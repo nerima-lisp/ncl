@@ -166,7 +166,7 @@ impl Runtime {
     }
 
     /// Enable or disable collection before each allocation.
-    pub fn set_gc_stress(&mut self, on: bool) {
+    pub const fn set_gc_stress(&mut self, on: bool) {
         self.context.set_gc_stress(on);
     }
 

@@ -9,8 +9,8 @@
 use super::{args, form};
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, string_length, string_ref, symbol_name, symbol_package,
+    classify_object, string_length, string_ref, symbol_name, symbol_package, BuiltinArgs,
+    MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -433,20 +433,13 @@ pub(crate) fn expand_restart_case(
                                                                 }
                                                                 let mut tagbody =
                                                                     Vec::with_capacity(
-                                                                        1 + clauses.len() * 2,
+                                                                        clauses.len() * 2 + 1,
                                                                     );
+                                                                tagbody
+                                                                    .extend_from_slice(clause_tags);
                                                                 tagbody.push(*restart_bind);
-                                                                for (index, tag) in
-                                                                    clause_tags.iter().enumerate()
-                                                                {
-                                                                    tagbody.push(*tag);
-                                                                    tagbody.push(
-                                                                        *dispatch
-                                                                            .get(index)
-                                                                            .ok_or(
-                                                                                ObjectError::Layout,
-                                                                            )?,
-                                                                    );
+                                                                for dispatch_form in dispatch {
+                                                                    tagbody.push(*dispatch_form);
                                                                 }
                                                                 let tagbody = form(
                                                                     ctx, runtime, "TAGBODY",

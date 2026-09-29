@@ -103,6 +103,16 @@ const PROBES: &[Probe] = &[
         source: "(typecase nil (integer 11) (otherwise 12))",
         expected: "12",
     },
+    Probe {
+        name: "restart-case-value",
+        source: "(restart-case 7 (retry () 42))",
+        expected: "7",
+    },
+    Probe {
+        name: "restart-case-go",
+        source: "(restart-case (invoke-restart 'retry) (retry () 42))",
+        expected: "42",
+    },
 ];
 
 const XFAILS: &[XFail] = &[

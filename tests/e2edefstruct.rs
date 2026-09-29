@@ -20,6 +20,15 @@ fn assert_eval(source: &str, expected: &str) {
     );
 }
 
+fn assert_error(source: &str, expected: &str) {
+    let output = run_ncl(source);
+    assert_ne!(output.status.code(), Some(0), "{source}: {output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(expected),
+        "{source}: {output:?}"
+    );
+}
+
 #[test]
 fn defstruct_constructor_accessors_predicate_copy_and_print() {
     assert_eval(
@@ -65,5 +74,13 @@ fn defstruct_read_only_and_disabled_names_are_respected() {
     assert_eval(
         "(progn (defstruct (readonly (:predicate nil) (:copier nil)) (x 1 :read-only t)) (list (fboundp 'readonly-p) (fboundp 'copy-readonly) (readonly-x (make-readonly :x 4))))",
         "(NIL NIL 4)",
+    );
+}
+
+#[test]
+fn defstruct_read_only_does_not_define_a_setf_writer() {
+    assert_error(
+        "(progn (defstruct readonly (x 1 :read-only t)) (let ((p (make-readonly))) (setf (readonly-x p) 9)))",
+        "UndefinedFunction",
     );
 }

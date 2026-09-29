@@ -36,5 +36,7 @@ const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];
 include!("lib_helpers.rs");
 include!("lib_dispatch.rs");
 include!("lib_macros.rs");
+include!("lib_defstruct.rs");
+include!("lib_structures.rs");
 include!("lib_core.rs");
 include!("lib_registration.rs");

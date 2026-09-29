@@ -181,10 +181,9 @@ impl Runtime {
         layout: crate::StructureLayout,
         expected: crate::StructureLayout,
     ) -> bool {
-        let parents = self
-            .structure_layout_parents
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Ok(parents) = self.structure_layout_parents.lock() else {
+            return false;
+        };
         let mut current = Some(layout.into());
         let mut result = false;
         while let Some(id) = current {

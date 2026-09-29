@@ -47,9 +47,37 @@ fn defun_nested_function_entries_are_linked_before_execution() {
             "(progn (defun labels-flet-calls-outer () (labels ((outer (x) (if (= x 0) 99 (flet ((inner () (outer 0))) (inner))))) (outer 1))) (labels-flet-calls-outer))",
             "99",
         ),
+        (
+            "(labels ((outer (x) (if (= x 0) 99 0))) (flet ((maker () (lambda () (outer 0)))) (funcall (maker))))",
+            "99",
+        ),
+        (
+            "(progn (defun flet-labels-calls-outer (n) (flet ((outer (x) (if (= x 0) 99 (labels ((inner () (outer 0))) (inner))))) (outer n))) (flet-labels-calls-outer 1))",
+            "99",
+        ),
+        (
+            "(progn (defun transitive-label-capture (n) (let ((x n)) (labels ((first (n) (if (= n 0) x (second (- n 1)))) (second (n) (if (= n 0) 0 (third (- n 1)) )) (third (n) (if (= n 0) 1 (first (- n 1))))) (first 3)))) (transitive-label-capture 41))",
+            "41",
+        ),
+        (
+            "(progn (defun three-lambda-call (n) (flet ((outer (x) (+ x 1))) (funcall (lambda () (funcall (lambda () (funcall (lambda () (outer n))))))))) (three-lambda-call 41))",
+            "42",
+        ),
+        (
+            "(progn (defun sharp-f-escape (n) (let ((f (flet ((outer (x) (+ x 1))) #'outer))) (funcall f n))) (sharp-f-escape 41))",
+            "42",
+        ),
+        (
+            "(progn (defun gc-stress-closure-case (n) (if (= n 0) 42 (let ((f (lambda () (gc-stress-closure-case (- n 1))))) (funcall f)))) (gc-stress-closure-case 100))",
+            "42",
+        ),
     ] {
         let output = run_ncl(source);
         assert!(output.status.success(), "{source}: {output:?}");
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            expected,
+            "{source}"
+        );
     }
 }

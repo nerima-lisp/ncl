@@ -1,6 +1,6 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use ncl_ir::{
     Constant, Convert, FunctionId, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator,
@@ -14,8 +14,6 @@ use super::super::capture;
 use super::super::env::{FunctionEntry, Slot};
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
-use super::super::function_refs;
-use super::super::lambda;
 use super::Context;
 use super::params::{bind_captures, bind_let, bind_required, lambda_params};
 
@@ -227,9 +225,7 @@ impl Context<'_> {
             return self.lower_recursive_functions(f, definitions, body);
         }
         for definition in definitions {
-            let captures = lambda::collect_captures(f, &definition.lambda);
             let closure = self.lower_lambda_value(f, &definition.lambda)?;
-            let _ = captures;
             f.env().bind_function(FunctionEntry {
                 name: definition.name.clone(),
                 callee: closure,
@@ -350,10 +346,6 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         definitions: &[crate::ast::LocalFunction],
     ) -> Vec<Vec<(SymbolRef, Slot)>> {
-        let local_names = definitions
-            .iter()
-            .map(|definition| definition.name.clone())
-            .collect::<BTreeSet<_>>();
         let local_indices = definitions
             .iter()
             .enumerate()
@@ -361,13 +353,11 @@ impl Context<'_> {
             .collect::<BTreeMap<_, _>>();
         let mut capture_names = definitions
             .iter()
-            .map(|definition| capture::free_variables(&definition.lambda))
+            .map(|definition| capture::free_names(&definition.lambda).variables)
             .collect::<Vec<_>>();
         let references = definitions
             .iter()
-            .map(|definition| {
-                function_refs::local_function_references(&definition.lambda, &local_names)
-            })
+            .map(|definition| capture::free_names(&definition.lambda).functions)
             .collect::<Vec<_>>();
         let mut changed = true;
         while changed {

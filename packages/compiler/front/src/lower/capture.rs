@@ -39,6 +39,13 @@ pub(super) fn analyze(forms: &[Expr]) -> Analysis {
     analysis
 }
 
+/// Names free in a form, split by Common Lisp's two lexical namespaces.
+#[derive(Clone, Debug, Default)]
+pub(super) struct FreeNames {
+    pub(super) variables: BTreeSet<SymbolRef>,
+    pub(super) functions: BTreeSet<SymbolRef>,
+}
+
 /// The variables a lambda binds in its own body.
 fn lambda_bindings(list: &LambdaList) -> Vec<SymbolRef> {
     let mut names = Vec::new();
@@ -72,19 +79,30 @@ fn lambda_bindings(list: &LambdaList) -> Vec<SymbolRef> {
 }
 
 /// The free variables of a lambda expression.
-pub(super) fn free_variables(lambda: &LambdaExpr) -> BTreeSet<SymbolRef> {
-    let mut bound = lambda_bindings(&lambda.lambda_list);
-    let mut free = BTreeSet::new();
+pub(super) fn free_names(lambda: &LambdaExpr) -> FreeNames {
+    let mut bound_variables = lambda_bindings(&lambda.lambda_list);
+    let bound_functions = Vec::new();
+    let mut free = FreeNames::default();
     for form in &lambda.body {
-        collect_free(form, &mut bound, &mut free);
+        collect_free(form, &mut bound_variables, &bound_functions, &mut free);
     }
     free
 }
 
-fn collect_lambda_free(lambda: &LambdaExpr, bound: &[SymbolRef], free: &mut BTreeSet<SymbolRef>) {
-    for name in free_variables(lambda) {
-        if !bound.contains(&name) {
-            free.insert(name);
+fn collect_lambda_free(
+    lambda: &LambdaExpr,
+    bound_variables: &[SymbolRef],
+    bound_functions: &[SymbolRef],
+    free: &mut FreeNames,
+) {
+    for name in free_names(lambda).variables {
+        if !bound_variables.contains(&name) {
+            free.variables.insert(name);
+        }
+    }
+    for name in free_names(lambda).functions {
+        if !bound_functions.contains(&name) {
+            free.functions.insert(name);
         }
     }
 }
@@ -93,12 +111,17 @@ fn collect_lambda_free(lambda: &LambdaExpr, bound: &[SymbolRef], free: &mut BTre
     clippy::too_many_lines,
     reason = "one arm per frozen AST variant keeps the walk auditable"
 )]
-fn collect_free(expr: &Expr, bound: &mut Vec<SymbolRef>, free: &mut BTreeSet<SymbolRef>) {
+fn collect_free(
+    expr: &Expr,
+    bound_variables: &mut Vec<SymbolRef>,
+    bound_functions: &[SymbolRef],
+    free: &mut FreeNames,
+) {
     match expr {
         Expr::Constant(_) | Expr::Go { .. } => {}
         Expr::Variable(name) => {
-            if !bound.contains(name) {
-                free.insert(name.clone());
+            if !bound_variables.contains(name) {
+                free.variables.insert(name.clone());
             }
         }
         Expr::Call {
@@ -106,27 +129,35 @@ fn collect_free(expr: &Expr, bound: &mut Vec<SymbolRef>, free: &mut BTreeSet<Sym
             arguments,
         } => {
             if let Operator::Lambda(lambda) = operator {
-                collect_lambda_free(lambda, bound, free);
+                collect_lambda_free(lambda, bound_variables, bound_functions, free);
+            } else if let Operator::Name(name) = operator
+                && !bound_functions.contains(name)
+            {
+                free.functions.insert(name.clone());
             }
             for argument in arguments {
-                collect_free(argument, bound, free);
+                collect_free(argument, bound_variables, bound_functions, free);
             }
         }
-        Expr::Function(designator) => {
-            if let FunctionDesignator::Lambda(lambda) = designator {
-                collect_lambda_free(lambda, bound, free);
+        Expr::Function(designator) => match designator {
+            FunctionDesignator::Name(name) if !bound_functions.contains(name) => {
+                free.functions.insert(name.clone());
             }
-        }
-        Expr::Lambda(lambda) => collect_lambda_free(lambda, bound, free),
+            FunctionDesignator::Lambda(lambda) => {
+                collect_lambda_free(lambda, bound_variables, bound_functions, free);
+            }
+            FunctionDesignator::Name(_) => {}
+        },
+        Expr::Lambda(lambda) => collect_lambda_free(lambda, bound_variables, bound_functions, free),
         Expr::If {
             test,
             then,
             otherwise,
         } => {
-            collect_free(test, bound, free);
-            collect_free(then, bound, free);
+            collect_free(test, bound_variables, bound_functions, free);
+            collect_free(then, bound_variables, bound_functions, free);
             if let Some(otherwise) = otherwise {
-                collect_free(otherwise, bound, free);
+                collect_free(otherwise, bound_variables, bound_functions, free);
             }
         }
         Expr::Progn(forms)
@@ -136,108 +167,118 @@ fn collect_free(expr: &Expr, bound: &mut Vec<SymbolRef>, free: &mut BTreeSet<Sym
         | Expr::Macrolet { body: forms, .. }
         | Expr::SymbolMacrolet { body: forms, .. } => {
             for form in forms {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
         }
         Expr::ReturnFrom { value, .. } => {
             if let Some(value) = value {
-                collect_free(value, bound, free);
+                collect_free(value, bound_variables, bound_functions, free);
             }
         }
         Expr::Tagbody(items) => {
             for item in items {
                 if let TagbodyItem::Form(form) = item {
-                    collect_free(form, bound, free);
+                    collect_free(form, bound_variables, bound_functions, free);
                 }
             }
         }
         Expr::Catch { tag, body } => {
-            collect_free(tag, bound, free);
+            collect_free(tag, bound_variables, bound_functions, free);
             for form in body {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
         }
         Expr::Throw { tag, value } => {
-            collect_free(tag, bound, free);
-            collect_free(value, bound, free);
+            collect_free(tag, bound_variables, bound_functions, free);
+            collect_free(value, bound_variables, bound_functions, free);
         }
         Expr::UnwindProtect { protected, cleanup } => {
-            collect_free(protected, bound, free);
+            collect_free(protected, bound_variables, bound_functions, free);
             for form in cleanup {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
         }
         Expr::Let { bindings, body, .. } => {
             for binding in bindings {
                 if let Some(value) = &binding.value {
-                    collect_free(value, bound, free);
+                    collect_free(value, bound_variables, bound_functions, free);
                 }
             }
-            let mark = bound.len();
-            bound.extend(bindings.iter().map(|binding| binding.name.clone()));
+            let mark = bound_variables.len();
+            bound_variables.extend(bindings.iter().map(|binding| binding.name.clone()));
             for form in body {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
-            bound.truncate(mark);
+            bound_variables.truncate(mark);
         }
         Expr::Progv {
             symbols,
             values,
             body,
         } => {
-            collect_free(symbols, bound, free);
-            collect_free(values, bound, free);
+            collect_free(symbols, bound_variables, bound_functions, free);
+            collect_free(values, bound_variables, bound_functions, free);
             for form in body {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
         }
         Expr::Setq(pairs) => {
             for (name, value) in pairs {
-                if !bound.contains(name) {
-                    free.insert(name.clone());
+                if !bound_variables.contains(name) {
+                    free.variables.insert(name.clone());
                 }
-                collect_free(value, bound, free);
+                collect_free(value, bound_variables, bound_functions, free);
             }
         }
         Expr::MultipleValueCall {
             function,
             arguments,
         } => {
-            collect_free(function, bound, free);
+            collect_free(function, bound_variables, bound_functions, free);
             for argument in arguments {
-                collect_free(argument, bound, free);
+                collect_free(argument, bound_variables, bound_functions, free);
             }
         }
         Expr::MultipleValueProg1 { first, forms } => {
-            collect_free(first, bound, free);
+            collect_free(first, bound_variables, bound_functions, free);
             for form in forms {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, bound_functions, free);
             }
         }
         Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {
-            collect_free(value, bound, free);
+            collect_free(value, bound_variables, bound_functions, free);
         }
         Expr::Flet {
             definitions, body, ..
-        }
-        | Expr::Labels {
-            definitions, body, ..
         } => {
             for definition in definitions {
-                collect_lambda_free(&definition.lambda, bound, free);
+                collect_lambda_free(&definition.lambda, bound_variables, bound_functions, free);
             }
-            let mark = bound.len();
-            bound.extend(definitions.iter().map(|definition| definition.name.clone()));
+            let names = definitions
+                .iter()
+                .map(|definition| definition.name.clone())
+                .collect::<Vec<_>>();
             for form in body {
-                collect_free(form, bound, free);
+                collect_free(form, bound_variables, &names, free);
             }
-            bound.truncate(mark);
+        }
+        Expr::Labels {
+            definitions, body, ..
+        } => {
+            let mut names = bound_functions.to_vec();
+            names.extend(definitions.iter().map(|definition| definition.name.clone()));
+            for definition in definitions {
+                collect_lambda_free(&definition.lambda, bound_variables, &names, free);
+            }
+            for form in body {
+                collect_free(form, bound_variables, &names, free);
+            }
         }
     }
 }
 
 fn scan_lambda(lambda: &LambdaExpr, bound: &mut Vec<SymbolRef>, analysis: &mut Analysis) {
-    for name in free_variables(lambda) {
+    for name in free_names(lambda).variables {
         if !bound.contains(&name) {
             analysis.captured.insert(name);
         }
@@ -377,8 +418,6 @@ fn scan(expr: &Expr, bound: &mut Vec<SymbolRef>, analysis: &mut Analysis) {
         | Expr::Labels {
             definitions, body, ..
         } => {
-            let mark = bound.len();
-            bound.extend(definitions.iter().map(|definition| definition.name.clone()));
             for definition in definitions {
                 scan(
                     &Expr::Lambda(Box::new(definition.lambda.clone())),
@@ -389,7 +428,6 @@ fn scan(expr: &Expr, bound: &mut Vec<SymbolRef>, analysis: &mut Analysis) {
             for form in body {
                 scan(form, bound, analysis);
             }
-            bound.truncate(mark);
         }
     }
 }

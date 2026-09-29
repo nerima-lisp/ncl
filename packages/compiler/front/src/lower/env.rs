@@ -150,13 +150,6 @@ impl LowerEnv {
         })
     }
 
-    pub(super) fn function_names(&self) -> Vec<SymbolRef> {
-        self.scopes
-            .iter()
-            .flat_map(|scope| scope.functions.iter().map(|entry| entry.name.clone()))
-            .collect()
-    }
-
     /// Bind a block name in the innermost scope.
     pub(super) fn bind_block(&mut self, entry: BlockEntry) {
         self.current().blocks.push(entry);

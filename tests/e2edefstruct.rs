@@ -63,7 +63,7 @@ fn defstruct_include_is_a_parent_type_for_predicate_typep_and_dispatch() {
 #[test]
 fn defstruct_read_only_and_disabled_names_are_respected() {
     assert_eval(
-        "(progn (defstruct readonly (x 1 :read-only t)) (readonly-x (make-readonly)))",
-        "1",
+        "(progn (defstruct (readonly (:predicate nil) (:copier nil)) (x 1 :read-only t)) (list (fboundp 'readonly-p) (fboundp 'copy-readonly) (readonly-x (make-readonly :x 4))))",
+        "(NIL NIL 4)",
     );
 }

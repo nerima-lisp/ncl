@@ -143,6 +143,9 @@ impl Runtime {
     ///
     /// The parent relation is kept as numeric layout metadata so structure
     /// predicates do not need to retain or compare class names.
+    ///
+    /// # Errors
+    /// Returns `Layout` if a runtime registry lock is poisoned.
     pub fn register_structure_class_with_parent(
         &self,
         layout: crate::StructureLayout,
@@ -183,13 +186,16 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut current = Some(layout.into());
+        let mut result = false;
         while let Some(id) = current {
             if id == expected.into() {
-                return true;
+                result = true;
+                break;
             }
             current = parents.get(&id).copied().flatten();
         }
-        false
+        drop(parents);
+        result
     }
 
     /// Return the class associated with a structure layout, if any.

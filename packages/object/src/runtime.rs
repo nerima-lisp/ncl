@@ -185,8 +185,13 @@ impl Runtime {
             return false;
         };
         let mut current = Some(layout.into());
+        let mut visited = Vec::new();
         let mut result = false;
         while let Some(id) = current {
+            if visited.contains(&id) {
+                break;
+            }
+            visited.push(id);
             if id == expected.into() {
                 result = true;
                 break;

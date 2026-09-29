@@ -1,8 +1,7 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call,
     load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_load_capture,
-    lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
+    lower_load_capture, lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
@@ -66,22 +65,70 @@ fn load_heap_constant(
         assembler,
         Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, 16)),
     )?;
-    emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8))?;
+    load_immediate(
+        assembler,
+        ENTRY,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, FUNCTION_OBJECT, ENTRY))?;
     emit(
         assembler,
         Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, function_code_offset)),
     )?;
-    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
+    load_immediate(
+        assembler,
+        FUNCTION_OBJECT,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, ENTRY, FUNCTION_OBJECT))?;
     emit(
         assembler,
         Inst::MovRM(ENTRY, Mem::base(ENTRY, code_constants_offset)),
     )?;
-    emit(assembler, Inst::BinRI(BinOp::And, ENTRY, -8))?;
+    load_immediate(
+        assembler,
+        FUNCTION_OBJECT,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, ENTRY, FUNCTION_OBJECT))?;
     emit(
         assembler,
         Inst::MovRM(FUNCTION_OBJECT, Mem::base(ENTRY, vector_element_offset)),
     )
 }
+
+fn store_closure_capture(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    index: usize,
+    capture: ValueId,
+    slots: &ValueSlots,
+) -> Result<(), CodegenError> {
+    let offset = i32::try_from(
+        ncl_object::function_offset::CAPTURES
+            .checked_add(index)
+            .and_then(|slot| slot.checked_add(1))
+            .and_then(|slot| slot.checked_mul(8))
+            .ok_or(CodegenError::FrameOverflow)?,
+    )
+    .map_err(|_| CodegenError::FrameOverflow)?;
+    load_slot(assembler, slots, closure, FUNCTION_OBJECT)?;
+    load_slot(assembler, slots, capture, ENTRY)?;
+    load_immediate(
+        assembler,
+        RETURN_VALUE,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(
+        assembler,
+        Inst::BinRR(BinOp::And, FUNCTION_OBJECT, RETURN_VALUE),
+    )?;
+    emit(
+        assembler,
+        Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), ENTRY),
+    )
+}
+
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::E,
@@ -92,15 +139,11 @@ const fn compare_condition(op: Compare) -> Cond {
         Compare::Ge => Cond::Ge,
     }
 }
+
 /// Materialises a boolean byte into a full word, since `setcc` leaves the upper bits stale.
 fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
     emit(assembler, Inst::Setcc(condition, FUNCTION_OBJECT))?;
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
-}
-fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
-    let mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
-        .map_err(|_| CodegenError::FrameOverflow)?;
-    emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -208,7 +251,12 @@ pub fn lower_op(
             object: address, ..
         } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
-            untag_function_object(assembler)?;
+            load_immediate(
+                assembler,
+                ENTRY,
+                i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+            )?;
+            emit(assembler, Inst::BinRR(BinOp::And, FUNCTION_OBJECT, ENTRY))?;
             let offset = match &op.kind {
                 OpKind::LoadField { field, .. } => {
                     i32::try_from(field.saturating_add(1).saturating_mul(8))
@@ -231,7 +279,12 @@ pub fn lower_op(
             ..
         } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
-            untag_function_object(assembler)?;
+            load_immediate(
+                assembler,
+                ENTRY,
+                i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+            )?;
+            emit(assembler, Inst::BinRR(BinOp::And, FUNCTION_OBJECT, ENTRY))?;
             load_slot(assembler, slots, *value, ENTRY)?;
             let offset = match &op.kind {
                 OpKind::StoreField { field, .. } => {
@@ -310,20 +363,25 @@ pub fn lower_op(
             }
         }
         OpKind::MakeClosure { entry, captures } => {
-            let values = std::iter::once(*entry)
-                .chain(captures.iter().copied())
-                .collect::<Vec<_>>();
             lower_runtime_builtin(
                 assembler,
                 RuntimeFunction::MakeClosure,
-                &[],
-                &values,
+                &[ncl_sys::Word::fixnum(
+                    i64::try_from(captures.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                )
+                .bits()
+                .cast_signed()],
+                &[*entry],
                 slots,
                 abi,
             )?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
+                // No allocation or safepoint occurs before these stores, so the new object cannot move.
+                for (index, capture) in captures.iter().copied().enumerate() {
+                    store_closure_capture(assembler, result, index, capture, slots)?;
+                }
             }
         }
         OpKind::CallClosure {
@@ -331,14 +389,7 @@ pub fn lower_op(
             args,
             named_symbol,
         } => {
-            lower_closure_call(
-                assembler,
-                *closure,
-                args,
-                slots,
-                *named_symbol,
-                abi,
-            )?;
+            lower_closure_call(assembler, *closure, args, slots, *named_symbol, abi)?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;

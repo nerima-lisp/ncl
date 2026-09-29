@@ -426,7 +426,9 @@ impl Context<'_> {
                     let Some(&target) = local_indices.get(name) else {
                         continue;
                     };
-                    let inherited = function_names[target].clone();
+                    let Some(inherited) = function_names.get(target).cloned() else {
+                        continue;
+                    };
                     if let Some(current) = function_names.get_mut(index) {
                         for inherited_name in inherited {
                             changed |= current.insert(inherited_name);

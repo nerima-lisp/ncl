@@ -77,7 +77,6 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 impl std::error::Error for RuntimeError {}
-
 impl RuntimeError {
     /// Returns whether reading can continue after receiving more input.
     #[must_use]
@@ -85,7 +84,6 @@ impl RuntimeError {
         matches!(self, Self::Read(ncl_reader::ReadError::UnexpectedEof))
     }
 }
-
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
@@ -165,15 +163,9 @@ impl Runtime {
         })
     }
     /// Enables or disables collection before each allocation.
-    pub const fn set_gc_stress(&mut self, on: bool) {
-        self.context.set_gc_stress(on);
-    }
-
+    pub const fn set_gc_stress(&mut self, on: bool) { self.context.set_gc_stress(on); }
     /// Enables or disables strict forwarding checks.
-    pub fn set_strict_forwarding(&self, on: bool) {
-        self.context.set_strict_forwarding(on);
-    }
-
+    pub fn set_strict_forwarding(&self, on: bool) { self.context.set_strict_forwarding(on); }
     /// Evaluate source by compiling it to native code and invoking the entry.
     ///
     /// # Errors
@@ -189,8 +181,7 @@ impl Runtime {
     }
     /// Compile and execute a source string through the native pipeline.
     ///
-    /// The current native pipeline publishes code as it compiles it, so this
-    /// is intentionally equivalent to [`Self::eval`].
+    /// This is intentionally equivalent to [`Self::eval`].
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.

@@ -128,11 +128,11 @@ fn defstruct_slot_spec<'a>(
     let mut read_only = false;
     let mut index = 2;
     while index + 1 < fields.len() {
-        let key = fields.as_slice()[index];
-        let value = fields.as_slice()[index + 1];
+        let key = *fields.as_slice().get(index).ok_or(ObjectError::TypeError)?;
+        let value = *fields.as_slice().get(index + 1).ok_or(ObjectError::TypeError)?;
         let key_name = symbol_name_string(scope.context(), scope.get(key).as_word())?;
         if key_name == ":READ-ONLY" || key_name == "READ-ONLY" {
-            read_only = scope.get(value).as_word() != Word::NIL;
+            read_only = !defstruct_is_nil(scope.context(), scope.get(value).as_word())?;
         }
         index += 2;
     }
@@ -238,9 +238,9 @@ fn defstruct_macro_builtin(
         }
         option_index += 1;
     }
-    let mut conc_name = conc_name.unwrap_or_else(|| format!("{name_text}-"));
-    let mut predicate_name = predicate_name.unwrap_or_else(|| format!("{name_text}-P"));
-    let mut copier_name = copier_name.unwrap_or_else(|| format!("COPY-{name_text}"));
+    let mut conc_name = conc_name.map_or_else(|| format!("{name_text}-"), |value| value);
+    let mut predicate_name = predicate_name.map_or_else(|| format!("{name_text}-P"), |value| value);
+    let mut copier_name = copier_name.map_or_else(|| format!("COPY-{name_text}"), |value| value);
     let mut index = option_index;
     while let Some(option) = parts.as_slice().get(index).copied() {
         let option_name = symbol_name_string(scope.context(), scope.get(option).as_word())?;
@@ -276,9 +276,9 @@ fn defstruct_macro_builtin(
             }
             ":TYPE" | "TYPE" => {
                 let type_name = symbol_name_string(scope.context(), scope.get(value).as_word())?;
-                if type_name != "STRUCTURE" { return Err(ObjectError::Unsupported); }
+                if type_name != "STRUCTURE" { return Err(ObjectError::TypeError); }
             }
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown options
         }
         index += 2;
     }

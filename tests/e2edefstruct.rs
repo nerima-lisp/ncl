@@ -43,3 +43,27 @@ fn defstruct_include_inherits_slots() {
         "(3 4 T)",
     );
 }
+
+#[test]
+fn defstruct_include_overrides_defaults_and_inherits_parent_defaults() {
+    assert_eval(
+        "(progn (defstruct parent (x 7) (y 8)) (defstruct (child (:include parent (x 9))) z) (let ((p (make-child))) (list (parent-x p) (parent-y p) (child-z p))))",
+        "(9 8 NIL)",
+    );
+}
+
+#[test]
+fn defstruct_include_is_a_parent_type_for_predicate_typep_and_dispatch() {
+    assert_eval(
+        "(progn (defstruct root x) (defstruct (middle (:include root)) y) (defstruct (leaf (:include middle)) z) (defgeneric depth (object)) (defmethod depth ((object root)) 1) (let ((p (make-leaf :x 4 :y 5 :z 6))) (list (root-p p) (middle-p p) (leaf-p p) (typep p 'root) (typep p 'middle) (root-x p) (depth p))))",
+        "(T T T T T 4 1)",
+    );
+}
+
+#[test]
+fn defstruct_read_only_and_disabled_names_are_respected() {
+    assert_eval(
+        "(progn (defstruct readonly (x 1 :read-only t)) (readonly-x (make-readonly)))",
+        "1",
+    );
+}

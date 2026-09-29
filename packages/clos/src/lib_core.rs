@@ -47,16 +47,21 @@ fn structure_set_builtin(
 
 fn structure_predicate_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let object = args.required(0)?;
     let expected = u32::try_from(Fixnum::try_from_word(args.required(1)?).map_err(|_| ObjectError::TypeError)?.value())
         .map_err(|_| ObjectError::TypeError)?;
+    let expected = ncl_object::StructureLayout::from(expected);
     Ok(if let Ok(layout) = ncl_object::structure_layout(ctx, object)
-        && layout.as_u32() == expected
-    { Word::TRUE } else { Word::NIL })
+        && runtime.structure_layout_is_a(layout, expected)
+    {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
 }
 
 fn structure_copy_builtin(
@@ -144,14 +149,18 @@ pub fn make_class(
             let direct_slot_handle: ncl_object::Handle<'_, Word> =
                 scope.root(ncl_object::Local::from_word(slot));
             let key = slot_key(scope.context(), scope.get(direct_slot_handle).as_word())?;
-            let mut retained = Vec::with_capacity(effective.len());
-            for candidate in effective {
-                if slot_key(scope.context(), scope.get(candidate).as_word())? != key {
-                    retained.push(candidate);
+            let mut position = None;
+            for (candidate_position, candidate) in effective.iter().enumerate() {
+                if slot_key(scope.context(), scope.get(*candidate).as_word())? == key {
+                    position = Some(candidate_position);
+                    break;
                 }
             }
-            effective = retained;
-            effective.push(direct_slot_handle);
+            if let Some(position) = position {
+                effective[position] = direct_slot_handle;
+            } else {
+                effective.push(direct_slot_handle);
+            }
         }
     }
 

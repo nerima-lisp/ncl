@@ -114,6 +114,31 @@ fn defclass_macro_builtin(
     Ok(scope.get(result).as_word())
 }
 
+fn defstruct_slot_spec<'a>(
+    scope: &ncl_object::Scope<'a>,
+    fields: &ncl_object::HandleVec<'a, Word>,
+) -> Result<(Word, Word, bool), ObjectError> {
+    let slot = scope
+        .get(*fields.as_slice().first().ok_or(ObjectError::TypeError)?)
+        .as_word();
+    let initform = fields
+        .as_slice()
+        .get(1)
+        .map_or(Word::NIL, |handle| scope.get(*handle).as_word());
+    let mut read_only = false;
+    let mut index = 2;
+    while index + 1 < fields.len() {
+        let key = fields.as_slice()[index];
+        let value = fields.as_slice()[index + 1];
+        let key_name = symbol_name_string(scope.context(), scope.get(key).as_word())?;
+        if key_name == ":READ-ONLY" || key_name == "READ-ONLY" {
+            read_only = scope.get(value).as_word() != Word::NIL;
+        }
+        index += 2;
+    }
+    Ok((slot, initform, read_only))
+}
+
 #[allow(clippy::too_many_lines)]
 fn defstruct_macro_builtin(
     ctx: &mut ThreadContext,
@@ -126,6 +151,10 @@ fn defstruct_macro_builtin(
     let parts = macro_list_to_handles(&mut scope, form)?;
     let name_form = *parts.as_slice().get(1).ok_or(ObjectError::TypeError)?;
     let mut include = Word::NIL;
+    let mut include_overrides = Vec::new();
+    let mut conc_name = None;
+    let mut predicate_name = None;
+    let mut copier_name = None;
     let (name, mut option_index) = if scope.get(name_form).as_word().is_cons() {
         let header = macro_list_to_handles(&mut scope, name_form)?;
         let name = *header.as_slice().first().ok_or(ObjectError::TypeError)?;
@@ -136,6 +165,35 @@ fn defstruct_macro_builtin(
             let key_name = symbol_name_string(scope.context(), scope.get(key).as_word())?;
             if key_name == ":INCLUDE" || key_name == "INCLUDE" {
                 include = scope.get(value).as_word();
+                if include != Word::NIL && include.is_cons() {
+                    let include_fields = macro_list_to_handles(&mut scope, value)?;
+                    include = scope.get(
+                        *include_fields.as_slice().first().ok_or(ObjectError::TypeError)?,
+                    ).as_word();
+                    for override_form in include_fields.as_slice().iter().skip(1).copied() {
+                        let fields = macro_list_to_handles(&mut scope, override_form)?;
+                        include_overrides.push(defstruct_slot_spec(&scope, &fields)?);
+                    }
+                } else {
+                    for override_form in fields.as_slice().iter().skip(2).copied() {
+                        let fields = macro_list_to_handles(&mut scope, override_form)?;
+                        include_overrides.push(defstruct_slot_spec(&scope, &fields)?);
+                    }
+                }
+            } else if key_name == ":PREDICATE" || key_name == "PREDICATE" {
+                predicate_name = if scope.get(value).as_word() == Word::NIL {
+                    None
+                } else {
+                    Some(symbol_name_string(scope.context(), scope.get(value).as_word())?)
+                };
+            } else if key_name == ":COPIER" || key_name == "COPIER" {
+                copier_name = if scope.get(value).as_word() == Word::NIL {
+                    None
+                } else {
+                    Some(symbol_name_string(scope.context(), scope.get(value).as_word())?)
+                };
+            } else if key_name == ":CONC-NAME" || key_name == "CONC-NAME" {
+                conc_name = Some(symbol_name_string(scope.context(), scope.get(value).as_word())?);
             } else {
                 return Err(ObjectError::TypeError);
             }
@@ -162,28 +220,36 @@ fn defstruct_macro_builtin(
         if is_option { break; }
         if slot_word.is_cons() {
             let fields = macro_list_to_handles(&mut scope, slot)?;
-            let slot_name = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
-            let initform = fields.as_slice().get(1).copied().unwrap_or_else(|| {
-                scope.root(ncl_object::Local::from_word(Word::NIL))
-            });
-            slot_specs.push((slot_name, initform));
+            slot_specs.push(defstruct_slot_spec(&scope, &fields)?);
         } else {
-            slot_specs.push((slot, scope.root(ncl_object::Local::from_word(Word::NIL))));
+            slot_specs.push((scope.get(slot).as_word(), Word::NIL, false));
         }
         option_index += 1;
     }
-    let mut conc_name = format!("{name_text}-");
-    let mut predicate_name = format!("{name_text}-P");
-    let mut copier_name = format!("COPY-{name_text}");
+    let mut conc_name = conc_name.unwrap_or_else(|| format!("{name_text}-"));
+    let mut predicate_name = predicate_name.or_else(|| Some(format!("{name_text}-P")));
+    let mut copier_name = copier_name.or_else(|| Some(format!("COPY-{name_text}")));
     let mut index = option_index;
     while let Some(option) = parts.as_slice().get(index).copied() {
         let option_name = symbol_name_string(scope.context(), scope.get(option).as_word())?;
         let value = parts.as_slice().get(index + 1).copied().ok_or(ObjectError::TypeError)?;
         match option_name.as_str() {
             ":CONC-NAME" | "CONC-NAME" => conc_name = symbol_name_string(scope.context(), scope.get(value).as_word())?,
-            ":PREDICATE" | "PREDICATE" => predicate_name = symbol_name_string(scope.context(), scope.get(value).as_word())?,
-            ":COPIER" | "COPIER" => copier_name = symbol_name_string(scope.context(), scope.get(value).as_word())?,
-            ":INCLUDE" | "INCLUDE" => include = scope.get(value).as_word(),
+            ":PREDICATE" | "PREDICATE" => predicate_name = if scope.get(value).as_word() == Word::NIL { None } else { Some(symbol_name_string(scope.context(), scope.get(value).as_word())?) },
+            ":COPIER" | "COPIER" => copier_name = if scope.get(value).as_word() == Word::NIL { None } else { Some(symbol_name_string(scope.context(), scope.get(value).as_word())?) },
+            ":INCLUDE" | "INCLUDE" => {
+                include = scope.get(value).as_word();
+                if include != Word::NIL && include.is_cons() {
+                    let include_fields = macro_list_to_handles(&mut scope, value)?;
+                    include = scope.get(
+                        *include_fields.as_slice().first().ok_or(ObjectError::TypeError)?,
+                    ).as_word();
+                    for override_form in include_fields.as_slice().iter().skip(1).copied() {
+                        let fields = macro_list_to_handles(&mut scope, override_form)?;
+                        include_overrides.push(defstruct_slot_spec(&scope, &fields)?);
+                    }
+                }
+            }
             ":TYPE" | "TYPE" => {
                 let type_name = symbol_name_string(scope.context(), scope.get(value).as_word())?;
                 if type_name != "STRUCTURE" { return Err(ObjectError::Unsupported); }
@@ -193,14 +259,23 @@ fn defstruct_macro_builtin(
         index += 2;
     }
     let include_name = if include == Word::NIL { None } else { Some(symbol_name_string(scope.context(), include)?) };
+    let parent_layout = include_name
+        .as_deref()
+        .and_then(|name| runtime.structure_layout_for_name(name));
     let superclass = if let Some(include_name) = include_name.as_deref() {
         runtime.class(scope.context_mut(), include_name).ok_or(ObjectError::TypeError)?
     } else {
         runtime.class(scope.context_mut(), "STRUCTURE-OBJECT").unwrap_or(Word::NIL)
     };
+    let mut direct_specs = slot_specs.clone();
+    direct_specs.extend(include_overrides);
     let mut descriptors = Vec::new();
-    for (slot, _) in &slot_specs {
-        let values = scope.root_many(&[ncl_object::Local::from_word(scope.get(*slot).as_word())]);
+    for (slot, initform, read_only) in &direct_specs {
+        let values = scope.root_many(&[
+            ncl_object::Local::from_word(*slot),
+            ncl_object::Local::from_word(*initform),
+            ncl_object::Local::from_word(if *read_only { Word::TRUE } else { Word::NIL }),
+        ]);
         descriptors.push(scope.make_simple_vector(runtime, &values)?);
     }
     let descriptor_values = descriptors.iter().map(|handle| ncl_object::Local::from_word(scope.get(*handle).as_word())).collect::<Vec<_>>();
@@ -214,15 +289,21 @@ fn defstruct_macro_builtin(
     let effective = ncl_object::simple_vector_ref(scope.context(), class_word, CLASS_EFFECTIVE_SLOTS)?;
     let effective_count = ncl_object::simple_vector_length(scope.context(), effective)?;
     let layout = runtime.register_structure_layout(effective_count)?;
-    runtime.register_structure_class(layout, name_text.clone())?;
+    runtime.register_structure_class_with_parent(layout, parent_layout, name_text.clone())?;
     let layout_word = Word::fixnum(i64::from(layout.as_u32()));
 
     let defun = scope.intern(runtime, COMMON_LISP, "DEFUN")?;
     let defsetf = scope.intern(runtime, COMMON_LISP, "DEFSETF")?;
     let key_marker = scope.intern(runtime, COMMON_LISP, "&KEY")?;
     let make = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-MAKE")?;
-    let predicate = scope.intern(runtime, &definition_package, &predicate_name)?;
-    let copier = scope.intern(runtime, &definition_package, &copier_name)?;
+    let predicate = predicate_name
+        .as_deref()
+        .map(|name| scope.intern(runtime, &definition_package, name))
+        .transpose()?;
+    let copier = copier_name
+        .as_deref()
+        .map(|name| scope.intern(runtime, &definition_package, name))
+        .transpose()?;
     let mut effective_names = Vec::new();
     for slot in 0..effective_count {
         let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, slot)?;
@@ -231,10 +312,8 @@ fn defstruct_macro_builtin(
     let mut forms = scope.root_many(&[]);
     let mut lambda = scope.root_many(&[ncl_object::Local::from_word(scope.get(key_marker).as_word())]);
     for slot in &effective_names {
-        let initform = slot_specs
-            .iter()
-            .find(|(name, _)| scope.get(*name).as_word() == *slot)
-            .map_or(Word::NIL, |(_, initform)| scope.get(*initform).as_word());
+        let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, effective_names.iter().position(|name| name == slot).ok_or(ObjectError::Layout)?)?;
+        let initform = ncl_object::simple_vector_ref(scope.context(), descriptor, 1)?;
         if initform == Word::NIL {
             lambda.push(&mut scope, ncl_object::Local::from_word(*slot));
         } else {
@@ -256,16 +335,22 @@ fn defstruct_macro_builtin(
     let object = scope.intern(runtime, "NCL", "OBJECT")?;
     let structure_p = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-P")?;
     let layout_handle = scope.root(ncl_object::Local::from_word(layout_word));
-    let predicate_body = make_form(&mut scope, runtime, &[structure_p, object, layout_handle])?;
     let object_word = scope.get(object).as_word();
-    let predicate_args = scope.root_many(&[ncl_object::Local::from_word(object_word)]);
-    let predicate_lambda = scope.make_list(runtime, &predicate_args)?;
-    let predicate_definition = make_form(&mut scope, runtime, &[defun, predicate, predicate_lambda, predicate_body])?;
-    macro_push_handle(&mut scope, &mut forms, predicate_definition);
-    let structure_copy = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-COPY")?;
-    let copier_body = make_form(&mut scope, runtime, &[structure_copy, object])?;
-    let copier_definition = make_form(&mut scope, runtime, &[defun, copier, predicate_lambda, copier_body])?;
-    macro_push_handle(&mut scope, &mut forms, copier_definition);
+    if let Some(predicate) = predicate {
+        let predicate_args = scope.root_many(&[ncl_object::Local::from_word(object_word)]);
+        let predicate_lambda = scope.make_list(runtime, &predicate_args)?;
+        let predicate_body = make_form(&mut scope, runtime, &[structure_p, object, layout_handle])?;
+        let predicate_definition = make_form(&mut scope, runtime, &[defun, predicate, predicate_lambda, predicate_body])?;
+        macro_push_handle(&mut scope, &mut forms, predicate_definition);
+    }
+    if let Some(copier) = copier {
+        let copier_args = scope.root_many(&[ncl_object::Local::from_word(object_word)]);
+        let copier_lambda = scope.make_list(runtime, &copier_args)?;
+        let structure_copy = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-COPY")?;
+        let copier_body = make_form(&mut scope, runtime, &[structure_copy, object])?;
+        let copier_definition = make_form(&mut scope, runtime, &[defun, copier, copier_lambda, copier_body])?;
+        macro_push_handle(&mut scope, &mut forms, copier_definition);
+    }
     for (index, slot) in effective_names.iter().enumerate() {
         let slot_name = symbol_name_string(scope.context(), *slot)?;
         let accessor = scope.intern(runtime, &definition_package, &format!("{conc_name}{slot_name}"))?;
@@ -278,6 +363,11 @@ fn defstruct_macro_builtin(
         let accessor_lambda = scope.make_list(runtime, &accessor_args)?;
         let accessor_definition = make_form(&mut scope, runtime, &[defun, accessor, accessor_lambda, accessor_body])?;
         macro_push_handle(&mut scope, &mut forms, accessor_definition);
+        let descriptor = ncl_object::simple_vector_ref(scope.context(), effective, index)?;
+        let read_only = ncl_object::simple_vector_ref(scope.context(), descriptor, 2)? != Word::NIL;
+        if read_only {
+            continue;
+        }
         let store = scope.intern(runtime, "NCL", "STORE")?;
         let place_args = scope.root_many(&[ncl_object::Local::from_word(object_word)]);
         let place_lambda = scope.make_list(runtime, &place_args)?;

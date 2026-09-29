@@ -51,10 +51,26 @@ mod defstruct_tests {
         let constructor_option = list(&mut ctx, &runtime, &[constructor, make_pair, lambda])?;
         let name = list(&mut ctx, &runtime, &[pair, constructor_option])?;
         let form = list(&mut ctx, &runtime, &[defstruct, name, left, right])?;
+        let mut alpha = intern("ALPHA", &mut ctx)?;
+        let mut boa_list = list(
+            &mut ctx,
+            &runtime,
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        )?;
+        let layout = runtime.register_structure_layout(2)?;
         let mut form = form;
         let _root = ncl_object::push_heap_root(&runtime, &mut form);
         let _left_root = ncl_object::push_heap_root(&runtime, &mut left);
         let _right_root = ncl_object::push_heap_root(&runtime, &mut right);
+        let _alpha_root = ncl_object::push_heap_root(&runtime, &mut alpha);
+        let _boa_list_root = ncl_object::push_heap_root(&runtime, &mut boa_list);
+        let mut structure = ncl_object::make_structure(
+            &mut ctx,
+            &runtime,
+            layout,
+            &[alpha, boa_list],
+        )?;
+        let _structure_root = ncl_object::push_heap_root(&runtime, &mut structure);
         ctx.set_strict_forwarding(true);
         ctx.set_gc_stress(true);
         {
@@ -75,6 +91,8 @@ mod defstruct_tests {
         let args = ncl_object::BuiltinArgs::new(&arguments);
         let mut values = MultipleValues::default();
         let result = defstruct_macro_builtin(&mut ctx, &runtime, &args, &mut values)?;
+        assert_eq!(ncl_object::structure_ref(&ctx, structure, 0)?, alpha);
+        assert_eq!(ncl_object::structure_ref(&ctx, structure, 1)?, boa_list);
         assert!(contains(&ctx, result, left)?);
         assert!(contains(&ctx, result, right)?);
         Ok(())

@@ -115,17 +115,7 @@ fn call_method<'ctx, C: ncl_object::FunctionCaller>(
     for argument in arguments.iter().copied() {
         dispatch_push_handle(scope, &mut call_args, argument);
     }
-    match scope.call_function(runtime, function, &call_args, caller, values) {
-        Err(ObjectError::NonLocalExit) => {
-            let value = values
-                .as_slice()
-                .get(1)
-                .copied()
-                .ok_or(ObjectError::Layout)?;
-            Ok(scope.root(Local::from_word(value)))
-        }
-        result => result,
-    }
+    scope.call_function(runtime, function, &call_args, caller, values)
 }
 
 fn invoke_core<'ctx, C: ncl_object::FunctionCaller>(

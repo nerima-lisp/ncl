@@ -34,6 +34,12 @@ impl ThreadContext {
         pending
     }
 
+    /// Whether a non-local exit is currently propagating.
+    #[must_use]
+    pub const fn is_unwinding(&self) -> bool {
+        self.thread.pending()
+    }
+
     pub const fn set_control_pointers(
         &mut self,
         handler: Option<usize>,

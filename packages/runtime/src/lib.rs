@@ -429,13 +429,13 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        // End the borrow before reusing the context after the opaque raw pointer call.
+        // End the opaque native-context borrow before reusing `context`.
+        // The raw pointer cast hides its last use from borrow checking.
         let _ = native_context;
         let (value, _) = result;
         if let Some(error) = context.thread_mut().take_native_error() {
             return Err(native_failure(error));
         }
-        let escaped = context.take_non_local_exit();
         if let Some(error) = context.take_pending_lisp_error()
             && let Some(converter) = self.object.lisp_error_converter()
         {
@@ -460,7 +460,7 @@ impl Runtime {
             }
             return Err(error.into());
         }
-        if escaped {
+        if context.take_non_local_exit() {
             return Err(ObjectError::ControlError.into());
         }
         Ok(Word::from_bits(value))

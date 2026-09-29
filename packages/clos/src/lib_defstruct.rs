@@ -27,7 +27,7 @@ mod defstruct_tests {
     }
 
     #[test]
-    fn boa_macro_expansion_roots_parameter_symbols_under_gc_stress() -> Result<(), ObjectError> {
+    fn boa_constructor_values_survive_gc_stress_and_strict_forwarding() -> Result<(), ObjectError> {
         let runtime = Runtime::new()?;
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)?;
@@ -57,6 +57,20 @@ mod defstruct_tests {
         let _right_root = ncl_object::push_heap_root(&runtime, &mut right);
         ctx.set_strict_forwarding(true);
         ctx.set_gc_stress(true);
+        {
+            let mut scope = ncl_object::Scope::new(&mut ctx);
+            let lambda_root: ncl_object::Handle<'_, Word> =
+                scope.root(ncl_object::Local::from_word(lambda));
+            let lambda_word = scope.get(lambda_root).as_word();
+            let parameters = defstruct_boa_slot_parameters(&mut scope, lambda_word)?;
+            assert_eq!(parameters.len(), 2);
+            assert_eq!(parameters[0].0, "LEFT");
+            assert_eq!(parameters[1].0, "RIGHT");
+            let left_parameter = scope.get(parameters[0].1).as_word();
+            let right_parameter = scope.get(parameters[1].1).as_word();
+            assert_eq!(symbol_name_string(scope.context(), left_parameter)?, "LEFT");
+            assert_eq!(symbol_name_string(scope.context(), right_parameter)?, "RIGHT");
+        }
         let arguments = [form];
         let args = ncl_object::BuiltinArgs::new(&arguments);
         let mut values = MultipleValues::default();

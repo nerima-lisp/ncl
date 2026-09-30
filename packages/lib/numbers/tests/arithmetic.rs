@@ -169,6 +169,76 @@ fn arithmetic_builtins_call_through_runtime() {
     assert_boolean(&runtime, &mut ctx, ">=", &[bigger, big], true);
 }
 
+fn assert_ratio(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+    expected_numerator: i128,
+    expected_denominator: i128,
+) {
+    let result = call(runtime, ctx, name, args).unwrap();
+    let ObjectRef::Ratio(value) = classify_object(ctx, result) else {
+        panic!(
+            "{name}: expected ratio, got {:?}",
+            classify_object(ctx, result)
+        );
+    };
+    let value = ncl_object::Ratio::from_word(value);
+    assert_eq!(
+        integer(ctx, ratio_numerator(ctx, value).unwrap()),
+        expected_numerator,
+        "{name} numerator"
+    );
+    assert_eq!(
+        integer(ctx, ratio_denominator(ctx, value).unwrap()),
+        expected_denominator,
+        "{name} denominator"
+    );
+}
+
+/// `(n1/d1) * (n2/d2)` and `(n1/d1) / (n2/d2)` must combine numerators and
+/// denominators directly; reusing the addition-shaped cross-multiplication
+/// combinator here previously discarded both denominators (e.g. `2/3 * 2/3`
+/// silently returned `4` instead of `4/9`).
+#[test]
+fn ratio_multiplication_and_division_combine_numerators_and_denominators() {
+    let (runtime, mut ctx) = setup();
+    let two_thirds = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let five_sevenths = make_ratio(&mut ctx, &runtime, Word::fixnum(5), Word::fixnum(7))
+        .unwrap()
+        .into();
+
+    assert_ratio(&runtime, &mut ctx, "*", &[two_thirds, two_thirds], 4, 9);
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "*",
+        &[two_thirds, five_sevenths],
+        10,
+        21,
+    );
+    assert_integer(&runtime, &mut ctx, "*", &[two_thirds, Word::fixnum(3)], 2);
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "/",
+        &[two_thirds, five_sevenths],
+        14,
+        15,
+    );
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "/",
+        &[Word::fixnum(1), two_thirds],
+        3,
+        2,
+    );
+}
+
 #[test]
 fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     let (runtime, mut ctx) = setup();

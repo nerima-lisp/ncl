@@ -322,7 +322,28 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
         };
         return Ok(Number::Complex(x * br, x * bi));
     }
-    real_pair(a, b, |x, y| x * y, i128::checked_mul)
+    // Ratio multiplication combines numerators and denominators directly
+    // (`(n1/d1) * (n2/d2) = (n1*n2)/(d1*d2)`); `real_pair`'s cross-multiplied
+    // common-denominator formula is only correct for addition/subtraction.
+    match (a, b) {
+        (Number::Integer(x), Number::Integer(y)) => x
+            .checked_mul(y)
+            .map(Number::Integer)
+            .ok_or(ObjectError::TypeError),
+        (Number::Ratio(x, xd), Number::Ratio(y, yd)) => {
+            let numerator = x.checked_mul(y).ok_or(ObjectError::TypeError)?;
+            let denominator = xd.checked_mul(yd).ok_or(ObjectError::TypeError)?;
+            ratio(numerator, denominator).ok_or(ObjectError::TypeError)
+        }
+        (Number::Ratio(x, xd), Number::Integer(y)) | (Number::Integer(y), Number::Ratio(x, xd)) => {
+            let numerator = x.checked_mul(y).ok_or(ObjectError::TypeError)?;
+            ratio(numerator, xd).ok_or(ObjectError::TypeError)
+        }
+        (x, y) => match (x.to_f64(), y.to_f64()) {
+            (Ok(x), Ok(y)) => Ok(Number::Float(x * y)),
+            _ => Err(ObjectError::TypeError),
+        },
+    }
 }
 #[allow(clippy::suboptimal_flops)]
 pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
@@ -344,8 +365,24 @@ pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
         let y = b.to_f64()?;
         return Ok(Number::Complex(x / y, 0.0));
     }
+    // Ratio division cross-multiplies (`(n1/d1) / (n2/d2) = (n1*d2)/(d1*n2)`);
+    // see the note on `mul_pair` for why the generic `real_pair` combinator
+    // does not apply here either.
     match (a, b) {
         (Number::Integer(x), Number::Integer(y)) => ratio(x, y).ok_or(ObjectError::TypeError),
+        (Number::Ratio(x, xd), Number::Ratio(y, yd)) => {
+            let numerator = x.checked_mul(yd).ok_or(ObjectError::TypeError)?;
+            let denominator = xd.checked_mul(y).ok_or(ObjectError::TypeError)?;
+            ratio(numerator, denominator).ok_or(ObjectError::TypeError)
+        }
+        (Number::Ratio(x, xd), Number::Integer(y)) => {
+            let denominator = xd.checked_mul(y).ok_or(ObjectError::TypeError)?;
+            ratio(x, denominator).ok_or(ObjectError::TypeError)
+        }
+        (Number::Integer(x), Number::Ratio(y, yd)) => {
+            let numerator = x.checked_mul(yd).ok_or(ObjectError::TypeError)?;
+            ratio(numerator, y).ok_or(ObjectError::TypeError)
+        }
         (x, y) => Ok(Number::Float(x.to_f64()? / y.to_f64()?)),
     }
 }
@@ -355,4 +392,54 @@ pub(super) const fn bool_word(value: bool) -> Word {
 }
 pub(super) fn args_numbers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<Number>, ObjectError> {
     args.iter().map(|arg| number(ctx, *arg)).collect()
+}
+
+/// Compute `base^exponent` exactly by repeated squaring when `base` is an
+/// integer or ratio and `exponent` is an integer, returning `Ok(None)` when
+/// either operand requires the transcendental float/complex path (a float,
+/// complex, or ratio exponent) or the exact computation overflows `i128`.
+pub fn integer_expt(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    base: Word,
+    exponent: Word,
+) -> Result<Option<Word>, ObjectError> {
+    let base_number = match classify_object(ctx, base) {
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) | ObjectRef::Ratio(_) => number(ctx, base)?,
+        _ => return Ok(None),
+    };
+    let exponent_value = match classify_object(ctx, exponent) {
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => integer(ctx, exponent)?,
+        _ => return Ok(None),
+    };
+    let Some(result) = checked_integer_power(base_number, exponent_value) else {
+        return Ok(None);
+    };
+    word(ctx, runtime, result).map(Some)
+}
+
+/// Repeated squaring over the exact `Number` representation. `None` signals
+/// overflow beyond `i128`, letting the caller fall back to the float path.
+fn checked_integer_power(base: Number, exponent: i128) -> Option<Number> {
+    if exponent == 0 {
+        return Some(Number::Integer(1));
+    }
+    let negative = exponent < 0;
+    let mut remaining = exponent.unsigned_abs();
+    let mut result = Number::Integer(1);
+    let mut power = base;
+    while remaining > 0 {
+        if remaining & 1 == 1 {
+            result = mul_pair(result, power).ok()?;
+        }
+        remaining >>= 1;
+        if remaining > 0 {
+            power = mul_pair(power, power).ok()?;
+        }
+    }
+    if negative {
+        div_pair(Number::Integer(1), result).ok()
+    } else {
+        Some(result)
+    }
 }

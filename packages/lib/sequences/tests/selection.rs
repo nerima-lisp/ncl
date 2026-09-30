@@ -1,4 +1,12 @@
-#![allow(clippy::unwrap_used, clippy::default_trait_access, missing_docs)]
+// `#[path]` recompiles `selection.rs` as its own crate for unit testing, so
+// its `-IF` re-exports (exercised by the CLI e2e suite, not here) are
+// reported unused in this standalone compilation.
+#![allow(
+    clippy::unwrap_used,
+    clippy::default_trait_access,
+    missing_docs,
+    unused_imports
+)]
 
 #[path = "../src/domain/selection.rs"]
 mod selection;

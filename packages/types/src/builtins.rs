@@ -13,7 +13,7 @@ use ncl_object::{
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_function,
 };
 
-use crate::{NamedType, TypeError, TypeSpecifier, parse_type_specifier, subtypep, typep};
+use crate::{NamedType, TypeSpecifier, parse_type_specifier, subtypep, typep};
 
 const OBJECT: Parameter = Parameter {
     name: BuiltinName::new("object"),
@@ -169,21 +169,12 @@ fn subtypep_builtin(
     let type2 = args.required(1)?;
     let spec1 = parse_type_specifier(ctx, type1);
     let spec2 = parse_type_specifier(ctx, type2);
+    // Every failure mode (an unresolved `TypeError` from `subtypep`, or a
+    // specifier that fails to parse at all) is treated as "cannot determine"
+    // rather than a hard error, matching CLHS's permission for SUBTYPEP to
+    // report uncertainty via its second value.
     let (is_sub, definite) = match (spec1, spec2) {
-        (Ok(spec1), Ok(spec2)) => match subtypep(&spec1, &spec2) {
-            Ok(result) => result,
-            Err(
-                TypeError::UnexpandedDeftype(_)
-                | TypeError::CannotInvoke(_)
-                | TypeError::InvalidSpecifier(_)
-                | TypeError::InvalidForm
-                | TypeError::Object(_)
-                | TypeError::CannotSerialize,
-            ) => (false, false),
-        },
-        // A specifier that fails to parse is treated as "cannot determine"
-        // rather than a hard error, matching CLHS's permission for SUBTYPEP
-        // to report uncertainty via its second value.
+        (Ok(spec1), Ok(spec2)) => subtypep(&spec1, &spec2).unwrap_or_default(),
         (Err(_), _) | (_, Err(_)) => (false, false),
     };
     values.set(&[bool_word(definite)]);
@@ -391,8 +382,8 @@ fn coerce_to_character(ctx: &ThreadContext, object: Word) -> Result<Word, Object
 
 fn fixnum_to_f64(value: i64) -> f64 {
     let magnitude = value.unsigned_abs();
-    let low = u32::try_from(magnitude & u64::from(u32::MAX)).map_or(0, |v| v);
-    let high = u32::try_from(magnitude >> 32).map_or(0, |v| v);
+    let low = u32::try_from(magnitude & u64::from(u32::MAX)).unwrap_or(0);
+    let high = u32::try_from(magnitude >> 32).unwrap_or(0);
     let result = f64::from(high).mul_add(2_f64.powi(32), f64::from(low));
     if value.is_negative() { -result } else { result }
 }

@@ -1,8 +1,12 @@
+// `#[path]` recompiles `higher_order.rs` as its own crate for unit testing,
+// so its REDUCE re-exports (exercised by the CLI e2e suite, not here) are
+// reported unused in this standalone compilation.
 #![allow(
     clippy::default_trait_access,
     clippy::unnecessary_mut_passed,
     clippy::unwrap_used,
-    missing_docs
+    missing_docs,
+    unused_imports
 )]
 
 use ncl_object::{

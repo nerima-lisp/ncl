@@ -36,6 +36,7 @@ pub fn equalp(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, Obje
 ///
 /// # Errors
 /// Propagates object-layer errors from reading either operand.
+#[allow(clippy::needless_pass_by_ref_mut)]
 pub fn equal_predicate(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -53,6 +54,7 @@ pub fn equal_predicate(
 ///
 /// # Errors
 /// Propagates object-layer errors from reading either operand.
+#[allow(clippy::needless_pass_by_ref_mut)]
 pub fn equalp_predicate(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -188,7 +190,7 @@ fn strings_equal(
         let a = string_ref(ctx, left, index)?;
         let b = string_ref(ctx, right, index)?;
         let matches = if fold {
-            a.to_ascii_uppercase() == b.to_ascii_uppercase()
+            a.eq_ignore_ascii_case(&b)
         } else {
             a == b
         };

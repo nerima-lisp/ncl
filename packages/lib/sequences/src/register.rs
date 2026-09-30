@@ -342,7 +342,7 @@ fn count_entry(
 }
 #[path = "register_selection_if.rs"]
 mod register_selection_if;
-pub(crate) use register_selection_if::{
+pub use register_selection_if::{
     count_if_entry, count_if_not_entry, find_if_entry, find_if_not_entry, position_if_entry,
     position_if_not_entry,
 };

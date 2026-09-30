@@ -132,6 +132,7 @@ pub fn remove_if<C: FunctionCaller>(
         .collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn substitute_if<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

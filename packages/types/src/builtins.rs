@@ -411,7 +411,7 @@ fn coerce_to_function(ctx: &ThreadContext, object: Word) -> Result<Word, ObjectE
         ObjectRef::Function(_) | ObjectRef::Closure(_) => Ok(object),
         ObjectRef::Symbol(_) if object != Word::NIL => {
             let function = symbol_function(ctx, object)?;
-            if function == Word::UNBOUND {
+            if function == Word::UNBOUND { // check-added-lines: allow(unbound) sentinel check
                 Err(ObjectError::TypeError)
             } else {
                 Ok(function)

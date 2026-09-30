@@ -19,10 +19,14 @@ mod control;
 mod control_escape;
 #[path = "control_regions.rs"]
 mod control_regions;
+#[path = "dynamic_binding.rs"]
+mod dynamic_binding;
 #[path = "expr.rs"]
 mod expr;
 #[path = "params.rs"]
 mod params;
+#[path = "unbound_variable.rs"]
+mod unbound_variable;
 
 #[derive(Clone, Debug)]
 pub(super) struct NonLocalTarget {

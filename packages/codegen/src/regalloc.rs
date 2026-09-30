@@ -6,6 +6,9 @@ use crate::SafepointMap;
 use ncl_ir::{Function, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+#[path = "regalloc_handler_intervals.rs"]
+mod handler_intervals;
+
 /// The target register classes used by the phase 1b allocator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AllocationTarget {
@@ -125,66 +128,20 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         position = position.saturating_add(1);
     }
 
-    let block_positions = function
-        .blocks
-        .iter()
-        .map(|block| (block.id, block))
-        .collect::<HashMap<_, _>>();
-    for region in &function.handler_regions {
-        let mut handler_blocks = vec![region.handler];
-        if let Some(cleanup) = region.cleanup {
-            handler_blocks.push(cleanup);
-        }
-        for block_id in handler_blocks {
-            if let Some(block) = block_positions.get(&block_id) {
-                for param in &block.params {
-                    handler_values.insert(param.value);
-                }
-                for op in &block.ops {
-                    for (value, _) in &op.results {
-                        handler_values.insert(*value);
-                    }
-                    let mut operands = Vec::new();
-                    operands_of_op(&op.kind, &mut operands);
-                    handler_values.extend(operands);
-                }
-            }
-        }
-        handler_values.extend(region.catch_tag);
-        handler_values.extend(region.binding_targets.iter().copied());
-        // `EnterHandler`/`LeaveHandler` carry a `catch_tag`/`binding_targets`
-        // reference through the region table rather than as an `OpKind`
-        // operand (see `operands_of_op`), so the loop above never records a
-        // `last_use` for them from scanning ops. Without this, a value used
-        // only there gets the degenerate interval `[start, start]` and can be
-        // reused for something else before the `EnterHandler` call that
-        // actually reads it runs. Extend `last_use` to (at least) that call's
-        // position explicitly.
-        if let Some(&enter_position) = enter_positions.get(&region.id) {
-            for value in region.catch_tag.iter().chain(&region.binding_targets) {
-                last_use
-                    .entry(*value)
-                    .and_modify(|end| *end = (*end).max(enter_position))
-                    .or_insert(enter_position);
-            }
-        }
-    }
+    handler_intervals::extend_for_handler_regions(
+        function,
+        &mut handler_values,
+        &mut last_use,
+        &enter_positions,
+    );
 
     let mut intervals = definitions
         .into_iter()
         .map(|(value, (start, ty))| {
             let end = last_use.get(&value).copied().unwrap_or(start);
-            // A block parameter is live from that block's entry, which is
-            // at-or-before the position shared with the block's first op (the
-            // linear position numbering above gives a block's params and its
-            // first op the same `position`, since it does not model "block
-            // entry" as its own step). An ordinary op-defined value's `start`
-            // is that op's own position, so a call at that exact position is
-            // the op defining it, not a later call it must survive. Block
-            // params have no such defining op to exclude, so their bound is
-            // inclusive: a call at the shared position still runs after the
-            // predecessor's `Jump`/`Branch` already installed the param's
-            // value, and before this block's own first op.
+            // A param's `start` shares its block's first op's position, but
+            // it is live from block entry, before that op; only params need
+            // this inclusive lower bound.
             let start_bound = if block_param_values.contains(&value) {
                 start.saturating_sub(1)
             } else {
@@ -294,15 +251,10 @@ const fn is_call(kind: &OpKind) -> bool {
             | OpKind::Builtin { .. }
             | OpKind::MakeClosure { .. }
             | OpKind::MakeValueCell { .. }
-            // `EnterHandler`/`LeaveHandler` (`catch`/`unwind-protect`/`progv`)
-            // call a native runtime function (`EnterCatch`, `LeaveProgv`,
-            // ...) exactly like `Builtin`, so a value whose live range spans
-            // one is just as unsafe to leave in a register: the call's own
-            // callee-saved-register discipline is not guaranteed to match
-            // this allocator's, and a value that merely looks like it
-            // "crosses" the op (defined before, used after) can be
-            // clobbered. Treating them as calls forces such values to a
-            // frame slot, matching `Call`/`Builtin`/`CallClosure`.
+            // `EnterHandler`/`LeaveHandler` (catch/unwind-protect/progv)
+            // call a native runtime function just like `Builtin`, so a value
+            // crossing one is not guaranteed to survive in a register and
+            // must be forced to a frame slot too.
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. }
     )

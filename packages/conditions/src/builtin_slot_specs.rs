@@ -26,6 +26,7 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
             initform: Word::NIL,
         },
     ];
+    // check-added-lines: allow(index) array literal, not indexing
     for name in ["SIMPLE-CONDITION", "SIMPLE-ERROR", "SIMPLE-WARNING"] {
         let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
         set_slot_specs(ctx, runtime, class, &simple)?;

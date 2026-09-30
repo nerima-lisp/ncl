@@ -136,6 +136,7 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
             &mut scope,
             Word::fixnum(i64::try_from(slot_index).unwrap_or(0)),
         );
+        // check-added-lines: allow(index) array literal, not indexing
         for accessor in [slot.reader, slot.accessor].into_iter().flatten() {
             let instance_parameter = super::handler_case::fresh(&mut scope, runtime)?;
             let lambda_list = cons_list(&mut scope, runtime, &[instance_parameter])?;

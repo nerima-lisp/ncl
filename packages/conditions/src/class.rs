@@ -358,6 +358,7 @@ pub fn wire_superclasses(
     let value = match parents.as_slice() {
         [] => Word::NIL,
         [single] => *single,
+        // check-added-lines: allow(wildcard) slice-length match is exhaustive over 0/1/many
         _ => {
             let mut list = Word::NIL;
             for parent in parents.iter().rev() {

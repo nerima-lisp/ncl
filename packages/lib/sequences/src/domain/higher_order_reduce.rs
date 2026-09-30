@@ -7,6 +7,19 @@ use ncl_object::{
 
 use super::{call, callback, scope_rooted_slice, scope_roots, values};
 
+fn apply_key<C: FunctionCaller>(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    caller: &mut C,
+    key_callback: Option<FunctionDesignator>,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    match key_callback {
+        Some(key_callback) => Ok(call(ctx, runtime, caller, key_callback, &[value])?.0),
+        None => Ok(value),
+    }
+}
+
 /// Options accepted by REDUCE beyond the function and sequence.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ReduceOptions {
@@ -60,18 +73,6 @@ pub fn reduce<C: FunctionCaller>(
         let key_callback = key
             .map(|_| callback(ctx, *roots.get(2).ok_or(ObjectError::Layout)?))
             .transpose()?;
-        fn apply_key<C: FunctionCaller>(
-            ctx: &mut ThreadContext,
-            runtime: &Runtime,
-            caller: &mut C,
-            key_callback: Option<FunctionDesignator>,
-            value: Word,
-        ) -> Result<Word, ObjectError> {
-            match key_callback {
-                Some(key_callback) => Ok(call(ctx, runtime, caller, key_callback, &[value])?.0),
-                None => Ok(value),
-            }
-        }
         scope_rooted_slice(ctx, &items, |ctx, items| {
             let mut index = 0;
             let accumulator = if initial.is_some() {
@@ -91,12 +92,11 @@ pub fn reduce<C: FunctionCaller>(
                         key_callback,
                         *items.get(index).ok_or(ObjectError::Layout)?,
                     )?;
-                    let (left, right) = if from_end {
-                        (element, *accumulator.first().ok_or(ObjectError::Layout)?)
+                    let args = if from_end {
+                        [element, *accumulator.first().ok_or(ObjectError::Layout)?]
                     } else {
-                        (*accumulator.first().ok_or(ObjectError::Layout)?, element)
+                        [*accumulator.first().ok_or(ObjectError::Layout)?, element]
                     };
-                    let args = [left, right];
                     *accumulator.first_mut().ok_or(ObjectError::Layout)? =
                         call(ctx, runtime, caller, function_callback, &args)?.0;
                     index += 1;

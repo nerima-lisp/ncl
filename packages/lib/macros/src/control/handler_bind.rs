@@ -124,7 +124,7 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 // handler), but pairing `unwind-protect` with a `lambda`
                 // that performs `return-from` to an enclosing block
                 // currently trips a front-end/codegen defect (observed:
-                // `EscapingControl`/`inline-direct-calls` failures — outside
+                // `EscapingControl`/`inline-direct-calls` failures, outside
                 // this lane's conditions/macros scope, not chased further
                 // here). `prog1`, not `progn`: the handler-bind form's value
                 // is `result`'s (primary) value, not `pop`'s; the handler is

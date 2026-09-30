@@ -220,7 +220,7 @@ impl<'a> Printer<'a> {
             ObjectRef::Complex(number) => self.print_complex(Complex::from_word(number)),
             ObjectRef::HashTable(word) => self.print_opaque("HASH-TABLE", word),
             ObjectRef::Structure(word) => self.print_structure(word),
-            ObjectRef::Instance(word) => self.print_opaque("INSTANCE", word),
+            ObjectRef::Instance(word) => self.print_instance(word),
             ObjectRef::Function(word) => self.print_opaque("FUNCTION", word),
             ObjectRef::Closure(word) => self.print_opaque("CLOSURE", word),
             ObjectRef::Package(word) => self.print_opaque("PACKAGE", word),
@@ -229,6 +229,22 @@ impl<'a> Printer<'a> {
             ObjectRef::Code(word) => self.print_opaque("CODE", word),
             _ => self.print_opaque("OBJECT", object),
         }
+    }
+
+    /// Print a CLOS-style instance. A non-escaping print (`PRINC`, and
+    /// `FORMAT`'s `~A` directive, which is implemented in terms of it) of a
+    /// condition prints its report text directly, matching `PRINT-OBJECT`'s
+    /// standard method for conditions; every other instance, and an
+    /// escaping print (`PRIN1`) of a condition, falls back to the opaque
+    /// `#<INSTANCE ...>` representation.
+    fn print_instance(&mut self, object: Word) -> Result<(), PrintError> {
+        if !self.options.escape()
+            && ncl_conditions::condition_class_of(self.ctx, object).is_ok()
+            && let Some(report) = ncl_conditions::condition_report(self.ctx, object)
+        {
+            return self.write_str(&report);
+        }
+        self.print_opaque("INSTANCE", object)
     }
 
     fn print_structure(&mut self, object: Word) -> Result<(), PrintError> {

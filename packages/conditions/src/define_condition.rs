@@ -6,7 +6,7 @@
 //! [`crate::class::install_class`], but with a fourth slot holding the
 //! `:report` value (a string, read directly by
 //! [`crate::register::condition_report`]; a function is accepted and stored
-//! but not invoked by the default reporting path — see that function's
+//! but not invoked by the default reporting path (see that function's
 //! doc). `CONDITION-SLOT-REF` is `DEFINE-CONDITION`'s generated `:reader`/
 //! `:accessor` functions' only primitive: each compiles down to a literal
 //! slot index fixed at macro-expansion time, so no by-name slot lookup is

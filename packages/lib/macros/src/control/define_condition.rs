@@ -2,7 +2,7 @@
 //! `NCL-EXT::DEFINE-CONDITION-CLASS`/`NCL-EXT::CONDITION-SLOT-REF`.
 //!
 //! Phase 1 simplification: a slot's positional index is its position among
-//! its *own* class's directly declared slots only — slots are not
+//! its *own* class's directly declared slots only: slots are not
 //! accumulated from a user-defined parent the way ANSI's inherited-slot
 //! model requires. A `DEFINE-CONDITION` with no slots of its own (the common
 //! case: adding a `:report` to a built-in supertype) is unaffected; one that

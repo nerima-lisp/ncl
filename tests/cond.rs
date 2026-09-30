@@ -350,7 +350,7 @@ fn format_tilde_a_of_a_condition_invokes_its_report() {
 // file. It is blocked by a pre-existing defect: `runtime.compile(...)`
 // under `set_gc_stress(true)` fails to even finish macroexpansion for any
 // non-trivial `HANDLER-BIND` body (confirmed independent of this lane's
-// changes — the same failure reproduces for a bare, unmodified
+// changes: the same failure reproduces for a bare, unmodified
 // `HANDLER-BIND` and, differently, for `LOOP`), with
 // `Front(Object(Storage(ThreadNotRegistered)))` (`HANDLER-BIND`) or
 // `Front(Object(TypeError))` (`LOOP`). See this lane's final report for the

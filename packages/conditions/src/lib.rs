@@ -15,13 +15,16 @@
 
 #![forbid(unsafe_code)]
 
+mod builtin_slot_specs;
 mod class;
 mod conversion;
 mod define_condition;
 mod error;
 mod handler;
+mod hierarchy;
 pub(crate) mod records;
 mod register;
+mod report;
 mod restart;
 mod restart_builtins;
 pub(crate) mod slots;
@@ -37,7 +40,8 @@ pub use error::ConditionError;
 pub use handler::{
     HandlerChain, cerror, error, pop_handler, push_handler, signal, signal_matched, warn,
 };
-pub use register::{condition_report, register};
+pub use register::register;
+pub use report::condition_report;
 pub use restart::{
     CleanupRecord, RestartRecord, compute_restarts, find_restart, invoke_restart,
     invoke_restart_by_name, pop_cleanup, pop_restart, push_cleanup, push_restart, restart_name,

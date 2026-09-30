@@ -309,7 +309,7 @@ fn intern_rest_marker<'ctx>(
 /// Expand `(check-type place type &optional string)` into a `TYPEP` guard
 /// that signals a `TYPE-ERROR` (via the ordinary `ERROR` path, since
 /// generated code does not yet convert builtin type failures into
-/// conditions — see C3, out of this lane's scope) offering a `STORE-VALUE`
+/// conditions, see C3, out of this lane's scope) offering a `STORE-VALUE`
 /// restart.
 ///
 /// Phase 1 simplification: the restart is established and returns the

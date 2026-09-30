@@ -3,8 +3,8 @@
 //!
 //! Every clause's handler performs the transfer itself (`return-from` to the
 //! enclosing block), exactly like a hand-written
-//! `(block b (handler-bind ((type (lambda (c) (return-from b ...)))) form))`
-//! — so `HANDLER-BIND`'s existing first-match semantics are exactly what is
+//! `(block b (handler-bind ((type (lambda (c) (return-from b ...)))) form))`,
+//! so `HANDLER-BIND`'s existing first-match semantics are exactly what is
 //! needed; no new runtime machinery is required.
 
 use super::handler_bind::symbol_named;

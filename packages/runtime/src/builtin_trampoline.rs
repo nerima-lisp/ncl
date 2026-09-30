@@ -43,10 +43,14 @@ use crate::RuntimeError;
 use crate::support::NativeInvocation;
 #[path = "builtin_trampoline_dispatch.rs"]
 mod dispatch_impl;
-use dispatch_impl::{dispatch_with_context, record_boundary_error};
+use dispatch_impl::dispatch_with_context;
+pub use dispatch_impl::record_boundary_error;
 #[path = "builtin_trampoline_keywords.rs"]
 mod keyword_impl;
 use keyword_impl::install_keyword_builtins;
+#[path = "arith_fast.rs"]
+mod arith_fast;
+pub use arith_fast::install as install_arith_fast;
 /// `(primary value, value count)`, the pair a native entry already returns to
 /// `invoke_entry_with_function_address` (value in the first return register,
 /// count in the second): `#[repr(C)]` with two eight-byte integer fields is

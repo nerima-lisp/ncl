@@ -60,6 +60,7 @@ impl Runtime {
             builtin_trampoline::install(&object, &mut context)?;
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
+        builtin_trampoline::install_arith_fast(&object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
         load::register_builtin(&mut context, &object)?;

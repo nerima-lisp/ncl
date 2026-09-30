@@ -16,6 +16,9 @@ use core::{
 };
 pub use predicates::*;
 
+/// The exact-integer/rational `expt` fast path, shared with `transcendental`.
+pub use core::integer_expt;
+
 macro_rules! typed_runtime {
     ($name:ident, $function:ident) => {
         pub fn $name(

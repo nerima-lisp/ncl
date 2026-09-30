@@ -251,6 +251,11 @@ pub fn typed_expt(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
+    let base = args.required(0)?;
+    let exponent = args.required(1)?;
+    if let Some(result) = crate::arithmetic::integer_expt(ctx, runtime, base, exponent)? {
+        return Ok(result);
+    }
     binary(ctx, runtime, args, |base, exponent| {
         let value = exp(mul(log(base.pair()), exponent.pair()));
         if !base.is_complex() && !exponent.is_complex() && value.1 == 0.0 {

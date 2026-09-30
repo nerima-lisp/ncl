@@ -5,8 +5,8 @@
 )]
 
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, Word, classify_object, complex_imag, complex_real,
-    double_value, make_complex, make_double,
+    ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object, complex_imag, complex_real,
+    double_value, make_complex, make_double, make_ratio, ratio_denominator, ratio_numerator,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -79,14 +79,17 @@ fn real_functions_match_f64_with_optional_log_and_atan() {
     let (runtime, mut ctx) = setup();
     let one = Word::fixnum(1);
     close(call_real(&runtime, &mut ctx, "EXP", &[one]), 1.0_f64.exp());
-    close(
-        call_real(
+    // An integer base raised to an integer exponent is exact (see
+    // `expt_is_exact_for_integer_and_rational_bases_and_falls_back_to_float`
+    // below), so it is not routed through `call_real`'s double-float check.
+    assert_eq!(
+        call(
             &runtime,
             &mut ctx,
             "EXPT",
             &[Word::fixnum(2), Word::fixnum(10)],
         ),
-        1024.0,
+        Word::fixnum(1024),
     );
     close(
         call_real(
@@ -182,4 +185,60 @@ fn signed_zero_infinities_and_real_domain_boundaries() {
     close(negative.1, std::f64::consts::PI);
     let root = call_pair(&runtime, &mut ctx, "SQRT", &[Word::fixnum(-1)]);
     close_pair(root, (0.0, 1.0));
+}
+
+fn ratio(ctx: &mut ThreadContext, runtime: &Runtime, numerator: i64, denominator: i64) -> Word {
+    make_ratio(
+        ctx,
+        runtime,
+        Word::fixnum(numerator),
+        Word::fixnum(denominator),
+    )
+    .unwrap()
+    .into()
+}
+
+fn as_ratio(ctx: &ThreadContext, value: Word) -> (Word, Word) {
+    let ObjectRef::Ratio(value) = classify_object(ctx, value) else {
+        panic!("expected ratio")
+    };
+    let value = Ratio::from_word(value);
+    (
+        ratio_numerator(ctx, value).unwrap(),
+        ratio_denominator(ctx, value).unwrap(),
+    )
+}
+
+#[test]
+fn expt_is_exact_for_integer_and_rational_bases_and_falls_back_to_float() {
+    let (runtime, mut ctx) = setup();
+    // `2^100` overflows `i64` but fits the `i128` bignum representation this
+    // crate uses, so it must stay an exact bignum, not a lossy float.
+    let large = call(
+        &runtime,
+        &mut ctx,
+        "EXPT",
+        &[Word::fixnum(2), Word::fixnum(100)],
+    );
+    let ObjectRef::Bignum(_) = classify_object(&ctx, large) else {
+        panic!("expected bignum result for (expt 2 100)")
+    };
+    // A rational base squares its numerator and denominator independently.
+    let two_thirds = ratio(&mut ctx, &runtime, 2, 3);
+    let result = call(&runtime, &mut ctx, "EXPT", &[two_thirds, Word::fixnum(2)]);
+    assert_eq!(as_ratio(&ctx, result), (Word::fixnum(4), Word::fixnum(9)));
+    // A negative exponent inverts the exact result into a ratio.
+    let inverted = call(
+        &runtime,
+        &mut ctx,
+        "EXPT",
+        &[Word::fixnum(2), Word::fixnum(-2)],
+    );
+    assert_eq!(as_ratio(&ctx, inverted), (Word::fixnum(1), Word::fixnum(4)));
+    // A float or complex operand still falls back to the transcendental path.
+    let half: Word = make_double(&mut ctx, &runtime, 0.5).unwrap().into();
+    close(
+        call_real(&runtime, &mut ctx, "EXPT", &[Word::fixnum(2), half]),
+        2.0_f64.sqrt(),
+    );
 }

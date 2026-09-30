@@ -389,10 +389,17 @@ fn read_quoted(
     name: &str,
 ) -> Result<Word, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;
-    let Some(form) = form else {
+    let Some(mut form) = form else {
         return Err(ReadError::UnexpectedEof);
     };
-    let symbol = intern_common_lisp(ctx, runtime, name)?;
+    // `intern_common_lisp` allocates a scratch string before it even checks
+    // whether the name is already interned, so `form` must stay rooted across
+    // it: under `gc_stress` that allocation forces a collection that would
+    // otherwise leave `form` pointing at a stale address.
+    let form_token = push_root(ctx, &mut form);
+    let symbol = intern_common_lisp(ctx, runtime, name);
+    let _ = pop_root(ctx, form_token);
+    let symbol = symbol?;
     let cell = make_cons(ctx, runtime, form, Word::NIL)?;
     Ok(make_cons(ctx, runtime, symbol, cell)?)
 }

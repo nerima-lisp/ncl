@@ -34,10 +34,18 @@ pub fn read_sharp(
     match sub {
         '\'' => {
             let form = read_form(ctx, runtime, source, opts, rt, labels)?;
-            let Some(form) = form else {
+            let Some(mut form) = form else {
                 return Err(ReadError::UnexpectedEof);
             };
-            let function = intern_common_lisp(ctx, runtime, "FUNCTION")?;
+            // `intern_common_lisp` allocates a scratch string before it even
+            // checks whether the name is already interned, so `form` must
+            // stay rooted across it: under `gc_stress` that allocation forces
+            // a collection that would otherwise leave `form` pointing at a
+            // stale address.
+            let form_token = push_root(ctx, &mut form);
+            let function = intern_common_lisp(ctx, runtime, "FUNCTION");
+            let _ = pop_root(ctx, form_token);
+            let function = function?;
             let cell = make_cons(ctx, runtime, form, Word::NIL)?;
             Ok(Some(make_cons(ctx, runtime, function, cell)?))
         }

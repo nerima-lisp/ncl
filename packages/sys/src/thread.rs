@@ -261,11 +261,13 @@ impl Thread {
         self.poll_safepoint();
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
-        #[cfg(target_arch = "x86_64")]
         {
-            // Native callbacks can allocate before a precise generated-frame
-            // capture is available. Refresh the conservative snapshot at the
-            // collection site so the active generated frame is included.
+            // Native callbacks (including Rust builtins that allocate, such as
+            // under `gc_stress`) can trigger a collection before a precise
+            // generated-frame capture is available. Refresh the conservative
+            // snapshot at the collection site, on every architecture, so the
+            // active generated frame's spilled cross-call values are still
+            // found even though no safepoint poll captured them.
             self.publish_snapshot();
         }
         if let Some(heap) = self.heap {

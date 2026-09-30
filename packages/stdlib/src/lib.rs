@@ -45,6 +45,7 @@ pub const REGISTRATION_ORDER: &[&str] = &[
 /// Returns the first [`ObjectError`] reported by a crate registration.
 pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     ncl_types::register(runtime)?;
+    ncl_types::builtins::register(runtime)?;
     // Pre-intern the standard Common Lisp symbols (special operators,
     // constants, etc.) into `COMMON-LISP` before anything else runs. Without
     // this, the first *unqualified* reference to e.g. `PROGN` or `IF` inside

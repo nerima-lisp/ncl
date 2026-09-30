@@ -391,7 +391,7 @@ fn is_bit_vector(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
     }
 }
 
-fn is_keyword(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
+pub(crate) fn is_keyword(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
     if object == Word::NIL || !matches!(classify_object(ctx, object), ObjectRef::Symbol(_)) {
         return Ok(false);
     }

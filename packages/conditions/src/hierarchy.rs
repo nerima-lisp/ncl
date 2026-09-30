@@ -8,6 +8,7 @@ pub struct HierarchyRow {
     /// root `condition`. More than one entry models genuine ANSI multiple
     /// inheritance (for example `simple-error` under both `simple-condition`
     /// and `error`).
+    // check-added-lines: allow(index) slice type, not indexing
     pub superclasses: &'static [&'static str],
 }
 /// The standard condition hierarchy. Most rows single-inherit, but a handful

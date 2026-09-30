@@ -9,6 +9,9 @@ license.workspace = true
 ncl-object = { path = "../object" }
 ncl-ownership = { path = "../ownership" }
 
+[dev-dependencies]
+ncl-sys = { path = "../sys" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"

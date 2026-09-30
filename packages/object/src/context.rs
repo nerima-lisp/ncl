@@ -6,7 +6,7 @@ use core::cell::Cell;
 use ncl_sys::{RootToken, StorageCondition, Thread, Word};
 
 pub type ConditionHandlerInvoker =
-    fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, Word) -> Result<(), ObjectError>;
+    fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, &[Word]) -> Result<Word, ObjectError>;
 
 #[derive(Debug)]
 pub struct ThreadContext {
@@ -200,22 +200,26 @@ impl ThreadContext {
     pub fn set_condition_handler_invoker(&mut self, invoker: ConditionHandlerInvoker) {
         self.condition_handler_invoker = Some(invoker);
     }
-    /// Invoke the runtime callback for a condition handler.
+    /// Invoke the runtime callback for a condition handler or restart function.
+    ///
+    /// `arguments` is the full argument list passed to `handler` (one
+    /// condition object for handler-bind handlers, or zero or more
+    /// user-supplied values for restart functions).
     ///
     /// # Errors
     /// Returns an object error when no evaluator is active or invocation fails.
     pub fn invoke_condition_handler(
         &mut self,
         handler: Word,
-        condition: Word,
-    ) -> Result<(), ObjectError> {
+        arguments: &[Word],
+    ) -> Result<Word, ObjectError> {
         let Some(invoker) = self.condition_handler_invoker else {
-            return Ok(());
+            return Ok(Word::NIL);
         };
         let Some(runtime) = self.evaluator_runtime else {
             return Err(ObjectError::Layout);
         };
-        invoker(runtime, self, handler, condition)
+        invoker(runtime, self, handler, arguments)
     }
     /// Return the stable thread pointer used by generated code.
     pub fn thread_mut(&mut self) -> &mut Thread {

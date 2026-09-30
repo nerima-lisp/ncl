@@ -68,6 +68,7 @@ version = "0.1.0"
 dependencies = [
  "ncl-object",
  "ncl-ownership",
+ "ncl-sys",
 ]
 
 [[package]]
@@ -260,6 +261,7 @@ dependencies = [
 name = "ncl-printer"
 version = "0.1.0"
 dependencies = [
+ "ncl-conditions",
  "ncl-lib-streams",
  "ncl-object",
  "ncl-ownership",

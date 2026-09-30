@@ -17,11 +17,14 @@
 
 mod class;
 mod conversion;
+mod define_condition;
 mod error;
 mod handler;
 pub(crate) mod records;
 mod register;
 mod restart;
+mod restart_builtins;
+pub(crate) mod slots;
 mod symbols;
 
 pub use class::{
@@ -31,9 +34,12 @@ pub use class::{
 };
 pub use conversion::condition_from_lisp_error;
 pub use error::ConditionError;
-pub use handler::{HandlerChain, cerror, error, pop_handler, push_handler, signal, warn};
-pub use register::register;
+pub use handler::{
+    HandlerChain, cerror, error, pop_handler, push_handler, signal, signal_matched, warn,
+};
+pub use register::{condition_report, register};
 pub use restart::{
     CleanupRecord, RestartRecord, compute_restarts, find_restart, invoke_restart,
-    invoke_restart_by_name, pop_cleanup, pop_restart, push_cleanup, push_restart, unwind,
+    invoke_restart_by_name, pop_cleanup, pop_restart, push_cleanup, push_restart, restart_name,
+    unwind,
 };

@@ -86,22 +86,37 @@ fn tagbody(
     kind: SpecialForm,
     form: Word,
 ) -> Result<Expr, FrontError> {
-    let arguments = special::arguments(expander, kind, form)?;
+    let mut arguments = special::arguments(expander, kind, form)?;
+    // Expanding one item (a macro call, in particular) can allocate and force
+    // a collection, so the remaining not-yet-expanded items must stay
+    // precisely rooted for the whole loop: without this, a later item read
+    // after an earlier item's expansion allocated could read a stale,
+    // already-moved word.
+    let token = ncl_object::push_root_slice(expander.ctx(), &mut arguments);
     expander.env_mut().push_scope();
     let mut items = Vec::with_capacity(arguments.len());
-    for argument in arguments {
-        if matches!(
-            classify_form(expander.ctx(), argument),
-            ObjectRef::Symbol(_)
-        ) {
-            let tag = expander.symbol(argument)?;
-            expander.env_mut().bind_tag(tag.clone());
-            items.push(TagbodyItem::Tag(tag));
-        } else {
-            items.push(TagbodyItem::Form(expander.expand(argument)?));
+    let result: Result<(), FrontError> = (|| {
+        for &argument in &arguments {
+            if matches!(
+                classify_form(expander.ctx(), argument),
+                ObjectRef::Symbol(_)
+            ) {
+                let tag = expander.symbol(argument)?;
+                expander.env_mut().bind_tag(tag.clone());
+                items.push(TagbodyItem::Tag(tag));
+            } else {
+                items.push(TagbodyItem::Form(expander.expand(argument)?));
+            }
         }
-    }
+        Ok(())
+    })();
     expander.env_mut().pop_scope();
+    if !ncl_object::pop_root(expander.ctx(), token) {
+        return Err(FrontError::Object(
+            ncl_object::ObjectError::RootStackCorrupted,
+        ));
+    }
+    result?;
     Ok(Expr::Tagbody(items))
 }
 

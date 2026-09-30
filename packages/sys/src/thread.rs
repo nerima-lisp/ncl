@@ -214,8 +214,23 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
-        self.stack_bounds = stack::current_stack_bounds();
+        self.refresh_conservative_stack();
         self.callee_saved = crate::snapshot_callee_saved();
+    }
+    /// Refresh only the conservatively scanned stack extent, leaving the
+    /// callee-saved register snapshot untouched.
+    ///
+    /// A generated frame's cross-call-live values are always spilled to its
+    /// stack slots, never left in a register, across a call (see
+    /// `ncl-codegen`'s register allocator), so the stack extent is what a
+    /// collection triggered from deep inside a native callback (as
+    /// `gc_stress` does on every allocation) needs refreshed to find them.
+    /// Also refreshing `callee_saved` here would additionally treat every
+    /// callee-saved register of the *calling Rust code* (not just generated
+    /// Lisp frames) as a conservative root, which register allocation for
+    /// ordinary Rust functions was never designed to keep collectible.
+    pub(crate) fn refresh_conservative_stack(&mut self) {
+        self.stack_bounds = stack::current_stack_bounds();
     }
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();
@@ -261,15 +276,21 @@ impl Thread {
         self.poll_safepoint();
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
+        #[cfg(target_arch = "x86_64")]
         {
-            // Native callbacks (including Rust builtins that allocate, such as
-            // under `gc_stress`) can trigger a collection before a precise
-            // generated-frame capture is available. Refresh the conservative
-            // snapshot at the collection site, on every architecture, so the
-            // active generated frame's spilled cross-call values are still
-            // found even though no safepoint poll captured them.
+            // Native callbacks can allocate before a precise generated-frame
+            // capture is available. Refresh the conservative snapshot at the
+            // collection site so the active generated frame is included.
             self.publish_snapshot();
         }
+        // Native callbacks (including Rust builtins that allocate, such as
+        // under `gc_stress`) can trigger a collection before a precise
+        // generated-frame capture is available. Refresh the conservatively
+        // scanned stack extent at the collection site on every architecture,
+        // so a live generated frame's spilled cross-call values are still
+        // found even though no safepoint poll captured them.
+        #[cfg(target_arch = "aarch64")]
+        self.refresh_conservative_stack();
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {

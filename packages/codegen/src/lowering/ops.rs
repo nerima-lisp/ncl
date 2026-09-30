@@ -41,6 +41,9 @@ pub(super) fn constant_value(
         Constant::Symbol { .. }
         | Constant::Object(_)
         | Constant::StringBytes(_)
+        | Constant::Bignum { .. }
+        | Constant::Ratio { .. }
+        | Constant::Complex { .. }
         // check-added-lines: allow(unsupported) runtime-table constants are loaded through code objects
         | Constant::Structure { .. } => Err(CodegenError::Unsupported(
             "constant requires a runtime constant table".into(),

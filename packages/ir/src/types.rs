@@ -133,6 +133,21 @@ pub enum Constant {
     T,
     Unbound,
     FunctionEntry(FunctionId),
+    /// An integer wider than a fixnum, as a sign plus little-endian 32-bit limbs.
+    Bignum {
+        negative: bool,
+        limbs: Vec<u32>,
+    },
+    /// A ratio; both operands are resolved constants earlier in the table.
+    Ratio {
+        numerator: ConstantIndex,
+        denominator: ConstantIndex,
+    },
+    /// A complex number; both parts are resolved constants earlier in the table.
+    Complex {
+        real: ConstantIndex,
+        imaginary: ConstantIndex,
+    },
 }
 
 /// A direct primitive operation.

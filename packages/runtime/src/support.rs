@@ -6,8 +6,8 @@ use ncl_compiler_front::MacroCaller;
 use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
-    make_closure, make_cons, make_double, make_simple_vector, make_string, make_value_cell,
-    symbol_function,
+    make_bignum_from_limbs, make_closure, make_complex, make_cons, make_double, make_ratio,
+    make_simple_vector, make_string, make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
@@ -314,6 +314,12 @@ pub fn resolve_constant(
         ctx,
         previous,
         |ctx, previous| -> Result<Word, ObjectError> {
+            let resolved = |index: &ncl_ir::ConstantIndex| -> Result<Word, ObjectError> {
+                previous
+                    .get(usize::try_from(index.0).map_err(|_| ObjectError::Layout)?)
+                    .map(|value| **value)
+                    .ok_or(ObjectError::Layout)
+            };
             let value = match constant {
                 ncl_ir::Constant::Fixnum(value) => Word::fixnum(*value),
                 ncl_ir::Constant::Character(value) => Word::character(*value),
@@ -323,10 +329,7 @@ pub fn resolve_constant(
                 ncl_ir::Constant::T => Word::TRUE,
                 // check-added-lines: allow(unbound) IR explicitly represents this sentinel.
                 ncl_ir::Constant::Unbound => Word::UNBOUND,
-                ncl_ir::Constant::Object(index) => previous
-                    .get(usize::try_from(index.0).map_err(|_| ObjectError::Layout)?)
-                    .map(|value| **value)
-                    .ok_or(ObjectError::Layout)?,
+                ncl_ir::Constant::Object(index) => resolved(index)?,
                 ncl_ir::Constant::StringBytes(bytes) => {
                     let text = std::str::from_utf8(bytes).map_err(|_| ObjectError::Layout)?;
                     make_string(ctx, runtime, &text.chars().collect::<Vec<_>>())?
@@ -334,12 +337,7 @@ pub fn resolve_constant(
                 ncl_ir::Constant::Structure { kind, elements } => {
                     let values = elements
                         .iter()
-                        .map(|index| {
-                            previous
-                                .get(usize::try_from(index.0).map_err(|_| ObjectError::Layout)?)
-                                .map(|value| **value)
-                                .ok_or(ObjectError::Layout)
-                        })
+                        .map(resolved)
                         .collect::<Result<Vec<_>, ObjectError>>()?;
                     match kind {
                         ncl_ir::StructureKind::Cons => {
@@ -372,6 +370,17 @@ pub fn resolve_constant(
                     Package::from_word(package_word)
                         .intern(ctx, runtime, name)
                         .map(|(symbol, _)| symbol)?
+                }
+                ncl_ir::Constant::Bignum { negative, limbs } => {
+                    make_bignum_from_limbs(ctx, runtime, *negative, limbs)?.as_word()
+                }
+                ncl_ir::Constant::Ratio {
+                    numerator,
+                    denominator,
+                } => make_ratio(ctx, runtime, resolved(numerator)?, resolved(denominator)?)?
+                    .as_word(),
+                ncl_ir::Constant::Complex { real, imaginary } => {
+                    make_complex(ctx, runtime, resolved(real)?, resolved(imaginary)?)?.as_word()
                 }
             };
             Ok(value)

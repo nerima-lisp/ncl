@@ -124,6 +124,17 @@ fn remap_constant(
                 .map(|child| remap_constant(child, constants, caller_constants, callee))
                 .collect(),
         },
+        Constant::Ratio {
+            numerator,
+            denominator,
+        } => Constant::Ratio {
+            numerator: remap_constant(numerator, constants, caller_constants, callee),
+            denominator: remap_constant(denominator, constants, caller_constants, callee),
+        },
+        Constant::Complex { real, imaginary } => Constant::Complex {
+            real: remap_constant(real, constants, caller_constants, callee),
+            imaginary: remap_constant(imaginary, constants, caller_constants, callee),
+        },
         other => other,
     };
     if let Some(entry) = caller_constants.get_mut(slot) {

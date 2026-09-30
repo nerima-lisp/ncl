@@ -72,7 +72,7 @@ pub use ncl_sys::RootSlot;
 pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
-    make_complex, make_double, make_ratio,
+    make_bignum_from_limbs, make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
 pub use object_error::ObjectError;

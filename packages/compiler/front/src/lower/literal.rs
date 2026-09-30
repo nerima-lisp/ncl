@@ -1,8 +1,9 @@
 //! Lowering quoted and self-evaluating literals to `ncl-ir` constants.
 //!
-//! The constant table holds scalars, symbols, strings, and descriptors; it has
-//! no structural object, so a quoted cons, vector, or non-fixnum number has no
-//! representation and is reported as [`LowerError::Unsupported`].
+//! The constant table holds scalars, symbols, strings, and descriptors, plus
+//! structural entries (cons, vector, bignum, ratio, complex) that reference
+//! earlier table entries by index. Arrays and bit-vectors have no
+//! representation yet and are reported as [`LowerError::Unsupported`].
 
 use ncl_ir::{Constant, Convert, OpKind, StructureKind, Ty, ValueId};
 
@@ -92,21 +93,52 @@ fn scalar_or_structure_constant(
             }
             Ok(Constant::StringBytes(bytes))
         }
-        Literal::Number(NumberLiteral::Fixnum(value)) => Ok(Constant::Fixnum(*value)),
-        Literal::Number(NumberLiteral::SingleFloat(value)) => Ok(Constant::SingleFloat(*value)),
-        Literal::Number(NumberLiteral::DoubleFloat(value)) => Ok(Constant::DoubleFloat(*value)),
+        Literal::Number(number) => number_literal_constant(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => structure_constant(f, literal),
-        Literal::Number(
-            NumberLiteral::Bignum { .. }
-            | NumberLiteral::Ratio { .. }
-            | NumberLiteral::Complex { .. },
-        )
-        | Literal::Array { .. }
-        | Literal::BitVector(_) => Err(LowerError::Unsupported {
+        Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
             // check-added-lines: allow(unsupported) unsupported literal families remain explicit
             form: "quoted structure",
         }),
     }
+}
+
+/// Lower a numeric literal to a constant-table entry, recursively lowering
+/// the numerator/denominator or real/imaginary parts of ratios and
+/// complexes into their own earlier entries (mirroring how
+/// [`structure_constant`] lowers cons/vector elements).
+fn number_literal_constant(
+    f: &mut FunctionLowerer,
+    number: &NumberLiteral,
+) -> Result<Constant, LowerError> {
+    Ok(match number {
+        NumberLiteral::Fixnum(value) => Constant::Fixnum(*value),
+        NumberLiteral::SingleFloat(value) => Constant::SingleFloat(*value),
+        NumberLiteral::DoubleFloat(value) => Constant::DoubleFloat(*value),
+        NumberLiteral::Bignum { negative, limbs } => Constant::Bignum {
+            negative: *negative,
+            limbs: limbs.clone(),
+        },
+        NumberLiteral::Ratio {
+            numerator,
+            denominator,
+        } => {
+            let numerator = number_literal_constant(f, numerator)?;
+            let numerator = f.add_constant(numerator);
+            let denominator = number_literal_constant(f, denominator)?;
+            let denominator = f.add_constant(denominator);
+            Constant::Ratio {
+                numerator,
+                denominator,
+            }
+        }
+        NumberLiteral::Complex { real, imaginary } => {
+            let real = number_literal_constant(f, real)?;
+            let real = f.add_constant(real);
+            let imaginary = number_literal_constant(f, imaginary)?;
+            let imaginary = f.add_constant(imaginary);
+            Constant::Complex { real, imaginary }
+        }
+    })
 }
 
 fn lower_number(f: &mut FunctionLowerer, number: &NumberLiteral) -> Result<ValueId, LowerError> {
@@ -143,8 +175,9 @@ fn lower_number(f: &mut FunctionLowerer, number: &NumberLiteral) -> Result<Value
         }
         NumberLiteral::Bignum { .. }
         | NumberLiteral::Ratio { .. }
-        | NumberLiteral::Complex { .. } => Err(LowerError::Unsupported {
-            form: "quoted number",
-        }),
+        | NumberLiteral::Complex { .. } => {
+            let constant = number_literal_constant(f, number)?;
+            f.word_constant(constant)
+        }
     }
 }

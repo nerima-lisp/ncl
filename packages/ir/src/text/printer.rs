@@ -170,6 +170,27 @@ fn constant(w: &mut Writer, c: &Constant) {
             w.u(10);
             w.u(id.0.into());
         }
+        Constant::Bignum { negative, limbs } => {
+            w.u(12);
+            w.b(*negative);
+            vec_len(w, limbs.len());
+            for limb in limbs {
+                w.u((*limb).into());
+            }
+        }
+        Constant::Ratio {
+            numerator,
+            denominator,
+        } => {
+            w.u(13);
+            w.u(numerator.0.into());
+            w.u(denominator.0.into());
+        }
+        Constant::Complex { real, imaginary } => {
+            w.u(14);
+            w.u(real.0.into());
+            w.u(imaginary.0.into());
+        }
     }
 }
 fn block(w: &mut Writer, b: &BasicBlock) {

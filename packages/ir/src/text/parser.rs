@@ -196,6 +196,20 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
         8 => Constant::T,
         9 => Constant::Unbound,
         10 => Constant::FunctionEntry(FunctionId(u32(r.u()?)?)),
+        12 => Constant::Bignum {
+            negative: r.b()?,
+            limbs: (0..r.u()?)
+                .map(|_| u32(r.u()?))
+                .collect::<Result<Vec<_>, ParseError>>()?,
+        },
+        13 => Constant::Ratio {
+            numerator: ConstantIndex(u32(r.u()?)?),
+            denominator: ConstantIndex(u32(r.u()?)?),
+        },
+        14 => Constant::Complex {
+            real: ConstantIndex(u32(r.u()?)?),
+            imaginary: ConstantIndex(u32(r.u()?)?),
+        },
         _ => return Err(ParseError("bad constant".into())),
     })
 }

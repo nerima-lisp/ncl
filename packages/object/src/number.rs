@@ -18,13 +18,30 @@ pub fn make_bignum_from_i128(
     runtime: &Runtime,
     value: i128,
 ) -> Result<Bignum, ObjectError> {
-    let sign = i64::from(value.is_negative());
+    let negative = value.is_negative();
     let mut rest = value.unsigned_abs();
     let mut limbs = Vec::new();
     while rest != 0 {
         limbs.push(u32::try_from(rest & u128::from(u32::MAX)).map_err(|_| ObjectError::Layout)?);
         rest >>= 32;
     }
+    make_bignum_from_limbs(ctx, runtime, negative, &limbs)
+}
+
+/// Allocate a bignum directly from its sign and little-endian 32-bit limbs.
+///
+/// This is the representation a bignum literal carries from the reader
+/// through to the constant table, so it can encode magnitudes wider than
+/// `i128` without a lossy round trip.
+///
+/// # Errors
+/// Returns an error when the encoded size cannot be represented.
+pub fn make_bignum_from_limbs(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    negative: bool,
+    limbs: &[u32],
+) -> Result<Bignum, ObjectError> {
     let object = allocate(
         ctx,
         runtime,
@@ -35,7 +52,7 @@ pub fn make_bignum_from_i128(
         ctx,
         object,
         number_offset::SIGN,
-        Word::from_bits(sign.cast_unsigned()),
+        Word::from_bits(u64::from(negative)),
     )?;
     put(ctx, object, number_offset::LIMB_COUNT, fix(limbs.len())?)?;
     for (index, pair) in limbs.chunks(2).enumerate() {

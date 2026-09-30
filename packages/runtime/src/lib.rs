@@ -84,19 +84,23 @@ impl RuntimeError {
         matches!(self, Self::Read(ncl_reader::ReadError::UnexpectedEof))
     }
 }
-impl From<ObjectError> for RuntimeError {
-    fn from(value: ObjectError) -> Self {
-        Self::Object(value)
-    }
+/// Wrap a source error directly in the named single-field `RuntimeError` variant.
+macro_rules! wrap_runtime_error {
+    ($source:ty => $variant:ident) => {
+        impl From<$source> for RuntimeError {
+            fn from(value: $source) -> Self {
+                Self::$variant(value)
+            }
+        }
+    };
 }
+wrap_runtime_error!(ObjectError => Object);
+wrap_runtime_error!(ncl_reader::ReadError => Read);
+wrap_runtime_error!(ncl_compiler_front::FrontError => Front);
+wrap_runtime_error!(ncl_compiler_front::LowerError => Lower);
 impl From<ncl_objfile::ObjectError> for RuntimeError {
     fn from(value: ncl_objfile::ObjectError) -> Self {
         Self::Native(format!("object file error: {value}"))
-    }
-}
-impl From<ncl_reader::ReadError> for RuntimeError {
-    fn from(value: ncl_reader::ReadError) -> Self {
-        Self::Read(value)
     }
 }
 impl From<std::io::Error> for RuntimeError {
@@ -105,16 +109,6 @@ impl From<std::io::Error> for RuntimeError {
             path: "<source>".to_owned(),
             error: value,
         }
-    }
-}
-impl From<ncl_compiler_front::FrontError> for RuntimeError {
-    fn from(value: ncl_compiler_front::FrontError) -> Self {
-        Self::Front(value)
-    }
-}
-impl From<ncl_compiler_front::LowerError> for RuntimeError {
-    fn from(value: ncl_compiler_front::LowerError) -> Self {
-        Self::Lower(value)
     }
 }
 /// A running NCL instance and its published native code.
@@ -149,6 +143,7 @@ impl Runtime {
             builtin_trampoline::install(&object, &mut context)?;
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
+        builtin_trampoline::install_arith_fast(&object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
         load::register_builtin(&mut context, &object)?;

@@ -4,10 +4,7 @@ use super::{
 };
 
 /// Record an error at the native boundary without retaining a transient exit.
-pub(super) const fn record_boundary_error(
-    context: &mut ThreadContext,
-    error: ncl_object::ObjectError,
-) {
+pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
     match error {
         ncl_object::ObjectError::NonLocalExit if context.is_unwinding() => {}
         ncl_object::ObjectError::NonLocalExit => {

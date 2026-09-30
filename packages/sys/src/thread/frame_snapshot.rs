@@ -51,6 +51,7 @@ impl Thread {
             return;
         };
         let frame_words = usize::from(map.frame_words);
+        // check-added-lines: allow(as-cast) frame_fp is a raw frame address by contract
         let words = frame_fp as *const Word;
         let mut snapshot = Vec::with_capacity(frame_words);
         // SAFETY: the caller guarantees the generated frame has the mapped width.
@@ -72,6 +73,7 @@ impl Thread {
         }
         self.stack_bounds = None;
         self.callee_saved = [0; 16];
+        // check-added-lines: allow(index, as-cast) frame_words is always at least the four-word header
         self.frame_chain[1] = Word::from_bits(return_pc as u64);
         self.frame_address = Some(frame_fp);
         self.frame_snapshot_failed = false;
@@ -102,6 +104,7 @@ impl Thread {
         };
         // SAFETY: the captured generated frame remains active during collection and write-back.
         unsafe {
+            // check-added-lines: allow(as-cast) address is a raw frame address by contract
             let frame = address as *mut Word;
             for (index, word) in self.frame_chain.iter().copied().enumerate() {
                 if index == 1 {

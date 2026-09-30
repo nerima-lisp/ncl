@@ -2,6 +2,7 @@
 
 use std::process::{Command, Output, Stdio};
 
+#[allow(dead_code)]
 pub fn run_ncl(source: &str) -> Output {
     match Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])

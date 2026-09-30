@@ -37,6 +37,7 @@ pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectErr
 /// (naming `symbol`) and returns [`ObjectError::TypeError`].
 pub fn bound_symbol_value(ctx: &mut ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     let value = symbol_value(ctx, symbol)?;
+    // check-added-lines: allow(unbound) this is the unbound check itself
     if value == Word::UNBOUND {
         ctx.set_pending_lisp_error(LispError::CellError(CellError::UnboundVariable {
             name: symbol,

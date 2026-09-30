@@ -141,8 +141,8 @@ fn defgeneric_macro_builtin(
     // result: CLHS requires the generic function *name* back, so it must be
     // the quoted symbol, not a bare one (which would compile as a read of
     // the variable of that name, which `defgeneric` never binds).
+    // check-added-lines: allow(index) fixed form fields
     for value in [clear, function, quoted_name] {
-        // check-added-lines: allow(index) fixed form fields
         macro_push_handle(&mut scope, &mut result, value);
     }
     let expansion = scope.make_list(runtime, &result)?;
@@ -258,8 +258,8 @@ fn defmethod_macro_builtin(
     // The trailing element is this `progn`'s (and so `defmethod`'s own)
     // result, so it must be the quoted symbol: a bare one would compile as a
     // read of the variable of that name, which `defmethod` never binds.
+    // check-added-lines: allow(index) fixed form fields
     for value in [wrapper, method_definition, registration, quoted_name] {
-        // check-added-lines: allow(index) fixed form fields
         macro_push_handle(&mut scope, &mut result, value);
     }
     let expansion = scope.make_list(runtime, &result)?;

@@ -164,11 +164,25 @@ impl<'a> FormExpander<'a> {
 
     /// Expand every form of a sequence.
     ///
+    /// Expanding one form (a macro call, in particular) can allocate and
+    /// force a collection, so the remaining not-yet-expanded forms are kept
+    /// precisely rooted for the whole call: without this, a later form read
+    /// from `forms` after an earlier form's expansion allocated could read a
+    /// stale, already-moved word.
+    ///
     /// # Errors
     ///
     /// Returns the first [`FrontError`] raised by any form.
     pub fn expand_all(&mut self, forms: &[Word]) -> Result<Vec<Expr>, FrontError> {
-        forms.iter().map(|form| self.expand(*form)).collect()
+        let mut rooted = forms.to_vec();
+        let token = ncl_object::push_root_slice(self.ctx, &mut rooted);
+        let result = rooted.iter().map(|form| self.expand(*form)).collect();
+        if !ncl_object::pop_root(self.ctx, token) {
+            return Err(FrontError::Object(
+                ncl_object::ObjectError::RootStackCorrupted,
+            ));
+        }
+        result
     }
 
     /// Split the leading `(declare ...)` forms from a body.

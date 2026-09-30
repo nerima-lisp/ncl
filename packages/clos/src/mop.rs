@@ -7,8 +7,8 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum,
     HandleVec, Instance, LambdaList, Local, MultipleValues, ObjectError, ObjectRef, Runtime, Scope,
-    ThreadContext, Word, classify_object, instance_class, simple_vector_length, simple_vector_ref,
-    slot_ref, slot_set,
+    ThreadContext, Word, car, classify_object, instance_class, simple_vector_length,
+    simple_vector_ref, slot_ref, slot_set,
 };
 
 const ARG: ncl_object::Parameter = ncl_object::Parameter {
@@ -190,6 +190,15 @@ fn class_precedence_list(
         let current_word = scope.get(current).as_word();
         result.push(&mut scope, Local::from_word(current_word));
         let parent = class_field(scope.context(), current_word, CLASS_DIRECT_SUPERCLASS)?;
+        // A class with more than one direct superclass (multiple
+        // inheritance, e.g. a condition class from `ncl-conditions`) stores
+        // a list of descriptors here; walk its first (most-specific) parent
+        // as a linearization stand-in rather than erroring.
+        let parent = if parent.is_cons() {
+            car(scope.context(), parent)?
+        } else {
+            parent
+        };
         if parent == Word::NIL {
             break;
         }

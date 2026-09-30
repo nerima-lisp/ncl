@@ -2,7 +2,7 @@
 
 use ncl_object::{Runtime, ThreadContext, Word, make_simple_vector, make_string};
 
-use crate::class::{class_named, condition_class_of, superclass_of};
+use crate::class::{class_named, condition_class_of, direct_parents, superclass_of};
 use crate::error::ConditionError;
 use crate::records;
 
@@ -80,6 +80,28 @@ pub fn pop_handler(ctx: &mut ThreadContext, runtime: &Runtime, chain: HandlerCha
 /// or [`ConditionError::Unhandled`] when no handler matched and the condition
 /// is not a warning.
 pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionError> {
+    if signal_matched(ctx, condition)? {
+        return Ok(());
+    }
+    let class = condition_class_of(ctx, condition)?;
+    if class_named(ctx, class.as_word(), "WARNING")? {
+        return Ok(());
+    }
+    Err(ConditionError::Unhandled)
+}
+
+/// Signal a condition, reporting whether a handler actually matched.
+///
+/// Unlike [`signal`], this never muffles an unhandled warning on its own:
+/// `Ok(false)` means no handler matched, regardless of the condition's
+/// class. `WARN`'s caller uses this to tell "a handler ran" apart from "no
+/// handler matched, so the default report should print" for every
+/// condition, not just non-warnings.
+///
+/// # Errors
+/// Returns an object-layer error when the condition or a record is
+/// malformed, or the failure of an invoked handler.
+pub fn signal_matched(ctx: &mut ThreadContext, condition: Word) -> Result<bool, ConditionError> {
     let class = condition_class_of(ctx, condition)?;
     let mut head = records::cluster_head(ctx);
     while head != Word::NIL {
@@ -97,10 +119,12 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
                     );
                     let result = handler.function(ctx).and_then(|function| {
                         ncl_object::with_roots(ctx, &[function, condition], |ctx, roots| {
-                            ctx.invoke_condition_handler(
-                                **roots.first().ok_or(ncl_object::ObjectError::Layout)?,
-                                **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?,
-                            )
+                            let function =
+                                **roots.first().ok_or(ncl_object::ObjectError::Layout)?;
+                            let condition =
+                                **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?;
+                            ctx.invoke_condition_handler(function, &[condition])
+                                .map(|_value| ())
                         })
                     });
                     records::set_cluster_head(
@@ -110,17 +134,14 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
                     result
                 });
                 match result {
-                    Ok(()) | Err(ncl_object::ObjectError::NonLocalExit) => return Ok(()),
+                    Ok(()) | Err(ncl_object::ObjectError::NonLocalExit) => return Ok(true),
                     Err(error) => return Err(ConditionError::from(error)),
                 }
             }
         }
         head = records::record_previous(ctx, head)?;
     }
-    if class_named(ctx, class.as_word(), "WARNING")? {
-        return Ok(());
-    }
-    Err(ConditionError::Unhandled)
+    Ok(false)
 }
 
 /// Signal an error condition, raising a non-local exit when unhandled.
@@ -164,7 +185,7 @@ pub fn cerror(
     continue_args: Word,
     condition: Word,
 ) -> Result<(), ConditionError> {
-    ncl_object::with_roots(
+    let matched = ncl_object::with_roots(
         ctx,
         &[continue_control, continue_args, condition],
         |ctx, roots| {
@@ -182,13 +203,21 @@ pub fn cerror(
                 Word::NIL,
             )
             .map_err(condition_object_error)?;
-            let result = signal(ctx, condition);
+            // `signal_matched`, not `signal`: the caller (`CERROR`'s builtin)
+            // needs to distinguish "a handler ran" from "unhandled" to know
+            // whether to print the default report, and `ConditionError`
+            // does not survive this closure's `ObjectError` boundary.
+            let result = signal_matched(ctx, condition);
             crate::restart::pop_restart(ctx, restart);
             result.map_err(condition_object_error)
         },
     )
     .map_err(ConditionError::from)?;
-    Ok(())
+    if matched {
+        Ok(())
+    } else {
+        Err(ConditionError::Unhandled)
+    }
 }
 
 const fn condition_object_error(error: ConditionError) -> ncl_object::ObjectError {
@@ -201,21 +230,21 @@ const fn condition_object_error(error: ConditionError) -> ncl_object::ObjectErro
     }
 }
 
-/// Whether `handler_class` equals `class` or one of its ancestors.
+/// Whether `handler_class` equals `class` or one of its ancestors, walking
+/// every direct superclass when a class has more than one (the full
+/// precedence list, matching `TYPEP`).
 fn class_matches(
     ctx: &ThreadContext,
     class: Word,
     handler_class: Word,
 ) -> Result<bool, ConditionError> {
-    let mut current = class;
-    loop {
-        if current == handler_class {
+    if class == handler_class {
+        return Ok(true);
+    }
+    for parent in direct_parents(ctx, superclass_of(ctx, class)?)? {
+        if class_matches(ctx, parent, handler_class)? {
             return Ok(true);
         }
-        let superclass = superclass_of(ctx, current)?;
-        if superclass == Word::NIL {
-            return Ok(false);
-        }
-        current = superclass;
     }
+    Ok(false)
 }

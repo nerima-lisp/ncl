@@ -9,7 +9,7 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Fixnum, FunctionObject, Instance, LambdaList, Local,
     MultipleValues, ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, ThreadContext,
-    Word, classify_object, instance_class, make_instance as allocate_instance,
+    Word, car, cdr, classify_object, instance_class, make_instance as allocate_instance,
     simple_vector_length, simple_vector_ref, slot_ref, slot_set, symbol_function,
 };
 

@@ -8,9 +8,9 @@
 //! minimal shape that L18 (`ncl-clos`) can later formalize into a real class.
 use crate::error::ConditionError;
 use ncl_object::{
-    Instance, ObjectError, Runtime, ThreadContext, Word, instance_class, make_instance,
-    make_simple_vector, make_string, simple_vector_ref, simple_vector_set, string_length,
-    string_ref,
+    Instance, ObjectError, Runtime, ThreadContext, Word, car, cdr, instance_class, make_cons,
+    make_instance, make_simple_vector, make_string, simple_vector_ref, simple_vector_set,
+    string_length, string_ref,
 };
 /// Index of the class name string in a class descriptor.
 pub const NAME_SLOT: usize = 0;
@@ -321,84 +321,87 @@ pub fn condition_class_of(
         Err(error) => Err(ConditionError::Object(error)),
     }
 }
-/// One standard condition class and its direct superclass.
+/// One standard condition class and its direct superclasses.
 pub struct HierarchyRow {
     /// Class name.
     pub name: &'static str,
-    /// Direct superclass name, `None` for the root `condition`.
-    pub superclass: Option<&'static str>,
+    /// Direct superclass names, in most-specific-first order. Empty for the
+    /// root `condition`. More than one entry models genuine ANSI multiple
+    /// inheritance (for example `simple-error` under both `simple-condition`
+    /// and `error`).
+    pub superclasses: &'static [&'static str],
 }
-/// The standard condition hierarchy, using single-superclass links.
-/// Multiple inheritance is a Wave-2 (`ncl-clos`) concern.
+/// The standard condition hierarchy. Most rows single-inherit, but a handful
+/// of ANSI-mandated "simple-*" types have two direct superclasses.
 #[rustfmt::skip]
 pub const HIERARCHY: &[HierarchyRow] = &[
-    HierarchyRow { name: "CONDITION", superclass: None },
-    HierarchyRow { name: "WARNING", superclass: Some("CONDITION") },
-    HierarchyRow { name: "SERIOUS-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "ERROR", superclass: Some("SERIOUS-CONDITION") },
-    HierarchyRow { name: "STORAGE-CONDITION", superclass: Some("SERIOUS-CONDITION") },
-    HierarchyRow { name: "TYPE-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "SIMPLE-TYPE-ERROR", superclass: Some("TYPE-ERROR") },
-    HierarchyRow { name: "ARITHMETIC-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "DIVISION-BY-ZERO", superclass: Some("ARITHMETIC-ERROR") },
-    HierarchyRow { name: "FLOATING-POINT-OVERFLOW", superclass: Some("ARITHMETIC-ERROR") },
-    HierarchyRow { name: "FLOATING-POINT-UNDERFLOW", superclass: Some("ARITHMETIC-ERROR") },
-    HierarchyRow { name: "FLOATING-POINT-INVALID-OPERATION", superclass: Some("ARITHMETIC-ERROR") },
-    HierarchyRow { name: "FLOATING-POINT-INEXACT", superclass: Some("ARITHMETIC-ERROR") },
-    HierarchyRow { name: "CELL-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "UNBOUND-VARIABLE", superclass: Some("CELL-ERROR") },
-    HierarchyRow { name: "UNDEFINED-FUNCTION", superclass: Some("CELL-ERROR") },
-    HierarchyRow { name: "UNBOUND-SLOT", superclass: Some("CELL-ERROR") },
-    HierarchyRow { name: "FILE-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "PACKAGE-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "CONTROL-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "PROGRAM-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "PARSE-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "READER-ERROR", superclass: Some("PARSE-ERROR") },
-    HierarchyRow { name: "PRINT-NOT-READABLE", superclass: Some("ERROR") },
-    HierarchyRow { name: "STREAM-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "END-OF-FILE", superclass: Some("STREAM-ERROR") },
-    HierarchyRow { name: "SIMPLE-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "SIMPLE-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "SIMPLE-WARNING", superclass: Some("SIMPLE-CONDITION") },
-    HierarchyRow { name: "STYLE-WARNING", superclass: Some("WARNING") },
-    HierarchyRow { name: "UNDEFINED-ALIEN-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "CODE-DELETION-NOTE", superclass: Some("CONDITION") },
-    HierarchyRow { name: "COMPILER-NOTE", superclass: Some("CONDITION") },
-    HierarchyRow { name: "DEFCONSTANT-UNEQL", superclass: Some("ERROR") },
-    HierarchyRow { name: "DELETE-FILE-ERROR", superclass: Some("FILE-ERROR") },
-    HierarchyRow { name: "DEPRECATION-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "DEPRECATION-ERROR", superclass: Some("DEPRECATION-CONDITION") },
-    HierarchyRow { name: "EARLY-DEPRECATION-WARNING", superclass: Some("STYLE-WARNING") },
-    HierarchyRow { name: "FILE-DOES-NOT-EXIST", superclass: Some("FILE-ERROR") },
-    HierarchyRow { name: "FILE-EXISTS", superclass: Some("FILE-ERROR") },
-    HierarchyRow { name: "FINAL-DEPRECATION-WARNING", superclass: Some("STYLE-WARNING") },
-    HierarchyRow { name: "IMPLICIT-GENERIC-FUNCTION-WARNING", superclass: Some("STYLE-WARNING") },
-    HierarchyRow { name: "INVALID-FASL", superclass: Some("ERROR") },
-    HierarchyRow { name: "LATE-DEPRECATION-WARNING", superclass: Some("STYLE-WARNING") },
-    HierarchyRow { name: "NAME-CONFLICT", superclass: Some("ERROR") },
-    HierarchyRow { name: "PACKAGE-DOES-NOT-EXIST", superclass: Some("ERROR") },
-    HierarchyRow { name: "PACKAGE-LOCK-VIOLATION", superclass: Some("ERROR") },
-    HierarchyRow { name: "PACKAGE-LOCKED-ERROR", superclass: Some("PACKAGE-ERROR") },
-    HierarchyRow { name: "READER-PACKAGE-DOES-NOT-EXIST", superclass: Some("ERROR") },
-    HierarchyRow { name: "STEP-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "STEP-FINISHED-CONDITION", superclass: Some("STEP-CONDITION") },
-    HierarchyRow { name: "STEP-FORM-CONDITION", superclass: Some("STEP-CONDITION") },
-    HierarchyRow { name: "STEP-VALUES-CONDITION", superclass: Some("STEP-CONDITION") },
-    HierarchyRow { name: "SYMBOL-PACKAGE-LOCKED-ERROR", superclass: Some("PACKAGE-LOCKED-ERROR") },
-    HierarchyRow { name: "TIMEOUT", superclass: Some("ERROR") },
-    HierarchyRow { name: "UNKNOWN-KEYWORD-ARGUMENT", superclass: Some("ERROR") },
-    HierarchyRow { name: "SYSTEM-CONDITION", superclass: Some("CONDITION") },
-    HierarchyRow { name: "BREAKPOINT-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "DEADLINE-TIMEOUT", superclass: Some("TIMEOUT") },
-    HierarchyRow { name: "INTERACTIVE-INTERRUPT", superclass: Some("SYSTEM-CONDITION") },
-    HierarchyRow { name: "IO-TIMEOUT", superclass: Some("TIMEOUT") },
-    HierarchyRow { name: "MEMORY-FAULT-ERROR", superclass: Some("STORAGE-CONDITION") },
-    HierarchyRow { name: "THREAD-ERROR", superclass: Some("ERROR") },
-    HierarchyRow { name: "INTERRUPT-THREAD-ERROR", superclass: Some("THREAD-ERROR") },
-    HierarchyRow { name: "JOIN-THREAD-ERROR", superclass: Some("THREAD-ERROR") },
-    HierarchyRow { name: "SYMBOL-VALUE-IN-THREAD-ERROR", superclass: Some("THREAD-ERROR") },
-    HierarchyRow { name: "THREAD-DEADLOCK", superclass: Some("THREAD-ERROR") },
+    HierarchyRow { name: "CONDITION", superclasses: &[] },
+    HierarchyRow { name: "WARNING", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "SERIOUS-CONDITION", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "ERROR", superclasses: &["SERIOUS-CONDITION"] },
+    HierarchyRow { name: "STORAGE-CONDITION", superclasses: &["SERIOUS-CONDITION"] },
+    HierarchyRow { name: "TYPE-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "ARITHMETIC-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "DIVISION-BY-ZERO", superclasses: &["ARITHMETIC-ERROR"] },
+    HierarchyRow { name: "FLOATING-POINT-OVERFLOW", superclasses: &["ARITHMETIC-ERROR"] },
+    HierarchyRow { name: "FLOATING-POINT-UNDERFLOW", superclasses: &["ARITHMETIC-ERROR"] },
+    HierarchyRow { name: "FLOATING-POINT-INVALID-OPERATION", superclasses: &["ARITHMETIC-ERROR"] },
+    HierarchyRow { name: "FLOATING-POINT-INEXACT", superclasses: &["ARITHMETIC-ERROR"] },
+    HierarchyRow { name: "CELL-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "UNBOUND-VARIABLE", superclasses: &["CELL-ERROR"] },
+    HierarchyRow { name: "UNDEFINED-FUNCTION", superclasses: &["CELL-ERROR"] },
+    HierarchyRow { name: "UNBOUND-SLOT", superclasses: &["CELL-ERROR"] },
+    HierarchyRow { name: "FILE-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PACKAGE-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "CONTROL-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PROGRAM-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PARSE-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "READER-ERROR", superclasses: &["PARSE-ERROR", "STREAM-ERROR"] },
+    HierarchyRow { name: "PRINT-NOT-READABLE", superclasses: &["ERROR"] },
+    HierarchyRow { name: "STREAM-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "END-OF-FILE", superclasses: &["STREAM-ERROR"] },
+    HierarchyRow { name: "SIMPLE-CONDITION", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "SIMPLE-ERROR", superclasses: &["SIMPLE-CONDITION", "ERROR"] },
+    HierarchyRow { name: "SIMPLE-TYPE-ERROR", superclasses: &["SIMPLE-CONDITION", "TYPE-ERROR"] },
+    HierarchyRow { name: "SIMPLE-WARNING", superclasses: &["SIMPLE-CONDITION", "WARNING"] },
+    HierarchyRow { name: "STYLE-WARNING", superclasses: &["WARNING"] },
+    HierarchyRow { name: "UNDEFINED-ALIEN-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "CODE-DELETION-NOTE", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "COMPILER-NOTE", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "DEFCONSTANT-UNEQL", superclasses: &["ERROR"] },
+    HierarchyRow { name: "DELETE-FILE-ERROR", superclasses: &["FILE-ERROR"] },
+    HierarchyRow { name: "DEPRECATION-CONDITION", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "DEPRECATION-ERROR", superclasses: &["DEPRECATION-CONDITION"] },
+    HierarchyRow { name: "EARLY-DEPRECATION-WARNING", superclasses: &["STYLE-WARNING"] },
+    HierarchyRow { name: "FILE-DOES-NOT-EXIST", superclasses: &["FILE-ERROR"] },
+    HierarchyRow { name: "FILE-EXISTS", superclasses: &["FILE-ERROR"] },
+    HierarchyRow { name: "FINAL-DEPRECATION-WARNING", superclasses: &["STYLE-WARNING"] },
+    HierarchyRow { name: "IMPLICIT-GENERIC-FUNCTION-WARNING", superclasses: &["STYLE-WARNING"] },
+    HierarchyRow { name: "INVALID-FASL", superclasses: &["ERROR"] },
+    HierarchyRow { name: "LATE-DEPRECATION-WARNING", superclasses: &["STYLE-WARNING"] },
+    HierarchyRow { name: "NAME-CONFLICT", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PACKAGE-DOES-NOT-EXIST", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PACKAGE-LOCK-VIOLATION", superclasses: &["ERROR"] },
+    HierarchyRow { name: "PACKAGE-LOCKED-ERROR", superclasses: &["PACKAGE-ERROR"] },
+    HierarchyRow { name: "READER-PACKAGE-DOES-NOT-EXIST", superclasses: &["ERROR"] },
+    HierarchyRow { name: "STEP-CONDITION", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "STEP-FINISHED-CONDITION", superclasses: &["STEP-CONDITION"] },
+    HierarchyRow { name: "STEP-FORM-CONDITION", superclasses: &["STEP-CONDITION"] },
+    HierarchyRow { name: "STEP-VALUES-CONDITION", superclasses: &["STEP-CONDITION"] },
+    HierarchyRow { name: "SYMBOL-PACKAGE-LOCKED-ERROR", superclasses: &["PACKAGE-LOCKED-ERROR"] },
+    HierarchyRow { name: "TIMEOUT", superclasses: &["ERROR"] },
+    HierarchyRow { name: "UNKNOWN-KEYWORD-ARGUMENT", superclasses: &["ERROR"] },
+    HierarchyRow { name: "SYSTEM-CONDITION", superclasses: &["CONDITION"] },
+    HierarchyRow { name: "BREAKPOINT-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "DEADLINE-TIMEOUT", superclasses: &["TIMEOUT"] },
+    HierarchyRow { name: "INTERACTIVE-INTERRUPT", superclasses: &["SYSTEM-CONDITION"] },
+    HierarchyRow { name: "IO-TIMEOUT", superclasses: &["TIMEOUT"] },
+    HierarchyRow { name: "MEMORY-FAULT-ERROR", superclasses: &["STORAGE-CONDITION"] },
+    HierarchyRow { name: "THREAD-ERROR", superclasses: &["ERROR"] },
+    HierarchyRow { name: "INTERRUPT-THREAD-ERROR", superclasses: &["THREAD-ERROR"] },
+    HierarchyRow { name: "JOIN-THREAD-ERROR", superclasses: &["THREAD-ERROR"] },
+    HierarchyRow { name: "SYMBOL-VALUE-IN-THREAD-ERROR", superclasses: &["THREAD-ERROR"] },
+    HierarchyRow { name: "THREAD-DEADLOCK", superclasses: &["THREAD-ERROR"] },
 ];
 /// Register a class descriptor under `name`.
 ///
@@ -412,43 +415,85 @@ pub fn install_class(
     let descriptor = make_class_descriptor(ctx, runtime, name)?;
     runtime.define_class(ctx, name, descriptor)
 }
-/// Link `name` to its `superclass` descriptor.
+/// Link `name` to its direct `superclasses`, most-specific-first.
+///
+/// A single superclass is stored as the bare class descriptor word (the
+/// original Phase 1 representation, still relied on outside this crate, for
+/// example by `ncl-clos`'s `TYPEP`). Two or more superclasses are stored as a
+/// proper list of descriptors, modelling genuine multiple inheritance.
 ///
 /// # Errors
-/// Returns an object-layer error when either class is not registered.
-pub fn wire_superclass(
+/// Returns an object-layer error when any named class is not registered or
+/// the list cannot be allocated.
+pub fn wire_superclasses(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     name: &str,
-    superclass: &str,
+    superclasses: &[&str],
 ) -> Result<(), ObjectError> {
     let child = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
-    let parent = runtime.class(ctx, superclass).ok_or(ObjectError::Layout)?;
-    simple_vector_set(ctx, child, SUPERCLASS_SLOT, parent)
+    let parents = superclasses
+        .iter()
+        .map(|superclass| runtime.class(ctx, superclass).ok_or(ObjectError::Layout))
+        .collect::<Result<Vec<_>, _>>()?;
+    let value = match parents.as_slice() {
+        [] => Word::NIL,
+        [single] => *single,
+        _ => {
+            let mut list = Word::NIL;
+            for parent in parents.iter().rev() {
+                list = make_cons(ctx, runtime, *parent, list)?;
+            }
+            list
+        }
+    };
+    simple_vector_set(ctx, child, SUPERCLASS_SLOT, value)
 }
-/// Read the direct superclass descriptor of a class, or NIL at the root.
+/// Read the raw direct-superclass slot of a class: `NIL` at the root, a
+/// single class descriptor word, or a list of descriptors for a class with
+/// more than one direct superclass.
 ///
 /// # Errors
 /// Returns an object-layer error when `class` is not a descriptor vector.
 pub fn superclass_of(ctx: &ThreadContext, class: Word) -> Result<Word, ObjectError> {
     simple_vector_ref(ctx, class, SUPERCLASS_SLOT)
 }
-/// Whether `class` is `name` or has an ancestor named `name`.
+/// Decode a raw direct-superclass slot value into its direct parent
+/// descriptors (zero, one, or many).
+///
+/// # Errors
+/// Returns an object-layer error when `value` is a malformed list.
+pub fn direct_parents(ctx: &ThreadContext, value: Word) -> Result<Vec<Word>, ObjectError> {
+    if value == Word::NIL {
+        return Ok(Vec::new());
+    }
+    if !value.is_cons() {
+        return Ok(vec![value]);
+    }
+    let mut parents = Vec::new();
+    let mut current = value;
+    while current != Word::NIL {
+        parents.push(car(ctx, current)?);
+        current = cdr(ctx, current)?;
+    }
+    Ok(parents)
+}
+/// Whether `class` is `name` or has an ancestor named `name`, walking every
+/// direct superclass when a class has more than one (the full precedence
+/// list, not just the first parent).
 ///
 /// # Errors
 /// Returns an object-layer error when a descriptor is not a vector.
 pub fn class_named(ctx: &ThreadContext, class: Word, name: &str) -> Result<bool, ObjectError> {
-    let mut current = class;
-    loop {
-        if string_equals(ctx, simple_vector_ref(ctx, current, NAME_SLOT)?, name)? {
+    if string_equals(ctx, simple_vector_ref(ctx, class, NAME_SLOT)?, name)? {
+        return Ok(true);
+    }
+    for parent in direct_parents(ctx, superclass_of(ctx, class)?)? {
+        if class_named(ctx, parent, name)? {
             return Ok(true);
         }
-        let superclass = superclass_of(ctx, current)?;
-        if superclass == Word::NIL {
-            return Ok(false);
-        }
-        current = superclass;
     }
+    Ok(false)
 }
 /// Whether a heap string equals a Rust string literal.
 pub fn string_equals(ctx: &ThreadContext, word: Word, name: &str) -> Result<bool, ObjectError> {

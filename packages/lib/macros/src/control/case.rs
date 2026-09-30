@@ -50,8 +50,8 @@ pub(super) fn case(
                         let expected = form(ctx, runtime, "QUOTE", &[expected_type])?;
                         let type_error = symbol(ctx, runtime, "TYPE-ERROR")?;
                         let error_type = form(ctx, runtime, "QUOTE", &[type_error])?;
-                        let datum = symbol(ctx, runtime, ":DATUM")?;
-                        let expected_type_kw = symbol(ctx, runtime, ":EXPECTED-TYPE")?;
+                        let datum = symbol(ctx, runtime, "KEYWORD::DATUM")?;
+                        let expected_type_kw = symbol(ctx, runtime, "KEYWORD::EXPECTED-TYPE")?;
                         form(
                             ctx,
                             runtime,

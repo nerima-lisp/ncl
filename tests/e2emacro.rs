@@ -215,6 +215,21 @@ const PROBES: &[Probe] = &[
         source: "(ecase 2 (1 10) (2 20))",
         expected: "20",
     },
+    // Regression: ECASE's no-match branch used to build its condition's
+    // :DATUM/:EXPECTED-TYPE keyword arguments from malformed pseudo-keyword
+    // symbols (interned as literal ":DATUM" text in COMMON-LISP instead of
+    // KEYWORD::DATUM), so the signalled error bypassed the condition system
+    // and HANDLER-CASE could not catch it as a TYPE-ERROR.
+    Probe {
+        name: "ecase-no-match-is-a-catchable-type-error",
+        source: "(handler-case (ecase 5 (1 'a) (2 'b)) (type-error (c) (type-error-datum c)))",
+        expected: "5",
+    },
+    Probe {
+        name: "ccase-no-match-is-a-catchable-type-error",
+        source: "(handler-case (ccase 5 (1 'a) (2 'b)) (type-error (c) (type-error-datum c)))",
+        expected: "5",
+    },
     Probe {
         name: "loop-count",
         source: "(loop for x from 1 below 4 count (oddp x))",

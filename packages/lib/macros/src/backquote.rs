@@ -145,6 +145,7 @@ fn qq(
     match classify_object(ctx, word) {
         ObjectRef::Cons(_) => qq_list(ctx, runtime, held, index, depth, markers),
         ObjectRef::SimpleVector(_) => qq_vector(ctx, runtime, held, index, depth, markers),
+        // check-added-lines: allow(wildcard) every other datum is self-evaluating and just needs quoting.
         _ => held_call(ctx, runtime, held, "QUOTE", &[index]),
     }
 }
@@ -220,6 +221,7 @@ pub fn expand_quasiquote_adapter(
 ) -> std::result::Result<Word, ObjectError> {
     let form = args.get(0).ok_or(ObjectError::TypeError)?;
     let parts = elements(ctx, form)?;
+    // check-added-lines: allow(index) slice-pattern destructuring, not indexing.
     let [_quasiquote, datum] = parts.as_slice() else {
         return Err(ObjectError::TypeError);
     };

@@ -1,20 +1,23 @@
 use super::register_extra::{
     adjoin_entry, assoc_entry, every_entry, intersection_entry, map_entry, map_into_entry,
     mapc_entry, mapcan_entry, mapcar_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
-    notany_entry, notevery_entry, rassoc_entry, reduce_entry, remove_entry, set_difference_entry,
-    set_exclusive_or_entry, some_entry, sort_entry, stable_sort_entry, subsetp_entry,
-    substitute_entry, union_entry,
+    notany_entry, notevery_entry, rassoc_entry, reduce_entry, remove_entry, remove_if_entry,
+    remove_if_not_entry, set_difference_entry, set_exclusive_or_entry, some_entry, sort_entry,
+    stable_sort_entry, subsetp_entry, substitute_entry, substitute_if_entry,
+    substitute_if_not_entry, union_entry,
 };
 use super::{
     DESTINATION_TYPE, INDEX, LIST, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
     append_builtin, atom_builtin, car_builtin, cdr_builtin, concatenate_builtin, cons_builtin,
-    cons_p_builtin, copy_list_builtin, copy_seq_builtin, count_entry, direct_descriptor, domain,
-    eighth_builtin, elt_builtin, endp_builtin, fifth_builtin, find_entry, first_builtin,
-    fourth_builtin, length_builtin, list_builtin, list_length_builtin, list_p_builtin,
+    cons_p_builtin, copy_list_builtin, copy_seq_builtin, copy_tree_builtin, count_entry,
+    equal_builtin, equalp_builtin,
+    count_if_entry, count_if_not_entry, direct_descriptor, domain, eighth_builtin, elt_builtin,
+    endp_builtin, fifth_builtin, find_entry, find_if_entry, find_if_not_entry, first_builtin,
+    fourth_builtin, getf_builtin, length_builtin, list_builtin, list_length_builtin, list_p_builtin,
     list_star_builtin, mismatch_entry, nconc_builtin, ninth_builtin, nreverse_builtin, nth_builtin,
-    nthcdr_builtin, position_entry, register_adapted, register_direct, reverse_builtin,
-    rplaca_builtin, rplacd_builtin, search_entry, second_builtin, seventh_builtin, sixth_builtin,
-    subseq_builtin, tenth_builtin, third_builtin,
+    nthcdr_builtin, position_entry, position_if_entry, position_if_not_entry, register_adapted,
+    register_direct, reverse_builtin, rplaca_builtin, rplacd_builtin, search_entry, second_builtin,
+    seventh_builtin, sixth_builtin, subseq_builtin, tenth_builtin, third_builtin,
 };
 use ncl_object::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
@@ -279,6 +282,9 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("RPLACA", rplaca_builtin, TWO_OBJECTS),
         ("RPLACD", rplacd_builtin, TWO_OBJECTS),
         ("COPY-LIST", copy_list_builtin, LIST_PARAMETERS),
+        ("COPY-TREE", copy_tree_builtin, ONE_OBJECT),
+        ("EQUAL", equal_builtin, TWO_OBJECTS),
+        ("EQUALP", equalp_builtin, TWO_OBJECTS),
         ("NTH", nth_builtin, &[INDEX, LIST][..]), // check-added-lines: allow(index) slice type
         ("NTHCDR", nthcdr_builtin, &[INDEX, LIST][..]), // check-added-lines: allow(index) slice type
         ("LIST-LENGTH", list_length_builtin, LIST_PARAMETERS),
@@ -381,6 +387,16 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         },
         subseq_builtin,
     )?;
+    register_adapted(
+        runtime,
+        &mut ctx,
+        "GETF",
+        Builtin {
+            lambda_list: LambdaList::with_optional(TWO_OBJECTS, ONE_OBJECT),
+            convention: BuiltinConvention::Adapted,
+        },
+        getf_builtin,
+    )?;
     for name in std::iter::once("FILL").chain(std::iter::once("REPLACE")) {
         let Some(implementation) = domain::filter::filter_entry(name) else {
             return Err(ObjectError::TypeError);
@@ -397,8 +413,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     };
     for (name, function) in [
         ("FIND", find_entry as ncl_object::RustBuiltin),
+        ("FIND-IF", find_if_entry),
+        ("FIND-IF-NOT", find_if_not_entry),
         ("POSITION", position_entry),
+        ("POSITION-IF", position_if_entry),
+        ("POSITION-IF-NOT", position_if_not_entry),
         ("COUNT", count_entry),
+        ("COUNT-IF", count_if_entry),
+        ("COUNT-IF-NOT", count_if_not_entry),
         ("SEARCH", search_entry),
         ("MISMATCH", mismatch_entry),
         ("MAPCAR", mapcar_entry),
@@ -415,7 +437,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("NOTANY", notany_entry),
         ("NOTEVERY", notevery_entry),
         ("REMOVE", remove_entry),
+        ("REMOVE-IF", remove_if_entry),
+        ("REMOVE-IF-NOT", remove_if_not_entry),
+        ("DELETE", remove_entry),
+        ("DELETE-IF", remove_if_entry),
+        ("DELETE-IF-NOT", remove_if_not_entry),
         ("SUBSTITUTE", substitute_entry),
+        ("SUBSTITUTE-IF", substitute_if_entry),
+        ("SUBSTITUTE-IF-NOT", substitute_if_not_entry),
         ("SORT", sort_entry),
         ("STABLE-SORT", stable_sort_entry),
         ("UNION", union_entry),

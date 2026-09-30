@@ -81,9 +81,12 @@ typed!(endp_builtin, domain::list::end_p, (value: Word));
 typed!(car_builtin, domain::list::car, (value: List));
 typed!(cdr_builtin, domain::list::cdr, (value: List));
 typed!(cons_builtin, domain::list::cons, (car: Word, cdr: Word));
+typed!(equal_builtin, domain::equality::equal_predicate, (left: Word, right: Word));
+typed!(equalp_builtin, domain::equality::equalp_predicate, (left: Word, right: Word));
 typed!(rplaca_builtin, domain::list::rplaca, (cons: Word, value: Word));
 typed!(rplacd_builtin, domain::list::rplacd, (cons: Word, value: Word));
 typed!(copy_list_builtin, domain::list::copy_list, (value: List));
+typed!(copy_tree_builtin, domain::list::copy_tree, (value: Word));
 typed!(nth_builtin, domain::list::nth, (index: Fixnum, value: List));
 typed!(nthcdr_builtin, domain::list::nthcdr, (index: Fixnum, value: List));
 typed!(list_length_builtin, domain::list::list_length, (value: List));
@@ -212,6 +215,34 @@ fn subseq_builtin(
     let result = domain::list::subseq(ctx, runtime, sequence, start, end);
     finish(ctx, values, result)
 }
+/// `(getf plist indicator &optional default)`. Walks the property list
+/// comparing each indicator against `indicator` with `eq`-style identity
+/// (`Word` equality), returning the matching value or `default`.
+fn getf_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut cursor = args.required(0)?;
+    let indicator = args.required(1)?;
+    let default = args.get(2).unwrap_or(Word::NIL);
+    while cursor != Word::NIL {
+        if !cursor.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        let key = ncl_object::car(ctx, cursor)?;
+        let value_cell = ncl_object::cdr(ctx, cursor)?;
+        if !value_cell.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        if key == indicator {
+            return ncl_object::car(ctx, value_cell);
+        }
+        cursor = ncl_object::cdr(ctx, value_cell)?;
+    }
+    Ok(default)
+}
 fn register_adapted(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -308,6 +339,110 @@ fn count_entry(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     selection_entry(ctx, runtime, args, values, domain::selection::count)
+}
+type SelectionIfOperation = fn(
+    &mut ThreadContext,
+    &Runtime,
+    &mut BuiltinFunctionCaller,
+    &mut [Word], // check-added-lines: allow(index) slice type
+    Word,
+    domain::selection::SelectionOptions,
+    bool,
+) -> Result<Word, ObjectError>;
+fn selection_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    operation: SelectionIfOperation,
+    negate: bool,
+) -> Result<Word, ObjectError> {
+    let (positional, options) = domain::selection::parse_options(ctx, args.as_slice())?;
+    let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    let mut scope = Scope::new(ctx);
+    let sequence_handle = scope.root::<Word>(Local::from_word(sequence));
+    let result = (|| {
+        let sequence = scope.get(sequence_handle).as_word();
+        let sequence_value = domain::selection::object_sequence(scope.context(), sequence)?;
+        let mut items = domain::selection::sequence_values(scope.context_mut(), sequence_value)?;
+        let predicate = *positional.first().ok_or(ObjectError::TypeError)?;
+        let mut caller = BuiltinFunctionCaller;
+        operation(
+            scope.context_mut(),
+            runtime,
+            &mut caller,
+            &mut items,
+            predicate,
+            options,
+            negate,
+        )
+    })();
+    let result = result?;
+    let result_handle = scope.root::<Word>(Local::from_word(result));
+    values.clear();
+    Ok(scope.get(result_handle).as_word())
+}
+fn find_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(ctx, runtime, args, values, domain::selection::find_if, false)
+}
+fn find_if_not_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(ctx, runtime, args, values, domain::selection::find_if, true)
+}
+fn position_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(
+        ctx,
+        runtime,
+        args,
+        values,
+        domain::selection::position_if,
+        false,
+    )
+}
+fn position_if_not_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(
+        ctx,
+        runtime,
+        args,
+        values,
+        domain::selection::position_if,
+        true,
+    )
+}
+fn count_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(ctx, runtime, args, values, domain::selection::count_if, false)
+}
+fn count_if_not_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_if_entry(ctx, runtime, args, values, domain::selection::count_if, true)
 }
 fn selection_parse(
     ctx: &ThreadContext,

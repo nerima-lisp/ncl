@@ -17,6 +17,15 @@ struct XFail {
     exit_code: i32,
 }
 
+/// A form that must fail: unlike [`XFail`], this is the *correct*, permanent
+/// outcome (an unhandled condition), not a gap to eventually close.
+struct ErrorCase {
+    name: &'static str,
+    source: &'static str,
+    stderr: &'static str,
+    exit_code: i32,
+}
+
 const PROBES: &[Probe] = &[
     Probe {
         name: "when",
@@ -103,6 +112,109 @@ const PROBES: &[Probe] = &[
         source: "(typecase nil (integer 11) (otherwise 12))",
         expected: "12",
     },
+    // B1: backquote (CLHS 2.4.6), formerly `InvalidOperator`.
+    Probe {
+        name: "backquote-unquote-splice",
+        source: "`(1 ,(+ 1 1) ,@(list 3 4))",
+        expected: "(1 2 3 4)",
+    },
+    Probe {
+        name: "backquote-dotted-unquote",
+        source: "`(a . ,(+ 1 2))",
+        expected: "(COMMON-LISP-USER:A . 3)",
+    },
+    Probe {
+        name: "backquote-splice-middle",
+        source: "`(1 ,@(list 2 3) 4)",
+        expected: "(1 2 3 4)",
+    },
+    // Nested backquote (CLHS 2.4.6): the inner `,,x` fires at the outer
+    // level, the outer backquote itself only reconstructs as data.
+    Probe {
+        name: "backquote-nested",
+        source: "(let ((x 5)) ``(a ,,x))",
+        expected: "(QUASIQUOTE (COMMON-LISP-USER:A (UNQUOTE 5)))",
+    },
+    Probe {
+        name: "backquote-vector",
+        source: "`#(1 ,(+ 1 1) ,@(list 3 4))",
+        expected: "#(1 2 3 4)",
+    },
+    Probe {
+        name: "backquote-in-defmacro-body",
+        source: "(progn (defmacro my-add (a b) `(+ ,a ,b)) (my-add 1 2))",
+        expected: "3",
+    },
+    // B2: destructuring-bind (CLHS 3.4.5), formerly silently wrong.
+    Probe {
+        name: "destructuring-bind-simple",
+        source: "(destructuring-bind (a b) (list 1 2) (list a b))",
+        expected: "(1 2)",
+    },
+    Probe {
+        name: "destructuring-bind-single",
+        source: "(destructuring-bind (a) (list 1) a)",
+        expected: "1",
+    },
+    // Formerly XFAIL `UnknownLambdaListKeyword`; nested pattern + &optional + &rest.
+    Probe {
+        name: "destructuring-bind-nested-optional-rest",
+        source: "(destructuring-bind (a (b &optional c) &rest d) (list 1 (list 2 3) 4 5) (list a b c d))",
+        expected: "(1 2 3 (4 5))",
+    },
+    Probe {
+        name: "destructuring-bind-nested-key",
+        source: "(destructuring-bind (a (b c) &key d) '(1 (2 3) :d 4) (list a b c d))",
+        expected: "(1 2 3 4)",
+    },
+    Probe {
+        name: "destructuring-bind-dotted",
+        source: "(destructuring-bind (a . b) '(1 2 3) (list a b))",
+        expected: "(1 (2 3))",
+    },
+    Probe {
+        name: "destructuring-bind-key-default-supplied-p",
+        source: "(destructuring-bind (&key (x 10 x-p)) '() (list x x-p))",
+        expected: "(10 NIL)",
+    },
+    // B3: defmacro lambda lists (CLHS 3.4.4): &body, &whole, &environment, nesting.
+    Probe {
+        name: "defmacro-body-keyword",
+        source: "(progn (defmacro my-progn (&body forms) `(progn ,@forms)) (my-progn 1 2 3))",
+        expected: "3",
+    },
+    Probe {
+        name: "defmacro-nested-pattern",
+        source: "(progn (defmacro my-swap ((a b)) `(list ,b ,a)) (my-swap (1 2)))",
+        expected: "(2 1)",
+    },
+    Probe {
+        name: "defmacro-whole",
+        source: "(progn (defmacro show-whole (&whole form a) `(list ',form ,a)) (show-whole 9))",
+        expected: "((COMMON-LISP-USER:SHOW-WHOLE 9) 9)",
+    },
+    Probe {
+        name: "defmacro-optional-key-defaults",
+        source: "(progn (defmacro my-opt (a &optional (b 10) &key (c 20)) `(list ,a ,b ,c)) (my-opt 1))",
+        expected: "(1 10 20)",
+    },
+    // B4: macrolet local macros (CLHS special operator MACROLET).
+    Probe {
+        name: "macrolet-basic",
+        source: "(macrolet ((double (x) `(* 2 ,x))) (double 5))",
+        expected: "10",
+    },
+    Probe {
+        name: "macrolet-shadows-global",
+        source: "(progn (defmacro shadowed () 1) (macrolet ((shadowed () 2)) (shadowed)))",
+        expected: "2",
+    },
+    // B7: ECASE/CCASE signal a type-error on no match (was: silently NIL).
+    Probe {
+        name: "ecase-match",
+        source: "(ecase 2 (1 10) (2 20))",
+        expected: "20",
+    },
 ];
 
 const XFAILS: &[XFail] = &[
@@ -125,12 +237,6 @@ const XFAILS: &[XFail] = &[
         exit_code: 1,
     },
     XFail {
-        name: "destructuring-bind",
-        source: "(destructuring-bind (a (b &optional c) &rest d) (list 1 (list 2 3) 4 5) (list a b c d))",
-        stderr: "UnknownLambdaListKeyword",
-        exit_code: 1,
-    },
-    XFail {
         name: "rotatef",
         source: "(let ((a 1) (b 2)) (rotatef a b) (list a b))",
         stderr: "ROTATEF",
@@ -146,6 +252,38 @@ const XFAILS: &[XFail] = &[
         name: "multiple-value-setq",
         source: "(multiple-value-setq (a b) (values 1 2))",
         stderr: "MULTIPLE-VALUE-SETQ",
+        exit_code: 1,
+    },
+];
+
+const ERROR_CASES: &[ErrorCase] = &[
+    // B7: ECASE, unlike CASE, signals when nothing matches.
+    ErrorCase {
+        name: "ecase-no-match-signals",
+        source: "(ecase 5 (1 'a) (2 'b))",
+        stderr: "Unsupported",
+        exit_code: 1,
+    },
+    // B7: CCASE gets the same treatment as ECASE.
+    ErrorCase {
+        name: "ccase-no-match-signals",
+        source: "(ccase 5 (1 'a) (2 'b))",
+        stderr: "Unsupported",
+        exit_code: 1,
+    },
+    // B2: a shape mismatch signals instead of binding garbage (was
+    // `((1 2) 48)` for the two-argument case; see `destructuring-bind-*`
+    // probes above for the value-correct cases).
+    ErrorCase {
+        name: "destructuring-bind-too-few-signals",
+        source: "(destructuring-bind (a b) (list 1) (list a b))",
+        stderr: "too few elements",
+        exit_code: 1,
+    },
+    ErrorCase {
+        name: "destructuring-bind-too-many-signals",
+        source: "(destructuring-bind (a) (list 1 2) a)",
+        stderr: "too many elements",
         exit_code: 1,
     },
 ];
@@ -195,6 +333,20 @@ fn standard_macro_probes_assert_compiled_results() {
             probe.expected,
             "{}",
             probe.name
+        );
+    }
+}
+
+#[test]
+fn macro_forms_that_must_error_do_error() {
+    for case in ERROR_CASES {
+        let output = run_ncl(case.source);
+        assert_eq!(output.status.code(), Some(case.exit_code), "{}", case.name);
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(case.stderr),
+            "{}: {:?}",
+            case.name,
+            output
         );
     }
 }

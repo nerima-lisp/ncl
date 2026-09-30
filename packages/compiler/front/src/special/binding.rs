@@ -1,9 +1,10 @@
 //! Binding special operators: `let`, `let*`, `progv`, `flet`, `labels`,
 //! `macrolet`, and `symbol-macrolet`.
 
-use ncl_object::Word;
+use ncl_object::{Word, symbol_is_special};
 
 use crate::ast::{Expr, LetBinding, LocalFunction, LocalMacro, SymbolMacro};
+use crate::declaration::Declaration;
 use crate::error::FrontError;
 use crate::expand::{FormExpander, LambdaListKind};
 use crate::special::{self, SpecialForm};
@@ -43,42 +44,76 @@ fn let_form(
     let specifications = expander.elements(*bindings_word)?;
     expander.env_mut().push_scope();
     let mut bindings = Vec::with_capacity(specifications.len());
+    // Bindings whose symbol is already proclaimed special (by `defvar`,
+    // `defparameter`, `declaim`, or `proclaim`) before this `let`/`let*` is
+    // expanded. These are collected here, at expand time, because only the
+    // expander has access to the live symbol table; the lowering lane (which
+    // has no such access) re-derives special-ness purely from the
+    // declarations an `Expr::Let` carries, so a synthesized
+    // `Declaration::Special` is how that fact crosses the boundary.
+    let mut global_specials = Vec::new();
     if sequential {
         for specification in &specifications {
-            let (name, value) = binding(expander, kind, *specification)?;
+            let (name, name_word, value) = binding(expander, kind, *specification)?;
+            // Check specialness from the raw (unrooted) `name_word` before
+            // expanding the init form: expansion can allocate and, under GC
+            // stress, move the symbol out from under a stale `Word`.
+            let is_special = symbol_is_special(expander.ctx(), name_word).unwrap_or(false);
             let value = value.map(|value| expander.expand(value)).transpose()?;
-            expander.env_mut().bind_variable(name.clone(), None);
+            if is_special {
+                global_specials.push(name.clone());
+                expander.env_mut().bind_special(name.clone());
+            } else {
+                expander.env_mut().bind_variable(name.clone(), None);
+            }
             bindings.push(LetBinding { name, value });
         }
     } else {
         for specification in &specifications {
-            let (name, value) = binding(expander, kind, *specification)?;
+            let (name, name_word, value) = binding(expander, kind, *specification)?;
+            // See the matching comment in the `sequential` branch above.
+            let is_special = symbol_is_special(expander.ctx(), name_word).unwrap_or(false);
             let value = value.map(|value| expander.expand(value)).transpose()?;
+            if is_special {
+                global_specials.push(name.clone());
+            }
             bindings.push(LetBinding { name, value });
         }
         for bound in &bindings {
-            expander.env_mut().bind_variable(bound.name.clone(), None);
+            if global_specials.contains(&bound.name) {
+                expander.env_mut().bind_special(bound.name.clone());
+            } else {
+                expander.env_mut().bind_variable(bound.name.clone(), None);
+            }
         }
     }
     let body = expander.expand_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
+    let mut declarations = body.declarations;
+    if !global_specials.is_empty() {
+        declarations.push(Declaration::Special(global_specials));
+    }
     Ok(Expr::Let {
         sequential,
         bindings,
-        declarations: body.declarations,
+        declarations,
         body: body.forms,
     })
 }
 
 /// One `let` binding: a symbol, or a `(symbol [init])` list.
+///
+/// Returns the binding's name, the raw symbol word (so the caller can check
+/// the live symbol table for a global `special` proclamation), and the init
+/// form, if any.
 fn binding(
     expander: &mut FormExpander<'_>,
     kind: SpecialForm,
     specification: Word,
-) -> Result<(SymbolRef, Option<Word>), FrontError> {
+) -> Result<(SymbolRef, Word, Option<Word>), FrontError> {
     if !specification.is_cons() {
-        return Ok((expander.symbol(specification)?, None));
+        return Ok((expander.symbol(specification)?, specification, None));
     }
     let elements = expander.elements(specification)?;
     let Some((name, rest)) = elements.split_first() else {
@@ -93,7 +128,12 @@ fn binding(
             detail: "a binding takes a name and at most one init form".to_owned(),
         });
     }
-    Ok((expander.symbol(*name)?, rest.first().copied()))
+    let name_word = *name;
+    Ok((
+        expander.symbol(name_word)?,
+        name_word,
+        rest.first().copied(),
+    ))
 }
 
 /// `(progv symbols values form*)`.

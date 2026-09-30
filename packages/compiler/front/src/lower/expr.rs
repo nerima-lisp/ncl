@@ -40,7 +40,7 @@ impl Context<'_> {
     ) -> Result<ValueId, LowerError> {
         match expr {
             Expr::Constant(literal) => lower_literal(f, literal),
-            Expr::Variable(name) => Self::lower_variable(f, name),
+            Expr::Variable(name) => self.lower_variable(f, name),
             Expr::Call {
                 operator,
                 arguments,
@@ -63,9 +63,9 @@ impl Context<'_> {
             Expr::Let {
                 sequential,
                 bindings,
+                declarations,
                 body,
-                ..
-            } => self.lower_let(f, *sequential, bindings, body),
+            } => self.lower_let(f, *sequential, bindings, declarations, body),
             Expr::Progv {
                 symbols,
                 values,
@@ -110,7 +110,11 @@ impl Context<'_> {
         }
     }
 
-    fn lower_variable(f: &mut FunctionLowerer, name: &SymbolRef) -> Result<ValueId, LowerError> {
+    fn lower_variable(
+        &mut self,
+        f: &mut FunctionLowerer,
+        name: &SymbolRef,
+    ) -> Result<ValueId, LowerError> {
         match f.env().lookup_variable(name) {
             Some(Slot::Value(value)) => Ok(value),
             Some(Slot::Cell(cell)) => f.one(
@@ -122,19 +126,91 @@ impl Context<'_> {
             ),
             None => {
                 let symbol = f.symbol(name)?;
-                f.one(
-                    OpKind::LoadField {
-                        object: symbol,
-                        field: u32::try_from(ncl_object::symbol_offset::VALUE).map_err(|_| {
-                            LowerError::Ir {
-                                detail: "symbol value offset does not fit u32".to_owned(),
-                            }
-                        })?,
-                    },
-                    Ty::Word,
-                )
+                self.load_bound_symbol_value(f, symbol)
             }
         }
+    }
+
+    /// Load a global symbol's value cell, signaling `UNBOUND-VARIABLE`
+    /// instead of yielding the raw `Word::UNBOUND` sentinel when it has none.
+    ///
+    /// The fast path is one load and one compare-and-branch; the rare
+    /// unbound case falls back to an ordinary call to
+    /// `NCL-EXT:BOUND-SYMBOL-VALUE`, which performs the same check the
+    /// `SYMBOL-VALUE` builtin does and carries the condition machinery
+    /// (`ncl_object::bound_symbol_value`) so both paths signal identically.
+    fn load_bound_symbol_value(
+        &mut self,
+        f: &mut FunctionLowerer,
+        symbol: ValueId,
+    ) -> Result<ValueId, LowerError> {
+        let value_field =
+            u32::try_from(ncl_object::symbol_offset::VALUE).map_err(|_| LowerError::Ir {
+                detail: "symbol value offset does not fit u32".to_owned(),
+            })?;
+        let loaded = f.one(
+            OpKind::LoadField {
+                object: symbol,
+                field: value_field,
+            },
+            Ty::Word,
+        )?;
+        let unbound = f.word_constant(Constant::Unbound)?;
+        let is_unbound = f.one(
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: loaded,
+                right: unbound,
+            },
+            Ty::Bool,
+        )?;
+        let start = f.current_block();
+        let slow = self.block(f, Vec::new());
+        let fast = self.block(f, Vec::new());
+        let result = f.fresh_value();
+        let merge = self.block(f, vec![(Ty::Word, result)]);
+        f.position(start)?;
+        f.terminate(Terminator::Branch {
+            condition: is_unbound,
+            then_target: slow,
+            then_args: Vec::new(),
+            else_target: fast,
+            else_args: Vec::new(),
+        })?;
+        f.position(fast)?;
+        f.terminate(Terminator::Jump {
+            target: merge,
+            args: vec![loaded],
+        })?;
+        f.position(slow)?;
+        let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "BOUND-SYMBOL-VALUE"))?;
+        let function_field =
+            u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| LowerError::Ir {
+                detail: "function symbol offset does not fit u32".to_owned(),
+            })?;
+        let function = f.one(
+            OpKind::LoadField {
+                object: helper,
+                field: function_field,
+            },
+            Ty::Word,
+        )?;
+        let argc = Self::argc(f, 1)?;
+        f.safepoint()?;
+        let signaled = f.one(
+            OpKind::CallClosure {
+                closure: function,
+                args: vec![argc, symbol],
+                named_symbol: Some(helper),
+            },
+            Ty::Word,
+        )?;
+        f.terminate(Terminator::Jump {
+            target: merge,
+            args: vec![signaled],
+        })?;
+        f.position(merge)?;
+        Ok(result)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -171,7 +247,7 @@ impl Context<'_> {
             );
         }
         if let Operator::Name(name) = operator
-            && let Some(result) = Self::lower_symbol_cell_call(f, name, &values)?
+            && let Some(result) = self.lower_symbol_cell_call(f, name, &values)?
         {
             return Ok(result);
         }
@@ -241,6 +317,7 @@ impl Context<'_> {
     /// Returns `Ok(None)` when `name`/`values` do not match one of those
     /// three forms, so the caller falls through to ordinary call lowering.
     fn lower_symbol_cell_call(
+        &mut self,
         f: &mut FunctionLowerer,
         name: &SymbolRef,
         values: &[ValueId],
@@ -279,8 +356,7 @@ impl Context<'_> {
             })?;
             return Ok(Some(value));
         }
-        f.one(OpKind::LoadField { object, field }, Ty::Word)
-            .map(Some)
+        self.load_bound_symbol_value(f, object).map(Some)
     }
 
     fn argc(f: &mut FunctionLowerer, count: usize) -> Result<ValueId, LowerError> {

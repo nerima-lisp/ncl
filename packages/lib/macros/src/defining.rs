@@ -11,6 +11,9 @@ use ncl_object::{
 
 use crate::form::{elements, list, symbol};
 
+mod macro_definition;
+use macro_definition::{finish_function_definition, macro_function_definition};
+
 const DEFINITION_PROPERTY: &str = "NCL::DEFINITION";
 #[cfg(test)]
 type DefinitionCallback = fn(
@@ -104,51 +107,8 @@ fn function_definition(
         ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
             let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list])?;
             ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                let mut lambda = append(ctx, runtime, *lambda, body)?;
-                ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                    let mut function_symbol = symbol(ctx, runtime, "FUNCTION")?;
-                    ncl_object::with_root(ctx, &mut function_symbol, |ctx, function_symbol| {
-                        let mut function = list(ctx, runtime, &[*function_symbol, *lambda])?;
-                        ncl_object::with_root(ctx, &mut function, |ctx, function| {
-                            let mut accessor_symbol = symbol(ctx, runtime, accessor)?;
-                            ncl_object::with_root(
-                                ctx,
-                                &mut accessor_symbol,
-                                |ctx, accessor_symbol| {
-                                    let mut quoted_name = quote(ctx, runtime, name)?;
-                                    ncl_object::with_root(
-                                        ctx,
-                                        &mut quoted_name,
-                                        |ctx, quoted_name| {
-                                            let mut place = list(
-                                                ctx,
-                                                runtime,
-                                                &[*accessor_symbol, *quoted_name],
-                                            )?;
-                                            ncl_object::with_root(ctx, &mut place, |ctx, place| {
-                                                let mut setf_symbol = symbol(ctx, runtime, "SETF")?;
-                                                ncl_object::with_root(
-                                                    ctx,
-                                                    &mut setf_symbol,
-                                                    |ctx, setf_symbol| {
-                                                        let operation = list(
-                                                            ctx,
-                                                            runtime,
-                                                            &[*setf_symbol, *place, *function],
-                                                        )?;
-                                                        progn_with_definition(
-                                                            ctx, runtime, name, operation,
-                                                        )
-                                                    },
-                                                )
-                                            })
-                                        },
-                                    )
-                                },
-                            )
-                        })
-                    })
-                })
+                let lambda = append(ctx, runtime, *lambda, body)?;
+                finish_function_definition(ctx, runtime, name, accessor, lambda)
             })
         })
     })
@@ -239,10 +199,12 @@ fn defmacro_like(
         let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
         ensure_form_operator(ctx, runtime, &parts, "DEFMACRO")?;
         let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+        // Unlike an ordinary lambda list (`ensure_list`, used by `defun`), a
+        // macro lambda list may end in a dotted tail (an implicit `&rest`),
+        // so it is not required to be a proper list here.
         let lambda_list = parts.get(2).copied().ok_or(ObjectError::TypeError)?;
-        ensure_list(ctx, lambda_list)?;
         let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
-        function_definition(ctx, runtime, name, accessor, lambda_list, body)
+        macro_function_definition(ctx, runtime, name, accessor, lambda_list, body)
     })
 }
 

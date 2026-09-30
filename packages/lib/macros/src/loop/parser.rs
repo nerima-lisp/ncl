@@ -1,7 +1,7 @@
 use super::{
-    AccumulatorKind, ForClause, HashClause, HashIterationKind, LimitDirection, LoopAst, LoopClause,
-    ObjectError, Result, StepDirection, ThreadContext, Word, elements, string_length, string_ref,
-    symbol_name,
+    AccumulatorKind, ConditionalKind, ForClause, HashClause, HashIterationKind, LimitDirection,
+    LoopAst, LoopClause, ObjectError, Result, StepDirection, ThreadContext, Word, elements,
+    string_length, string_ref, symbol_name,
 };
 fn word_name(ctx: &ThreadContext, word: Word) -> Result<String> {
     let name = symbol_name(ctx, word)?;
@@ -56,6 +56,12 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "HASH-VALUES"
                 | "OF"
                 | "USING"
+                | "WHEN"
+                | "UNLESS"
+                | "IF"
+                | "AND"
+                | "ELSE"
+                | "END"
         )
     })
 }
@@ -84,6 +90,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
     let variable = required(input, cursor)?;
     symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
+    let mut has_init = false;
     let mut step = None;
     let mut then = None;
     let mut direction = None;
@@ -96,6 +103,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
         match name.as_str() {
             "=" => {
                 init = next;
+                has_init = true;
                 *cursor += 2;
             }
             "FROM" | "UPFROM" | "DOWNFROM" => {
@@ -109,6 +117,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
                     return Err(ObjectError::TypeError);
                 });
                 init = next;
+                has_init = true;
                 *cursor += 2;
             }
             "THEN" => {
@@ -174,6 +183,11 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             then,
         })
     } else {
+        // ANSI CL: when no from-type preposition (`=`/`from`/`upfrom`/`downfrom`)
+        // is present, the index starts at 0.
+        if !has_init {
+            init = Word::fixnum(0);
+        }
         Ok(LoopClause::For(ForClause {
             variable,
             init,
@@ -275,6 +289,107 @@ fn parse_hash_for(
     }))
 }
 
+fn accumulator_kind(keyword: &str) -> Option<AccumulatorKind> {
+    match keyword {
+        "COLLECT" => Some(AccumulatorKind::Collect),
+        "APPEND" => Some(AccumulatorKind::Append),
+        "NCONC" => Some(AccumulatorKind::Nconc),
+        "COUNT" => Some(AccumulatorKind::Count),
+        "SUM" => Some(AccumulatorKind::Sum),
+        "MAXIMIZE" => Some(AccumulatorKind::Maximize),
+        "MINIMIZE" => Some(AccumulatorKind::Minimize),
+        _ => None,
+    }
+}
+
+fn parse_accumulate(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    kind: AccumulatorKind,
+) -> Result<LoopClause> {
+    let form = required(input, cursor)?;
+    let variable = if input
+        .get(*cursor)
+        .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "INTO"))
+    {
+        *cursor += 1;
+        Some(required(input, cursor)?)
+    } else {
+        None
+    };
+    if let Some(variable) = variable {
+        symbol_name(ctx, variable)?;
+    }
+    Ok(LoopClause::Accumulate {
+        kind,
+        form,
+        variable,
+    })
+}
+
+/// Parse one of the clause kinds allowed inside a `when`/`unless`/`if`
+/// conditional's `selectable-clause` list: `do`, `return`, an accumulation
+/// clause, or a nested conditional.
+fn parse_selectable(
+    ctx: &mut ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+) -> Result<LoopClause> {
+    let keyword = word_name(ctx, required(input, cursor)?)?;
+    if let Some(kind) = accumulator_kind(&keyword) {
+        return parse_accumulate(ctx, input, cursor, kind);
+    }
+    match keyword.as_str() {
+        "DO" => Ok(LoopClause::Do(take_forms(ctx, input, cursor))),
+        "RETURN" => Ok(LoopClause::Return(required(input, cursor)?)),
+        "WHEN" => parse_conditional(ctx, input, cursor, ConditionalKind::When),
+        "UNLESS" => parse_conditional(ctx, input, cursor, ConditionalKind::Unless),
+        "IF" => parse_conditional(ctx, input, cursor, ConditionalKind::If),
+        _other => Err(ObjectError::TypeError),
+    }
+}
+
+fn at_keyword(ctx: &ThreadContext, input: &[Word], cursor: usize, keyword: &str) -> bool {
+    input
+        .get(cursor)
+        .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == keyword))
+}
+
+/// Parse `test-form selectable-clause+ [else selectable-clause+] [end]`,
+/// with `cursor` positioned right after the `when`/`unless`/`if` keyword.
+fn parse_conditional(
+    ctx: &mut ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    kind: ConditionalKind,
+) -> Result<LoopClause> {
+    let test = required(input, cursor)?;
+    let mut then = vec![parse_selectable(ctx, input, cursor)?];
+    while at_keyword(ctx, input, *cursor, "AND") {
+        *cursor += 1;
+        then.push(parse_selectable(ctx, input, cursor)?);
+    }
+    let mut otherwise = Vec::new();
+    if at_keyword(ctx, input, *cursor, "ELSE") {
+        *cursor += 1;
+        otherwise.push(parse_selectable(ctx, input, cursor)?);
+        while at_keyword(ctx, input, *cursor, "AND") {
+            *cursor += 1;
+            otherwise.push(parse_selectable(ctx, input, cursor)?);
+        }
+    }
+    if at_keyword(ctx, input, *cursor, "END") {
+        *cursor += 1;
+    }
+    Ok(LoopClause::Conditional {
+        kind,
+        test,
+        then,
+        otherwise,
+    })
+}
+
 /// Parse the body of a LOOP form (the operator itself is not included).
 #[allow(clippy::too_many_lines)]
 pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
@@ -350,42 +465,29 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
             "FINALLY" => clauses.push(LoopClause::Finally(take_forms(ctx, input, &mut cursor))),
             "DO" => clauses.push(LoopClause::Do(take_forms(ctx, input, &mut cursor))),
             "RETURN" => clauses.push(LoopClause::Return(required(input, &mut cursor)?)),
-            "COLLECT" | "APPEND" | "NCONC" | "COUNT" | "SUM" | "MAXIMIZE" | "MINIMIZE" => {
-                let kind = if keyword == "COLLECT" {
-                    AccumulatorKind::Collect
-                } else if keyword == "APPEND" {
-                    AccumulatorKind::Append
-                } else if keyword == "NCONC" {
-                    AccumulatorKind::Nconc
-                } else if keyword == "COUNT" {
-                    AccumulatorKind::Count
-                } else if keyword == "SUM" {
-                    AccumulatorKind::Sum
-                } else if keyword == "MAXIMIZE" {
-                    AccumulatorKind::Maximize
-                } else if keyword == "MINIMIZE" {
-                    AccumulatorKind::Minimize
-                } else {
-                    return Err(ObjectError::TypeError);
-                };
-                let form = required(input, &mut cursor)?;
-                let variable = if input
-                    .get(cursor)
-                    .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "INTO"))
-                {
-                    cursor += 1;
-                    Some(required(input, &mut cursor)?)
-                } else {
-                    None
-                };
-                if let Some(variable) = variable {
-                    symbol_name(ctx, variable)?;
-                }
-                clauses.push(LoopClause::Accumulate {
-                    kind,
-                    form,
-                    variable,
-                });
+            "WHEN" => clauses.push(parse_conditional(
+                ctx,
+                input,
+                &mut cursor,
+                ConditionalKind::When,
+            )?),
+            "UNLESS" => {
+                clauses.push(parse_conditional(
+                    ctx,
+                    input,
+                    &mut cursor,
+                    ConditionalKind::Unless,
+                )?);
+            }
+            "IF" => clauses.push(parse_conditional(
+                ctx,
+                input,
+                &mut cursor,
+                ConditionalKind::If,
+            )?),
+            _ if accumulator_kind(&keyword).is_some() => {
+                let kind = accumulator_kind(&keyword).ok_or(ObjectError::TypeError)?;
+                clauses.push(parse_accumulate(ctx, input, &mut cursor, kind)?);
             }
             _keyword => return Err(ObjectError::TypeError),
         }

@@ -339,10 +339,7 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
             let numerator = x.checked_mul(y).ok_or(ObjectError::TypeError)?;
             ratio(numerator, xd).ok_or(ObjectError::TypeError)
         }
-        (x, y) => match (x.to_f64(), y.to_f64()) {
-            (Ok(x), Ok(y)) => Ok(Number::Float(x * y)),
-            _ => Err(ObjectError::TypeError),
-        },
+        (x, y) => Ok(Number::Float(x.to_f64()? * y.to_f64()?)),
     }
 }
 #[allow(clippy::suboptimal_flops)]
@@ -404,14 +401,19 @@ pub fn integer_expt(
     base: Word,
     exponent: Word,
 ) -> Result<Option<Word>, ObjectError> {
-    let base_number = match classify_object(ctx, base) {
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) | ObjectRef::Ratio(_) => number(ctx, base)?,
-        _ => return Ok(None),
-    };
-    let exponent_value = match classify_object(ctx, exponent) {
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => integer(ctx, exponent)?,
-        _ => return Ok(None),
-    };
+    let base_is_exact = matches!(
+        classify_object(ctx, base),
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) | ObjectRef::Ratio(_)
+    );
+    let exponent_is_integer = matches!(
+        classify_object(ctx, exponent),
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
+    );
+    if !base_is_exact || !exponent_is_integer {
+        return Ok(None);
+    }
+    let base_number = number(ctx, base)?;
+    let exponent_value = integer(ctx, exponent)?;
     let Some(result) = checked_integer_power(base_number, exponent_value) else {
         return Ok(None);
     };

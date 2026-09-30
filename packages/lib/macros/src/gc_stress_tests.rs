@@ -180,6 +180,18 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut input_stream_spec);
     let mut output_stream_spec = list(&mut ctx, &runtime, &[x])?;
     root!(&mut output_stream_spec);
+    // A `(name (var) body)`-shaped clause, the common shape for both
+    // `HANDLER-CASE` and `RESTART-CASE` clauses.
+    let mut binding_clause = list(&mut ctx, &runtime, &[x, destructuring_lambda_list, x])?;
+    root!(&mut binding_clause);
+    let mut restart_bind_binding = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut restart_bind_binding);
+    let mut restart_bind_clauses = list(&mut ctx, &runtime, &[restart_bind_binding])?;
+    root!(&mut restart_bind_clauses);
+    let mut with_simple_restart_heading = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut with_simple_restart_heading);
+    let mut define_condition_parents = list(&mut ctx, &runtime, &[t])?;
+    root!(&mut define_condition_parents);
     let nil = Word::NIL;
     let mut cases: Vec<(&str, Box<Word>)> = Vec::with_capacity(MACROS.len());
     macro_rules! case {
@@ -220,6 +232,26 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);
     case!("INCF", "INCF", [x, one]);
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
+    case!("HANDLER-CASE", "HANDLER-CASE", [x, binding_clause]);
+    case!("IGNORE-ERRORS", "IGNORE-ERRORS", [x]);
+    case!(
+        "RESTART-BIND",
+        "RESTART-BIND",
+        [restart_bind_clauses, x]
+    );
+    case!("RESTART-CASE", "RESTART-CASE", [x, binding_clause]);
+    case!(
+        "WITH-SIMPLE-RESTART",
+        "WITH-SIMPLE-RESTART",
+        [with_simple_restart_heading, x]
+    );
+    case!("CHECK-TYPE", "CHECK-TYPE", [x, t]);
+    case!("ASSERT", "ASSERT", [x]);
+    case!(
+        "DEFINE-CONDITION",
+        "DEFINE-CONDITION",
+        [x, define_condition_parents, nil]
+    );
     case!(
         "LOOP",
         "LOOP",

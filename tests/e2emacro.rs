@@ -103,15 +103,44 @@ const PROBES: &[Probe] = &[
         source: "(typecase nil (integer 11) (otherwise 12))",
         expected: "12",
     },
+    Probe {
+        name: "loop-count",
+        source: "(loop for x from 1 below 4 count (oddp x))",
+        expected: "2",
+    },
+    Probe {
+        name: "loop-below-defaults-from-zero",
+        source: "(loop for i below 3 collect i)",
+        expected: "(0 1 2)",
+    },
+    Probe {
+        name: "loop-to-defaults-from-zero",
+        source: "(loop for i to 3 collect i)",
+        expected: "(0 1 2 3)",
+    },
+    Probe {
+        name: "loop-destructuring-for",
+        source: "(loop for (a b) in '((1 2) (3 4)) collect (+ a b))",
+        expected: "(3 7)",
+    },
+    Probe {
+        name: "loop-when-collect",
+        source: "(loop for i from 1 to 10 when (evenp i) collect i)",
+        expected: "(2 4 6 8 10)",
+    },
+    Probe {
+        name: "loop-unless-collect",
+        source: "(loop for i from 1 to 5 unless (evenp i) collect i)",
+        expected: "(1 3 5)",
+    },
+    Probe {
+        name: "loop-when-it",
+        source: "(loop for x in '(1 nil 2 nil 3) when x collect it)",
+        expected: "(1 2 3)",
+    },
 ];
 
 const XFAILS: &[XFail] = &[
-    XFail {
-        name: "loop-count",
-        source: "(loop for x from 1 below 4 count (oddp x))",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
     XFail {
         name: "loop-maximize",
         source: "(loop for x from 1 below 4 maximize x)",

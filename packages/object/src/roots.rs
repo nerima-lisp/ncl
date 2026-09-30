@@ -12,6 +12,17 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
 }
 
+/// Push a precise root for every element of a slice, in place.
+///
+/// Unlike [`with_rooted_slice`], this does not copy the slice into scratch
+/// storage: the caller's own backing storage is registered directly, so its
+/// elements are updated in place by a collection and the caller keeps
+/// ordinary (mutable) access to it between this call and [`pop_root`]. The
+/// slice's address must stay stable until the matching [`pop_root`].
+pub fn push_root_slice(ctx: &mut ThreadContext, values: &mut [Word]) -> RootToken {
+    ncl_sys::register_root_set(&mut ctx.thread, values)
+}
+
 /// Push a precise root owned by the runtime's heap-level registry, independent
 /// of the per-thread root stack used by [`push_root`]/[`pop_root`].
 ///

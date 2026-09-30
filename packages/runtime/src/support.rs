@@ -166,17 +166,32 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
                 .call_builtin(ctx, function, &[form])
                 .map_err(|error| expansion(name, &error.to_string()));
         }
-        let arguments = {
-            let tail = cdr(ctx, form).map_err(|error| expansion(name, &error.to_string()))?;
-            ncl_compiler_front::form::list(ctx, tail)
-                .map_err(|error| expansion(name, &error.to_string()))?
-        };
-        let result = call_macro_function(ctx, runtime, function, &arguments, self.entry_codes);
+        // A compiled macro function takes exactly one argument: the whole
+        // call form. `defmacro` (see `ncl-lib-macros::defining`) compiles
+        // the macro lambda list into a single-argument lambda that
+        // destructures `(cdr whole)` itself, so it can support `&whole`,
+        // `&environment`, `&body`, and nested patterns without help from
+        // the front end's ordinary-lambda-list lowering. Passing one
+        // argument here also avoids the register/rest-pointer marshalling
+        // in `call_macro_function` for arbitrarily wide argument lists,
+        // which is what a `&rest`/`&body` macro previously could trip
+        // non-deterministically under GC pressure.
+        let result = call_macro_function(ctx, runtime, function, &[form], self.entry_codes);
         result.map_err(|error| expansion(name, &error.to_string()))
+    }
+
+    fn call_local_macro(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        definition: &ncl_compiler_front::ast::LocalMacro,
+        form: Word,
+    ) -> Result<Word, ncl_compiler_front::FrontError> {
+        crate::local_macro::call_local_macro(ctx, runtime, self.entry_codes, definition, form)
     }
 }
 
-fn call_macro_function(
+pub fn call_macro_function(
     ctx: &mut ThreadContext,
     runtime: &ObjectRuntime,
     function: FunctionObject,

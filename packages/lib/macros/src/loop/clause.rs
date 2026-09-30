@@ -1,4 +1,4 @@
-use super::{AccumulatorKind, HashIterationKind, LimitDirection, StepDirection};
+use super::{AccumulatorKind, ConditionalKind, HashIterationKind, LimitDirection, StepDirection};
 
 #[derive(Clone, Debug)]
 pub(super) enum HeldLoopClause {
@@ -46,4 +46,10 @@ pub(super) enum HeldLoopClause {
         variable: Option<usize>,
     },
     Return(usize),
+    Conditional {
+        kind: ConditionalKind,
+        test: usize,
+        then: Vec<Self>,
+        otherwise: Vec<Self>,
+    },
 }

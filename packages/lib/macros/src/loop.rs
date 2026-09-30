@@ -62,6 +62,14 @@ pub struct HashClause {
     pub using: Option<(HashIterationKind, Word)>,
 }
 
+/// Which conditional-clause keyword introduced a [`LoopClause::Conditional`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConditionalKind {
+    When,
+    Unless,
+    If,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoopClause {
     With {
@@ -97,6 +105,13 @@ pub enum LoopClause {
         variable: Option<Word>,
     },
     Return(Word),
+    /// `when`/`unless`/`if` test-form selectable-clause* [`else` selectable-clause*] [`end`]
+    Conditional {
+        kind: ConditionalKind,
+        test: Word,
+        then: Vec<Self>,
+        otherwise: Vec<Self>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

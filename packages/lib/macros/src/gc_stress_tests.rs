@@ -305,3 +305,48 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     }
     result
 }
+
+#[test]
+fn loop_conditional_clause_expansion_survives_gc_stress_and_strict_forwarding()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    register(&runtime)?;
+    ctx.register(&runtime)?;
+    ctx.set_strict_forwarding(true);
+
+    let i = symbol(&mut ctx, &runtime, "I")?;
+    let oddp = symbol(&mut ctx, &runtime, "ODDP")?;
+    let oddp_call = list(&mut ctx, &runtime, &[oddp, i])?;
+    let ast = r#loop::LoopAst {
+        name: None,
+        clauses: vec![
+            r#loop::LoopClause::For(r#loop::ForClause {
+                variable: i,
+                init: Word::fixnum(1),
+                step: None,
+                direction: Some(r#loop::StepDirection::From),
+                limit: Some((r#loop::LimitDirection::To, Word::fixnum(10))),
+            }),
+            r#loop::LoopClause::Conditional {
+                kind: r#loop::ConditionalKind::When,
+                test: oddp_call,
+                then: vec![r#loop::LoopClause::Accumulate {
+                    kind: r#loop::AccumulatorKind::Collect,
+                    form: i,
+                    variable: None,
+                }],
+                otherwise: vec![],
+            },
+        ],
+    };
+    ctx.set_gc_stress(true);
+    let mut expansion = r#loop::expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let root = ncl_object::push_root(&mut ctx, &mut expansion);
+    ctx.collect(true)?;
+    // check-added-lines: allow(panic) test-only assertion
+    assert!(!elements(&mut ctx, expansion)?.is_empty());
+    // check-added-lines: allow(panic) test-only assertion
+    assert!(ncl_object::pop_root(&mut ctx, root));
+    Ok(())
+}

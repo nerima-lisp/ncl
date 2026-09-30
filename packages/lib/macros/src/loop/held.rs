@@ -89,6 +89,26 @@ pub(super) fn held_fresh_symbol(
     Ok(held.len() - 1)
 }
 
+/// Hold the interned symbol named `name` (in `COMMON-LISP` unless `name`
+/// contains a `PACKAGE::SYMBOL` separator), for generated code that must
+/// refer to a specific symbol (e.g. `IT` in conditional loop clauses) rather
+/// than a fresh gensym.
+pub(super) fn held_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    name: &str,
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let value = symbol(ctx, runtime, name)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
+}
+
 pub(super) fn expand_body(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

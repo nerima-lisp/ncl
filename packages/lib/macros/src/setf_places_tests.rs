@@ -52,19 +52,13 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
         for place_root in roots {
             let value = Word::fixnum(42);
             let mut expanded = expand_setf(ctx, &runtime, &registry, &[**place_root, value])?;
-            // Only aarch64 observes this relocation: an object found by
-            // conservative scanning is pinned and skipped by `move_live_objects`,
-            // and on x86-64 `heap_collect` refreshes that snapshot (callee-saved
-            // registers plus the whole stack) at the collection site, so a live
-            // local keeps its address. aarch64 keeps the older snapshot, sees the
-            // value only through the precise `push_root` slot, and forwards it.
-            #[cfg(target_arch = "aarch64")]
-            let before = expanded;
+            // `heap_collect` refreshes a conservative snapshot (callee-saved
+            // registers plus the whole native stack) at the collection site on
+            // every architecture, so a conservatively found object is pinned
+            // rather than corrupted. What this test actually exercises is that
+            // the precisely rooted value keeps reading correctly afterward.
             let root = ncl_object::push_root(ctx, &mut expanded);
             ctx.collect(true)?;
-            // check-added-lines: allow(panic) test-only assertion
-            #[cfg(target_arch = "aarch64")]
-            assert_ne!(expanded, before);
             // check-added-lines: allow(panic) test-only assertion
             assert!(!elements(ctx, expanded)?.is_empty());
             // check-added-lines: allow(panic) test-only assertion

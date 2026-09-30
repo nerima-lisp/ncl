@@ -118,18 +118,15 @@ fn unmanaged_memory_operations_report_the_missing_wrappers() {
 fn rooted_objects_survive_a_collection() {
     fixture!(runtime, ctx);
     let string = make_string(&mut ctx, &runtime, &['x'; 64]).unwrap();
-    let before = string;
     let after = with_rooted_objects(&mut ctx, &[string], |ctx, values| {
         ctx.collect(true)?;
         Ok(*values[0])
     })
     .unwrap();
-    // Moving collection rewrites the root on aarch64. x86_64 uses conservative
-    // stack scanning, so a live address may be pinned and remain unchanged.
-    #[cfg(target_arch = "aarch64")]
-    assert_ne!(after, before);
-    #[cfg(target_arch = "x86_64")]
-    assert_eq!(after, before);
+    // The collector conservatively pins objects found in the native
+    // register/stack snapshot on every architecture, so the rooted address
+    // may or may not change here; what this exercises is that the precisely
+    // rooted value keeps reading correctly after the collection either way.
     assert_eq!(ncl_object::string_length(&ctx, after).unwrap(), 64);
 }
 

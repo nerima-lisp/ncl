@@ -21,8 +21,7 @@ pub(super) fn make_array_builtin(
     let mut fill_pointer = None;
     let mut displaced_to = None;
     let mut displaced_index_offset = 0;
-    // check-added-lines: allow(index)
-    let options = &args.as_slice()[1..];
+    let options = &args.as_slice()[1..]; // check-added-lines: allow(index) options trail the dimensions argument
     if !options.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
@@ -42,7 +41,7 @@ pub(super) fn make_array_builtin(
                     "UNSIGNED-BYTE" => ArrayElementType::Unsigned,
                     "SINGLE-FLOAT" => ArrayElementType::SingleFloat,
                     "DOUBLE-FLOAT" => ArrayElementType::DoubleFloat,
-                    _ => return Err(ObjectError::TypeError),
+                    _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown element types
                 }
             }
             "INITIAL-ELEMENT" => {
@@ -63,7 +62,7 @@ pub(super) fn make_array_builtin(
                     usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                         .map_err(|_| ObjectError::TypeError)?;
             }
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown options
         }
     }
     // CLHS 7.2 for MAKE-ARRAY: it is an error to supply both :initial-element

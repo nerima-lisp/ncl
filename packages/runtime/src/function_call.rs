@@ -16,20 +16,18 @@ pub fn invoke_condition_handler(
     runtime: std::ptr::NonNull<()>,
     ctx: &mut ThreadContext,
     handler: Word,
-    condition: Word,
-) -> Result<(), ObjectError> {
+    arguments: &[Word],
+) -> Result<Word, ObjectError> {
     ncl_sys::with_opaque_mut(runtime, |runtime: &mut crate::Runtime| {
         let mut caller = RuntimeFunctionCaller;
         let mut values = MultipleValues::default();
-        caller
-            .call_function(
-                ctx,
-                &runtime.object,
-                FunctionDesignator::Function(FunctionObject::try_from(handler)?),
-                FunctionArguments::new(&[condition]),
-                &mut values,
-            )
-            .map(|_| ())
+        caller.call_function(
+            ctx,
+            &runtime.object,
+            FunctionDesignator::Function(FunctionObject::try_from(handler)?),
+            FunctionArguments::new(arguments),
+            &mut values,
+        )
     })
 }
 

@@ -1,7 +1,8 @@
 //! Restart and cleanup records, and non-local exit.
 
 use ncl_object::{
-    Runtime, ThreadContext, Word, make_cons, make_simple_vector, pop_root, push_root,
+    FunctionObject, Runtime, ThreadContext, Word, make_cons, make_simple_vector, pop_root,
+    push_root,
 };
 
 use crate::class::string_words_equal;
@@ -12,6 +13,20 @@ use crate::records;
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RestartRecord(Word);
+
+impl RestartRecord {
+    /// Return the underlying restart record word.
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+    /// Wrap a restart record word (for example one read back off the
+    /// dynamic restart stack by `FIND-RESTART`/`COMPUTE-RESTARTS`).
+    #[must_use]
+    pub const fn from_word(word: Word) -> Self {
+        Self(word)
+    }
+}
 
 /// A cleanup record pushed onto the cleanup chain.
 #[repr(transparent)]
@@ -103,28 +118,62 @@ pub fn compute_restarts(
     Ok(list)
 }
 
-/// Invoke a restart, modelling the transfer as a pending non-local exit.
+/// Invoke a restart with the given arguments.
 ///
-/// Phase 1 cannot call the restart function (no generated code yet), so it
-/// records the exit and returns the restart's function word.
+/// When the restart's stored function is a real callable object (as
+/// installed by `restart-bind`/`restart-case`), it is called with
+/// `arguments` through the generic condition-function invocation hook; its
+/// return value (or the transfer performed by a non-local exit inside it) is
+/// this call's result, matching `INVOKE-RESTART`.
+///
+/// Some restarts (for example the `CONTINUE` restart `cerror` installs) use
+/// the function slot as an opaque Phase 1 continuation marker rather than a
+/// callable object. For those, invocation keeps the original Phase 1
+/// contract: the marker word is returned as-is and a pending non-local exit
+/// is recorded for the caller to interpret.
 ///
 /// # Errors
-/// Returns an object-layer error when `restart` is malformed.
-pub fn invoke_restart(ctx: &mut ThreadContext, restart: Word) -> Result<Word, ConditionError> {
-    let restart = records::RestartRecord::from_word(restart);
-    let function = restart.function(ctx).map_err(ConditionError::from)?;
+/// Returns an object-layer error when `restart` is malformed or the callable
+/// function fails.
+pub fn invoke_restart(
+    ctx: &mut ThreadContext,
+    restart: Word,
+    arguments: &[Word],
+) -> Result<Word, ConditionError> {
+    let restart_record = records::RestartRecord::from_word(restart);
+    let function = restart_record.function(ctx).map_err(ConditionError::from)?;
+    if let Ok(function_object) = FunctionObject::try_from(function) {
+        return ctx
+            .invoke_condition_handler(function_object.as_word(), arguments)
+            .map_err(ConditionError::from);
+    }
     ctx.set_non_local_exit(true);
     Ok(function)
 }
 
-/// Find a restart by name and invoke it.
+/// Find a restart by name and invoke it with the given arguments.
 ///
 /// # Errors
 /// Returns [`ConditionError::RestartNotFound`] when no restart matches, or the
 /// failures of [`find_restart`] and [`invoke_restart`].
-pub fn invoke_restart_by_name(ctx: &mut ThreadContext, name: Word) -> Result<Word, ConditionError> {
+pub fn invoke_restart_by_name(
+    ctx: &mut ThreadContext,
+    name: Word,
+    arguments: &[Word],
+) -> Result<Word, ConditionError> {
     let restart = find_restart(ctx, name)?.ok_or(ConditionError::RestartNotFound)?;
-    invoke_restart(ctx, restart)
+    invoke_restart(ctx, restart, arguments)
+}
+
+/// Read the name of a restart record as a Lisp string, or `NIL` for an
+/// anonymous restart.
+///
+/// # Errors
+/// Returns an object-layer error when `restart` is malformed.
+pub fn restart_name(ctx: &ThreadContext, restart: Word) -> Result<Word, ConditionError> {
+    records::RestartRecord::from_word(restart)
+        .name(ctx)
+        .map_err(ConditionError::from)
 }
 
 /// Push a cleanup record whose entry runs during unwind.

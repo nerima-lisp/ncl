@@ -42,9 +42,25 @@ fn collect_during_handler(
     _runtime: std::ptr::NonNull<()>,
     ctx: &mut ThreadContext,
     _handler: Word,
-    _condition: Word,
-) -> Result<(), ncl_object::ObjectError> {
-    ctx.collect(true)
+    _arguments: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    ctx.collect(true)?;
+    Ok(Word::NIL)
+}
+
+/// A mock condition-function invoker that allocates a fresh cons of its
+/// argument with itself while `gc_stress` forces a collection on every
+/// allocation, modelling a Lisp handler body that conses.
+fn allocate_a_cons_during_handler_invocation(
+    runtime: std::ptr::NonNull<()>,
+    ctx: &mut ThreadContext,
+    _handler: Word,
+    arguments: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    let argument = arguments.first().copied().unwrap_or(Word::NIL);
+    ncl_sys::with_opaque_mut(runtime, |runtime: &mut Runtime| {
+        ncl_object::make_cons(ctx, runtime, argument, argument)
+    })
 }
 
 #[allow(clippy::unnecessary_wraps, reason = "condition handler callback ABI")]
@@ -52,9 +68,9 @@ fn assert_simple_condition_report(
     _runtime: std::ptr::NonNull<()>,
     ctx: &mut ThreadContext,
     _handler: Word,
-    condition: Word,
-) -> Result<(), ncl_object::ObjectError> {
-    let condition = ncl_object::Instance::from_word(condition);
+    arguments: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    let condition = ncl_object::Instance::from_word(arguments.first().copied().unwrap());
     let format_control = slot_ref(ctx, condition, 0).unwrap();
     assert_eq!(string_length(ctx, format_control).unwrap(), 10);
     for (index, character) in "message ~a".chars().enumerate() {
@@ -63,21 +79,21 @@ fn assert_simple_condition_report(
     let arguments = slot_ref(ctx, condition, 1).unwrap();
     assert_eq!(car(ctx, arguments).unwrap(), Word::fixnum(7));
     assert_eq!(cdr(ctx, arguments).unwrap(), Word::NIL);
-    Ok(())
+    Ok(Word::NIL)
 }
 
 fn invoke_continue_restart_from_condition(
     _runtime: std::ptr::NonNull<()>,
     ctx: &mut ThreadContext,
     _handler: Word,
-    condition: Word,
-) -> Result<(), ncl_object::ObjectError> {
-    let condition = ncl_object::Instance::from_word(condition);
+    arguments: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    let condition = ncl_object::Instance::from_word(arguments.first().copied().unwrap());
     let name = slot_ref(ctx, condition, 0)?;
     let expected_control = slot_ref(ctx, condition, 1)?;
-    let function = invoke_restart_by_name(ctx, name).unwrap_or(Word::NIL);
+    let function = invoke_restart_by_name(ctx, name, &[]).unwrap_or(Word::NIL);
     ctx.set_values(&[expected_control, function]);
-    Ok(())
+    Ok(Word::NIL)
 }
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -171,7 +187,7 @@ fn continue_restart_can_be_invoked() {
     .unwrap();
 
     assert_eq!(
-        invoke_restart_by_name(&mut ctx, name).unwrap(),
+        invoke_restart_by_name(&mut ctx, name, &[]).unwrap(),
         Word::fixnum(42)
     );
     assert!(ctx.take_non_local_exit());
@@ -475,4 +491,43 @@ fn undefined_function_condition_preserves_name_and_accessor_returns_it() {
         runtime.call_builtin(&mut ctx, function, &[condition]),
         Ok(name)
     );
+}
+
+#[test]
+fn handler_invocation_survives_allocation_under_gc_stress() {
+    // A Lisp handler body that conses runs exactly this path: `signal`
+    // invokes the handler through `ctx.invoke_condition_handler`, which here
+    // allocates while every allocation forces a full collection. The
+    // condition object, rooted for the whole call, must come out identifying
+    // as the same class it went in as.
+    let (runtime, mut ctx) = setup();
+    ctx.set_strict_forwarding(true);
+    ctx.set_condition_handler_invoker(allocate_a_cons_during_handler_invocation);
+    ctx.set_evaluator_runtime(std::ptr::NonNull::from(&runtime).as_ptr().cast());
+
+    let mut class = class(&runtime, &mut ctx, "TYPE-ERROR").as_word();
+    let class_token = push_root(&mut ctx, &mut class);
+    let chain = push_handler(
+        &mut ctx,
+        &runtime,
+        ConditionClass::from_word(class),
+        Word::NIL,
+    )
+    .unwrap();
+    let mut condition =
+        make_condition(&mut ctx, &runtime, ConditionClass::from_word(class), &[]).unwrap();
+    let condition_token = push_root(&mut ctx, &mut condition);
+
+    ctx.set_gc_stress(true);
+    signal(&mut ctx, condition).unwrap();
+    ctx.set_gc_stress(false);
+
+    assert_eq!(
+        ncl_conditions::condition_class_of(&ctx, condition).unwrap(),
+        ConditionClass::from_word(class)
+    );
+
+    pop_root(&mut ctx, condition_token);
+    pop_root(&mut ctx, class_token);
+    pop_handler(&mut ctx, &runtime, chain);
 }

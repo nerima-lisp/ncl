@@ -11,6 +11,8 @@ use super::function::{FunctionLowerer, Lowerer};
 mod analysis;
 #[path = "bindings.rs"]
 mod bindings;
+#[path = "conditional.rs"]
+mod conditional;
 #[path = "control.rs"]
 mod control;
 #[path = "control_escape.rs"]

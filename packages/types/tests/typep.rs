@@ -265,3 +265,19 @@ fn satisfies_and_deftype_error() {
         Err(ncl_types::TypeError::UnexpandedDeftype(word)) if word == "PREDICATE"
     ));
 }
+
+#[test]
+fn character_typep_recognizes_the_character_family() {
+    let (runtime, mut ctx) = setup();
+    let _ = &runtime;
+    let graphic = Word::character(u32::from(b'a'));
+    let control = Word::character(1);
+    assert!(typep(&mut ctx, graphic, &named(NamedType::Character)).unwrap());
+    assert!(typep(&mut ctx, graphic, &named(NamedType::BaseChar)).unwrap());
+    assert!(typep(&mut ctx, graphic, &named(NamedType::StandardChar)).unwrap());
+    assert!(!typep(&mut ctx, graphic, &named(NamedType::ExtendedChar)).unwrap());
+    // A control character is still a character/base-char, but not standard.
+    assert!(typep(&mut ctx, control, &named(NamedType::Character)).unwrap());
+    assert!(!typep(&mut ctx, control, &named(NamedType::StandardChar)).unwrap());
+    assert!(!typep(&mut ctx, Word::fixnum(1), &named(NamedType::Character)).unwrap());
+}

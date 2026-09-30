@@ -14,6 +14,7 @@ fn eval(source: &str) -> (bool, String) {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn every_registered_sequence_builtin_runs_through_compiled_code() {
     let cases = [
         ("(atom 1)", "T"),
@@ -87,8 +88,37 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(assoc 'a '((a . 1)))", "(COMMON-LISP-USER:A . 1)"),
         ("(rassoc 1 '((a . 1)))", "(COMMON-LISP-USER:A . 1)"),
         ("(member 2 '(1 2))", "(2)"),
+        ("(equal '(1 2) '(1 2))", "T"),
+        ("(equal \"abc\" \"ABC\")", "NIL"),
+        ("(equalp \"abc\" \"ABC\")", "T"),
+        ("(equalp 1 1.0d0)", "T"),
+        ("(getf (list :a 1 :b 2) :b)", "2"),
+        ("(getf (list :a 1) :z 99)", "99"),
+        ("(copy-tree (list (list 1 2) 3))", "((1 2) 3)"),
+        ("(copy-tree '(1 . 2))", "(1 . 2)"),
+        ("(find-if #'evenp '(1 3 5 6 7))", "6"),
+        ("(find-if-not #'evenp '(2 4 6 7))", "7"),
+        ("(position-if #'evenp '(1 3 5 6 7))", "3"),
+        ("(position-if-not #'evenp '(2 4 6 7))", "3"),
+        ("(count-if #'evenp '(1 2 3 4 5 6))", "3"),
+        ("(count-if-not #'evenp '(1 2 3 4 5 6))", "3"),
+        ("(remove-if #'evenp '(1 2 3 4 5))", "(1 3 5)"),
+        ("(remove-if-not #'evenp '(1 2 3 4 5))", "(2 4)"),
+        ("(delete 2 '(1 2 3 2 4))", "(1 3 4)"),
+        ("(delete-if #'evenp '(1 2 3 4 5))", "(1 3 5)"),
+        ("(delete-if-not #'evenp '(1 2 3 4 5))", "(2 4)"),
+        ("(substitute-if 0 #'evenp '(1 2 3 4))", "(1 0 3 0)"),
+        ("(substitute-if-not 0 #'evenp '(1 2 3 4))", "(0 2 0 4)"),
+        ("(nsubstitute 0 2 '(1 2 3 2 4))", "(1 0 3 0 4)"),
+        ("(nsubstitute-if 0 #'evenp '(1 2 3 4))", "(1 0 3 0)"),
+        ("(reduce #'+ '(1 2 3 4) :key #'1+)", "14"),
+        ("(reduce #'+ '(1 2 3 4) :initial-value 100)", "110"),
+        ("(reduce #'- '(1 2 3 4) :from-end t)", "-2"),
+        ("(reduce #'+ '(1 2 3 4) :start 1 :end 3)", "5"),
+        ("(reduce #'+ '())", "0"),
+        ("(reduce #'+ '() :initial-value 5)", "5"),
     ];
-    assert_eq!(cases.len(), 68);
+    assert_eq!(cases.len(), 97);
     for (source, expected) in cases {
         let (success, actual) = eval(source);
         assert!(success, "{source} failed");

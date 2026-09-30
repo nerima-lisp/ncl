@@ -7,6 +7,7 @@ use ncl_object::{
     ThreadContext, Word, classify_object, string_length, string_ref, symbol_name,
 };
 
+mod case;
 mod handler_bind;
 mod typecase;
 
@@ -115,72 +116,6 @@ fn cond(ctx: &mut ThreadContext, runtime: &Runtime, clauses: &[Word]) -> Result 
         clauses.get(1..).ok_or(ObjectError::TypeError)?,
     )?;
     form(ctx, runtime, "IF", &[test, yes, no])
-}
-
-fn case(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let value = roots.first().copied().ok_or(ObjectError::TypeError)?;
-        let mut temporary = fresh_symbol(ctx, runtime)?;
-        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
-            ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
-                let mut branches = Word::NIL;
-                for clause in roots.get(1..).ok_or(ObjectError::TypeError)?.iter().rev() {
-                    let parts = elements(ctx, **clause)?;
-                    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
-                        let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
-                        let body_values = parts
-                            .get(1..)
-                            .ok_or(ObjectError::TypeError)?
-                            .iter()
-                            .map(|part| **part)
-                            .collect::<Vec<_>>();
-                        let mut body = progn(ctx, runtime, &body_values)?;
-                        ncl_object::with_root(ctx, &mut body, |ctx, body| {
-                            if is_otherwise(ctx, *keys)? {
-                                let true_symbol = symbol(ctx, runtime, "T")?;
-                                branches =
-                                    ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
-                                        form(ctx, runtime, "IF", &[true_symbol, *body, *branches])
-                                    })?;
-                                return Ok(());
-                            }
-                            let key_values = if keys.is_cons() {
-                                elements(ctx, *keys)?
-                            } else {
-                                vec![*keys]
-                            };
-                            ncl_object::with_roots(ctx, &key_values, |ctx, key_values| {
-                                let mut tests = Vec::with_capacity(key_values.len());
-                                for key in key_values {
-                                    let quote = form(ctx, runtime, "QUOTE", &[**key])?;
-                                    tests.push(form(ctx, runtime, "EQL", &[*temporary, quote])?);
-                                }
-                                ncl_object::with_roots(ctx, &tests, |ctx, tests| {
-                                    let test_values =
-                                        tests.iter().map(|test| **test).collect::<Vec<_>>();
-                                    let mut test = or(ctx, runtime, &test_values)?;
-                                    ncl_object::with_root(ctx, &mut test, |ctx, test| {
-                                        branches = ncl_object::with_root(
-                                            ctx,
-                                            &mut branches,
-                                            |ctx, branches| {
-                                                form(ctx, runtime, "IF", &[*test, *body, *branches])
-                                            },
-                                        )?;
-                                        Ok(())
-                                    })
-                                })
-                            })
-                        })
-                    })?;
-                }
-                ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
-                    form(ctx, runtime, "LET", &[*let_bindings, *branches])
-                })
-            })
-        })
-    })
 }
 
 fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
@@ -387,7 +322,8 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
         Kind::And => and(ctx, runtime, values),
         Kind::Or => or(ctx, runtime, values),
         Kind::Cond => cond(ctx, runtime, values),
-        Kind::Case | Kind::Ecase => case(ctx, runtime, values),
+        Kind::Case => case::case(ctx, runtime, values, false),
+        Kind::Ecase => case::case(ctx, runtime, values, true),
         Kind::Prog1 => prog1(ctx, runtime, values),
         Kind::Prog2 => {
             let first = values.first().copied().ok_or(ObjectError::TypeError)?;

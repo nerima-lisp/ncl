@@ -123,9 +123,11 @@ pub struct LoopAst {
 mod accumulator;
 mod callback;
 mod clause;
+mod conditional;
 mod expansion;
 mod hash;
 mod held;
+mod holding;
 mod parser;
 pub use callback::expand_loop_callback;
 #[allow(unused_imports)]

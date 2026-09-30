@@ -11,8 +11,8 @@
 //! `&aux`, and nested destructuring patterns are rejected with a clear
 //! [`FrontError`] rather than silently mis-binding, and the interpreter
 //! covers constants, variable references, calls to named functions, `if`,
-//! and `progn` — the shapes a backquote-expanded expander body actually
-//! produces — rather than the full `Expr` grammar. `defmacro`'s lambda
+//! and `progn` (the shapes a backquote-expanded expander body actually
+//! produces), rather than the full `Expr` grammar. `defmacro`'s lambda
 //! lists (`ncl-lib-macros::destructuring`) are unaffected and keep full
 //! CLHS 3.4.4 support, because they compile through the ordinary pipeline
 //! instead of being interpreted here.
@@ -36,7 +36,7 @@ use ncl_object::{
 use crate::support::call_macro_function;
 
 type Held = Vec<Word>;
-type EntryCodes = BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>;
+type EntryCodes = BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>; // check-added-lines: allow(word-table) entries are rooted code objects
 
 fn held_get(held: &Held, index: usize) -> std::result::Result<Word, ObjectError> {
     held.get(index).copied().ok_or(ObjectError::Layout)
@@ -142,6 +142,7 @@ fn materialize(
             })
             .map_err(object_error)
         }
+        // check-added-lines: allow(wildcard) Literal is #[non_exhaustive]; the wildcard is required to compile.
         Literal::Array { .. } | Literal::BitVector(_) | _ => Err(unsupported(
             "macrolet: this literal shape is not supported in a local macro body",
         )),
@@ -198,8 +199,8 @@ fn call_named(
 /// Evaluate a local macro expander body form.
 ///
 /// Supports constants, variable references bound by the destructured
-/// lambda list, calls to named functions, `if`, and `progn` — the shapes a
-/// backquote-expanded macro body produces. Anything else is reported, not
+/// lambda list, calls to named functions, `if`, and `progn` (the shapes a
+/// backquote-expanded macro body produces). Anything else is reported, not
 /// silently misinterpreted.
 fn eval_expr(
     ctx: &mut ThreadContext,
@@ -253,6 +254,7 @@ fn eval_expr(
             }
             call_named(ctx, runtime, entry_codes, held, name, &argument_indexes)
         }
+        // check-added-lines: allow(wildcard) Expr is #[non_exhaustive]; only a documented subset is interpreted.
         _ => Err(unsupported(
             "macrolet: this form is not supported in a local macro body",
         )),
@@ -262,6 +264,7 @@ fn eval_expr(
 fn bind_symbol_param(param: &ParamName) -> Result<&SymbolRef, FrontError> {
     match param {
         ParamName::Symbol(symbol) => Ok(symbol),
+        // check-added-lines: allow(wildcard) ParamName is #[non_exhaustive]; nested patterns are the only other case.
         ParamName::Pattern(_) | _ => Err(unsupported(
             "macrolet: nested destructuring patterns are not supported for local macros",
         )),

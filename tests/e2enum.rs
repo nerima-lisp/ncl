@@ -5,6 +5,15 @@ use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+fn assert_eval_with_stress(runtime: &mut ncl_runtime::Runtime, source: &str, expected: &str) {
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    let value = runtime
+        .compile(source)
+        .unwrap_or_else(|error| panic!("compile failed for {source}: {error:?}"));
+    assert_eq!(runtime.format_result(value), expected, "{source}");
+}
+
 const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct Probe(&'static str, &'static str);
@@ -45,7 +54,7 @@ const PROBES: &[Probe] = &[
     Probe("LCM", "1"),
     Probe("ISQRT", "1"),
     Probe("EXP", "2.718281828459045"),
-    Probe("EXPT", "1.0"),
+    Probe("EXPT", "1"),
     Probe("SQRT", "1.0"),
     Probe("SIN", "0.8414709848078965"),
     Probe("COS", "0.5403023058681398"),
@@ -224,5 +233,140 @@ fn known_non_working_cases_remain_explicit_xfails() {
             case.name,
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+}
+
+fn assert_eval(source: &str, expected: &str) {
+    let output = run_ncl(source);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{source}: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "{source}: unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        expected,
+        "{source}"
+    );
+}
+
+/// `+`/`-`/`*`/`<` compile a dedicated two-argument fast path
+/// (`packages/compiler/front/src/lower/expr.rs`); every other arity falls
+/// through to an ordinary call. Both paths must agree with the interpreted
+/// `funcall`/`apply` dispatch across every numeric type.
+#[test]
+fn native_fast_path_handles_every_arity_and_numeric_type() {
+    for (source, expected) in [
+        ("(+)", "0"),
+        ("(+ 5)", "5"),
+        ("(+ 1 2 3)", "6"),
+        ("(+ 5 2 1)", "8"),
+        ("(- 5)", "-5"),
+        ("(- 5 2 1)", "2"),
+        ("(*)", "1"),
+        ("(* 5)", "5"),
+        ("(* 2 3 4)", "24"),
+        ("(* 5 2 1)", "10"),
+        ("(< 1 2 3)", "T"),
+        ("(< 1 3 2)", "NIL"),
+        ("(+ 1.5 2)", "3.5"),
+        ("(+ 2 1.5)", "3.5"),
+        ("(* 2 5.0)", "10.0"),
+        ("(- 0 5.0)", "-5.0"),
+        ("(+ (/ 1 2) (/ 1 3))", "5/6"),
+        ("(* (/ 1 3) 3)", "1"),
+        ("(= 1 1.0)", "T"),
+        ("(> (/ 1 2) 0.6)", "NIL"),
+        ("(< (/ 1 2) 0.6)", "T"),
+        ("(funcall #'+ 1 2 3)", "6"),
+        ("(apply #'* '(2 3 4))", "24"),
+    ] {
+        assert_eval(source, expected);
+    }
+}
+
+/// Overflowing the fixnum range inside the compiled two-argument fast path
+/// must promote to a bignum instead of signaling a native `Overflow`
+/// failure (`packages/sys/src/native_builtins.rs`, previously fatal).
+#[test]
+fn fixnum_overflow_promotes_to_bignum() {
+    for (source, expected) in [
+        ("(* most-positive-fixnum 2)", "9223372036854775806"),
+        ("(+ most-positive-fixnum 1)", "4611686018427387904"),
+        ("(- most-negative-fixnum 1)", "-4611686018427387905"),
+        (
+            "(loop with r = 1 for i from 1 to 30 do (setq r (* r i)) finally (return r))",
+            "265252859812191058636308480000000",
+        ),
+    ] {
+        assert_eval(source, expected);
+    }
+}
+
+/// `EXPT` must return an exact result for a rational base and an integer
+/// exponent (`packages/lib/numbers/src/transcendental.rs`); only a float or
+/// complex operand should fall back to the transcendental float path.
+#[test]
+fn expt_is_exact_for_rational_base_and_integer_exponent() {
+    for (source, expected) in [
+        ("(expt 2 10)", "1024"),
+        ("(expt 2 100)", "1267650600228229401496703205376"),
+        ("(expt (/ 2 3) 2)", "4/9"),
+        ("(expt 2 -2)", "1/4"),
+        ("(expt 2 0)", "1"),
+        ("(expt 2.0 0.5)", "1.414213562373095"),
+    ] {
+        assert_eval(source, expected);
+    }
+}
+
+/// Bignum, ratio, and complex literals must compile as constant-table heap
+/// objects instead of the unconditional `Unsupported("quoted number")`
+/// (`packages/compiler/front/src/lower/literal.rs`).
+#[test]
+fn bignum_ratio_and_complex_literals_compile() {
+    for (source, expected) in [
+        ("'12345678901234567890123", "12345678901234567890123"),
+        ("(quote 1/3)", "1/3"),
+        ("'#c(1 2)", "#C(1 2)"),
+        ("(+ 1/3 1)", "4/3"),
+        ("(- '12345678901234567890123 1)", "12345678901234567890122"),
+        ("(car '(1/3 2/3))", "1/3"),
+    ] {
+        assert_eval(source, expected);
+    }
+}
+
+/// The same overflow-driven bignum promotions, re-run under `gc_stress` +
+/// `strict_forwarding` in-process so a collection landing mid-allocation
+/// cannot leave a stale `Word` behind.
+///
+/// This intentionally sticks to *computed* bignums (arithmetic overflow and
+/// `expt`), not literal bignums/ratios: reading any quoted literal at all
+/// (including a plain `'(1 2 3)`, unrelated to this lane) already fails
+/// under `gc_stress` with `Front(Object(Storage(ThreadNotRegistered)))`, a
+/// pre-existing gap in the reader/front-end literal-freezing path
+/// (`packages/compiler/front/src/form.rs:130-152`, `packages/object/src/cons.rs:14,30`)
+/// outside the numbers lane's scope.
+#[test]
+fn bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding() {
+    let mut runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    for (source, expected) in [
+        ("(* most-positive-fixnum 2)", "9223372036854775806"),
+        ("(+ most-positive-fixnum 1)", "4611686018427387904"),
+        ("(expt 2 100)", "1267650600228229401496703205376"),
+        (
+            "(loop with r = 1 for i from 1 to 30 do (setq r (* r i)) finally (return r))",
+            "265252859812191058636308480000000",
+        ),
+    ] {
+        assert_eval_with_stress(&mut runtime, source, expected);
     }
 }

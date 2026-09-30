@@ -153,7 +153,7 @@ fn control_flow_and_loop_regressions_hold_through_the_cli() {
 /// `COMMON-LISP-USER`-inherited-macro branch of `expand_cons`,
 /// `packages/compiler/front/src/expand/call.rs:122-141`, which reads `head`
 /// again after an allocating `intern` call with no `with_root` protection),
-/// not in `lower_if`/`lower_call`/`loop` — see the final report for detail.
+/// not in `lower_if`/`lower_call`/`loop`; see the final report for detail.
 /// It is out of this lane's scope and is not fixed here; `expand_loop_ast`
 /// itself (this lane's LOOP changes) is separately proven GC-safe by
 /// `packages/lib/macros/src/gc_stress_tests.rs`'s

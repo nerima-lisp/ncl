@@ -27,7 +27,7 @@ destructuring/multiple-value/defstruct paths, `UnsupportedLiteral` for the loop
 `maximize`/`minimize` accumulators (the `Word::TRUE` first-value sentinel in
 `packages/lib/macros/src/loop/accumulator.rs` is not a literal the front end
 lowers), and `loop-with-finally`, whose body has no iteration-control clause at
-all — real Common Lisp (confirmed against SBCL 2.6.0) loops forever on this
+all: real Common Lisp (confirmed against SBCL 2.6.0) loops forever on this
 same input, so NCL's fast compile-time error is preferable to reproducing the
 hang and is not a defect to fix. These are retained with their stderr and exit
 status in the test rather than being silently omitted.

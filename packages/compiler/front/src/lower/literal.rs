@@ -95,8 +95,8 @@ fn scalar_or_structure_constant(
         }
         Literal::Number(number) => number_literal_constant(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => structure_constant(f, literal),
+        // check-added-lines: allow(unsupported) unsupported literal families remain explicit
         Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
-            // check-added-lines: allow(unsupported) unsupported literal families remain explicit
             form: "quoted structure",
         }),
     }

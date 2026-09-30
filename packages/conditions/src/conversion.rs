@@ -80,17 +80,23 @@ pub fn condition_from_lisp_error(
     if let LispError::TypeError { datum, expected } = error {
         return type_error_condition(ctx, runtime, datum, expected);
     }
-    if let LispError::CellError(CellError::UndefinedFunction { name }) = error {
+    if let LispError::CellError(
+        CellError::UndefinedFunction { name } | CellError::UnboundVariable { name },
+    ) = error
+    {
+        let identifier = if matches!(
+            error,
+            LispError::CellError(CellError::UnboundVariable { .. })
+        ) {
+            ConditionIdentifier::UnboundVariable
+        } else {
+            ConditionIdentifier::UndefinedFunction
+        };
         let mut name = name;
         let token = push_root(ctx, &mut name);
-        let result = make_typed_condition(
-            ctx,
-            runtime,
-            ConditionIdentifier::UndefinedFunction,
-            &words(&[name]),
-        )
-        .map(ConditionRecord::as_word)
-        .map_err(object_error);
+        let result = make_typed_condition(ctx, runtime, identifier, &words(&[name]))
+            .map(ConditionRecord::as_word)
+            .map_err(object_error);
         pop_root(ctx, token);
         return result;
     }
@@ -118,15 +124,16 @@ pub fn condition_from_lisp_error(
         LispError::ControlError(_) => (ConditionIdentifier::ControlError, Vec::new()),
         LispError::CellError(error) => (
             match error {
-                CellError::UnboundVariable => ConditionIdentifier::UnboundVariable,
+                CellError::UnboundVariable { .. } => ConditionIdentifier::UnboundVariable,
                 CellError::UndefinedFunction { .. } => ConditionIdentifier::UndefinedFunction,
                 CellError::UnboundSlot => ConditionIdentifier::UnboundSlot,
                 _ => ConditionIdentifier::CellError,
             },
-            if let CellError::UndefinedFunction { name } = error {
-                words(&[name])
-            } else {
-                Vec::new()
+            match error {
+                CellError::UndefinedFunction { name } | CellError::UnboundVariable { name } => {
+                    words(&[name])
+                }
+                CellError::UnboundSlot | _ => Vec::new(),
             },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),

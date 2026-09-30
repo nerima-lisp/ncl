@@ -483,6 +483,11 @@ fn defstruct_macro_builtin(
         )?;
         macro_push_handle(&mut scope, &mut forms, set_definition);
     }
-    macro_push_handle(&mut scope, &mut forms, name);
+    // The trailing element is this `progn`'s (and so `defstruct`'s own)
+    // result: CLHS requires the structure *name* back, so it must be the
+    // quoted symbol, not a bare one (which would compile as a read of the
+    // variable of that name, which `defstruct` never binds).
+    let quoted_name = quoted(&mut scope, runtime, name)?;
+    macro_push_handle(&mut scope, &mut forms, quoted_name);
     make_progn(&mut scope, runtime, &forms).map(|result| scope.get(result).as_word())
 }

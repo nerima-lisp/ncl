@@ -137,7 +137,12 @@ fn defgeneric_macro_builtin(
     let function = make_form(&mut scope, runtime, &[defun, name, lambda_list, dispatch_call])?;
     let mut result = scope.root_many(&[]);
     macro_push_handle(&mut scope, &mut result, progn);
-    for value in [clear, function, name] { // check-added-lines: allow(index) fixed form fields
+    // The trailing element is this `progn`'s (and so `defgeneric`'s own)
+    // result: CLHS requires the generic function *name* back, so it must be
+    // the quoted symbol, not a bare one (which would compile as a read of
+    // the variable of that name, which `defgeneric` never binds).
+    for value in [clear, function, quoted_name] {
+        // check-added-lines: allow(index) fixed form fields
         macro_push_handle(&mut scope, &mut result, value);
     }
     let expansion = scope.make_list(runtime, &result)?;
@@ -250,7 +255,11 @@ fn defmethod_macro_builtin(
     if let Some(base) = initialization_base { // check-added-lines: allow(index)
         macro_push_handle(&mut scope, &mut result, base);
     }
-    for value in [wrapper, method_definition, registration, name] { // check-added-lines: allow(index) fixed form fields
+    // The trailing element is this `progn`'s (and so `defmethod`'s own)
+    // result, so it must be the quoted symbol: a bare one would compile as a
+    // read of the variable of that name, which `defmethod` never binds.
+    for value in [wrapper, method_definition, registration, quoted_name] {
+        // check-added-lines: allow(index) fixed form fields
         macro_push_handle(&mut scope, &mut result, value);
     }
     let expansion = scope.make_list(runtime, &result)?;

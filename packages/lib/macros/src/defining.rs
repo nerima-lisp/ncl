@@ -168,10 +168,15 @@ fn property_definition(
         ncl_object::with_root(ctx, &mut get_symbol, |ctx, get_symbol| {
             let mut quoted_name = quote(ctx, runtime, name)?;
             ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
-                let mut property_symbol = symbol(ctx, runtime, property)?;
-                ncl_object::with_root(ctx, &mut property_symbol, |ctx, property_symbol| {
+                let property_symbol = symbol(ctx, runtime, property)?;
+                let mut quoted_property = quote(ctx, runtime, property_symbol)?;
+                ncl_object::with_root(ctx, &mut quoted_property, |ctx, quoted_property| {
+                    // `(get name indicator)`'s indicator is evaluated: it
+                    // must be the quoted property symbol (a bare one would
+                    // compile as a read of the variable of that name, which
+                    // is never bound).
                     let mut place =
-                        list(ctx, runtime, &[*get_symbol, *quoted_name, *property_symbol])?;
+                        list(ctx, runtime, &[*get_symbol, *quoted_name, *quoted_property])?;
                     ncl_object::with_root(ctx, &mut place, |ctx, place| {
                         let mut setf_symbol = symbol(ctx, runtime, "SETF")?;
                         ncl_object::with_root(ctx, &mut setf_symbol, |ctx, setf_symbol| {

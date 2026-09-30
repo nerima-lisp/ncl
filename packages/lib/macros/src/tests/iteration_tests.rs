@@ -12,8 +12,14 @@ fn expand(
     callback(ctx, runtime, &args, &mut ncl_object::MultipleValues::new())
 }
 
+/// `destructuring-bind` expands to a `let*` of `consp`/`car`/`cdr` accesses
+/// (see `crate::destructuring`), not a `funcall` of an ordinary lambda: an
+/// ordinary lambda list cannot express nested patterns, `&whole`, or a
+/// dotted tail, and CLHS requires binding a mismatched shape to signal
+/// rather than silently mis-bind. `tests/e2emacro.rs` asserts the evaluated
+/// values end to end; this checks the expansion shape.
 #[test]
-fn destructuring_bind_delegates_lambda_list_and_body() -> Result<(), ObjectError> {
+fn destructuring_bind_expands_to_a_let_star_of_checked_accesses() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     register(&runtime)?;
     let mut ctx = ThreadContext::new();
@@ -24,10 +30,11 @@ fn destructuring_bind_delegates_lambda_list_and_body() -> Result<(), ObjectError
     let input = list(&mut ctx, &runtime, &[operator, lambda_list, Word::NIL, x])?;
     let expansion = expand(&mut ctx, &runtime, "DESTRUCTURING-BIND", input)?;
     let parts = elements(&mut ctx, expansion)?;
-    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "FUNCALL")?);
-    let lambda = elements(&mut ctx, parts[1])?;
-    assert_eq!(lambda[0], symbol(&mut ctx, &runtime, "LAMBDA")?);
-    assert_eq!(lambda[1], lambda_list);
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    let bindings = elements(&mut ctx, parts[1])?;
+    // One binding for the source, one for `x`'s extraction, one to advance
+    // past it, and one to check nothing is left over.
+    assert_eq!(bindings.len(), 4);
     Ok(())
 }
 

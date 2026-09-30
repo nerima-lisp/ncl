@@ -89,17 +89,10 @@ fn held_fresh_symbol(
 }
 
 fn destructuring_bind_call(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let lambda_list = *roots.first().ok_or(ObjectError::TypeError)?;
-        elements(ctx, *lambda_list)?;
-        roots.get(1).ok_or(ObjectError::TypeError)?;
-        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        let body_indexes = (2..held.len()).collect::<Vec<_>>();
-        let body = held_form(ctx, runtime, &mut held, "PROGN", &body_indexes)?;
-        let lambda = held_form(ctx, runtime, &mut held, "LAMBDA", &[0, body])?;
-        let index = held_form(ctx, runtime, &mut held, "FUNCALL", &[lambda, 1])?;
-        held_get(&held, index)
-    })
+    let pattern = values.first().copied().ok_or(ObjectError::TypeError)?;
+    let value_form = values.get(1).copied().ok_or(ObjectError::TypeError)?;
+    let body = values.get(2..).ok_or(ObjectError::TypeError)?;
+    crate::destructuring::expand_destructuring_bind(ctx, runtime, pattern, value_form, body)
 }
 
 fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {

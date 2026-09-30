@@ -1,9 +1,11 @@
 //! Builtin registration and small, structural macro expanders.
 #![allow(clippy::missing_errors_doc)]
 
+mod backquote;
 mod control;
 mod defining;
 mod definition_support;
+pub(crate) mod destructuring;
 mod form;
 mod function_call;
 mod functions;
@@ -287,6 +289,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DOLIST" => Some(iteration::expand_dolist_adapter),
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),
         "LOOP" => Some(r#loop::expand_loop_callback),
+        "QUASIQUOTE" => Some(backquote::expand_quasiquote_adapter),
         _ => None,
     }
 }
@@ -396,6 +399,7 @@ const MACROS: &[&str] = &[
     "PSETF",
     "PUSH",
     "PUSHNEW",
+    "QUASIQUOTE",
     "REMF",
     "RETURN",
     "SETF",
@@ -461,6 +465,7 @@ const OWNED_MACROS: &[&str] = &[
     "PSETF",
     "PUSH",
     "PUSHNEW",
+    "QUASIQUOTE",
     "REMF",
     "RESTART-BIND",
     "RESTART-CASE",

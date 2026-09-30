@@ -251,6 +251,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("PSETQ", "PSETQ", [x, one, y, one]);
     case!("PUSH", "PUSH", [one, x]);
     case!("PUSHNEW", "PUSHNEW", [one, x]);
+    case!("QUASIQUOTE", "QUASIQUOTE", [x]);
     case!("REMF", "REMF", [x, y]);
     case!("RETURN", "RETURN", [x]);
     case!("SETF", "SETF", [x, one]);

@@ -62,11 +62,18 @@ fn typep_named(ctx: &ThreadContext, object: Word, named: NamedType) -> Result<bo
         | NamedType::SingleFloat
         | NamedType::LongFloat
         | NamedType::RandomState
-        | NamedType::Restart
-        | NamedType::Character
-        | NamedType::BaseChar
-        | NamedType::StandardChar
-        | NamedType::ExtendedChar => Ok(false),
+        | NamedType::Restart => Ok(false),
+        // This implementation has a single character representation, which
+        // is always a base character; extended-char (a character outside
+        // that representation) therefore has no members.
+        NamedType::Character | NamedType::BaseChar => Ok(matches!(
+            classify_object(ctx, object),
+            ObjectRef::Character(_)
+        )),
+        NamedType::StandardChar => Ok(
+            matches!(classify_object(ctx, object), ObjectRef::Character(code) if is_standard_char(code)),
+        ),
+        NamedType::ExtendedChar => Ok(false),
         NamedType::Boolean => Ok(object == Word::NIL || object == Word::TRUE),
         NamedType::Symbol => {
             Ok(object == Word::NIL || matches!(classify_object(ctx, object), ObjectRef::Symbol(_)))
@@ -381,6 +388,11 @@ fn is_simple_array(ctx: &ThreadContext, object: Word) -> bool {
         classify_object(ctx, object),
         ObjectRef::SimpleVector(_) | ObjectRef::SpecializedArray(_) | ObjectRef::String(_)
     )
+}
+
+/// CLHS 2.1.3: a standard character is a graphic ASCII character or newline.
+fn is_standard_char(code: u32) -> bool {
+    code == 10 || (32..=126).contains(&code)
 }
 
 fn is_bit_vector(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {

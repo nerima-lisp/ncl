@@ -148,8 +148,9 @@ impl<'a> FormExpander<'a> {
         form: Word,
         elements: &[Word],
     ) -> Result<Step, FrontError> {
-        let head = elements.first().copied().ok_or(FrontError::ImproperList)?;
-        let arguments = &elements[1..];
+        let Some((&head, arguments)) = elements.split_first() else {
+            return Err(FrontError::ImproperList);
+        };
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime

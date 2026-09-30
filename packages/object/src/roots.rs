@@ -19,6 +19,7 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
 /// elements are updated in place by a collection and the caller keeps
 /// ordinary (mutable) access to it between this call and [`pop_root`]. The
 /// slice's address must stay stable until the matching [`pop_root`].
+// check-added-lines: allow(index) `&mut [Word]` is a slice type, not indexing
 pub fn push_root_slice(ctx: &mut ThreadContext, values: &mut [Word]) -> RootToken {
     ncl_sys::register_root_set(&mut ctx.thread, values)
 }

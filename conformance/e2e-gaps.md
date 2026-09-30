@@ -11,13 +11,26 @@ ordinary cases in `tests/e2ehash.rs`.
 ## macros
 
 `tests/e2emacro.rs` asserts compiled results for the working control macros and
-keeps the currently failing loop, binding, iteration, multiple-value, and
-structure paths as explicit XFAILs. The observed failures are native IR
-verification errors (`pass inline-direct-calls failed`) for loop and generated
-iteration control flow, front-end macro-expansion errors for unsupported
-destructuring/multiple-value/defstruct paths, and `UnsupportedLiteral` for the
-loop maximize probe. These are retained with their stderr and exit status in
-the test rather than being silently omitted.
+keeps the currently failing binding, iteration, multiple-value, and structure
+paths as explicit XFAILs. `IF`/`WHEN`/`UNLESS` (and the LOOP clauses that lower
+through them, e.g. `count`) used to leave a mutated variable's post-branch
+value unmerged, producing a native IR verification error
+(`pass inline-direct-calls failed`); `lower_if`
+(`packages/compiler/front/src/lower/expr.rs`) now merges live variables across
+branches through a block parameter, so `loop-count` and ordinary `if`/`when`
+mutation moved from XFAIL to `PROBES`. `LOOP` also gained `WHEN`/`UNLESS`/`IF`
+conditional clauses (with `AND`/`ELSE`/`END`/`IT`), destructuring `FOR`
+variables, and a CLHS-conformant default initial value of `0` for arithmetic
+`FOR` clauses without `FROM`/`UPFROM`/`DOWNFROM` (`packages/lib/macros/src/loop`).
+The remaining XFAILs are front-end macro-expansion errors for unsupported
+destructuring/multiple-value/defstruct paths, `UnsupportedLiteral` for the loop
+`maximize`/`minimize` accumulators (the `Word::TRUE` first-value sentinel in
+`packages/lib/macros/src/loop/accumulator.rs` is not a literal the front end
+lowers), and `loop-with-finally`, whose body has no iteration-control clause at
+all — real Common Lisp (confirmed against SBCL 2.6.0) loops forever on this
+same input, so NCL's fast compile-time error is preferable to reproducing the
+hang and is not a defect to fix. These are retained with their stderr and exit
+status in the test rather than being silently omitted.
 
 | builtin | source | expected exit | stderr substring | cause |
 | --- | --- | ---: | --- | --- |

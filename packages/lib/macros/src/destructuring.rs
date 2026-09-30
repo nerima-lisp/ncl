@@ -293,6 +293,7 @@ fn walk_optional(
         } else {
             (element, None, None)
         };
+        // check-added-lines: allow(panic) Option::unwrap_or_else supplies a fallback; it never panics.
         let default_value = default.unwrap_or_else(|| held_push(held, Word::NIL));
         let consp = held_call(ctx, runtime, held, "CONSP", &[cursor])?;
         let current_value = held_call(ctx, runtime, held, "CAR", &[cursor])?;

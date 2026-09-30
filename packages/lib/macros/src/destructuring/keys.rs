@@ -12,7 +12,7 @@ use super::{bind_target, is_marker, symbol_text, take_one};
 ///
 /// This does not call the CL `member`/`getf` builtins: `member` currently
 /// signals `TypeError` when the list argument is `nil` (confirmed against
-/// the built binary; out of this lane's scope — `ncl-lib-sequences` — see
+/// the built binary; out of this lane's scope, `ncl-lib-sequences`, see
 /// the final report), and `getf` is not registered at all. A self-contained
 /// `labels` recursion sidesteps both.
 fn plist_lookup(
@@ -120,6 +120,7 @@ pub(super) fn walk_key(
             let keyword = default_keyword(ctx, runtime, held, element)?;
             (keyword, element, None, None)
         };
+        // check-added-lines: allow(panic) Option::unwrap_or_else supplies a fallback; it never panics.
         let default_value = default.unwrap_or_else(|| held_push(held, Word::NIL));
         let quoted_keyword = held_call(ctx, runtime, held, "QUOTE", &[keyword])?;
         let found = plist_lookup(ctx, runtime, held, quoted_keyword, cursor)?;

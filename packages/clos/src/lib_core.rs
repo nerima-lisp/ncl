@@ -332,6 +332,26 @@ fn slot_makunbound_builtin(
     Ok(instance.as_word())
 }
 
+/// Decode a raw direct-superclass slot value into its direct parents: empty
+/// at the root, one descriptor for ordinary single inheritance, or several
+/// for a class with genuine multiple inheritance (for example a condition
+/// class registered by `ncl-conditions` such as `simple-error`).
+fn direct_superclasses(ctx: &ThreadContext, value: Word) -> Result<Vec<Word>, ObjectError> {
+    if value == Word::NIL {
+        return Ok(Vec::new());
+    }
+    if !value.is_cons() {
+        return Ok(vec![value]);
+    }
+    let mut parents = Vec::new();
+    let mut current = value;
+    while current != Word::NIL {
+        parents.push(car(ctx, current)?);
+        current = cdr(ctx, current)?;
+    }
+    Ok(parents)
+}
+
 fn slot_exists_in_class(
     ctx: &ThreadContext,
     class: Word,
@@ -351,10 +371,12 @@ fn slot_exists_in_class(
         }
     }
     let superclass = simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
-    if superclass == Word::NIL {
-        return Ok(false);
+    for parent in direct_superclasses(ctx, superclass)? {
+        if slot_exists_in_class(ctx, parent, slot_name)? {
+            return Ok(true);
+        }
     }
-    slot_exists_in_class(ctx, superclass, slot_name)
+    Ok(false)
 }
 
 fn slot_exists_builtin(
@@ -391,10 +413,12 @@ fn class_is_subclass(
         return Ok(true);
     }
     let superclass = simple_vector_ref(ctx, actual, CLASS_DIRECT_SUPERCLASS)?;
-    if superclass == Word::NIL {
-        return Ok(false);
+    for parent in direct_superclasses(ctx, superclass)? {
+        if class_is_subclass(ctx, parent, expected)? {
+            return Ok(true);
+        }
     }
-    class_is_subclass(ctx, superclass, expected)
+    Ok(false)
 }
 
 fn typep_builtin(

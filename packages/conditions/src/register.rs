@@ -4,10 +4,11 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
     Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, make_cons,
-    set_symbol_special, slot_ref, string_length, string_ref, symbol_name, with_roots,
+    set_symbol_special, simple_vector_length, slot_ref, string_length, string_ref, symbol_name,
+    with_roots,
 };
 
-use crate::class::{HIERARCHY, install_class, wire_superclass};
+use crate::class::{HIERARCHY, class_named, install_class, wire_superclasses};
 use crate::symbols::{SymbolKind, SymbolRow, symbols};
 
 const ONE_ANY: &[Parameter] = &[Parameter {
@@ -55,6 +56,94 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     install_hierarchy(runtime, &mut ctx)?;
     runtime.register_lisp_error_converter(crate::condition_from_lisp_error);
     register_condition_builtins(runtime, &mut ctx)?;
+    crate::restart_builtins::register(runtime, &mut ctx)?;
+    crate::define_condition::register(runtime, &mut ctx)?;
+    install_builtin_slot_specs(runtime, &mut ctx)?;
+    Ok(())
+}
+
+/// Install `MAKE-CONDITION` slot-initarg metadata for the handful of
+/// built-in condition classes real code constructs by hand (the
+/// `simple-condition` family, `type-error`, and `arithmetic-error`;
+/// `cell-error`'s `:name` is inherited by its own children below).
+fn install_builtin_slot_specs(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    use crate::slots::{SlotSpec, set_slot_specs};
+
+    let format_control = crate::slots::keyword(ctx, runtime, "FORMAT-CONTROL")?;
+    let format_arguments = crate::slots::keyword(ctx, runtime, "FORMAT-ARGUMENTS")?;
+    let simple = [
+        SlotSpec {
+            initarg: format_control,
+            initform: Word::NIL,
+        },
+        SlotSpec {
+            initarg: format_arguments,
+            initform: Word::NIL,
+        },
+    ];
+    for name in ["SIMPLE-CONDITION", "SIMPLE-ERROR", "SIMPLE-WARNING"] {
+        let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
+        set_slot_specs(ctx, runtime, class, &simple)?;
+    }
+
+    let datum = crate::slots::keyword(ctx, runtime, "DATUM")?;
+    let expected_type = crate::slots::keyword(ctx, runtime, "EXPECTED-TYPE")?;
+    let type_error = [
+        SlotSpec {
+            initarg: datum,
+            initform: Word::NIL,
+        },
+        SlotSpec {
+            initarg: expected_type,
+            initform: Word::NIL,
+        },
+    ];
+    let class = runtime
+        .class(ctx, "TYPE-ERROR")
+        .ok_or(ObjectError::Layout)?;
+    set_slot_specs(ctx, runtime, class, &type_error)?;
+
+    let operation = crate::slots::keyword(ctx, runtime, "OPERATION")?;
+    let operands = crate::slots::keyword(ctx, runtime, "OPERANDS")?;
+    let arithmetic_error = [
+        SlotSpec {
+            initarg: operation,
+            initform: Word::NIL,
+        },
+        SlotSpec {
+            initarg: operands,
+            initform: Word::NIL,
+        },
+    ];
+    for name in [
+        "ARITHMETIC-ERROR",
+        "DIVISION-BY-ZERO",
+        "FLOATING-POINT-OVERFLOW",
+        "FLOATING-POINT-UNDERFLOW",
+        "FLOATING-POINT-INVALID-OPERATION",
+        "FLOATING-POINT-INEXACT",
+    ] {
+        let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
+        set_slot_specs(ctx, runtime, class, &arithmetic_error)?;
+    }
+
+    let name_keyword = crate::slots::keyword(ctx, runtime, "NAME")?;
+    let cell_error = [SlotSpec {
+        initarg: name_keyword,
+        initform: Word::NIL,
+    }];
+    for name in [
+        "CELL-ERROR",
+        "UNBOUND-VARIABLE",
+        "UNDEFINED-FUNCTION",
+        "UNBOUND-SLOT",
+    ] {
+        let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
+        set_slot_specs(ctx, runtime, class, &cell_error)?;
+    }
     Ok(())
 }
 
@@ -186,7 +275,7 @@ fn condition_argument(
     }
     let class_name = symbol_text(ctx, value)?;
     let class = crate::condition_class(ctx, runtime, &class_name).ok_or(ObjectError::TypeError)?;
-    crate::make_condition(ctx, runtime, class, &[]).map_err(condition_object_error)
+    crate::slots::instantiate(ctx, runtime, class.as_word(), format_arguments)
 }
 
 fn argument_list(
@@ -223,9 +312,12 @@ fn signal_builtin(
     let value = args.required(0)?;
     let format_arguments = rest_arguments(args, 1)?;
     let condition = condition_argument(ctx, runtime, value, "SIMPLE-CONDITION", &format_arguments)?;
-    let result = with_roots(ctx, &[condition], |ctx, roots| {
+    let result: Result<(), ObjectError> = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        crate::signal(ctx, condition).map_err(condition_object_error)
+        match crate::signal(ctx, condition) {
+            Ok(()) | Err(crate::ConditionError::Unhandled) => Ok(()),
+            Err(error) => Err(condition_object_error(error)),
+        }
     });
     result.map(|()| Word::NIL)
 }
@@ -278,11 +370,23 @@ fn warn_builtin(
     let value = args.required(0)?;
     let format_arguments = rest_arguments(args, 1)?;
     let condition = condition_argument(ctx, runtime, value, "SIMPLE-WARNING", &format_arguments)?;
-    let result = with_roots(ctx, &[condition], |ctx, roots| {
+    let report = condition_report(ctx, condition);
+    let matched: Result<bool, ObjectError> = with_roots(ctx, &[condition], |ctx, roots| {
         let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        crate::warn(ctx, condition).map_err(condition_object_error)
+        crate::signal_matched(ctx, condition).map_err(condition_object_error)
     });
-    result.map(|()| Word::NIL)
+    match matched {
+        Ok(true) => Ok(Word::NIL),
+        Ok(false) => {
+            let message = report.or_else(|| string_text(ctx, value));
+            match message {
+                Some(message) => eprintln!("WARNING: {message}"),
+                None => eprintln!("WARNING:"),
+            }
+            Ok(Word::NIL)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn cerror_builtin(
@@ -294,31 +398,52 @@ fn cerror_builtin(
     let continue_control = args.required(0)?;
     let datum = args.required(1)?;
     let format_arguments = rest_arguments(args, 2)?;
-    let result = with_roots(ctx, &[continue_control, datum], |outer_ctx, outer| {
-        with_roots(outer_ctx, &format_arguments, |ctx, format_roots| {
-            let format_values = format_roots.iter().map(|root| **root).collect::<Vec<_>>();
-            let condition = condition_argument(
-                ctx,
-                runtime,
-                **outer.get(1).ok_or(ObjectError::Layout)?,
-                "SIMPLE-ERROR",
-                &format_values,
-            )?;
-            with_roots(ctx, &[condition], |ctx, condition_roots| {
-                let refreshed_format_values =
-                    format_roots.iter().map(|root| **root).collect::<Vec<_>>();
-                let continue_args = argument_list(ctx, runtime, &refreshed_format_values)?;
-                with_roots(ctx, &[continue_args], |ctx, continue_roots| {
-                    let continue_control = **outer.first().ok_or(ObjectError::Layout)?;
-                    let continue_args = **continue_roots.first().ok_or(ObjectError::Layout)?;
+    // `Ok(Some(message))` carries an unhandled condition's report out of the
+    // nested root scopes so it can be printed once, after every temporary
+    // root has been released; `cerror` still continues (returns `NIL`)
+    // rather than aborting, matching its "resumable error" contract.
+    let result: Result<Option<String>, ObjectError> =
+        with_roots(ctx, &[continue_control, datum], |outer_ctx, outer| {
+            with_roots(outer_ctx, &format_arguments, |ctx, format_roots| {
+                let format_values = format_roots.iter().map(|root| **root).collect::<Vec<_>>();
+                let datum = **outer.get(1).ok_or(ObjectError::Layout)?;
+                let condition =
+                    condition_argument(ctx, runtime, datum, "SIMPLE-ERROR", &format_values)?;
+                with_roots(ctx, &[condition, datum], |ctx, condition_roots| {
                     let condition = **condition_roots.first().ok_or(ObjectError::Layout)?;
-                    crate::cerror(ctx, runtime, continue_control, continue_args, condition)
-                        .map_err(condition_object_error)
+                    let datum = **condition_roots.get(1).ok_or(ObjectError::Layout)?;
+                    let refreshed_format_values =
+                        format_roots.iter().map(|root| **root).collect::<Vec<_>>();
+                    let continue_args = argument_list(ctx, runtime, &refreshed_format_values)?;
+                    with_roots(ctx, &[continue_args], |ctx, continue_roots| {
+                        let continue_control = **outer.first().ok_or(ObjectError::Layout)?;
+                        let continue_args = **continue_roots.first().ok_or(ObjectError::Layout)?;
+                        match crate::cerror(
+                            ctx,
+                            runtime,
+                            continue_control,
+                            continue_args,
+                            condition,
+                        ) {
+                            Ok(()) => Ok(None),
+                            Err(crate::ConditionError::Unhandled) => {
+                                Ok(condition_report(ctx, condition)
+                                    .or_else(|| string_text(ctx, datum)))
+                            }
+                            Err(error) => Err(condition_object_error(error)),
+                        }
+                    })
                 })
             })
-        })
-    });
-    result.map(|()| Word::NIL)
+        });
+    match result {
+        Ok(Some(message)) => {
+            eprintln!("{message}");
+            Ok(Word::NIL)
+        }
+        Ok(None) => Ok(Word::NIL),
+        Err(error) => Err(error),
+    }
 }
 
 fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
@@ -340,24 +465,40 @@ fn string_text(ctx: &ThreadContext, value: Word) -> Option<String> {
     Some(text)
 }
 
-fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> {
-    let instance = Instance::from_word(condition);
-    let control = string_text(ctx, slot_ref(ctx, instance, 0).ok()?)?;
-    let mut arguments = slot_ref(ctx, instance, 1).ok()?;
+/// Best-effort `PRINC`-style rendering of a single value for report text.
+///
+/// This is a small, self-contained fallback (fixnum, string, symbol), not a
+/// general printer; unrecognized values fall back to `#<OBJECT>`. The real
+/// printer's dispatch handles the general case (see `crate::report_for_print`,
+/// used by `ncl-printer`).
+fn describe_word(ctx: &ThreadContext, value: Word) -> String {
+    if let Some(number) = value.as_fixnum() {
+        return number.to_string();
+    }
+    if let Some(text) = string_text(ctx, value) {
+        return text;
+    }
+    if let Ok(text) = symbol_text(ctx, value) {
+        return text;
+    }
+    "#<OBJECT>".to_owned()
+}
+
+/// Expand a `SIMPLE-CONDITION`-shaped `(format-control . format-arguments)`
+/// report, honoring the `~a`/`~A` directive.
+fn format_simple_report(ctx: &ThreadContext, control: &str, mut arguments: Word) -> String {
     let mut report = String::new();
     let mut chars = control.chars();
     while let Some(character) = chars.next() {
         if character == '~' {
             if let Some(directive) = chars.next() {
                 if matches!(directive, 'a' | 'A') {
-                    let argument = car(ctx, arguments).ok()?;
-                    arguments = cdr(ctx, arguments).ok()?;
-                    if let Some(number) = argument.as_fixnum() {
-                        report.push_str(&number.to_string());
-                    } else if let Some(text) = string_text(ctx, argument) {
-                        report.push_str(&text);
+                    if let Ok(argument) = car(ctx, arguments) {
+                        arguments = cdr(ctx, arguments).unwrap_or(Word::NIL);
+                        report.push_str(&describe_word(ctx, argument));
                     } else {
-                        report.push_str("#<OBJECT>");
+                        report.push('~');
+                        report.push(directive);
                     }
                 } else {
                     report.push('~');
@@ -370,7 +511,45 @@ fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> {
             report.push(character);
         }
     }
-    Some(report)
+    report
+}
+
+/// Render a condition's report text.
+///
+/// Dispatches on its most specific known class: a `DEFINE-CONDITION`-supplied
+/// `:report` string, a `SIMPLE-CONDITION`'s format-control/arguments, a
+/// `TYPE-ERROR`'s datum/expected-type, or a generic `<class-name> condition`
+/// fallback.
+///
+/// # Errors
+/// This never fails outright; `None` means no report could be produced at
+/// all (a malformed instance).
+#[must_use]
+pub fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> {
+    let instance = Instance::from_word(condition);
+    let class = crate::condition_class_of(ctx, condition).ok()?.as_word();
+    if simple_vector_length(ctx, class).unwrap_or(0) > crate::slots::REPORT_SLOT
+        && let Ok(report) = ncl_object::simple_vector_ref(ctx, class, crate::slots::REPORT_SLOT)
+        && let Some(text) = string_text(ctx, report)
+    {
+        return Some(text);
+    }
+    if class_named(ctx, class, "SIMPLE-CONDITION").unwrap_or(false) {
+        let control = string_text(ctx, slot_ref(ctx, instance, 0).ok()?)?;
+        let arguments = slot_ref(ctx, instance, 1).unwrap_or(Word::NIL);
+        return Some(format_simple_report(ctx, &control, arguments));
+    }
+    if class_named(ctx, class, "TYPE-ERROR").unwrap_or(false) {
+        let datum = slot_ref(ctx, instance, 0).ok()?;
+        let expected = slot_ref(ctx, instance, 1).ok()?;
+        return Some(format!(
+            "The value {} is not of type {}.",
+            describe_word(ctx, datum),
+            describe_word(ctx, expected)
+        ));
+    }
+    let name = crate::condition_class_name(ctx, crate::ConditionClass::from_word(class)).ok()?;
+    Some(format!("{} condition", string_text(ctx, name)?))
 }
 
 fn push_handler_builtin(
@@ -442,8 +621,8 @@ fn install_hierarchy(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), O
         }
     }
     for row in HIERARCHY {
-        if let Some(parent) = row.superclass {
-            wire_superclass(ctx, runtime, row.name, parent)?;
+        if !row.superclasses.is_empty() {
+            wire_superclasses(ctx, runtime, row.name, row.superclasses)?;
         }
     }
     Ok(())

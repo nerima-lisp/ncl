@@ -205,6 +205,17 @@ fn eql_word(ctx: &ThreadContext, left: Word, right: Word) -> bool {
 
 fn class_depth(ctx: &ThreadContext, class: Word) -> Result<usize, ObjectError> {
     let superclass = ncl_object::simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
+    // A class with more than one direct superclass (for example a
+    // multiple-inheritance condition class from `ncl-conditions`) stores a
+    // list of parent descriptors here rather than a bare descriptor word.
+    // Method-dispatch specificity depth is not otherwise a concern for those
+    // classes in Phase 1, so the first (most-specific) parent stands in for
+    // the whole precedence list.
+    let superclass = if superclass.is_cons() {
+        car(ctx, superclass)?
+    } else {
+        superclass
+    };
     if superclass == Word::NIL {
         Ok(0)
     } else {

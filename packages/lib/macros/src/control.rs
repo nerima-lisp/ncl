@@ -8,7 +8,10 @@ use ncl_object::{
 };
 
 mod case;
+mod define_condition;
 mod handler_bind;
+mod handler_case;
+mod restart_case;
 mod typecase;
 
 mod multiple_value_bind;
@@ -340,6 +343,14 @@ fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind
         Kind::Do => do_macro(ctx, runtime, values, false),
         Kind::DoStar => do_macro(ctx, runtime, values, true),
         Kind::HandlerBind => handler_bind::expand(ctx, runtime, values),
+        Kind::HandlerCase => handler_case::expand(ctx, runtime, values),
+        Kind::IgnoreErrors => handler_case::expand_ignore_errors(ctx, runtime, values),
+        Kind::RestartBind => restart_case::expand_restart_bind(ctx, runtime, values),
+        Kind::RestartCase => restart_case::expand_restart_case(ctx, runtime, values),
+        Kind::WithSimpleRestart => restart_case::expand_with_simple_restart(ctx, runtime, values),
+        Kind::CheckType => restart_case::expand_check_type(ctx, runtime, values),
+        Kind::Assert => restart_case::expand_assert(ctx, runtime, values),
+        Kind::DefineCondition => define_condition::expand(ctx, runtime, values),
         Kind::Prog => prog_macro(ctx, runtime, values, false),
         Kind::ProgStar => prog_macro(ctx, runtime, values, true),
     }
@@ -365,6 +376,14 @@ enum Kind {
     Do,
     DoStar,
     HandlerBind,
+    HandlerCase,
+    IgnoreErrors,
+    RestartBind,
+    RestartCase,
+    WithSimpleRestart,
+    CheckType,
+    Assert,
+    DefineCondition,
 }
 
 macro_rules! callbacks {
@@ -399,4 +418,12 @@ expand_return, expand_return_adapter, Kind::Return;
 expand_nth_value, expand_nth_value_adapter, Kind::NthValue;
 expand_do, expand_do_adapter, Kind::Do;
 expand_do_star, expand_do_star_adapter, Kind::DoStar;
-expand_handler_bind, expand_handler_bind_adapter, Kind::HandlerBind }
+expand_handler_bind, expand_handler_bind_adapter, Kind::HandlerBind;
+expand_handler_case, expand_handler_case_adapter, Kind::HandlerCase;
+expand_ignore_errors, expand_ignore_errors_adapter, Kind::IgnoreErrors;
+expand_restart_bind, expand_restart_bind_adapter, Kind::RestartBind;
+expand_restart_case, expand_restart_case_adapter, Kind::RestartCase;
+expand_with_simple_restart, expand_with_simple_restart_adapter, Kind::WithSimpleRestart;
+expand_check_type, expand_check_type_adapter, Kind::CheckType;
+expand_assert, expand_assert_adapter, Kind::Assert;
+expand_define_condition, expand_define_condition_adapter, Kind::DefineCondition }

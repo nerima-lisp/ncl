@@ -129,7 +129,7 @@ fn lisp_error_variants_preserve_their_payloads() {
         LispError::ProgramError(ProgramError::UnknownKeyword),
         LispError::ArithmeticError(ArithmeticError::DivisionByZero),
         LispError::ControlError(ControlError::Throw),
-        LispError::CellError(CellError::UnboundVariable),
+        LispError::CellError(CellError::UnboundVariable { name: Word::NIL }),
         LispError::PackageError(PackageError::NotFound),
         LispError::StreamError(StreamError::Closed),
         LispError::EndOfFile,

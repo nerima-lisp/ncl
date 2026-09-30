@@ -1,5 +1,5 @@
 use crate::layout::{symbol_flag, symbol_offset, widetag};
-use crate::{ObjectError, ThreadContext, Word};
+use crate::{CellError, LispError, ObjectError, ThreadContext, Word};
 use ncl_sys::{LowTag, StorageCondition};
 
 fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
@@ -22,6 +22,28 @@ fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, O
 /// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::VALUE)
+}
+
+/// Read a symbol's value cell, signaling `UNBOUND-VARIABLE` when it has none.
+///
+/// This is the check a user-facing read (a free variable reference, or
+/// `SYMBOL-VALUE`) must perform; [`symbol_value`] itself stays a raw
+/// accessor, because callers that save and restore a binding (`progv`, a
+/// dynamic `let`) need to see and reinstate the unbound sentinel too.
+///
+/// # Errors
+/// Returns a type or storage error when the word is not a symbol. When the
+/// symbol has no value, records a pending `unbound-variable` condition
+/// (naming `symbol`) and returns [`ObjectError::TypeError`].
+pub fn bound_symbol_value(ctx: &mut ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    let value = symbol_value(ctx, symbol)?;
+    if value == Word::UNBOUND {
+        ctx.set_pending_lisp_error(LispError::CellError(CellError::UnboundVariable {
+            name: symbol,
+        }));
+        return Err(ObjectError::TypeError);
+    }
+    Ok(value)
 }
 
 /// Set a symbol's value cell.

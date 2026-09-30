@@ -1,7 +1,7 @@
 use ncl_object::package::Package;
 use ncl_object::{
     ArrayElementType, ObjectError, ObjectRef, Runtime, ThreadContext, Word, array_dimensions, car,
-    cdr, simple_vector_length, string_length,
+    cdr, simple_vector_length, simple_vector_ref, string_length, string_ref,
 };
 
 pub(super) fn array_element_type_symbol(
@@ -59,4 +59,56 @@ pub(super) fn array_shape(ctx: &ThreadContext, value: Word) -> Result<Vec<usize>
         ObjectRef::Array(_) | ObjectRef::SpecializedArray(_) => array_dimensions(ctx, value),
         _ => Err(ObjectError::TypeError),
     }
+}
+
+/// Read one level of a `:initial-contents` nested structure as a flat
+/// sequence of elements. Lists, simple vectors, and strings are accepted,
+/// matching the sequence types CLHS permits at each level of nesting.
+fn sequence_elements(ctx: &ThreadContext, value: Word) -> Result<Vec<Word>, ObjectError> {
+    match ncl_object::classify_object(ctx, value) {
+        ObjectRef::SimpleVector(vector) => (0..simple_vector_length(ctx, vector)?)
+            .map(|index| simple_vector_ref(ctx, vector, index))
+            .collect(),
+        ObjectRef::String(string) => (0..string_length(ctx, string)?)
+            .map(|index| string_ref(ctx, string, index).map(|c| Word::character(u32::from(c))))
+            .collect(),
+        ObjectRef::Cons(_) => list_values(ctx, value),
+        _ if value == Word::NIL => Ok(Vec::new()),
+        _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) non-sequence contents are rejected.
+    }
+}
+
+/// Flatten a `:initial-contents` structure into row-major element order,
+/// validating the shape against `dimensions` at every level of nesting.
+pub(super) fn flatten_initial_contents(
+    ctx: &ThreadContext,
+    contents: Word,
+    dimensions: &[usize],
+) -> Result<Vec<Word>, ObjectError> {
+    fn walk(
+        ctx: &ThreadContext,
+        value: Word,
+        dims: &[usize],
+        out: &mut Vec<Word>,
+    ) -> Result<(), ObjectError> {
+        let Some((&expected, rest)) = dims.split_first() else {
+            out.push(value);
+            return Ok(());
+        };
+        let elements = sequence_elements(ctx, value)?;
+        if elements.len() != expected {
+            return Err(ObjectError::TypeError);
+        }
+        if rest.is_empty() {
+            out.extend(elements);
+        } else {
+            for element in elements {
+                walk(ctx, element, rest, out)?;
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(ctx, contents, dimensions, &mut out)?;
+    Ok(out)
 }

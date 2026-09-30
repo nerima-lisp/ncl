@@ -2,7 +2,10 @@ use super::{
     BuiltinArgs, BuiltinFunctionCaller, MultipleValues, ObjectError, Runtime, Sequence,
     ThreadContext, Word, callback_word, domain, selection_parse, sequence_arg,
 };
-use ncl_object::{Handle, HandleVec, Local, Scope};
+use ncl_object::{
+    Handle, HandleVec, Local, ObjectRef, Scope, classify_object, string_length, string_ref,
+    symbol_name,
+};
 mod register_extra_tail;
 pub use register_extra_tail::{
     adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
@@ -130,6 +133,92 @@ pub(super) fn substitute_entry(
 ) -> Result<Word, ObjectError> {
     let replacement = args.required(0)?;
     selection_transform_entry(ctx, runtime, args, values, Some(replacement))
+}
+/// Shared implementation for `REMOVE-IF`/`REMOVE-IF-NOT` (`has_replacement`
+/// false) and `SUBSTITUTE-IF`/`SUBSTITUTE-IF-NOT` (`has_replacement` true).
+/// `negate` selects the `-IF-NOT` sense.
+pub(super) fn selection_transform_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+    has_replacement: bool,
+    negate: bool,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let handles = root_args(&mut scope, args)?;
+    let rooted = words(&scope, &handles);
+    let (positional, options) = if has_replacement {
+        selection_parse(
+            scope.context_mut(),
+            rooted.get(1..).ok_or(ObjectError::TypeError)?,
+        )?
+    } else {
+        selection_parse(scope.context_mut(), &rooted)?
+    };
+    let predicate = *positional.first().ok_or(ObjectError::TypeError)?;
+    let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
+    let sequence_type = domain::selection::object_sequence(scope.context(), sequence)?;
+    let mut items = domain::selection::sequence_values(scope.context_mut(), sequence_type)?;
+    let mut caller = BuiltinFunctionCaller;
+    let mut result = if has_replacement {
+        let replacement = word_at(&scope, &handles, 0)?;
+        domain::selection::substitute_if(
+            scope.context_mut(),
+            runtime,
+            &mut caller,
+            &mut items,
+            replacement,
+            predicate,
+            options,
+            negate,
+        )?
+    } else {
+        domain::selection::remove_if(
+            scope.context_mut(),
+            runtime,
+            &mut caller,
+            &mut items,
+            predicate,
+            options,
+            negate,
+        )?
+    };
+    values.clear();
+    let result = domain::selection::list_from_values(scope.context_mut(), runtime, &mut result);
+    keep_result(&mut scope, result)
+}
+pub(super) fn remove_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_transform_if_entry(ctx, runtime, args, values, false, false)
+}
+pub(super) fn remove_if_not_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_transform_if_entry(ctx, runtime, args, values, false, true)
+}
+pub(super) fn substitute_if_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_transform_if_entry(ctx, runtime, args, values, true, false)
+}
+pub(super) fn substitute_if_not_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    selection_transform_if_entry(ctx, runtime, args, values, true, true)
 }
 pub(super) fn hof_sequences(
     ctx: &ThreadContext,
@@ -373,6 +462,52 @@ pub(super) fn map_into_entry(
     values.clear();
     keep_result(&mut scope, result)
 }
+/// Parse the `:key`, `:initial-value`, `:from-end`, `:start`, and `:end`
+/// keyword arguments that trail REDUCE's required function and sequence.
+fn parse_reduce_options(
+    ctx: &ThreadContext,
+    args: &[Word],
+) -> Result<domain::higher_order::ReduceOptions, ObjectError> {
+    let mut options = domain::higher_order::ReduceOptions::default();
+    if !args.len().is_multiple_of(2) {
+        return Err(ObjectError::TypeError);
+    }
+    let mut index = 0;
+    while index < args.len() {
+        let key_word = *args.get(index).ok_or(ObjectError::Layout)?;
+        let ObjectRef::Symbol(symbol) = classify_object(ctx, key_word) else {
+            return Err(ObjectError::TypeError);
+        };
+        let name = symbol_name(ctx, symbol)?;
+        let name = (0..string_length(ctx, name)?)
+            .map(|i| string_ref(ctx, name, i))
+            .collect::<Result<String, _>>()?
+            .to_ascii_uppercase();
+        let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
+        match name.as_str() {
+            "KEY" => options.key = (value != Word::NIL).then_some(value),
+            "INITIAL-VALUE" => options.initial_value = Some(value),
+            "FROM-END" => options.from_end = value != Word::NIL,
+            "START" => {
+                options.start = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                    .map_err(|_| ObjectError::TypeError)?;
+            }
+            "END" => {
+                options.end = if value == Word::NIL {
+                    None
+                } else {
+                    Some(
+                        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                            .map_err(|_| ObjectError::TypeError)?,
+                    )
+                };
+            }
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown REDUCE keywords
+        }
+        index += 2;
+    }
+    Ok(options)
+}
 pub(super) fn reduce_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -385,18 +520,18 @@ pub(super) fn reduce_entry(
     let sequence_word = word_at(&scope, &handles, 1)?;
     let sequence = sequence_arg(scope.context(), sequence_word)?;
     callback_word(scope.context(), function)?;
-    let initial = handles
-        .as_slice()
-        .get(2)
-        .map(|handle| scope.get(*handle).as_word());
+    let rooted = words(&scope, &handles);
+    let options = parse_reduce_options(
+        scope.context(),
+        rooted.get(2..).ok_or(ObjectError::TypeError)?,
+    )?;
     let mut caller = BuiltinFunctionCaller;
     let result = domain::higher_order::reduce(
         scope.context_mut(),
         runtime,
         function,
         sequence,
-        initial,
-        false,
+        options,
         &mut caller,
     );
     values.clear();

@@ -219,6 +219,9 @@ const fn constant_type(constant: &Constant) -> Ty {
         | Constant::Object(_)
         | Constant::StringBytes(_)
         | Constant::Structure { .. }
+        | Constant::Bignum { .. }
+        | Constant::Ratio { .. }
+        | Constant::Complex { .. }
         | Constant::Nil
         | Constant::T
         | Constant::Unbound

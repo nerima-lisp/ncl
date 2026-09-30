@@ -1,6 +1,23 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
-use crate::{Convert, Prim};
+use crate::{ConstantIndex, Convert, Prim};
+
+/// Record an out-of-bounds error when a constant references a table index
+/// beyond the current constant table.
+fn check_constant_reference(
+    index: ConstantIndex,
+    function: &Function,
+    block: BlockId,
+    errors: &mut Vec<VerifyError>,
+) {
+    let Some(object_index) = usize::try_from(index.0).ok() else {
+        errors.push(VerifyError::ConstantOutOfBounds(block));
+        return;
+    };
+    if object_index >= function.constants.len() {
+        errors.push(VerifyError::ConstantOutOfBounds(block));
+    }
+}
 
 pub(super) fn check_op(
     op: &Op,
@@ -22,28 +39,37 @@ pub(super) fn check_op(
                 return;
             };
             if let Some(constant) = function.constants.get(result_index) {
-                let references = match constant {
-                    crate::Constant::Object(index) => std::slice::from_ref(index),
-                    crate::Constant::Structure { elements, .. } => elements.as_slice(),
+                match constant {
+                    crate::Constant::Object(index) => {
+                        check_constant_reference(*index, function, block.id, errors);
+                    }
+                    crate::Constant::Structure { elements, .. } => {
+                        for index in elements {
+                            check_constant_reference(*index, function, block.id, errors);
+                        }
+                    }
+                    crate::Constant::Ratio {
+                        numerator,
+                        denominator,
+                    } => {
+                        check_constant_reference(*numerator, function, block.id, errors);
+                        check_constant_reference(*denominator, function, block.id, errors);
+                    }
+                    crate::Constant::Complex { real, imaginary } => {
+                        check_constant_reference(*real, function, block.id, errors);
+                        check_constant_reference(*imaginary, function, block.id, errors);
+                    }
                     crate::Constant::Fixnum(_)
                     | crate::Constant::Character(_)
                     | crate::Constant::SingleFloat(_)
                     | crate::Constant::DoubleFloat(_)
                     | crate::Constant::Symbol { .. }
                     | crate::Constant::StringBytes(_)
+                    | crate::Constant::Bignum { .. }
                     | crate::Constant::Nil
                     | crate::Constant::T
                     | crate::Constant::Unbound
-                    | crate::Constant::FunctionEntry(_) => &[],
-                };
-                for index in references {
-                    let Some(object_index) = usize::try_from(index.0).ok() else {
-                        errors.push(VerifyError::ConstantOutOfBounds(block.id));
-                        break;
-                    };
-                    if object_index >= function.constants.len() {
-                        errors.push(VerifyError::ConstantOutOfBounds(block.id));
-                    }
+                    | crate::Constant::FunctionEntry(_) => {}
                 }
                 require_results(op, &[constant_type(constant)], block.id, errors);
             } else {
@@ -395,6 +421,9 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         | crate::Constant::Object(_)
         | crate::Constant::StringBytes(_)
         | crate::Constant::Structure { .. }
+        | crate::Constant::Bignum { .. }
+        | crate::Constant::Ratio { .. }
+        | crate::Constant::Complex { .. }
         | crate::Constant::Nil
         | crate::Constant::T
         | crate::Constant::Unbound

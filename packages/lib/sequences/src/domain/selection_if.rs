@@ -66,9 +66,10 @@ pub fn find_if<C: FunctionCaller>(
     options: SelectionOptions,
     negate: bool,
 ) -> Result<Word, ObjectError> {
-    let Some(index) = matching_indices_if(ctx, runtime, caller, values, predicate, options, negate)?
-        .first()
-        .copied()
+    let Some(index) =
+        matching_indices_if(ctx, runtime, caller, values, predicate, options, negate)?
+            .first()
+            .copied()
     else {
         return Ok(Word::NIL);
     };

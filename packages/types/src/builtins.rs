@@ -8,10 +8,9 @@ use ncl_object::{
     Arity, Bignum, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, DoubleFloat, Local, MultipleValues,
     ObjectError, ObjectRef, Package, Parameter, ParameterType, Ratio, Runtime, Scope,
-    ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object,
-    double_value, make_double, make_simple_vector, make_string, ratio_denominator,
-    ratio_numerator, simple_vector_length, simple_vector_ref, string_length, string_ref,
-    symbol_function,
+    ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object, double_value,
+    make_double, make_simple_vector, make_string, ratio_denominator, ratio_numerator,
+    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_function,
 };
 
 use crate::{NamedType, TypeError, TypeSpecifier, parse_type_specifier, subtypep, typep};
@@ -84,7 +83,11 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     Ok(())
 }
 
-fn intern_common_lisp(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
+fn intern_common_lisp(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<Word, ObjectError> {
     let package = runtime
         .find_package(ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
@@ -322,9 +325,17 @@ fn list_elements(ctx: &ThreadContext, mut cursor: Word) -> Result<Vec<Word>, Obj
     Ok(result)
 }
 
-fn list_from(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result<Word, ObjectError> {
+fn list_from(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
     let mut scope = Scope::new(ctx);
-    let locals = values.iter().copied().map(Local::from_word).collect::<Vec<_>>();
+    let locals = values
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
     let handles = scope.root_many(&locals);
     let mut result = scope.root(Local::from_word(Word::NIL));
     for value in handles.iter().rev() {
@@ -333,17 +344,29 @@ fn list_from(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
     Ok(scope.get(result).as_word())
 }
 
-fn coerce_to_list(ctx: &mut ThreadContext, runtime: &Runtime, object: Word) -> Result<Word, ObjectError> {
+fn coerce_to_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<Word, ObjectError> {
     let elements = sequence_elements(ctx, object)?;
     list_from(ctx, runtime, &elements)
 }
 
-fn coerce_to_vector(ctx: &mut ThreadContext, runtime: &Runtime, object: Word) -> Result<Word, ObjectError> {
+fn coerce_to_vector(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<Word, ObjectError> {
     let elements = sequence_elements(ctx, object)?;
     make_simple_vector(ctx, runtime, &elements)
 }
 
-fn coerce_to_string(ctx: &mut ThreadContext, runtime: &Runtime, object: Word) -> Result<Word, ObjectError> {
+fn coerce_to_string(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<Word, ObjectError> {
     let elements = sequence_elements(ctx, object)?;
     let chars = elements
         .iter()
@@ -400,7 +423,11 @@ fn real_to_f64(ctx: &ThreadContext, word: Word) -> Result<f64, ObjectError> {
     }
 }
 
-fn coerce_to_float(ctx: &mut ThreadContext, runtime: &Runtime, object: Word) -> Result<Word, ObjectError> {
+fn coerce_to_float(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<Word, ObjectError> {
     let value = real_to_f64(ctx, object)?;
     make_double(ctx, runtime, value).map(Into::into)
 }
@@ -411,7 +438,8 @@ fn coerce_to_function(ctx: &ThreadContext, object: Word) -> Result<Word, ObjectE
         ObjectRef::Function(_) | ObjectRef::Closure(_) => Ok(object),
         ObjectRef::Symbol(_) if object != Word::NIL => {
             let function = symbol_function(ctx, object)?;
-            if function == Word::UNBOUND { // check-added-lines: allow(unbound) sentinel check
+            if function == Word::UNBOUND {
+                // check-added-lines: allow(unbound) sentinel check
                 Err(ObjectError::TypeError)
             } else {
                 Ok(function)

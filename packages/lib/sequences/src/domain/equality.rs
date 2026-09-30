@@ -6,10 +6,10 @@
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
     ArrayElementType, Bignum, Complex, DoubleFloat, LispError, ObjectError, ObjectRef, Ratio,
-    Runtime, ThreadContext, Word, array_dimensions, array_row_major_ref, bignum_limbs,
-    bignum_sign, car, cdr, classify_object, complex_imag, complex_real, double_value,
-    ratio_denominator, ratio_numerator, simple_vector_length, simple_vector_ref,
-    specialized_array_element_type, specialized_array_ref, string_length, string_ref,
+    Runtime, ThreadContext, Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign,
+    car, cdr, classify_object, complex_imag, complex_real, double_value, ratio_denominator,
+    ratio_numerator, simple_vector_length, simple_vector_ref, specialized_array_element_type,
+    specialized_array_ref, string_length, string_ref,
 };
 
 /// Recursion depth limit shared with the hash-table content-equality helper,
@@ -66,7 +66,12 @@ pub fn equalp_predicate(
     })
 }
 
-fn equal_at(ctx: &ThreadContext, left: Word, right: Word, depth: usize) -> Result<bool, ObjectError> {
+fn equal_at(
+    ctx: &ThreadContext,
+    left: Word,
+    right: Word,
+    depth: usize,
+) -> Result<bool, ObjectError> {
     if depth > MAX_DEPTH {
         return Ok(false);
     }
@@ -94,16 +99,27 @@ fn equal_at(ctx: &ThreadContext, left: Word, right: Word, depth: usize) -> Resul
             }
         }
         (
-            ObjectRef::Bignum(_) | ObjectRef::Ratio(_) | ObjectRef::DoubleFloat(_)
-            | ObjectRef::Complex(_) | ObjectRef::Fixnum(_),
-            ObjectRef::Bignum(_) | ObjectRef::Ratio(_) | ObjectRef::DoubleFloat(_)
-            | ObjectRef::Complex(_) | ObjectRef::Fixnum(_),
+            ObjectRef::Bignum(_)
+            | ObjectRef::Ratio(_)
+            | ObjectRef::DoubleFloat(_)
+            | ObjectRef::Complex(_)
+            | ObjectRef::Fixnum(_),
+            ObjectRef::Bignum(_)
+            | ObjectRef::Ratio(_)
+            | ObjectRef::DoubleFloat(_)
+            | ObjectRef::Complex(_)
+            | ObjectRef::Fixnum(_),
         ) => numeric_equal_exact(ctx, left, right),
         _ => Ok(false), // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive; remaining kinds compare by eq only.
     }
 }
 
-fn equalp_at(ctx: &ThreadContext, left: Word, right: Word, depth: usize) -> Result<bool, ObjectError> {
+fn equalp_at(
+    ctx: &ThreadContext,
+    left: Word,
+    right: Word,
+    depth: usize,
+) -> Result<bool, ObjectError> {
     if depth > MAX_DEPTH {
         return Ok(false);
     }
@@ -127,9 +143,13 @@ fn equalp_at(ctx: &ThreadContext, left: Word, right: Word, depth: usize) -> Resu
     match (classify_object(ctx, left), classify_object(ctx, right)) {
         (ObjectRef::String(_), ObjectRef::String(_)) => strings_equal(ctx, left, right, true),
         (
-            ObjectRef::SpecializedArray(_) | ObjectRef::SimpleVector(_) | ObjectRef::Array(_)
+            ObjectRef::SpecializedArray(_)
+            | ObjectRef::SimpleVector(_)
+            | ObjectRef::Array(_)
             | ObjectRef::String(_),
-            ObjectRef::SpecializedArray(_) | ObjectRef::SimpleVector(_) | ObjectRef::Array(_)
+            ObjectRef::SpecializedArray(_)
+            | ObjectRef::SimpleVector(_)
+            | ObjectRef::Array(_)
             | ObjectRef::String(_),
         ) => arrays_equal(ctx, left, right, true, depth),
         (ObjectRef::HashTable(_), ObjectRef::HashTable(_)) => {
@@ -154,7 +174,12 @@ fn is_number(ctx: &ThreadContext, word: Word) -> bool {
     )
 }
 
-fn strings_equal(ctx: &ThreadContext, left: Word, right: Word, fold: bool) -> Result<bool, ObjectError> {
+fn strings_equal(
+    ctx: &ThreadContext,
+    left: Word,
+    right: Word,
+    fold: bool,
+) -> Result<bool, ObjectError> {
     let length = string_length(ctx, left)?;
     if length != string_length(ctx, right)? {
         return Ok(false);
@@ -262,8 +287,8 @@ fn hash_tables_equal(
                 // Best-effort equality: two keys are treated as the same
                 // entry when they are `eq`, `eql`, or content-equal, which
                 // covers every standard hash-table test.
-                let same_key = other_key == key
-                    || equal_at(ctx, other_key, key, depth + 1).unwrap_or(false);
+                let same_key =
+                    other_key == key || equal_at(ctx, other_key, key, depth + 1).unwrap_or(false);
                 if same_key {
                     found = true;
                     matched = equalp_at(ctx, other_value, value, depth + 1).unwrap_or(false);
@@ -280,11 +305,15 @@ fn hash_tables_equal(
 fn numeric_equal_exact(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, ObjectError> {
     match (classify_object(ctx, left), classify_object(ctx, right)) {
         (ObjectRef::Fixnum(a), ObjectRef::Fixnum(b)) => Ok(a == b),
-        (ObjectRef::Bignum(_), ObjectRef::Bignum(_)) => Ok(bignum_sign(ctx, Bignum::from_word(left))?
-            == bignum_sign(ctx, Bignum::from_word(right))?
-            && bignum_limbs(ctx, Bignum::from_word(left))? == bignum_limbs(ctx, Bignum::from_word(right))?),
+        (ObjectRef::Bignum(_), ObjectRef::Bignum(_)) => {
+            Ok(bignum_sign(ctx, Bignum::from_word(left))?
+                == bignum_sign(ctx, Bignum::from_word(right))?
+                && bignum_limbs(ctx, Bignum::from_word(left))?
+                    == bignum_limbs(ctx, Bignum::from_word(right))?)
+        }
         (ObjectRef::DoubleFloat(_), ObjectRef::DoubleFloat(_)) => {
-            Ok(double_value(ctx, DoubleFloat::from_word(left))?.to_bits() == double_value(ctx, DoubleFloat::from_word(right))?.to_bits())
+            Ok(double_value(ctx, DoubleFloat::from_word(left))?.to_bits()
+                == double_value(ctx, DoubleFloat::from_word(right))?.to_bits())
         }
         (ObjectRef::Ratio(_), ObjectRef::Ratio(_)) => Ok(numeric_equal_exact(
             ctx,
@@ -325,7 +354,11 @@ fn real_to_f64(ctx: &ThreadContext, word: Word) -> Result<f64, ObjectError> {
             .fold(0.0_f64, |accumulator, limb| {
                 accumulator.mul_add(f64::from(u32::MAX) + 1.0, f64::from(*limb))
             })
-            * if bignum_sign(ctx, Bignum::from_word(word))? { -1.0 } else { 1.0 }),
+            * if bignum_sign(ctx, Bignum::from_word(word))? {
+                -1.0
+            } else {
+                1.0
+            }),
         ObjectRef::Ratio(_) => {
             let numerator = real_to_f64(ctx, ratio_numerator(ctx, Ratio::from_word(word))?)?;
             let denominator = real_to_f64(ctx, ratio_denominator(ctx, Ratio::from_word(word))?)?;
@@ -359,8 +392,14 @@ fn numeric_equal_loose(ctx: &ThreadContext, left: Word, right: Word) -> Result<b
         } else {
             (right, left)
         };
-        return Ok(real_to_f64(ctx, complex_imag(ctx, Complex::from_word(complex))?)? == 0.0
-            && numeric_equal_loose(ctx, complex_real(ctx, Complex::from_word(complex))?, other)?);
+        return Ok(
+            real_to_f64(ctx, complex_imag(ctx, Complex::from_word(complex))?)? == 0.0
+                && numeric_equal_loose(
+                    ctx,
+                    complex_real(ctx, Complex::from_word(complex))?,
+                    other,
+                )?,
+        );
     }
     // Same exact representation compares exactly first, so huge bignums and
     // ratios of matching type never lose precision.

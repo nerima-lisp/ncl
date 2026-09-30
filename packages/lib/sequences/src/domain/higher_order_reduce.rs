@@ -1,9 +1,11 @@
 //! `REDUCE`, split out of `higher_order.rs` to keep that file under the
 //! project's line-count limit.
 
-use ncl_object::{FunctionCaller, FunctionDesignator, ObjectError, Runtime, Sequence, ThreadContext, Word};
+use ncl_object::{
+    FunctionCaller, FunctionDesignator, ObjectError, Runtime, Sequence, ThreadContext, Word,
+};
 
-use super::{call, callback, scope_roots, scope_rooted_slice, values};
+use super::{call, callback, scope_rooted_slice, scope_roots, values};
 
 /// Options accepted by REDUCE beyond the function and sequence.
 #[derive(Clone, Copy, Debug, Default)]
@@ -31,7 +33,11 @@ pub fn reduce<C: FunctionCaller>(
         start,
         end,
     } = options;
-    let roots = [function, initial.unwrap_or(Word::NIL), key.unwrap_or(Word::NIL)];
+    let roots = [
+        function,
+        initial.unwrap_or(Word::NIL),
+        key.unwrap_or(Word::NIL),
+    ];
     scope_roots(ctx, &roots, |ctx, roots| {
         let all_items = values(ctx, sequence)?;
         let end = end.unwrap_or(all_items.len());

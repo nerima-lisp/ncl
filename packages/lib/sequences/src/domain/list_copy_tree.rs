@@ -1,7 +1,9 @@
 //! `COPY-TREE`, split out of `list.rs` to keep that file under the project's
 //! line-count limit.
 
-use ncl_object::{LispError, ObjectError, Runtime, ThreadContext, Word, car as object_car, cdr as object_cdr};
+use ncl_object::{
+    LispError, ObjectError, Runtime, ThreadContext, Word, car as object_car, cdr as object_cdr,
+};
 
 use super::make_cons_rooted;
 
@@ -38,18 +40,26 @@ fn copy_tree_inner(
     ncl_object::with_rooted_slice(ctx, &elements, |ctx, rooted| {
         let tail = rooted_slot(rooted, tail_index)?;
         let copied_tail = copy_tree_inner(ctx, runtime, tail)?;
-        *rooted.get_mut(accumulator_index).ok_or(ObjectError::Layout)? = copied_tail;
+        *rooted
+            .get_mut(accumulator_index)
+            .ok_or(ObjectError::Layout)? = copied_tail;
         for index in (0..tail_index).rev() {
             let car_value = rooted_slot(rooted, index)?;
             let new_car = copy_tree_inner(ctx, runtime, car_value)?;
             let accumulator = rooted_slot(rooted, accumulator_index)?;
             let new_pair = make_cons_rooted(ctx, runtime, new_car, accumulator)?;
-            *rooted.get_mut(accumulator_index).ok_or(ObjectError::Layout)? = new_pair;
+            *rooted
+                .get_mut(accumulator_index)
+                .ok_or(ObjectError::Layout)? = new_pair;
         }
         rooted_slot(rooted, accumulator_index)
     })
 }
 
-pub fn copy_tree(ctx: &mut ThreadContext, runtime: &Runtime, value: Word) -> Result<Word, LispError> {
+pub fn copy_tree(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Word,
+) -> Result<Word, LispError> {
     copy_tree_inner(ctx, runtime, value).map_err(LispError::from)
 }

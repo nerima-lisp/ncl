@@ -84,20 +84,21 @@ impl<'a> FormExpander<'a> {
 
     /// Expand a cons form.
     fn expand_cons(&mut self, form: Word) -> Result<Step, FrontError> {
-        let elements = self.elements(form)?;
-        let Some((head, arguments)) = elements.split_first() else {
+        let mut form = form;
+        let mut elements = self.elements(form)?;
+        let Some((&head, arguments)) = elements.split_first() else {
             return Ok(Step::Done(Expr::Constant(Literal::Nil)));
         };
         if head.is_cons() {
-            return self.expand_lambda_call(*head, arguments);
+            return self.expand_lambda_call(head, arguments);
         }
-        if !matches!(classify_form(self.ctx, *head), ObjectRef::Symbol(_)) {
+        if !matches!(classify_form(self.ctx, head), ObjectRef::Symbol(_)) {
             return Err(FrontError::InvalidOperator {
                 detail: "operator is not a symbol".to_owned(),
             });
         }
-        let name = self.symbol(*head)?;
-        if self.is_named(*head, "LAMBDA")? {
+        let name = self.symbol(head)?;
+        if self.is_named(head, "LAMBDA")? {
             return Ok(Step::Done(Expr::Lambda(Box::new(
                 self.expand_lambda(form)?,
             ))));
@@ -119,6 +120,36 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
+        // `Package::intern`, used below to resolve an inherited COMMON-LISP
+        // macro, allocates a scratch string even when the name is already
+        // interned, so `form` and `elements` (including the operator word)
+        // must stay rooted across it and across the macro/function calls
+        // that follow: under `gc_stress` that allocation can force a
+        // collection that would otherwise leave them pointing at stale
+        // addresses.
+        let form_token = ncl_object::push_root(self.ctx, &mut form);
+        let elements_token = ncl_object::push_root_slice(self.ctx, &mut elements);
+        let step = self.expand_cons_after_local_macro(&name, form, &elements);
+        let elements_popped = ncl_object::pop_root(self.ctx, elements_token);
+        let form_popped = ncl_object::pop_root(self.ctx, form_token);
+        if !elements_popped || !form_popped {
+            return Err(FrontError::Object(
+                ncl_object::ObjectError::RootStackCorrupted,
+            ));
+        }
+        step
+    }
+
+    /// The remainder of [`Self::expand_cons`], run while `form` and
+    /// `elements` are precisely rooted.
+    fn expand_cons_after_local_macro(
+        &mut self,
+        name: &SymbolRef,
+        form: Word,
+        elements: &[Word],
+    ) -> Result<Step, FrontError> {
+        let head = elements.first().copied().ok_or(FrontError::ImproperList)?;
+        let arguments = &elements[1..];
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime
@@ -138,8 +169,8 @@ impl<'a> FormExpander<'a> {
         } else {
             None
         };
-        if symbol_is_macro(self.ctx, *head)? || inherited_macro.is_some() {
-            let macro_name = inherited_macro.as_ref().unwrap_or(&name);
+        if symbol_is_macro(self.ctx, head)? || inherited_macro.is_some() {
+            let macro_name = inherited_macro.as_ref().unwrap_or(name);
             let replacement = Self::call_global_macro(
                 &mut self.caller,
                 self.ctx,
@@ -153,18 +184,18 @@ impl<'a> FormExpander<'a> {
             });
         }
         let registry = self.registry;
-        if let Some(entry) = registry.lookup(&name)
+        if let Some(entry) = registry.lookup(name)
             && entry.arity.accepts(arguments.len())
             && let Some(replacement) = (entry.expander)(self.ctx, self.runtime, form)?
         {
             return Ok(Step::Retry {
-                name,
+                name: name.clone(),
                 form: replacement,
             });
         }
         let arguments = self.expand_all(arguments)?;
         Ok(Step::Done(Expr::Call {
-            operator: Operator::Name(name),
+            operator: Operator::Name(name.clone()),
             arguments,
         }))
     }

@@ -298,6 +298,7 @@ fn accumulator_kind(keyword: &str) -> Option<AccumulatorKind> {
         "SUM" => Some(AccumulatorKind::Sum),
         "MAXIMIZE" => Some(AccumulatorKind::Maximize),
         "MINIMIZE" => Some(AccumulatorKind::Minimize),
+        // check-added-lines: allow(wildcard) any other keyword is not an accumulator.
         _ => None,
     }
 }

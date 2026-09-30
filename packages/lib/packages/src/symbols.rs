@@ -208,7 +208,8 @@ fn symbol_value_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    symbol_value(ctx, symbol_arg(ctx, args)?)
+    let symbol = symbol_arg(ctx, args)?;
+    ncl_object::bound_symbol_value(ctx, symbol)
 }
 
 fn get(

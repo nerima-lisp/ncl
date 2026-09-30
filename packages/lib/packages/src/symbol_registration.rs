@@ -126,6 +126,19 @@ pub(super) fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             make_symbol::builtin,
         ),
     )?;
+    // The compiler's `lower_variable`/`lower_symbol_cell_call` fast path
+    // (`packages/compiler/front/src/lower/expr.rs`) inlines the common
+    // bound case and falls back to an ordinary call here only when a
+    // symbol's value cell holds `Word::UNBOUND`, so it can signal
+    // `UNBOUND-VARIABLE` through the same path `SYMBOL-VALUE` uses.
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclExt,
+            BuiltinName::new("BOUND-SYMBOL-VALUE"),
+        ),
+        BuiltinImplementation::direct(direct(one, 1), symbol_value_builtin),
+    )?;
     Ok(())
 }
 

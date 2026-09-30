@@ -101,10 +101,10 @@ pub use structure::{
     StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
 };
 pub use symbol_extensions::{
-    set_symbol_constant, set_symbol_macro, set_symbol_package_locked, set_symbol_plist,
-    set_symbol_special, set_symbol_value, symbol_flags, symbol_function, symbol_is_constant,
-    symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name, symbol_package,
-    symbol_plist, symbol_value,
+    bound_symbol_value, set_symbol_constant, set_symbol_macro, set_symbol_package_locked,
+    set_symbol_plist, set_symbol_special, set_symbol_value, symbol_flags, symbol_function,
+    symbol_is_constant, symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name,
+    symbol_package, symbol_plist, symbol_value,
 };
 pub use typed::{
     ArithmeticError, Array, CellError, Character, Closure, Cons, ControlError, FileError, Fixnum,

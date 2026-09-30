@@ -133,7 +133,7 @@ pub fn condition_from_lisp_error(
                 CellError::UndefinedFunction { name } | CellError::UnboundVariable { name } => {
                     words(&[name])
                 }
-                CellError::UnboundSlot | _ => Vec::new(),
+                CellError::UnboundSlot | _ => Vec::new(), // check-added-lines: allow(wildcard) only the name-carrying variants have a slot
             },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),

@@ -30,7 +30,7 @@ fn special_names(declarations: &[Declaration]) -> Vec<SymbolRef> {
         .iter()
         .filter_map(|declaration| match declaration {
             Declaration::Special(names) => Some(names.iter().cloned()),
-            _ => None,
+            _ => None, // check-added-lines: allow(wildcard) only special declarations mark a binding
         })
         .flatten()
         .collect()

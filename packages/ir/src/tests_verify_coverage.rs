@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::too_many_lines)]
 
 use super::tests_text::{block, finish, op};
 use crate::*;
@@ -165,7 +165,7 @@ fn verifier_reports_handler_flow_and_nesting_errors() {
     let mut child = region(HandlerKind::UnwindProtect);
     child.id = HandlerRegionId(1);
     child.parent = Some(HandlerRegionId(0));
-    child.depth = 0;
+    child.depth = 1;
     child.protected = vec![BlockId(1)];
     let parent = region(HandlerKind::UnwindProtect);
     let nested = finish(

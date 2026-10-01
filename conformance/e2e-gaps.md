@@ -2,11 +2,10 @@
 
 ## hash-arrays
 
-The compiled hash/array matrix has 55 normal cases and 1 explicit XFAIL case.
-Each XFAIL must exit with status 1 and retain stderr for the listed substring
-assertion. `VECTOR-PUSH-EXTEND` and `VECTOR-POP` were previously XFAILed for
-an AArch64 four-register call-argument limit; both now compile and pass as
-ordinary cases in `tests/e2ehash.rs`.
+The compiled hash/array matrix has 56 normal cases and no XFAIL cases.
+`VECTOR-PUSH-EXTEND` and `VECTOR-POP` were previously XFAILed for an AArch64
+four-register call-argument limit; both now compile and pass as ordinary cases
+in `tests/e2ehash.rs`. `SBIT` SETF is also covered as an ordinary case.
 
 ## macros
 

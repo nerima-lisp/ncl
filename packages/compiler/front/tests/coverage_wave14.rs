@@ -2,10 +2,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    lower_toplevel, Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal,
-    LocalFunction, Operator, ParamName, SymbolRef,
+    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, LocalFunction, Operator,
+    ParamName, SymbolRef, lower_toplevel,
 };
-use ncl_ir::{verify, Function, HandlerKind, OpKind, Terminator};
+use ncl_ir::{Function, HandlerKind, OpKind, Terminator, verify};
 
 fn symbol(name: &str) -> SymbolRef {
     SymbolRef::interned("COMMON-LISP-USER", name)
@@ -87,11 +87,21 @@ fn analysis_walks_lambda_call_function_flet_and_labels_forms() {
             }],
         },
     ];
-    let lowered = lower_toplevel(&Expr::Block { name: exit, body }).expect("analysis matrix lowers");
+    let lowered =
+        lower_toplevel(&Expr::Block { name: exit, body }).expect("analysis matrix lowers");
     assert_verifies(&lowered.entry);
-    assert!(lowered.entry.handler_regions.iter().any(|region| region.kind == HandlerKind::Catch));
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Catch)
+    );
     assert!(lowered.nested.len() >= 4);
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::MakeClosure { .. })));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeClosure { .. }
+    )));
 }
 
 #[test]
@@ -118,11 +128,20 @@ fn assigned_captured_value_uses_a_cell_for_multiple_nested_closures() {
     let lowered = lower_toplevel(&expression).expect("assigned capture lowers");
     assert_verifies(&lowered.entry);
     assert_eq!(lowered.nested.len(), 2);
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::MakeValueCell { .. })));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeValueCell { .. }
+    )));
     for nested in &lowered.nested {
         assert_verifies(nested);
-        assert!(any_op(nested, |kind| matches!(kind, OpKind::LoadCapture { .. })));
-        assert!(any_op(nested, |kind| matches!(kind, OpKind::StoreField { field: 0, .. })));
+        assert!(any_op(nested, |kind| matches!(
+            kind,
+            OpKind::LoadCapture { .. }
+        )));
+        assert!(any_op(nested, |kind| matches!(
+            kind,
+            OpKind::StoreField { field: 0, .. }
+        )));
     }
 }
 
@@ -137,9 +156,18 @@ fn builtin_arity_mismatch_falls_back_to_a_real_function_cell_call() {
     };
     let lowered = lower_toplevel(&expression).expect("arity mismatch call lowers");
     assert_verifies(&lowered.entry);
-    assert!(!any_op(&lowered.entry, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CAR")));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 3)));
+    assert!(!any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CAR")
+    ));
+    assert!(any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+    ));
+    assert!(any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 3)
+    ));
 }
 
 #[test]
@@ -153,11 +181,17 @@ fn multiple_value_call_captures_values_and_calls_the_list_adapter() {
     };
     let lowered = lower_toplevel(&expression).expect("multiple value call lowers");
     assert_verifies(&lowered.entry);
-    let value_captures = lowered.entry.blocks.iter().flat_map(|block| &block.ops).filter(|op| {
-        matches!(op.kind, OpKind::CallClosure { ref args, .. } if args.len() == 1)
-    });
+    let value_captures = lowered
+        .entry
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .filter(|op| matches!(op.kind, OpKind::CallClosure { ref args, .. } if args.len() == 1));
     assert_eq!(value_captures.count(), 2);
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 4)));
+    assert!(any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 4)
+    ));
 }
 
 #[test]
@@ -176,10 +210,22 @@ fn key_parameter_without_default_and_supplied_p_has_all_keyword_ops() {
     assert_verifies(&lowered.entry);
     let nested = &lowered.nested[0];
     assert_verifies(nested);
-    assert!(any_op(nested, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "check-keywords")));
-    assert!(any_op(nested, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "keyword-value")));
-    assert!(any_op(nested, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "keyword-supplied-p")));
-    assert!(any_terminator(nested, |term| matches!(term, Terminator::Branch { .. })));
+    assert!(any_op(
+        nested,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "check-keywords")
+    ));
+    assert!(any_op(
+        nested,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "keyword-value")
+    ));
+    assert!(any_op(
+        nested,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "keyword-supplied-p")
+    ));
+    assert!(any_terminator(nested, |term| matches!(
+        term,
+        Terminator::Branch { .. }
+    )));
 }
 
 #[test]
@@ -202,7 +248,10 @@ fn block_live_value_and_tagbody_back_edge_preserve_verified_control_flow() {
     };
     let lowered = lower_toplevel(&block).expect("live block lowers");
     assert_verifies(&lowered.entry);
-    assert!(any_terminator(&lowered.entry, |term| matches!(term, Terminator::Jump { args, .. } if args.len() == 2)));
+    assert!(any_terminator(
+        &lowered.entry,
+        |term| matches!(term, Terminator::Jump { args, .. } if args.len() == 2)
+    ));
 
     let tag = symbol("LOOP");
     let tagbody = Expr::Tagbody(vec![
@@ -213,7 +262,10 @@ fn block_live_value_and_tagbody_back_edge_preserve_verified_control_flow() {
     let tagbody = lower_toplevel(&tagbody).expect("tagbody back edge lowers");
     assert_verifies(&tagbody.entry);
     assert!(tagbody.entry.handler_regions.is_empty());
-    assert!(any_op(&tagbody.entry, |kind| matches!(kind, OpKind::Safepoint)));
+    assert!(any_op(&tagbody.entry, |kind| matches!(
+        kind,
+        OpKind::Safepoint
+    )));
 }
 
 #[test]
@@ -224,12 +276,21 @@ fn empty_body_and_unbound_control_keep_return_and_error_contracts() {
     })
     .expect("empty locally lowers");
     assert_verifies(&empty.entry);
-    assert!(empty.entry.constants.iter().any(|constant| matches!(constant, ncl_ir::Constant::Nil)));
+    assert!(
+        empty
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, ncl_ir::Constant::Nil))
+    );
 
     let error = lower_toplevel(&Expr::Go {
         tag: symbol("MISSING-TAG"),
     })
     .unwrap_err();
-    assert!(matches!(error, ncl_compiler_front::LowerError::EscapingControl { .. }));
+    assert!(matches!(
+        error,
+        ncl_compiler_front::LowerError::EscapingControl { .. }
+    ));
     assert!(error.to_string().contains("MISSING-TAG"));
 }

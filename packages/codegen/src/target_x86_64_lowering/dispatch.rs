@@ -44,12 +44,12 @@ fn emit_epilogue(
             i64::from_ne_bytes(ncl_sys::Word::ZERO.bits().to_ne_bytes()),
         )?;
     }
+    load_immediate(
+        assembler,
+        super::VALUE_COUNT,
+        i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+    )?;
     if !preserve_mv_count {
-        load_immediate(
-            assembler,
-            super::VALUE_COUNT,
-            i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
-        )?;
         emit(
             assembler,
             Inst::MovMR(

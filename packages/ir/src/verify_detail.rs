@@ -2,6 +2,28 @@
 use super::*;
 use crate::{ConstantIndex, Convert, Prim};
 
+pub(super) fn reachable_blocks(
+    function: &Function,
+    blocks: &HashMap<BlockId, &BasicBlock>,
+) -> HashSet<BlockId> {
+    let Some(entry) = function.blocks.first().map(|block| block.id) else {
+        return HashSet::new();
+    };
+    let mut reachable = HashSet::from([entry]);
+    let mut work = vec![entry];
+    while let Some(id) = work.pop() {
+        let Some(block) = blocks.get(&id) else {
+            continue;
+        };
+        for target in successors(&block.terminator) {
+            if blocks.contains_key(&target) && reachable.insert(target) {
+                work.push(target);
+            }
+        }
+    }
+    reachable
+}
+
 /// Record an out-of-bounds error when a constant references a table index
 /// beyond the current constant table.
 fn check_constant_reference(

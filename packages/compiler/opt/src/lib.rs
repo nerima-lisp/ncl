@@ -245,6 +245,21 @@ impl Default for InlineDirectCalls {
 }
 
 impl InlineDirectCalls {
+    /// Conditional primitive block targets have no inline-scope declaration in the IR.
+    /// Until the IR can distinguish caller-visible targets from callee-local targets,
+    /// preserve the call instead of copying a potentially callee-local `BlockId`.
+    fn has_undeclared_block_targets(function: &Function) -> bool {
+        function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
+            matches!(
+                op.kind,
+                OpKind::Prim {
+                    condition: Some(_),
+                    ..
+                }
+            )
+        })
+    }
+
     fn prohibited(function: &Function) -> bool {
         !function.handler_regions.is_empty()
             || function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
@@ -308,6 +323,7 @@ impl FunctionPass for InlineDirectCalls {
                 };
                 if callee.id == function.id
                     || Self::prohibited(callee)
+                    || Self::has_undeclared_block_targets(callee)
                     || callee.blocks.len() != 1
                     || callee.blocks[0].ops.len() > self.max_ops
                     || callee.blocks[0].ops.iter().any(|op| {
@@ -401,22 +417,22 @@ pub use sccp::Sccp;
 mod dce;
 pub use dce::DeadCodeElimination;
 #[cfg(test)]
-#[path = "dce_tests.rs"]
+#[path = "tests/dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]
-#[path = "gvn_tests.rs"]
+#[path = "tests/gvn_tests.rs"]
 mod gvn_tests;
 #[cfg(test)]
-#[path = "manager_tests.rs"]
+#[path = "tests/manager_tests.rs"]
 mod manager_tests;
 #[cfg(test)]
-#[path = "remap_tests.rs"]
+#[path = "tests/remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
-#[path = "sccp_tests.rs"]
+#[path = "tests/sccp_tests.rs"]
 mod sccp_tests;
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "tests/pipeline_tests.rs"]
 mod tests;
 #[cfg(test)]
 #[path = "tests_support.rs"]

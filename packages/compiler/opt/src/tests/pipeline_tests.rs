@@ -1,6 +1,6 @@
 use super::tests_support::{Fixture, caller, leaf};
 use crate::{InlineDirectCalls, Module, PassManager};
-use ncl_ir::{Constant, ConstantIndex, FunctionId, Op, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{BlockId, Constant, ConstantIndex, FunctionId, Op, OpKind, Terminator, Ty, ValueId};
 
 #[test]
 fn direct_leaf_inlines_and_text_round_trips() {
@@ -20,6 +20,11 @@ fn direct_leaf_inlines_and_text_round_trips() {
             .all(|op| !matches!(op.kind, OpKind::Call { .. }))
     );
     module.verify().fixture();
+    let transformed = module.functions[0].to_string();
+    assert_eq!(
+        ncl_ir::parse(&transformed).fixture().to_string(),
+        transformed
+    );
 }
 
 #[test]
@@ -94,4 +99,52 @@ fn threshold_skips() {
             .iter()
             .any(|op| matches!(op.kind, OpKind::Call { .. }))
     );
+}
+
+#[test]
+fn conditional_prim_with_callee_block_target_is_not_inlined() {
+    let mut callee = leaf();
+    let Some(block) = callee.blocks.first_mut() else {
+        std::process::exit(1);
+    };
+    let Some(op) = block.ops.first_mut() else {
+        std::process::exit(1);
+    };
+    op.kind = OpKind::Prim {
+        op: ncl_ir::Prim::Car,
+        args: vec![ValueId(0)],
+        condition: Some(BlockId(0)),
+    };
+    let mut module = Module {
+        functions: vec![caller(), callee],
+    };
+    let Some(caller_function) = module.functions.first_mut() else {
+        std::process::exit(1);
+    };
+    let Some(caller_block) = caller_function.blocks.first_mut() else {
+        std::process::exit(1);
+    };
+    caller_block.ops.insert(
+        1,
+        Op {
+            results: vec![],
+            kind: OpKind::Safepoint,
+            loc: None,
+        },
+    );
+    let Some(before) = module.functions.first().cloned() else {
+        std::process::exit(1);
+    };
+    let mut manager = PassManager::new();
+    manager.add_function_pass(InlineDirectCalls::default());
+
+    manager.run(&mut module).fixture();
+
+    let Some(after) = module.functions.first() else {
+        std::process::exit(1);
+    };
+    if *after != before {
+        std::process::exit(1);
+    }
+    module.verify().fixture();
 }

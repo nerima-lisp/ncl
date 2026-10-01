@@ -58,8 +58,20 @@ pub fn remap_kind(
             field: *field,
             value: v(*value),
         },
+        OpKind::Call { function, args } => OpKind::Call {
+            function: v(*function),
+            args: args.iter().map(|x| v(*x)).collect(),
+        },
+        OpKind::CallIndirect { callee, args } => OpKind::CallIndirect {
+            callee: v(*callee),
+            args: args.iter().map(|x| v(*x)).collect(),
+        },
         OpKind::Alloc { words } => OpKind::Alloc { words: *words },
         OpKind::MakeValueCell { value } => OpKind::MakeValueCell { value: v(*value) },
+        OpKind::MakeClosure { entry, captures } => OpKind::MakeClosure {
+            entry: v(*entry),
+            captures: captures.iter().map(|x| v(*x)).collect(),
+        },
         OpKind::LoadArg { index } => OpKind::LoadArg { index: *index },
         OpKind::LoadCapture { index } => OpKind::LoadCapture { index: *index },
         OpKind::Builtin { name, args } => OpKind::Builtin {
@@ -83,6 +95,18 @@ pub fn remap_kind(
         OpKind::Convert { op, value } => OpKind::Convert {
             op: *op,
             value: v(*value),
+        },
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => OpKind::CallClosure {
+            closure: v(*closure),
+            args: args.iter().map(|x| v(*x)).collect(),
+            named_symbol: named_symbol.map(v),
+        },
+        OpKind::SetMultipleValues { values } => OpKind::SetMultipleValues {
+            values: values.iter().map(|x| v(*x)).collect(),
         },
         other => other.clone(),
     }

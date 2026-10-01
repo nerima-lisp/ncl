@@ -63,6 +63,7 @@ pub fn lower_call(
         i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
     )?;
     emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
+    emit(assembler, Inst::MovRR(RETURN_VALUE, ENTRY))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     // `slot_mem_of(i)` addresses `rbp - (i + 1) * 8`, so it grows *downward*
     // (higher `i` means a lower address). `REST_ARGUMENT` must nonetheless
@@ -118,6 +119,30 @@ pub fn lower_call(
     if rest.len() > ARGUMENT_REGISTERS.len() {
         emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
     }
+    emit(
+        assembler,
+        Inst::MovRM(
+            ENTRY,
+            Mem::base(
+                RETURN_VALUE,
+                i32::try_from(
+                    ncl_object::function_offset::ENTRY
+                        .checked_add(1)
+                        .and_then(|slot| slot.checked_mul(8))
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )
+                .map_err(|_| CodegenError::FrameOverflow)?,
+            ),
+        ),
+    )?;
+    emit(
+        assembler,
+        Inst::ShiftImm(
+            Shift::Sar,
+            ENTRY,
+            u8::try_from(ncl_sys::FIXNUM_TAG_BITS).map_err(|_| CodegenError::FrameOverflow)?,
+        ),
+    )?;
     Ok(())
 }
 

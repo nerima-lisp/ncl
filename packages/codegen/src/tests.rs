@@ -2,6 +2,7 @@
 mod tests_aarch64_fixtures;
 
 use super::*;
+use ncl_asm_x86_64::Label;
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn assert_compiles(function: &ncl_ir::Function) -> CompiledFunction {
@@ -281,6 +282,44 @@ fn golden_branch_emits_two_resolved_targets() {
     let function = builder.finish();
     let compiled = assert_compiles(&function);
     assert_eq!(compiled.code.last(), Some(&0xc3));
+}
+
+#[test]
+fn machine_function_exposes_lowered_blocks_and_relocations() {
+    let frame = FrameLayout::new(1, 2, 1);
+    assert!(frame.is_ok(), "valid frame layout rejected: {frame:?}");
+    let Some(frame) = frame.ok() else {
+        return;
+    };
+    let relocation = Relocation {
+        offset: 7,
+        kind: RelocationKind::PcRelative32,
+        target: Label(4),
+        addend: 0,
+    };
+    let machine = MachineFunction::new(
+        ncl_ir::BlockId(2),
+        vec![Block::new(
+            ncl_ir::BlockId(2),
+            vec![MachineOp::move_value(5, 8), MachineOp::Return],
+        )],
+        frame,
+        Vec::new(),
+        vec![relocation],
+        vec![(ncl_ir::ValueId(9), 8)],
+    );
+
+    assert_eq!(machine.entry(), ncl_ir::BlockId(2));
+    assert_eq!(machine.blocks().len(), 1);
+    assert_eq!(machine.blocks()[0].id(), ncl_ir::BlockId(2));
+    assert_eq!(machine.blocks()[0].offset(), 0);
+    assert_eq!(
+        machine.blocks()[0].operations(),
+        &[MachineOp::move_value(5, 8), MachineOp::Return]
+    );
+    assert_eq!(machine.frame(), frame);
+    assert_eq!(machine.relocations(), &[relocation]);
+    assert_eq!(machine.slots(), &[(ncl_ir::ValueId(9), 8)]);
 }
 
 #[test]

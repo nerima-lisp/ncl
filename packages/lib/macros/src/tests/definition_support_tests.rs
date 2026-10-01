@@ -10,8 +10,8 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
 }
 
 #[test]
-fn function_definition_builtins_return_functions_and_reject_bad_designators(
-) -> Result<(), ObjectError> {
+fn function_definition_builtins_return_functions_and_reject_bad_designators()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let car = crate::symbol(&mut ctx, &runtime, "FDEFINITION")?;
     let not_symbol = Word::fixnum(1);
@@ -105,8 +105,8 @@ fn set_definition_and_macro_function_update_symbol_cells() -> Result<(), ObjectE
 }
 
 #[test]
-fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties(
-) -> Result<(), ObjectError> {
+fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = crate::symbol(&mut ctx, &runtime, "PROPERTY-HOLDER")?;
     let key = crate::symbol(&mut ctx, &runtime, "KEY")?;
@@ -180,6 +180,31 @@ fn place_expanders_produce_access_and_store_forms() -> Result<(), ObjectError> {
     assert_eq!(
         elements(&mut ctx, get.access_form)?[0],
         crate::symbol(&mut ctx, &runtime, "GET")?
+    );
+    Ok(())
+}
+
+#[test]
+fn place_expanders_and_get_reject_wrong_arity_or_types() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = crate::symbol(&mut ctx, &runtime, "F")?;
+    let mut values = ncl_object::MultipleValues::new();
+    assert_eq!(
+        get_place(&mut ctx, &runtime, &[name]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        fdefinition_place(&mut ctx, &runtime, &[]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[Word::fixnum(1), name]),
+            &mut values,
+        ),
+        Err(ObjectError::TypeError)
     );
     Ok(())
 }

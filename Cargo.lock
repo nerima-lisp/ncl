@@ -247,6 +247,7 @@ dependencies = [
  "ncl-conditions",
  "ncl-lib-streams",
  "ncl-object",
+ "ncl-ownership",
  "ncl-sys",
 ]
 

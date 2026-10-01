@@ -65,3 +65,20 @@ fn register_all_registers_callable_printer_and_format_builtins() {
         assert!(function.is_some(), "{name} must be callable");
     }
 }
+
+#[test]
+fn register_all_registers_os_and_ffi_extensions() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+
+    ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
+
+    assert!(runtime.find_package(&ctx, "NCL-OS").is_some());
+    assert!(runtime.find_package(&ctx, "NCL-FFI").is_some());
+    assert!(
+        runtime
+            .function(&mut ctx, "NCL-FFI", "CALL-FOREIGN")
+            .is_some()
+    );
+}

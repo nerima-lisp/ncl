@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 //! Marshalling between Lisp values and the foreign byte representation.
 //!
 //! The byte order is little-endian, matching the supported targets (x86-64 and
@@ -146,6 +148,73 @@ pub fn unmarshal_result(
         AlienType::Array(_, _) | AlienType::Structure(_) | AlienType::Union(_) => {
             Err(FfiError::MissingSysPrimitive(READ_SYSTEM_MEMORY))
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::bool_assert_comparison, clippy::float_cmp, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use ncl_object::make_bignum_from_limbs;
+
+    fn fixture() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut context = ThreadContext::new();
+        context.register(&runtime).unwrap();
+        (runtime, context)
+    }
+
+    #[test]
+    fn scalar_helpers_report_invalid_shapes_and_widths() {
+        assert_eq!(read_signed(&[]).unwrap(), 0);
+        assert!(matches!(
+            read_signed(&[0; 17]),
+            Err(FfiError::UnsupportedType("integer"))
+        ));
+        assert!(matches!(
+            read_unsigned(&[0; 17]),
+            Err(FfiError::UnsupportedType("integer"))
+        ));
+        assert!(matches!(
+            unsigned_bytes(256, 1, "char"),
+            Err(FfiError::ValueOutOfRange { .. })
+        ));
+        assert_eq!(boolean_value(Word::fixnum(0)).unwrap(), false);
+        assert_eq!(boolean_value(Word::fixnum(1)).unwrap(), true);
+        assert!(boolean_value(Word::fixnum(2)).is_err());
+        assert!(character_value(Word::fixnum(65)).is_err());
+    }
+
+    #[test]
+    fn numeric_helpers_cover_bignum_signs_and_float_shapes() {
+        let (runtime, mut context) = fixture();
+        let positive = make_bignum_from_i128(&mut context, &runtime, (1_i128 << 62) + 1)
+            .unwrap()
+            .as_word();
+        let negative = make_bignum_from_i128(&mut context, &runtime, -((1_i128 << 62) + 1))
+            .unwrap()
+            .as_word();
+        assert!(word_to_i128(&context, positive).is_ok());
+        assert!(word_to_i128(&context, negative).is_ok());
+        assert!(word_to_u128(&context, positive).is_ok());
+        assert!(word_to_u128(&context, negative).is_err());
+        assert!(single_value(&context, Word::NIL).is_err());
+        assert!(double_value_of(&context, Word::NIL).is_err());
+        assert!(i128_to_word(&mut context, &runtime, 1_i128 << 62).is_ok());
+        assert!(i128_to_word(&mut context, &runtime, -(1_i128 << 62) - 1).is_ok());
+        assert!(u128_to_word(&mut context, &runtime, 1_u128 << 62).is_ok());
+        let single = Word::from_bits((u64::from(1.25_f32.to_bits()) << 4) | 2);
+        assert_eq!(single_value(&context, single).unwrap(), 1.25_f32);
+        assert_eq!(double_value_of(&context, single).unwrap(), 1.25_f32.into());
+        let huge = make_bignum_from_limbs(&mut context, &runtime, false, &[u32::MAX; 5])
+            .unwrap()
+            .as_word();
+        let huge_negative = make_bignum_from_limbs(&mut context, &runtime, true, &[u32::MAX; 5])
+            .unwrap()
+            .as_word();
+        assert!(word_to_i128(&context, huge).is_err());
+        assert!(word_to_i128(&context, huge_negative).is_err());
+        assert!(u128_to_word(&mut context, &runtime, u128::MAX).is_err());
     }
 }
 

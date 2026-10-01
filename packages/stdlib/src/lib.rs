@@ -70,6 +70,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;
+    ncl_os::register(runtime)?;
     register_core_native_addresses(runtime)?;
     Ok(())
 }

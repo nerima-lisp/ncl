@@ -3,6 +3,7 @@
 
 mod code;
 mod codegen;
+pub mod ffi;
 mod function_address;
 mod heap;
 mod heap_state;
@@ -42,6 +43,27 @@ pub use thread::{
     ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, SafepointState, Thread,
     ThreadLayout, thread_layout,
 };
+
+/// Error returned when a process environment variable cannot be set.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EnvironmentError;
+
+/// Set a process environment variable through the platform boundary.
+///
+/// # Errors
+/// Returns [`EnvironmentError`] when either string contains an interior NUL or
+/// the platform call fails.
+pub fn set_environment_variable(name: &str, value: &str) -> Result<(), EnvironmentError> {
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return Err(EnvironmentError);
+    };
+    let Ok(value) = std::ffi::CString::new(value) else {
+        return Err(EnvironmentError);
+    };
+    // SAFETY: both strings are owned NUL-terminated values and overwrite is a valid POSIX flag.
+    let result = unsafe { os::declarations::setenv(name.as_ptr(), value.as_ptr(), 1) };
+    (result == 0).then_some(()).ok_or(EnvironmentError)
+}
 
 impl RootToken {
     /// Construct a token covering a contiguous span of root slots.

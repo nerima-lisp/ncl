@@ -1,9 +1,8 @@
 //! Unmanaged memory operations and the pinned-object runtime side.
 //!
-//! `ncl-sys` exposes no safe primitive to read, write, allocate, or copy an
-//! arbitrary address, so every operation that needs one returns
-//! [`FfiError::MissingSysPrimitive`] naming the required signature. Rooting is
-//! implemented here because it only needs the public `push_root` / `pop_root`.
+//! Raw address operations are delegated to safe wrappers in `ncl-sys`.
+
+#![allow(clippy::redundant_closure)]
 
 use ncl_object::{Runtime, ThreadContext, Word};
 use ncl_sys::RootSlot;
@@ -12,76 +11,75 @@ use crate::FfiError;
 use crate::alien::AlienType;
 use crate::roots::with_roots;
 use crate::sap::SystemAreaPointer;
-use crate::sys_requirements::{
-    ALLOCATE_SYSTEM_MEMORY, DEALLOCATE_SYSTEM_MEMORY, MEMMOVE_SYSTEM_MEMORY, READ_SYSTEM_MEMORY,
-    WRITE_SYSTEM_MEMORY,
-};
 
 /// Allocate `size` bytes of unmanaged memory and return its address.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// allocation wrapper.
-pub const fn allocate_system_memory(_size: usize) -> Result<SystemAreaPointer, FfiError> {
-    Err(FfiError::MissingSysPrimitive(ALLOCATE_SYSTEM_MEMORY))
+/// Returns [`FfiError::Memory`] when the platform allocator rejects the request.
+pub fn allocate_system_memory(size: usize) -> Result<SystemAreaPointer, FfiError> {
+    ncl_sys::ffi::allocate_system_memory(size)
+        .map(SystemAreaPointer::new)
+        .map_err(FfiError::Memory)
 }
 
 /// Release unmanaged memory previously returned by `allocate-system-memory`.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// release wrapper.
-pub const fn deallocate_system_memory(
-    _address: SystemAreaPointer,
-    _size: usize,
-) -> Result<(), FfiError> {
-    Err(FfiError::MissingSysPrimitive(DEALLOCATE_SYSTEM_MEMORY))
+/// Returns [`FfiError::Memory`] for a null address.
+pub fn deallocate_system_memory(address: SystemAreaPointer, size: usize) -> Result<(), FfiError> {
+    ncl_sys::ffi::deallocate_system_memory(address.address(), size).map_err(FfiError::Memory)
 }
 
 /// Copy `count` bytes between two possibly overlapping addresses.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// copy wrapper.
-pub const fn memmove(
-    _destination: SystemAreaPointer,
-    _source: SystemAreaPointer,
-    _count: usize,
+/// Returns [`FfiError::Memory`] for an invalid range.
+pub fn memmove(
+    destination: SystemAreaPointer,
+    source: SystemAreaPointer,
+    count: usize,
 ) -> Result<SystemAreaPointer, FfiError> {
-    Err(FfiError::MissingSysPrimitive(MEMMOVE_SYSTEM_MEMORY))
+    ncl_sys::ffi::memmove_system_memory(destination.address(), source.address(), count)
+        .map(|()| destination)
+        .map_err(FfiError::Memory)
 }
 
 /// Read a value of `ty` from `base + offset`, the shared implementation of
 /// `sap-ref-*`, `signed-sap-ref-*`, and `sap-ref-sap`.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// arbitrary-address read.
-pub const fn sap_ref(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    _ty: &AlienType,
-    _base: SystemAreaPointer,
-    _offset: isize,
+/// Returns [`FfiError::Memory`] for an invalid range or the type-layer error
+/// for an unsupported aggregate.
+pub fn sap_ref(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    ty: &AlienType,
+    base: SystemAreaPointer,
+    offset: isize,
 ) -> Result<Word, FfiError> {
-    Err(FfiError::MissingSysPrimitive(READ_SYSTEM_MEMORY))
+    let address = base.address().wrapping_add_signed(offset);
+    let mut bytes = vec![0_u8; crate::alien::size_of(ty)];
+    ncl_sys::ffi::read_system_memory(address, &mut bytes).map_err(FfiError::Memory)?;
+    crate::alien::unmarshal_result(ctx, runtime, ty, &bytes)
 }
 
 /// Write `value`, marshalled as `ty`, to `base + offset`, the shared
 /// implementation of `(setf sap-ref-*)`.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// arbitrary-address write.
-pub const fn sap_set(
-    _ctx: &ThreadContext,
+/// Returns [`FfiError::Memory`] for an invalid range or the type-layer error
+/// for an unsupported aggregate.
+pub fn sap_set(
+    ctx: &ThreadContext,
     _runtime: &Runtime,
-    _ty: &AlienType,
-    _base: SystemAreaPointer,
-    _offset: isize,
-    _value: Word,
+    ty: &AlienType,
+    base: SystemAreaPointer,
+    offset: isize,
+    value: Word,
 ) -> Result<(), FfiError> {
-    Err(FfiError::MissingSysPrimitive(WRITE_SYSTEM_MEMORY))
+    let bytes = crate::alien::marshal_argument(ctx, ty, value)?;
+    let address = base.address().wrapping_add_signed(offset);
+    ncl_sys::ffi::write_system_memory(address, &bytes).map_err(FfiError::Memory)
 }
 
 /// Root every value in `values` across a block that builds alien views of them.

@@ -71,3 +71,44 @@ fn install_class(
     })
     .map_err(FfiError::into_object_error)
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use ncl_ownership::SymbolKind;
+
+    #[test]
+    fn each_symbol_kind_registers_its_declared_runtime_bits() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        for (index, kind) in [
+            SymbolKind::Class,
+            SymbolKind::ClassAndFunction,
+            SymbolKind::Function,
+            SymbolKind::Macro,
+            SymbolKind::MacroAndClass,
+            SymbolKind::SpecialOperatorAndClass,
+            SymbolKind::Type,
+            SymbolKind::Variable,
+            SymbolKind::VariableAndFunction,
+            SymbolKind::Other,
+            SymbolKind::Constant,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let name = Box::leak(format!("TEST-{index}").into_boxed_str());
+            let row = SymbolRow {
+                package: "CL",
+                name,
+                kind,
+            };
+            register_symbol(&runtime, &mut ctx, &row).unwrap();
+            if kind.defines_class() {
+                install_class(&runtime, &mut ctx, name).unwrap();
+            }
+        }
+    }
+}

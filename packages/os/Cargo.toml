@@ -11,5 +11,8 @@ ncl-sys = { path = "../sys" }
 ncl-conditions = { path = "../conditions" }
 ncl-lib-streams = { path = "../lib/streams" }
 
+[dev-dependencies]
+ncl-ownership = { path = "../ownership" }
+
 [lints]
 workspace = true

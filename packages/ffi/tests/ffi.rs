@@ -6,11 +6,13 @@
 
 //! Foreign calls, dynamic loading, unmanaged memory, roots, and conditions.
 
+use ncl_conditions::ConditionError;
 use ncl_ffi::{
-    AlienType, FfiError, alien_funcall, alien_routine, alien_size, allocate_system_memory,
-    dlerror_message, load_shared_object, null_alien, sap_ref, signal_ffi_error,
-    with_rooted_objects,
+    AlienType, FfiError, SysPrimitive, alien_funcall, alien_routine, alien_sap, alien_size,
+    allocate_system_memory, cast, dlerror_message, load_shared_object, null_alien, sap_ref,
+    signal_ffi_error, with_rooted_objects,
 };
+use ncl_object::ObjectError;
 use ncl_object::{Runtime, ThreadContext, Word, make_string};
 
 /// Declare a runtime and a registered context as test locals, in that order so
@@ -147,4 +149,111 @@ fn ffi_error_signals_a_simple_error_when_conditions_are_registered() {
     ncl_conditions::register(&runtime).unwrap();
     let result = signal_ffi_error(&mut ctx, &runtime, "boom");
     assert!(result.is_ok() || matches!(result, Err(FfiError::Condition(_))));
+}
+
+#[test]
+fn every_declared_sys_requirement_has_a_nonempty_signature() {
+    assert_eq!(SysPrimitive::ALL.len(), 13);
+    for primitive in SysPrimitive::ALL {
+        assert!(!primitive.signature().is_empty());
+    }
+}
+
+#[test]
+fn dynamic_loader_wrappers_report_real_lookup_failures() {
+    assert!(ncl_ffi::load_shared_object("/definitely/not/a/library", false).is_err());
+    assert!(ncl_ffi::load_shared_object("bad\0path", false).is_err());
+    assert!(ncl_ffi::find_foreign_symbol_address("definitely_missing_symbol").is_err());
+    assert!(ncl_ffi::foreign_symbol_address("definitely_missing_symbol").is_err());
+    assert!(ncl_ffi::foreign_symbol_sap("definitely_missing_symbol").is_err());
+    assert!(ncl_ffi::foreign_symbol_dataref_sap("definitely_missing_symbol").is_err());
+    assert_eq!(ncl_ffi::extern_alien_name("foreign-name"), "foreign-name");
+    assert!(ncl_ffi::dlerror_message().unwrap().is_none());
+    assert_eq!(ncl_ffi::SharedObjectPath::new("x").as_str(), "x");
+    assert_eq!(ncl_ffi::ForeignSymbolName::new("x").as_str(), "x");
+}
+
+#[test]
+fn unsupported_calls_and_memory_errors_are_reported() {
+    fixture!(runtime, ctx);
+    let aggregate = alien_routine(
+        "aggregate",
+        vec![AlienType::structure("s", vec![])],
+        AlienType::Int,
+        true,
+    );
+    assert_eq!(
+        alien_funcall(&mut ctx, &runtime, &aggregate, &[Word::NIL]).unwrap_err(),
+        FfiError::UnsupportedType("foreign call ABI")
+    );
+    let address = allocate_system_memory(16).unwrap();
+    let other = allocate_system_memory(16).unwrap();
+    assert_eq!(ncl_ffi::memmove(address, other, 8).unwrap(), address);
+    assert!(matches!(
+        ncl_ffi::memmove(ncl_ffi::SystemAreaPointer::null(), other, 1),
+        Err(FfiError::Memory(ncl_sys::ffi::MemoryError::Invalid))
+    ));
+    assert!(matches!(
+        ncl_ffi::deallocate_system_memory(ncl_ffi::SystemAreaPointer::null(), 1),
+        Err(FfiError::Memory(ncl_sys::ffi::MemoryError::Invalid))
+    ));
+    ncl_ffi::deallocate_system_memory(address, 16).unwrap();
+    ncl_ffi::deallocate_system_memory(other, 16).unwrap();
+}
+
+#[test]
+fn alien_addresses_and_dynamic_aliases_preserve_their_values() {
+    let sap = ncl_ffi::SystemAreaPointer::new(0x40);
+    assert_eq!(alien_sap(sap.as_word()).unwrap(), sap);
+    assert_eq!(alien_sap(Word::fixnum(0x40)).unwrap(), sap);
+    assert_eq!(cast(&AlienType::Int, sap), sap);
+    assert!(alien_sap(Word::NIL).is_err());
+    let path = if cfg!(target_os = "macos") {
+        "/usr/lib/libSystem.B.dylib"
+    } else {
+        "libc.so.6"
+    };
+    let object = ncl_ffi::dlopen_or_lose(path).unwrap();
+    assert!(ncl_ffi::find_dynamic_foreign_symbol_address(&object, "abs\0").is_err());
+    ncl_ffi::unload_shared_object(object).unwrap();
+}
+
+#[test]
+fn ffi_errors_keep_display_and_object_conversion_semantics() {
+    assert_eq!(
+        FfiError::from(ObjectError::Unsupported),
+        FfiError::Object(ObjectError::Unsupported)
+    );
+    assert_eq!(
+        FfiError::from(ConditionError::Unhandled),
+        FfiError::Condition(ConditionError::Unhandled)
+    );
+    let errors = [
+        FfiError::Object(ObjectError::Unsupported),
+        FfiError::UnknownAlienType("missing".to_owned()),
+        FfiError::ValueOutOfRange { type_name: "int" },
+        FfiError::TypeMismatch { type_name: "int" },
+        FfiError::ArityMismatch {
+            expected: 1,
+            got: 2,
+        },
+        FfiError::NullPointer,
+        FfiError::UnsupportedType("aggregate"),
+        FfiError::MissingSysPrimitive(SysPrimitive::PinObject),
+        FfiError::DynamicLoader("loader".to_owned()),
+        FfiError::Memory(ncl_sys::ffi::MemoryError::Invalid),
+        FfiError::ForeignCall(ncl_sys::ffi::CallError::InvalidResult),
+        FfiError::MissingConditionClass("SIMPLE-ERROR"),
+        FfiError::RootStackCorrupt,
+        FfiError::Condition(ConditionError::Unhandled),
+    ];
+    for error in errors {
+        assert!(!error.to_string().is_empty());
+        let object = error.clone().into_object_error();
+        assert_eq!(object, ObjectError::Unsupported);
+        assert!(
+            std::error::Error::source(&error).is_some()
+                || !matches!(error, FfiError::Object(_) | FfiError::Condition(_))
+        );
+    }
 }

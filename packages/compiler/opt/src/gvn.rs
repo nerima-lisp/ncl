@@ -353,6 +353,22 @@ impl FunctionPass for GlobalValueNumbering {
     }
 
     fn run(&mut self, function: &mut Function, _module: &Module) -> PassResult {
+        if !function.handler_regions.is_empty()
+            || function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.ops)
+                .any(|op| {
+                    matches!(
+                        op.kind,
+                        OpKind::MakeClosure { .. }
+                            | OpKind::CallClosure { .. }
+                            | OpKind::SetMultipleValues { .. }
+                    )
+                })
+        {
+            return Ok(false);
+        }
         let tree = Self::dominator_tree(function);
         let Some(entry) = function.blocks.first().map(|block| block.id) else {
             ncl_ir::verify(function)

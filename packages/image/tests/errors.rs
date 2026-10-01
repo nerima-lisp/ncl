@@ -6,9 +6,9 @@
 
 //! Error and side-effect coverage for the public image API.
 
-use ncl_image::{CodeImage, ImageError, load, save};
-use ncl_object::{ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word, make_array};
-use ncl_sys::{CodeError, alloc_code};
+use ncl_image::{load, save, CodeImage, ImageError};
+use ncl_object::{make_array, ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word};
+use ncl_sys::{alloc_code, CodeError};
 
 fn empty_image() -> Vec<u8> {
     let runtime = Runtime::new().unwrap();
@@ -26,6 +26,16 @@ fn load_error(bytes: &[u8]) -> ImageError {
     let error = load(bytes, &runtime, &mut ctx).unwrap_err();
     assert_eq!(runtime.features(), features_before);
     error
+}
+
+fn image_with_payload(object_count: u32, root_count: u32, payload: &[u8]) -> Vec<u8> {
+    let mut image = empty_image();
+    image[16..20].copy_from_slice(&object_count.to_le_bytes());
+    image[20..24].copy_from_slice(&root_count.to_le_bytes());
+    image[44..48].copy_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+    image.truncate(64);
+    image.extend_from_slice(payload);
+    image
 }
 
 #[test]
@@ -187,4 +197,50 @@ fn image_errors_preserve_categories_and_display_text() {
     assert!(std::error::Error::source(&ImageError::Object(object)).is_some());
     assert!(std::error::Error::source(&ImageError::BadMagic).is_none());
     assert_eq!(ImageError::from(object), ImageError::Object(object));
+}
+
+#[test]
+fn malformed_records_and_references_report_their_decode_categories() {
+    assert_eq!(
+        load_error(&image_with_payload(1, 0, &[255])),
+        ImageError::UnknownTag {
+            space: "object kind",
+            tag: 255,
+        }
+    );
+
+    assert_eq!(
+        load_error(&image_with_payload(0, 1, &[2])),
+        ImageError::UnknownTag {
+            space: "reference",
+            tag: 2,
+        }
+    );
+
+    assert_eq!(
+        load_error(&image_with_payload(1, 0, &[6, 255, 0, 0, 0, 0, 0])),
+        ImageError::InvalidLayout { field: "hash test" }
+    );
+    assert_eq!(
+        load_error(&image_with_payload(1, 0, &[6, 0, 255, 0, 0, 0, 0])),
+        ImageError::InvalidLayout {
+            field: "hash weakness"
+        }
+    );
+
+    let invalid_utf8 = image_with_payload(1, 0, &[3, 1, 0, 0, 0, 0xff]);
+    assert_eq!(
+        load_error(&invalid_utf8),
+        ImageError::InvalidLayout {
+            field: "string encoding"
+        }
+    );
+
+    let bad_root = image_with_payload(0, 1, &[1, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(
+        load_error(&bad_root),
+        ImageError::InvalidLayout {
+            field: "object reference"
+        }
+    );
 }

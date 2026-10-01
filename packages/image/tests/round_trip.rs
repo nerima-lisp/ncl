@@ -12,12 +12,12 @@ use std::collections::HashSet;
 use ncl_image::{load, save};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    CodeObject, Function, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr,
-    classify_object, code_constants, code_debug, code_entry, code_size, code_stack_map,
+    car, cdr, classify_object, code_constants, code_debug, code_entry, code_size, code_stack_map,
     function_code, function_entry, function_lambda_list, function_name, make_code_object,
     make_cons, make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_flags,
-    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
+    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value, CodeObject, Function,
+    ObjectRef, Package, Runtime, ThreadContext, Word,
 };
 use ncl_sys::LowTag;
 
@@ -152,6 +152,45 @@ fn loaded_objects_survive_a_full_collection() {
     let code = function_code(&ctx2, function).unwrap();
     assert_eq!(code_entry(&ctx2, code).unwrap().as_fixnum(), Some(0));
     let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
+}
+
+#[test]
+fn hash_table_tests_and_weakness_modes_round_trip() {
+    for test in [
+        HashTest::Eq,
+        HashTest::Eql,
+        HashTest::Equal,
+        HashTest::Equalp,
+    ] {
+        for weakness in [
+            Weakness::None,
+            Weakness::Key,
+            Weakness::Value,
+            Weakness::KeyAndValue,
+            Weakness::KeyOrValue,
+        ] {
+            let runtime = Runtime::new().unwrap();
+            let mut ctx = ThreadContext::new();
+            ctx.register(&runtime).unwrap();
+            let table = HashTable::new(&mut ctx, &runtime, test, weakness).unwrap();
+            table
+                .insert(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(9))
+                .unwrap();
+            let image = save(&runtime, &mut ctx, &[table.as_word()], &[]).unwrap();
+
+            let runtime2 = Runtime::new().unwrap();
+            let mut ctx2 = ThreadContext::new();
+            ctx2.register(&runtime2).unwrap();
+            let loaded = load(&image, &runtime2, &mut ctx2).unwrap();
+            let restored = HashTable::from_word(loaded.roots[0]);
+            assert_eq!(restored.test(&ctx2).unwrap(), test);
+            assert_eq!(restored.weakness(&ctx2).unwrap(), weakness);
+            assert_eq!(
+                restored.get(&mut ctx2, Word::fixnum(7)).unwrap(),
+                Some(Word::fixnum(9))
+            );
+        }
+    }
 }
 
 /// Report whether two object graphs have the same shape and contents.

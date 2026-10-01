@@ -1,6 +1,6 @@
 use super::tests_support::leaf;
 use crate::remap::{next_value, remap_kind, remap_op_values, remap_term_values};
-use ncl_ir::{Constant, ConstantIndex, Op, OpKind, Terminator, ValueId};
+use ncl_ir::{Constant, ConstantIndex, Op, OpKind, StructureKind, Terminator, ValueId};
 use std::collections::HashMap;
 
 #[test]
@@ -135,4 +135,205 @@ fn remap_helpers_cover_ir_shapes() {
         remap_term_values(term, &values);
     }
     assert_eq!(next_value(&callee), 2);
+}
+
+#[test]
+fn remap_kind_rewrites_all_value_bearing_call_shapes() {
+    let values = HashMap::from([
+        (ValueId(0), ValueId(9)),
+        (ValueId(1), ValueId(10)),
+        (ValueId(2), ValueId(11)),
+    ]);
+    let mut constants = HashMap::new();
+    let mut caller_constants = Vec::new();
+    let callee = leaf();
+    let mut remap = |kind| {
+        remap_kind(
+            &kind,
+            &values,
+            &mut constants,
+            &mut caller_constants,
+            &callee,
+        )
+    };
+
+    assert_eq!(
+        remap(OpKind::Call {
+            function: ValueId(0),
+            args: vec![ValueId(1)],
+        }),
+        OpKind::Call {
+            function: ValueId(9),
+            args: vec![ValueId(10)],
+        }
+    );
+    assert_eq!(
+        remap(OpKind::CallIndirect {
+            callee: ValueId(0),
+            args: vec![ValueId(1)],
+        }),
+        OpKind::CallIndirect {
+            callee: ValueId(9),
+            args: vec![ValueId(10)],
+        }
+    );
+    assert_eq!(
+        remap(OpKind::MakeClosure {
+            entry: ValueId(0),
+            captures: vec![ValueId(1), ValueId(2)],
+        }),
+        OpKind::MakeClosure {
+            entry: ValueId(9),
+            captures: vec![ValueId(10), ValueId(11)],
+        }
+    );
+    assert_eq!(
+        remap(OpKind::CallClosure {
+            closure: ValueId(0),
+            args: vec![ValueId(1)],
+            named_symbol: Some(ValueId(2)),
+        }),
+        OpKind::CallClosure {
+            closure: ValueId(9),
+            args: vec![ValueId(10)],
+            named_symbol: Some(ValueId(11)),
+        }
+    );
+    assert_eq!(
+        remap(OpKind::SetMultipleValues {
+            values: vec![ValueId(0), ValueId(1)],
+        }),
+        OpKind::SetMultipleValues {
+            values: vec![ValueId(9), ValueId(10)],
+        }
+    );
+}
+
+#[test]
+fn remap_kind_copies_nested_constants_once_and_preserves_invalid_indices() {
+    let mut callee = leaf();
+    callee.constants = vec![
+        Constant::Object(ConstantIndex(1)),
+        Constant::Structure {
+            kind: StructureKind::Cons,
+            elements: vec![ConstantIndex(2)],
+        },
+        Constant::Ratio {
+            numerator: ConstantIndex(3),
+            denominator: ConstantIndex(4),
+        },
+        Constant::Complex {
+            real: ConstantIndex(4),
+            imaginary: ConstantIndex(4),
+        },
+        Constant::Fixnum(7),
+        Constant::Object(ConstantIndex(99)),
+    ];
+    let mut constants = HashMap::new();
+    let mut caller_constants = Vec::new();
+
+    let first = remap_kind(
+        &OpKind::Const {
+            result: ConstantIndex(0),
+        },
+        &HashMap::new(),
+        &mut constants,
+        &mut caller_constants,
+        &callee,
+    );
+    assert_eq!(
+        first,
+        OpKind::Const {
+            result: ConstantIndex(0)
+        }
+    );
+    assert_eq!(
+        caller_constants,
+        vec![
+            Constant::Object(ConstantIndex(1)),
+            Constant::Structure {
+                kind: StructureKind::Cons,
+                elements: vec![ConstantIndex(2)],
+            },
+            Constant::Ratio {
+                numerator: ConstantIndex(3),
+                denominator: ConstantIndex(4),
+            },
+            Constant::Complex {
+                real: ConstantIndex(4),
+                imaginary: ConstantIndex(4),
+            },
+            Constant::Fixnum(7),
+        ]
+    );
+    assert_eq!(
+        remap_kind(
+            &OpKind::Const {
+                result: ConstantIndex(0),
+            },
+            &HashMap::new(),
+            &mut constants,
+            &mut caller_constants,
+            &callee,
+        ),
+        first
+    );
+
+    assert_eq!(
+        remap_kind(
+            &OpKind::Const {
+                result: ConstantIndex(5),
+            },
+            &HashMap::new(),
+            &mut constants,
+            &mut caller_constants,
+            &callee,
+        ),
+        OpKind::Const {
+            result: ConstantIndex(5)
+        }
+    );
+    assert_eq!(
+        remap_kind(
+            &OpKind::Const {
+                result: ConstantIndex(99),
+            },
+            &HashMap::new(),
+            &mut constants,
+            &mut caller_constants,
+            &callee,
+        ),
+        OpKind::Const {
+            result: ConstantIndex(99)
+        }
+    );
+}
+
+#[test]
+fn remap_op_values_rewrites_named_symbols_and_captured_values() {
+    let replacements = HashMap::from([
+        (ValueId(1), ValueId(11)),
+        (ValueId(2), ValueId(12)),
+        (ValueId(3), ValueId(13)),
+    ]);
+    let mut op = Op {
+        results: vec![],
+        kind: OpKind::CallClosure {
+            closure: ValueId(1),
+            args: vec![ValueId(2)],
+            named_symbol: Some(ValueId(3)),
+        },
+        loc: None,
+    };
+
+    remap_op_values(&mut op, &replacements);
+
+    assert_eq!(
+        op.kind,
+        OpKind::CallClosure {
+            closure: ValueId(11),
+            args: vec![ValueId(12)],
+            named_symbol: Some(ValueId(13)),
+        }
+    );
 }

@@ -417,10 +417,10 @@ pub use sccp::Sccp;
 mod dce;
 pub use dce::DeadCodeElimination;
 #[cfg(test)]
-#[path = "dce_tests.rs"]
+#[path = "tests/dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]
-#[path = "gvn_tests.rs"]
+#[path = "tests/gvn_tests.rs"]
 mod gvn_tests;
 #[cfg(test)]
 #[path = "manager_tests.rs"]
@@ -429,7 +429,7 @@ mod manager_tests;
 #[path = "remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
-#[path = "sccp_tests.rs"]
+#[path = "tests/sccp_tests.rs"]
 mod sccp_tests;
 #[cfg(test)]
 #[path = "tests.rs"]

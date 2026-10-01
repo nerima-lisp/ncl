@@ -20,6 +20,11 @@ fn direct_leaf_inlines_and_text_round_trips() {
             .all(|op| !matches!(op.kind, OpKind::Call { .. }))
     );
     module.verify().fixture();
+    let transformed = module.functions[0].to_string();
+    assert_eq!(
+        ncl_ir::parse(&transformed).fixture().to_string(),
+        transformed
+    );
 }
 
 #[test]

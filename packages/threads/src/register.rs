@@ -191,6 +191,10 @@ fn terminate_thread_builtin(
     Ok(Word::TRUE)
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "RustBuiltin callbacks use one uniform result type"
+)]
 fn thread_yield_builtin(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,

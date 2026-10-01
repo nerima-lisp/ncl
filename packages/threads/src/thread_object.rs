@@ -63,9 +63,9 @@ pub fn make_main_thread_object(
 
 /// Create a Lisp thread object and start its OS thread.
 ///
-/// The thread registers its own context and then parks in [`idle_body`]: Phase
-/// 1 has no Rust-to-Lisp call path, so `function` is recorded on the object but
-/// not invoked. Terminate the thread to release it.
+/// The thread registers its own context and invokes a callable `function` with
+/// no arguments. Non-callable legacy designators create a compatibility record
+/// that can still be terminated and joined.
 ///
 /// # Errors
 /// Returns an object-layer error when the object cannot be built, and
@@ -157,6 +157,10 @@ pub fn join_thread(ctx: &ThreadContext, thread: Word) -> Result<(), ThreadError>
 }
 
 /// Join a thread and return its primary value.
+///
+/// # Errors
+/// Returns [`ThreadError::NotAThread`] for a non-thread object or the join
+/// error reported by the underlying thread registry.
 pub fn join_thread_value(ctx: &mut ThreadContext, thread: Word) -> Result<Word, ThreadError> {
     let mut rooted_thread = thread;
     let token = ncl_object::push_root(ctx, &mut rooted_thread);

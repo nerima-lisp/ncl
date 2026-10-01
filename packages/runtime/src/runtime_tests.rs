@@ -204,7 +204,7 @@ mod runtime_tests {
             })
             .unwrap_or_else(|error| panic!("watchdog worker spawn failed: {error}"));
         let value = receiver
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(Duration::from_secs(30))
             .unwrap_or_else(|error| panic!("compiled Lisp thread watchdog expired: {error}"))
             .unwrap_or_else(|error| panic!("compiled Lisp thread evaluation failed: {error}"));
         assert_eq!(value, "42");

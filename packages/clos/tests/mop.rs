@@ -240,3 +240,35 @@ fn descriptors_are_registration_ready() {
         assert!(!descriptor.name.as_str().is_empty());
     }
 }
+
+#[test]
+fn typed_mop_accessors_reject_non_descriptors() {
+    let (runtime, mut ctx) = setup();
+    for name in [
+        "CLASS-PRECEDENCE-LIST",
+        "CLASS-SLOTS",
+        "CLASS-DIRECT-SLOTS",
+        "CLASS-DIRECT-SUPERCLASSES",
+        "CLASS-FINALIZED-P",
+        "SLOT-DEFINITION-NAME",
+        "SLOT-DEFINITION-LOCATION",
+        "EQL-SPECIALIZER-OBJECT",
+    ] {
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[Word::NIL]),
+            Err(ncl_object::ObjectError::TypeError),
+            "{name}"
+        );
+    }
+    for name in [
+        "SLOT-VALUE-USING-CLASS",
+        "SLOT-BOUNDP-USING-CLASS",
+        "SLOT-MAKUNBOUND-USING-CLASS",
+    ] {
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[Word::NIL, Word::NIL, Word::NIL]),
+            Err(ncl_object::ObjectError::TypeError),
+            "{name}"
+        );
+    }
+}

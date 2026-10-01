@@ -319,6 +319,87 @@ fn x86_64_lowering_covers_allocation_safepoint_builtin_and_call_return() {
 }
 
 #[test]
+fn x86_64_lowering_covers_normal_call_overflow_and_closure_captures() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(133),
+        "x86-64-lowering-normal-call-overflow",
+        vec![
+            Param {
+                name: "callee".into(),
+                ty: Ty::Address,
+            },
+            Param {
+                name: "first".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "second".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "third".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "fourth".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "fifth".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "sixth".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    let argc_index = builder.add_constant(Constant::Fixnum(5));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
+        .expect("argc")[0];
+    let arguments = (1..=5).map(ncl_ir::ValueId).collect::<Vec<_>>();
+    let mut call_args = vec![argc];
+    call_args.extend(arguments.iter().copied());
+    builder
+        .push_op(
+            OpKind::Call {
+                function: ncl_ir::ValueId(0),
+                args: call_args.clone(),
+            },
+            &[],
+        )
+        .expect("normal call with overflow arguments");
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry: ncl_ir::ValueId(0),
+                captures: vec![ncl_ir::ValueId(1), ncl_ir::ValueId(2)],
+            },
+            &[Ty::Word],
+        )
+        .expect("closure with multiple captures")[0];
+    builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: call_args,
+                named_symbol: None,
+            },
+            &[],
+        )
+        .expect("normal closure call with overflow arguments");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+    assert!(compiled.safepoint_maps.len() >= 3);
+}
+
+#[test]
 fn x86_64_lowering_covers_branch_switch_and_terminal_paths() {
     let mut jump = FunctionBuilder::new(
         ncl_ir::FunctionId(128),

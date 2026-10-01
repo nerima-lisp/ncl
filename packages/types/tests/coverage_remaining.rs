@@ -51,8 +51,8 @@ fn serialize_value_handles_each_supported_variant_and_rejects_opaque() {
         Word::fixnum(-9)
     );
     assert_eq!(
-        serialize_value(&mut ctx, &runtime, &Value::Character('λ' as u32)).unwrap(),
-        Word::character('λ' as u32)
+        serialize_value(&mut ctx, &runtime, &Value::Character(955)).unwrap(),
+        Word::character(955)
     );
     assert_eq!(
         serialize_value(&mut ctx, &runtime, &Value::Opaque(0x1234)),
@@ -132,7 +132,7 @@ fn coerce_handles_bignum_ratio_and_function_designators() {
         .unwrap();
     assert_eq!(
         ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(bignum_float)).unwrap(),
-        -((1_i128 << 40) as f64 + 3.0)
+        -(1099511627776.0 + 3.0)
     );
     assert_eq!(
         ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(ratio_float)).unwrap(),

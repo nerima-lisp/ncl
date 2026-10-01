@@ -110,17 +110,14 @@ fn coerce_converts_sequences_characters_and_reals() {
     let values = list(
         &mut ctx,
         &runtime,
-        &[Word::character('x' as u32), Word::character('y' as u32)],
+        &[Word::character(120), Word::character(121)],
     );
 
     let as_list = runtime
         .call_builtin(&mut ctx, coerce, &[chars, list_type])
         .unwrap();
     assert!(as_list.is_cons());
-    assert_eq!(
-        ncl_object::car(&ctx, as_list).unwrap(),
-        Word::character('a' as u32)
-    );
+    assert_eq!(ncl_object::car(&ctx, as_list).unwrap(), Word::character(97));
     let as_vector = runtime
         .call_builtin(&mut ctx, coerce, &[values, vector_type])
         .unwrap();
@@ -136,7 +133,7 @@ fn coerce_converts_sequences_characters_and_reals() {
     let as_character = runtime
         .call_builtin(&mut ctx, coerce, &[one_character, character_type])
         .unwrap();
-    assert_eq!(as_character, Word::character('z' as u32));
+    assert_eq!(as_character, Word::character(122));
     let as_float = runtime
         .call_builtin(&mut ctx, coerce, &[Word::fixnum(-7), float_type])
         .unwrap();

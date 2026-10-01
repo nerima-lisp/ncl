@@ -245,6 +245,21 @@ impl Default for InlineDirectCalls {
 }
 
 impl InlineDirectCalls {
+    /// Conditional primitive block targets have no inline-scope declaration in the IR.
+    /// Until the IR can distinguish caller-visible targets from callee-local targets,
+    /// preserve the call instead of copying a potentially callee-local `BlockId`.
+    fn has_undeclared_block_targets(function: &Function) -> bool {
+        function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
+            matches!(
+                op.kind,
+                OpKind::Prim {
+                    condition: Some(_),
+                    ..
+                }
+            )
+        })
+    }
+
     fn prohibited(function: &Function) -> bool {
         !function.handler_regions.is_empty()
             || function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
@@ -308,10 +323,15 @@ impl FunctionPass for InlineDirectCalls {
                 };
                 if callee.id == function.id
                     || Self::prohibited(callee)
+                    || Self::has_undeclared_block_targets(callee)
                     || callee.blocks.len() != 1
                     || callee.blocks[0].ops.len() > self.max_ops
                     || callee.blocks[0].ops.iter().any(|op| {
-                        matches!(op.kind, OpKind::Call { .. } | OpKind::CallIndirect { .. })
+                        matches!(
+                            op.kind,
+                            OpKind::Call { .. }
+                                | OpKind::CallIndirect { .. }
+                        )
                     })
                 {
                     new_ops.push(call);

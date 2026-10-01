@@ -1,6 +1,6 @@
 use super::tests_support::{Fixture, caller, leaf};
 use crate::{InlineDirectCalls, Module, PassManager};
-use ncl_ir::{Constant, ConstantIndex, FunctionId, Op, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{BlockId, Constant, ConstantIndex, FunctionId, Op, OpKind, Terminator, Ty, ValueId};
 
 #[test]
 fn direct_leaf_inlines_and_text_round_trips() {
@@ -94,4 +94,35 @@ fn threshold_skips() {
             .iter()
             .any(|op| matches!(op.kind, OpKind::Call { .. }))
     );
+}
+
+#[test]
+fn conditional_prim_with_callee_block_target_is_not_inlined() {
+    let mut callee = leaf();
+    callee.blocks[0].ops[0].kind = OpKind::Prim {
+        op: ncl_ir::Prim::Car,
+        args: vec![ValueId(0)],
+        condition: Some(BlockId(0)),
+    };
+    let mut module = Module {
+        functions: vec![caller(), callee],
+    };
+    module.functions[0].blocks[0].ops.insert(
+        1,
+        Op {
+            results: vec![],
+            kind: OpKind::Safepoint,
+            loc: None,
+        },
+    );
+    let before = module.functions[0].clone();
+    let mut manager = PassManager::new();
+    manager.add_function_pass(InlineDirectCalls::default());
+
+    manager
+        .run(&mut module)
+        .expect("inliner should reject the undeclared block target safely");
+
+    assert_eq!(module.functions[0], before);
+    module.verify().expect("test module should remain valid");
 }

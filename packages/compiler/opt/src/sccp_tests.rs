@@ -77,6 +77,44 @@ fn leaves_fixnum_overflow_unfolded() {
 }
 
 #[test]
+fn leaves_conditional_primitive_unfolded() {
+    let mut builder = FunctionBuilder::new(FunctionId(3), "conditional", vec![], vec![Ty::I64]);
+    let condition_target = builder.create_block(Vec::new());
+    let left = builder.add_constant(Constant::Fixnum(2));
+    let right = builder.add_constant(Constant::Fixnum(3));
+    builder.position_at(ncl_ir::BlockId(0)).fixture();
+    let left = builder
+        .push_op(OpKind::Const { result: left }, &[Ty::I64])
+        .fixture()[0];
+    let right = builder
+        .push_op(OpKind::Const { result: right }, &[Ty::I64])
+        .fixture()[0];
+    let sum = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![left, right],
+                condition: Some(condition_target),
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return { values: vec![sum] })
+        .fixture();
+    let mut function = builder.finish();
+    assert!(!Sccp.run(&mut function, &Module::default()).fixture());
+    assert!(matches!(
+        function.blocks[0].ops[2].kind,
+        OpKind::Prim {
+            condition: Some(_),
+            ..
+        }
+    ));
+    ncl_ir::verify(&function).fixture();
+}
+
+#[test]
 fn does_not_replace_word_conversion_with_i64_constant() {
     let mut builder = FunctionBuilder::new(FunctionId(2), "word-convert", vec![], vec![Ty::Word]);
     let source = builder.add_constant(Constant::Fixnum(7));

@@ -7,8 +7,11 @@
 //! symbol, and installs the class descriptors the object model uses.
 
 use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, Word, make_simple_vector, make_string, pop_root,
-    push_root, set_symbol_constant, set_symbol_macro, set_symbol_special,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, make_simple_vector, make_string, pop_root,
+    push_root, set_symbol_constant, set_symbol_macro, set_symbol_special, string_length,
+    string_ref,
 };
 
 use crate::symbols::{SymbolKind, SymbolRow, rows};
@@ -42,7 +45,256 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for row in rows() {
         register_row(runtime, &mut ctx, row)?;
     }
-    install_classes(runtime, &mut ctx)
+    install_classes(runtime, &mut ctx)?;
+    install_builtins(runtime, &mut ctx)
+}
+
+const ANY1: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("OBJECT"),
+    ty: ParameterType::Any,
+}];
+const ANY2: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("NAME"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("FUNCTION"),
+        ty: ParameterType::Any,
+    },
+];
+const ANY3: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("QUEUE"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("MUTEX"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("TIMEOUT"),
+        ty: ParameterType::Any,
+    },
+];
+
+fn install_builtins(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    register_direct(runtime, ctx, "MAKE-THREAD", ANY2, make_thread_builtin)?;
+    register_direct(runtime, ctx, "JOIN-THREAD", ANY1, join_thread_builtin)?;
+    register_direct(runtime, ctx, "THREAD-ALIVE-P", ANY1, thread_alive_builtin)?;
+    register_direct(runtime, ctx, "CURRENT-THREAD", &[], current_thread_builtin)?;
+    register_direct(
+        runtime,
+        ctx,
+        "TERMINATE-THREAD",
+        ANY1,
+        terminate_thread_builtin,
+    )?;
+    register_direct(runtime, ctx, "THREAD-YIELD", &[], thread_yield_builtin)?;
+    register_direct(runtime, ctx, "MUTEX-MAKE", ANY1, mutex_make_builtin)?;
+    register_direct(runtime, ctx, "MUTEX-LOCK", ANY1, mutex_lock_builtin)?;
+    register_direct(runtime, ctx, "MUTEX-UNLOCK", ANY1, mutex_unlock_builtin)?;
+    register_direct(runtime, ctx, "SEMAPHORE-MAKE", ANY2, semaphore_make_builtin)?;
+    register_direct(runtime, ctx, "SEMAPHORE-WAIT", ANY1, semaphore_wait_builtin)?;
+    register_direct(runtime, ctx, "SEMAPHORE-POST", ANY1, semaphore_post_builtin)?;
+    register_direct(runtime, ctx, "CONDITION-WAIT", ANY3, condition_wait_builtin)?;
+    register_direct(
+        runtime,
+        ctx,
+        "CONDITION-NOTIFY",
+        ANY1,
+        condition_notify_builtin,
+    )?;
+    register_direct(
+        runtime,
+        ctx,
+        "CONDITION-BROADCAST",
+        ANY1,
+        condition_broadcast_builtin,
+    )
+}
+
+fn register_direct(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &'static str,
+    parameters: &'static [Parameter],
+    function: ncl_object::RustBuiltin,
+) -> Result<(), ObjectError> {
+    let descriptor = Builtin {
+        lambda_list: LambdaList::fixed(parameters),
+        convention: BuiltinConvention::Direct(Arity::exact(
+            u8::try_from(parameters.len()).map_err(|_| ObjectError::Layout)?,
+        )),
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclThreads, BuiltinName::new(name)),
+        BuiltinImplementation::direct(descriptor, function),
+    )?;
+    Ok(())
+}
+
+fn string_arg(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+    let length = string_length(ctx, word)?;
+    (0..length)
+        .map(|index| string_ref(ctx, word, index))
+        .collect::<Result<String, _>>()
+}
+
+fn make_thread_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = string_arg(ctx, args.required(0)?)?;
+    let function = args.required(1)?;
+    let shared = runtime.shared_handle().ok_or(ObjectError::Layout)?;
+    crate::make_thread(ctx, &shared, &name, function).map_err(|_| ObjectError::TypeError)
+}
+
+fn join_thread_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::join_thread_value(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
+}
+
+fn thread_alive_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::thread_alive_p(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
+}
+
+fn current_thread_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::current_thread(ctx, runtime).map_err(|_| ObjectError::TypeError)
+}
+
+fn terminate_thread_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::terminate_thread(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)?;
+    Ok(Word::TRUE)
+}
+
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "RustBuiltin callbacks use one uniform result type"
+)]
+fn thread_yield_builtin(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::thread_yield();
+    Ok(Word::NIL)
+}
+
+fn mutex_make_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = string_arg(ctx, args.required(0)?)?;
+    crate::make_mutex(ctx, runtime, &name, crate::MutexKind::NonRecursive)
+        .map_err(|_| ObjectError::TypeError)
+}
+
+fn mutex_lock_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::get_mutex(ctx, args.required(0)?, true, None).map_err(|_| ObjectError::TypeError)
+}
+
+fn mutex_unlock_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::release_mutex(ctx, args.required(0)?)
+        .map(|()| Word::TRUE)
+        .map_err(|_| ObjectError::TypeError)
+}
+
+fn semaphore_make_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = string_arg(ctx, args.required(0)?)?;
+    let count = args
+        .required(1)?
+        .as_fixnum()
+        .and_then(|value| u64::try_from(value).ok())
+        .ok_or(ObjectError::TypeError)?;
+    crate::make_semaphore(ctx, runtime, &name, count).map_err(|_| ObjectError::TypeError)
+}
+
+fn semaphore_wait_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::wait_on_semaphore(ctx, args.required(0)?, None).map_err(|_| ObjectError::TypeError)
+}
+
+fn semaphore_post_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::signal_semaphore(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
+}
+
+fn condition_wait_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::condition_wait(ctx, args.required(0)?, args.required(1)?, None)
+        .map_err(|_| ObjectError::TypeError)
+}
+
+fn condition_notify_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::condition_notify(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
+}
+
+fn condition_broadcast_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    crate::condition_broadcast(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
 }
 
 fn register_row(

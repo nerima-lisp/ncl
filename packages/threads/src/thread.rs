@@ -11,7 +11,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
-use ncl_object::{Runtime, ThreadContext};
+use ncl_object::{
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, FunctionObject,
+    MultipleValues, Runtime, ThreadContext, Word,
+};
 
 use crate::ThreadError;
 use crate::state::lock;
@@ -24,6 +27,8 @@ pub const ID_SLOT: usize = 1;
 pub const STATE_SLOT: usize = 2;
 /// Slot index of the recorded function object.
 pub const FUNCTION_SLOT: usize = 3;
+/// Slot index of the primary value returned by a Lisp thread.
+pub const RESULT_SLOT: usize = 4;
 
 /// State word stored in a thread object: the thread is running.
 pub const STATE_RUNNING: i64 = 0;
@@ -76,6 +81,8 @@ struct Record {
     terminate: bool,
     interrupt: bool,
     result: Option<Result<(), ThreadError>>,
+    value: Option<Word>,
+    placeholder: bool,
 }
 
 #[derive(Debug, Default)]
@@ -88,6 +95,15 @@ static REGISTRY: OnceLock<(Mutex<Registry>, Condvar)> = OnceLock::new();
 
 thread_local! {
     static CURRENT: Cell<Option<u64>> = const { Cell::new(None) };
+    static CURRENT_OBJECT: Cell<Word> = const { Cell::new(Word::NIL) };
+}
+
+pub fn set_current_object(object: Word) {
+    CURRENT_OBJECT.with(|current| current.set(object));
+}
+
+pub fn current_object() -> Word {
+    CURRENT_OBJECT.with(Cell::get)
 }
 
 fn registry() -> &'static (Mutex<Registry>, Condvar) {
@@ -125,6 +141,8 @@ pub fn spawn(
                 terminate: false,
                 interrupt: false,
                 result: None,
+                value: None,
+                placeholder: false,
             },
         );
         id
@@ -139,6 +157,130 @@ pub fn spawn(
     };
     drop(handle);
     Ok(ThreadId(id))
+}
+
+/// Spawn a thread that invokes a Lisp function with no arguments.
+///
+/// # Errors
+/// Returns [`ThreadError::SpawnFailed`] when the OS refuses to create the
+/// worker thread.
+pub fn spawn_lisp(
+    runtime: &std::sync::Arc<Runtime>,
+    name: &str,
+    function: Word,
+    thread_object: Word,
+) -> Result<ThreadId, ThreadError> {
+    let id = {
+        let mut registry = lock_registry();
+        registry.next_id = registry.next_id.saturating_add(1);
+        let id = registry.next_id;
+        registry.live.insert(
+            id,
+            Record {
+                name: name.to_owned(),
+                life: Life::Running,
+                terminate: false,
+                interrupt: false,
+                result: None,
+                value: None,
+                placeholder: false,
+            },
+        );
+        id
+    };
+    let child_runtime = std::sync::Arc::clone(runtime);
+    let started = std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(move || run_lisp_thread(&child_runtime, id, function, thread_object));
+    let Ok(handle) = started else {
+        lock_registry().live.remove(&id);
+        return Err(ThreadError::SpawnFailed);
+    };
+    drop(handle);
+    Ok(ThreadId(id))
+}
+
+/// Create a compatibility thread record for a non-callable legacy designator.
+///
+/// # Errors
+/// Returns [`ThreadError::SpawnFailed`] if the registry cannot allocate an id.
+pub fn spawn_placeholder(name: &str) -> Result<ThreadId, ThreadError> {
+    let mut registry = lock_registry();
+    registry.next_id = registry.next_id.saturating_add(1);
+    let id = ThreadId(registry.next_id);
+    registry.live.insert(
+        id.get(),
+        Record {
+            name: name.to_owned(),
+            life: Life::Running,
+            terminate: false,
+            interrupt: false,
+            result: None,
+            value: None,
+            placeholder: true,
+        },
+    );
+    drop(registry);
+    Ok(id)
+}
+
+fn run_lisp_thread(runtime: &Runtime, id: u64, function: Word, thread_object: Word) {
+    CURRENT.with(|current| current.set(Some(id)));
+    set_current_object(thread_object);
+    let mut context = ThreadContext::new();
+    let outcome = match context.register(runtime) {
+        Ok(()) => {
+            let function = FunctionObject::try_from(function).map_err(ThreadError::from);
+            function.and_then(|function| {
+                let mut caller = BuiltinFunctionCaller;
+                let mut values = MultipleValues::default();
+                caller
+                    .call_function(
+                        &mut context,
+                        runtime,
+                        FunctionDesignator::Function(function),
+                        FunctionArguments::new(&[]),
+                        &mut values,
+                    )
+                    .map_err(ThreadError::from)
+            })
+        }
+        Err(error) => Err(ThreadError::from(error)),
+    };
+    let value = outcome.as_ref().ok().copied();
+    if let Some(value) = value {
+        let _ = ncl_object::slot_set(
+            &mut context,
+            ncl_object::Instance::from_word(thread_object),
+            RESULT_SLOT,
+            value,
+        );
+    }
+    let _ = ncl_object::slot_set(
+        &mut context,
+        ncl_object::Instance::from_word(thread_object),
+        STATE_SLOT,
+        Word::fixnum(STATE_FINISHED),
+    );
+    drop(context);
+    CURRENT.with(|current| current.set(None));
+    set_current_object(Word::NIL);
+    let (mutex, condvar) = registry();
+    {
+        let mut registry = mutex
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(record) = registry.live.get_mut(&id) {
+            record.life = if record.terminate {
+                Life::Terminated
+            } else {
+                Life::Finished
+            };
+            record.result = Some(outcome.map(|_| ()));
+            record.value = value;
+        }
+    }
+    condvar.notify_all();
 }
 
 fn run_thread(runtime: &Runtime, id: u64, body: ThreadBody) {
@@ -162,6 +304,7 @@ fn run_thread(runtime: &Runtime, id: u64, body: ThreadBody) {
                 Life::Finished
             };
             record.result = Some(outcome);
+            record.value = None;
         }
     }
     condvar.notify_all();
@@ -192,6 +335,47 @@ pub fn join(id: ThreadId, timeout: Option<Duration>) -> Result<(), ThreadError> 
         let record = registry.live.get(&id.0).ok_or(ThreadError::NotRunning)?;
         if record.life != Life::Running {
             return record.result.unwrap_or(Ok(()));
+        }
+        match deadline {
+            Some(deadline) => {
+                let now = Instant::now();
+                if now >= deadline {
+                    return Err(ThreadError::JoinTimeout);
+                }
+                let (guard, _) = condvar
+                    .wait_timeout(registry, deadline - now)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                registry = guard;
+            }
+            None => {
+                registry = condvar
+                    .wait(registry)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+    }
+}
+
+/// Wait for a Lisp thread and return its primary value.
+///
+/// # Errors
+/// Returns [`ThreadError::NotRunning`] for an unknown thread,
+/// [`ThreadError::Deadlock`] for the main thread, or [`ThreadError::JoinTimeout`]
+/// when the timeout expires.
+pub fn join_value(id: ThreadId, timeout: Option<Duration>) -> Result<Word, ThreadError> {
+    if id.0 == MAIN_THREAD_ID {
+        return Err(ThreadError::Deadlock);
+    }
+    let (mutex, condvar) = registry();
+    let mut registry = mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let deadline = timeout.map(|span| Instant::now() + span);
+    loop {
+        let record = registry.live.get(&id.0).ok_or(ThreadError::NotRunning)?;
+        if record.life != Life::Running {
+            record.result.unwrap_or(Ok(()))?;
+            return Ok(record.value.unwrap_or(Word::NIL));
         }
         match deadline {
             Some(deadline) => {
@@ -271,6 +455,10 @@ pub fn terminate(id: ThreadId) -> Result<(), ThreadError> {
         .get_mut(&id.0)
         .ok_or(ThreadError::NotRunning)?;
     record.terminate = true;
+    if record.placeholder {
+        record.life = Life::Terminated;
+        record.result = Some(Ok(()));
+    }
     drop(registry);
     condvar.notify_all();
     Ok(())

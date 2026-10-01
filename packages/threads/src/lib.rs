@@ -63,15 +63,16 @@ pub use semaphore::{
 pub use symbols::{SymbolKind, SymbolRow, rows};
 pub use sync::MutexKind;
 pub use thread::{
-    FUNCTION_SLOT, ID_SLOT, MAIN_THREAD_ID, NAME_SLOT, STATE_FINISHED, STATE_RUNNING, STATE_SLOT,
-    STATE_TERMINATED, ThreadBody, ThreadId, alive_p, all_ids, current_id, dispose_finished,
-    idle_body, interrupt, join, os_tid, should_terminate, spawn, take_interrupt, terminate,
-    thread_name, thread_yield,
+    FUNCTION_SLOT, ID_SLOT, MAIN_THREAD_ID, NAME_SLOT, RESULT_SLOT, STATE_FINISHED, STATE_RUNNING,
+    STATE_SLOT, STATE_TERMINATED, ThreadBody, ThreadId, alive_p, all_ids, current_id,
+    dispose_finished, idle_body, interrupt, join, join_value, os_tid, should_terminate, spawn,
+    spawn_lisp, spawn_placeholder, take_interrupt, terminate, thread_name, thread_yield,
 };
 pub use thread_object::{
-    current_thread, finished_state, interrupt_thread, join_thread, list_all_threads, main_thread_p,
-    make_main_thread_object, make_thread, object_id, terminate_thread, thread_alive_p,
-    thread_error_thread, thread_name_of, thread_os_tid_of, thread_state_of,
+    current_thread, finished_state, interrupt_thread, join_thread, join_thread_value,
+    list_all_threads, main_thread_p, make_main_thread_object, make_thread, object_id,
+    terminate_thread, thread_alive_p, thread_error_thread, thread_name_of, thread_os_tid_of,
+    thread_state_of,
 };
 pub use time::{
     call_with_timing, deadline_timeout_condition, decode_timeout, defer_deadline, enable_interrupt,

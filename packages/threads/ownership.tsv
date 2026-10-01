@@ -1,6 +1,12 @@
 package	symbol	kind	crate	phase	direct-expansion	notes
 NCL-THREADS	*CURRENT-THREAD*	variable	ncl-threads	1	no	current thread object
 NCL-THREADS	*TIMEOUT-EXIT*	variable	ncl-threads	1	no	timeout binding
+NCL-THREADS	MAKE-THREAD	function	ncl-threads	1	no	create and run a Lisp thread
+NCL-THREADS	JOIN-THREAD	function	ncl-threads	1	no	join and return a thread value
+NCL-THREADS	THREAD-ALIVE-P	function	ncl-threads	1	no	thread lifecycle
+NCL-THREADS	CURRENT-THREAD	function	ncl-threads	1	no	current thread object
+NCL-THREADS	TERMINATE-THREAD	function	ncl-threads	1	no	cooperative termination
+NCL-THREADS	THREAD-YIELD	function	ncl-threads	1	no	thread scheduling
 NCL-THREADS	DECODE-TIMEOUT	function	ncl-threads	1	no	timeout decoder
 NCL-THREADS	DEFER-DEADLINE	function	ncl-threads	1	no	deadline control
 NCL-THREADS	ENABLE-INTERRUPT	function	ncl-threads	1	no	interrupt control

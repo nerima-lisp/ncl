@@ -181,4 +181,32 @@ mod runtime_tests {
             assert_eq!(runtime.format_result(value), "7");
         }
     }
+
+    #[test]
+    fn compiled_lisp_thread_returns_a_value_before_watchdog_deadline() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (sender, receiver) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("ncl-thread-e2e-watchdog".to_owned())
+            .spawn(move || {
+                let mut runtime = Runtime::new()
+                    .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+                let value = runtime
+                    .eval(
+                        "(progn (defun thread-worker () 42) \
+                         (let ((thread (ncl-threads::make-thread \"worker\" #'thread-worker))) \
+                           (ncl-threads::join-thread thread)))",
+                    )
+                    .map(|value| runtime.format_result(value));
+                let _ = sender.send(value);
+            })
+            .unwrap_or_else(|error| panic!("watchdog worker spawn failed: {error}"));
+        let value = receiver
+            .recv_timeout(Duration::from_secs(30))
+            .unwrap_or_else(|error| panic!("compiled Lisp thread watchdog expired: {error}"))
+            .unwrap_or_else(|error| panic!("compiled Lisp thread evaluation failed: {error}"));
+        assert_eq!(value, "42");
+    }
 }

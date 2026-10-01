@@ -6,6 +6,36 @@ use super::{SymbolKind, SymbolRow};
 pub const NCL_THREADS: &[SymbolRow] = &[
     SymbolRow {
         package: "NCL-THREADS",
+        name: "MAKE-THREAD",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
+        name: "JOIN-THREAD",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
+        name: "THREAD-ALIVE-P",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
+        name: "CURRENT-THREAD",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
+        name: "TERMINATE-THREAD",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
+        name: "THREAD-YIELD",
+        kind: SymbolKind::Function,
+    },
+    SymbolRow {
+        package: "NCL-THREADS",
         name: "%DISPOSE-THREAD-STRUCTS",
         kind: SymbolKind::Function,
     },

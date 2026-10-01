@@ -5,9 +5,10 @@ mod options;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
-    Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
+    array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
     make_array, make_cons, make_specialized_array, make_string, pop_root, push_root,
+    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
+    Word,
 };
 
 fn call(
@@ -21,6 +22,15 @@ fn call(
         .and_then(|word| FunctionObject::try_from(word).ok())
         .ok_or(ObjectError::UndefinedFunction)?;
     runtime.call_builtin(ctx, function, args)
+}
+
+fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
+    let package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    Ok(ncl_object::Package::from_word(package)
+        .intern(ctx, runtime, name)?
+        .0)
 }
 
 #[test]
@@ -366,6 +376,94 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
 }
 
 #[test]
+fn array_properties_and_vector_mutators_return_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let array = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(0),
+            adjustable: true,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(call(&runtime, &mut ctx, "ARRAYP", &[array])?, Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "VECTORP", &[array])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-RANK", &[array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(0)]
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[array])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(1)]
+        )?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(2)]
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ADJUSTABLE-ARRAY-P", &[array])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[array])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-PUSH", &[Word::fixnum(8), array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-POP", &[array])?,
+        Word::fixnum(8)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "AREF", &[array, Word::fixnum(0)])?,
+        Word::fixnum(0)
+    );
+    let element_type = call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[array])?;
+    assert!(matches!(
+        classify_object(&ctx, element_type),
+        ObjectRef::Symbol(_)
+    ));
+    Ok(())
+}
+
+#[test]
 fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
@@ -407,6 +505,194 @@ fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> 
 
     assert!(pop_root(&mut ctx, dimensions_function_token));
     assert!(pop_root(&mut ctx, array_token));
+    Ok(())
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one integration test covers the MAKE-ARRAY option matrix"
+)]
+fn make_array_builtin_covers_element_contents_and_option_errors() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
+    let initial_element = keyword(&runtime, &mut ctx, "INITIAL-ELEMENT")?;
+    let initial_contents = keyword(&runtime, &mut ctx, "INITIAL-CONTENTS")?;
+    let adjustable = keyword(&runtime, &mut ctx, "ADJUSTABLE")?;
+    let fill_pointer = keyword(&runtime, &mut ctx, "FILL-POINTER")?;
+    let displaced_to = keyword(&runtime, &mut ctx, "DISPLACED-TO")?;
+    let displaced_offset = keyword(&runtime, &mut ctx, "DISPLACED-INDEX-OFFSET")?;
+
+    for (name, value) in [
+        ("T", Word::fixnum(9)),
+        ("BIT", Word::fixnum(1)),
+        ("CHARACTER", Word::character(u32::from('x'))),
+        ("BASE-CHAR", Word::character(u32::from('y'))),
+        ("FIXNUM", Word::fixnum(-2)),
+        ("SIGNED-BYTE", Word::fixnum(-3)),
+        ("UNSIGNED-BYTE", Word::fixnum(4)),
+        ("SINGLE-FLOAT", Word::TRUE),
+        ("DOUBLE-FLOAT", Word::NIL),
+    ] {
+        let type_word = keyword(&runtime, &mut ctx, name)?;
+        let array = call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[
+                Word::fixnum(1),
+                element_type,
+                type_word,
+                initial_element,
+                value,
+            ],
+        )?;
+        assert_eq!(
+            call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[array])?,
+            Word::fixnum(1)
+        );
+        assert_eq!(array_row_major_ref(&ctx, array, 0)?, value);
+    }
+
+    let bit_type = keyword(&runtime, &mut ctx, "BIT")?;
+    let bit = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[Word::fixnum(2), element_type, bit_type],
+    )?;
+    assert_eq!(array_row_major_ref(&ctx, bit, 0)?, Word::fixnum(0));
+
+    let row_a = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL)?;
+    let row_a = make_cons(&mut ctx, &runtime, Word::fixnum(2), row_a)?;
+    let row_b = make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::NIL)?;
+    let row_b = make_cons(&mut ctx, &runtime, Word::fixnum(4), row_b)?;
+    let contents = make_cons(&mut ctx, &runtime, row_a, Word::NIL)?;
+    let contents = make_cons(&mut ctx, &runtime, row_b, contents)?;
+    let dimension_tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), dimension_tail)?;
+    let matrix = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[dimensions, initial_contents, contents],
+    )?;
+    assert_eq!(array_row_major_ref(&ctx, matrix, 0)?, Word::fixnum(4));
+    assert_eq!(array_row_major_ref(&ctx, matrix, 3)?, Word::fixnum(1));
+
+    let vector = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(2),
+            adjustable,
+            Word::TRUE,
+            fill_pointer,
+            Word::fixnum(1),
+        ],
+    )?;
+    let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(1)
+    );
+
+    let target = make_array(
+        &mut ctx,
+        &runtime,
+        &[3],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(7),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let displaced = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(1),
+            displaced_to,
+            target,
+            displaced_offset,
+            Word::fixnum(1),
+        ],
+    )?;
+    assert_eq!(array_row_major_ref(&ctx, displaced, 0)?, Word::fixnum(7));
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), element_type]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), unknown, Word::NIL,]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    let unknown_type = keyword(&runtime, &mut ctx, "UNKNOWN-TYPE")?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), element_type, unknown_type,]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[
+                Word::fixnum(1),
+                initial_element,
+                Word::fixnum(1),
+                initial_contents,
+                Word::NIL
+            ]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), fill_pointer, Word::NIL]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-ARRAY", &[Word::fixnum(-1)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(2), initial_contents, Word::fixnum(8)]
+        ),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 

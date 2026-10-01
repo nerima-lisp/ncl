@@ -26,3 +26,16 @@ fn rejects_native_words_count_above_isize_slice_limit() {
         Err(NativeWordCopyError::CountTooLarge)
     );
 }
+
+#[test]
+fn copies_aligned_native_words_and_rejects_unaligned_address() {
+    let words = [Word::fixnum(3), Word::TRUE];
+    assert_eq!(
+        copy_native_words(words.as_ptr().addr() as u64, words.len()),
+        Ok(words.to_vec())
+    );
+    assert_eq!(
+        copy_native_words(words.as_ptr().addr() as u64 + 1, 0),
+        Err(NativeWordCopyError::Unaligned)
+    );
+}

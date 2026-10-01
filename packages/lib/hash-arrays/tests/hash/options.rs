@@ -1,8 +1,8 @@
 use super::call;
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, double_value, make_double, pop_root,
-    push_root,
+    double_value, make_double, pop_root, push_root, FunctionObject, ObjectError, Runtime,
+    ThreadContext, Word,
 };
 
 fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {

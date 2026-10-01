@@ -75,3 +75,32 @@ fn ampersand_does_not_add_a_second_newline_at_line_start() {
     execute(&control, &[], &mut ctx, &runtime, &mut sink).expect("execute");
     assert_eq!(sink.into_string(), "a\nb");
 }
+
+#[test]
+fn rejects_invalid_repeat_parameters_and_preserves_consumed_argument_count() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~-1%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~0%~A").expect("control"),
+            &[Word::fixnum(7)],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Ok(1)
+    );
+    assert_eq!(sink.into_string(), "7");
+}

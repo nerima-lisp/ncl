@@ -18,6 +18,7 @@ mod thread;
 mod word;
 
 #[cfg(test)]
+#[path = "tests_native_word.rs"]
 mod native_word_tests;
 
 pub use code::{

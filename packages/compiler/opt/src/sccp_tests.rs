@@ -83,13 +83,19 @@ fn leaves_conditional_primitive_unfolded() {
     let left = builder.add_constant(Constant::Fixnum(2));
     let right = builder.add_constant(Constant::Fixnum(3));
     builder.position_at(ncl_ir::BlockId(0)).fixture();
-    let left = builder
+    let left_values = builder
         .push_op(OpKind::Const { result: left }, &[Ty::I64])
-        .fixture()[0];
-    let right = builder
+        .fixture();
+    let Some(left) = left_values.first().copied() else {
+        std::process::exit(1);
+    };
+    let right_values = builder
         .push_op(OpKind::Const { result: right }, &[Ty::I64])
-        .fixture()[0];
-    let sum = builder
+        .fixture();
+    let Some(right) = right_values.first().copied() else {
+        std::process::exit(1);
+    };
+    let sum_values = builder
         .push_op(
             OpKind::Prim {
                 op: Prim::FixnumAdd,
@@ -98,19 +104,32 @@ fn leaves_conditional_primitive_unfolded() {
             },
             &[Ty::I64],
         )
-        .fixture()[0];
+        .fixture();
+    let Some(sum) = sum_values.first().copied() else {
+        std::process::exit(1);
+    };
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .fixture();
     let mut function = builder.finish();
-    assert!(!Sccp.run(&mut function, &Module::default()).fixture());
-    assert!(matches!(
-        function.blocks[0].ops[2].kind,
+    if Sccp.run(&mut function, &Module::default()).fixture() {
+        std::process::exit(1);
+    }
+    let Some(block) = function.blocks.first() else {
+        std::process::exit(1);
+    };
+    let Some(op) = block.ops.get(2) else {
+        std::process::exit(1);
+    };
+    if !matches!(
+        op.kind,
         OpKind::Prim {
             condition: Some(_),
             ..
         }
-    ));
+    ) {
+        std::process::exit(1);
+    }
     ncl_ir::verify(&function).fixture();
 }
 

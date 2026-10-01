@@ -99,7 +99,13 @@ fn threshold_skips() {
 #[test]
 fn conditional_prim_with_callee_block_target_is_not_inlined() {
     let mut callee = leaf();
-    callee.blocks[0].ops[0].kind = OpKind::Prim {
+    let Some(block) = callee.blocks.first_mut() else {
+        std::process::exit(1);
+    };
+    let Some(op) = block.ops.first_mut() else {
+        std::process::exit(1);
+    };
+    op.kind = OpKind::Prim {
         op: ncl_ir::Prim::Car,
         args: vec![ValueId(0)],
         condition: Some(BlockId(0)),
@@ -107,7 +113,13 @@ fn conditional_prim_with_callee_block_target_is_not_inlined() {
     let mut module = Module {
         functions: vec![caller(), callee],
     };
-    module.functions[0].blocks[0].ops.insert(
+    let Some(caller_function) = module.functions.first_mut() else {
+        std::process::exit(1);
+    };
+    let Some(caller_block) = caller_function.blocks.first_mut() else {
+        std::process::exit(1);
+    };
+    caller_block.ops.insert(
         1,
         Op {
             results: vec![],
@@ -115,12 +127,19 @@ fn conditional_prim_with_callee_block_target_is_not_inlined() {
             loc: None,
         },
     );
-    let before = module.functions[0].clone();
+    let Some(before) = module.functions.first().cloned() else {
+        std::process::exit(1);
+    };
     let mut manager = PassManager::new();
     manager.add_function_pass(InlineDirectCalls::default());
 
     manager.run(&mut module).fixture();
 
-    assert_eq!(module.functions[0], before);
+    let Some(after) = module.functions.first() else {
+        std::process::exit(1);
+    };
+    if *after != before {
+        std::process::exit(1);
+    }
     module.verify().fixture();
 }

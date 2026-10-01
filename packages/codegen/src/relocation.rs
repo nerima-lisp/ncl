@@ -63,3 +63,56 @@ impl TryFrom<Fixup> for Relocation {
 pub fn relocations_from_fixups(fixups: &[Fixup]) -> Result<Vec<Relocation>, RelocationError> {
     fixups.iter().copied().map(Relocation::try_from).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_fixup_kinds_and_preserves_order() {
+        let fixups = [
+            Fixup {
+                offset: 12,
+                kind: FixupKind::Rel32,
+                target: Label(3),
+            },
+            Fixup {
+                offset: 24,
+                kind: FixupKind::Abs64,
+                target: Label(1),
+            },
+        ];
+
+        assert_eq!(
+            relocations_from_fixups(&fixups),
+            Ok(vec![
+                Relocation {
+                    offset: 12,
+                    kind: RelocationKind::PcRelative32,
+                    target: Label(3),
+                    addend: 0,
+                },
+                Relocation {
+                    offset: 24,
+                    kind: RelocationKind::Absolute64,
+                    target: Label(1),
+                    addend: 0,
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn rejects_fixup_offset_that_does_not_fit_public_format() {
+        let fixup = Fixup {
+            offset: usize::MAX,
+            kind: FixupKind::Rel32,
+            target: Label(0),
+        };
+
+        assert_eq!(
+            relocations_from_fixups(&[fixup]),
+            Err(RelocationError::OffsetOutOfRange { offset: usize::MAX })
+        );
+    }
+}

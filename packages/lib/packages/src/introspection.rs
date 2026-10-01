@@ -96,10 +96,10 @@ fn optional_package_arg(
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
 ) -> Result<Package, ObjectError> {
-    if let Some(package) = args.get(1) {
-        if package != Word::NIL {
-            return package_designator(ctx, runtime, package);
-        }
+    if let Some(package) = args.get(1)
+        && package != Word::NIL
+    {
+        return package_designator(ctx, runtime, package);
     }
     let common = Package::from_word(
         runtime

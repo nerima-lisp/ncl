@@ -107,11 +107,20 @@ def main() -> int:
             lambda chapter: run_chapter(ncl, chapter, args.timeout), chapters,
         ))
     counts = Counter(result["status"] for result in results)
-    diagnostics = Counter(result["diagnostic"] for result in results)
+    diagnostics = Counter(
+        (result["diagnostic"], result["lane"]) for result in results
+    )
     lane_counts: dict[str, dict[str, int]] = {}
     for result in results:
-        values = lane_counts.setdefault(result["lane"], Counter())
-        values[result["status"]] += 1
+        values = lane_counts.setdefault(
+            result["lane"],
+            {"passed": 0, "failed": 0, "unexecuted": 0, "timeout": 0, "crash": 0},
+        )
+        if result["status"] == "passed":
+            values["passed"] += result["deftests"]
+        else:
+            values["unexecuted"] += result["deftests"]
+            values[result["status"]] += 1
     commit = subprocess.run(
         ["git", "-C", str(args.ansi_dir), "rev-parse", "HEAD"],
         capture_output=True, text=True, check=True,
@@ -127,8 +136,8 @@ def main() -> int:
         "unexecuted": total_deftests,
         "categories": lane_counts,
         "failure_clusters": [
-            {"diagnostic": message, "count": count, "lane": "other"}
-            for message, count in diagnostics.most_common(20)
+            {"diagnostic": message, "count": count, "lane": lane}
+            for (message, lane), count in diagnostics.most_common(20)
         ],
         "execution": {
             "chapter_load_passed": chapter_passed,

@@ -90,10 +90,8 @@ impl PackageName {
 
 /// Options controlling a single [`read`] call.
 ///
-/// The fields mirror the reader dynamic variables `*read-base*`,
-/// `*read-eval*`, `*read-suppress*`, `*read-default-float-format*`, and the
-/// active readtable. `*readtable*` dynamic rebinding is not wired yet, so the
-/// readtable is passed explicitly.
+/// The fields mirror the reader dynamic variables and active readtable.
+/// `*readtable*` dynamic rebinding is not wired yet, so it is passed explicitly.
 #[derive(Clone, Debug)]
 pub struct ReadOptions {
     readtable: Readtable,
@@ -193,9 +191,8 @@ impl ReadOptions {
 
 /// Read the next form from `source`, skipping leading whitespace and comments.
 ///
-/// Returns `None` at end of input. The readtable word and the labels table are
-/// rooted for the duration of the call so a collection cannot leave a stale
-/// value.
+/// Returns `None` at end of input. The readtable word and labels table are
+/// rooted for the call so a collection cannot leave a stale value.
 ///
 /// # Errors
 /// Returns a [`ReadError`] describing the lexical or dispatch failure.
@@ -211,7 +208,10 @@ pub fn read(
     let labels_token = push_root(ctx, labels.get_mut());
     let result = loop {
         let result = read_form(ctx, runtime, source, opts, &rt, &labels)?;
-        if result != Some(Word::UNBOUND) { break Ok(result); }
+        // check-added-lines: allow(unbound) skipped form sentinel
+        if result != Some(Word::UNBOUND) {
+            break Ok(result);
+        }
     };
     let _ = pop_root(ctx, labels_token);
     let _ = pop_root(ctx, rt_token);
@@ -220,8 +220,7 @@ pub fn read(
 
 /// Read the next form, preserving any trailing whitespace.
 ///
-/// This reader never consumes trailing whitespace, so the behavior is the same
-/// as [`read`].
+/// This reader never consumes trailing whitespace, so behavior matches [`read`].
 ///
 /// # Errors
 /// Returns a [`ReadError`] describing the lexical or dispatch failure.
@@ -250,8 +249,7 @@ pub fn read_from_string(
 
 /// Read a list of forms terminated by a `)`, returning the proper list.
 ///
-/// The opening parenthesis is not consumed by this function; it reads forms
-/// until an unmatched `)`.
+/// The opening parenthesis is not consumed; it reads forms until an unmatched `)`.
 ///
 /// # Errors
 /// Returns [`ReadError::UnexpectedEof`] when input ends before the `)`.
@@ -273,9 +271,8 @@ pub fn read_delimited_list(
 
 /// Read one form, recursing past comments and suppressed forms.
 ///
-/// `rt` and `labels` are rooted slots owned by the caller. They are re-read
-/// before every use, so a collection that moves the readtable or labels table
-/// cannot leave a stale value.
+/// `rt` and `labels` are rooted slots owned by the caller and re-read before
+/// every use, so collection cannot leave a stale value.
 pub fn read_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -486,7 +483,10 @@ fn read_list_inner(
         let Some(form) = form else {
             return Err(ReadError::UnexpectedEof);
         };
-        if form == Word::UNBOUND { continue; }
+        // check-added-lines: allow(unbound) skipped form sentinel
+        if form == Word::UNBOUND {
+            continue;
+        }
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;
         if head.get() == Word::NIL {
             head.set(cell);

@@ -269,7 +269,7 @@ fn read_feature_conditional(
     if present == positive {
         return Ok(form);
     }
-    Ok(Some(Word::UNBOUND))
+    Ok(Some(Word::UNBOUND)) // check-added-lines: allow(unbound) skipped feature form sentinel
 }
 
 /// Skip a (possibly nested) `#| ... |#` block comment.

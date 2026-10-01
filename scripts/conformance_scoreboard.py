@@ -306,16 +306,21 @@ def make_scoreboard(
             for key in ("passed", "failed", "unexecuted")
             if key in ansi_counts
         })
-        for key in ("unit", "total", "commit", "categories", "failure_clusters", "results"):
+        for key in (
+            "unit", "total", "commit", "categories", "failure_clusters",
+            "execution", "results",
+        ):
             if key in ansi_counts:
                 ansi_data[key] = ansi_counts[key]
+        if ansi_data.get("unexecuted", 0) > 0:
+            ansi_data["status"] = "warning"
     bench_data: dict[str, Any] = {"status": bench.status}
     if bench_times is not None:
         bench_data["samples"] = len(bench_times)
         if bench_times:
             bench_data["geometric_mean"] = geometric_mean(bench_times)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "measured_on": date.today().isoformat(),
         "sources": SOURCES,
         "ansi-test": ansi_data,
@@ -337,17 +342,22 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     for name in ("ansi-test", "cl-bench"):
         lines.append(f"| {name} | `{scoreboard['sources'][name]['commit']}` |")
     if "categories" in ansi:
-        lines.extend(["", "## ansi-test categories", "", "| lane | passed | failed | timeout/crash |", "| --- | ---: | ---: | ---: |"])
+        lines.extend([
+            "", "## ansi-test categories", "",
+            "| lane | passed | failed | unexecuted | timeout/crash |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ])
         for lane, values in sorted(ansi["categories"].items()):
             lines.append(
                 f"| {lane} | {values.get('passed', 0)} | {values.get('failed', 0)} | "
+                f"{values.get('unexecuted', 0)} | "
                 f"{values.get('timeout', 0) + values.get('crash', 0)} |"
             )
     if "failure_clusters" in ansi:
-        lines.extend(["", "## Failure clusters", "", "| rank | diagnostic | count |", "| ---: | --- | ---: |"])
+        lines.extend(["", "## Failure clusters", "", "| rank | diagnostic | count | lane |", "| ---: | --- | ---: | --- |"])
         for rank, item in enumerate(ansi["failure_clusters"], 1):
             diagnostic = str(item["diagnostic"]).replace("|", "\\|")
-            lines.append(f"| {rank} | `{diagnostic}` | {item['count']} |")
+            lines.append(f"| {rank} | `{diagnostic}` | {item['count']} | {item.get('lane', 'other')} |")
     return "\n".join(lines) + "\n"
 
 

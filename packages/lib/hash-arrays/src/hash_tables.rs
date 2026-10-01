@@ -3,8 +3,8 @@ use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     BuiltinArgs, BuiltinFunctionCaller, BuiltinName, Function, FunctionArguments, FunctionCaller,
-    LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, classify_object, function_name, pop_root, push_root,
+    LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
+    ThreadContext, Word, classify_object, function_name, pop_root, push_root,
 };
 
 use super::{register_one, register_one_ncl, symbol_text};
@@ -47,7 +47,7 @@ fn decode_test(ctx: &ThreadContext, word: Word) -> Result<HashTest, ObjectError>
         ObjectRef::Function(function) | ObjectRef::Closure(function) => {
             function_name(ctx, Function::from_word(function))?
         }
-        _ => return Err(ObjectError::TypeError),
+        _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject non-designator objects
     };
     match symbol_text(ctx, name)?.to_ascii_uppercase().as_str() {
         "EQ" => Ok(HashTest::Eq),

@@ -1,0 +1,355 @@
+{
+  "ansi-test": {
+    "categories": {
+      "clos": {
+        "crash": 0,
+        "failed": 1,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 842
+      },
+      "conditions-types": {
+        "crash": 0,
+        "failed": 2,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 878
+      },
+      "format-printer": {
+        "crash": 0,
+        "failed": 1,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 846
+      },
+      "loop-macros": {
+        "crash": 0,
+        "failed": 1,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 840
+      },
+      "numbers": {
+        "crash": 0,
+        "failed": 2,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 2698
+      },
+      "other": {
+        "crash": 0,
+        "failed": 11,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 6259
+      },
+      "reader-pathnames-streams": {
+        "crash": 0,
+        "failed": 4,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 1033
+      },
+      "sequences-strings": {
+        "crash": 0,
+        "failed": 3,
+        "passed": 0,
+        "timeout": 0,
+        "unexecuted": 3931
+      }
+    },
+    "commit": "ca06bd919661af162c67407c9d994e881870bdb3",
+    "execution": {
+      "blocked_by": "rt.lsp LOOP for ... = ... TypeError",
+      "chapter_load_failed": 25,
+      "chapter_load_passed": 0,
+      "deftests_executed": false
+    },
+    "failed": 0,
+    "failure_clusters": [
+      {
+        "count": 5,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other"
+      },
+      {
+        "count": 5,
+        "diagnostic": "package not found",
+        "lane": "other"
+      },
+      {
+        "count": 3,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "sequences-strings"
+      },
+      {
+        "count": 2,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "numbers"
+      },
+      {
+        "count": 2,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "conditions-types"
+      },
+      {
+        "count": 2,
+        "diagnostic": "package not found",
+        "lane": "reader-pathnames-streams"
+      },
+      {
+        "count": 2,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "reader-pathnames-streams"
+      },
+      {
+        "count": 1,
+        "diagnostic": "package not found",
+        "lane": "loop-macros"
+      },
+      {
+        "count": 1,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "clos"
+      },
+      {
+        "count": 1,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "format-printer"
+      },
+      {
+        "count": 1,
+        "diagnostic": "object error: TypeError",
+        "lane": "other"
+      }
+    ],
+    "passed": 0,
+    "results": [
+      {
+        "chapter": "arrays",
+        "deftests": 1251,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "numbers",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "characters",
+        "deftests": 259,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "sequences-strings",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "conditions",
+        "deftests": 321,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "conditions-types",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "cons",
+        "deftests": 1651,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "data-and-control-flow",
+        "deftests": 1454,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "environment",
+        "deftests": 197,
+        "diagnostic": "package not found",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "eval-and-compile",
+        "deftests": 326,
+        "diagnostic": "package not found",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "files",
+        "deftests": 88,
+        "diagnostic": "package not found",
+        "lane": "reader-pathnames-streams",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "hash-tables",
+        "deftests": 159,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "iteration",
+        "deftests": 840,
+        "diagnostic": "package not found",
+        "lane": "loop-macros",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "misc",
+        "deftests": 740,
+        "diagnostic": "package not found",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "numbers",
+        "deftests": 1447,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "numbers",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "objects",
+        "deftests": 842,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "clos",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "packages",
+        "deftests": 362,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "pathnames",
+        "deftests": 219,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "reader-pathnames-streams",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "printer",
+        "deftests": 846,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "format-printer",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "rctest",
+        "deftests": 0,
+        "diagnostic": "object error: TypeError",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "reader",
+        "deftests": 167,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "reader-pathnames-streams",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "sequences",
+        "deftests": 3169,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "sequences-strings",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "streams",
+        "deftests": 559,
+        "diagnostic": "package not found",
+        "lane": "reader-pathnames-streams",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "strings",
+        "deftests": 503,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "sequences-strings",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "structures",
+        "deftests": 147,
+        "diagnostic": "package not found",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "symbols",
+        "deftests": 1146,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "system-construction",
+        "deftests": 77,
+        "diagnostic": "package not found",
+        "lane": "other",
+        "returncode": 1,
+        "status": "failed"
+      },
+      {
+        "chapter": "types-and-classes",
+        "deftests": 557,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*",
+        "lane": "conditions-types",
+        "returncode": 1,
+        "status": "failed"
+      }
+    ],
+    "status": "warning",
+    "total": 17327,
+    "unexecuted": 17327,
+    "unit": "deftest"
+  },
+  "cl-bench": {
+    "status": "timeout"
+  },
+  "measured_on": "2026-10-02",
+  "schema_version": 2,
+  "sources": {
+    "ansi-test": {
+      "commit": "ca06bd919661af162c67407c9d994e881870bdb3",
+      "mirrors": [
+        "https://github.com/clasp-developers/ansi-test.git"
+      ],
+      "url": "https://gitlab.common-lisp.net/ansi-test/ansi-test.git"
+    },
+    "cl-bench": {
+      "commit": "553fbcdf88d2ca4e340a0cdf02679055f3279c8f",
+      "mirrors": [
+        "https://github.com/clasp-developers/cl-bench.git"
+      ],
+      "url": "https://gitlab.common-lisp.net/ansi-test/cl-bench.git"
+    }
+  }
+}

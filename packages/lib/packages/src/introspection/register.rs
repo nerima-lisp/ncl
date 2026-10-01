@@ -1,11 +1,10 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, NAME, ONE_OBJECT, ONE_PACKAGE, ObjectError,
-    PACKAGE_PACKAGE, Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols,
-    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
-    package_management, package_name, package_nicknames, package_shadowing_symbols,
-    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
-    use_package,
+    BuiltinPackage, LambdaList, NAME, ONE_OBJECT, ONE_PACKAGE, ObjectError, PACKAGE_PACKAGE,
+    Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols, find_package,
+    find_symbol, import, intern, list_all_packages, package_error_package, package_management,
+    package_name, package_nicknames, package_shadowing_symbols, package_use_list,
+    package_used_by_list, packagep, shadow, unexport, unintern, unuse_package, use_package,
 };
 
 const fn descriptor(required: &'static [Parameter]) -> Builtin {
@@ -92,8 +91,16 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ),
         )?;
     }
+    register_package_constructors(runtime, &mut ctx)?;
+    Ok(())
+}
+
+fn register_package_constructors(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-PACKAGE")),
         BuiltinImplementation::direct(
             Builtin {
@@ -107,7 +114,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new("RENAME-PACKAGE"),

@@ -13,7 +13,7 @@ pub(super) struct WeakMarkContext<'a> {
 
 pub(super) fn weak_referent_indices(state: &super::super::State) -> HashSet<usize> {
     let mut result = HashSet::new();
-    for table in 0..state.objects.len() {
+    for &table in &state.weak_tables {
         if !state.objects.get(table).is_some_and(|object| object.alive) {
             continue;
         }

@@ -118,7 +118,6 @@ impl super::Heap {
             hook();
         }
     }
-
     fn move_live_objects(
         state: &mut super::State,
         live: &mut HashSet<usize>,
@@ -159,6 +158,9 @@ impl super::Heap {
             moved.insert(old_address, new_address);
             state.object_starts.insert(new_address, new_index);
             state.objects.push(copy);
+            if state.weak_tables.contains(&index) {
+                state.weak_tables.insert(new_index);
+            }
             live.insert(new_index);
         }
         moved
@@ -250,7 +252,6 @@ impl super::Heap {
         state.objects[index].kind != PageKind::Cons
             && state.objects[index].words.first().copied() == Some(u64::from(HASH_TABLE_WIDETAG))
     }
-
     fn hash_table_weakness(state: &super::State, index: usize) -> Option<Weakness> {
         match Word::from_bits(
             state.objects[index]
@@ -289,7 +290,6 @@ impl super::Heap {
         }
         result
     }
-
     fn clear_dead_hash_table_entries(
         state: &mut super::State,
         moved: &HashMap<usize, usize>,

@@ -86,7 +86,7 @@ fn declaration_qualities_and_malformed_shapes_are_distinct() {
         (
             list(vec![
                 declare.clone(),
-                Literal::Cons(Box::new(special.clone()), Box::new(Literal::T)),
+                Literal::Cons(Box::new(special), Box::new(Literal::T)),
             ]),
             "specifier is not a proper list",
         ),
@@ -99,7 +99,7 @@ fn declaration_qualities_and_malformed_shapes_are_distinct() {
         ),
         (
             list(vec![
-                declare.clone(),
+                declare,
                 list(vec![
                     symbol("COMMON-LISP", "FTYPE"),
                     symbol("COMMON-LISP", "INTEGER"),
@@ -128,12 +128,9 @@ fn declaration_quality_values_cover_unknown_non_integer_and_range_errors() {
         list(vec![quality, Literal::fixnum(2)]),
         list(vec![unknown_quality, Literal::fixnum(1)]),
     ]);
-    let parsed = ncl_compiler_front::parse_declare_form(&list(vec![
-        symbol("COMMON-LISP", "DECLARE"),
-        match valid.list_elements().unwrap()[1] {
-            item => item.clone(),
-        },
-    ]));
+    let item = valid.list_elements().unwrap()[1].clone();
+    let parsed =
+        ncl_compiler_front::parse_declare_form(&list(vec![symbol("COMMON-LISP", "DECLARE"), item]));
     assert!(parsed.is_ok(), "valid optimize declaration parses");
 
     for value in [
@@ -199,7 +196,7 @@ fn expander_public_helpers_return_data_and_reject_invalid_lambda_forms() {
     assert!(expander.is_named(x, "X").unwrap());
     assert!(!expander.is_named(value, "X").unwrap());
     assert_eq!(expander.expand_all(&[value, Word::NIL]).unwrap().len(), 2);
-    let runtime_pointer = expander.runtime() as *const ncl_object::Runtime;
+    let runtime_pointer = std::ptr::from_ref(expander.runtime());
     assert!(!runtime_pointer.is_null(), "runtime accessor remains live");
 
     assert!(matches!(
@@ -343,7 +340,7 @@ fn lowering_an_unbound_return_reports_escaping_control_error() {
     let error = lower_toplevel(&expression).unwrap_err();
     assert_eq!(
         error,
-        ncl_compiler_front::LowerError::EscapingControl { name: name.clone() }
+        ncl_compiler_front::LowerError::EscapingControl { name }
     );
     assert_eq!(
         error.to_string(),

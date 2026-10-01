@@ -100,7 +100,7 @@ fn symbol_rendering_covers_capitalize_and_literal_escaping() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
-    let package = runtime.find_package(&mut ctx, "COMMON-LISP-USER").unwrap();
+    let package = runtime.find_package(&ctx, "COMMON-LISP-USER").unwrap();
     let package = Package::from_word(package);
     for (name, expected) in [
         ("hello-world", "COMMON-LISP-USER:|hello-world|"),

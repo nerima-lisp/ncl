@@ -180,7 +180,6 @@ impl Sccp {
             // A conditional primitive has a condition edge for failures such as
             // type errors. Folding it would discard that edge and its runtime
             // behavior, so only unconditional primitives are evaluated here.
-            OpKind::Prim { .. } => State::Overdefined,
             OpKind::Compare { op, left, right } if left == right => Self::bool_state(
                 function,
                 matches!(op, Compare::Eq | Compare::Le | Compare::Ge),
@@ -208,7 +207,8 @@ impl Sccp {
                 };
                 Self::bool_state(function, result)
             }
-            OpKind::Load { .. }
+            OpKind::Prim { .. }
+            | OpKind::Load { .. }
             | OpKind::LoadField { .. }
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }

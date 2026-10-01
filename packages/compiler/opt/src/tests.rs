@@ -119,10 +119,8 @@ fn conditional_prim_with_callee_block_target_is_not_inlined() {
     let mut manager = PassManager::new();
     manager.add_function_pass(InlineDirectCalls::default());
 
-    manager
-        .run(&mut module)
-        .expect("inliner should reject the undeclared block target safely");
+    manager.run(&mut module).fixture();
 
     assert_eq!(module.functions[0], before);
-    module.verify().expect("test module should remain valid");
+    module.verify().fixture();
 }

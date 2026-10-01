@@ -262,10 +262,12 @@ impl Thread {
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
         #[cfg(target_arch = "x86_64")]
-        {
-            // Native callbacks can allocate before a precise generated-frame
-            // capture is available. Refresh the conservative snapshot at the
-            // collection site so the active generated frame is included.
+        if self.has_native_frame_snapshot() {
+            // A captured generated frame may still have live callee-saved
+            // values outside its precise frame map. Preserve the conservative
+            // snapshot for that native boundary, while ordinary Rust-side
+            // collections rely on explicit roots and avoid pinning dead weak
+            // referents from stale stack slots.
             self.publish_snapshot();
         }
         if let Some(heap) = self.heap {

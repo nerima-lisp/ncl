@@ -1,26 +1,25 @@
 # Recipes
 
-The recipes that previously lived on this page used the retired CLI
-options <code>--eval</code> and <code>--compiled</code>, passed through
-Cargo's <code>--locked</code> flag. The interpreter and stack-bytecode VM
-those recipes ran on were removed at commit <code>d9bbb4ec</code>, so none
-of them can run today. The interpreted and compiled recipes are retired.
-
-## Target usage (not yet available)
-
-When milestone M1, source text to native execution, lands, the CLI will
-evaluate an expression like this:
+## Evaluate an expression
 
 ~~~sh
-ncl --eval '(+ 1 2)'
+nix develop --command cargo run -- --eval '(+ 1 2)'
 ~~~
 
-This usage does not work yet. Today <code>ncl --eval</code> prints
-<code>--eval is not implemented during the native rewrite</code> and exits
-with status 1, and no other evaluation option exists.
+The command prints <code>3</code>.
 
-Runnable recipes will return once M1 lands. The M1 definition, a native
-<code>fib(25)</code> run that prints <code>75025</code>, and the lane plan
-are in the [wave plan](../project/wave-plan.md). The
-[API reference](../reference/api.md) documents the language and CLI
-surface.
+## Define and call a function
+
+~~~sh
+nix develop --command cargo run -- --eval \
+  '(progn (defun square (x) (* x x)) (square 12))'
+~~~
+
+The command prints <code>144</code>. The same forms can be entered in the
+interactive REPL. Use <code>--load file.lisp</code> to evaluate a file,
+<code>--script file.lisp</code> to run it without printing its final value,
+and <code>--compile-file file.lisp</code> to write compiled output.
+
+The [API reference](../reference/api.md) documents the current command-line
+surface. The [wave plan](../project/wave-plan.md) records work still in
+progress.

@@ -38,11 +38,10 @@ stream values. <code>NIL</code> is the false and empty-list value, and
 <code>T</code> is the true constant. Operations may return multiple
 values.
 
-This is the target design, not implemented behavior. Source-to-native
-execution is not connected yet: the crates exist, but
-<code>ncl --eval</code> is not implemented during the native rewrite.
-Milestone M1 is the first point where source text executes as native
-code.
+The reader-to-native path is connected. <code>ncl --eval</code> evaluates
+source text, and the CLI tests cover recursive calls, loading, compilation,
+and the REPL. The full ANSI surface and later optimization phases remain in
+progress.
 
 See the [compatibility reference](../reference/compatibility.md) for how
 compatibility claims are defined and the [roadmap](../project/roadmap.md)

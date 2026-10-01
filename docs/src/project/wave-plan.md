@@ -6,6 +6,10 @@ This document records NCL's implementation plan and acceptance criteria. Each la
 
 NCL targets compatibility with SBCL 2.6.0. The target includes ANSI Common Lisp, the public SBCL APIs and contribs, 58 internal symbols referenced by libraries, ASDF/UIOP, and 14 libraries. P0 establishes the SBCL surface tables and coverage check so later lanes can count the remaining symbols in each package. Work proceeds through P0, P0b, and P1 to P6, followed by release.
 
+## Current executable surface
+
+The root binary handles `--eval`, `--load`, `--script`, and `--compile-file`. Running it without an option starts the interactive REPL. The CLI integration tests verify the recursive `fib(25)` example, which prints `75025`. The remaining ANSI surface, performance targets, and 14-library load matrix remain in progress.
+
 ## Decisions
 
 | # | Decision | Relation |
@@ -178,7 +182,20 @@ ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-co
 
 - Pass each crate's `registers_every_owned_symbol` test.
 - Maintain at least 95% regions coverage in each crate.
-- Pass workspace tests, clippy, and `check_standards.py`.
+- For local lane work, test the changed crate. If a test under `tests/` changes, run `cargo test -p ncl --test <name>`.
+- CI runs formatting, checks, tests, Clippy, and coverage on the x86-64 Linux and AArch64 macOS targets:
+
+```sh
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets --all-features
+cargo test --locked --workspace --all-features --all-targets
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo build --locked --workspace --release
+cargo test --locked --workspace --all-features --all-targets --release
+cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-regions 95.0
+```
+
+- Run `python3 scripts/check_standards.py`.
 - Validate all target operating systems and architectures in D-12.
 
 ### Failure behavior

@@ -212,6 +212,7 @@ fn initialize_slots<'scope>(
     instance: Instance,
     class: Handle<'scope, Word>,
     initargs: &HandleVec<'scope, Word>,
+    preserve_bound: bool,
 ) -> Result<(), ObjectError> {
     let class_word = scope.get(class).as_word();
     let slots = class_slots(scope.context(), class_word)?;
@@ -249,7 +250,10 @@ fn initialize_slots<'scope>(
         {
             let default = simple_vector_ref(scope.context(), slot, 2)?;
             // check-added-lines: allow(unbound) sentinel initialization
-            if default != Word::UNBOUND {
+            if default != Word::UNBOUND
+                && (!preserve_bound
+                    || slot_ref(scope.context(), instance, index)? == Word::UNBOUND)
+            {
                 slot_set(scope.context_mut(), instance, index, default)?;
             }
         }
@@ -379,7 +383,7 @@ fn initialize_instance_builtin(
         scope.context(),
         instance,
     )?));
-    initialize_slots(&mut scope, instance, class, &initargs)?;
+    initialize_slots(&mut scope, instance, class, &initargs, false)?;
     let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
     let (shared_name, _) = Package::from_word(common_lisp).intern(
         scope.context_mut(),
@@ -430,7 +434,7 @@ fn shared_initialize_builtin(
         scope.context(),
         instance,
     )?));
-    initialize_slots(&mut scope, instance, class, &initargs)?;
+    initialize_slots(&mut scope, instance, class, &initargs, true)?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
 }

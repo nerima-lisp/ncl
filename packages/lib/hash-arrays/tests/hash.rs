@@ -5,9 +5,10 @@ mod options;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value, make_array,
-    make_cons, make_specialized_array, make_string, pop_root, push_root, ArrayElementType,
-    ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
+    make_array, make_cons, make_specialized_array, make_string, pop_root, push_root,
+    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
+    Word,
 };
 
 fn call(
@@ -63,9 +64,11 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
     );
 
     call(&runtime, &mut ctx, "CLRHASH", &[table])?;
-    assert!(call(&runtime, &mut ctx, "SXHASH", &[key])?
-        .as_fixnum()
-        .is_some());
+    assert!(
+        call(&runtime, &mut ctx, "SXHASH", &[key])?
+            .as_fixnum()
+            .is_some()
+    );
     let rehash_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
     assert!(matches!(
         classify_object(&ctx, rehash_size),
@@ -227,9 +230,11 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
             .ok_or(ObjectError::PackageConflict)?;
         let (symbol, _) =
             ncl_object::Package::from_word(symbol).intern(&mut ctx, &runtime, name)?;
-        assert!(ncl_object::symbol_value(&ctx, symbol)?
-            .as_fixnum()
-            .is_some());
+        assert!(
+            ncl_object::symbol_value(&ctx, symbol)?
+                .as_fixnum()
+                .is_some()
+        );
     }
 
     let base = make_array(

@@ -171,6 +171,26 @@ fn native_entries_report_unregistered_thread_and_nil_car() {
             operation: NativeOperation::Car
         })
     ));
+    assert_eq!(
+        native_sub(pointer, Word::fixnum(1), Word::fixnum(1)),
+        Word::NIL
+    );
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Sub
+        })
+    ));
+    assert_eq!(
+        native_less(pointer, Word::fixnum(1), Word::fixnum(1)),
+        Word::NIL
+    );
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Less
+        })
+    ));
 }
 
 #[test]

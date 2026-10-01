@@ -61,6 +61,18 @@ pub mod declarations {
         pub fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
         /// Return the most recent dynamic-loader error.
         pub fn dlerror() -> *const c_char;
+        /// Close a dynamic-loader handle.
+        pub fn dlclose(handle: *mut c_void) -> c_int;
+        /// Allocate bytes from the C heap.
+        pub fn malloc(size: usize) -> *mut c_void;
+        /// Release bytes from the C heap.
+        pub fn free(pointer: *mut c_void);
+        /// Move bytes between possibly overlapping ranges.
+        pub fn memmove(
+            destination: *mut c_void,
+            source: *const c_void,
+            count: usize,
+        ) -> *mut c_void;
         /// Read bytes from a POSIX file descriptor.
         pub fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
         /// Write bytes to a POSIX file descriptor.
@@ -69,6 +81,8 @@ pub mod declarations {
         pub fn open(path: *const c_char, flags: c_int, ...) -> c_int;
         /// Close a POSIX file descriptor.
         pub fn close(fd: c_int) -> c_int;
+        /// Set a POSIX process environment variable.
+        pub fn setenv(name: *const c_char, value: *const c_char, overwrite: c_int) -> c_int;
         /// Fill POSIX file metadata for a path.
         pub fn stat(path: *const c_char, output: *mut Stat) -> c_int;
         /// Open a POSIX directory stream.

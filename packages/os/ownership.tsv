@@ -1,0 +1,9 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+NCL-OS	GETENV	function	ncl-os	1	no	environment lookup
+NCL-OS	SETENV	function	ncl-os	1	no	environment mutation
+NCL-OS	CURRENT-DIRECTORY	function	ncl-os	1	no	working directory
+NCL-OS	DELETE-FILE	function	ncl-os	1	no	file removal
+NCL-OS	RENAME-FILE	function	ncl-os	1	no	file rename
+NCL-OS	FILE-STAT	function	ncl-os	1	no	file metadata
+NCL-OS	GET-TIME	function	ncl-os	1	no	Unix time
+NCL-OS	RANDOM-U64	function	ncl-os	1	no	process-local random value

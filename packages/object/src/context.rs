@@ -173,6 +173,12 @@ impl ThreadContext {
     /// Returns a storage error if this context is not registered.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
         self.require_registered()?;
+        ncl_sys::publish_conservative_snapshot(&mut self.thread);
+        ncl_sys::collect(&mut self.thread, full);
+        Ok(())
+    }
+    pub(crate) fn collect_for_allocation(&mut self, full: bool) -> Result<(), ObjectError> {
+        self.require_registered()?;
         ncl_sys::collect(&mut self.thread, full);
         Ok(())
     }

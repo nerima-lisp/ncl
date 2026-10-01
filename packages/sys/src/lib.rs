@@ -342,6 +342,13 @@ pub fn publish_safepoint(thread: &mut Thread) {
     thread.poll_safepoint();
 }
 
+/// Refresh the conservative stack and callee-saved-register snapshot without polling.
+pub fn publish_conservative_snapshot(thread: &mut Thread) {
+    if !thread.has_native_frame_snapshot() {
+        thread.publish_snapshot();
+    }
+}
+
 /// Publish a conservative candidate discovered in a native stack or register.
 pub fn publish_conservative_root(thread: &mut Thread, value: Word) {
     thread.publish_conservative_root(value);

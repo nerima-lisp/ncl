@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::too_many_lines)]
 
 use super::tests_text::{block, finish, op};
 use crate::*;
@@ -31,7 +31,7 @@ fn parser_rejects_signed_integer_and_escape_edges() {
         Vec::new(),
     );
     let printed = minimum.to_string();
-    assert_eq!(parse(&printed), Ok(minimum));
+    assert_eq!(parse(&printed), Ok(minimum.clone()));
     let explicit_negative = printed.replace("i8000000000000000", "i-8000000000000000");
     assert_eq!(parse(&explicit_negative), Ok(minimum));
     assert_eq!(
@@ -45,7 +45,7 @@ fn parser_rejects_signed_integer_and_escape_edges() {
         vec![Constant::Fixnum(-1)]
     );
 
-    let escaped = minimal().to_string().replace("fn @edge ", "fn @edge_ ");
+    let escaped = minimal().to_string().replace(",edge,", ",edge_,");
     assert_eq!(parse_error(&escaped), "bad escape");
 }
 
@@ -116,6 +116,23 @@ fn parser_rejects_descriptor_and_debug_edges() {
     assert_eq!(parse(&debug.to_string()), Ok(debug.clone()));
     assert_eq!(
         parse_error(&debug.to_string().replace(",0,1,2,3,", ",0,100000000,2,3,")),
+        "integer out of range"
+    );
+
+    let located = Function {
+        blocks: vec![block(
+            0,
+            vec![Op {
+                results: Vec::new(),
+                loc: Some(DebugLocationId(0)),
+                kind: OpKind::Safepoint,
+            }],
+            Terminator::Unreachable,
+        )],
+        ..minimal()
+    };
+    assert_eq!(
+        parse_error(&located.to_string().replace(",0,11,", ",100000000,11,")),
         "integer out of range"
     );
 

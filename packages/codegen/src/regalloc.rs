@@ -79,6 +79,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut safepoint_positions = BTreeSet::new();
     let mut safepoints = Vec::new();
     let mut handler_values = HashSet::new();
+    let mut move_preferences = HashMap::<ValueId, ValueId>::new();
     let mut enter_positions = HashMap::<HandlerRegionId, u32>::new();
     let mut block_param_values = HashSet::new();
     let mut position = 0u32;
@@ -105,6 +106,11 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             }
             if let OpKind::EnterHandler { region } = op.kind {
                 enter_positions.insert(region, position);
+            }
+            if let OpKind::Move { value } = op.kind {
+                if let Some((result, _)) = op.results.first() {
+                    move_preferences.insert(*result, value);
+                }
             }
             if is_call(&op.kind) {
                 call_positions.insert(position);
@@ -169,12 +175,25 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
 
     let registers = allocatable_registers(target);
     let mut active = Vec::<(LiveInterval, u16)>::new();
-    let mut locations = Vec::new();
+    let mut locations = Vec::<(ValueId, Location)>::new();
     let mut next_spill = 0u32;
     for interval in intervals.iter().copied() {
         active.retain(|(old, _)| old.end >= interval.start);
+        let preferred = move_preferences
+            .get(&interval.value)
+            .and_then(|value| locations.iter().find(|(id, _)| id == value))
+            .and_then(|(_, location)| location.into_register());
+        let coalesced_spill = move_preferences
+            .get(&interval.value)
+            .and_then(|value| locations.iter().find(|(id, _)| id == value))
+            .and_then(|(_, location)| match location {
+                Location::Spill(slot) => Some(*slot),
+                Location::Register(_) => None,
+            });
+        let preferred_source = move_preferences.get(&interval.value).copied();
         let occupied = active
             .iter()
+            .filter(|(old, _)| Some(old.value) != preferred_source)
             .map(|(_, register)| *register)
             .collect::<BTreeSet<_>>();
         // x86-64 callee-saved registers are conservatively pinned by the
@@ -184,6 +203,12 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             if interval.crosses_handler || interval.crosses_call || interval.crosses_safepoint {
                 let slot = next_spill;
                 next_spill = next_spill.saturating_add(1);
+                Location::Spill(slot)
+            } else if let Some(register) = preferred.filter(|register| !occupied.contains(register))
+            {
+                active.push((interval, register));
+                Location::Register(register)
+            } else if let Some(slot) = coalesced_spill {
                 Location::Spill(slot)
             } else if let Some(register) = registers
                 .iter()
@@ -492,6 +517,30 @@ mod tests {
                 Some(Location::Spill(_))
             ));
         }
+    }
+
+    #[test]
+    fn move_results_coalesce_with_their_source_location() {
+        let mut builder = FunctionBuilder::new(
+            FunctionId(3),
+            "coalesce-move",
+            vec![ncl_ir::Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            }],
+            vec![Ty::Word],
+        );
+        let moved = builder
+            .push_op(OpKind::Move { value: ValueId(0) }, &[Ty::Word])
+            .expect("move result")[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![moved],
+            })
+            .expect("return");
+
+        let allocation = allocate(&builder.finish(), AllocationTarget::AArch64);
+        assert_eq!(allocation.location(ValueId(0)), allocation.location(moved));
     }
 }
 

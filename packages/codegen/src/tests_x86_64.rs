@@ -514,11 +514,11 @@ fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert_eq!(
         allocation.location(ncl_ir::ValueId(0)),
-        Some(Location::Register(11))
+        Some(Location::Register(12))
     );
     assert_eq!(
         allocation.location(ncl_ir::ValueId(1)),
-        Some(Location::Register(12))
+        Some(Location::Register(13))
     );
     let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
         Ok(compiled) => compiled,
@@ -528,13 +528,13 @@ fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xfc])
+            .any(|bytes| bytes == [0x49, 0x89, 0xfd])
     );
     assert!(
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xf5])
+            .any(|bytes| bytes == [0x49, 0x89, 0xf6])
     );
 }
 
@@ -615,11 +615,11 @@ fn x86_64_prologue_initializes_load_arg_sources() {
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert_eq!(
         allocation.location(ncl_ir::ValueId(1)),
-        Some(Location::Register(12))
+        Some(Location::Register(13))
     );
     assert_eq!(
         allocation.location(ncl_ir::ValueId(2)),
-        Some(Location::Register(13))
+        Some(Location::Spill(0))
     );
     let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
         .unwrap_or_else(|error| panic!("entry parameter lowering: {error:?}"));
@@ -627,13 +627,13 @@ fn x86_64_prologue_initializes_load_arg_sources() {
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xf4])
+            .any(|bytes| bytes == [0x49, 0x89, 0xf5])
     );
     assert!(
         compiled
             .code
             .windows(3)
-            .any(|bytes| bytes == [0x49, 0x89, 0xd5])
+            .any(|bytes| bytes == [0x49, 0x89, 0xd6])
     );
 }
 

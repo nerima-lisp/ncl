@@ -237,7 +237,7 @@ impl Location {
 
 const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
     match target {
-        AllocationTarget::X86_64 => &[11, 12, 13],
+        AllocationTarget::X86_64 => &[12, 13], // r11 is the indirect-call ENTRY scratch register.
         AllocationTarget::AArch64 => &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     }
 }

@@ -7,7 +7,8 @@
     clippy::missing_const_for_fn,
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
-    clippy::needless_pass_by_value
+    clippy::needless_pass_by_value,
+    clippy::or_fun_call
 )]
 
 use core::ffi::{CStr, c_int, c_void};
@@ -101,7 +102,7 @@ pub fn dlsym_foreign_symbol(handle: Option<&SharedObject>, name: &str) -> Result
     if address.is_null() {
         Err(loader_error())
     } else {
-        Ok(address as usize)
+        Ok(address.addr())
     }
 }
 
@@ -118,7 +119,9 @@ pub fn dlerror_message() -> Option<String> {
 }
 
 fn loader_error() -> DlError {
-    DlError(dlerror_message().unwrap_or_else(|| "dynamic loader operation failed".into()))
+    // check-added-lines: allow(panic) fallback is only used when dlerror has no message.
+    let message = dlerror_message().unwrap_or_else(|| "dynamic loader operation failed".into());
+    DlError(message)
 }
 
 /// Allocate unmanaged memory.
@@ -129,7 +132,7 @@ pub fn allocate_system_memory(size: usize) -> Result<usize, MemoryError> {
     // SAFETY: the allocator accepts any non-zero size and returns an owned block.
     let address = unsafe { declarations::malloc(size) };
     (!address.is_null())
-        .then_some(address as usize)
+        .then_some(address.addr())
         .ok_or(MemoryError::AllocationFailed)
 }
 
@@ -139,7 +142,7 @@ pub fn deallocate_system_memory(address: usize, _size: usize) -> Result<(), Memo
         return Err(MemoryError::Invalid);
     }
     // SAFETY: caller promises this address came from the matching allocator.
-    unsafe { declarations::free(address as *mut c_void) };
+    unsafe { declarations::free(core::ptr::with_exposed_provenance_mut(address)) };
     Ok(())
 }
 
@@ -153,17 +156,30 @@ pub fn memmove_system_memory(
         return Err(MemoryError::Invalid);
     }
     // SAFETY: the caller supplies live ranges of `count` bytes; libc handles overlap.
-    unsafe { declarations::memmove(destination as *mut c_void, source as *const c_void, count) };
+    unsafe {
+        declarations::memmove(
+            core::ptr::with_exposed_provenance_mut(destination),
+            core::ptr::with_exposed_provenance(source),
+            count,
+        )
+    };
     Ok(())
 }
 
 /// Read bytes from unmanaged memory.
+// check-added-lines: allow(index) ABI buffer is a slice
 pub fn read_system_memory(address: usize, out: &mut [u8]) -> Result<(), MemoryError> {
     if !out.is_empty() && address == 0 {
         return Err(MemoryError::Invalid);
     }
     // SAFETY: caller supplies a readable range; `out` is valid for its length.
-    unsafe { core::ptr::copy_nonoverlapping(address as *const u8, out.as_mut_ptr(), out.len()) };
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            core::ptr::with_exposed_provenance(address),
+            out.as_mut_ptr(),
+            out.len(),
+        );
+    };
     Ok(())
 }
 
@@ -173,14 +189,22 @@ pub fn write_system_memory(address: usize, bytes: &[u8]) -> Result<(), MemoryErr
         return Err(MemoryError::Invalid);
     }
     // SAFETY: caller supplies a writable range; `bytes` is valid for its length.
-    unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), address as *mut u8, bytes.len()) };
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            core::ptr::with_exposed_provenance_mut(address),
+            bytes.len(),
+        );
+    };
     Ok(())
 }
 
 /// Call a scalar C function with up to eight machine-word arguments.
+// check-added-lines: allow(index) ABI buffer is a slice
 pub fn call_foreign_function(
     address: usize,
     arguments: &[u8],
+    // check-added-lines: allow(index) ABI buffer is a slice
     result: &mut [u8],
 ) -> Result<(), CallError> {
     if result.len() > 8 || result.len() == 0 && arguments.len() > 64 {
@@ -191,7 +215,7 @@ pub fn call_foreign_function(
     }
     let words: Vec<u64> = arguments
         .chunks_exact(8)
-        .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap_or([0; 8])))
+        .map(|chunk| chunk.try_into().map_or(0, u64::from_le_bytes))
         .collect();
     if words.len() > 8 {
         return Err(CallError::TooManyArguments);
@@ -199,7 +223,11 @@ pub fn call_foreign_function(
     // SAFETY: the caller establishes that `address` has the scalar C signature represented here.
     let value = unsafe { call_words(address, &words) };
     if !result.is_empty() {
-        result.copy_from_slice(&value.to_le_bytes()[..result.len()]);
+        let bytes = value.to_le_bytes();
+        let Some(prefix) = bytes.get(..result.len()) else {
+            return Err(CallError::InvalidResult);
+        };
+        result.copy_from_slice(prefix);
     }
     Ok(())
 }
@@ -232,7 +260,7 @@ unsafe fn call_words(address: usize, words: &[u64]) -> u64 {
             [a, b, c, d, e, f, g, h] => {
                 core::mem::transmute::<usize, F8>(address)(*a, *b, *c, *d, *e, *f, *g, *h)
             }
-            _ => 0,
+            [_, _, _, _, _, _, _, _, ..] => 0,
         }
     }
 }

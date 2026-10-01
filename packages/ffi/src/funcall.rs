@@ -89,7 +89,10 @@ pub fn alien_funcall(
         if sign_extend && bytes.last().is_some_and(|byte| byte & 0x80 != 0) {
             slot.fill(0xff);
         }
-        slot[..bytes.len()].copy_from_slice(&bytes);
+        let target = slot
+            .get_mut(..bytes.len())
+            .ok_or(FfiError::UnsupportedType("foreign call slot"))?;
+        target.copy_from_slice(&bytes);
         buffer.extend(slot);
     }
     if routine.address() == 0 {

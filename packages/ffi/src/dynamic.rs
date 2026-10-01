@@ -90,7 +90,7 @@ pub fn load_shared_object(
     let path = path.into();
     let mode = mode.into();
     ncl_sys::ffi::dlopen_shared_object(path.as_str(), matches!(mode, LoaderMode::Lazy))
-        .map(|handle| SharedObject(handle.as_raw() as usize))
+        .map(|handle| SharedObject(handle.as_raw().addr()))
         .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
 
@@ -101,7 +101,7 @@ pub fn load_shared_object(
 /// `dlclose` wrapper.
 pub fn unload_shared_object(object: SharedObject) -> Result<(), FfiError> {
     ncl_sys::ffi::dlclose_shared_object(ncl_sys::ffi::SharedObject::from_raw(
-        object.0 as *mut core::ffi::c_void,
+        core::ptr::with_exposed_provenance_mut(object.0),
     ))
     .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
@@ -127,7 +127,7 @@ pub fn find_dynamic_foreign_symbol_address(
     let name = name.into();
     ncl_sys::ffi::dlsym_foreign_symbol(
         Some(&ncl_sys::ffi::SharedObject::from_raw(
-            object.0 as *mut core::ffi::c_void,
+            core::ptr::with_exposed_provenance_mut(object.0),
         )),
         name.as_str(),
     )

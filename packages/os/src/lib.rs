@@ -63,7 +63,8 @@ fn setenv(
     let name = text(ctx, args.required(0)?)?;
     let value = text(ctx, args.required(1)?)?;
     ncl_sys::enter_native(ctx.thread_mut());
-    ncl_sys::set_environment_variable(&name, &value).map_err(|_| ObjectError::Unsupported)?;
+    ncl_sys::set_environment_variable(&name, &value)
+        .map_err(|_| ObjectError::Storage(ncl_sys::StorageCondition::InvalidSize))?;
     ncl_sys::leave_native(ctx.thread_mut());
     Ok(Word::fixnum(1))
 }
@@ -77,7 +78,7 @@ fn current_directory(
     let value = std::env::current_dir();
     ncl_sys::leave_native(ctx.thread_mut());
     let value = value
-        .map_err(|_| ObjectError::Unsupported)?
+        .map_err(|_| ObjectError::Storage(ncl_sys::StorageCondition::InvalidSize))?
         .to_string_lossy()
         .into_owned();
     lisp_string(ctx, runtime, &value)
@@ -117,7 +118,8 @@ fn file_stat(
     ncl_sys::enter_native(ctx.thread_mut());
     let metadata = std::fs::metadata(path);
     ncl_sys::leave_native(ctx.thread_mut());
-    let metadata = metadata.map_err(|_| ObjectError::Unsupported)?;
+    let metadata =
+        metadata.map_err(|_| ObjectError::Storage(ncl_sys::StorageCondition::InvalidSize))?;
     let modified = metadata
         .modified()
         .ok()
@@ -145,7 +147,7 @@ fn get_time(
 ) -> Result<Word, ObjectError> {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|_| ObjectError::Unsupported)?
+        .map_err(|_| ObjectError::Storage(ncl_sys::StorageCondition::InvalidSize))?
         .as_secs();
     Ok(Word::fixnum(
         i64::try_from(seconds).map_err(|_| ObjectError::Layout)?,
@@ -157,28 +159,19 @@ fn random_u64(
     _: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut current = RANDOM_STATE.load(Ordering::Relaxed);
-    loop {
-        let next = current ^ (current << 7) ^ (current >> 9);
-        match RANDOM_STATE.compare_exchange_weak(
-            current,
-            next,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
-            Ok(_) => {
-                return Ok(Word::fixnum(
-                    i64::try_from(next >> 1).map_err(|_| ObjectError::Layout)?,
-                ));
-            }
-            Err(observed) => current = observed,
-        }
-    }
+    let next = RANDOM_STATE.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+        Some(current ^ (current << 7) ^ (current >> 9))
+    });
+    let next = next.map_err(|_| ObjectError::Layout)?;
+    Ok(Word::fixnum(
+        i64::try_from(next >> 1).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 fn register_one(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
     name: &'static str,
+    // check-added-lines: allow(index) type annotation is a slice
     params: &'static [Parameter],
     callback: ncl_object::RustBuiltin,
 ) -> Result<(), ObjectError> {
@@ -219,4 +212,145 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     register_one(runtime, &mut ctx, "GET-TIME", &[], get_time)?;
     register_one(runtime, &mut ctx, "RANDOM-U64", &[], random_u64)?;
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::too_many_lines, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use ncl_object::{MultipleValues, make_string};
+
+    fn fixture() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context");
+        (runtime, ctx)
+    }
+
+    fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
+        make_string(ctx, runtime, &value.chars().collect::<Vec<_>>()).expect("string")
+    }
+
+    #[test]
+    fn implemented_builtins_exercise_success_and_failure_paths() {
+        let (runtime, mut ctx) = fixture();
+        register(&runtime).unwrap();
+        let mut values = MultipleValues::new();
+        let key = format!("NCL_OS_TEST_{}", std::process::id());
+        let key_word = string(&mut ctx, &runtime, &key);
+        let value_word = string(&mut ctx, &runtime, "value");
+        let missing_word = string(&mut ctx, &runtime, "NCL_OS_MISSING");
+
+        let set_words = [key_word, value_word];
+        let set_args = BuiltinArgs::new(&set_words);
+        assert_eq!(
+            setenv(&mut ctx, &runtime, &set_args, &mut values),
+            Ok(Word::fixnum(1))
+        );
+        let get_words = [key_word];
+        let get_args = BuiltinArgs::new(&get_words);
+        let got = getenv(&mut ctx, &runtime, &get_args, &mut values).unwrap();
+        assert_eq!(text(&ctx, got).unwrap(), "value");
+        let missing_words = [missing_word];
+        let missing_args = BuiltinArgs::new(&missing_words);
+        assert_eq!(
+            getenv(&mut ctx, &runtime, &missing_args, &mut values).unwrap(),
+            Word::NIL
+        );
+        assert!(setenv(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values).is_err());
+
+        assert_ne!(
+            current_directory(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values).unwrap(),
+            Word::NIL
+        );
+        assert!(
+            get_time(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values)
+                .unwrap()
+                .as_fixnum()
+                .is_some()
+        );
+        let first = random_u64(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values).unwrap();
+        let second = random_u64(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values).unwrap();
+        assert_ne!(first, second);
+
+        let path = std::env::temp_dir().join(format!("ncl-os-{}", std::process::id()));
+        let renamed = path.with_extension("renamed");
+        std::fs::write(&path, b"ncl").expect("fixture file");
+        let path_word = string(&mut ctx, &runtime, path.to_str().expect("path"));
+        let renamed_word = string(&mut ctx, &runtime, renamed.to_str().expect("renamed"));
+        assert!(
+            file_stat(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[path_word]),
+                &mut values
+            )
+            .is_ok()
+        );
+        let dir_word = string(
+            &mut ctx,
+            &runtime,
+            std::env::temp_dir().to_str().expect("temp directory"),
+        );
+        assert!(
+            file_stat(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[dir_word]),
+                &mut values
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            rename_file(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[path_word, renamed_word]),
+                &mut values
+            )
+            .unwrap(),
+            Word::fixnum(1)
+        );
+        assert_eq!(
+            delete_file(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[renamed_word]),
+                &mut values
+            )
+            .unwrap(),
+            Word::fixnum(1)
+        );
+        assert_eq!(
+            delete_file(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[renamed_word]),
+                &mut values
+            )
+            .unwrap(),
+            Word::NIL
+        );
+        assert!(
+            file_stat(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[Word::NIL]),
+                &mut values
+            )
+            .is_err()
+        );
+
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    let (runtime, mut ctx) = fixture();
+                    let mut values = MultipleValues::new();
+                    for _ in 0..128 {
+                        let _ = random_u64(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values);
+                    }
+                });
+            }
+        });
+    }
 }

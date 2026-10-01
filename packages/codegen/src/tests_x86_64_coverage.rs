@@ -564,6 +564,133 @@ fn x86_64_lowering_covers_progv_move_chain_and_unreachable() {
 }
 
 #[test]
+fn x86_64_lowering_dispatches_all_normal_handler_candidates() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(132),
+        "x86-64-dispatch-candidates",
+        vec![
+            Param {
+                name: "callee".into(),
+                ty: Ty::Address,
+            },
+            Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![],
+    );
+    let callee = ncl_ir::ValueId(0);
+    let value = ncl_ir::ValueId(1);
+    let argc_index = builder.add_constant(Constant::Fixnum(0));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
+        .expect("argc")[0];
+    let tag_index = builder.add_constant(Constant::Fixnum(1));
+    let tag = builder
+        .push_op(OpKind::Const { result: tag_index }, &[Ty::Word])
+        .expect("catch tag")[0];
+    builder
+        .push_op(
+            OpKind::Call {
+                function: callee,
+                args: vec![argc],
+            },
+            &[],
+        )
+        .expect("call");
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry: callee,
+                captures: vec![value],
+            },
+            &[Ty::Word],
+        )
+        .expect("closure")[0];
+    builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: vec![argc],
+                named_symbol: None,
+            },
+            &[],
+        )
+        .expect("closure call");
+
+    let catch_handler = builder.create_block(vec![
+        (Ty::Word, ncl_ir::ValueId(10)),
+        (Ty::Word, ncl_ir::ValueId(11)),
+    ]);
+    let unwind_handler = builder.create_block(Vec::new());
+    let progv_handler = builder.create_block(Vec::new());
+    let protected = vec![ncl_ir::BlockId(0)];
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: ncl_ir::HandlerRegionId(0),
+        kind: ncl_ir::HandlerKind::Catch,
+        protected: protected.clone(),
+        handler: catch_handler,
+        cleanup: None,
+        catch_tag: Some(tag),
+        binding_targets: vec![value],
+        depth: 0,
+        parent: None,
+    });
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: ncl_ir::HandlerRegionId(1),
+        kind: ncl_ir::HandlerKind::UnwindProtect,
+        protected: protected.clone(),
+        handler: unwind_handler,
+        cleanup: Some(unwind_handler),
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: ncl_ir::HandlerRegionId(2),
+        kind: ncl_ir::HandlerKind::Progv,
+        protected,
+        handler: progv_handler,
+        cleanup: None,
+        catch_tag: None,
+        binding_targets: vec![value],
+        depth: 0,
+        parent: None,
+    });
+    for region in [
+        ncl_ir::HandlerRegionId(0),
+        ncl_ir::HandlerRegionId(1),
+        ncl_ir::HandlerRegionId(2),
+    ] {
+        builder
+            .push_op(OpKind::EnterHandler { region }, &[])
+            .expect("enter handler");
+        builder
+            .push_op(OpKind::LeaveHandler { region }, &[])
+            .expect("leave handler");
+    }
+    builder
+        .terminate(Terminator::Throw { condition: tag })
+        .expect("throw");
+    for (block, values) in [
+        (catch_handler, vec![ncl_ir::ValueId(10)]),
+        (unwind_handler, vec![value]),
+        (progv_handler, vec![value]),
+    ] {
+        builder.position_at(block).expect("handler block");
+        builder
+            .terminate(Terminator::Return { values })
+            .expect("handler return");
+    }
+
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+    assert!(compiled.safepoint_maps.len() >= 8);
+}
+
+#[test]
 fn x86_64_lowering_reports_reachable_invalid_operation_forms() {
     let mut builtin = FunctionBuilder::new(
         ncl_ir::FunctionId(125),

@@ -103,9 +103,21 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
             &[Ty::I64],
         )
         .expect("convert")[0];
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: converted,
+            },
+            &[],
+        )
+        .expect("convert without result");
     let loaded = builder
         .push_op(OpKind::Load { address: object }, &[Ty::Word])
         .expect("load")[0];
+    builder
+        .push_op(OpKind::Load { address: object }, &[])
+        .expect("load without result");
     builder
         .push_op(
             OpKind::Store {
@@ -118,6 +130,9 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
     let field = builder
         .push_op(OpKind::LoadField { object, field: 2 }, &[Ty::Word])
         .expect("load field")[0];
+    builder
+        .push_op(OpKind::LoadField { object, field: 4 }, &[])
+        .expect("load field without result");
     builder
         .push_op(
             OpKind::StoreField {
@@ -132,11 +147,17 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("load arg");
     builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[])
+        .expect("load arg without result");
+    builder
         .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
         .expect("load capture");
     builder
         .push_op(OpKind::LoadFunctionObject, &[Ty::Word])
         .expect("load function object");
+    builder
+        .push_op(OpKind::LoadFunctionObject, &[])
+        .expect("load function object without result");
     for op in [
         Compare::Eq,
         Compare::Ne,
@@ -156,6 +177,16 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
             )
             .expect("compare");
     }
+    builder
+        .push_op(
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: value,
+                right: fixnum,
+            },
+            &[],
+        )
+        .expect("compare without result");
     for op in [
         Prim::FixnumAdd,
         Prim::FixnumSub,
@@ -201,6 +232,9 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
             &[Ty::Word],
         )
         .expect("multiple values");
+    builder
+        .push_op(OpKind::SetMultipleValues { values: Vec::new() }, &[])
+        .expect("empty multiple values");
     builder
         .terminate(Terminator::Return {
             values: vec![heap, entry, constant_values[1]],
@@ -282,6 +316,108 @@ fn x86_64_lowering_covers_allocation_safepoint_builtin_and_call_return() {
     let compiled = compile(builder);
     assert!(!compiled.code.is_empty());
     assert!(compiled.safepoint_maps.len() >= 4);
+}
+
+#[test]
+fn x86_64_lowering_covers_branch_switch_and_terminal_paths() {
+    let mut jump = FunctionBuilder::new(
+        ncl_ir::FunctionId(128),
+        "x86-64-jump-terminator",
+        Vec::new(),
+        Vec::new(),
+    );
+    let target = jump.create_block(Vec::new());
+    jump.position_at(ncl_ir::BlockId(0)).expect("entry");
+    jump.terminate(Terminator::Jump {
+        target,
+        args: Vec::new(),
+    })
+    .expect("jump");
+    jump.position_at(target).expect("target");
+    jump.terminate(Terminator::Return { values: Vec::new() })
+        .expect("jump return");
+    assert!(!compile(jump).code.is_empty());
+
+    let mut branch = FunctionBuilder::new(
+        ncl_ir::FunctionId(129),
+        "x86-64-branch-terminator",
+        vec![Param {
+            name: "condition".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+    );
+    let then_target = branch.create_block(Vec::new());
+    let else_target = branch.create_block(Vec::new());
+    branch.position_at(ncl_ir::BlockId(0)).expect("entry");
+    branch
+        .terminate(Terminator::Branch {
+            condition: ncl_ir::ValueId(0),
+            then_target,
+            then_args: Vec::new(),
+            else_target,
+            else_args: Vec::new(),
+        })
+        .expect("branch");
+    for block in [then_target, else_target] {
+        branch.position_at(block).expect("branch target");
+        branch
+            .terminate(Terminator::Return { values: Vec::new() })
+            .expect("branch return");
+    }
+    assert!(!compile(branch).code.is_empty());
+
+    let mut switch = FunctionBuilder::new(
+        ncl_ir::FunctionId(130),
+        "x86-64-switch-terminator",
+        Vec::new(),
+        Vec::new(),
+    );
+    let selector = switch.add_constant(Constant::Fixnum(1));
+    let selector = switch
+        .push_op(OpKind::Const { result: selector }, &[Ty::Word])
+        .expect("selector")[0];
+    let case_target = switch.create_block(Vec::new());
+    let default_target = switch.create_block(Vec::new());
+    switch.position_at(ncl_ir::BlockId(0)).expect("entry");
+    switch
+        .terminate(Terminator::Switch {
+            value: selector,
+            cases: vec![(1, case_target, Vec::new())],
+            default: default_target,
+            default_args: Vec::new(),
+        })
+        .expect("switch");
+    for block in [case_target, default_target] {
+        switch.position_at(block).expect("switch target");
+        switch
+            .terminate(Terminator::Return { values: Vec::new() })
+            .expect("switch return");
+    }
+    assert!(!compile(switch).code.is_empty());
+
+    for terminator in [
+        Terminator::TailCall {
+            function: ncl_ir::ValueId(0),
+            args: vec![ncl_ir::ValueId(0)],
+        },
+        Terminator::Throw {
+            condition: ncl_ir::ValueId(0),
+        },
+        Terminator::Unreachable,
+    ] {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(131),
+            "x86-64-terminal-terminator",
+            vec![Param {
+                name: "callee-or-condition".into(),
+                ty: Ty::Word,
+            }],
+            Vec::new(),
+        );
+        builder.terminate(terminator).expect("terminal");
+        assert!(!compile(builder).code.is_empty());
+    }
 }
 
 #[test]

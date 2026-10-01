@@ -37,6 +37,14 @@ const SHARED_INITIALIZE_BUILTIN: Builtin = Builtin {
     lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
     convention: ncl_object::BuiltinConvention::Adapted,
 };
+const REINITIALIZE_INSTANCE_BUILTIN: Builtin = Builtin {
+    lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
+    convention: ncl_object::BuiltinConvention::Adapted,
+};
+const UPDATE_INSTANCE_BUILTIN: Builtin = Builtin {
+    lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
+    convention: ncl_object::BuiltinConvention::Adapted,
+};
 
 /// A registration-ready initialization callback descriptor.
 #[derive(Clone, Copy, Debug)]
@@ -60,7 +68,7 @@ pub const fn builtin_descriptors() -> &'static [BuiltinDescriptor] {
     &BUILTINS
 }
 
-const BUILTINS: [BuiltinDescriptor; 3] = [
+const BUILTINS: [BuiltinDescriptor; 5] = [
     BuiltinDescriptor {
         package: BuiltinPackage::CommonLisp,
         name: BuiltinName::new("MAKE-INSTANCE"),
@@ -80,6 +88,20 @@ const BUILTINS: [BuiltinDescriptor; 3] = [
         name: BuiltinName::new("SHARED-INITIALIZE"),
         builtin: SHARED_INITIALIZE_BUILTIN,
         callback: shared_initialize_builtin,
+        aliases: &[],
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("REINITIALIZE-INSTANCE"),
+        builtin: REINITIALIZE_INSTANCE_BUILTIN,
+        callback: reinitialize_instance_builtin,
+        aliases: &[],
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("UPDATE-INSTANCE"),
+        builtin: UPDATE_INSTANCE_BUILTIN,
+        callback: update_instance_builtin,
         aliases: &[],
     },
 ];
@@ -190,6 +212,7 @@ fn initialize_slots<'scope>(
     instance: Instance,
     class: Handle<'scope, Word>,
     initargs: &HandleVec<'scope, Word>,
+    preserve_bound: bool,
 ) -> Result<(), ObjectError> {
     let class_word = scope.get(class).as_word();
     let slots = class_slots(scope.context(), class_word)?;
@@ -227,9 +250,53 @@ fn initialize_slots<'scope>(
         {
             let default = simple_vector_ref(scope.context(), slot, 2)?;
             // check-added-lines: allow(unbound) sentinel initialization
-            if default != Word::UNBOUND {
+            if default != Word::UNBOUND
+                && (!preserve_bound
+                    || slot_ref(scope.context(), instance, index)? == Word::UNBOUND)
+            {
                 slot_set(scope.context_mut(), instance, index, default)?;
             }
+        }
+    }
+    Ok(())
+}
+
+fn update_supplied_slots<'scope>(
+    scope: &mut Scope<'scope>,
+    instance: Instance,
+    class: Handle<'scope, Word>,
+    initargs: &HandleVec<'scope, Word>,
+) -> Result<(), ObjectError> {
+    let slots = class_slots(scope.context(), scope.get(class).as_word())?;
+    let initarg_words = scope
+        .get_many(initargs)
+        .into_iter()
+        .map(Local::as_word)
+        .collect::<Vec<_>>();
+    let initargs = InitArgList::parse(&initarg_words)?;
+    for (index, slot) in slots.into_iter().enumerate() {
+        let key = if matches!(
+            classify_object(scope.context(), slot),
+            ObjectRef::SimpleVector(_)
+        ) && simple_vector_length(scope.context(), slot)? > 0
+        {
+            let initarg = if simple_vector_length(scope.context(), slot)? > 1 {
+                simple_vector_ref(scope.context(), slot, 1)?
+            } else {
+                Word::NIL
+            };
+            if initarg == Word::NIL {
+                simple_vector_ref(scope.context(), slot, 0)?
+            } else {
+                initarg
+            }
+        } else {
+            slot
+        };
+        if key != Word::NIL
+            && let Some(value) = initargs.value_for(key)
+        {
+            slot_set(scope.context_mut(), instance, index, value.0)?;
         }
     }
     Ok(())
@@ -316,7 +383,7 @@ fn initialize_instance_builtin(
         scope.context(),
         instance,
     )?));
-    initialize_slots(&mut scope, instance, class, &initargs)?;
+    initialize_slots(&mut scope, instance, class, &initargs, false)?;
     let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
     let (shared_name, _) = Package::from_word(common_lisp).intern(
         scope.context_mut(),
@@ -367,38 +434,47 @@ fn shared_initialize_builtin(
         scope.context(),
         instance,
     )?));
-    initialize_slots(&mut scope, instance, class, &initargs)?;
+    initialize_slots(&mut scope, instance, class, &initargs, true)?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
 }
 
-/// Build the adapted implementation for an initialization descriptor.
-#[must_use]
-pub fn implementation(descriptor: BuiltinDescriptor) -> BuiltinImplementation {
-    BuiltinImplementation::adapted(descriptor.builtin, descriptor.callback, initarg_adapter)
+fn reinitialize_instance_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let instance_word = scope.get(instance_handle).as_word();
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
+    let initarg_locals = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let initargs = scope.root_many(&initarg_locals);
+    let instance = instance_argument(scope.context_mut(), instance_word)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
+        scope.context(),
+        instance,
+    )?));
+    update_supplied_slots(&mut scope, instance, class, &initargs)?;
+    values.clear();
+    Ok(scope.get(instance_handle).as_word())
 }
 
-/// Register the instance initialization protocol without modifying CLOS class registration.
-///
-/// # Errors
-/// Returns an object error when builtin registration fails.
-pub fn register_initialization_builtins(runtime: &Runtime) -> Result<(), ObjectError> {
-    let mut ctx = ThreadContext::new();
-    ctx.register(runtime)?;
-    for descriptor in builtin_descriptors() {
-        runtime.register_builtin(
-            &mut ctx,
-            BuiltinIdentifier::new(descriptor.package, descriptor.name),
-            implementation(*descriptor),
-        )?;
-    }
-    Ok(())
+fn update_instance_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    reinitialize_instance_builtin(ctx, runtime, args, values)
 }
 
-/// Alias intended for the parent CLOS registration coordinator.
-///
-/// # Errors
-/// Returns an object error when builtin registration fails.
-pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
-    register_initialization_builtins(runtime)
-}
+include!("initialization_registration.rs");

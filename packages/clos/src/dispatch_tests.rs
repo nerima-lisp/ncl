@@ -139,4 +139,54 @@ fn call_next_method_chain_survives_gc_forced_on_every_allocation() {
     );
     let _ = (result_token, supplied_token, next_token);
 }
+
+#[test]
+fn dispatch_specificity_uses_argument_precedence_and_eql_descriptors() {
+    let (runtime, mut context) = setup();
+    let package = runtime
+        .find_package(&context, COMMON_LISP)
+        .expect("package");
+    let (variable, _) = Package::from_word(package)
+        .intern(&mut context, &runtime, "VALUE")
+        .expect("variable");
+    let (integer, _) = Package::from_word(package)
+        .intern(&mut context, &runtime, "INTEGER")
+        .expect("integer");
+    let (t_class, _) = Package::from_word(package)
+        .intern(&mut context, &runtime, "T")
+        .expect("t class");
+    let eql = super::super::mop::make_eql_specializer(
+        &mut context,
+        &runtime,
+        Word::fixnum(7),
+    )
+    .expect("eql specializer");
+    let first_integer = list(&mut context, &runtime, &[variable, integer]);
+    let first_t = list(&mut context, &runtime, &[variable, t_class]);
+    let second_eql = list(&mut context, &runtime, &[variable, eql]);
+    let second_t = list(&mut context, &runtime, &[variable, t_class]);
+    let first = list(&mut context, &runtime, &[first_integer, second_t]);
+    let second = list(&mut context, &runtime, &[first_t, second_eql]);
+
+    let first_score = super::super::dispatch_method_match(
+        &mut context,
+        &runtime,
+        first,
+        &[Word::fixnum(7), Word::fixnum(7)],
+    )
+    .expect("first match")
+    .expect("first applicable");
+    let second_score = super::super::dispatch_method_match(
+        &mut context,
+        &runtime,
+        second,
+        &[Word::fixnum(7), Word::fixnum(7)],
+    )
+    .expect("second match")
+    .expect("second applicable");
+
+    assert_eq!(first_score, vec![2, 0]);
+    assert_eq!(second_score, vec![0, usize::MAX]);
+    assert!(first_score > second_score);
+}
 }

@@ -375,7 +375,7 @@ fn operands_of_terminator(terminator: &Terminator, out: &mut Vec<ValueId>) {
 }
 
 #[cfg(test)]
-#[path = "regalloc_tests.rs"]
+#[path = "tests_regalloc.rs"]
 mod tests;
 
 #[cfg(test)]

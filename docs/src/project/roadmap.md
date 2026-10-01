@@ -1,21 +1,24 @@
 # Roadmap
 
-NCL is being rewritten as a native Common Lisp implementation with no SBCL
-compatibility layer. Implementation runs as one Gate 0 phase plus three waves;
-the decisions, requirements, and per-lane acceptance criteria are in the
+NCL is in active parallel implementation. The executable path already
+evaluates source text natively. The remaining work is grouped by the
+milestones below; lane ownership and dependencies are in the
 [wave plan](wave-plan.md).
 
-- Gate 0 starts six lanes first: the extension API contract and ownership-table split (N01), IR contract v2 (N02), slop removal and documentation (N03), the resident integration lane (N04), coverage recovery (N05), and the ncl-disasm decoder (N76).
-- Wave A fills the free slots in priority order once N01/N02 freeze: runtime plus binary with M1 (N60), lib-macros A (N27), lib-numbers (N20), compiler-front surface migration (N13), Phase 1b (N40), the library and language crate lanes (N10, N11, N12, N14, N21, N22, N24, N25, N26), and the pass manager with inlining (N43).
-- Wave B starts each lane once its dependencies freeze: hash-arrays, LOOP, pathnames, format, the Phase 3 passes (N44 to N47), Phase 1c, SSA register allocation, parallel GC, the conformance runner, differential testing, ncl-os, and ncl-profiler.
-- Wave C holds the remaining performance phases and tooling: Phase 2, Phase 5, Phase 6 SIMD, ncl-uiop, ncl-asdf, ncl-coverage, ncl-debug, and the library backends with the M4 load matrix.
+| Milestone | Observable result |
+| --- | --- |
+| M0 | ANSI ownership is complete and no `SB-*` compatibility surface exists. |
+| M1 | `ncl --eval` evaluates recursive `fib(25)` from source and prints `75025`. |
+| M2 | ansi-test reports pass, fail, and unexecuted counts. |
+| M3 | cl-bench completes its current benchmark set. |
+| M4 | The 14-library load matrix succeeds. |
+| M5 | Conformance and performance gates meet their recorded targets. |
 
-Milestones run M0 to M5: M0 removes the SB- surface and makes the ownership
-check cover all 978 CL symbols; M1 runs fib(25) from source natively and prints
-75025; M2 completes ansi-test and reports pass, fail, and unexecuted counts with
-a commit hash; M3 runs all 65 cl-bench benchmarks; M4 loads all 14 libraries; M5
-beats SBCL's numbers for FR-002 and FR-007.
+Current parallel lanes include ansi-runner, cl-bench, loop-macros, clos-mop,
+opt-core, regalloc, parallel-gc, threads, os-ffi, image-startup,
+disasm-debug, and documentation/slop removal. Follow-up lanes cover the ANSI
+chapters, escape analysis and LICM, later optimization phases, ASDF/UIOP,
+profiling and coverage, and the library load matrix.
 
-At most 16 lanes run at once, one of them dedicated to integration. CI covers
-x86-64 only; the integration lane catches AArch64 regressions with local arm64
-runs at every merge.
+Measured claims must include the command, platform, and recorded baseline.
+See `conformance/` for baseline and scoreboard data.

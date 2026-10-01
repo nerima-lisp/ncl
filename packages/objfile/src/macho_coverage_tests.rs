@@ -145,3 +145,61 @@ fn private_macho_command_parser_checks_section_field_bounds() {
         })
     );
 }
+
+#[test]
+fn public_macho_writer_and_reader_cover_reachable_architecture_paths() {
+    for (architecture, kind) in [
+        (MachArchitecture::X86_64, crate::RelocKind::PcRel32),
+        (MachArchitecture::Arm64, crate::RelocKind::Branch26),
+    ] {
+        let value = MachObject {
+            architecture,
+            sections: vec![MachSection {
+                id: SectionId(1),
+                segment: "__TEXT".into(),
+                name: "__text".into(),
+                bytes: vec![0; 8],
+            }],
+            relocations: vec![Relocation {
+                section: SectionId(1),
+                offset: 0,
+                kind,
+                symbol: crate::SymbolRef::Local(0),
+                addend: 0,
+            }],
+        };
+        let bytes_result = value.write();
+        assert!(bytes_result.is_ok());
+        let bytes = bytes_result.unwrap_or_default();
+        assert_eq!(MachReader::validate(&bytes, architecture), Ok(()));
+    }
+}
+
+#[test]
+fn public_macho_validator_reports_header_and_command_errors() {
+    assert_eq!(
+        validate_macho(&[], MachArchitecture::X86_64),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 32
+        })
+    );
+    let mut bytes = vec![0; 32];
+    bytes[0..4].copy_from_slice(&0xfeed_facf_u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&0x0100_0007u32.to_le_bytes());
+    bytes[16..20].copy_from_slice(&1u32.to_le_bytes());
+    bytes[20..24].copy_from_slice(&8u32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&bytes, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "invalid Mach-O load commands"
+        ))
+    );
+    bytes[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(matches!(
+        validate_macho(&bytes, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "invalid Mach-O load commands"
+        ))
+    ));
+}

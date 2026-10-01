@@ -137,3 +137,53 @@ fn private_elf_segment_parser_checks_each_load_segment_property() {
         Ok((false, true))
     );
 }
+
+#[test]
+fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
+    let image = ExecutableImage {
+        architecture: Architecture::Aarch64,
+        code: vec![1, 2],
+        metadata: vec![3],
+    };
+    let elf_result = write_elf_executable(&image);
+    assert!(elf_result.is_ok());
+    let elf = elf_result.unwrap_or_default();
+    assert_eq!(validate_elf_executable(&elf, Architecture::Aarch64), Ok(()));
+    assert_eq!(
+        validate_elf_executable(&elf, Architecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "ELF machine",
+            value: 183
+        })
+    );
+
+    let macho_result = write_mach_executable(&image, MachArchitecture::Arm64);
+    assert!(macho_result.is_ok());
+    let macho = macho_result.unwrap_or_default();
+    assert_eq!(
+        crate::validate_mach_executable(&macho, MachArchitecture::Arm64),
+        Ok(())
+    );
+    assert_eq!(
+        write_mach_executable(&image, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "architecture",
+            value: 2
+        })
+    );
+
+    let mut bad_headers = elf.clone();
+    bad_headers[54..56].copy_from_slice(&32u16.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&bad_headers, Architecture::Aarch64),
+        Err(ObjectError::InvalidStructure("invalid ELF program headers"))
+    );
+    let mut bad_entry = elf;
+    bad_entry[24..32].copy_from_slice(&0u64.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&bad_entry, Architecture::Aarch64),
+        Err(ObjectError::InvalidStructure(
+            "ELF entry is outside executable segment"
+        ))
+    );
+}

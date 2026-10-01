@@ -1,6 +1,6 @@
 use ncl_ir::{Function, Ty, ValueId};
 
-pub(crate) fn value_is_raw_entry(function: &Function, value: ValueId) -> bool {
+pub fn value_is_raw_entry(function: &Function, value: ValueId) -> bool {
     value_type(function, value) == Some(Ty::Address)
 }
 

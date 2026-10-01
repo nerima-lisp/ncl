@@ -1,0 +1,406 @@
+#![allow(
+    missing_docs,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::unwrap_used
+)]
+
+use crate::{compile_function_aarch64, ContextField, RuntimeAbi, RuntimeFunction};
+use ncl_ir::{
+    Compare, Constant, FunctionBuilder, HandlerKind, HandlerRegion, OpKind, Prim, Terminator, Ty,
+};
+
+struct CoverageAbi;
+
+impl RuntimeAbi for CoverageAbi {
+    fn builtin_address(
+        &self,
+        _identifier: ncl_object::BuiltinIdentifier,
+    ) -> Result<u64, crate::AbiError> {
+        Ok(0x1000)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
+        let layout = ncl_sys::thread_layout();
+        let offset = match field {
+            ContextField::TlabBump => layout.tlab_bump,
+            ContextField::TlabLimit => layout.tlab_limit,
+            ContextField::SafepointRequest => layout.safepoint_request,
+            ContextField::MultipleValueArea => layout.mv,
+            ContextField::Pending => layout.pending,
+            ContextField::MultipleValueCount => layout.mv_count,
+            ContextField::Handler => layout.handler,
+            ContextField::Cleanup => layout.cleanup,
+            ContextField::Catch => layout.catch,
+        };
+        i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
+    }
+
+    fn runtime_address(&self, _function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+        Ok(0x1000)
+    }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        (name == "function-entry:7").then_some(0x2000)
+    }
+}
+
+fn compile(builder: FunctionBuilder) -> crate::CompiledFunction {
+    compile_function_aarch64(&builder.finish(), &CoverageAbi).expect("AArch64 lowering")
+}
+
+#[test]
+fn aarch64_operation_matrix_reaches_real_lowering_paths() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(140),
+        "aarch64-operation-matrix",
+        vec![
+            ncl_ir::Param {
+                name: "object".into(),
+                ty: Ty::Address,
+            },
+            ncl_ir::Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let object = ncl_ir::ValueId(0);
+    let value = ncl_ir::ValueId(1);
+    let constants = [
+        Constant::Fixnum(7),
+        Constant::Character('x' as u32),
+        Constant::Nil,
+        Constant::Unbound,
+        Constant::T,
+        Constant::FunctionEntry(ncl_ir::FunctionId(7)),
+        Constant::StringBytes(vec![1, 2]),
+    ];
+    let mut values = Vec::new();
+    for constant in constants {
+        let index = builder.add_constant(constant);
+        values.push(
+            builder
+                .push_op(OpKind::Const { result: index }, &[Ty::Word])
+                .unwrap()[0],
+        );
+    }
+    let moved = builder
+        .push_op(OpKind::Move { value }, &[Ty::Word])
+        .unwrap()[0];
+    let converted = builder
+        .push_op(
+            OpKind::Convert {
+                op: ncl_ir::Convert::WordToI64,
+                value: moved,
+            },
+            &[Ty::I64],
+        )
+        .unwrap()[0];
+    let loaded = builder
+        .push_op(OpKind::Load { address: object }, &[Ty::Word])
+        .unwrap()[0];
+    builder
+        .push_op(
+            OpKind::Store {
+                address: object,
+                value: loaded,
+            },
+            &[],
+        )
+        .unwrap();
+    let field = builder
+        .push_op(OpKind::LoadField { object, field: 2 }, &[Ty::Word])
+        .unwrap()[0];
+    builder
+        .push_op(
+            OpKind::StoreField {
+                object,
+                field: 3,
+                value: field,
+            },
+            &[],
+        )
+        .unwrap();
+    builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .unwrap();
+    builder
+        .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
+        .unwrap();
+    builder
+        .push_op(OpKind::LoadFunctionObject, &[Ty::Word])
+        .unwrap();
+    for op in [
+        Compare::Eq,
+        Compare::Ne,
+        Compare::Lt,
+        Compare::Le,
+        Compare::Gt,
+        Compare::Ge,
+    ] {
+        builder
+            .push_op(
+                OpKind::Compare {
+                    op,
+                    left: value,
+                    right: values[0],
+                },
+                &[Ty::Bool],
+            )
+            .unwrap();
+    }
+    for op in [
+        Prim::FixnumAdd,
+        Prim::FixnumSub,
+        Prim::FixnumMul,
+        Prim::FixnumEq,
+        Prim::Eq,
+        Prim::Eql,
+        Prim::FixnumLt,
+        Prim::FixnumLe,
+        Prim::Car,
+        Prim::Cdr,
+        Prim::Svref,
+        Prim::Aref,
+        Prim::Rplaca,
+        Prim::Rplacd,
+        Prim::Aset,
+    ] {
+        let result = !matches!(op, Prim::Rplaca | Prim::Rplacd | Prim::Aset);
+        builder
+            .push_op(
+                OpKind::Prim {
+                    op,
+                    args: vec![object, value],
+                    condition: None,
+                },
+                if result { &[Ty::Word] } else { &[] },
+            )
+            .unwrap();
+    }
+    builder
+        .push_op(
+            OpKind::SetMultipleValues {
+                values: vec![value, converted],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
+        .unwrap();
+    builder.push_op(OpKind::Safepoint, &[]).unwrap();
+    builder
+        .push_op(
+            OpKind::Builtin {
+                name: "identity".into(),
+                args: vec![value],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return {
+            values: vec![values[0]],
+        })
+        .unwrap();
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+    assert!(compiled.safepoint_maps.len() >= 3);
+}
+
+#[test]
+fn aarch64_calls_closures_handlers_and_all_terminators_compile() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(141),
+        "aarch64-call-and-handlers",
+        vec![ncl_ir::Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+    );
+    let callee = ncl_ir::ValueId(0);
+    let argc = builder.add_constant(Constant::Fixnum(0));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .unwrap()[0];
+    let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
+    let entry = builder
+        .push_op(OpKind::Const { result: entry }, &[Ty::Address])
+        .unwrap()[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry,
+                captures: vec![argc],
+            },
+            &[Ty::Address],
+        )
+        .unwrap()[0];
+    builder
+        .push_op(
+            OpKind::Call {
+                function: callee,
+                args: vec![argc],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .push_op(
+            OpKind::CallIndirect {
+                callee,
+                args: vec![argc],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: vec![argc],
+                named_symbol: Some(argc),
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .push_op(OpKind::MakeValueCell { value: argc }, &[Ty::Address])
+        .unwrap();
+    let region = ncl_ir::HandlerRegionId(1);
+    let handler = builder.create_block(Vec::new());
+    builder.add_handler_region(HandlerRegion {
+        id: region,
+        kind: HandlerKind::Catch,
+        protected: vec![ncl_ir::BlockId(0)],
+        handler,
+        cleanup: None,
+        catch_tag: Some(argc),
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    builder.position_at(ncl_ir::BlockId(0)).unwrap();
+    builder
+        .push_op(OpKind::EnterHandler { region }, &[])
+        .unwrap();
+    builder
+        .push_op(OpKind::LeaveHandler { region }, &[])
+        .unwrap();
+    builder
+        .terminate(Terminator::Throw { condition: argc })
+        .unwrap();
+    builder.position_at(handler).unwrap();
+    builder
+        .terminate(Terminator::Return { values: vec![argc] })
+        .unwrap();
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+    assert!(!compiled.safepoint_maps.is_empty());
+
+    for terminator in [
+        Terminator::Unreachable,
+        Terminator::CallReturn {
+            function: callee,
+            args: vec![argc],
+        },
+        Terminator::TailCall {
+            function: callee,
+            args: vec![argc],
+        },
+    ] {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(142),
+            "aarch64-terminator",
+            vec![ncl_ir::Param {
+                name: "callee".into(),
+                ty: Ty::Address,
+            }],
+            vec![],
+        );
+        let argc_index = builder.add_constant(Constant::Fixnum(0));
+        let argc = builder
+            .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
+            .unwrap()[0];
+        builder.terminate(terminator).unwrap();
+        let compiled = compile(builder);
+        assert!(!compiled.code.is_empty());
+        let _ = argc;
+    }
+}
+
+#[test]
+fn aarch64_branch_switch_and_generated_lambda_paths_compile() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(143),
+        "aarch64-control-flow",
+        vec![ncl_ir::Param {
+            name: "argc".into(),
+            ty: Ty::Word,
+        }],
+        vec![],
+    );
+    let argc = ncl_ir::ValueId(0);
+    builder
+        .push_op(
+            OpKind::Builtin {
+                name: "make-rest-list".into(),
+                args: vec![argc, argc],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    let then_block = builder.create_block(Vec::new());
+    let else_block = builder.create_block(Vec::new());
+    builder.position_at(ncl_ir::BlockId(0)).unwrap();
+    builder
+        .terminate(Terminator::Branch {
+            condition: argc,
+            then_target: then_block,
+            then_args: Vec::new(),
+            else_target: else_block,
+            else_args: Vec::new(),
+        })
+        .unwrap();
+    for block in [then_block, else_block] {
+        builder.position_at(block).unwrap();
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .unwrap();
+    }
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(144),
+        "aarch64-switch",
+        Vec::new(),
+        vec![],
+    );
+    let selector = builder.add_constant(Constant::Fixnum(1));
+    let selector = builder
+        .push_op(OpKind::Const { result: selector }, &[Ty::Word])
+        .unwrap()[0];
+    let case = builder.create_block(Vec::new());
+    let fallback = builder.create_block(Vec::new());
+    builder.position_at(ncl_ir::BlockId(0)).unwrap();
+    builder
+        .terminate(Terminator::Switch {
+            value: selector,
+            cases: vec![(1, case, Vec::new())],
+            default: fallback,
+            default_args: Vec::new(),
+        })
+        .unwrap();
+    for block in [case, fallback] {
+        builder.position_at(block).unwrap();
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .unwrap();
+    }
+    assert!(!compile(builder).code.is_empty());
+}

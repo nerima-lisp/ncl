@@ -139,6 +139,21 @@ fn private_elf_segment_parser_checks_each_load_segment_property() {
 }
 
 #[test]
+fn private_elf_segment_parser_rejects_entry_before_text_address() {
+    let mut bytes = vec![0; 56];
+    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
+    bytes[32..40].copy_from_slice(&1u64.to_le_bytes());
+    bytes[16..24].copy_from_slice(&0x1000u64.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 1, 0xfff),
+        Err(ObjectError::InvalidStructure(
+            "ELF entry is outside executable segment"
+        ))
+    );
+}
+
+#[test]
 fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
     let image = ExecutableImage {
         architecture: Architecture::Aarch64,

@@ -52,7 +52,11 @@ mod tests_builder;
 mod tests_handler;
 #[path = "tests_text.rs"]
 mod tests_text;
+#[path = "tests_text_coverage.rs"]
+mod tests_text_coverage;
 #[path = "tests_text_edges.rs"]
 mod tests_text_edges;
 #[path = "tests_verify.rs"]
 mod tests_verify;
+#[path = "tests_verify_coverage.rs"]
+mod tests_verify_coverage;

@@ -156,3 +156,68 @@ fn compiled_clos_throw_passes_through_call_next_method() {
     assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "42");
 }
+
+#[test]
+fn compiled_clos_slot_names_boundp_typep_and_makunbound_are_observable() {
+    let output = run_ncl(
+        "(progn (defclass slot-probe () ((value :initarg :value))) (let ((object (make-instance 'slot-probe :value 9))) (list (slot-exists-p object 'value) (slot-boundp object 'value) (typep object 'slot-probe) (progn (slot-makunbound object 'value) (slot-boundp object 'value)))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(T T T NIL)");
+}
+
+#[test]
+fn compiled_clos_explicit_call_next_method_arguments_are_rewritten() {
+    let output = run_ncl(
+        "(progn (defgeneric explicit-next (value)) (defmethod explicit-next ((value integer)) value) (defmethod explicit-next :around ((value integer)) (+ 10 (call-next-method 4))) (explicit-next 2))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "14");
+}
+
+#[test]
+fn compiled_clos_class_of_and_empty_class_definition_are_observable() {
+    let output = run_ncl(
+        "(progn (defclass empty-probe () ()) (list (class-name (find-class 'empty-probe)) (class-name (class-of (cons 1 2))) (class-name (class-of 1.0))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(COMMON-LISP-USER:EMPTY-PROBE \"CONS\" \"DOUBLE-FLOAT\")");
+}
+
+#[test]
+fn compiled_clos_invalid_slot_and_initargs_report_errors() {
+    let cases = [
+        ("slot-value-non-instance", "(slot-value nil 0)", "TypeError"),
+        (
+            "slot-value-unknown-name",
+            "(slot-value (make-instance 'standard-object) 'missing-slot)",
+            "TypeError",
+        ),
+        (
+            "make-instance-odd-initargs",
+            "(make-instance 'standard-object :unexpected)",
+            "TypeError",
+        ),
+    ];
+    for (name, source, error) in cases {
+        let output = run_ncl(source);
+        assert_eq!(output.status.code(), Some(1), "{name}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(error),
+            "{name}: stderr={:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn compiled_clos_mop_class_and_slot_metadata_are_observable() {
+    let output = run_ncl(
+        "(progn (defclass mop-probe () ((value :initarg :value))) (let* ((class (find-class 'mop-probe)) (slot (svref (ncl-mop:class-slots class) 0))) (list (length (ncl-mop:class-precedence-list class)) (length (ncl-mop:class-direct-superclasses class)) (length (ncl-mop:class-direct-slots class)) (ncl-mop:class-finalized-p class) (ncl-mop:slot-definition-name slot))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(1 0 1 T COMMON-LISP-USER:VALUE)"
+    );
+}

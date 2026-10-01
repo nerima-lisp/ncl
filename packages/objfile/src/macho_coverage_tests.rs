@@ -147,6 +147,41 @@ fn private_macho_command_parser_checks_section_field_bounds() {
 }
 
 #[test]
+fn private_macho_command_parser_reports_truncated_command_fields() {
+    let mut command = vec![0; 36];
+    command[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    assert!(matches!(
+        validate_macho_commands(&command, 40, 1),
+        Err(ObjectError::Truncated {
+            offset: 36,
+            needed: 4
+        })
+    ));
+
+    let mut section_count = vec![0; 99];
+    section_count[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    section_count[36..40].copy_from_slice(&72u32.to_le_bytes());
+    assert!(matches!(
+        validate_macho_commands(&section_count, 104, 1),
+        Err(ObjectError::Truncated {
+            offset: 96,
+            needed: 4
+        })
+    ));
+}
+
+#[test]
+fn private_macho_command_parser_rejects_non_segment_commands() {
+    let mut command = vec![0; 40];
+    command[32..36].copy_from_slice(&0x2u32.to_le_bytes());
+    command[36..40].copy_from_slice(&8u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&command, 40, 1),
+        Err(ObjectError::InvalidStructure("missing Mach-O load command"))
+    );
+}
+
+#[test]
 fn public_macho_writer_and_reader_cover_reachable_architecture_paths() {
     for (architecture, kind) in [
         (MachArchitecture::X86_64, crate::RelocKind::PcRel32),

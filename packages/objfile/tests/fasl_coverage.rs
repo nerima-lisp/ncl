@@ -162,3 +162,50 @@ fn fasl_rejects_bad_relocation_references_and_addends() {
         })
     );
 }
+
+#[test]
+fn fasl_rejects_each_out_of_bounds_section_and_invalid_wire_kind() {
+    let valid = FaslWriter::write(&fasl()).expect("valid FASL");
+    for (section_name, section, offset, wire_size, reported_size) in [
+        ("relocation", 32, 0x1000, 1, 16u32),
+        ("constant", 40, 0x1000, 1, 1u32),
+        ("symbol", 48, 0x1000, 1, 1u32),
+        ("stack map", 56, 0x1000, 1, 1u32),
+    ] {
+        let mut bytes = valid.clone();
+        word(&mut bytes, section, offset);
+        word(&mut bytes, section + 4, wire_size);
+        assert_eq!(
+            FaslReader::read(&bytes, Architecture::X86_64, 7),
+            Err(ObjectError::OutOfBounds {
+                section: section_name,
+                offset: u64::from(offset),
+                size: u64::from(reported_size),
+            })
+        );
+    }
+
+    let mut value = fasl();
+    value.sections.code = vec![0; 16];
+    value.sections.relocations = vec![Relocation {
+        section: SectionId(0),
+        offset: 0,
+        kind: RelocKind::Abs64,
+        symbol: SymbolRef::Local(0),
+        addend: 0,
+    }];
+    let mut bad_kind = FaslWriter::write(&value).expect("relocation fits");
+    let relocation_offset = u32::from_le_bytes(
+        bad_kind[32..36]
+            .try_into()
+            .expect("relocation offset field"),
+    ) as usize;
+    bad_kind[relocation_offset + 8..relocation_offset + 12].copy_from_slice(&99u32.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bad_kind, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "relocation kind",
+            value: 99,
+        })
+    );
+}

@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::expect_used, clippy::too_many_lines)]
 
-use crate::{ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64};
+use crate::{compile_function_x86_64, ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi};
 use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 
 struct CoverageAbi;
@@ -61,6 +61,22 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
     );
     let object = ncl_ir::ValueId(0);
     let value = ncl_ir::ValueId(1);
+    let constants = [
+        Constant::Fixnum(9),
+        Constant::Character('x' as u32),
+        Constant::Nil,
+        Constant::Unbound,
+        Constant::T,
+    ];
+    let constant_values = constants
+        .into_iter()
+        .map(|constant| {
+            let index = builder.add_constant(constant);
+            builder
+                .push_op(OpKind::Const { result: index }, &[Ty::Word])
+                .expect("immediate constant")[0]
+        })
+        .collect::<Vec<_>>();
     let fixnum = builder.add_constant(Constant::Fixnum(9));
     let heap = builder.add_constant(Constant::StringBytes(vec![1, 2, 3]));
     let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
@@ -113,6 +129,9 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
     builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("load arg");
+    builder
+        .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
+        .expect("load capture");
     builder
         .push_op(OpKind::LoadFunctionObject, &[Ty::Word])
         .expect("load function object");
@@ -182,7 +201,7 @@ fn x86_64_lowering_covers_memory_constants_conversions_and_primitives() {
         .expect("multiple values");
     builder
         .terminate(Terminator::Return {
-            values: vec![heap, entry],
+            values: vec![heap, entry, constant_values[1]],
         })
         .expect("return");
 
@@ -208,12 +227,40 @@ fn x86_64_lowering_covers_allocation_safepoint_builtin_and_call_return() {
         .push_op(OpKind::Const { result: argc }, &[Ty::Word])
         .expect("argc")[0];
     builder
+        .push_op(
+            OpKind::Call {
+                function: callee,
+                args: vec![argc, argc, argc, argc, argc, argc],
+            },
+            &[],
+        )
+        .expect("call with overflow arguments");
+    builder
         .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
         .expect("alloc");
     builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
     let cell = builder
         .push_op(OpKind::MakeValueCell { value: argc }, &[Ty::Address])
         .expect("value cell")[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry: callee,
+                captures: vec![argc],
+            },
+            &[Ty::Word],
+        )
+        .expect("closure")[0];
+    builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: vec![argc],
+                named_symbol: Some(callee),
+            },
+            &[],
+        )
+        .expect("named closure call");
     builder
         .push_op(
             OpKind::Builtin {

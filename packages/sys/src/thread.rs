@@ -262,7 +262,7 @@ impl Thread {
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
         #[cfg(target_arch = "x86_64")]
-        {
+        if self.has_native_frame_snapshot() {
             self.publish_snapshot();
         }
         if let Some(heap) = self.heap {

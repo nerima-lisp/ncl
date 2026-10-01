@@ -13,7 +13,6 @@ const HASH_TABLE_KV: usize = 12;
 const HASH_TABLE_INDEX: usize = 13;
 const VECTOR_DATA: usize = 2;
 const TOMBSTONE: i64 = -2;
-
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
@@ -96,7 +95,9 @@ impl super::Heap {
                 if weak_referents.contains(&index) && !precise_indices.contains(&index) {
                     continue;
                 }
-                state.objects[index].pinned = true;
+                if let Some(object) = state.objects.get_mut(index) {
+                    object.pinned = true;
+                }
                 conservative_indices.push(index);
             }
         }
@@ -245,7 +246,6 @@ impl super::Heap {
         }
         hooks
     }
-
     fn is_hash_table(state: &super::State, index: usize) -> bool {
         state.objects[index].kind != PageKind::Cons
             && state.objects[index].words.first().copied() == Some(u64::from(HASH_TABLE_WIDETAG))

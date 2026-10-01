@@ -14,7 +14,7 @@ pub(super) struct WeakMarkContext<'a> {
 pub(super) fn weak_referent_indices(state: &super::super::State) -> HashSet<usize> {
     let mut result = HashSet::new();
     for table in 0..state.objects.len() {
-        if !state.objects[table].alive {
+        if !state.objects.get(table).is_some_and(|object| object.alive) {
             continue;
         }
         let Some((weakness, kv, _, marker, high_water)) =
@@ -22,9 +22,12 @@ pub(super) fn weak_referent_indices(state: &super::super::State) -> HashSet<usiz
         else {
             continue;
         };
+        let Some(kv_object) = state.objects.get(kv) else {
+            continue;
+        };
         for position in 0..high_water {
             let key_offset = super::VECTOR_DATA + position * 2;
-            let Some(key) = state.objects[kv]
+            let Some(key) = kv_object
                 .words
                 .get(key_offset)
                 .copied()
@@ -35,7 +38,7 @@ pub(super) fn weak_referent_indices(state: &super::super::State) -> HashSet<usiz
             if key.bits() == marker {
                 continue;
             }
-            let Some(value) = state.objects[kv]
+            let Some(value) = kv_object
                 .words
                 .get(key_offset + 1)
                 .copied()

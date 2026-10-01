@@ -57,6 +57,12 @@ pub fn lower_call(
     };
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    load_immediate(
+        assembler,
+        RETURN_VALUE,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     // `slot_mem_of(i)` addresses `rbp - (i + 1) * 8`, so it grows *downward*
     // (higher `i` means a lower address). `REST_ARGUMENT` must nonetheless

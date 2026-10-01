@@ -2,9 +2,9 @@
 #![allow(clippy::missing_errors_doc)]
 
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext,
-    Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist,
+    make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist, Arity,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext, Word,
 };
 
 use crate::form::{list, symbol};
@@ -342,3 +342,7 @@ pub fn register_runtime_support(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/definition_support_tests.rs"]
+mod tests;

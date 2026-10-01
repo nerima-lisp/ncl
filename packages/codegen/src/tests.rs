@@ -121,6 +121,164 @@ fn lowers_fixnum_return_to_decodable_x86() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
+fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(91),
+        "generic-lowering-ops",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let address_constant = builder.add_constant(Constant::Fixnum(1));
+    let address_result = builder.push_op(
+        OpKind::Const {
+            result: address_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(address_result.is_ok());
+    let Some(address) = address_result
+        .ok()
+        .and_then(|values| values.into_iter().next())
+    else {
+        return;
+    };
+    let value_constant = builder.add_constant(Constant::Fixnum(2));
+    let value_result = builder.push_op(
+        OpKind::Const {
+            result: value_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(value_result.is_ok());
+    let Some(value) = value_result
+        .ok()
+        .and_then(|values| values.into_iter().next())
+    else {
+        return;
+    };
+    let loaded_result = builder.push_op(OpKind::Load { address }, &[Ty::Word]);
+    assert!(loaded_result.is_ok());
+    let Some(loaded) = loaded_result
+        .ok()
+        .and_then(|values| values.into_iter().next())
+    else {
+        return;
+    };
+    assert!(
+        builder
+            .push_op(OpKind::Store { address, value }, &[])
+            .is_ok()
+    );
+    let loaded_field_result = builder.push_op(
+        OpKind::LoadField {
+            object: address,
+            field: 2,
+        },
+        &[Ty::Word],
+    );
+    assert!(loaded_field_result.is_ok());
+    let Some(loaded_field) = loaded_field_result
+        .ok()
+        .and_then(|values| values.into_iter().next())
+    else {
+        return;
+    };
+    assert!(
+        builder
+            .push_op(
+                OpKind::StoreField {
+                    object: address,
+                    field: 3,
+                    value,
+                },
+                &[],
+            )
+            .is_ok()
+    );
+
+    for prim in [
+        ncl_ir::Prim::FixnumAdd,
+        ncl_ir::Prim::FixnumSub,
+        ncl_ir::Prim::FixnumMul,
+        ncl_ir::Prim::FixnumEq,
+        ncl_ir::Prim::Eq,
+        ncl_ir::Prim::Eql,
+        ncl_ir::Prim::FixnumLt,
+        ncl_ir::Prim::FixnumLe,
+        ncl_ir::Prim::Car,
+        ncl_ir::Prim::Cdr,
+        ncl_ir::Prim::Svref,
+        ncl_ir::Prim::Aref,
+        ncl_ir::Prim::Rplaca,
+        ncl_ir::Prim::Rplacd,
+        ncl_ir::Prim::Aset,
+    ] {
+        assert!(
+            builder
+                .push_op(
+                    OpKind::Prim {
+                        op: prim,
+                        args: vec![address, value],
+                        condition: None,
+                    },
+                    &[Ty::Word],
+                )
+                .is_ok()
+        );
+    }
+    for op in [
+        ncl_ir::Compare::Eq,
+        ncl_ir::Compare::Ne,
+        ncl_ir::Compare::Lt,
+        ncl_ir::Compare::Le,
+        ncl_ir::Compare::Gt,
+        ncl_ir::Compare::Ge,
+    ] {
+        assert!(
+            builder
+                .push_op(
+                    OpKind::Compare {
+                        op,
+                        left: loaded,
+                        right: loaded_field,
+                    },
+                    &[Ty::Word],
+                )
+                .is_ok()
+        );
+    }
+    let result_values = builder.push_op(
+        OpKind::SetMultipleValues {
+            values: vec![loaded, loaded_field],
+        },
+        &[Ty::Word],
+    );
+    assert!(result_values.is_ok());
+    let Some(result) = result_values
+        .ok()
+        .and_then(|values| values.into_iter().next())
+    else {
+        return;
+    };
+    assert!(
+        builder
+            .terminate(Terminator::Return {
+                values: vec![result],
+            })
+            .is_ok()
+    );
+
+    let compiled_result = compile_function(&builder.finish(), &X86_64Abi);
+    assert!(compiled_result.is_ok());
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    assert!(!compiled.code.is_empty());
+    assert_eq!(compiled.safepoint_maps.len(), 0);
+}
+
+#[test]
 fn generates_maps_for_all_safepoint_kinds() {
     let mut allocation =
         FunctionBuilder::new(ncl_ir::FunctionId(1), "alloc", Vec::new(), vec![Ty::Word]);

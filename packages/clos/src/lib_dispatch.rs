@@ -307,6 +307,62 @@ fn invoke_dispatch<'ctx, C: ncl_object::FunctionCaller>(
     )
 }
 
+fn dispatch_method_match(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    specializers: Word,
+    arguments: &[Word],
+) -> Result<Option<Vec<usize>>, ObjectError> {
+    let specializers = form_elements(ctx, specializers)?;
+    if specializers.len() != arguments.len() {
+        return Ok(None);
+    }
+    let mut specificity = Vec::with_capacity(arguments.len());
+    for (specializer, argument) in specializers.iter().zip(arguments) {
+        let fields = form_elements(ctx, *specializer)?;
+        let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
+        if let Some(value) = dispatch_eql_specializer(ctx, designator)? {
+            if !eql_word(ctx, *argument, value) {
+                return Ok(None);
+            }
+            specificity.push(usize::MAX);
+            continue;
+        }
+        if symbol_name_string(ctx, designator)? == "T" {
+            specificity.push(0);
+            continue;
+        }
+        let expected = class_designator(ctx, runtime, designator)?;
+        let actual = class_of(ctx, runtime, *argument)?;
+        if !class_is_subclass(ctx, actual, expected)? {
+            return Ok(None);
+        }
+        specificity.push(class_depth(ctx, expected)? + 1);
+    }
+    Ok(Some(specificity))
+}
+
+fn dispatch_eql_specializer(
+    ctx: &ThreadContext,
+    designator: Word,
+) -> Result<Option<Word>, ObjectError> {
+    if designator.is_cons() {
+        let fields = form_elements(ctx, designator)?;
+        let head = *fields.first().ok_or(ObjectError::TypeError)?;
+        if symbol_name_string(ctx, head)? == "EQL" {
+            return Ok(Some(*fields.get(1).ok_or(ObjectError::TypeError)?));
+        }
+        return Ok(None);
+    }
+    if matches!(classify_object(ctx, designator), ObjectRef::SimpleVector(_))
+        && simple_vector_length(ctx, designator)? == 2
+        && simple_vector_ref(ctx, designator, 0)? == Word::fixnum(1)
+    {
+        return Ok(Some(simple_vector_ref(ctx, designator, 1)?));
+    }
+    Ok(None)
+}
+
 fn clos_dispatch_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -338,13 +394,13 @@ fn clos_dispatch_builtin(
         let function = scope
             .get(*fields.as_slice().get(2).ok_or(ObjectError::TypeError)?)
             .as_word();
-        if let Some(score) =
-            method_match(scope.context_mut(), runtime, specializers, &argument_words)?
+        if let Some(specificity) =
+            dispatch_method_match(scope.context_mut(), runtime, specializers, &argument_words)?
         {
-            matches.push((score, qualifier, function));
+            matches.push((specificity, qualifier, function));
         }
     }
-    matches.sort_by_key(|left| std::cmp::Reverse(left.0));
+    matches.sort_by(|left, right| right.0.cmp(&left.0));
     let mut before_words = Vec::new();
     let mut primary_words = Vec::new();
     let mut after_words = Vec::new();

@@ -170,6 +170,16 @@ fn compiled_clos_slot_names_boundp_typep_and_makunbound_are_observable() {
 }
 
 #[test]
+fn compiled_clos_shared_initialize_preserves_bound_slots() {
+    let output = run_ncl(
+        "(progn (defclass shared-init-probe () ((value :initform 7 :accessor shared-init-value))) (let ((object (make-instance 'shared-init-probe))) (setf (shared-init-value object) 9) (shared-initialize object) (shared-init-value object)))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}
+
+#[test]
 fn compiled_clos_explicit_call_next_method_arguments_are_rewritten() {
     let output = run_ncl(
         "(progn (defgeneric explicit-next (value)) (defmethod explicit-next ((value integer)) value) (defmethod explicit-next :around ((value integer)) (+ 10 (call-next-method 4))) (explicit-next 2))",

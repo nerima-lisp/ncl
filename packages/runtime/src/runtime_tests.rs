@@ -191,7 +191,8 @@ mod runtime_tests {
         std::thread::Builder::new()
             .name("ncl-thread-e2e-watchdog".to_owned())
             .spawn(move || {
-                let mut runtime = Runtime::new().expect("runtime initialization failed");
+                let mut runtime = Runtime::new()
+                    .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
                 let value = runtime
                     .eval(
                         "(progn (defun thread-worker () 42) \
@@ -201,11 +202,11 @@ mod runtime_tests {
                     .map(|value| runtime.format_result(value));
                 let _ = sender.send(value);
             })
-            .expect("watchdog worker spawn failed");
+            .unwrap_or_else(|error| panic!("watchdog worker spawn failed: {error}"));
         let value = receiver
             .recv_timeout(Duration::from_secs(5))
-            .expect("compiled Lisp thread watchdog expired")
-            .expect("compiled Lisp thread evaluation failed");
+            .unwrap_or_else(|error| panic!("compiled Lisp thread watchdog expired: {error}"))
+            .unwrap_or_else(|error| panic!("compiled Lisp thread evaluation failed: {error}"));
         assert_eq!(value, "42");
     }
 }

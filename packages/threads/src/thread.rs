@@ -98,11 +98,11 @@ thread_local! {
     static CURRENT_OBJECT: Cell<Word> = const { Cell::new(Word::NIL) };
 }
 
-pub(crate) fn set_current_object(object: Word) {
+pub fn set_current_object(object: Word) {
     CURRENT_OBJECT.with(|current| current.set(object));
 }
 
-pub(crate) fn current_object() -> Word {
+pub fn current_object() -> Word {
     CURRENT_OBJECT.with(Cell::get)
 }
 
@@ -160,6 +160,10 @@ pub fn spawn(
 }
 
 /// Spawn a thread that invokes a Lisp function with no arguments.
+///
+/// # Errors
+/// Returns [`ThreadError::SpawnFailed`] when the OS refuses to create the
+/// worker thread.
 pub fn spawn_lisp(
     runtime: &std::sync::Arc<Runtime>,
     name: &str,
@@ -197,6 +201,9 @@ pub fn spawn_lisp(
 }
 
 /// Create a compatibility thread record for a non-callable legacy designator.
+///
+/// # Errors
+/// Returns [`ThreadError::SpawnFailed`] if the registry cannot allocate an id.
 pub fn spawn_placeholder(name: &str) -> Result<ThreadId, ThreadError> {
     let mut registry = lock_registry();
     registry.next_id = registry.next_id.saturating_add(1);
@@ -213,6 +220,7 @@ pub fn spawn_placeholder(name: &str) -> Result<ThreadId, ThreadError> {
             placeholder: true,
         },
     );
+    drop(registry);
     Ok(id)
 }
 
@@ -349,6 +357,11 @@ pub fn join(id: ThreadId, timeout: Option<Duration>) -> Result<(), ThreadError> 
 }
 
 /// Wait for a Lisp thread and return its primary value.
+///
+/// # Errors
+/// Returns [`ThreadError::NotRunning`] for an unknown thread,
+/// [`ThreadError::Deadlock`] for the main thread, or [`ThreadError::JoinTimeout`]
+/// when the timeout expires.
 pub fn join_value(id: ThreadId, timeout: Option<Duration>) -> Result<Word, ThreadError> {
     if id.0 == MAIN_THREAD_ID {
         return Err(ThreadError::Deadlock);

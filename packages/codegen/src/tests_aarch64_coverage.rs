@@ -98,9 +98,30 @@ fn aarch64_operation_matrix_reaches_real_lowering_paths() {
             &[Ty::I64],
         )
         .unwrap()[0];
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: ncl_ir::Convert::I64ToWord,
+                value: converted,
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: ncl_ir::Convert::I64ToWord,
+                value: converted,
+            },
+            &[],
+        )
+        .unwrap();
     let loaded = builder
         .push_op(OpKind::Load { address: object }, &[Ty::Word])
         .unwrap()[0];
+    builder
+        .push_op(OpKind::Load { address: object }, &[])
+        .unwrap();
     builder
         .push_op(
             OpKind::Store {
@@ -114,6 +135,9 @@ fn aarch64_operation_matrix_reaches_real_lowering_paths() {
         .push_op(OpKind::LoadField { object, field: 2 }, &[Ty::Word])
         .unwrap()[0];
     builder
+        .push_op(OpKind::LoadField { object, field: 4 }, &[])
+        .unwrap();
+    builder
         .push_op(
             OpKind::StoreField {
                 object,
@@ -126,12 +150,17 @@ fn aarch64_operation_matrix_reaches_real_lowering_paths() {
     builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .unwrap();
+    builder.push_op(OpKind::LoadArg { index: 1 }, &[]).unwrap();
     builder
         .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
         .unwrap();
     builder
+        .push_op(OpKind::LoadCapture { index: 0 }, &[])
+        .unwrap();
+    builder
         .push_op(OpKind::LoadFunctionObject, &[Ty::Word])
         .unwrap();
+    builder.push_op(OpKind::LoadFunctionObject, &[]).unwrap();
     for op in [
         Compare::Eq,
         Compare::Ne,
@@ -151,6 +180,16 @@ fn aarch64_operation_matrix_reaches_real_lowering_paths() {
             )
             .unwrap();
     }
+    builder
+        .push_op(
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: value,
+                right: values[0],
+            },
+            &[],
+        )
+        .unwrap();
     for op in [
         Prim::FixnumAdd,
         Prim::FixnumSub,

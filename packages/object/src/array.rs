@@ -488,5 +488,5 @@ mod vector_ops;
 pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
 
 #[cfg(test)]
-#[path = "array_coverage_tests.rs"]
+#[path = "tests_array_coverage.rs"]
 mod tests;

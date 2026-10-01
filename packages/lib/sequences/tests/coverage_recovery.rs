@@ -1,3 +1,5 @@
+#![allow(missing_docs, clippy::too_many_lines, clippy::unwrap_used)]
+
 use std::collections::HashMap;
 
 use ncl_object::{FunctionObject, ObjectError, Runtime, ThreadContext, Word};

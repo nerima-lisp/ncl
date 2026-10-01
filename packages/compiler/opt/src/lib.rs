@@ -423,16 +423,16 @@ mod dce_tests;
 #[path = "tests/gvn_tests.rs"]
 mod gvn_tests;
 #[cfg(test)]
-#[path = "manager_tests.rs"]
+#[path = "tests/manager_tests.rs"]
 mod manager_tests;
 #[cfg(test)]
-#[path = "remap_tests.rs"]
+#[path = "tests/remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
 #[path = "tests/sccp_tests.rs"]
 mod sccp_tests;
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "tests/pipeline_tests.rs"]
 mod tests;
 #[cfg(test)]
 #[path = "tests_support.rs"]

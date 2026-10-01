@@ -366,6 +366,94 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
 }
 
 #[test]
+fn array_properties_and_vector_mutators_return_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let array = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(0),
+            adjustable: true,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(call(&runtime, &mut ctx, "ARRAYP", &[array])?, Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "VECTORP", &[array])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-RANK", &[array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(0)]
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[array])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(1)]
+        )?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(2)]
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ADJUSTABLE-ARRAY-P", &[array])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[array])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-PUSH", &[Word::fixnum(8), array])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-POP", &[array])?,
+        Word::fixnum(8)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "AREF", &[array, Word::fixnum(0)])?,
+        Word::fixnum(0)
+    );
+    let element_type = call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[array])?;
+    assert!(matches!(
+        classify_object(&ctx, element_type),
+        ObjectRef::Symbol(_)
+    ));
+    Ok(())
+}
+
+#[test]
 fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

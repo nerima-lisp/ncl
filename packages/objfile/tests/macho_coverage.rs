@@ -244,3 +244,57 @@ fn macho_validation_exercises_truncated_commands_and_unsupported_relocations() {
         Err(ObjectError::UnsupportedRelocation(RelocKind::CondBranch19))
     );
 }
+
+#[test]
+fn macho_writer_serializes_relocation_descriptor_bits() {
+    let object = MachObject {
+        architecture: MachArchitecture::X86_64,
+        sections: vec![MachSection {
+            id: SectionId(1),
+            segment: "__TEXT".into(),
+            name: "__text".into(),
+            bytes: vec![0; 8],
+        }],
+        relocations: vec![
+            Relocation {
+                section: SectionId(1),
+                offset: 0,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(5),
+                addend: 0,
+            },
+            Relocation {
+                section: SectionId(1),
+                offset: 4,
+                kind: RelocKind::Plt32,
+                symbol: SymbolRef::External("puts".into()),
+                addend: 0,
+            },
+        ],
+    };
+    let bytes = object.write().expect("valid Mach-O relocations");
+    let section_header = 32 + 72;
+    let relocation_offset = usize::try_from(u32::from_le_bytes(
+        bytes[section_header + 56..section_header + 60]
+            .try_into()
+            .expect("relocation offset"),
+    ))
+    .expect("relocation offset fits");
+    let first = u64::from_le_bytes(
+        bytes[relocation_offset..relocation_offset + 8]
+            .try_into()
+            .expect("first relocation"),
+    );
+    let second = u64::from_le_bytes(
+        bytes[relocation_offset + 8..relocation_offset + 16]
+            .try_into()
+            .expect("second relocation"),
+    );
+    assert_eq!(first & u64::from(u32::MAX), 0);
+    assert_eq!((first >> 32) as u32, 5 | (3 << 25));
+    assert_eq!(second & u64::from(u32::MAX), 4);
+    assert_eq!(
+        (second >> 32) as u32,
+        (1 << 24) | (2 << 25) | (1 << 27) | (2 << 28)
+    );
+}

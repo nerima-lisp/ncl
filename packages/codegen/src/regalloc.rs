@@ -107,10 +107,10 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             if let OpKind::EnterHandler { region } = op.kind {
                 enter_positions.insert(region, position);
             }
-            if let OpKind::Move { value } = op.kind {
-                if let Some((result, _)) = op.results.first() {
-                    move_preferences.insert(*result, value);
-                }
+            if let OpKind::Move { value } = op.kind
+                && let Some((result, _)) = op.results.first()
+            {
+                move_preferences.insert(*result, value);
             }
             if is_call(&op.kind) {
                 call_positions.insert(position);
@@ -530,14 +530,17 @@ mod tests {
             }],
             vec![Ty::Word],
         );
-        let moved = builder
-            .push_op(OpKind::Move { value: ValueId(0) }, &[Ty::Word])
-            .expect("move result")[0];
-        builder
-            .terminate(Terminator::Return {
-                values: vec![moved],
-            })
-            .expect("return");
+        let moved = match builder.push_op(OpKind::Move { value: ValueId(0) }, &[Ty::Word]) {
+            Ok(values) => values[0],
+            Err(error) => panic!("move result: {error:?}"),
+        };
+        assert!(
+            builder
+                .terminate(Terminator::Return {
+                    values: vec![moved],
+                })
+                .is_ok()
+        );
 
         let allocation = allocate(&builder.finish(), AllocationTarget::AArch64);
         assert_eq!(allocation.location(ValueId(0)), allocation.location(moved));

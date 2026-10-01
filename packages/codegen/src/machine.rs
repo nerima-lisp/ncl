@@ -141,6 +141,10 @@ impl MachineFunction {
     /// typing. This checker verifies the independent machine representation:
     /// block identity, unique value/slot assignments, frame bounds, and stack
     /// map wire invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first violated machine-level invariant.
     pub fn verify(&self) -> Result<(), MachineVerifyError> {
         if self.blocks.is_empty() {
             return Err(MachineVerifyError::Empty);
@@ -247,7 +251,7 @@ mod tests {
         MachineFunction::new(
             BlockId(0),
             vec![Block::new(BlockId(0), vec![MachineOp::Return])],
-            FrameLayout::new(0, 2, 0).expect("frame"),
+            FrameLayout::new(0, 2, 0).unwrap_or_else(|_| panic!("fixed test frame is valid")),
             Vec::new(),
             Vec::new(),
             slots,

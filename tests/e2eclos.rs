@@ -198,6 +198,16 @@ fn compiled_clos_invalid_slot_and_initargs_report_errors() {
             "(make-instance 'standard-object :unexpected)",
             "TypeError",
         ),
+        (
+            "mop-slot-definition-type",
+            "(ncl-mop:slot-definition-name 0)",
+            "TypeError",
+        ),
+        (
+            "mop-class-type",
+            "(ncl-mop:class-direct-superclasses 0)",
+            "TypeError",
+        ),
     ];
     for (name, source, error) in cases {
         let output = run_ncl(source);

@@ -104,6 +104,7 @@ fn quasiquote_expansion_emits_data_constructor_and_handles_unquote() {
     assert!(parts.iter().all(|part| *part != Word::NIL));
 }
 
+mod coverage_recovery;
 mod gc_stress_tests;
 mod iteration_tests;
 mod loop_tests;

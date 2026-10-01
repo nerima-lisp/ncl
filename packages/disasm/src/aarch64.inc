@@ -177,12 +177,10 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
         )
     } else if word & 0x9f00_0000 == 0x1000_0000 || word & 0x9f00_0000 == 0x9000_0000 {
         let page = word & 0x8000_0000 != 0;
-        let imm = signed(((word >> 5) & 0x7ffff) | ((word >> 24) & 0x3) << 19, 21)
-            | (if page {
-                0
-            } else {
-                signed((word >> 29) & 3, 2) << 19
-            });
+        let imm = signed(
+            (((word >> 5) & 0x7ffff) << 2) | ((word >> 29) & 3),
+            21,
+        );
         let d = if page { imm << 12 } else { imm };
         let base = if page { address & !0xfff } else { address };
         match target(base, d) {

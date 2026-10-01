@@ -162,4 +162,64 @@ mod tests {
             ["nop", "ret x30"]
         );
     }
+
+    #[test]
+    fn assembler_output_preserves_x86_operands_and_branch_fields() {
+        use ncl_asm_x86_64::{Cond, Inst, Reg};
+
+        let mut assembler = ncl_asm_x86_64::Assembler::new();
+        let label = assembler.new_label();
+        assembler
+            .emit(&Inst::MovRR(Reg::Rax, Reg::Rcx))
+            .expect("encode mov");
+        assembler
+            .emit(&Inst::Jcc(Cond::Ne, label))
+            .expect("encode branch");
+        assembler.bind(label);
+        assembler.emit(&Inst::Ret).expect("encode ret");
+        let blob = assembler.finish().expect("finish");
+        let decoded = decode(Architecture::X86_64, &blob.bytes, 0x1000).expect("decode");
+
+        assert_eq!(decoded[0].text, "mov %rcx, %rax");
+        assert_eq!(decoded[1].size, 6);
+        assert_eq!(decoded[1].branch_target, Some(decoded[2].address));
+        assert_eq!(decoded[2].text, "ret");
+    }
+
+    #[test]
+    fn assembler_output_preserves_aarch64_adr_and_adrp_targets() {
+        use ncl_asm_aarch64::{Assembler, Inst, Reg};
+
+        let mut adr_assembler = Assembler::new();
+        let adr_label = adr_assembler.new_label();
+        adr_assembler
+            .emit(&Inst::Adr {
+                rd: Reg(2),
+                label: adr_label,
+            })
+            .expect("encode adr");
+        adr_assembler.emit(&Inst::Nop).expect("encode nop");
+        adr_assembler.bind(adr_label).expect("bind adr");
+        let adr_blob = adr_assembler.finish().expect("finish adr");
+        let adr = decode(Architecture::Aarch64, &adr_blob.bytes, 0x1000).expect("decode adr");
+        assert_eq!(adr[0].text, "adr x2, #0x1008");
+        assert_eq!(adr[0].branch_target, Some(0x1008));
+
+        let mut page_assembler = Assembler::new();
+        let page_label = page_assembler.new_label();
+        page_assembler
+            .emit(&Inst::Adrp {
+                rd: Reg(3),
+                label: page_label,
+            })
+            .expect("encode adrp");
+        for _ in 0..1023 {
+            page_assembler.emit(&Inst::Nop).expect("encode nop");
+        }
+        page_assembler.bind(page_label).expect("bind adrp");
+        let page_blob = page_assembler.finish().expect("finish adrp");
+        let page = decode(Architecture::Aarch64, &page_blob.bytes, 0x1000).expect("decode adrp");
+        assert_eq!(page[0].text, "adrp x3, #0x2000");
+        assert_eq!(page[0].branch_target, Some(0x2000));
+    }
 }

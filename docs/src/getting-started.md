@@ -10,50 +10,37 @@ shell provides Rust 1.98.0, clippy, rustfmt, cargo-llvm-cov, and mkdocs.
 
 ## Current CLI state
 
-The command-line interface is a stub during the native rewrite. Only
-version output works today:
+Evaluate a form with `--eval`:
 
 ~~~sh
-cargo run -- --version
+nix develop --command cargo run -- --eval '(+ 1 2)'
 ~~~
 
-<code>--version</code> and its short form <code>-V</code> print the
-package version and exit with status 0.
-
-<code>--eval</code> reports the rewrite state and exits with status 1:
+The command prints <code>3</code>. A recursive source-level run prints
+<code>75025</code>:
 
 ~~~sh
-cargo run -- --eval '(+ 1 2)'
+nix develop --command cargo run -- --eval \
+  '(progn (defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 25))'
 ~~~
 
-That command prints <code>--eval is not implemented during the native
-rewrite</code> to standard error. Any other option exits with status 2,
-and running the binary without arguments prints a notice that NCL is being
-rewritten and exits with status 2.
-
-There is no <code>--file</code>, <code>--repl</code>,
-<code>--compiled</code>, <code>--load</code>, <code>--script</code>, or
-<code>--quiet</code> option. Evaluation returns when milestone M1 in the
-[wave plan](project/wave-plan.md) lands.
+The binary also provides an interactive REPL and the <code>--load</code>,
+<code>--script</code>, and <code>--compile-file</code> file modes.
 
 ## Development gates
 
 From the repository root, run <code>nix develop</code> and then:
 
 ~~~sh
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-python3 scripts/check_standards.py
+nix develop --command cargo test --workspace
+nix develop --command cargo clippy --workspace --all-targets -- -D warnings
+nix develop --command cargo fmt --check
+nix develop --command python3 scripts/check_standards.py
+nix develop --command mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
 Coverage uses LLVM instrumentation through the flake app:
 
 ~~~sh
 nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
-~~~
-
-Build the documentation with:
-
-~~~sh
-mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~

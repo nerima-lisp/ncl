@@ -46,9 +46,13 @@ fn parse_error_displays_its_message() {
     assert_eq!(error, ParseError("bad integer".into()));
 }
 
+#[path = "tests_builder.rs"]
+mod tests_builder;
 #[path = "tests_handler.rs"]
 mod tests_handler;
 #[path = "tests_text.rs"]
 mod tests_text;
+#[path = "tests_text_edges.rs"]
+mod tests_text_edges;
 #[path = "tests_verify.rs"]
 mod tests_verify;

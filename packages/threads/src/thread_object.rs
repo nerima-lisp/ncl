@@ -10,8 +10,8 @@ use ncl_object::{
 use crate::ThreadError;
 use crate::state::{intern_internal, make_object, with_root};
 use crate::thread::{
-    ID_SLOT, MAIN_THREAD_ID, NAME_SLOT, STATE_FINISHED, STATE_RUNNING, STATE_SLOT,
-    STATE_TERMINATED, ThreadId, alive_p, idle_body, interrupt, join, os_tid, spawn, terminate,
+    ID_SLOT, MAIN_THREAD_ID, NAME_SLOT, RESULT_SLOT, STATE_FINISHED, STATE_RUNNING, STATE_SLOT,
+    STATE_TERMINATED, ThreadId, alive_p, current_object, interrupt, join, os_tid, terminate,
 };
 
 /// Read the scalar identifier recorded in a thread object.
@@ -50,6 +50,7 @@ pub fn make_main_thread_object(
             Word::fixnum(0),
             Word::fixnum(STATE_RUNNING),
             Word::NIL,
+            Word::NIL,
         ];
         let mut object = make_object(ctx, runtime, "THREAD", &slots)?;
         with_root(ctx, &mut object, |ctx, object| {
@@ -86,10 +87,11 @@ pub fn make_thread(
                 Word::fixnum(0),
                 Word::fixnum(STATE_RUNNING),
                 *function,
+                Word::NIL,
             ];
             let mut object = make_object(ctx, runtime, "THREAD", &slots)?;
             with_root(ctx, &mut object, |ctx, object| {
-                let id = spawn(runtime, name, idle_body)?;
+                let id = crate::thread::spawn_lisp(runtime, name, *function, *object)?;
                 let id = i64::try_from(id.get()).map_err(|_| ThreadError::NotAThread)?;
                 slot_set(ctx, Instance::from_word(*object), ID_SLOT, Word::fixnum(id))?;
                 push_all_threads(ctx, runtime, *object)?;
@@ -143,7 +145,13 @@ pub fn list_all_threads(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Wo
 /// Returns [`ThreadError::NotAThread`] for a non-thread object and
 /// [`ThreadError::NotRunning`] when its record has already been disposed.
 pub fn join_thread(ctx: &ThreadContext, thread: Word) -> Result<(), ThreadError> {
-    join(object_id(ctx, thread)?, None)
+    join_thread_value(ctx, thread).map(|_| ())
+}
+
+/// Join a thread and return its primary value.
+pub fn join_thread_value(ctx: &ThreadContext, thread: Word) -> Result<Word, ThreadError> {
+    join(object_id(ctx, thread)?, None)?;
+    slot_ref(ctx, Instance::from_word(thread), RESULT_SLOT).map_err(ThreadError::from)
 }
 
 /// Return whether a thread object is still running.
@@ -212,6 +220,10 @@ pub fn interrupt_thread(ctx: &ThreadContext, thread: Word) -> Result<(), ThreadE
 /// # Panics
 /// Panics if a root token cannot be removed in stack order.
 pub fn current_thread(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ThreadError> {
+    let current = current_object();
+    if current != Word::NIL {
+        return Ok(current);
+    }
     let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*CURRENT-THREAD*")?;
     let existing = symbol_value(ctx, symbol)?;
     if existing != Word::UNBOUND && existing != Word::NIL {

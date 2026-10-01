@@ -13,7 +13,7 @@ use crate::{
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Shared runtime heap and registries.
@@ -37,6 +37,7 @@ pub struct Runtime {
     /// [`Runtime::install_generic_builtin_entry`].
     generic_builtin_entry: AtomicUsize,
     load_port: Mutex<Option<std::sync::Arc<dyn crate::LoadPort>>>,
+    shared_handle: Mutex<Option<Weak<Self>>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
@@ -97,6 +98,7 @@ impl Runtime {
             lisp_error_converter: Mutex::new(None),
             generic_builtin_entry: AtomicUsize::new(0),
             load_port: Mutex::new(None),
+            shared_handle: Mutex::new(None),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -117,6 +119,29 @@ impl Runtime {
         context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
+    }
+
+    /// Install the owning shared handle used by worker threads.
+    ///
+    /// The object runtime is normally embedded in the high-level runtime, but
+    /// thread entry points need an owned handle that outlives the creating
+    /// callback. The high-level runtime calls this once after wrapping the
+    /// object runtime in an `Arc`.
+    pub fn install_shared_handle(self: &Arc<Self>) {
+        *self
+            .shared_handle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::downgrade(self));
+    }
+
+    /// Return the shared runtime handle installed by the owner.
+    #[must_use]
+    pub fn shared_handle(&self) -> Option<Arc<Self>> {
+        self.shared_handle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .and_then(Weak::upgrade)
     }
 
     /// Associate a structure layout with its rooted structure class.

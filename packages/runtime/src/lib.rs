@@ -38,7 +38,7 @@ pub struct Runtime {
     /// Published entry addresses retain their own rooted `CODE` objects.
     entry_codes: BTreeMap<usize, (Box<Word>, RootToken)>, // check-added-lines: allow(word-table) every code Word has its own root token
     rooted_functions: Vec<(Box<Word>, RootToken)>,
-    object: ObjectRuntime,
+    object: std::sync::Arc<ObjectRuntime>,
 }
 #[derive(Debug)]
 pub(crate) struct PublishedFunction {
@@ -50,7 +50,8 @@ impl Runtime {
     /// # Errors
     /// Returns an initialization error from the object or standard-library layers.
     pub fn new() -> Result<Self, RuntimeError> {
-        let object = ObjectRuntime::new()?;
+        let object = std::sync::Arc::new(ObjectRuntime::new()?);
+        object.install_shared_handle();
         let mut context = ThreadContext::new();
         context.register(&object)?;
         // Every builtin that `ncl_stdlib::register_all` is about to register

@@ -78,11 +78,9 @@ def scan_crate(src_root: Path):
         reached.add(current)
         src = strip_line_comments(read(current))
 
-        path_attr_mods = set()
         for m in PATH_ATTR_RE.finditer(src):
             rel = m.group(1)
             target = (resolve_dir / rel).resolve()
-            path_attr_mods.add(m.end())
             if not target.exists():
                 candidates = [
                     resolve_dir / current.stem / rel,

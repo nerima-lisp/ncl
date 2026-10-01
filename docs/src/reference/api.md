@@ -1,29 +1,28 @@
 # API reference
 
-NCL is mid-rewrite, so the current user-visible surface is small. This page
-describes only what exists today. The language API and the Rust API
-reference will be rebuilt here as the implementation lanes land; the
-boundaries those lanes implement are the design contracts in
-`docs/src/design/` and the [wave plan](../project/wave-plan.md).
+This page documents the current command-line surface. The language and Rust
+APIs are documented as their implementation lanes land.
 
 ## Command-line interface
 
-The `ncl` binary accepts one argument:
-
-| invocation | behavior | exit status |
+| Invocation | Behavior | Exit status |
 | --- | --- | --- |
-| `ncl --version` or `ncl -V` | prints the package version | 0 |
-| `ncl --eval` | reports that `--eval` is not implemented during the native rewrite | 1 |
-| `ncl <any other argument>` | reports an unsupported option | 2 |
-| `ncl` | reports that NCL is being rewritten | 2 |
+| `ncl --version` or `ncl -V` | Prints the package version. | 0 |
+| `ncl --eval SOURCE` | Evaluates one source string and prints its value. | 0 or 1 |
+| `ncl --load FILE` | Loads a file and prints its final value. | 0 or 1 |
+| `ncl --script FILE` | Loads a file without printing its final value. | 0 or 1 |
+| `ncl --compile-file FILE` | Compiles a file. | 0 or 1 |
+| `ncl` | Reads forms from the interactive REPL. | 0 |
 
-There is no REPL, file loading, or compiled-evaluation option in the
-current CLI. The options of the retired implementation (`--file`, `-f`,
-`--repl`, `--compiled`, `--quiet`, `-e`, and `-h`) are gone with the
-retired interpreter, VM, and syntax crates.
+Malformed or extra arguments produce a diagnostic and exit status 2. Runtime
+and compilation errors produce a diagnostic and exit status 1.
+
+The current native path is covered by CLI integration tests, including
+recursive functions, closures, loading, compilation, and REPL input.
 
 ## Language and Rust API
 
-No language or Rust API reference exists yet. The retired evaluator and VM
-surface is not documented here and will not be restored; the native
-implementation's surface will be documented as its lanes land.
+The language surface follows ANSI Common Lisp where implemented. NCL-specific
+extensions are described in the design documents and owned by their crates.
+The Rust API is internal to the workspace and is not yet a stable external
+interface.

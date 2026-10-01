@@ -13,6 +13,11 @@ FORBIDDEN = re.compile(r"\b(?:unwrap|expect)\s*\(|\bpanic!\s*\(")
 UNSAFE = re.compile(r"\bunsafe\b")
 TODO = re.compile(r"\btodo!\s*\(")
 EM_DASH = "\u2014"
+COMMENT_SLOP = re.compile(
+    r"^\s*//[/!]?\s+(?:This (?:function|method|struct|module) "
+    r"(?:just|simply|only)\b|Nothing to see here\b)",
+    re.IGNORECASE,
+)
 
 
 def dependency_violations(path: Path) -> list[str]:
@@ -96,6 +101,14 @@ def em_dash_violations() -> tuple[list[str], int]:
     return failures, checked
 
 
+def comment_slop_violations(path: Path, source: str) -> list[str]:
+    return [
+        f"{path.relative_to(ROOT)}:{number}: redundant comment"
+        for number, line in enumerate(source.splitlines(), 1)
+        if COMMENT_SLOP.search(line)
+    ]
+
+
 def main() -> int:
     failures = []
     todo_count = 0
@@ -116,6 +129,7 @@ def main() -> int:
             failures.append(f"{relative}: unsafe is outside packages/sys")
         checked = "" if test_only else non_test_source(path, source)
         failures.extend(f"{relative}:{match.start()}: forbidden {match.group()}" for match in FORBIDDEN.finditer(checked))
+        failures.extend(comment_slop_violations(path, source))
         todo_count += len(TODO.findall(checked))
 
     dash_failures, tracked_text = em_dash_violations()

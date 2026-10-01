@@ -71,8 +71,8 @@ pub use thread::{
 pub use thread_object::{
     current_thread, finished_state, interrupt_thread, join_thread, join_thread_value,
     list_all_threads, main_thread_p, make_main_thread_object, make_thread, object_id,
-    terminate_thread, thread_alive_p,
-    thread_error_thread, thread_name_of, thread_os_tid_of, thread_state_of,
+    terminate_thread, thread_alive_p, thread_error_thread, thread_name_of, thread_os_tid_of,
+    thread_state_of,
 };
 pub use time::{
     call_with_timing, deadline_timeout_condition, decode_timeout, defer_deadline, enable_interrupt,

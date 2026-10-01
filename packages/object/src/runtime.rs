@@ -13,8 +13,8 @@ use crate::{
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 
 /// Shared runtime heap and registries.
 #[derive(Debug)]

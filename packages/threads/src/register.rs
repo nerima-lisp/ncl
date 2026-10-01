@@ -83,9 +83,14 @@ fn install_builtins(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Ob
     register_direct(runtime, ctx, "JOIN-THREAD", ANY1, join_thread_builtin)?;
     register_direct(runtime, ctx, "THREAD-ALIVE-P", ANY1, thread_alive_builtin)?;
     register_direct(runtime, ctx, "CURRENT-THREAD", &[], current_thread_builtin)?;
-    register_direct(runtime, ctx, "TERMINATE-THREAD", ANY1, terminate_thread_builtin)?;
-    register_direct(runtime, ctx, "THREAD-YIELD", &[], thread_yield_builtin)
-        ?;
+    register_direct(
+        runtime,
+        ctx,
+        "TERMINATE-THREAD",
+        ANY1,
+        terminate_thread_builtin,
+    )?;
+    register_direct(runtime, ctx, "THREAD-YIELD", &[], thread_yield_builtin)?;
     register_direct(runtime, ctx, "MUTEX-MAKE", ANY1, mutex_make_builtin)?;
     register_direct(runtime, ctx, "MUTEX-LOCK", ANY1, mutex_lock_builtin)?;
     register_direct(runtime, ctx, "MUTEX-UNLOCK", ANY1, mutex_unlock_builtin)?;
@@ -93,8 +98,20 @@ fn install_builtins(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Ob
     register_direct(runtime, ctx, "SEMAPHORE-WAIT", ANY1, semaphore_wait_builtin)?;
     register_direct(runtime, ctx, "SEMAPHORE-POST", ANY1, semaphore_post_builtin)?;
     register_direct(runtime, ctx, "CONDITION-WAIT", ANY3, condition_wait_builtin)?;
-    register_direct(runtime, ctx, "CONDITION-NOTIFY", ANY1, condition_notify_builtin)?;
-    register_direct(runtime, ctx, "CONDITION-BROADCAST", ANY1, condition_broadcast_builtin)
+    register_direct(
+        runtime,
+        ctx,
+        "CONDITION-NOTIFY",
+        ANY1,
+        condition_notify_builtin,
+    )?;
+    register_direct(
+        runtime,
+        ctx,
+        "CONDITION-BROADCAST",
+        ANY1,
+        condition_broadcast_builtin,
+    )
 }
 
 fn register_direct(
@@ -152,8 +169,7 @@ fn thread_alive_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    crate::thread_alive_p(ctx, args.required(0)?)
-        .map_err(|_| ObjectError::TypeError)
+    crate::thread_alive_p(ctx, args.required(0)?).map_err(|_| ObjectError::TypeError)
 }
 
 fn current_thread_builtin(

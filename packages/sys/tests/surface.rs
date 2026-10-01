@@ -4,9 +4,9 @@ use ncl_sys::{
     Condvar, Heap, HeapConfig, LowTag, Mutex, NativeError, NativeOperation, NativeState,
     OverflowSemantics, ReferenceLayout, SafepointState, Semaphore, Thread, TypeTag, WaitQueue,
     Weakness, Word, alloc, alloc_cons, alloc_large, collect, enter_native, heap_epoch,
-    leave_native, make_weak, native_add, native_car, native_cons, native_mul, object_widetag,
-    pop_root, publish_conservative_root, publish_safepoint, push_root, read_cons_word,
-    read_object_word, register_layout, register_root_set, register_thread,
+    leave_native, make_weak, native_add, native_car, native_cons, native_less, native_mul,
+    native_sub, object_widetag, pop_root, publish_conservative_root, publish_safepoint, push_root,
+    read_cons_word, read_object_word, register_layout, register_root_set, register_thread,
     register_thread_with_thread, request_safepoint, set_strict_forwarding, set_tlab, tlab_bump,
     weak_value, write_barrier, write_cons_word, write_object_word,
 };
@@ -65,6 +65,112 @@ fn direct_native_failures_keep_typed_side_channel() {
         })
     ));
     ncl_sys::unregister_thread(&thread);
+}
+
+#[test]
+fn native_arithmetic_success_and_failure_contracts_are_observable() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(register_thread(&heap, &mut thread), Ok(()));
+    let pointer = NonNull::from(&mut thread);
+
+    assert_eq!(
+        native_add(pointer, Word::fixnum(2), Word::fixnum(3)),
+        Word::fixnum(5)
+    );
+    assert_eq!(
+        native_sub(pointer, Word::fixnum(2), Word::fixnum(3)),
+        Word::fixnum(-1)
+    );
+    assert_eq!(
+        native_less(pointer, Word::fixnum(2), Word::fixnum(3)),
+        Word::TRUE
+    );
+    assert_eq!(
+        native_less(pointer, Word::fixnum(3), Word::fixnum(2)),
+        Word::NIL
+    );
+    assert_eq!(
+        native_mul(pointer, Word::fixnum(2), Word::fixnum(3)),
+        Word::fixnum(6)
+    );
+    // SAFETY: the pointer refers to the registered thread above.
+    assert_eq!(unsafe { native_car(pointer, Word::NIL) }, Word::NIL);
+    assert_eq!(native_mul(pointer, Word::NIL, Word::fixnum(3)), Word::NIL);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::TypeMismatch {
+            operation: NativeOperation::Mul,
+            operand: 0,
+            value: Word::NIL
+        })
+    ));
+
+    assert_eq!(native_sub(pointer, Word::NIL, Word::fixnum(1)), Word::NIL);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::TypeMismatch {
+            operation: NativeOperation::Sub,
+            operand: 0,
+            value: Word::NIL
+        })
+    ));
+    assert_eq!(native_less(pointer, Word::fixnum(1), Word::NIL), Word::NIL);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::TypeMismatch {
+            operation: NativeOperation::Less,
+            operand: 1,
+            value: Word::NIL
+        })
+    ));
+    assert_eq!(
+        native_add(pointer, Word::fixnum(i64::MAX / 2), Word::fixnum(3)),
+        Word::NIL
+    );
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::Overflow {
+            operation: NativeOperation::Add,
+            ..
+        })
+    ));
+    assert_eq!(
+        native_sub(pointer, Word::fixnum(i64::MIN / 2), Word::fixnum(3)),
+        Word::NIL
+    );
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::Overflow {
+            operation: NativeOperation::Sub,
+            ..
+        })
+    ));
+    ncl_sys::unregister_thread(&thread);
+}
+
+#[test]
+fn native_entries_report_unregistered_thread_and_nil_car() {
+    let mut thread = Thread::new();
+    let pointer = NonNull::from(&mut thread);
+    assert_eq!(
+        native_add(pointer, Word::fixnum(1), Word::fixnum(1)),
+        Word::NIL
+    );
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Add
+        })
+    ));
+    // SAFETY: the pointer is valid; the native function reports the missing heap.
+    assert_eq!(unsafe { native_car(pointer, Word::NIL) }, Word::NIL);
+    assert!(matches!(
+        thread.take_native_error(),
+        Some(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Car
+        })
+    ));
 }
 
 #[test]

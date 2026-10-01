@@ -110,3 +110,30 @@ fn private_executable_helpers_accept_valid_layouts() {
         Ok((true, true))
     );
 }
+
+#[test]
+fn private_elf_segment_parser_checks_each_load_segment_property() {
+    let mut bytes = vec![0; 112];
+    for at in [0usize, 56] {
+        bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes());
+        bytes[at + 4..at + 8].copy_from_slice(&5u32.to_le_bytes());
+        bytes[at + 16..at + 24].copy_from_slice(&0x1000u64.to_le_bytes());
+        bytes[at + 32..at + 40].copy_from_slice(&1u64.to_le_bytes());
+    }
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((true, false))
+    );
+
+    bytes[56 + 4..56 + 8].copy_from_slice(&6u32.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((true, true))
+    );
+
+    bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((false, true))
+    );
+}

@@ -118,3 +118,30 @@ fn private_macho_command_parser_reports_missing_and_bad_sizes() {
         Err(ObjectError::InvalidStructure("invalid Mach-O command size"))
     );
 }
+
+#[test]
+fn private_macho_command_parser_checks_section_field_bounds() {
+    let mut command = vec![0; 155];
+    command[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    command[36..40].copy_from_slice(&152u32.to_le_bytes());
+    command[96..100].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&command, 184, 1),
+        Err(ObjectError::Truncated {
+            offset: 152,
+            needed: 4,
+        })
+    );
+
+    let mut section = vec![0; 155];
+    section[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    section[36..40].copy_from_slice(&152u32.to_le_bytes());
+    section[96..100].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&section, 184, 1),
+        Err(ObjectError::Truncated {
+            offset: 152,
+            needed: 4,
+        })
+    );
+}

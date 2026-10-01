@@ -284,12 +284,48 @@ fn aarch64_calls_closures_handlers_and_all_terminators_compile() {
         depth: 0,
         parent: None,
     });
+    let unwind_region = ncl_ir::HandlerRegionId(2);
+    builder.add_handler_region(HandlerRegion {
+        id: unwind_region,
+        kind: HandlerKind::UnwindProtect,
+        protected: vec![ncl_ir::BlockId(0)],
+        handler,
+        cleanup: Some(handler),
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    let progv_region = ncl_ir::HandlerRegionId(3);
+    builder.add_handler_region(HandlerRegion {
+        id: progv_region,
+        kind: HandlerKind::Progv,
+        protected: vec![ncl_ir::BlockId(0)],
+        handler,
+        cleanup: None,
+        catch_tag: None,
+        binding_targets: vec![argc],
+        depth: 0,
+        parent: None,
+    });
     builder.position_at(ncl_ir::BlockId(0)).unwrap();
     builder
         .push_op(OpKind::EnterHandler { region }, &[])
         .unwrap();
     builder
         .push_op(OpKind::LeaveHandler { region }, &[])
+        .unwrap();
+    builder
+        .push_op(OpKind::EnterHandler { region: unwind_region }, &[])
+        .unwrap();
+    builder
+        .push_op(OpKind::LeaveHandler { region: unwind_region }, &[])
+        .unwrap();
+    builder
+        .push_op(OpKind::EnterHandler { region: progv_region }, &[])
+        .unwrap();
+    builder
+        .push_op(OpKind::LeaveHandler { region: progv_region }, &[])
         .unwrap();
     builder
         .terminate(Terminator::Throw { condition: argc })

@@ -59,13 +59,16 @@ fn print_options_cover_all_modes_and_base_validation() {
     assert!(options.radix());
     assert_eq!(options.case(), PrintCase::Capitalize);
     assert!(options.circle());
-    assert_eq!(options.length().map(|value| value.get()), Some(3));
-    assert_eq!(options.level().map(|value| value.get()), Some(2));
+    assert_eq!(options.length().map(ncl_printer::NonNegative::get), Some(3));
+    assert_eq!(options.level().map(ncl_printer::NonNegative::get), Some(2));
     assert!(options.pretty());
     assert!(!options.array());
     assert!(!options.gensym());
     assert_eq!(options.circle_sharing_mode(), CircleSharingMode::OnlyShared);
-    assert_eq!(options.vector_length().map(|value| value.get()), Some(1));
+    assert_eq!(
+        options.vector_length().map(ncl_printer::NonNegative::get),
+        Some(1)
+    );
     assert_eq!(options.try_with_base(1), None);
     assert_eq!(options.try_with_base(2).unwrap().base().get(), 2);
     assert_eq!(options.with_base(37).base().get(), 36);
@@ -90,7 +93,7 @@ fn ambient_specials_accept_values_and_reject_invalid_values() {
     assert!(!options.escape());
     assert_eq!(options.base().get(), 16);
     assert_eq!(options.case(), PrintCase::Upcase);
-    assert_eq!(options.length().map(|value| value.get()), Some(4));
+    assert_eq!(options.length().map(ncl_printer::NonNegative::get), Some(4));
 
     ncl_object::set_symbol_value(&mut ctx, base, Word::fixnum(1)).unwrap();
     ncl_object::set_symbol_value(&mut ctx, case, Word::NIL).unwrap();

@@ -15,6 +15,7 @@ use ncl_object::{
     make_double, make_ratio, make_simple_vector,
 };
 
+#[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 fn noop_expander(
     _ctx: &mut ncl_object::ThreadContext,
     _runtime: &ncl_object::Runtime,

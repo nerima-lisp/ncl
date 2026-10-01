@@ -6,11 +6,8 @@
 //!
 //! Dynamic loading and foreign calls reach the OS only through `ncl-sys`, and
 //! this crate stays within Rust's safe subset, so every raw pointer operation
-//! remains behind `ncl-sys`. `ncl-sys` currently exposes only raw `extern "C"`
-//! declarations for `dlopen` / `dlsym` / `dlerror` and for reading and writing
-//! an arbitrary address, so the operations that need them return
-//! [`FfiError::MissingSysPrimitive`] naming the required signature. See
-//! [`sys_requirements`] and the crate README for the exact requests.
+//! remains behind `ncl-sys`. Unsupported ABI features remain explicit errors;
+//! see [`sys_requirements`] for the remaining primitive inventory.
 
 #![forbid(unsafe_code)]
 

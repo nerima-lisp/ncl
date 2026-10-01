@@ -39,6 +39,12 @@ pub enum FfiError {
     /// The payload identifies the required primitive and its exact signature
     /// through [`SysPrimitive::signature`].
     MissingSysPrimitive(SysPrimitive),
+    /// A dynamic-loader operation failed.
+    DynamicLoader(String),
+    /// An unmanaged memory operation failed.
+    Memory(ncl_sys::ffi::MemoryError),
+    /// A foreign scalar call failed at the ABI boundary.
+    ForeignCall(ncl_sys::ffi::CallError),
     /// A condition class needed to signal a foreign error is not registered.
     MissingConditionClass(&'static str),
     /// A precise-root token did not pop in stack order.
@@ -66,6 +72,9 @@ impl std::fmt::Display for FfiError {
             Self::MissingSysPrimitive(requirement) => {
                 write!(f, "missing ncl-sys primitive: {}", requirement.signature())
             }
+            Self::DynamicLoader(message) => write!(f, "dynamic loader error: {message}"),
+            Self::Memory(error) => write!(f, "foreign memory error: {error:?}"),
+            Self::ForeignCall(error) => write!(f, "foreign call error: {error:?}"),
             Self::MissingConditionClass(name) => {
                 write!(f, "condition class not registered: {name}")
             }

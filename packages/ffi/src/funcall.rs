@@ -1,11 +1,12 @@
 //! Foreign routine declaration and invocation.
 
+#![allow(clippy::indexing_slicing, clippy::missing_const_for_fn)]
+
 use ncl_object::{Runtime, ThreadContext, Word};
 
 use crate::FfiError;
 use crate::alien::{AlienRoutine, AlienType, marshal_argument, size_of};
 use crate::sap::SystemAreaPointer;
-use crate::sys_requirements::CALL_FOREIGN_FUNCTION;
 
 /// Declare a foreign routine, like `define-alien-routine`.
 #[must_use]
@@ -47,19 +48,17 @@ pub const fn cast(_ty: &AlienType, sap: SystemAreaPointer) -> SystemAreaPointer 
 
 /// Call a foreign routine, marshalling the arguments and the result.
 ///
-/// Every argument is marshalled before the call, so an arity or type error is
-/// reported without touching foreign code. The call itself returns
-/// [`FfiError::MissingSysPrimitive`] because `ncl-sys` has no C
-/// function-pointer call primitive: `invoke_entry` enters NCL generated code
-/// with the NCL register convention, not a C function with the C ABI.
+/// The Phase-1 call path supports up to eight integer, pointer, or enumeration
+/// arguments and a scalar integer or pointer result. Floating-point arguments,
+/// aggregate values, and callbacks remain explicit unsupported cases.
 ///
 /// # Errors
 /// Returns [`FfiError::ArityMismatch`] when the argument count differs from the
-/// declaration, any marshalling error from the arguments, and
-/// [`FfiError::MissingSysPrimitive`] for the call itself.
+/// declaration, any marshalling error from the arguments, and an explicit
+/// unsupported-type error for an ABI outside this Phase-1 subset.
 pub fn alien_funcall(
-    ctx: &ThreadContext,
-    _runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
     routine: &AlienRoutine,
     arguments: &[Word],
 ) -> Result<Word, FfiError> {
@@ -69,10 +68,61 @@ pub fn alien_funcall(
             got: arguments.len(),
         });
     }
-    let mut buffer = Vec::new();
-    for (ty, value) in routine.arguments().iter().zip(arguments) {
-        buffer.extend(marshal_argument(ctx, ty, *value)?);
+    if routine.arguments().iter().any(|ty| !scalar_call_type(ty))
+        || !scalar_call_type(routine.result())
+    {
+        return Err(FfiError::UnsupportedType("foreign call ABI"));
     }
-    let _ = buffer.len();
-    Err(FfiError::MissingSysPrimitive(CALL_FOREIGN_FUNCTION))
+    let mut buffer = Vec::with_capacity(routine.arguments().len() * 8);
+    for (ty, value) in routine.arguments().iter().zip(arguments) {
+        let bytes = marshal_argument(ctx, ty, *value)?;
+        let mut slot = [0_u8; 8];
+        let sign_extend = matches!(
+            ty,
+            AlienType::Char
+                | AlienType::Short
+                | AlienType::Int
+                | AlienType::Long
+                | AlienType::LongLong
+                | AlienType::SSizeT
+        );
+        if sign_extend && bytes.last().is_some_and(|byte| byte & 0x80 != 0) {
+            slot.fill(0xff);
+        }
+        slot[..bytes.len()].copy_from_slice(&bytes);
+        buffer.extend(slot);
+    }
+    if routine.address() == 0 {
+        return Err(FfiError::NullPointer);
+    }
+    let mut result = vec![0_u8; size_of(routine.result())];
+    ncl_sys::ffi::call_foreign_function(routine.address(), &buffer, &mut result)
+        .map_err(FfiError::ForeignCall)?;
+    crate::alien::unmarshal_result(ctx, runtime, routine.result(), &result)
+}
+
+fn scalar_call_type(ty: &AlienType) -> bool {
+    matches!(
+        ty,
+        AlienType::Boolean
+            | AlienType::Char
+            | AlienType::UnsignedChar
+            | AlienType::Short
+            | AlienType::UnsignedShort
+            | AlienType::Int
+            | AlienType::UnsignedInt
+            | AlienType::Long
+            | AlienType::UnsignedLong
+            | AlienType::LongLong
+            | AlienType::UnsignedLongLong
+            | AlienType::SizeT
+            | AlienType::SSizeT
+            | AlienType::Pointer(_)
+            | AlienType::CString
+            | AlienType::Utf8String
+            | AlienType::SystemAreaPointer
+            | AlienType::Function(_)
+            | AlienType::Enumeration(_)
+            | AlienType::Void
+    )
 }

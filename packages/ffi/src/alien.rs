@@ -245,6 +245,8 @@ pub struct AlienRoutine {
     result: AlienType,
     /// Whether the routine is callable as a Lisp function.
     callable: CallableMode,
+    /// Resolved native address, or zero before linkage.
+    address: usize,
 }
 
 impl AlienRoutine {
@@ -261,6 +263,7 @@ impl AlienRoutine {
             arguments,
             result,
             callable: callable.into(),
+            address: 0,
         }
     }
 
@@ -292,6 +295,19 @@ impl AlienRoutine {
     #[must_use]
     pub const fn is_callable(&self) -> bool {
         matches!(self.callable, CallableMode::Callable)
+    }
+
+    /// Return the resolved native address.
+    #[must_use]
+    pub const fn address(&self) -> usize {
+        self.address
+    }
+
+    /// Return a copy of this declaration linked to `address`.
+    #[must_use]
+    pub const fn with_address(mut self, address: usize) -> Self {
+        self.address = address;
+        self
     }
 }
 

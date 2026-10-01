@@ -1,16 +1,12 @@
 //! Dynamic loading of shared objects.
 //!
 //! Every operation here is gated on a safe `ncl-sys` wrapper for `dlopen`,
-//! `dlsym`, and `dlerror`. `ncl-sys` currently exposes only the raw `extern "C"`
-//! declarations in `ncl_sys::os::declarations`, which this crate cannot call, so
-//! each function returns [`FfiError::MissingSysPrimitive`] naming the required
-//! signature.
+//! `dlsym`, and `dlerror`.
+
+#![allow(clippy::as_conversions, clippy::needless_pass_by_value)]
 
 use crate::FfiError;
 use crate::sap::SystemAreaPointer;
-use crate::sys_requirements::{
-    DLCLOSE_SHARED_OBJECT, DLERROR_MESSAGE, DLOPEN_SHARED_OBJECT, DLSYM_FOREIGN_SYMBOL,
-};
 
 /// An opaque, owned handle to a loaded shared object.
 ///
@@ -91,9 +87,11 @@ pub fn load_shared_object(
     path: impl Into<SharedObjectPath>,
     mode: impl Into<LoaderMode>,
 ) -> Result<SharedObject, FfiError> {
-    let _path = path.into();
-    let _mode = mode.into();
-    Err(FfiError::MissingSysPrimitive(DLOPEN_SHARED_OBJECT))
+    let path = path.into();
+    let mode = mode.into();
+    ncl_sys::ffi::dlopen_shared_object(path.as_str(), matches!(mode, LoaderMode::Lazy))
+        .map(|handle| SharedObject(handle.as_raw() as usize))
+        .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
 
 /// Close a shared object handle, like `unload-shared-object`.
@@ -101,8 +99,11 @@ pub fn load_shared_object(
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlclose` wrapper.
-pub const fn unload_shared_object(_object: SharedObject) -> Result<(), FfiError> {
-    Err(FfiError::MissingSysPrimitive(DLCLOSE_SHARED_OBJECT))
+pub fn unload_shared_object(object: SharedObject) -> Result<(), FfiError> {
+    ncl_sys::ffi::dlclose_shared_object(ncl_sys::ffi::SharedObject::from_raw(
+        object.0 as *mut core::ffi::c_void,
+    ))
+    .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
 
 /// Load a shared object or signal an error, like `dlopen-or-lose`.
@@ -111,8 +112,7 @@ pub const fn unload_shared_object(_object: SharedObject) -> Result<(), FfiError>
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlopen` wrapper.
 pub fn dlopen_or_lose(path: impl Into<SharedObjectPath>) -> Result<SharedObject, FfiError> {
-    let _path = path.into();
-    Err(FfiError::MissingSysPrimitive(DLOPEN_SHARED_OBJECT))
+    load_shared_object(path, LoaderMode::Now)
 }
 
 /// Resolve `name` in `object`, like `find-dynamic-foreign-symbol-address`.
@@ -121,11 +121,18 @@ pub fn dlopen_or_lose(path: impl Into<SharedObjectPath>) -> Result<SharedObject,
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
 pub fn find_dynamic_foreign_symbol_address(
-    _object: SharedObject,
+    object: &SharedObject,
     name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
-    let _name = name.into();
-    Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+    let name = name.into();
+    ncl_sys::ffi::dlsym_foreign_symbol(
+        Some(&ncl_sys::ffi::SharedObject::from_raw(
+            object.0 as *mut core::ffi::c_void,
+        )),
+        name.as_str(),
+    )
+    .map(SystemAreaPointer::new)
+    .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
 
 /// Resolve `name` in the global namespace, like `find-foreign-symbol-address`.
@@ -136,8 +143,10 @@ pub fn find_dynamic_foreign_symbol_address(
 pub fn find_foreign_symbol_address(
     name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
-    let _name = name.into();
-    Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+    let name = name.into();
+    ncl_sys::ffi::dlsym_foreign_symbol(None, name.as_str())
+        .map(SystemAreaPointer::new)
+        .map_err(|error| FfiError::DynamicLoader(error.to_string()))
 }
 
 /// Resolve `name` or signal an error, like `foreign-symbol-address`.
@@ -148,8 +157,7 @@ pub fn find_foreign_symbol_address(
 pub fn foreign_symbol_address(
     name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
-    let _name = name.into();
-    Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+    find_foreign_symbol_address(name)
 }
 
 /// Resolve `name` to a SAP, like `foreign-symbol-sap`.
@@ -160,8 +168,7 @@ pub fn foreign_symbol_address(
 pub fn foreign_symbol_sap(
     name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
-    let _name = name.into();
-    Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+    find_foreign_symbol_address(name)
 }
 
 /// Resolve `name` to the SAP of its variable storage, like
@@ -173,8 +180,7 @@ pub fn foreign_symbol_sap(
 pub fn foreign_symbol_dataref_sap(
     name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
-    let _name = name.into();
-    Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+    find_foreign_symbol_address(name)
 }
 
 /// Return the most recent dynamic-loader error message, like `dlerror`.
@@ -182,8 +188,8 @@ pub fn foreign_symbol_dataref_sap(
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlerror` wrapper.
-pub const fn dlerror_message() -> Result<Option<String>, FfiError> {
-    Err(FfiError::MissingSysPrimitive(DLERROR_MESSAGE))
+pub fn dlerror_message() -> Result<Option<String>, FfiError> {
+    Ok(ncl_sys::ffi::dlerror_message())
 }
 
 /// The C symbol name for a Lisp alien name, like `extern-alien-name`.

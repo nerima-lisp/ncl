@@ -334,6 +334,91 @@ fn aarch64_calls_closures_handlers_and_all_terminators_compile() {
 }
 
 #[test]
+fn aarch64_dispatches_all_covering_handler_kinds_and_bindings() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(145),
+        "aarch64-dispatch-candidates",
+        vec![ncl_ir::Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        vec![],
+    );
+    let value = ncl_ir::ValueId(0);
+    let tag = builder.add_constant(Constant::Fixnum(1));
+    let tag = builder
+        .push_op(OpKind::Const { result: tag }, &[Ty::Word])
+        .unwrap()[0];
+    let catch_handler = builder.create_block(vec![
+        (Ty::Word, ncl_ir::ValueId(10)),
+        (Ty::Word, ncl_ir::ValueId(11)),
+    ]);
+    let unwind_handler = builder.create_block(Vec::new());
+    let progv_handler = builder.create_block(vec![(Ty::Word, ncl_ir::ValueId(12))]);
+    let protected = vec![ncl_ir::BlockId(0)];
+    builder.add_handler_region(HandlerRegion {
+        id: ncl_ir::HandlerRegionId(0),
+        kind: HandlerKind::Catch,
+        protected: protected.clone(),
+        handler: catch_handler,
+        cleanup: None,
+        catch_tag: Some(tag),
+        binding_targets: vec![value],
+        depth: 0,
+        parent: None,
+    });
+    builder.add_handler_region(HandlerRegion {
+        id: ncl_ir::HandlerRegionId(1),
+        kind: HandlerKind::UnwindProtect,
+        protected: protected.clone(),
+        handler: unwind_handler,
+        cleanup: Some(unwind_handler),
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    builder.add_handler_region(HandlerRegion {
+        id: ncl_ir::HandlerRegionId(2),
+        kind: HandlerKind::Progv,
+        protected,
+        handler: progv_handler,
+        cleanup: None,
+        catch_tag: None,
+        binding_targets: vec![value],
+        depth: 0,
+        parent: None,
+    });
+    builder
+        .push_op(
+            OpKind::Builtin {
+                name: "identity".into(),
+                args: vec![value],
+            },
+            &[Ty::Word],
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Throw { condition: tag })
+        .unwrap();
+    for (block, result) in [
+        (catch_handler, ncl_ir::ValueId(10)),
+        (unwind_handler, value),
+        (progv_handler, ncl_ir::ValueId(12)),
+    ] {
+        builder.position_at(block).unwrap();
+        builder
+            .terminate(Terminator::Return {
+                values: vec![result],
+            })
+            .unwrap();
+    }
+
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+}
+
+#[test]
 fn aarch64_branch_switch_and_generated_lambda_paths_compile() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(143),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run pinned ansi-test chapter entry points in isolated NCL processes."""
+"""Run pinned ansi-test chapter entry points and report deftest-level state."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from typing import Any
 
 LANES = {
     "arrays": "numbers",
-    "characters": "strings",
+    "characters": "sequences-strings",
     "conditions": "conditions-types",
     "cons": "other",
     "data-and-control-flow": "other",
@@ -32,9 +32,9 @@ LANES = {
     "printer": "format-printer",
     "random": "numbers",
     "reader": "reader-pathnames-streams",
-    "sequences": "sequences",
+    "sequences": "sequences-strings",
     "streams": "reader-pathnames-streams",
-    "strings": "strings",
+    "strings": "sequences-strings",
     "structures": "other",
     "symbols": "other",
     "system-construction": "other",
@@ -49,6 +49,14 @@ def cluster(output: str) -> str:
             line = re.sub(r"^ncl:\s*", "", line)
             return line[:240]
     return "no diagnostic output"
+
+
+def deftest_count(chapter: Path) -> int:
+    pattern = re.compile(r"\(deftest(?:\s|$)")
+    return sum(
+        len(pattern.findall(path.read_text(errors="replace")))
+        for path in chapter.rglob("*.lsp")
+    )
 
 
 def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
@@ -74,6 +82,7 @@ def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
     return {
         "chapter": chapter.name,
         "lane": LANES.get(chapter.name, "other"),
+        "deftests": deftest_count(chapter),
         "status": status,
         "returncode": result.returncode,
         "diagnostic": cluster(result.stderr + "\n" + result.stdout),
@@ -107,18 +116,26 @@ def main() -> int:
         ["git", "-C", str(args.ansi_dir), "rev-parse", "HEAD"],
         capture_output=True, text=True, check=True,
     ).stdout.strip()
+    total_deftests = sum(result["deftests"] for result in results)
+    chapter_passed = counts["passed"]
     print(json.dumps({
-        "unit": "chapter-load",
+        "unit": "deftest",
         "commit": commit,
-        "total": len(results),
-        "passed": counts["passed"],
-        "failed": counts["failed"] + counts["crash"] + counts["timeout"],
-        "unexecuted": len(chapters) - len(results),
+        "total": total_deftests,
+        "passed": 0,
+        "failed": 0,
+        "unexecuted": total_deftests,
         "categories": lane_counts,
         "failure_clusters": [
-            {"diagnostic": message, "count": count}
+            {"diagnostic": message, "count": count, "lane": "other"}
             for message, count in diagnostics.most_common(20)
         ],
+        "execution": {
+            "chapter_load_passed": chapter_passed,
+            "chapter_load_failed": counts["failed"] + counts["crash"] + counts["timeout"],
+            "deftests_executed": chapter_passed == len(results),
+            "blocked_by": "rt.lsp LOOP for ... = ... TypeError" if chapter_passed != len(results) else None,
+        },
         "results": results,
     }, sort_keys=True))
     return 0

@@ -209,7 +209,10 @@ pub fn read(
     let rt_token = push_root(ctx, rt.get_mut());
     let mut labels = Cell::new(Word::NIL);
     let labels_token = push_root(ctx, labels.get_mut());
-    let result = read_form(ctx, runtime, source, opts, &rt, &labels);
+    let result = loop {
+        let result = read_form(ctx, runtime, source, opts, &rt, &labels)?;
+        if result != Some(Word::UNBOUND) { break Ok(result); }
+    };
     let _ = pop_root(ctx, labels_token);
     let _ = pop_root(ctx, rt_token);
     result
@@ -483,6 +486,7 @@ fn read_list_inner(
         let Some(form) = form else {
             return Err(ReadError::UnexpectedEof);
         };
+        if form == Word::UNBOUND { continue; }
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;
         if head.get() == Word::NIL {
             head.set(cell);

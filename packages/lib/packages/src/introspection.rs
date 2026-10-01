@@ -10,7 +10,7 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FindStatus, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
-    slot_ref, symbol_name,
+    slot_ref, symbol_name, symbol_value,
 };
 
 fn with_rooted_words<T>(
@@ -53,7 +53,6 @@ const SYMBOLS: Parameter = Parameter {
 };
 const ONE_PACKAGE: &[Parameter] = &[PACKAGE];
 const ONE_OBJECT: &[Parameter] = &[OBJECT];
-const NAME_PACKAGE: &[Parameter] = &[NAME, PACKAGE];
 const SYMBOLS_PACKAGE: &[Parameter] = &[SYMBOLS, PACKAGE];
 const PACKAGE_PACKAGE: &[Parameter] = &[PACKAGE, PACKAGE];
 pub fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
@@ -90,6 +89,25 @@ pub fn package_arg(
     index: usize,
 ) -> Result<Package, ObjectError> {
     package_designator(ctx, runtime, args.required(index)?)
+}
+
+fn optional_package_arg(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+) -> Result<Package, ObjectError> {
+    if let Some(package) = args.get(1) {
+        if package != Word::NIL {
+            return package_designator(ctx, runtime, package);
+        }
+    }
+    let common = Package::from_word(
+        runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?,
+    );
+    let (current, _) = common.intern(ctx, runtime, "*PACKAGE*")?;
+    Package::try_from_word(ctx, symbol_value(ctx, current)?)
 }
 
 pub fn list_items(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
@@ -274,7 +292,7 @@ fn find_symbol(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = string_designator(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
+    let package = optional_package_arg(ctx, runtime, args)?;
     let found = package.find_symbol(ctx, name.as_word())?;
     let Some((symbol, status)) = found else {
         values.set(&[Word::NIL, Word::NIL]);
@@ -295,7 +313,7 @@ fn intern(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = string_designator(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
+    let package = optional_package_arg(ctx, runtime, args)?;
     let length = ncl_object::string_length(ctx, name.as_word())?;
     let name = (0..length)
         .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
@@ -316,7 +334,7 @@ fn mutate_symbols(
     operation: fn(Package, &mut ThreadContext, &Runtime, Word) -> Result<bool, ObjectError>,
 ) -> Result<Word, ObjectError> {
     let mut symbols = list_items(ctx, args.required(0)?)?;
-    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    let mut package = optional_package_arg(ctx, runtime, args)?.as_word();
     with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for symbol in symbols.iter().copied() {
@@ -356,7 +374,7 @@ fn unintern(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = string_designator(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
+    let package = optional_package_arg(ctx, runtime, args)?;
     Ok(if package.unintern(ctx, runtime, name.as_word())? {
         Word::TRUE
     } else {
@@ -371,7 +389,7 @@ fn import(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut symbols = list_items(ctx, args.required(0)?)?;
-    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    let mut package = optional_package_arg(ctx, runtime, args)?.as_word();
     with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for symbol in symbols.iter().copied() {
@@ -393,7 +411,7 @@ fn shadow(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut names = list_items(ctx, args.required(0)?)?;
-    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    let mut package = optional_package_arg(ctx, runtime, args)?.as_word();
     with_rooted_words(ctx, &mut names, |ctx, names| {
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for name in names.iter().copied() {

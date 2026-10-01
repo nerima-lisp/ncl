@@ -265,10 +265,11 @@ fn read_feature_conditional(
         return Err(ReadError::InvalidFeatureExpression);
     };
     let present = eval_feature_expr(ctx, runtime, expression, &features)?;
-    if present != positive {
-        let _ = read_form(ctx, runtime, source, opts, rt, labels)?;
+    let form = read_form(ctx, runtime, source, opts, rt, labels)?;
+    if present == positive {
+        return Ok(form);
     }
-    read_form(ctx, runtime, source, opts, rt, labels)
+    Ok(Some(Word::UNBOUND))
 }
 
 /// Skip a (possibly nested) `#| ... |#` block comment.

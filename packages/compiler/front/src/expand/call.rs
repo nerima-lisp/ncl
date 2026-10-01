@@ -119,6 +119,9 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
+        if name.is_named("COMMON-LISP", "DECLAIM") {
+            return Ok(Step::Done(Expr::Constant(Literal::Nil)));
+        }
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime

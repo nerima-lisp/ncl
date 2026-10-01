@@ -265,40 +265,39 @@ const PROBES: &[Probe] = &[
         source: "(loop for x in '(1 nil 2 nil 3) when x collect it)",
         expected: "(1 2 3)",
     },
-];
-
-const XFAILS: &[XFail] = &[
-    XFail {
+    Probe {
         name: "loop-maximize",
         source: "(loop for x from 1 below 4 maximize x)",
-        stderr: "UnsupportedLiteral",
-        exit_code: 1,
+        expected: "3",
     },
-    XFail {
-        name: "loop-with-finally",
-        source: "(loop with x = 2 finally (return x))",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
+    Probe {
         name: "rotatef",
         source: "(let ((a 1) (b 2)) (rotatef a b) (list a b))",
-        stderr: "ROTATEF",
-        exit_code: 1,
+        expected: "(2 1)",
     },
-    XFail {
+    Probe {
         name: "shiftf",
         source: "(let ((a 1) (b 2)) (shiftf a b 3) (list a b))",
-        stderr: "SHIFTF",
-        exit_code: 1,
+        expected: "(2 3)",
     },
-    XFail {
+    Probe {
         name: "multiple-value-setq",
-        source: "(multiple-value-setq (a b) (values 1 2))",
-        stderr: "MULTIPLE-VALUE-SETQ",
-        exit_code: 1,
+        source: "(let ((a 0) (b 0)) (multiple-value-setq (a b) (values 1 2)) (list a b))",
+        expected: "(1 2)",
+    },
+    Probe {
+        name: "sbit-setf",
+        source: "(let ((a (make-array 2 :element-type 'bit))) (setf (sbit a 0) 1) (sbit a 0))",
+        expected: "1",
     },
 ];
+
+const XFAILS: &[XFail] = &[XFail {
+    name: "loop-with-finally",
+    source: "(loop with x = 2 finally (return x))",
+    stderr: "UndefinedValue",
+    exit_code: 1,
+}];
 
 const ERROR_CASES: &[ErrorCase] = &[
     // B7: ECASE, unlike CASE, signals when nothing matches.

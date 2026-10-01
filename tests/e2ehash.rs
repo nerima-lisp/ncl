@@ -284,6 +284,11 @@ const CASES: &[Case] = &[
         source: "(bit (bit-xor (make-array 1 :element-type 'bit) (make-array 1 :element-type 'bit)) 0)",
         expected: "0",
     },
+    Case {
+        builtin: "SBIT",
+        source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
+        expected: "1",
+    },
 ];
 
 struct XfailCase {
@@ -294,18 +299,12 @@ struct XfailCase {
     cause: &'static str,
 }
 
-const XFAILS: &[XfailCase] = &[XfailCase {
-    builtin: "SBIT",
-    source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
-    expected_exit: 1,
-    stderr_contains: "UndefinedFunction",
-    cause: "packages/lib/macros/src/setf_places.rs:223-240: SETF place expansion for the SBIT CL function is unimplemented",
-}];
+const XFAILS: &[XfailCase] = &[];
 
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
-    assert_eq!(CASES.len(), 55);
-    assert_eq!(XFAILS.len(), 1);
+    assert_eq!(CASES.len(), 56);
+    assert_eq!(XFAILS.len(), 0);
     for case in CASES {
         let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
             .args(["--eval", case.source])

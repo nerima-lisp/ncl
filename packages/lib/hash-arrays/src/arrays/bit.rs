@@ -1,7 +1,7 @@
 use super::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
+    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, Runtime,
     ThreadContext, Word, array_element_type, array_row_major_ref, array_row_major_set, array_shape,
-    classify_object, make_array, row_major_index,
+    make_array, row_major_index,
 };
 use ncl_object::with_roots;
 
@@ -163,10 +163,7 @@ pub(super) fn sbit_builtin(
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
     let shape = array_shape(ctx, array)?;
-    if !matches!(classify_object(ctx, array), ObjectRef::SpecializedArray(_))
-        || array_element_type(ctx, array)? != ArrayElementType::Bit
-        || shape.len() != 1
-    {
+    if array_element_type(ctx, array)? != ArrayElementType::Bit || shape.len() != 1 {
         return Err(ObjectError::TypeError);
     }
     let index = args.required(1)?;

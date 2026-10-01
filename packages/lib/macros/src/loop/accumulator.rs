@@ -76,10 +76,6 @@ pub(super) fn expand_accumulator(
             &[accumulator, value],
         )?),
         AccumulatorKind::Maximize | AccumulatorKind::Minimize => {
-            let first = held_fresh_symbol(ctx, runtime, held)?;
-            let truth = held.len();
-            held.push(Word::TRUE);
-            bindings.push(held_list(ctx, runtime, held, &[first, truth])?);
             let operator = if matches!(kind, AccumulatorKind::Maximize) {
                 "MAX"
             } else {
@@ -88,18 +84,54 @@ pub(super) fn expand_accumulator(
             let selected = held_form(ctx, runtime, held, operator, &[accumulator, value])?;
             let selected = held_form(ctx, runtime, held, "SETQ", &[accumulator, selected])?;
             let set_first = held_form(ctx, runtime, held, "SETQ", &[accumulator, value])?;
-            let nil = held.len();
-            held.push(Word::NIL);
-            let clear_first = held_form(ctx, runtime, held, "SETQ", &[first, nil])?;
+            let uninitialized = held_form(ctx, runtime, held, "NULL", &[accumulator])?;
             body.push(held_form(
                 ctx,
                 runtime,
                 held,
                 "IF",
-                &[first, set_first, selected],
+                &[uninitialized, set_first, selected],
             )?);
-            body.push(clear_first);
         }
     }
     Ok((accumulator, kind))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, symbol};
+    use ncl_object::ObjectError;
+
+    #[test]
+    fn maximize_uses_nil_accumulator_as_initialization_state()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let accumulator = symbol(&mut ctx, &runtime, "RESULT")?;
+        let mut held = vec![accumulator, Word::fixnum(3)];
+        let mut bindings = Vec::new();
+        let mut body = Vec::new();
+        let mut initialized = Vec::new();
+
+        expand_accumulator(
+            &mut ctx,
+            &runtime,
+            &mut held,
+            AccumulatorKind::Maximize,
+            1,
+            Some(0),
+            &mut bindings,
+            &mut body,
+            &mut initialized,
+        )?;
+
+        let if_form = elements(&mut ctx, held[body[0]])?;
+        assert_eq!(if_form[0], symbol(&mut ctx, &runtime, "IF")?);
+        let null_form = elements(&mut ctx, if_form[1])?;
+        assert_eq!(null_form[0], symbol(&mut ctx, &runtime, "NULL")?);
+        assert!(!held.contains(&Word::TRUE));
+        Ok(())
+    }
 }

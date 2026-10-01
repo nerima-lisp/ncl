@@ -43,6 +43,41 @@ impl Tables {
 pub struct GlobalValueNumbering;
 
 impl GlobalValueNumbering {
+    fn has_cycle(function: &Function) -> bool {
+        fn visit(
+            id: BlockId,
+            blocks: &HashMap<BlockId, &BasicBlock>,
+            visiting: &mut HashSet<BlockId>,
+            visited: &mut HashSet<BlockId>,
+        ) -> bool {
+            if visiting.contains(&id) {
+                return true;
+            }
+            if !visited.insert(id) {
+                return false;
+            }
+            let Some(block) = blocks.get(&id) else {
+                return false;
+            };
+            visiting.insert(id);
+            let cycle = GlobalValueNumbering::successors(&block.terminator)
+                .into_iter()
+                .any(|target| visit(target, blocks, visiting, visited));
+            visiting.remove(&id);
+            cycle
+        }
+
+        let blocks = function
+            .blocks
+            .iter()
+            .map(|block| (block.id, block))
+            .collect::<HashMap<_, _>>();
+        let Some(entry) = function.blocks.first().map(|block| block.id) else {
+            return false;
+        };
+        visit(entry, &blocks, &mut HashSet::new(), &mut HashSet::new())
+    }
+
     fn successors(term: &Terminator) -> Vec<BlockId> {
         match term {
             Terminator::Jump { target, .. } => vec![*target],
@@ -367,6 +402,9 @@ impl FunctionPass for GlobalValueNumbering {
                     )
                 })
         {
+            return Ok(false);
+        }
+        if Self::has_cycle(function) {
             return Ok(false);
         }
         let tree = Self::dominator_tree(function);

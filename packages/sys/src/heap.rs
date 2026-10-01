@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/collect.rs"]
 mod collect;
+#[path = "heap/config.rs"]
+mod config;
 #[path = "heap/scan.rs"]
 mod scan;
 const CARD_SIZE: usize = 512;
@@ -21,6 +23,7 @@ pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
 /// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
     config: HeapConfig,
+    worker_count: usize,
     state: Mutex<State>,
     strict_forwarding: AtomicBool,
     pub(crate) stop_world: Mutex<crate::stw::StopWorld>,
@@ -38,25 +41,7 @@ impl Heap {
     #[must_use]
     /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
-        Self {
-            config,
-            state: Mutex::new(State {
-                used: 0,
-                gc_epoch: 0,
-                objects: Vec::new(),
-                object_starts: HashMap::new(),
-                layouts: HashMap::new(),
-                threads: Vec::new(),
-                dirty_cards: HashSet::new(),
-                roots: Vec::new(),
-                finalizers: Vec::new(),
-                after_gc_hooks: Vec::new(),
-                code_registry: crate::CodeRegistry::default(),
-            }),
-            strict_forwarding: AtomicBool::new(false),
-            stop_world: Mutex::new(crate::stw::StopWorld::default()),
-            stop_world_ready: Condvar::new(),
-        }
+        Self::new_with_workers(config, 2)
     }
     /// Verify that the host allocator can place heap storage outside the
     /// 32-bit immediate-character address range.
@@ -493,6 +478,9 @@ impl Heap {
 unsafe impl Send for State {}
 // SAFETY: Heap::state serializes access and collection runs while mutators are stopped.
 unsafe impl Sync for State {}
+#[cfg(test)]
+#[path = "heap/parallel_tests.rs"]
+mod parallel_tests;
 #[cfg(test)]
 #[path = "heap/registry_tests.rs"]
 mod registry_tests;

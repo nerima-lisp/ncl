@@ -327,11 +327,7 @@ impl FunctionPass for InlineDirectCalls {
                     || callee.blocks.len() != 1
                     || callee.blocks[0].ops.len() > self.max_ops
                     || callee.blocks[0].ops.iter().any(|op| {
-                        matches!(
-                            op.kind,
-                            OpKind::Call { .. }
-                                | OpKind::CallIndirect { .. }
-                        )
+                        matches!(op.kind, OpKind::Call { .. } | OpKind::CallIndirect { .. })
                     })
                 {
                     new_ops.push(call);

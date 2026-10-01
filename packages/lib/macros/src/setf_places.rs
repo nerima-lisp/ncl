@@ -220,6 +220,17 @@ fn gethash_place(
     setter_place(ctx, runtime, args, "GETHASH", "NCL-EXT::GETHASH-SET")
 }
 
+fn sbit_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 2 {
+        return Err(ObjectError::TypeError);
+    }
+    setter_place(ctx, runtime, args, "SBIT", "SBIT")
+}
+
 /// Register the place expanders defined in this module.
 ///
 /// # Errors
@@ -237,6 +248,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),
         ("GETHASH", gethash_place as PlaceExpander),
+        ("SBIT", sbit_place as PlaceExpander),
     ] {
         let mut symbol = symbol(ctx, runtime, name)?;
         ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {

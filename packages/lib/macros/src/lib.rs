@@ -238,7 +238,8 @@ adapters!
      pop_adapter => pop_callback,
      remf_adapter => remf_callback,
      shiftf_adapter => shiftf_callback,
-     rotatef_adapter => rotatef_callback);
+     rotatef_adapter => rotatef_callback,
+     multiple_value_setq_adapter => psetq::expand_multiple_value_setq);
 
 fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
     match name {
@@ -252,6 +253,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "REMF" => Some(remf_adapter),
         "SHIFTF" => Some(shiftf_adapter),
         "ROTATEF" => Some(rotatef_adapter),
+        "MULTIPLE-VALUE-SETQ" => Some(multiple_value_setq_adapter),
         "DEFUN" => Some(defining::defun_adapter),
         "DEFMACRO" => Some(defining::defmacro_adapter),
         "DEFVAR" => Some(defining::defvar_adapter),

@@ -42,6 +42,16 @@ fn call_result(
     runtime.call_builtin(ctx, function, args)
 }
 
+fn call_unicode(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
+    let function = runtime
+        .function(ctx, "NCL-UNICODE", name)
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("missing unicode builtin {name}"));
+    runtime
+        .call_builtin(ctx, function, args)
+        .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
+}
+
 fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
     let package = runtime
         .find_package(ctx, "KEYWORD")
@@ -100,6 +110,88 @@ fn generated_unicode_categories_cover_scalar_boundaries() {
     assert_eq!(general_category('a' as u32), Some("Ll"));
     assert_eq!(general_category(0xD800), None);
     assert_eq!(general_category(0x11_0000), None);
+}
+
+#[test]
+fn character_predicates_conversions_and_comparisons_return_expected_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let a = Word::character('a' as u32);
+    let b = Word::character('B' as u32);
+    let one = Word::character('1' as u32);
+    assert_eq!(call(&runtime, &mut ctx, "CHARACTERP", &[a]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "ALPHA-CHAR-P", &[a]), Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "ALPHANUMERICP", &[one]),
+        Word::TRUE
+    );
+    assert_eq!(call(&runtime, &mut ctx, "UPPER-CASE-P", &[b]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "LOWER-CASE-P", &[a]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "BOTH-CASE-P", &[a]), Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-UPCASE", &[a]),
+        Word::character('A' as u32)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-DOWNCASE", &[b]),
+        Word::character('b' as u32)
+    );
+    assert_eq!(call(&runtime, &mut ctx, "CHAR-INT", &[b]), Word::fixnum(66));
+    assert_eq!(
+        call(&runtime, &mut ctx, "CODE-CHAR", &[Word::fixnum(66)]),
+        b
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "DIGIT-CHAR-P", &[one, Word::fixnum(10)]),
+        Word::fixnum(1)
+    );
+    assert_eq!(call(&runtime, &mut ctx, "DIGIT-CHAR-P", &[a]), Word::NIL);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR=", &[a, a]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR<", &[a, b]), Word::NIL);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR-EQUAL", &[a, b]), Word::NIL);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "CHAR-EQUAL",
+            &[a, Word::character('A' as u32)]
+        ),
+        Word::TRUE
+    );
+}
+
+#[test]
+fn unicode_transforms_and_encoding_validate_outputs_and_errors() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['é', ' ', 'ß'])
+        .unwrap_or_else(|error| panic!("string: {error:?}"));
+    let nfc = call_unicode(&runtime, &mut ctx, "NORMALIZE-NFC", &[text]);
+    assert_eq!(string_value(&ctx, nfc), "é ß");
+    let upper = call_unicode(&runtime, &mut ctx, "FULL-UPCASE", &[text]);
+    assert_eq!(string_value(&ctx, upper), "É SS");
+    let bytes = call_unicode(&runtime, &mut ctx, "STRING-TO-UTF8", &[text]);
+    assert_eq!(ncl_object::simple_vector_length(&ctx, bytes), Ok(5));
+    let round_trip = call_unicode(&runtime, &mut ctx, "UTF8-TO-STRING", &[bytes]);
+    assert_eq!(string_value(&ctx, round_trip), "é ß");
+    let category = call_unicode(
+        &runtime,
+        &mut ctx,
+        "GENERAL-CATEGORY",
+        &[Word::character('A' as u32)],
+    );
+    assert_eq!(string_value(&ctx, category), "Lu");
+    assert_eq!(
+        call_result(&runtime, &mut ctx, "CODE-CHAR", &[Word::fixnum(-1)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }
 
 #[test]

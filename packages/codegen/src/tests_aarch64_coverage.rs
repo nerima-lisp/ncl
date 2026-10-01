@@ -713,3 +713,52 @@ fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
         Err(CodegenError::Unsupported(_))
     ));
 }
+
+#[test]
+fn aarch64_coverage_spills_captures_and_primitive_operands_across_calls() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(151),
+        "aarch64-spilled-capture-and-primitive",
+        std::iter::once(ncl_ir::Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        })
+        .chain((0..20).map(|index| ncl_ir::Param {
+            name: format!("value-{index}"),
+            ty: Ty::Word,
+        }))
+        .collect(),
+        vec![Ty::Word],
+    );
+    let captured = builder
+        .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
+        .unwrap()[0];
+    let call_result = builder
+        .push_op(
+            OpKind::Call {
+                function: ncl_ir::ValueId(0),
+                args: (1..=20).map(ncl_ir::ValueId).collect(),
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    let result = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![captured, ncl_ir::ValueId(1)],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result, call_result],
+        })
+        .unwrap();
+
+    let compiled = compile_function_aarch64(&builder.finish(), &CoverageAbi);
+    assert!(compiled.is_ok(), "AArch64 spill fixture: {compiled:?}");
+    assert!(!compiled.unwrap().code.is_empty());
+}

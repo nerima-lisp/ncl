@@ -128,6 +128,54 @@ fn class_slots_and_class_direct_slots_distinguish_inherited_metadata() {
 }
 
 #[test]
+fn class_direct_superclasses_and_finalized_p_expose_class_state() {
+    let (runtime, mut ctx) = setup();
+    let superclass = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let name = Word::fixnum(12);
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        name,
+        superclass,
+        Word::NIL,
+        Word::fixnum(0),
+    )
+    .unwrap();
+
+    let direct_superclasses =
+        call(&mut ctx, &runtime, "CLASS-DIRECT-SUPERCLASSES", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_length(&ctx, direct_superclasses),
+        Ok(1)
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, direct_superclasses, 0),
+        Ok(superclass)
+    );
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-FINALIZED-P", &[class]),
+        Ok(Word::TRUE)
+    );
+}
+
+#[test]
+fn class_direct_superclasses_is_empty_for_root_class() {
+    let (runtime, mut ctx) = setup();
+    let root = runtime.class(&mut ctx, "T").unwrap();
+
+    let direct_superclasses =
+        call(&mut ctx, &runtime, "CLASS-DIRECT-SUPERCLASSES", &[root]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_length(&ctx, direct_superclasses),
+        Ok(0)
+    );
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-FINALIZED-P", &[root]),
+        Ok(Word::TRUE)
+    );
+}
+
+#[test]
 fn typed_slot_accessors_and_eql_specializer_round_trip() {
     let (runtime, mut ctx) = setup();
     let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();

@@ -44,7 +44,7 @@ pub const fn builtin_descriptors() -> &'static [MopBuiltinDescriptor] {
     &BUILTINS
 }
 
-const BUILTINS: [MopBuiltinDescriptor; 9] = [
+const BUILTINS: [MopBuiltinDescriptor; 11] = [
     descriptor(
         "CLASS-PRECEDENCE-LIST",
         fixed(A1, Arity::exact(1)),
@@ -59,6 +59,16 @@ const BUILTINS: [MopBuiltinDescriptor; 9] = [
         "CLASS-DIRECT-SLOTS",
         fixed(A1, Arity::exact(1)),
         class_direct_slots_builtin,
+    ),
+    descriptor(
+        "CLASS-DIRECT-SUPERCLASSES",
+        fixed(A1, Arity::exact(1)),
+        class_direct_superclasses_builtin,
+    ),
+    descriptor(
+        "CLASS-FINALIZED-P",
+        fixed(A1, Arity::exact(1)),
+        class_finalized_p_builtin,
     ),
     descriptor(
         "SLOT-DEFINITION-NAME",
@@ -241,6 +251,45 @@ fn class_direct_slots_builtin(
     // The descriptor's slot field is the direct slot metadata.  CLASS-SLOTS
     // computes the effective metadata across the superclass chain.
     class_field(ctx, args.required(0)?, CLASS_SLOTS)
+}
+
+fn class_direct_superclasses_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let class = args.required(0)?;
+    let parents = class_field(scope.context(), class, CLASS_DIRECT_SUPERCLASS)?;
+    let mut direct = Vec::new();
+    let mut current = parents;
+    while current != Word::NIL {
+        if current.is_cons() {
+            let parent = car(scope.context(), current)?;
+            direct.push(parent);
+            current = ncl_object::cdr(scope.context(), current)?;
+        } else {
+            direct.push(current);
+            break;
+        }
+    }
+    let locals = direct.into_iter().map(Local::from_word).collect::<Vec<_>>();
+    let result: HandleVec<'_, Word> = scope.root_many(&locals);
+    let result = scope.make_simple_vector(runtime, &result)?;
+    Ok(scope.get(result).as_word())
+}
+
+fn class_finalized_p_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let class = args.required(0)?;
+    let finalized = simple_vector_length(ctx, class)? > CLASS_EFFECTIVE_SLOTS
+        && class_field(ctx, class, CLASS_EFFECTIVE_SLOTS)? != Word::NIL;
+    Ok(if finalized { Word::TRUE } else { Word::NIL })
 }
 
 fn slot_definition_name_builtin(

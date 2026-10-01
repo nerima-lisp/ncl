@@ -2,8 +2,7 @@ use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word, 
 
 #[path = "collect/weak_mark.rs"]
 mod weak_mark;
-use weak_mark::WeakMarkContext;
-
+use weak_mark::{WeakMarkContext, weak_referent_indices};
 const HASH_TABLE_WIDETAG: u8 = 5;
 const HASH_TABLE_WEAKNESS: usize = 2;
 const HASH_TABLE_COUNT: usize = 3;
@@ -66,13 +65,9 @@ impl super::Heap {
                 frame_values.extend(values);
             }
         }
+        let weak_referents = weak_referent_indices(&state);
+        let mut precise_indices = HashSet::new();
         let mut conservative_indices = Vec::new();
-        for value in conservative_values {
-            if let Some(index) = Self::find_conservative(&state, value) {
-                state.objects[index].pinned = true;
-                conservative_indices.push(index);
-            }
-        }
         if !full {
             for (index, _) in state.dirty_cards.clone() {
                 if state.objects.get(index).is_some_and(|object| object.alive) {
@@ -85,16 +80,27 @@ impl super::Heap {
                 // SAFETY: registered root slots outlive registration.
                 let value = unsafe { *root };
                 if let Some(index) = Self::find(&state, value) {
+                    precise_indices.insert(index);
                     stack.push(index);
                 }
             }
         }
-        stack.extend(conservative_indices);
         for value in frame_values {
             if let Some(index) = Self::find(&state, value) {
+                precise_indices.insert(index);
                 stack.push(index);
             }
         }
+        for value in conservative_values {
+            if let Some(index) = Self::find_conservative(&state, value) {
+                if weak_referents.contains(&index) && !precise_indices.contains(&index) {
+                    continue;
+                }
+                state.objects[index].pinned = true;
+                conservative_indices.push(index);
+            }
+        }
+        stack.extend(conservative_indices);
         let mut mark = WeakMarkContext {
             state: &state,
             full,

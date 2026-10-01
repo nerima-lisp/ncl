@@ -37,6 +37,14 @@ const SHARED_INITIALIZE_BUILTIN: Builtin = Builtin {
     lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
     convention: ncl_object::BuiltinConvention::Adapted,
 };
+const REINITIALIZE_INSTANCE_BUILTIN: Builtin = Builtin {
+    lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
+    convention: ncl_object::BuiltinConvention::Adapted,
+};
+const UPDATE_INSTANCE_BUILTIN: Builtin = Builtin {
+    lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
+    convention: ncl_object::BuiltinConvention::Adapted,
+};
 
 /// A registration-ready initialization callback descriptor.
 #[derive(Clone, Copy, Debug)]
@@ -60,7 +68,7 @@ pub const fn builtin_descriptors() -> &'static [BuiltinDescriptor] {
     &BUILTINS
 }
 
-const BUILTINS: [BuiltinDescriptor; 3] = [
+const BUILTINS: [BuiltinDescriptor; 5] = [
     BuiltinDescriptor {
         package: BuiltinPackage::CommonLisp,
         name: BuiltinName::new("MAKE-INSTANCE"),
@@ -80,6 +88,20 @@ const BUILTINS: [BuiltinDescriptor; 3] = [
         name: BuiltinName::new("SHARED-INITIALIZE"),
         builtin: SHARED_INITIALIZE_BUILTIN,
         callback: shared_initialize_builtin,
+        aliases: &[],
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("REINITIALIZE-INSTANCE"),
+        builtin: REINITIALIZE_INSTANCE_BUILTIN,
+        callback: reinitialize_instance_builtin,
+        aliases: &[],
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("UPDATE-INSTANCE"),
+        builtin: UPDATE_INSTANCE_BUILTIN,
+        callback: update_instance_builtin,
         aliases: &[],
     },
 ];
@@ -235,6 +257,47 @@ fn initialize_slots<'scope>(
     Ok(())
 }
 
+fn update_supplied_slots<'scope>(
+    scope: &mut Scope<'scope>,
+    instance: Instance,
+    class: Handle<'scope, Word>,
+    initargs: &HandleVec<'scope, Word>,
+) -> Result<(), ObjectError> {
+    let slots = class_slots(scope.context(), scope.get(class).as_word())?;
+    let initarg_words = scope
+        .get_many(initargs)
+        .into_iter()
+        .map(Local::as_word)
+        .collect::<Vec<_>>();
+    let initargs = InitArgList::parse(&initarg_words)?;
+    for (index, slot) in slots.into_iter().enumerate() {
+        let key = if matches!(
+            classify_object(scope.context(), slot),
+            ObjectRef::SimpleVector(_)
+        ) && simple_vector_length(scope.context(), slot)? > 0
+        {
+            let initarg = if simple_vector_length(scope.context(), slot)? > 1 {
+                simple_vector_ref(scope.context(), slot, 1)?
+            } else {
+                Word::NIL
+            };
+            if initarg == Word::NIL {
+                simple_vector_ref(scope.context(), slot, 0)?
+            } else {
+                initarg
+            }
+        } else {
+            slot
+        };
+        if key != Word::NIL
+            && let Some(value) = initargs.value_for(key)
+        {
+            slot_set(scope.context_mut(), instance, index, value.0)?;
+        }
+    }
+    Ok(())
+}
+
 fn make_instance_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -370,6 +433,44 @@ fn shared_initialize_builtin(
     initialize_slots(&mut scope, instance, class, &initargs)?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
+}
+
+fn reinitialize_instance_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let instance_word = scope.get(instance_handle).as_word();
+    let initarg_words = args
+        .as_slice()
+        .get(1..)
+        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
+    let initarg_locals = initarg_words
+        .iter()
+        .copied()
+        .map(Local::from_word)
+        .collect::<Vec<_>>();
+    let initargs = scope.root_many(&initarg_locals);
+    let instance = instance_argument(scope.context_mut(), instance_word)?;
+    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
+        scope.context(),
+        instance,
+    )?));
+    update_supplied_slots(&mut scope, instance, class, &initargs)?;
+    values.clear();
+    Ok(scope.get(instance_handle).as_word())
+}
+
+fn update_instance_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    reinitialize_instance_builtin(ctx, runtime, args, values)
 }
 
 /// Build the adapted implementation for an initialization descriptor.

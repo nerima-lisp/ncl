@@ -89,6 +89,7 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
     }
     let predecessors = predecessors(function, &blocks);
     let dominators = compute_dominators(function, &blocks, &predecessors);
+    let reachable = reachable_blocks(function, &blocks);
     for block in &function.blocks {
         for (index, op) in block.ops.iter().enumerate() {
             verify_detail::check_op(
@@ -111,7 +112,7 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
             &dominators,
             &mut errors,
         );
-        if matches!(block.terminator, Terminator::Unreachable) {
+        if matches!(block.terminator, Terminator::Unreachable) && reachable.contains(&block.id) {
             errors.push(VerifyError::MissingTerminator(block.id));
         }
         check_safepoints(block, &dominators, &mut errors);
@@ -335,6 +336,28 @@ fn predecessors(
         }
     }
     result
+}
+
+fn reachable_blocks(
+    function: &Function,
+    blocks: &HashMap<BlockId, &BasicBlock>,
+) -> HashSet<BlockId> {
+    let Some(entry) = function.blocks.first().map(|block| block.id) else {
+        return HashSet::new();
+    };
+    let mut reachable = HashSet::from([entry]);
+    let mut work = vec![entry];
+    while let Some(id) = work.pop() {
+        let Some(block) = blocks.get(&id) else {
+            continue;
+        };
+        for target in successors(&block.terminator) {
+            if blocks.contains_key(&target) && reachable.insert(target) {
+                work.push(target);
+            }
+        }
+    }
+    reachable
 }
 
 fn compute_dominators(

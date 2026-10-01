@@ -28,8 +28,8 @@ jobs:
           mkdir -p conformance/scoreboard
           python3 scripts/conformance_scoreboard.py \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
-            --ansi-command "${GITHUB_WORKSPACE}/target/release/ncl --load doit.lsp" \
-            --cl-bench-command "${GITHUB_WORKSPACE}/target/release/ncl --load tests.lisp" \
+            --ansi-command "python3 ${GITHUB_WORKSPACE}/scripts/ansi_test_runner.py --ncl ${GITHUB_WORKSPACE}/target/release/ncl --ansi-dir . --timeout 30 --workers 4" \
+            --cl-bench-command "sh ${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${GITHUB_WORKSPACE}/target/release/ncl" \
             --output "conformance/scoreboard/$(date -u +%F)-${GITHUB_SHA}.json"
       - uses: actions/upload-artifact@v4
         if: always()

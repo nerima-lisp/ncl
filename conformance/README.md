@@ -22,3 +22,23 @@ The upstream sources are not vendored. ansi-test is pinned to
 ansi-test GitLab project before falling back to matching GitHub mirrors. Each
 checkout is verified against its exact commit before use. The license files
 remain in the temporary checkout.
+
+### ANSI chapter runner
+
+`python3 scripts/ansi_test_runner.py` runs each top-level ansi-test chapter's
+`load.lsp` in an isolated NCL process. The JSON unit is `chapter-load`, so a
+chapter that fails during RT setup is counted as failed rather than stopping
+the remaining chapters. Timeout and signal termination are isolated per
+chapter. A reproducible invocation is:
+
+```sh
+python3 scripts/ansi_test_runner.py \
+  --ncl target/debug/ncl \
+  --ansi-dir /path/to/ansi-test \
+  --timeout 30 --workers 4
+```
+
+The runner's output can be passed as the `--ansi-command` to
+`scripts/conformance_scoreboard.py`; when `--output` names a JSON file, the
+harness also writes the corresponding Markdown report unless overridden by
+`--markdown-output`.

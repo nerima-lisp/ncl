@@ -1,0 +1,79 @@
+{
+  "ansi-test": {
+    "categories": {
+      "clos": {
+        "failed": 1
+      },
+      "conditions-types": {
+        "failed": 2
+      },
+      "format-printer": {
+        "timeout": 1
+      },
+      "loop-macros": {
+        "failed": 1
+      },
+      "numbers": {
+        "failed": 2
+      },
+      "other": {
+        "failed": 11
+      },
+      "reader-pathnames-streams": {
+        "failed": 4
+      },
+      "sequences": {
+        "failed": 1
+      },
+      "strings": {
+        "failed": 2
+      }
+    },
+    "commit": "ca06bd919661af162c67407c9d994e881870bdb3",
+    "failed": 25,
+    "failure_clusters": [
+      {
+        "count": 15,
+        "diagnostic": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 8,
+        "diagnostic": "package not found"
+      },
+      {
+        "count": 1,
+        "diagnostic": "no diagnostic output"
+      },
+      {
+        "count": 1,
+        "diagnostic": "object error: TypeError"
+      }
+    ],
+    "passed": 0,
+    "status": "passed",
+    "total": 25,
+    "unexecuted": 0,
+    "unit": "chapter-load"
+  },
+  "cl-bench": {
+    "status": "timeout"
+  },
+  "measured_on": "2026-10-01",
+  "schema_version": 1,
+  "sources": {
+    "ansi-test": {
+      "commit": "ca06bd919661af162c67407c9d994e881870bdb3",
+      "mirrors": [
+        "https://github.com/clasp-developers/ansi-test.git"
+      ],
+      "url": "https://gitlab.common-lisp.net/ansi-test/ansi-test.git"
+    },
+    "cl-bench": {
+      "commit": "553fbcdf88d2ca4e340a0cdf02679055f3279c8f",
+      "mirrors": [
+        "https://github.com/clasp-developers/cl-bench.git"
+      ],
+      "url": "https://gitlab.common-lisp.net/ansi-test/cl-bench.git"
+    }
+  }
+}

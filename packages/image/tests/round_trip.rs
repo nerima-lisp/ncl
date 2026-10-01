@@ -16,8 +16,8 @@ use ncl_object::{
     function_code, function_entry, function_lambda_list, function_name, make_code_object,
     make_cons, make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_flags,
-    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value, CodeObject, Function,
-    ObjectRef, Package, Runtime, ThreadContext, Word,
+    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value, CodeObject,
+    Function, ObjectRef, Package, Runtime, ThreadContext, Word,
 };
 use ncl_sys::LowTag;
 

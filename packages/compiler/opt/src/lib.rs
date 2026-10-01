@@ -253,6 +253,7 @@ impl InlineDirectCalls {
                     OpKind::MakeClosure { .. }
                         | OpKind::MakeValueCell { .. }
                         | OpKind::CallClosure { .. }
+                        | OpKind::LoadArg { .. }
                         | OpKind::SetMultipleValues { .. }
                 )
             })
@@ -293,6 +294,7 @@ impl FunctionPass for InlineDirectCalls {
         if Self::prohibited(function) {
             return Ok(false);
         }
+        let original = function.clone();
         let mut changed = false;
         let mut replacements = HashMap::new();
         let function_view = function.clone();
@@ -386,6 +388,10 @@ impl FunctionPass for InlineDirectCalls {
                     remap_op_values(op, &replacements);
                 }
                 remap_term_values(&mut block.terminator, &replacements);
+            }
+            if ncl_ir::verify(function).is_err() {
+                *function = original;
+                return Ok(false);
             }
         }
         Ok(changed)

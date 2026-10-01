@@ -52,6 +52,16 @@ fn fasl_header_rejects_each_incompatible_value() {
             needed: 64
         }
     );
+
+    let mut bad_magic = valid;
+    bad_magic[0] = 0;
+    assert_eq!(
+        FaslReader::read(&bad_magic, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "magic",
+            value: 0,
+        })
+    );
 }
 
 #[test]

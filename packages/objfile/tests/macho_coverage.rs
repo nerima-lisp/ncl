@@ -246,6 +246,35 @@ fn macho_validation_exercises_truncated_commands_and_unsupported_relocations() {
 }
 
 #[test]
+fn macho_validator_rejects_magic_and_cpu_mismatches() {
+    let object = MachObject {
+        architecture: MachArchitecture::X86_64,
+        sections: vec![],
+        relocations: vec![],
+    };
+    let valid = object.write().expect("empty Mach-O");
+    let mut bad_magic = valid.clone();
+    bad_magic[0..4].copy_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&bad_magic, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "Mach-O magic",
+            value: 0,
+        })
+    );
+
+    let mut bad_cpu = valid;
+    bad_cpu[4..8].copy_from_slice(&0x0100_000cu32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&bad_cpu, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "Mach-O CPU",
+            value: 0x0100_000c,
+        })
+    );
+}
+
+#[test]
 fn macho_writer_serializes_relocation_descriptor_bits() {
     let object = MachObject {
         architecture: MachArchitecture::X86_64,

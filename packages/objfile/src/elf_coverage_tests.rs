@@ -133,3 +133,45 @@ fn private_elf_writer_round_trip_contains_symbols_and_sections() {
     );
     assert!(bytes.windows(5).any(|window| window == b"entry"));
 }
+
+#[test]
+fn private_elf_validator_rejects_bad_section_table_metadata() {
+    let result = object().write();
+    assert!(result.is_ok());
+    let Some(bytes) = result.ok() else {
+        return;
+    };
+    let mut bad_entry_size = bytes.clone();
+    bad_entry_size[58..60].copy_from_slice(&32u16.to_le_bytes());
+    assert_eq!(
+        validate_elf(&bad_entry_size, ElfArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid ELF section table"))
+    );
+
+    let mut bad_count = bytes;
+    bad_count[60..62].copy_from_slice(&8u16.to_le_bytes());
+    assert_eq!(
+        validate_elf(&bad_count, ElfArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid ELF section table"))
+    );
+}
+
+#[test]
+fn private_elf_writer_handles_sections_without_text_or_metadata() {
+    let value = ElfObject {
+        architecture: ElfArchitecture::X86_64,
+        sections: vec![ElfSection {
+            id: SectionId(2),
+            kind: ElfSectionKind::Rodata,
+            bytes: vec![1, 2, 3],
+        }],
+        relocations: vec![],
+        symbols: vec![],
+    };
+    let result = value.write();
+    assert!(result.is_ok());
+    let Some(bytes) = result.ok() else {
+        return;
+    };
+    assert_eq!(validate_elf(&bytes, ElfArchitecture::X86_64), Ok(()));
+}

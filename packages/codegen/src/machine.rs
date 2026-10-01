@@ -4,6 +4,26 @@
 
 use crate::{FrameLayout, Relocation, SafepointMap};
 use ncl_ir::{BlockId, DebugLocationId, ValueId};
+use std::collections::HashSet;
+
+/// An invariant violation found in a lowered machine function.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MachineVerifyError {
+    /// The machine function has no blocks.
+    Empty,
+    /// The entry block is not present in the block list.
+    MissingEntry(BlockId),
+    /// A block id occurs more than once.
+    DuplicateBlock(BlockId),
+    /// A value is assigned more than once.
+    DuplicateValue(ValueId),
+    /// Two values use the same frame slot.
+    DuplicateSlot(u32),
+    /// A value slot lies outside the frame.
+    SlotOutOfFrame { value: ValueId, slot: u32 },
+    /// A safepoint map violates its wire-format invariants.
+    InvalidSafepoint(usize),
+}
 
 /// A machine operation retained for diagnostics and template inspection.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -115,6 +135,51 @@ impl MachineFunction {
         }
     }
 
+    /// Checks machine-level invariants before encoding.
+    ///
+    /// The IR verifier remains responsible for SSA dominance and operand
+    /// typing. This checker verifies the independent machine representation:
+    /// block identity, unique value/slot assignments, frame bounds, and stack
+    /// map wire invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first violated machine-level invariant.
+    pub fn verify(&self) -> Result<(), MachineVerifyError> {
+        if self.blocks.is_empty() {
+            return Err(MachineVerifyError::Empty);
+        }
+        let mut blocks = HashSet::new();
+        for block in &self.blocks {
+            if !blocks.insert(block.id) {
+                return Err(MachineVerifyError::DuplicateBlock(block.id));
+            }
+        }
+        if !blocks.contains(&self.entry) {
+            return Err(MachineVerifyError::MissingEntry(self.entry));
+        }
+
+        let mut values = HashSet::new();
+        let mut slots = HashSet::new();
+        for &(value, slot) in &self.slots {
+            if !values.insert(value) {
+                return Err(MachineVerifyError::DuplicateValue(value));
+            }
+            if !slots.insert(slot) {
+                return Err(MachineVerifyError::DuplicateSlot(slot));
+            }
+            if slot >= self.frame.frame_words {
+                return Err(MachineVerifyError::SlotOutOfFrame { value, slot });
+            }
+        }
+        for (index, map) in self.safepoints.iter().enumerate() {
+            if map.validate().is_err() {
+                return Err(MachineVerifyError::InvalidSafepoint(index));
+            }
+        }
+        Ok(())
+    }
+
     /// Returns the entry block without exposing the mutable representation.
     #[must_use]
     pub const fn entry(&self) -> BlockId {
@@ -174,4 +239,42 @@ pub struct CompiledFunction {
     pub frame_size: u32,
     /// Debug locations.
     pub debug: Vec<DebugLocation>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Block, MachineFunction, MachineOp, MachineVerifyError};
+    use crate::FrameLayout;
+    use ncl_ir::{BlockId, ValueId};
+
+    fn function(slots: Vec<(ValueId, u32)>) -> MachineFunction {
+        MachineFunction::new(
+            BlockId(0),
+            vec![Block::new(BlockId(0), vec![MachineOp::Return])],
+            FrameLayout::new(0, 2, 0).unwrap_or_else(|_| panic!("fixed test frame is valid")),
+            Vec::new(),
+            Vec::new(),
+            slots,
+        )
+    }
+
+    #[test]
+    fn verifies_unique_slots_and_frame_bounds() {
+        assert!(
+            function(vec![(ValueId(0), 4), (ValueId(1), 5)])
+                .verify()
+                .is_ok()
+        );
+        assert_eq!(
+            function(vec![(ValueId(0), 4), (ValueId(1), 4)]).verify(),
+            Err(MachineVerifyError::DuplicateSlot(4))
+        );
+        assert_eq!(
+            function(vec![(ValueId(0), 6)]).verify(),
+            Err(MachineVerifyError::SlotOutOfFrame {
+                value: ValueId(0),
+                slot: 6
+            })
+        );
+    }
 }

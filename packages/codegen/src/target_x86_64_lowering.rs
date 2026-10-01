@@ -76,7 +76,7 @@ impl ValueSlots {
         let mut spills = Vec::new();
         for interval in &self.allocation.intervals {
             if interval.ty != ncl_ir::Ty::Word
-                || interval.start >= position
+                || interval.start > position
                 || position > interval.end
             {
                 continue;

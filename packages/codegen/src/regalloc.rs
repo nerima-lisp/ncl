@@ -79,6 +79,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut safepoint_positions = BTreeSet::new();
     let mut safepoints = Vec::new();
     let mut handler_values = HashSet::new();
+    let mut move_preferences = HashMap::<ValueId, ValueId>::new();
     let mut enter_positions = HashMap::<HandlerRegionId, u32>::new();
     let mut block_param_values = HashSet::new();
     let mut position = 0u32;
@@ -105,6 +106,11 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             }
             if let OpKind::EnterHandler { region } = op.kind {
                 enter_positions.insert(region, position);
+            }
+            if let OpKind::Move { value } = op.kind
+                && let Some((result, _)) = op.results.first()
+            {
+                move_preferences.insert(*result, value);
             }
             if is_call(&op.kind) {
                 call_positions.insert(position);
@@ -169,12 +175,25 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
 
     let registers = allocatable_registers(target);
     let mut active = Vec::<(LiveInterval, u16)>::new();
-    let mut locations = Vec::new();
+    let mut locations = Vec::<(ValueId, Location)>::new();
     let mut next_spill = 0u32;
     for interval in intervals.iter().copied() {
         active.retain(|(old, _)| old.end >= interval.start);
+        let preferred = move_preferences
+            .get(&interval.value)
+            .and_then(|value| locations.iter().find(|(id, _)| id == value))
+            .and_then(|(_, location)| location.into_register());
+        let coalesced_spill = move_preferences
+            .get(&interval.value)
+            .and_then(|value| locations.iter().find(|(id, _)| id == value))
+            .and_then(|(_, location)| match location {
+                Location::Spill(slot) => Some(*slot),
+                Location::Register(_) => None,
+            });
+        let preferred_source = move_preferences.get(&interval.value).copied();
         let occupied = active
             .iter()
+            .filter(|(old, _)| Some(old.value) != preferred_source)
             .map(|(_, register)| *register)
             .collect::<BTreeSet<_>>();
         // x86-64 callee-saved registers are conservatively pinned by the
@@ -184,6 +203,12 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             if interval.crosses_handler || interval.crosses_call || interval.crosses_safepoint {
                 let slot = next_spill;
                 next_spill = next_spill.saturating_add(1);
+                Location::Spill(slot)
+            } else if let Some(register) = preferred.filter(|register| !occupied.contains(register))
+            {
+                active.push((interval, register));
+                Location::Register(register)
+            } else if let Some(slot) = coalesced_spill {
                 Location::Spill(slot)
             } else if let Some(register) = registers
                 .iter()
@@ -350,150 +375,8 @@ fn operands_of_terminator(terminator: &Terminator, out: &mut Vec<ValueId>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{AllocationTarget, Location, allocate};
-    use ncl_ir::{
-        Constant, FunctionBuilder, FunctionId, HandlerKind, HandlerRegion, OpKind, Terminator, Ty,
-        ValueId,
-    };
-
-    #[test]
-    fn linear_scan_spills_when_live_values_exceed_registers() {
-        let mut builder =
-            FunctionBuilder::new(FunctionId(0), "pressure", Vec::new(), vec![Ty::Word]);
-        let mut values = Vec::new();
-        for index in 0u32..8 {
-            builder.add_constant(Constant::Fixnum(i64::from(index)));
-            values.push(
-                match builder.push_op(
-                    OpKind::Const {
-                        result: ncl_ir::ConstantIndex(index),
-                    },
-                    &[Ty::Word],
-                ) {
-                    Ok(result) => result[0],
-                    Err(_) => return,
-                },
-            );
-        }
-        if builder
-            .terminate(Terminator::Return {
-                values: values.clone(),
-            })
-            .is_err()
-        {
-            return;
-        }
-        let allocation = allocate(&builder.finish(), AllocationTarget::X86_64);
-        assert!(allocation.spill_words > 0);
-        assert!(
-            allocation
-                .locations
-                .iter()
-                .any(|(_, location)| matches!(location, Location::Register(_)))
-        );
-    }
-
-    #[test]
-    fn handler_crossing_values_are_spilled_and_not_register_roots() {
-        let mut builder = FunctionBuilder::new(
-            FunctionId(1),
-            "handler-crossing",
-            Vec::new(),
-            vec![Ty::Word],
-        );
-        let constant = builder.add_constant(Constant::Fixnum(7));
-        let value = builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-            .map_or(ValueId(0), |values| values[0]);
-        builder.add_handler_region(HandlerRegion {
-            id: ncl_ir::HandlerRegionId(0),
-            kind: HandlerKind::UnwindProtect,
-            protected: vec![ncl_ir::BlockId(0)],
-            handler: ncl_ir::BlockId(0),
-            cleanup: Some(ncl_ir::BlockId(0)),
-            catch_tag: None,
-            binding_targets: vec![value],
-            depth: 0,
-            parent: None,
-        });
-        assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
-        assert!(
-            builder
-                .terminate(Terminator::Return {
-                    values: vec![value]
-                })
-                .is_ok()
-        );
-
-        let allocation = allocate(&builder.finish(), AllocationTarget::X86_64);
-        let interval = allocation
-            .intervals
-            .iter()
-            .find(|interval| interval.value == value);
-        let Some(interval) = interval else {
-            panic!("handler-crossing interval");
-        };
-        assert!(interval.crosses_handler);
-        assert!(matches!(
-            allocation.location(value),
-            Some(Location::Spill(_))
-        ));
-        assert!(allocation.safepoint_registers.values().all(Vec::is_empty));
-    }
-
-    #[test]
-    fn call_crossing_values_are_spilled_for_both_targets() {
-        let mut builder = FunctionBuilder::new(
-            FunctionId(2),
-            "call-crossing",
-            vec![
-                ncl_ir::Param {
-                    name: "function".into(),
-                    ty: Ty::Word,
-                },
-                ncl_ir::Param {
-                    name: "live".into(),
-                    ty: Ty::Word,
-                },
-            ],
-            vec![Ty::Word],
-        );
-        let constant = builder.add_constant(Constant::Fixnum(0));
-        assert!(
-            builder
-                .push_op(OpKind::Const { result: constant }, &[Ty::Word],)
-                .is_ok()
-        );
-        assert!(
-            builder
-                .push_op(
-                    OpKind::Call {
-                        function: ValueId(0),
-                        args: Vec::new(),
-                    },
-                    &[Ty::Word],
-                )
-                .is_ok()
-        );
-        assert!(
-            builder
-                .terminate(Terminator::Return {
-                    values: vec![ValueId(1)],
-                })
-                .is_ok()
-        );
-        let function = builder.finish();
-
-        for target in [AllocationTarget::X86_64, AllocationTarget::AArch64] {
-            let allocation = allocate(&function, target);
-            assert!(matches!(
-                allocation.location(ValueId(1)),
-                Some(Location::Spill(_))
-            ));
-        }
-    }
-}
+#[path = "tests_regalloc.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "regalloc_load_arg_test.rs"]

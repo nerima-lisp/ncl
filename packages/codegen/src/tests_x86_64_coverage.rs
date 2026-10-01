@@ -1,6 +1,8 @@
 #![allow(missing_docs, clippy::expect_used, clippy::too_many_lines)]
 
-use crate::{compile_function_x86_64, ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi};
+use crate::{
+    compile_function_x86_64, CodegenError, ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi,
+};
 use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 
 struct CoverageAbi;
@@ -353,4 +355,154 @@ fn x86_64_abi_compiles_without_fixture_specific_addresses() {
     let compiled =
         compile_function_x86_64(&builder.finish(), &X86_64Abi).expect("public ABI lowering");
     assert!(!compiled.code.is_empty());
+}
+
+#[test]
+fn x86_64_lowering_covers_progv_move_chain_and_unreachable() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(124),
+        "x86-64-progv-move-unreachable",
+        Vec::new(),
+        Vec::new(),
+    );
+    let value = builder.add_constant(Constant::Fixnum(1));
+    let value = builder
+        .push_op(OpKind::Const { result: value }, &[Ty::Word])
+        .expect("value")[0];
+    let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
+    let entry = builder
+        .push_op(OpKind::Const { result: entry }, &[Ty::Word])
+        .expect("entry")[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry,
+                captures: vec![value],
+            },
+            &[Ty::Word],
+        )
+        .expect("closure")[0];
+    let moved = builder
+        .push_op(OpKind::Move { value: closure }, &[Ty::Word])
+        .expect("moved closure")[0];
+    let argc = builder.add_constant(Constant::Fixnum(0));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .expect("argc")[0];
+    builder
+        .push_op(
+            OpKind::CallClosure {
+                closure: moved,
+                args: vec![argc],
+                named_symbol: None,
+            },
+            &[],
+        )
+        .expect("closure call");
+    let region = ncl_ir::HandlerRegionId(8);
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: region,
+        kind: ncl_ir::HandlerKind::Progv,
+        protected: vec![ncl_ir::BlockId(0)],
+        handler: ncl_ir::BlockId(0),
+        cleanup: None,
+        catch_tag: None,
+        binding_targets: vec![value, entry],
+        depth: 0,
+        parent: None,
+    });
+    builder
+        .push_op(OpKind::EnterHandler { region }, &[])
+        .expect("enter progv");
+    builder
+        .push_op(OpKind::LeaveHandler { region }, &[])
+        .expect("leave progv");
+    builder
+        .terminate(Terminator::Unreachable)
+        .expect("unreachable");
+
+    let compiled = compile(builder);
+    assert!(!compiled.code.is_empty());
+    assert!(compiled.safepoint_maps.len() >= 4);
+    assert_eq!(compiled.code[compiled.code.len() - 2..], [0x0f, 0x0b]);
+}
+
+#[test]
+fn x86_64_lowering_reports_reachable_invalid_operation_forms() {
+    let mut builtin = FunctionBuilder::new(
+        ncl_ir::FunctionId(125),
+        "x86-64-invalid-rest-list",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let constant = builtin.add_constant(Constant::Fixnum(0));
+    let constant = builtin
+        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+        .expect("constant")[0];
+    let result = builtin
+        .push_op(
+            OpKind::Builtin {
+                name: "make-rest-list".into(),
+                args: vec![constant],
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin")[0];
+    builtin
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("return");
+    assert!(matches!(
+        compile_function_x86_64(&builtin.finish(), &CoverageAbi),
+        Err(CodegenError::Unsupported(message)) if message.contains("make-rest-list")
+    ));
+
+    let mut primitive = FunctionBuilder::new(
+        ncl_ir::FunctionId(126),
+        "x86-64-invalid-primitive",
+        Vec::new(),
+        Vec::new(),
+    );
+    primitive
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: Vec::new(),
+                condition: None,
+            },
+            &[],
+        )
+        .expect("primitive");
+    primitive
+        .terminate(Terminator::Unreachable)
+        .expect("unreachable");
+    assert!(matches!(
+        compile_function_x86_64(&primitive.finish(), &CoverageAbi),
+        Err(CodegenError::Unsupported(message)) if message.contains("no operands")
+    ));
+
+    let mut call = FunctionBuilder::new(
+        ncl_ir::FunctionId(127),
+        "x86-64-invalid-call",
+        vec![Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        }],
+        Vec::new(),
+    );
+    call.push_op(
+        OpKind::Call {
+            function: ncl_ir::ValueId(0),
+            args: Vec::new(),
+        },
+        &[],
+    )
+    .expect("call");
+    call.terminate(Terminator::Unreachable)
+        .expect("unreachable");
+    assert!(matches!(
+        compile_function_x86_64(&call.finish(), &CoverageAbi),
+        Err(CodegenError::Unsupported(message)) if message.contains("tagged argc")
+    ));
 }

@@ -5,7 +5,7 @@
     clippy::unwrap_used
 )]
 
-use crate::{compile_function_aarch64, ContextField, RuntimeAbi, RuntimeFunction};
+use crate::{compile_function_aarch64, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 use ncl_ir::{
     Compare, Constant, FunctionBuilder, HandlerKind, HandlerRegion, OpKind, Prim, Terminator, Ty,
 };
@@ -488,4 +488,153 @@ fn aarch64_branch_switch_and_generated_lambda_paths_compile() {
             .unwrap();
     }
     assert!(!compile(builder).code.is_empty());
+}
+
+#[test]
+fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(146),
+        "aarch64-large-frame-call",
+        std::iter::once(ncl_ir::Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        })
+        .chain((0..599).map(|index| ncl_ir::Param {
+            name: format!("value-{index}"),
+            ty: Ty::Word,
+        }))
+        .collect(),
+        vec![Ty::Word],
+    );
+    let argc_index = builder.add_constant(Constant::Fixnum(599));
+    let argc = builder
+        .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
+        .unwrap()[0];
+    let args = std::iter::once(argc)
+        .chain((1..600).map(ncl_ir::ValueId))
+        .collect::<Vec<_>>();
+    let result = builder
+        .push_op(
+            OpKind::Call {
+                function: ncl_ir::ValueId(0),
+                args: args.clone(),
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .unwrap();
+    assert!(matches!(
+        compile_function_aarch64(&builder.finish(), &CoverageAbi),
+        Err(CodegenError::Encode(_))
+    ));
+
+    for (function_id, name, terminator) in [
+        (
+            ncl_ir::FunctionId(147),
+            "aarch64-large-frame-call-return",
+            true,
+        ),
+        (
+            ncl_ir::FunctionId(148),
+            "aarch64-large-frame-tail-call",
+            false,
+        ),
+    ] {
+        let mut builder = FunctionBuilder::new(
+            function_id,
+            name,
+            std::iter::once(ncl_ir::Param {
+                name: "callee".into(),
+                ty: Ty::Address,
+            })
+            .chain((0..599).map(|index| ncl_ir::Param {
+                name: format!("value-{index}"),
+                ty: Ty::Word,
+            }))
+            .collect(),
+            vec![],
+        );
+        let argc_index = builder.add_constant(Constant::Fixnum(599));
+        let argc = builder
+            .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
+            .unwrap()[0];
+        let args = std::iter::once(argc)
+            .chain((1..600).map(ncl_ir::ValueId))
+            .collect::<Vec<_>>();
+        builder
+            .terminate(if terminator {
+                Terminator::CallReturn {
+                    function: ncl_ir::ValueId(0),
+                    args,
+                }
+            } else {
+                Terminator::TailCall {
+                    function: ncl_ir::ValueId(0),
+                    args,
+                }
+            })
+            .unwrap();
+        assert!(matches!(
+            compile_function_aarch64(&builder.finish(), &CoverageAbi),
+            Err(CodegenError::Encode(_))
+        ));
+    }
+
+    let mut malformed_call = FunctionBuilder::new(
+        ncl_ir::FunctionId(149),
+        "aarch64-malformed-call",
+        vec![ncl_ir::Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        }],
+        vec![],
+    );
+    malformed_call
+        .push_op(
+            OpKind::Call {
+                function: ncl_ir::ValueId(0),
+                args: Vec::new(),
+            },
+            &[],
+        )
+        .unwrap();
+    malformed_call
+        .terminate(Terminator::Unreachable)
+        .unwrap();
+    assert!(matches!(
+        compile_function_aarch64(&malformed_call.finish(), &CoverageAbi),
+        Err(CodegenError::Unsupported(_))
+    ));
+
+    let mut malformed_branch = FunctionBuilder::new(
+        ncl_ir::FunctionId(150),
+        "aarch64-malformed-block-arguments",
+        vec![ncl_ir::Param {
+            name: "condition".into(),
+            ty: Ty::Word,
+        }],
+        vec![],
+    );
+    let then_block = malformed_branch.create_block(vec![(Ty::Word, ncl_ir::ValueId(1))]);
+    let else_block = malformed_branch.create_block(Vec::new());
+    malformed_branch
+        .position_at(ncl_ir::BlockId(0))
+        .unwrap();
+    malformed_branch
+        .terminate(Terminator::Branch {
+            condition: ncl_ir::ValueId(0),
+            then_target: then_block,
+            then_args: Vec::new(),
+            else_target: else_block,
+            else_args: Vec::new(),
+        })
+        .unwrap();
+    assert!(matches!(
+        compile_function_aarch64(&malformed_branch.finish(), &CoverageAbi),
+        Err(CodegenError::Unsupported(_))
+    ));
 }

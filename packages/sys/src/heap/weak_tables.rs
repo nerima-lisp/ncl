@@ -33,6 +33,7 @@ impl super::Heap {
         };
         *target = value.bits();
         record_weak_table(&mut state, index, slot);
+        drop(state);
         true
     }
 
@@ -50,5 +51,6 @@ impl super::Heap {
                 }
             }
         }
+        drop(state);
     }
 }

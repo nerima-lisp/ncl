@@ -163,7 +163,10 @@ fn compiled_clos_slot_names_boundp_typep_and_makunbound_are_observable() {
         "(progn (defclass slot-probe () ((value :initarg :value))) (let ((object (make-instance 'slot-probe :value 9))) (list (slot-exists-p object 'value) (slot-boundp object 'value) (typep object 'slot-probe) (progn (slot-makunbound object 'value) (slot-boundp object 'value)))))",
     );
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(T T T NIL)");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(T T T NIL)"
+    );
 }
 
 #[test]
@@ -181,7 +184,10 @@ fn compiled_clos_class_of_and_empty_class_definition_are_observable() {
         "(progn (defclass empty-probe () ()) (list (class-name (find-class 'empty-probe)) (class-name (class-of (cons 1 2))) (class-name (class-of 1.0))))",
     );
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(COMMON-LISP-USER:EMPTY-PROBE \"CONS\" \"DOUBLE-FLOAT\")");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(COMMON-LISP-USER:EMPTY-PROBE \"CONS\" \"DOUBLE-FLOAT\")"
+    );
 }
 
 #[test]
@@ -229,5 +235,17 @@ fn compiled_clos_mop_class_and_slot_metadata_are_observable() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim_end(),
         "(1 0 1 T COMMON-LISP-USER:VALUE)"
+    );
+}
+
+#[test]
+fn compiled_clos_mop_inherited_slot_metadata_is_observable() {
+    let output = run_ncl(
+        "(progn (defclass mop-parent () ((parent-value :initarg :parent-value))) (defclass mop-child (mop-parent) ((child-value :initarg :child-value))) (let* ((class (find-class 'mop-child)) (direct (ncl-mop:class-direct-superclasses class)) (slots (ncl-mop:class-slots class))) (list (length slots) (length direct) (class-name (svref direct 0)))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(2 1 COMMON-LISP-USER:MOP-PARENT)"
     );
 }

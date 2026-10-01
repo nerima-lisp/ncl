@@ -82,6 +82,7 @@ struct Record {
     interrupt: bool,
     result: Option<Result<(), ThreadError>>,
     value: Option<Word>,
+    placeholder: bool,
 }
 
 #[derive(Debug, Default)]
@@ -141,6 +142,7 @@ pub fn spawn(
                 interrupt: false,
                 result: None,
                 value: None,
+                placeholder: false,
             },
         );
         id
@@ -177,6 +179,7 @@ pub fn spawn_lisp(
                 interrupt: false,
                 result: None,
                 value: None,
+                placeholder: false,
             },
         );
         id
@@ -191,6 +194,26 @@ pub fn spawn_lisp(
     };
     drop(handle);
     Ok(ThreadId(id))
+}
+
+/// Create a compatibility thread record for a non-callable legacy designator.
+pub fn spawn_placeholder(name: &str) -> Result<ThreadId, ThreadError> {
+    let mut registry = lock_registry();
+    registry.next_id = registry.next_id.saturating_add(1);
+    let id = ThreadId(registry.next_id);
+    registry.live.insert(
+        id.get(),
+        Record {
+            name: name.to_owned(),
+            life: Life::Running,
+            terminate: false,
+            interrupt: false,
+            result: None,
+            value: None,
+            placeholder: true,
+        },
+    );
+    Ok(id)
 }
 
 fn run_lisp_thread(runtime: &Runtime, id: u64, function: Word, thread_object: Word) {
@@ -419,6 +442,10 @@ pub fn terminate(id: ThreadId) -> Result<(), ThreadError> {
         .get_mut(&id.0)
         .ok_or(ThreadError::NotRunning)?;
     record.terminate = true;
+    if record.placeholder {
+        record.life = Life::Terminated;
+        record.result = Some(Ok(()));
+    }
     drop(registry);
     condvar.notify_all();
     Ok(())

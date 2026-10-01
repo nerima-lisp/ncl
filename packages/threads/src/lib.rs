@@ -66,7 +66,7 @@ pub use thread::{
     FUNCTION_SLOT, ID_SLOT, MAIN_THREAD_ID, NAME_SLOT, RESULT_SLOT, STATE_FINISHED, STATE_RUNNING,
     STATE_SLOT, STATE_TERMINATED, ThreadBody, ThreadId, alive_p, all_ids, current_id,
     dispose_finished, idle_body, interrupt, join, join_value, os_tid, should_terminate, spawn,
-    spawn_lisp, take_interrupt, terminate, thread_name, thread_yield,
+    spawn_lisp, spawn_placeholder, take_interrupt, terminate, thread_name, thread_yield,
 };
 pub use thread_object::{
     current_thread, finished_state, interrupt_thread, join_thread, join_thread_value,

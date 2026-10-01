@@ -260,3 +260,53 @@ fn make_instance_initializes_slots_inherited_through_three_generations() {
         Word::fixnum(33)
     );
 }
+
+#[test]
+fn reinitialize_and_update_instance_only_apply_supplied_initargs() {
+    let (runtime, mut ctx) = setup();
+    let first_key = Word::fixnum(301);
+    let second_key = Word::fixnum(302);
+    let class = class_with_slots(&mut ctx, &runtime, &[first_key, second_key]);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let instance = runtime
+        .call_builtin(
+            &mut ctx,
+            make,
+            &[
+                class,
+                first_key,
+                Word::fixnum(11),
+                second_key,
+                Word::fixnum(22),
+            ],
+        )
+        .unwrap();
+    let slot_value = function(&runtime, &mut ctx, "COMMON-LISP", "SLOT-VALUE");
+    let reinitialize = function(&runtime, &mut ctx, "COMMON-LISP", "REINITIALIZE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            reinitialize,
+            &[instance, first_key, Word::fixnum(33)]
+        ),
+        Ok(instance)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_value, &[instance, Word::fixnum(0)]),
+        Ok(Word::fixnum(33))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_value, &[instance, Word::fixnum(1)]),
+        Ok(Word::fixnum(22))
+    );
+
+    let update = function(&runtime, &mut ctx, "COMMON-LISP", "UPDATE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, update, &[instance, second_key, Word::fixnum(44)]),
+        Ok(instance)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_value, &[instance, Word::fixnum(1)]),
+        Ok(Word::fixnum(44))
+    );
+}

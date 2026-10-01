@@ -187,6 +187,26 @@ impl Class {
         &self.effective_slots
     }
 
+    /// Return effective slots stored in each instance.
+    #[must_use]
+    pub fn instance_slots(&self) -> Vec<SlotDefinition> {
+        self.effective_slots
+            .iter()
+            .copied()
+            .filter(|slot| slot.allocation == Allocation::Instance)
+            .collect()
+    }
+
+    /// Return effective slots stored once on the class.
+    #[must_use]
+    pub fn class_slots(&self) -> Vec<SlotDefinition> {
+        self.effective_slots
+            .iter()
+            .copied()
+            .filter(|slot| slot.allocation == Allocation::Class)
+            .collect()
+    }
+
     /// Return the redefinition generation used by dispatch caches.
     #[must_use]
     pub const fn version(&self) -> u64 {
@@ -255,15 +275,21 @@ impl Class {
             }
             slots.push(*slot);
         }
+        let mut instance_location = 0_u32;
         self.effective_slots = slots
             .into_iter()
-            .enumerate()
-            .map(|(index, slot)| {
-                u32::try_from(index)
-                    .map(|location| slot.assign_location(location))
-                    .map_err(|_| DomainError::InvalidClassPrecedenceList)
+            .map(|slot| {
+                if slot.allocation == Allocation::Class {
+                    Ok(slot)
+                } else {
+                    let location = instance_location;
+                    instance_location = instance_location
+                        .checked_add(1)
+                        .ok_or(DomainError::InvalidClassPrecedenceList)?;
+                    Ok(slot.assign_location(location))
+                }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, DomainError>>()?;
         self.precedence = precedence;
         self.finalized = true;
         self.version = self.version.saturating_add(1);
@@ -277,6 +303,25 @@ impl Class {
         self.effective_slots.clear();
         self.finalized = false;
         self.version = self.version.saturating_add(1);
+    }
+}
+
+#[cfg(test)]
+mod domain_core_tests {
+    use super::*;
+
+    #[test]
+    fn class_allocated_slots_do_not_consume_instance_locations() {
+        let instance_slot = SlotDefinition::new(SlotId::new(1), Allocation::Instance, None);
+        let class_slot = SlotDefinition::new(SlotId::new(2), Allocation::Class, None);
+        let mut class = Class::new(ClassId::new(1), Vec::new(), vec![class_slot, instance_slot]);
+
+        class.finalize_inheritance(&[]).unwrap();
+
+        assert_eq!(class.class_slots(), vec![class_slot]);
+        assert_eq!(class.instance_slots(), vec![instance_slot.assign_location(0)]);
+        assert_eq!(class.effective_slots()[0].location(), None);
+        assert_eq!(class.effective_slots()[1].location(), Some(0));
     }
 }
 

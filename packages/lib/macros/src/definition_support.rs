@@ -2,9 +2,9 @@
 #![allow(clippy::missing_errors_doc)]
 
 use ncl_object::{
-    make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist, Arity,
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext,
+    Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist,
 };
 
 use crate::form::{list, symbol};

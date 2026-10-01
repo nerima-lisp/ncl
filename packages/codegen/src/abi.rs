@@ -248,7 +248,10 @@ impl BuiltinAddressProvider for BuiltinAddressTable {
 
 #[cfg(test)]
 mod builtin_address_tests {
-    use super::{BuiltinAddressProvider, BuiltinAddressTable, ContextField};
+    use super::{
+        Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName,
+        ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi, common_lisp_builtin,
+    };
     use ncl_object::{BuiltinIdentifier, BuiltinName, BuiltinPackage};
 
     #[test]
@@ -263,8 +266,49 @@ mod builtin_address_tests {
 
     #[test]
     fn context_fields_keep_the_stable_legacy_identifiers() {
-        assert_eq!(ContextField::TlabBump.identifier(), "tlab_bump");
-        assert_eq!(ContextField::MultipleValueCount.identifier(), "mv_count");
+        let fields = [
+            (ContextField::TlabBump, "tlab_bump"),
+            (ContextField::TlabLimit, "tlab_limit"),
+            (ContextField::SafepointRequest, "safepoint_request"),
+            (ContextField::Pending, "pending"),
+            (ContextField::MultipleValueCount, "mv_count"),
+            (ContextField::MultipleValueArea, "mv_area"),
+            (ContextField::Handler, "handler"),
+            (ContextField::Cleanup, "cleanup"),
+            (ContextField::Catch, "catch"),
+        ];
+        for (field, identifier) in fields {
+            assert_eq!(field.identifier(), identifier);
+        }
+    }
+
+    #[test]
+    fn abi_selectors_preserve_names_and_report_unavailable_entries() {
+        assert_eq!(RegisterId::Rax.id(), 0);
+        assert_eq!(RegisterId::R15.id(), 14);
+        let name = ConstantName::new("function-entry:7");
+        assert_eq!(name.as_str(), "function-entry:7");
+        assert_eq!(
+            common_lisp_builtin("keyword-value").package.as_str(),
+            "NCL-EXT"
+        );
+        assert_eq!(common_lisp_builtin("car").package.as_str(), "COMMON-LISP");
+
+        let identifier = common_lisp_builtin("car");
+        assert_eq!(
+            X86_64Abi.builtin_address(identifier),
+            Err(AbiError::MissingBuiltin(identifier))
+        );
+        assert_eq!(
+            Aarch64Abi.runtime_address(RuntimeFunction::Unwind),
+            Err(AbiError::UnsupportedRuntimeFunction(
+                RuntimeFunction::Unwind
+            ))
+        );
+        assert_eq!(
+            AbiError::UnsupportedContextField(ContextField::Catch).to_string(),
+            "context offset is unavailable: Catch"
+        );
     }
 }
 

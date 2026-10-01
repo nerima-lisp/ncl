@@ -253,3 +253,83 @@ pub(super) fn lower_prim(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Allocation, Location};
+    use std::collections::BTreeMap;
+
+    fn allocation() -> Allocation {
+        Allocation {
+            intervals: Vec::new(),
+            locations: vec![
+                (ValueId(0), Location::Register(1)),
+                (ValueId(1), Location::Register(2)),
+                (ValueId(2), Location::Register(3)),
+            ],
+            spill_words: 0,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        }
+    }
+
+    #[test]
+    fn aarch64_primitives_cover_memory_and_boolean_forms() {
+        let allocation = allocation();
+        for primitive in [
+            Prim::FixnumAdd,
+            Prim::FixnumSub,
+            Prim::FixnumMul,
+            Prim::FixnumEq,
+            Prim::Eq,
+            Prim::Eql,
+            Prim::FixnumLt,
+            Prim::FixnumLe,
+            Prim::Car,
+            Prim::Cdr,
+            Prim::Svref,
+            Prim::Aref,
+            Prim::Rplaca,
+            Prim::Rplacd,
+            Prim::Aset,
+        ] {
+            let mut assembler = Assembler::new();
+            assert!(
+                lower_prim(
+                    &mut assembler,
+                    &primitive,
+                    &[ValueId(0), ValueId(1)],
+                    Some(ValueId(2)),
+                    &allocation,
+                )
+                .is_ok(),
+                "{primitive:?}"
+            );
+            assert!(assembler.offset() > 0, "{primitive:?}");
+        }
+    }
+
+    #[test]
+    fn aarch64_primitives_reject_malformed_and_unimplemented_forms() {
+        let allocation = allocation();
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &allocation),
+            Err(CodegenError::Unsupported(message)) if message == "primitive has no operands"
+        ));
+        for primitive in [
+            Prim::FixnumDiv,
+            Prim::Typep,
+            Prim::CharacterPredicate("characterp".into()),
+            Prim::StructureSlot("car".into()),
+        ] {
+            let mut assembler = Assembler::new();
+            assert!(matches!(
+                lower_prim(&mut assembler, &primitive, &[ValueId(0)], None, &allocation),
+                Err(CodegenError::Unsupported(_))
+            ));
+        }
+    }
+}

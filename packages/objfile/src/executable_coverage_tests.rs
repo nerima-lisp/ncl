@@ -110,3 +110,95 @@ fn private_executable_helpers_accept_valid_layouts() {
         Ok((true, true))
     );
 }
+
+#[test]
+fn private_elf_segment_parser_checks_each_load_segment_property() {
+    let mut bytes = vec![0; 112];
+    for at in [0usize, 56] {
+        bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes());
+        bytes[at + 4..at + 8].copy_from_slice(&5u32.to_le_bytes());
+        bytes[at + 16..at + 24].copy_from_slice(&0x1000u64.to_le_bytes());
+        bytes[at + 32..at + 40].copy_from_slice(&1u64.to_le_bytes());
+    }
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((true, false))
+    );
+
+    bytes[56 + 4..56 + 8].copy_from_slice(&6u32.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((true, true))
+    );
+
+    bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+        Ok((false, true))
+    );
+}
+
+#[test]
+fn private_elf_segment_parser_rejects_entry_before_text_address() {
+    let mut bytes = vec![0; 56];
+    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
+    bytes[32..40].copy_from_slice(&1u64.to_le_bytes());
+    bytes[16..24].copy_from_slice(&0x1000u64.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 1, 0xfff),
+        Err(ObjectError::InvalidStructure(
+            "ELF entry is outside executable segment"
+        ))
+    );
+}
+
+#[test]
+fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
+    let image = ExecutableImage {
+        architecture: Architecture::Aarch64,
+        code: vec![1, 2],
+        metadata: vec![3],
+    };
+    let elf_result = write_elf_executable(&image);
+    assert!(elf_result.is_ok());
+    let elf = elf_result.unwrap_or_default();
+    assert_eq!(validate_elf_executable(&elf, Architecture::Aarch64), Ok(()));
+    assert_eq!(
+        validate_elf_executable(&elf, Architecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "ELF machine",
+            value: 183
+        })
+    );
+
+    let macho_result = write_mach_executable(&image, MachArchitecture::Arm64);
+    assert!(macho_result.is_ok());
+    let macho = macho_result.unwrap_or_default();
+    assert_eq!(
+        crate::validate_mach_executable(&macho, MachArchitecture::Arm64),
+        Ok(())
+    );
+    assert_eq!(
+        write_mach_executable(&image, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "architecture",
+            value: 2
+        })
+    );
+
+    let mut bad_headers = elf.clone();
+    bad_headers[54..56].copy_from_slice(&32u16.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&bad_headers, Architecture::Aarch64),
+        Err(ObjectError::InvalidStructure("invalid ELF program headers"))
+    );
+    let mut bad_entry = elf;
+    bad_entry[24..32].copy_from_slice(&0u64.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&bad_entry, Architecture::Aarch64),
+        Err(ObjectError::InvalidStructure(
+            "ELF entry is outside executable segment"
+        ))
+    );
+}

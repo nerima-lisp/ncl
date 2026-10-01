@@ -133,3 +133,117 @@ fn private_elf_writer_round_trip_contains_symbols_and_sections() {
     );
     assert!(bytes.windows(5).any(|window| window == b"entry"));
 }
+
+#[test]
+fn private_elf_validator_rejects_bad_section_table_metadata() {
+    let result = object().write();
+    assert!(result.is_ok());
+    let Some(bytes) = result.ok() else {
+        return;
+    };
+    let mut bad_entry_size = bytes.clone();
+    bad_entry_size[58..60].copy_from_slice(&32u16.to_le_bytes());
+    assert_eq!(
+        validate_elf(&bad_entry_size, ElfArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid ELF section table"))
+    );
+
+    let mut bad_count = bytes;
+    bad_count[60..62].copy_from_slice(&8u16.to_le_bytes());
+    assert_eq!(
+        validate_elf(&bad_count, ElfArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid ELF section table"))
+    );
+}
+
+#[test]
+fn private_elf_writer_handles_sections_without_text_or_metadata() {
+    let value = ElfObject {
+        architecture: ElfArchitecture::X86_64,
+        sections: vec![ElfSection {
+            id: SectionId(2),
+            kind: ElfSectionKind::Rodata,
+            bytes: vec![1, 2, 3],
+        }],
+        relocations: vec![],
+        symbols: vec![],
+    };
+    let result = value.write();
+    assert!(result.is_ok());
+    let Some(bytes) = result.ok() else {
+        return;
+    };
+    assert_eq!(validate_elf(&bytes, ElfArchitecture::X86_64), Ok(()));
+}
+
+#[test]
+fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
+    assert_eq!(
+        validate_elf(&[], ElfArchitecture::X86_64),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 64
+        })
+    );
+    let mut bytes = vec![0; 64];
+    assert_eq!(
+        validate_elf(&bytes, ElfArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "not a little-endian ELF64 file"
+        ))
+    );
+    bytes[0..4].copy_from_slice(b"\x7fELF");
+    bytes[4] = 2;
+    bytes[5] = 1;
+    bytes[6] = 1;
+    bytes[18..20].copy_from_slice(&62u16.to_le_bytes());
+    bytes[58..60].copy_from_slice(&64u16.to_le_bytes());
+    bytes[60..62].copy_from_slice(&9u16.to_le_bytes());
+    bytes[40..48].copy_from_slice(&u64::MAX.to_le_bytes());
+    assert!(matches!(
+        validate_elf(&bytes, ElfArchitecture::X86_64),
+        Err(ObjectError::OutOfBounds {
+            section: "ELF section table",
+            ..
+        })
+    ));
+
+    let generic = vec![
+        Section {
+            id: SectionId(1),
+            name: ".text".into(),
+            bytes: vec![1],
+        },
+        Section {
+            id: SectionId(2),
+            name: ".ncl".into(),
+            bytes: vec![2],
+        },
+        Section {
+            id: SectionId(3),
+            name: ".other".into(),
+            bytes: vec![3],
+        },
+    ];
+    let mapped = sections_from_generic(&generic);
+    assert_eq!(mapped[0].kind, ElfSectionKind::Text);
+    assert_eq!(mapped[1].kind, ElfSectionKind::Metadata);
+    assert_eq!(mapped[2].kind, ElfSectionKind::Rodata);
+
+    let mut invalid_offset = object();
+    invalid_offset.relocations.push(Relocation {
+        section: SectionId(1),
+        offset: 1,
+        kind: RelocKind::Abs64,
+        symbol: SymbolRef::External("loader".into()),
+        addend: 0,
+    });
+    assert_eq!(
+        invalid_offset.write(),
+        Err(ObjectError::OutOfBounds {
+            section: "relocation",
+            offset: 1,
+            size: 1
+        })
+    );
+}

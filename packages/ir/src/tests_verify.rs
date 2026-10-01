@@ -480,3 +480,652 @@ fn function_builder_usage_example_builds_and_verifies() {
     );
     assert!(verify(&builder.finish()).is_ok());
 }
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn verifier_accepts_each_operation_type() {
+    let function = finish(
+        "all-operations",
+        vec![
+            Param {
+                name: "word".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            },
+            Param {
+                name: "i64".into(),
+                ty: Ty::I64,
+            },
+            Param {
+                name: "f64".into(),
+                ty: Ty::F64,
+            },
+            Param {
+                name: "bool".into(),
+                ty: Ty::Bool,
+            },
+        ],
+        Vec::new(),
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(10, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(&[(11, Ty::Word)], OpKind::Move { value: ValueId(0) }),
+                op(
+                    &[(12, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(1),
+                    },
+                ),
+                op(
+                    &[],
+                    OpKind::Store {
+                        address: ValueId(1),
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(13, Ty::Word)],
+                    OpKind::LoadField {
+                        object: ValueId(0),
+                        field: 2,
+                    },
+                ),
+                op(
+                    &[],
+                    OpKind::StoreField {
+                        object: ValueId(0),
+                        field: 3,
+                        value: ValueId(10),
+                    },
+                ),
+                op(&[(14, Ty::Address)], OpKind::Alloc { words: 4 }),
+                op(&[], OpKind::Safepoint),
+                op(&[(15, Ty::Address)], OpKind::LoadArg { index: 1 }),
+                op(&[(16, Ty::Word)], OpKind::LoadCapture { index: 0 }),
+                op(&[(17, Ty::Word)], OpKind::LoadFunctionObject),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(18, Ty::Word)],
+                    OpKind::Call {
+                        function: ValueId(0),
+                        args: vec![ValueId(10)],
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(19, Ty::Word)],
+                    OpKind::CallIndirect {
+                        callee: ValueId(0),
+                        args: vec![ValueId(10)],
+                    },
+                ),
+                op(
+                    &[(20, Ty::Word)],
+                    OpKind::MakeClosure {
+                        entry: ValueId(0),
+                        captures: vec![ValueId(10)],
+                    },
+                ),
+                op(
+                    &[(21, Ty::Word)],
+                    OpKind::MakeValueCell { value: ValueId(10) },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(22, Ty::Word)],
+                    OpKind::CallClosure {
+                        closure: ValueId(20),
+                        args: vec![ValueId(10)],
+                        named_symbol: Some(ValueId(0)),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(23, Ty::Word)],
+                    OpKind::Builtin {
+                        name: "identity".into(),
+                        args: vec![ValueId(10)],
+                    },
+                ),
+                op(
+                    &[(24, Ty::Word)],
+                    OpKind::Prim {
+                        op: Prim::Car,
+                        args: vec![ValueId(10)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(25, Ty::Word)],
+                    OpKind::Prim {
+                        op: Prim::Cdr,
+                        args: vec![ValueId(10)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(48, Ty::Unit)],
+                    OpKind::Prim {
+                        op: Prim::Rplaca,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(49, Ty::Unit)],
+                    OpKind::Prim {
+                        op: Prim::Rplacd,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(26, Ty::Word)],
+                    OpKind::Prim {
+                        op: Prim::Svref,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(27, Ty::Word)],
+                    OpKind::Prim {
+                        op: Prim::Aref,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(50, Ty::Unit)],
+                    OpKind::Prim {
+                        op: Prim::Aset,
+                        args: vec![ValueId(10), ValueId(0), ValueId(10)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(28, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumAdd,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(29, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumSub,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(30, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumMul,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(31, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumDiv,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(32, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::FixnumLt,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(33, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::FixnumLe,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(34, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::FixnumEq,
+                        args: vec![ValueId(2), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(35, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::Eq,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(36, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::Eql,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(37, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::Typep,
+                        args: vec![ValueId(10), ValueId(0)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(38, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::CharacterPredicate("alpha".into()),
+                        args: vec![ValueId(10)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(39, Ty::Word)],
+                    OpKind::Prim {
+                        op: Prim::StructureSlot("car".into()),
+                        args: vec![ValueId(10)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(40, Ty::Bool)],
+                    OpKind::Compare {
+                        op: Compare::Eq,
+                        left: ValueId(10),
+                        right: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(41, Ty::I64)],
+                    OpKind::Convert {
+                        op: Convert::WordToI64,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(42, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::I64ToWord,
+                        value: ValueId(2),
+                    },
+                ),
+                op(
+                    &[(43, Ty::F64)],
+                    OpKind::Convert {
+                        op: Convert::WordToF64,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(44, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::F64ToWord,
+                        value: ValueId(3),
+                    },
+                ),
+                op(
+                    &[(45, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(1),
+                    },
+                ),
+                op(
+                    &[(46, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[],
+                    OpKind::SetMultipleValues {
+                        values: vec![ValueId(10), ValueId(0)],
+                    },
+                ),
+            ],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+
+    assert_eq!(verify(&function), Ok(()));
+}
+
+#[test]
+fn verifier_accepts_switch_call_and_throw_terminators() {
+    let switch = finish(
+        "switch",
+        vec![Param {
+            name: "key".into(),
+            ty: Ty::I64,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(
+                0,
+                Vec::new(),
+                Terminator::Switch {
+                    value: ValueId(0),
+                    cases: vec![(1, BlockId(1), Vec::new())],
+                    default: BlockId(2),
+                    default_args: Vec::new(),
+                },
+            ),
+            block(1, Vec::new(), Terminator::Return { values: Vec::new() }),
+            block(2, Vec::new(), Terminator::Return { values: Vec::new() }),
+        ],
+        Vec::new(),
+    );
+    assert_eq!(verify(&switch), Ok(()));
+
+    for terminator in [
+        Terminator::CallReturn {
+            function: ValueId(0),
+            args: vec![ValueId(0)],
+        },
+        Terminator::TailCall {
+            function: ValueId(0),
+            args: vec![ValueId(0)],
+        },
+        Terminator::Throw {
+            condition: ValueId(0),
+        },
+    ] {
+        let function = finish(
+            "terminator",
+            vec![Param {
+                name: "callee-or-condition".into(),
+                ty: Ty::Word,
+            }],
+            Vec::new(),
+            Vec::new(),
+            vec![block(0, Vec::new(), terminator)],
+            Vec::new(),
+        );
+        assert_eq!(verify(&function), Ok(()));
+    }
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn verifier_accepts_operation_type_matrix() {
+    let params = vec![
+        Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        },
+        Param {
+            name: "word".into(),
+            ty: Ty::Word,
+        },
+        Param {
+            name: "integer".into(),
+            ty: Ty::I64,
+        },
+        Param {
+            name: "flag".into(),
+            ty: Ty::Bool,
+        },
+    ];
+    let mut ops = vec![
+        op(
+            &[(4, Ty::Word)],
+            OpKind::Load {
+                address: ValueId(0),
+            },
+        ),
+        op(
+            &[],
+            OpKind::Store {
+                address: ValueId(0),
+                value: ValueId(1),
+            },
+        ),
+        op(
+            &[(5, Ty::Word)],
+            OpKind::LoadField {
+                object: ValueId(1),
+                field: 2,
+            },
+        ),
+        op(
+            &[],
+            OpKind::StoreField {
+                object: ValueId(1),
+                field: 2,
+                value: ValueId(1),
+            },
+        ),
+        op(&[(6, Ty::Address)], OpKind::Alloc { words: 3 }),
+        op(&[], OpKind::Safepoint),
+        op(&[(7, Ty::I64)], OpKind::LoadArg { index: 2 }),
+        op(&[(8, Ty::Word)], OpKind::LoadCapture { index: 1 }),
+        op(&[(9, Ty::Word)], OpKind::LoadFunctionObject),
+        op(
+            &[(10, Ty::Word)],
+            OpKind::Prim {
+                op: Prim::Car,
+                args: vec![ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(11, Ty::Unit)],
+            OpKind::Prim {
+                op: Prim::Rplaca,
+                args: vec![ValueId(1), ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(12, Ty::Word)],
+            OpKind::Prim {
+                op: Prim::Svref,
+                args: vec![ValueId(1), ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(13, Ty::Unit)],
+            OpKind::Prim {
+                op: Prim::Aset,
+                args: vec![ValueId(1), ValueId(1), ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(14, Ty::I64)],
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![ValueId(2), ValueId(2)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(15, Ty::Bool)],
+            OpKind::Prim {
+                op: Prim::FixnumLt,
+                args: vec![ValueId(2), ValueId(2)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(16, Ty::Bool)],
+            OpKind::Prim {
+                op: Prim::Eq,
+                args: vec![ValueId(1), ValueId(4)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(17, Ty::Bool)],
+            OpKind::Prim {
+                op: Prim::CharacterPredicate("digitp".into()),
+                args: vec![ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(18, Ty::Word)],
+            OpKind::Prim {
+                op: Prim::StructureSlot("car".into()),
+                args: vec![ValueId(1)],
+                condition: None,
+            },
+        ),
+        op(
+            &[(19, Ty::Bool)],
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: ValueId(2),
+                right: ValueId(2),
+            },
+        ),
+        op(
+            &[(20, Ty::I64)],
+            OpKind::Convert {
+                op: Convert::WordToI64,
+                value: ValueId(1),
+            },
+        ),
+        op(
+            &[],
+            OpKind::SetMultipleValues {
+                values: vec![ValueId(1), ValueId(2)],
+            },
+        ),
+    ];
+    for (value, call) in [
+        (
+            21,
+            OpKind::Call {
+                function: ValueId(1),
+                args: vec![ValueId(1)],
+            },
+        ),
+        (
+            22,
+            OpKind::MakeClosure {
+                entry: ValueId(1),
+                captures: vec![ValueId(1)],
+            },
+        ),
+        (23, OpKind::MakeValueCell { value: ValueId(1) }),
+        (
+            24,
+            OpKind::CallClosure {
+                closure: ValueId(1),
+                args: vec![ValueId(1)],
+                named_symbol: Some(ValueId(1)),
+            },
+        ),
+        (
+            25,
+            OpKind::Builtin {
+                name: "length".into(),
+                args: vec![ValueId(1)],
+            },
+        ),
+    ] {
+        ops.push(op(&[], OpKind::Safepoint));
+        ops.push(op(&[(value, Ty::Word)], call));
+    }
+    let function = finish(
+        "operation-matrix",
+        params,
+        Vec::new(),
+        Vec::new(),
+        vec![block(0, ops, Terminator::Return { values: Vec::new() })],
+        Vec::new(),
+    );
+    assert!(
+        verify(&function).is_ok(),
+        "operation matrix rejected: {:?}",
+        verify(&function)
+    );
+}
+
+#[test]
+fn verifier_checks_nested_constant_references() {
+    let function = finish(
+        "constant-references",
+        Vec::new(),
+        Vec::new(),
+        vec![
+            Constant::Structure {
+                kind: StructureKind::Cons,
+                elements: vec![ConstantIndex(9)],
+            },
+            Constant::Ratio {
+                numerator: ConstantIndex(0),
+                denominator: ConstantIndex(9),
+            },
+            Constant::Complex {
+                real: ConstantIndex(9),
+                imaginary: ConstantIndex(1),
+            },
+        ],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(0, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(1),
+                    },
+                ),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(2),
+                    },
+                ),
+            ],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    let result = verify(&function);
+    assert!(result.is_err());
+    let Some(errors) = result.err() else {
+        return;
+    };
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| **error == VerifyError::ConstantOutOfBounds(BlockId(0)))
+            .count(),
+        3
+    );
+}

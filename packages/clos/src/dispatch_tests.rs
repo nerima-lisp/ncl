@@ -189,3 +189,4 @@ fn dispatch_specificity_uses_argument_precedence_and_eql_descriptors() {
     assert_eq!(second_score, vec![0, usize::MAX]);
     assert!(first_score > second_score);
 }
+}

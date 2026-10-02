@@ -410,11 +410,17 @@ mod gvn_tests;
 #[path = "manager_tests.rs"]
 mod manager_tests;
 #[cfg(test)]
+#[path = "tests_optimization_edge_cases.rs"]
+mod optimization_edge_cases_tests;
+#[cfg(test)]
 #[path = "remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
 #[path = "tests_sccp.rs"]
 mod sccp_tests;
+#[cfg(test)]
+#[path = "tests_sccp_unreachable_blocks.rs"]
+mod sccp_unreachable_blocks_tests;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

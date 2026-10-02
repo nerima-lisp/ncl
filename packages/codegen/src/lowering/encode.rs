@@ -136,3 +136,106 @@ pub(super) fn encode(
         debug,
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+mod tests {
+    use super::encode;
+    use crate::{Block, CodegenError, FrameLayout, MachineFunction, X86_64Abi};
+    use ncl_ir::{
+        BasicBlock, BlockId, DebugLocationId, Function, FunctionId, Op, OpKind, Terminator, Ty,
+        ValueId,
+    };
+
+    fn function(terminator: Terminator, ops: Vec<Op>) -> Function {
+        Function {
+            id: FunctionId(2),
+            name: "encode-test".into(),
+            params: Vec::new(),
+            return_types: Vec::new(),
+            blocks: vec![BasicBlock {
+                id: BlockId(0),
+                params: Vec::new(),
+                ops,
+                terminator,
+            }],
+            locals: Vec::new(),
+            constants: Vec::new(),
+            handler_regions: Vec::new(),
+            debug: Vec::new(),
+        }
+    }
+
+    fn machine(
+        blocks: Vec<Block>,
+        slots: Vec<(ValueId, u32)>,
+        frame_words: u32,
+    ) -> MachineFunction {
+        MachineFunction::new(
+            blocks.first().map_or(BlockId(0), Block::id),
+            blocks,
+            FrameLayout::new(0, frame_words.saturating_sub(4), 0).expect("frame"),
+            Vec::new(),
+            Vec::new(),
+            slots,
+        )
+    }
+
+    #[test]
+    fn rejects_a_machine_block_without_a_source_block() {
+        let source = function(Terminator::Unreachable, Vec::new());
+        let machine = machine(vec![Block::new(BlockId(9), Vec::new())], Vec::new(), 4);
+
+        assert_eq!(
+            encode(&source, machine, &X86_64Abi),
+            Err(CodegenError::UnknownBlock(BlockId(9)))
+        );
+    }
+
+    #[test]
+    fn rejects_switch_case_values_that_do_not_fit_the_encoder() {
+        let source = function(
+            Terminator::Switch {
+                value: ValueId(0),
+                cases: vec![(i64::MAX, BlockId(0), Vec::new())],
+                default: BlockId(0),
+                default_args: Vec::new(),
+            },
+            Vec::new(),
+        );
+        let machine = machine(
+            vec![Block::new(BlockId(0), Vec::new())],
+            vec![(ValueId(0), 4)],
+            5,
+        );
+
+        assert_eq!(
+            encode(&source, machine, &X86_64Abi),
+            Err(CodegenError::FrameOverflow)
+        );
+    }
+
+    #[test]
+    fn records_source_locations_after_each_lowered_operation() {
+        let source = function(
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+            vec![Op {
+                results: vec![(ValueId(1), Ty::Word)],
+                kind: OpKind::Move { value: ValueId(0) },
+                loc: Some(DebugLocationId(7)),
+            }],
+        );
+        let machine = machine(
+            vec![Block::new(BlockId(0), vec![])],
+            vec![(ValueId(0), 4), (ValueId(1), 5)],
+            6,
+        );
+
+        let compiled = encode(&source, machine, &X86_64Abi).expect("encoded move");
+        assert_eq!(compiled.debug.len(), 1);
+        assert_eq!(compiled.debug[0].location, Some(DebugLocationId(7)));
+        assert!(compiled.debug[0].pc_offset > compiled.entry_offset);
+    }
+}

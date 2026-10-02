@@ -6,12 +6,13 @@
 //! Assertions for condition-system paths not covered by the core behavior tests.
 
 use ncl_conditions::{
-    ConditionIdentifier, condition_class, condition_class_name, condition_class_of,
-    condition_from_lisp_error, condition_report, make_condition,
+    ConditionError, ConditionIdentifier, condition_class, condition_class_name, condition_class_of,
+    condition_from_lisp_error, condition_report, find_restart, make_condition, pop_restart,
+    push_restart, signal,
 };
 use ncl_object::{
-    ArithmeticError, FunctionObject, LispError, Package, ProgramError, Runtime, ThreadContext,
-    Word, make_cons, make_string, slot_ref, string_length, string_ref,
+    ArithmeticError, FunctionObject, LispError, ObjectType, Package, ProgramError, Runtime,
+    ThreadContext, Word, make_cons, make_string, slot_ref, string_length, string_ref,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -132,6 +133,96 @@ fn condition_reports_cover_simple_type_and_generic_classes() {
     assert_eq!(
         condition_report(&ctx, generic_instance).as_deref(),
         Some("PROGRAM-ERROR condition")
+    );
+}
+
+#[test]
+fn converted_type_error_keeps_its_report_payload() {
+    let (runtime, mut ctx) = setup();
+    let condition = condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::TypeError {
+            datum: Word::fixnum(7),
+            expected: ObjectType::String,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        class_name(&ctx, condition_class_of(&ctx, condition).unwrap()),
+        "TYPE-ERROR"
+    );
+    assert_eq!(
+        condition_report(&ctx, condition).as_deref(),
+        Some("The value 7 is not of type STRING.")
+    );
+}
+
+#[test]
+fn condition_matching_rejects_same_length_near_miss_names() {
+    let (runtime, mut ctx) = setup();
+    let define = builtin(&runtime, &mut ctx, "NCL-EXT", "DEFINE-CONDITION-CLASS");
+    let class_name = symbol(&mut ctx, &runtime, "NCL-TEST", "WARNINX");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            define,
+            &[class_name, Word::NIL, Word::NIL, Word::NIL],
+        ),
+        Ok(class_name)
+    );
+    let class = condition_class(&mut ctx, &runtime, "WARNINX").unwrap();
+    let condition = make_condition(&mut ctx, &runtime, class, &[]).unwrap();
+
+    assert_eq!(signal(&mut ctx, condition), Err(ConditionError::Unhandled));
+}
+
+#[test]
+fn restart_matching_rejects_same_length_near_miss_names() {
+    let (runtime, mut ctx) = setup();
+    let active_name = make_string(
+        &mut ctx,
+        &runtime,
+        &"SAME-LENGTH-A".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let near_miss = make_string(
+        &mut ctx,
+        &runtime,
+        &"SAME-LENGTH-B".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let restart = push_restart(
+        &mut ctx,
+        &runtime,
+        active_name,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap();
+
+    assert_eq!(find_restart(&ctx, near_miss), Ok(None));
+    pop_restart(&mut ctx, restart);
+}
+
+#[test]
+fn simple_condition_report_preserves_directives_with_invalid_arguments() {
+    let (runtime, mut ctx) = setup();
+    let class = condition_class(&mut ctx, &runtime, "SIMPLE-CONDITION").unwrap();
+    let control = make_string(
+        &mut ctx,
+        &runtime,
+        &"bad ~a ~A ~x".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let condition = make_condition(&mut ctx, &runtime, class, &[control, Word::fixnum(1)]).unwrap();
+
+    assert_eq!(
+        condition_report(&ctx, condition).as_deref(),
+        Some("bad ~a ~A ~x")
     );
 }
 

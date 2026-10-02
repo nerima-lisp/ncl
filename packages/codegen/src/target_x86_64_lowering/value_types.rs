@@ -72,4 +72,41 @@ mod tests {
         assert!(value_is_raw_entry(&builder.finish(), value));
         Ok(())
     }
+
+    #[test]
+    fn address_values_are_raw_and_unknown_or_word_values_are_not() -> Result<(), String> {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(218),
+            "raw-address-values",
+            vec![ncl_ir::Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            }],
+            Vec::new(),
+        );
+        let block_value = ncl_ir::ValueId(7);
+        builder.create_block(vec![(Ty::Address, block_value)]);
+        let function = builder.finish();
+        assert!(value_is_raw_entry(&function, ncl_ir::ValueId(0)));
+        assert!(value_is_raw_entry(&function, block_value));
+        assert!(!value_is_raw_entry(&function, ncl_ir::ValueId(99)));
+
+        let mut word_builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(219),
+            "word-value",
+            Vec::new(),
+            vec![Ty::Word],
+        );
+        let constant = word_builder.add_constant(Constant::Fixnum(1));
+        let value = word_builder
+            .push_op(OpKind::Const { result: constant }, &[Ty::Word])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "word result missing".to_owned())?;
+        word_builder.terminate(ncl_ir::Terminator::Return {
+            values: vec![value],
+        })?;
+        assert!(!value_is_raw_entry(&word_builder.finish(), value));
+        Ok(())
+    }
 }

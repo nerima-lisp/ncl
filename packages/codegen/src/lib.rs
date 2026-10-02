@@ -21,11 +21,12 @@ mod tests_aarch64_coverage;
 #[cfg(test)]
 mod tests_x86_64;
 #[cfg(test)]
-mod tests_x86_64_coverage;
-#[cfg(test)]
 mod tests_x86_64_fixture;
 #[cfg(test)]
 mod tests_x86_64_golden;
+#[cfg(test)]
+#[path = "tests_x86_64_lowering_matrix.rs"]
+mod x86_64_lowering_matrix_tests;
 
 pub use abi::{
     Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,
@@ -120,3 +121,74 @@ impl core::fmt::Display for CodegenError {
 }
 
 impl std::error::Error for CodegenError {}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::{CodegenError, checked_i64, checked_u16, checked_u32};
+    use ncl_ir::{BlockId, ValueId};
+
+    #[test]
+    fn checked_integer_helpers_keep_representable_values_and_reject_overflow() {
+        assert_eq!(checked_u32(17), Ok(17));
+        assert_eq!(checked_i64(17), Ok(17));
+        assert_eq!(checked_u16(17), Ok(17));
+        assert_eq!(checked_u32(usize::MAX), Err(CodegenError::FrameOverflow));
+        assert_eq!(checked_i64(usize::MAX), Err(CodegenError::FrameOverflow));
+        assert_eq!(checked_u16(u32::MAX), Err(CodegenError::FrameOverflow));
+    }
+
+    #[test]
+    fn formats_every_codegen_error_contract() {
+        let cases = [
+            (
+                CodegenError::EmptyFunction,
+                "function has no blocks".to_owned(),
+            ),
+            (
+                CodegenError::UnknownBlock(BlockId(3)),
+                "unknown block %3".to_owned(),
+            ),
+            (
+                CodegenError::UnknownValue(ValueId(4)),
+                "unknown value %4".to_owned(),
+            ),
+            (
+                CodegenError::Encode("bad instruction".into()),
+                "encoding failed: bad instruction".to_owned(),
+            ),
+            (
+                CodegenError::Abi("bad layout".into()),
+                "runtime ABI error: bad layout".to_owned(),
+            ),
+            (
+                CodegenError::FrameOverflow,
+                "frame layout overflowed".to_owned(),
+            ),
+            (
+                CodegenError::InvalidConstantIndex {
+                    index: 8,
+                    length: 2,
+                },
+                "constant index 8 is out of range for table of length 2".to_owned(),
+            ),
+            (
+                CodegenError::MultipleValueAreaOverflow {
+                    count: 5,
+                    capacity: 4,
+                },
+                "multiple-value area holds 4 words, function returns 5".to_owned(),
+            ),
+            (
+                CodegenError::NonLocalExitUnsupported,
+                "non-local exits are unsupported on x86-64".to_owned(),
+            ),
+            (
+                CodegenError::Unsupported("target operation".into()),
+                "unsupported operation: target operation".to_owned(),
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+}

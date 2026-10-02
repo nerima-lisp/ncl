@@ -54,15 +54,18 @@ fn named(
 fn malformed_expander(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
-    _arguments: &[Word],
+    arguments: &[Word],
 ) -> Result<SetfExpansion, ObjectError> {
-    Ok(SetfExpansion {
-        temporary_variables: vec![Word::fixnum(1)],
-        value_forms: Vec::new(),
-        store_variables: Vec::new(),
-        store_form: Word::NIL,
-        access_form: Word::NIL,
-    })
+    arguments
+        .first()
+        .ok_or(ObjectError::TypeError)
+        .map(|_| SetfExpansion {
+            temporary_variables: vec![Word::fixnum(1)],
+            value_forms: Vec::new(),
+            store_variables: Vec::new(),
+            store_form: Word::NIL,
+            access_form: Word::NIL,
+        })
 }
 
 #[test]

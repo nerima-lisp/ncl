@@ -7,8 +7,8 @@
 //! stream errors, and numeric/array boundaries.
 
 use ncl_object::{
-    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
-    make_array, make_cons, make_simple_vector, make_specialized_array, make_string, make_symbol,
+    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word, make_array,
+    make_cons, make_simple_vector, make_specialized_array, make_string, make_symbol,
     set_symbol_value,
 };
 use ncl_printer::{
@@ -224,20 +224,18 @@ fn radix_matrix_covers_prefixes_suffix_and_clamped_constructor() {
     );
     assert_eq!(PrintOptions::new().try_with_base(1), None);
     assert_eq!(PrintOptions::new().try_with_base(37), None);
-    assert_eq!(PrintOptions::new().try_with_base(2).unwrap().base().get(), 2);
+    assert_eq!(
+        PrintOptions::new().try_with_base(2).unwrap().base().get(),
+        2
+    );
 }
 
 #[test]
 fn array_matrix_covers_empty_specialized_and_length_zero_paths() {
     let (runtime, mut ctx) = context();
     let empty_vector = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
-    let empty_specialized = make_specialized_array(
-        &mut ctx,
-        &runtime,
-        ArrayElementType::Fixnum,
-        &[],
-    )
-    .unwrap();
+    let empty_specialized =
+        make_specialized_array(&mut ctx, &runtime, ArrayElementType::Fixnum, &[]).unwrap();
     let empty_array = make_array(
         &mut ctx,
         &runtime,
@@ -280,8 +278,8 @@ fn array_matrix_covers_empty_specialized_and_length_zero_paths() {
 fn write_to_string_preserves_raw_and_escaped_forms() {
     let (runtime, mut ctx) = context();
     let text = make_string(&mut ctx, &runtime, &['a', '\\', 'b']).unwrap();
-    let escaped = ncl_printer::write_to_string(&mut ctx, &runtime, text, &PrintOptions::new())
-        .unwrap();
+    let escaped =
+        ncl_printer::write_to_string(&mut ctx, &runtime, text, &PrintOptions::new()).unwrap();
     let raw = ncl_printer::write_to_string(
         &mut ctx,
         &runtime,

@@ -86,7 +86,7 @@ fn ambient_options_cover_boolean_modes_and_valid_limits() {
     .into_iter()
     .enumerate()
     {
-        set_symbol_value(&mut ctx, symbols[index], value).unwrap();
+        set_symbol_value(&mut ctx, *symbols.get(index).unwrap(), value).unwrap();
     }
     let options = PrintOptions::from_specials(&mut ctx, &runtime);
     assert!(options.escape());

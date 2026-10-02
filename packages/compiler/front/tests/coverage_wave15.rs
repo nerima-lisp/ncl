@@ -51,7 +51,7 @@ fn analysis_walks_all_control_wrappers_before_an_escaping_return() {
         LambdaList::new(),
     )));
     let escaping = lower_toplevel(&Expr::Block {
-        name: exit.clone(),
+        name: exit,
         body: vec![Expr::Locally {
             declarations: Vec::new(),
             body: vec![nested_return],
@@ -224,15 +224,15 @@ fn symbol_and_function_cell_forms_preserve_load_store_and_funcall_shapes() {
     assert_verifies(&lowered.entry);
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32
+        OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap()
     )));
 
     let closure = Expr::The {
@@ -270,7 +270,7 @@ fn recursive_functions_propagate_variable_and_function_captures() {
         ),
     };
     let second = LocalFunction {
-        name: second_name.clone(),
+        name: second_name,
         lambda: lambda(
             Expr::Call {
                 operator: Operator::Name(first_name.clone()),
@@ -359,6 +359,6 @@ fn lexical_setq_and_unbound_setq_keep_distinct_side_effects() {
     assert_verifies(&global_lowered.entry);
     assert!(any_op(&global_lowered.entry, |kind| matches!(
         kind,
-        OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
 }

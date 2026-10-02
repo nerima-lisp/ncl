@@ -1,3 +1,4 @@
+#![allow(clippy::unnecessary_wraps)]
 #![allow(
     clippy::unwrap_used,
     reason = "tests assert on condition-system behavior"
@@ -49,7 +50,7 @@ fn symbol_text(ctx: &ThreadContext, value: Word) -> String {
     text(ctx, ncl_object::symbol_name(ctx, value).unwrap())
 }
 
-fn return_marker(
+const fn return_marker(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,
     _function: Word,

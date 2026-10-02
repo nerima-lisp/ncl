@@ -55,7 +55,7 @@ fn nested_analysis_handles_function_designator_and_tagbody_return_paths() {
         Expr::Progn(vec![nested_return]),
     ))));
     let block = Expr::Block {
-        name: exit.clone(),
+        name: exit,
         body: vec![Expr::Tagbody(vec![
             TagbodyItem::Tag(symbol("COMMON-LISP-USER", "START")),
             TagbodyItem::Form(function_form),
@@ -120,7 +120,7 @@ fn lexical_let_star_and_global_setq_keep_distinct_storage_behavior() {
     assert_verifies(&global_lowered.entry);
     assert!(any_op(
         &global_lowered.entry,
-        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32)
+        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap())
     ));
 }
 

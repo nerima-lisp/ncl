@@ -19,12 +19,8 @@ fn call(
     name: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function = FunctionObject::try_from(
-        runtime
-            .function(ctx, "COMMON-LISP", name)
-            .expect("builtin exists"),
-    )
-    .unwrap();
+    let function =
+        FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap();
     runtime.call_builtin(ctx, function, args)
 }
 
@@ -160,7 +156,7 @@ fn byte_field_operations_return_encoded_spec_and_updated_values() {
         &runtime,
         &mut ctx,
         "LDB",
-        &[spec, Word::fixnum(0b101101)],
+        &[spec, Word::fixnum(0b10_1101)],
         5,
     );
     assert_eq!(
@@ -168,7 +164,7 @@ fn byte_field_operations_return_encoded_spec_and_updated_values() {
             &runtime,
             &mut ctx,
             "LDB-TEST",
-            &[spec, Word::fixnum(0b101101)]
+            &[spec, Word::fixnum(0b10_1101)]
         )
         .unwrap(),
         Word::TRUE
@@ -178,7 +174,7 @@ fn byte_field_operations_return_encoded_spec_and_updated_values() {
         &mut ctx,
         "MASK-FIELD",
         &[spec, Word::fixnum(-1)],
-        0b1111000,
+        0b111_1000,
     );
     assert_integer_call(
         &runtime,
@@ -241,9 +237,9 @@ fn rational_float_builtins_assert_multiple_values_and_boundaries() {
     let decoded = call(&runtime, &mut ctx, "DECODE-FLOAT", &[value]).unwrap();
     assert!((float(&ctx, decoded) - 0.75).abs() < 1e-12);
     assert_eq!(integer(&ctx, ctx.values()[1]), 1);
-    assert_eq!(float(&ctx, ctx.values()[2]), -1.0);
+    assert!((float(&ctx, ctx.values()[2]) + 1.0).abs() < f64::EPSILON);
     let integer_decoded = call(&runtime, &mut ctx, "INTEGER-DECODE-FLOAT", &[value]).unwrap();
-    assert_eq!(integer(&ctx, integer_decoded), 6755399441055744);
+    assert_eq!(integer(&ctx, integer_decoded), 6_755_399_441_055_744);
     assert_eq!(integer(&ctx, ctx.values()[1]), -52);
     assert_eq!(integer(&ctx, ctx.values()[2]), -1);
     let zero_float = make_double(&mut ctx, &runtime, 0.0).unwrap().into();

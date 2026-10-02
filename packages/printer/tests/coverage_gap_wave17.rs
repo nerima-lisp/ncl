@@ -210,18 +210,18 @@ fn options_specials_distinguish_symbols_other_values_and_valid_limits() {
     for symbol in symbols.iter().copied() {
         set_symbol_special(&mut ctx, symbol, true).unwrap();
     }
-    set_symbol_value(&mut ctx, symbols[0], Word::NIL).unwrap();
-    set_symbol_value(&mut ctx, symbols[1], Word::fixnum(16)).unwrap();
-    set_symbol_value(&mut ctx, symbols[2], Word::fixnum(0)).unwrap();
+    set_symbol_value(&mut ctx, *symbols.first().unwrap(), Word::NIL).unwrap();
+    set_symbol_value(&mut ctx, *symbols.get(1).unwrap(), Word::fixnum(16)).unwrap();
+    set_symbol_value(&mut ctx, *symbols.get(2).unwrap(), Word::fixnum(0)).unwrap();
     let downcase = intern(&runtime, &mut ctx, "COMMON-LISP", "DOWNCASE");
-    set_symbol_value(&mut ctx, symbols[3], downcase).unwrap();
+    set_symbol_value(&mut ctx, *symbols.get(3).unwrap(), downcase).unwrap();
     let options = PrintOptions::from_specials(&mut ctx, &runtime);
     assert!(!options.escape());
     assert_eq!(options.base().get(), 16);
     assert_eq!(options.length().map(ncl_printer::NonNegative::get), Some(0));
     assert_eq!(options.case(), PrintCase::Upcase);
-    set_symbol_value(&mut ctx, symbols[1], Word::fixnum(1)).unwrap();
-    set_symbol_value(&mut ctx, symbols[2], Word::TRUE).unwrap();
+    set_symbol_value(&mut ctx, *symbols.get(1).unwrap(), Word::fixnum(1)).unwrap();
+    set_symbol_value(&mut ctx, *symbols.get(2).unwrap(), Word::TRUE).unwrap();
     let fallback = PrintOptions::from_specials(&mut ctx, &runtime);
     assert_eq!(fallback.base().get(), 10);
     assert_eq!(fallback.length(), None);

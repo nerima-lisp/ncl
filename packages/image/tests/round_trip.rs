@@ -12,12 +12,12 @@ use std::collections::HashSet;
 use ncl_image::{load, save};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    car, cdr, classify_object, code_constants, code_debug, code_entry, code_size, code_stack_map,
+    CodeObject, Function, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr,
+    classify_object, code_constants, code_debug, code_entry, code_size, code_stack_map,
     function_code, function_entry, function_lambda_list, function_name, make_code_object,
     make_cons, make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_flags,
-    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value, CodeObject,
-    Function, ObjectRef, Package, Runtime, ThreadContext, Word,
+    symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
 };
 use ncl_sys::LowTag;
 

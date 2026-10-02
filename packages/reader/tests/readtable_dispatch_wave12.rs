@@ -34,7 +34,7 @@ fn malformed_readtable_cases_and_dispatch_entries_are_observable() {
     let syntax = table.syntax_table(&ctx).unwrap();
     let dispatch = table.dispatch_table(&ctx).unwrap();
     let malformed_nil = make_readtable(&mut ctx, &runtime, syntax, dispatch, Word::NIL).unwrap();
-    let mut bad_opts = opts.clone();
+    let mut bad_opts = opts;
     bad_opts.set_readtable(Readtable::from_object(malformed_nil));
     assert!(matches!(
         readtable_case(&ctx, bad_opts.readtable()),
@@ -180,7 +180,7 @@ fn dispatch_character_radix_label_and_bit_boundaries_are_asserted() {
     );
     assert_eq!(
         read_from_string(&mut ctx, &runtime, "#2r", &opts).unwrap_err(),
-        ReadError::InvalidNumber("".to_owned())
+        ReadError::InvalidNumber(String::new())
     );
 
     let labelled = read_from_string(&mut ctx, &runtime, "(#3=alpha #3#)", &opts)

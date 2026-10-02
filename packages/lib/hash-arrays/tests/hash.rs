@@ -5,10 +5,9 @@ mod options;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
-    make_array, make_cons, make_specialized_array, make_string, pop_root, push_root,
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
-    Word,
+    Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
+    make_array, make_cons, make_specialized_array, make_string, pop_root, push_root,
 };
 
 fn call(

@@ -2,12 +2,12 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    make_array, make_cons, make_simple_vector, make_specialized_array, make_string,
     ArrayElementType, ArrayOptions, FunctionObject, Package, Runtime, ThreadContext, Word,
+    make_array, make_cons, make_simple_vector, make_specialized_array, make_string,
 };
 use ncl_types::{
-    parse_type_specifier, subtypep, typep, ArrayDimension, ArrayDimensions, IntegerBound,
-    NamedType, TypeError, TypeSpecifier, Value,
+    ArrayDimension, ArrayDimensions, IntegerBound, NamedType, TypeError, TypeSpecifier, Value,
+    parse_type_specifier, subtypep, typep,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -103,73 +103,87 @@ fn typep_covers_array_shapes_ranges_and_values() {
         &[Word::fixnum(0), Word::fixnum(1)],
     )
     .unwrap();
-    assert!(typep(
-        &mut ctx,
-        matrix,
-        &TypeSpecifier::Array {
-            element_type: Some(Box::new(TypeSpecifier::Named(NamedType::Character))),
-            dimensions: Some(ArrayDimensions::Ranks(vec![
-                ArrayDimension::Exact(2),
-                ArrayDimension::Any
-            ])),
-            simple: false
-        }
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        matrix,
-        &TypeSpecifier::Array {
-            element_type: None,
-            dimensions: Some(ArrayDimensions::Ranks(vec![
-                ArrayDimension::Exact(3),
-                ArrayDimension::Exact(2)
-            ])),
-            simple: false
-        }
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        matrix,
-        &TypeSpecifier::Array {
-            element_type: None,
-            dimensions: Some(ArrayDimensions::Rank(1)),
-            simple: true
-        }
-    )
-    .unwrap());
+    assert!(
+        typep(
+            &mut ctx,
+            matrix,
+            &TypeSpecifier::Array {
+                element_type: Some(Box::new(TypeSpecifier::Named(NamedType::Character))),
+                dimensions: Some(ArrayDimensions::Ranks(vec![
+                    ArrayDimension::Exact(2),
+                    ArrayDimension::Any
+                ])),
+                simple: false
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            matrix,
+            &TypeSpecifier::Array {
+                element_type: None,
+                dimensions: Some(ArrayDimensions::Ranks(vec![
+                    ArrayDimension::Exact(3),
+                    ArrayDimension::Exact(2)
+                ])),
+                simple: false
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            matrix,
+            &TypeSpecifier::Array {
+                element_type: None,
+                dimensions: Some(ArrayDimensions::Rank(1)),
+                simple: true
+            }
+        )
+        .unwrap()
+    );
     assert!(typep(&mut ctx, bits, &TypeSpecifier::Named(NamedType::BitVector)).unwrap());
-    assert!(typep(
-        &mut ctx,
-        Word::fixnum(3),
-        &TypeSpecifier::IntegerRange {
-            low: IntegerBound::Exclusive(2),
-            high: IntegerBound::Inclusive(3)
-        }
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        Word::fixnum(2),
-        &TypeSpecifier::IntegerRange {
-            low: IntegerBound::Exclusive(2),
-            high: IntegerBound::Inclusive(3)
-        }
-    )
-    .unwrap());
-    assert!(typep(
-        &mut ctx,
-        Word::fixnum(9),
-        &TypeSpecifier::Eql(Value::Integer(9))
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        Word::fixnum(9),
-        &TypeSpecifier::Eql(Value::Integer(10))
-    )
-    .unwrap());
+    assert!(
+        typep(
+            &mut ctx,
+            Word::fixnum(3),
+            &TypeSpecifier::IntegerRange {
+                low: IntegerBound::Exclusive(2),
+                high: IntegerBound::Inclusive(3)
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            Word::fixnum(2),
+            &TypeSpecifier::IntegerRange {
+                low: IntegerBound::Exclusive(2),
+                high: IntegerBound::Inclusive(3)
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        typep(
+            &mut ctx,
+            Word::fixnum(9),
+            &TypeSpecifier::Eql(Value::Integer(9))
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            Word::fixnum(9),
+            &TypeSpecifier::Eql(Value::Integer(10))
+        )
+        .unwrap()
+    );
 }
 
 #[test]
@@ -312,62 +326,76 @@ fn typep_covers_specialized_vector_and_cons_negative_edges() {
     )
     .unwrap();
     let string = make_string(&mut ctx, &runtime, &['A']).unwrap();
-    assert!(typep(
-        &mut ctx,
-        chars,
-        &TypeSpecifier::Vector {
-            element_type: None,
-            size: None
-        }
-    )
-    .unwrap());
-    assert!(typep(
-        &mut ctx,
-        chars,
-        &TypeSpecifier::Vector {
-            element_type: None,
-            size: Some(ArrayDimension::Exact(1))
-        }
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        string,
-        &TypeSpecifier::Vector {
-            element_type: None,
-            size: Some(ArrayDimension::Exact(2))
-        }
-    )
-    .unwrap());
+    assert!(
+        typep(
+            &mut ctx,
+            chars,
+            &TypeSpecifier::Vector {
+                element_type: None,
+                size: None
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        typep(
+            &mut ctx,
+            chars,
+            &TypeSpecifier::Vector {
+                element_type: None,
+                size: Some(ArrayDimension::Exact(1))
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            string,
+            &TypeSpecifier::Vector {
+                element_type: None,
+                size: Some(ArrayDimension::Exact(2))
+            }
+        )
+        .unwrap()
+    );
     let cons = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2)).unwrap();
-    assert!(!typep(
-        &mut ctx,
-        cons,
-        &TypeSpecifier::Cons {
-            car: Box::new(TypeSpecifier::Named(NamedType::String)),
-            cdr: Box::new(TypeSpecifier::Named(NamedType::Null))
-        }
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        Word::NIL,
-        &TypeSpecifier::Cons {
-            car: Box::new(TypeSpecifier::Named(NamedType::T)),
-            cdr: Box::new(TypeSpecifier::Named(NamedType::T))
-        }
-    )
-    .unwrap());
-    assert!(typep(
-        &mut ctx,
-        Word::TRUE,
-        &TypeSpecifier::Named(NamedType::Boolean)
-    )
-    .unwrap());
-    assert!(!typep(
-        &mut ctx,
-        Word::fixnum(0),
-        &TypeSpecifier::Named(NamedType::Boolean)
-    )
-    .unwrap());
+    assert!(
+        !typep(
+            &mut ctx,
+            cons,
+            &TypeSpecifier::Cons {
+                car: Box::new(TypeSpecifier::Named(NamedType::String)),
+                cdr: Box::new(TypeSpecifier::Named(NamedType::Null))
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            Word::NIL,
+            &TypeSpecifier::Cons {
+                car: Box::new(TypeSpecifier::Named(NamedType::T)),
+                cdr: Box::new(TypeSpecifier::Named(NamedType::T))
+            }
+        )
+        .unwrap()
+    );
+    assert!(
+        typep(
+            &mut ctx,
+            Word::TRUE,
+            &TypeSpecifier::Named(NamedType::Boolean)
+        )
+        .unwrap()
+    );
+    assert!(
+        !typep(
+            &mut ctx,
+            Word::fixnum(0),
+            &TypeSpecifier::Named(NamedType::Boolean)
+        )
+        .unwrap()
+    );
 }

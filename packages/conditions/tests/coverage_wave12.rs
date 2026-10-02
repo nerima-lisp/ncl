@@ -39,7 +39,7 @@ fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, package: &str, name: &str)
         .0
 }
 
-fn callback_error(
+const fn callback_error(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,
     _function: Word,

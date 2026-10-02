@@ -83,7 +83,7 @@ fn complex_and_label_boundaries_have_specific_results() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidNumber(_)) | Err(ReadError::NumberOutOfRange)
+                Err(ReadError::InvalidNumber(_) | ReadError::NumberOutOfRange)
             ),
             "{input}"
         );
@@ -178,7 +178,7 @@ fn token_package_markers_and_character_escapes_cover_edges() {
     for input in ["A:::B", "A:B:C"] {
         assert!(matches!(
             read_from_string(&mut ctx, &runtime, input, &opts),
-            Err(ReadError::InvalidSymbolToken(_)) | Err(ReadError::PackageNotFound(_))
+            Err(ReadError::InvalidSymbolToken(_) | ReadError::PackageNotFound(_))
         ));
     }
     let escaped = read_from_string(&mut ctx, &runtime, "|MiXeD|", &opts)
@@ -203,7 +203,8 @@ fn number_markers_and_parse_integer_bounds_are_asserted() {
         read_from_string(&mut ctx, &runtime, "1s2", &opts).unwrap_err(),
         ReadError::FloatFormatUnavailable('s')
     );
-    for input in ["1f2"] {
+    {
+        let input = "1f2";
         assert_eq!(
             read_from_string(&mut ctx, &runtime, input, &opts).unwrap_err(),
             ReadError::FloatFormatUnavailable('f')
@@ -250,9 +251,9 @@ fn reader_delimiters_and_dispatch_errors_keep_boundaries() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::UnmatchedRightParen)
-                    | Err(ReadError::DotWithoutCdr)
-                    | Err(ReadError::UnknownCharacterName(_))
+                Err(ReadError::UnmatchedRightParen
+                    | ReadError::DotWithoutCdr
+                    | ReadError::UnknownCharacterName(_),)
             ),
             "{input}"
         );

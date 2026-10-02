@@ -35,6 +35,7 @@ fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn package_builtins_cover_designators_and_mutations() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

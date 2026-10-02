@@ -1,3 +1,4 @@
+#![allow(clippy::unnecessary_wraps)]
 #![allow(
     clippy::unwrap_used,
     reason = "tests assert on condition-system behavior"

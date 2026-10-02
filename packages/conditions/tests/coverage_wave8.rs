@@ -38,7 +38,7 @@ fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, package: &str, name: &str)
         .0
 }
 
-fn non_local_handler(
+const fn non_local_handler(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,
     _function: Word,

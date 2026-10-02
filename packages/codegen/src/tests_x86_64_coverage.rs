@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::expect_used, clippy::too_many_lines)]
 
 use crate::{
-    compile_function_x86_64, CodegenError, ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi,
+    CodegenError, ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64,
 };
 use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 

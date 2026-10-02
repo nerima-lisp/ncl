@@ -134,6 +134,7 @@ fn character_output_options_and_side_effects_are_observable() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn file_policies_io_and_metadata_match_observable_contents() {
     let (runtime, mut ctx) = setup();
     let open = builtin(&runtime, &mut ctx, "OPEN");

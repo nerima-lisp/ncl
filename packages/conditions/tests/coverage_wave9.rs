@@ -47,7 +47,7 @@ fn class_name(ctx: &ThreadContext, condition: Word) -> String {
         .collect()
 }
 
-fn non_local_handler(
+const fn non_local_handler(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,
     _function: Word,

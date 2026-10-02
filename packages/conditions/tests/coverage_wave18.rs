@@ -38,24 +38,76 @@ fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, package: &str, name: &str)
         .0
 }
 
-fn all_identifiers() -> &'static [ConditionIdentifier] {
+const fn all_identifiers() -> &'static [ConditionIdentifier] {
     use ConditionIdentifier::*;
     &[
-        Condition, Warning, SeriousCondition, Error, StorageCondition, TypeError,
-        SimpleTypeError, ArithmeticError, DivisionByZero, FloatingPointOverflow,
-        FloatingPointUnderflow, FloatingPointInvalidOperation, FloatingPointInexact, CellError,
-        UnboundVariable, UndefinedFunction, UnboundSlot, FileError, PackageError, ControlError,
-        ProgramError, ParseError, ReaderError, PrintNotReadable, StreamError, EndOfFile,
-        SimpleCondition, SimpleError, SimpleWarning, StyleWarning, UndefinedAlienError,
-        CodeDeletionNote, CompilerNote, DefconstantUneql, DeleteFileError, DeprecationCondition,
-        DeprecationError, EarlyDeprecationWarning, FileDoesNotExist, FileExists,
-        FinalDeprecationWarning, ImplicitGenericFunctionWarning, InvalidFasl, LateDeprecationWarning,
-        NameConflict, PackageDoesNotExist, PackageLockViolation, PackageLockedError,
-        ReaderPackageDoesNotExist, StepCondition, StepFinishedCondition, StepFormCondition,
-        StepValuesCondition, SymbolPackageLockedError, Timeout, UnknownKeywordArgument,
-        SystemCondition, BreakpointError, DeadlineTimeout, InteractiveInterrupt, IoTimeout,
-        MemoryFaultError, ThreadError, InterruptThreadError, JoinThreadError,
-        SymbolValueInThreadError, ThreadDeadlock,
+        Condition,
+        Warning,
+        SeriousCondition,
+        Error,
+        StorageCondition,
+        TypeError,
+        SimpleTypeError,
+        ArithmeticError,
+        DivisionByZero,
+        FloatingPointOverflow,
+        FloatingPointUnderflow,
+        FloatingPointInvalidOperation,
+        FloatingPointInexact,
+        CellError,
+        UnboundVariable,
+        UndefinedFunction,
+        UnboundSlot,
+        FileError,
+        PackageError,
+        ControlError,
+        ProgramError,
+        ParseError,
+        ReaderError,
+        PrintNotReadable,
+        StreamError,
+        EndOfFile,
+        SimpleCondition,
+        SimpleError,
+        SimpleWarning,
+        StyleWarning,
+        UndefinedAlienError,
+        CodeDeletionNote,
+        CompilerNote,
+        DefconstantUneql,
+        DeleteFileError,
+        DeprecationCondition,
+        DeprecationError,
+        EarlyDeprecationWarning,
+        FileDoesNotExist,
+        FileExists,
+        FinalDeprecationWarning,
+        ImplicitGenericFunctionWarning,
+        InvalidFasl,
+        LateDeprecationWarning,
+        NameConflict,
+        PackageDoesNotExist,
+        PackageLockViolation,
+        PackageLockedError,
+        ReaderPackageDoesNotExist,
+        StepCondition,
+        StepFinishedCondition,
+        StepFormCondition,
+        StepValuesCondition,
+        SymbolPackageLockedError,
+        Timeout,
+        UnknownKeywordArgument,
+        SystemCondition,
+        BreakpointError,
+        DeadlineTimeout,
+        InteractiveInterrupt,
+        IoTimeout,
+        MemoryFaultError,
+        ThreadError,
+        InterruptThreadError,
+        JoinThreadError,
+        SymbolValueInThreadError,
+        ThreadDeadlock,
     ]
 }
 
@@ -63,7 +115,7 @@ fn all_identifiers() -> &'static [ConditionIdentifier] {
 fn every_condition_identifier_resolves_to_a_matching_registered_class() {
     let (runtime, mut ctx) = setup();
     for identifier in all_identifiers() {
-        assert_eq!(identifier.name().is_empty(), false);
+        assert!(!identifier.name().is_empty());
         let class = identifier.class(&mut ctx, &runtime).unwrap();
         let class_name = condition_class_name(&ctx, class).unwrap();
         let length = ncl_object::string_length(&ctx, class_name).unwrap();
@@ -86,7 +138,12 @@ fn compute_restarts_builtin_filters_handlers_and_accepts_ignored_arguments() {
         runtime.call_builtin(&mut ctx, compute, &[Word::fixnum(1), Word::fixnum(2)]),
         Ok(Word::NIL)
     );
-    let name = make_string(&mut ctx, &runtime, &"W18-RESTART".chars().collect::<Vec<_>>()).unwrap();
+    let name = make_string(
+        &mut ctx,
+        &runtime,
+        &"W18-RESTART".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
     let restart = push_restart(
         &mut ctx,
         &runtime,

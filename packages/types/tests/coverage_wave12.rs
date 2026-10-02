@@ -53,7 +53,7 @@ fn options() -> ArrayOptions {
 #[test]
 fn typep_reaches_object_kinds_and_character_boundaries() {
     let (runtime, mut ctx) = setup();
-    let package = runtime.find_package(&mut ctx, "COMMON-LISP").unwrap();
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
     let bignum: Word = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 70)
         .unwrap()
         .into();

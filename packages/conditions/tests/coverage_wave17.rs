@@ -49,7 +49,7 @@ fn symbol_text(ctx: &ThreadContext, value: Word) -> String {
     text(ctx, ncl_object::symbol_name(ctx, value).unwrap())
 }
 
-fn callback_error(
+const fn callback_error(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,
     _function: Word,

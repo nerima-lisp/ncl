@@ -31,7 +31,7 @@ fn any_terminator(function: &Function, predicate: impl Fn(&Terminator) -> bool) 
         .any(|block| predicate(&block.terminator))
 }
 
-fn lambda(body: Vec<Expr>, lambda_list: LambdaList) -> LambdaExpr {
+const fn lambda(body: Vec<Expr>, lambda_list: LambdaList) -> LambdaExpr {
     LambdaExpr {
         lambda_list,
         declarations: Vec::new(),
@@ -62,7 +62,7 @@ fn analysis_walks_return_through_flet_labels_and_nested_expression_forms() {
         definitions: vec![local.clone()],
         declarations: Vec::new(),
         body: vec![Expr::Call {
-            operator: Operator::Name(local.name.clone()),
+            operator: Operator::Name(local.name),
             arguments: Vec::new(),
         }],
     };
@@ -128,7 +128,7 @@ fn capture_walks_function_namespaces_and_nested_value_forms() {
         LambdaList::new(),
     );
     let local = LocalFunction {
-        name: function.clone(),
+        name: function,
         lambda: lambda(vec![Expr::Variable(variable.clone())], LambdaList::new()),
     };
     let expression = Expr::Let {
@@ -281,6 +281,6 @@ fn multiple_value_prog1_and_global_function_cell_assignment_preserve_side_effect
     assert_verifies(&assigned.entry);
     assert!(any_op(
         &assigned.entry,
-        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 }

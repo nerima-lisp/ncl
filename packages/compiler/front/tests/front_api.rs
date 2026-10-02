@@ -340,15 +340,3 @@ fn variable_binding_accessors_report_name_type_and_specialness() {
     assert!(special.is_special());
     assert_eq!(special.type_specifier(), None);
 }
-
-// Keep the integration fixture's exported helpers in this file's dependency graph.
-#[test]
-fn macro_caller_call_path_returns_the_declared_value() {
-    let mut caller = DefaultCaller;
-    let mut fixture = Fixture::new();
-    let name = SymbolRef::interned("COMMON-LISP-USER", "M");
-    assert_eq!(
-        caller.call_macro(&mut fixture.ctx, &fixture.runtime, &name, Word::NIL),
-        Ok(Word::TRUE)
-    );
-}

@@ -35,7 +35,7 @@ fn any_terminator(function: &Function, predicate: impl Fn(&Terminator) -> bool) 
         .any(|block| predicate(&block.terminator))
 }
 
-fn lambda(body: Vec<Expr>) -> LambdaExpr {
+const fn lambda(body: Vec<Expr>) -> LambdaExpr {
     LambdaExpr {
         lambda_list: LambdaList::new(),
         declarations: Vec::new(),
@@ -126,7 +126,7 @@ fn progv_and_empty_multiple_value_call_emit_real_runtime_adapters() {
     ));
     assert!(any_op(
         &multiple_lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 }
 

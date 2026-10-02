@@ -66,10 +66,17 @@ fn analysis_paths_distinguish_local_exit_from_nested_escape() {
     })
     .expect("nested block exit lowers");
     assert_verifies(&escaped.entry);
-    assert!(escaped.entry.handler_regions.iter().any(|region| {
-        region.kind == ncl_ir::HandlerKind::Catch
-    }));
-    assert!(any_op(&escaped.entry, |kind| matches!(kind, OpKind::MakeClosure { .. })));
+    assert!(
+        escaped
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| { region.kind == ncl_ir::HandlerKind::Catch })
+    );
+    assert!(any_op(&escaped.entry, |kind| matches!(
+        kind,
+        OpKind::MakeClosure { .. }
+    )));
 
     let normal = lower_toplevel(&Expr::Block {
         name: symbol("LOCAL-BLOCK"),
@@ -82,10 +89,13 @@ fn analysis_paths_distinguish_local_exit_from_nested_escape() {
     .expect("local block fast path lowers");
     assert_verifies(&normal.entry);
     assert!(normal.entry.handler_regions.is_empty());
-    assert!(normal.entry.constants.iter().any(|constant| matches!(
-        constant,
-        Constant::Fixnum(1) | Constant::Fixnum(2)
-    )));
+    assert!(
+        normal
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(1 | 2)))
+    );
 }
 
 #[test]
@@ -110,7 +120,7 @@ fn capture_and_binding_paths_box_assigned_values_and_keep_free_functions() {
         }],
         declarations: Vec::new(),
         body: vec![
-            Expr::Setq(vec![(value.clone(), Expr::Constant(Literal::fixnum(2)))]),
+            Expr::Setq(vec![(value, Expr::Constant(Literal::fixnum(2)))]),
             Expr::Flet {
                 definitions: vec![helper],
                 declarations: Vec::new(),
@@ -123,11 +133,26 @@ fn capture_and_binding_paths_box_assigned_values_and_keep_free_functions() {
     };
     let lowered = lower_toplevel(&expression).expect("assigned free value lowers");
     assert_verifies(&lowered.entry);
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::MakeValueCell { .. })));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::StoreField { field: 0, .. })));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::CallClosure { .. })));
-    assert!(any_op(&lowered.nested[0], |kind| matches!(kind, OpKind::LoadCapture { .. })));
-    assert!(any_op(&lowered.nested[0], |kind| matches!(kind, OpKind::CallClosure { .. })));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeValueCell { .. }
+    )));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::StoreField { field: 0, .. }
+    )));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::CallClosure { .. }
+    )));
+    assert!(any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::LoadCapture { .. }
+    )));
+    assert!(any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::CallClosure { .. }
+    )));
 }
 
 #[test]
@@ -146,10 +171,7 @@ fn expression_paths_cover_symbol_cells_designators_and_call_arity_fallback() {
         },
         Expr::Call {
             operator: Operator::Name(symbol("CAR")),
-            arguments: vec![
-                Expr::Constant(Literal::Nil),
-                Expr::Constant(Literal::Nil),
-            ],
+            arguments: vec![Expr::Constant(Literal::Nil), Expr::Constant(Literal::Nil)],
         },
         Expr::Function(FunctionDesignator::Name(symbol("EXTERNAL"))),
     ];
@@ -157,18 +179,24 @@ fn expression_paths_cover_symbol_cells_designators_and_call_arity_fallback() {
     assert_verifies(&lowered.entry);
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32
+        OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap()
     )));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 3)));
-    assert!(any_op(&lowered.entry, |kind| matches!(kind, OpKind::Safepoint)));
+    assert!(any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::CallClosure { args, .. } if args.len() == 3)
+    ));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::Safepoint
+    )));
 }
 
 #[test]
@@ -206,19 +234,42 @@ fn parameter_paths_emit_optional_keyword_rest_and_aux_runtime_values() {
     assert_verifies(&lowered.entry);
     let nested = &lowered.nested[0];
     assert_verifies(nested);
-    assert_eq!(count_ops(nested, |kind| matches!(kind, OpKind::Compare { .. })), 2);
-    for builtin in ["make-rest-list", "check-keywords", "keyword-value", "keyword-supplied-p"] {
-        assert!(any_op(nested, |kind| matches!(
-            kind,
-            OpKind::Builtin { name, .. } if name == builtin
-        )), "missing builtin {builtin}");
+    assert_eq!(
+        count_ops(nested, |kind| matches!(kind, OpKind::Compare { .. })),
+        2
+    );
+    for builtin in [
+        "make-rest-list",
+        "check-keywords",
+        "keyword-value",
+        "keyword-supplied-p",
+    ] {
+        assert!(
+            any_op(nested, |kind| matches!(
+                kind,
+                OpKind::Builtin { name, .. } if name == builtin
+            )),
+            "missing builtin {builtin}"
+        );
     }
-    assert!(any_op(nested, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CONS")));
-    assert!(any_op(nested, |kind| matches!(kind, OpKind::Convert { .. })));
-    assert!(nested.constants.iter().any(|constant| matches!(constant, Constant::Nil)));
-    assert!(nested.blocks.iter().any(|block| matches!(
-        block.terminator,
-        Terminator::Branch { .. }
+    assert!(any_op(
+        nested,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CONS")
+    ));
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::Convert { .. }
     )));
+    assert!(
+        nested
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Nil))
+    );
+    assert!(
+        nested
+            .blocks
+            .iter()
+            .any(|block| matches!(block.terminator, Terminator::Branch { .. }))
+    );
 }
-

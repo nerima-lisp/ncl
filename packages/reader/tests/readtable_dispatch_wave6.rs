@@ -21,7 +21,7 @@ fn setup() -> (Runtime, ThreadContext, ReadOptions) {
 }
 
 fn symbol_text(ctx: &ThreadContext, word: Word) -> String {
-    let name = symbol_name(ctx, word).unwrap_or_else(|_| panic!("not a symbol: {word:?}"));
+    let name = symbol_name(ctx, word).unwrap_or_else(|_| unreachable!("not a symbol: {word:?}"));
     let length = ncl_object::string_length(ctx, name).unwrap();
     (0..length)
         .map(|index| ncl_object::string_ref(ctx, name, index).unwrap())
@@ -142,7 +142,7 @@ fn numeric_reader_boundaries_keep_numbers_and_symbols_distinct() {
             "input {text:?} produced {symbol:?}"
         );
         let name = symbol_name(&ctx, symbol)
-            .unwrap_or_else(|_| panic!("input {text:?} produced non-symbol {symbol:?}"));
+            .unwrap_or_else(|_| unreachable!("input {text:?} produced non-symbol {symbol:?}"));
         let length = ncl_object::string_length(&ctx, name).unwrap();
         let actual: String = (0..length)
             .map(|index| ncl_object::string_ref(&ctx, name, index).unwrap())

@@ -56,9 +56,9 @@ fn dispatch_matrix_covers_each_radix_character_and_label_shape() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidBase(_))
-                    | Err(ReadError::InvalidNumber(_))
-                    | Err(ReadError::InvalidDigit(_))
+                Err(ReadError::InvalidBase(_)
+                    | ReadError::InvalidNumber(_)
+                    | ReadError::InvalidDigit(_),)
             ),
             "input: {input}"
         );
@@ -166,7 +166,7 @@ fn character_and_feature_matrices_keep_reader_errors_specific() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidCharacter) | Err(ReadError::UnknownCharacterName(_))
+                Err(ReadError::InvalidCharacter | ReadError::UnknownCharacterName(_))
             ),
             "input: {input}"
         );
@@ -183,7 +183,7 @@ fn character_and_feature_matrices_keep_reader_errors_specific() {
     ] {
         let result = read_from_string(&mut ctx, &runtime, input, &opts).unwrap();
         assert_eq!(
-            result.and_then(|word| word.as_fixnum()),
+            result.and_then(ncl_object::Word::as_fixnum),
             expected,
             "input: {input}"
         );
@@ -192,7 +192,7 @@ fn character_and_feature_matrices_keep_reader_errors_specific() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidFeatureExpression) | Err(ReadError::Object(_))
+                Err(ReadError::InvalidFeatureExpression | ReadError::Object(_))
             ),
             "input: {input}"
         );
@@ -225,9 +225,9 @@ fn reader_entry_points_and_list_boundaries_are_checked_as_a_matrix() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::UnexpectedEof)
-                    | Err(ReadError::DotWithoutCdr)
-                    | Err(ReadError::UnmatchedRightParen)
+                Err(ReadError::UnexpectedEof
+                    | ReadError::DotWithoutCdr
+                    | ReadError::UnmatchedRightParen,)
             ),
             "input: {input}"
         );

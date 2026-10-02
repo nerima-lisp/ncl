@@ -153,9 +153,9 @@ fn radix_label_complex_and_character_dispatches_cover_error_edges() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidNumber(_))
-                    | Err(ReadError::InvalidBase(_))
-                    | Err(ReadError::NumberOutOfRange)
+                Err(ReadError::InvalidNumber(_)
+                    | ReadError::InvalidBase(_)
+                    | ReadError::NumberOutOfRange)
             ),
             "{input}"
         );
@@ -225,9 +225,9 @@ fn reader_quotes_strings_suppression_and_list_boundaries_are_concrete() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::DotWithoutCdr)
-                    | Err(ReadError::UnexpectedEof)
-                    | Err(ReadError::UnmatchedRightParen)
+                Err(ReadError::DotWithoutCdr
+                    | ReadError::UnexpectedEof
+                    | ReadError::UnmatchedRightParen)
             ),
             "{input}"
         );

@@ -28,19 +28,19 @@ mod tests_x86_64_fixture;
 mod tests_x86_64_golden;
 
 pub use abi::{
-    common_lisp_builtin, Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable,
-    ConstantName, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi,
+    Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,
+    RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi, common_lisp_builtin,
 };
-pub use frame::{FrameLayout, FRAME_HEADER_WORDS};
+pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
-pub use regalloc::{allocate, Allocation, AllocationTarget, LiveInterval, Location};
-pub use relocation::{relocations_from_fixups, Relocation, RelocationKind};
+pub use regalloc::{Allocation, AllocationTarget, LiveInterval, Location, allocate};
+pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
 pub use safepoint::{
-    MapError, SafepointMap, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS,
-    FLAG_LOOP_BACKEDGE,
+    FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
+    SafepointMap,
 };
-pub use target::{compile_function_aarch64, AArch64TargetIsa, TargetIsa};
+pub use target::{AArch64TargetIsa, TargetIsa, compile_function_aarch64};
 pub use target_x86_64::compile_function_x86_64;
 pub use templates::TemplateKind;
 

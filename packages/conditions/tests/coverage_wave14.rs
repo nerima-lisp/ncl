@@ -1,3 +1,4 @@
+#![allow(clippy::unnecessary_wraps)]
 #![allow(
     clippy::unwrap_used,
     reason = "tests assert on condition-system behavior"
@@ -47,6 +48,7 @@ fn text(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn return_first(
     _runtime: std::ptr::NonNull<()>,
     _ctx: &mut ThreadContext,

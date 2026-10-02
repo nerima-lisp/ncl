@@ -67,10 +67,8 @@ fn numeric_specialized_and_structure_records_round_trip() {
     ));
     match classify_object(&ctx2, double2) {
         ObjectRef::DoubleFloat(value) => {
-            assert_eq!(
-                double_value(&ctx2, DoubleFloat::from_word(value)).unwrap(),
-                -3.25
-            );
+            let actual = double_value(&ctx2, DoubleFloat::from_word(value)).unwrap();
+            assert!((actual + 3.25).abs() < f64::EPSILON);
         }
         other => panic!("expected double float, got {other:?}"),
     }

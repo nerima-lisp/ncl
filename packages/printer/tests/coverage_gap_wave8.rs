@@ -63,14 +63,14 @@ fn princ_and_prin1_route_nil_and_true_stream_designators() {
     set_symbol_value(&mut ctx, terminal_var, terminal).unwrap();
     let text = ncl_object::make_string(&mut ctx, &runtime, &['o', 'k']).unwrap();
 
-    let princ = builtin(&runtime, &mut ctx, "PRINC");
+    let principal_builtin = builtin(&runtime, &mut ctx, "PRINC");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, princ, &[text, Word::NIL]),
+        runtime.call_builtin(&mut ctx, principal_builtin, &[text, Word::NIL]),
         Ok(text)
     );
-    let prin1 = builtin(&runtime, &mut ctx, "PRIN1");
+    let printer_builtin = builtin(&runtime, &mut ctx, "PRIN1");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, prin1, &[text, Word::TRUE]),
+        runtime.call_builtin(&mut ctx, printer_builtin, &[text, Word::TRUE]),
         Ok(text)
     );
     let get_output = builtin(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING");

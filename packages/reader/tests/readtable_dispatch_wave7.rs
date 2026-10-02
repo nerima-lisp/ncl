@@ -59,7 +59,7 @@ fn readtable_invalid_entries_are_rejected_by_the_reader() {
     let table = opts.readtable();
     let syntax = table.syntax_table(&ctx).unwrap();
     for (character, entry) in [('~', Word::fixnum(99)), ('!', Word::NIL)] {
-        simple_vector_set(&mut ctx, syntax, character as usize, entry).unwrap();
+        simple_vector_set(&mut ctx, syntax, usize::try_from(character).unwrap(), entry).unwrap();
         assert_eq!(
             read_from_string(&mut ctx, &runtime, &character.to_string(), &opts).unwrap_err(),
             ReadError::UninvocableMacroFunction(character)

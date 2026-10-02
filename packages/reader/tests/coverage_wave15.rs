@@ -113,7 +113,7 @@ fn reader_suppression_comments_strings_and_dotted_lists_are_checked() {
     for (input, expected) in [("; comment without newline", None), ("; c\n17", Some(17))] {
         let word = read_from_string(&mut ctx, &runtime, input, &opts)
             .unwrap()
-            .and_then(|value| value.as_fixnum());
+            .and_then(ncl_object::Word::as_fixnum);
         assert_eq!(word, expected, "{input:?}");
     }
     let string = read_from_string(&mut ctx, &runtime, r#""a\"b\\c""#, &opts)
@@ -136,9 +136,9 @@ fn reader_suppression_comments_strings_and_dotted_lists_are_checked() {
     for input in ["(. x)", "(x .", "(x . y z)"] {
         assert!(matches!(
             read_from_string(&mut ctx, &runtime, input, &opts),
-            Err(ReadError::DotWithoutCdr)
-                | Err(ReadError::UnexpectedEof)
-                | Err(ReadError::UnmatchedRightParen)
+            Err(ReadError::DotWithoutCdr
+                | ReadError::UnexpectedEof
+                | ReadError::UnmatchedRightParen)
         ));
     }
 }
@@ -186,7 +186,7 @@ fn dispatch_feature_skip_labels_and_character_errors_are_distinct() {
     for input in ["#\\", "#\\unknown", "#\\A-B"] {
         assert!(matches!(
             read_from_string(&mut ctx, &runtime, input, &opts),
-            Err(ReadError::InvalidCharacter) | Err(ReadError::UnknownCharacterName(_))
+            Err(ReadError::InvalidCharacter | ReadError::UnknownCharacterName(_))
         ));
     }
 }
@@ -201,7 +201,7 @@ fn number_shapes_cover_bignum_radix_and_invalid_float_paths() {
     let negative = read_from_string(&mut ctx, &runtime, "-4611686018427387904", &opts)
         .unwrap()
         .unwrap();
-    assert_eq!(negative.as_fixnum(), Some(-4611686018427387904));
+    assert_eq!(negative.as_fixnum(), Some(-4_611_686_018_427_387_904));
     opts.set_read_base(ncl_reader::ReadBase::new(16).unwrap());
     let hex = read_from_string(&mut ctx, &runtime, "7f", &opts)
         .unwrap()
@@ -232,6 +232,6 @@ fn number_shapes_cover_bignum_radix_and_invalid_float_paths() {
     );
     assert_eq!(
         read_from_string(&mut ctx, &runtime, "#2r2", &opts).unwrap_err(),
-        ReadError::InvalidNumber("".to_owned())
+        ReadError::InvalidNumber(String::new())
     );
 }

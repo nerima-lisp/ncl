@@ -204,7 +204,7 @@ fn typep_exercises_compound_short_circuits_cons_and_value_matching() {
         typep(
             &mut ctx,
             Word::character(65),
-            &TypeSpecifier::Eql(Value::Character('A' as u32))
+            &TypeSpecifier::Eql(Value::Character(65))
         )
         .unwrap()
     );
@@ -212,7 +212,7 @@ fn typep_exercises_compound_short_circuits_cons_and_value_matching() {
         !typep(
             &mut ctx,
             Word::character(66),
-            &TypeSpecifier::Eql(Value::Character('A' as u32))
+            &TypeSpecifier::Eql(Value::Character(65))
         )
         .unwrap()
     );

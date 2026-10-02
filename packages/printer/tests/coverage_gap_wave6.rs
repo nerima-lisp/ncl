@@ -145,17 +145,17 @@ fn rank_two_arrays_apply_limits_and_opaque_mode() {
 fn print_builtins_reject_bad_streams_and_preserve_print_newlines() {
     let (runtime, mut ctx) = context();
     let object = make_string(&mut ctx, &runtime, &['o', 'k']).unwrap();
-    let princ = builtin(&runtime, &mut ctx, "PRINC");
+    let princ_fn = builtin(&runtime, &mut ctx, "PRINC");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, princ, &[object, Word::fixnum(1)]),
+        runtime.call_builtin(&mut ctx, princ_fn, &[object, Word::fixnum(1)]),
         Err(ObjectError::TypeError)
     );
 
     let make_stream = builtin(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM");
     let stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
-    let print = builtin(&runtime, &mut ctx, "PRINT");
+    let output_fn = builtin(&runtime, &mut ctx, "PRINT");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, print, &[object, stream]),
+        runtime.call_builtin(&mut ctx, output_fn, &[object, stream]),
         Ok(object)
     );
     let get_output = builtin(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING");

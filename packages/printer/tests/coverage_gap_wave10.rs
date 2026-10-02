@@ -57,29 +57,29 @@ fn princ_and_prin1_route_a_condition_without_report_through_streams() {
     let class = ncl_conditions::condition_class(&mut ctx, &runtime, "ERROR").unwrap();
     let condition = ncl_conditions::make_condition(&mut ctx, &runtime, class, &[]).unwrap();
     let make_stream = builtin(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM");
-    let princ_stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
-    let prin1_stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
-    let princ = builtin(&runtime, &mut ctx, "PRINC");
-    let prin1 = builtin(&runtime, &mut ctx, "PRIN1");
+    let principal_stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
+    let printer_stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
+    let principal_builtin = builtin(&runtime, &mut ctx, "PRINC");
+    let printer_builtin = builtin(&runtime, &mut ctx, "PRIN1");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, princ, &[condition, princ_stream]),
+        runtime.call_builtin(&mut ctx, principal_builtin, &[condition, principal_stream]),
         Ok(condition)
     );
     assert_eq!(
-        runtime.call_builtin(&mut ctx, prin1, &[condition, prin1_stream]),
+        runtime.call_builtin(&mut ctx, printer_builtin, &[condition, printer_stream]),
         Ok(condition)
     );
     let get_output = builtin(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING");
-    let princ_text = runtime
-        .call_builtin(&mut ctx, get_output, &[princ_stream])
+    let principal_text = runtime
+        .call_builtin(&mut ctx, get_output, &[principal_stream])
         .unwrap();
-    let prin1_text = runtime
-        .call_builtin(&mut ctx, get_output, &[prin1_stream])
+    let printer_text = runtime
+        .call_builtin(&mut ctx, get_output, &[printer_stream])
         .unwrap();
-    let princ_output = string_value(&ctx, princ_text);
-    let prin1_output = string_value(&ctx, prin1_text);
-    assert_eq!(princ_output, "ERROR condition");
-    assert!(prin1_output.starts_with("#<"), "{prin1_output}");
+    let principal_output = string_value(&ctx, principal_text);
+    let printer_output = string_value(&ctx, printer_text);
+    assert_eq!(principal_output, "ERROR condition");
+    assert!(printer_output.starts_with("#<"), "{printer_output}");
 }
 
 #[test]
@@ -141,9 +141,9 @@ fn dotted_cycle_errors_without_circle_and_labels_with_circle() {
 #[test]
 fn print_object_builtin_rejects_missing_object_before_stream_lookup() {
     let (runtime, mut ctx) = context();
-    let princ = builtin(&runtime, &mut ctx, "PRINC");
+    let principal_builtin = builtin(&runtime, &mut ctx, "PRINC");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, princ, &[]),
+        runtime.call_builtin(&mut ctx, principal_builtin, &[]),
         Err(ncl_object::ObjectError::TypeError)
     );
     let _ = intern(&runtime, &mut ctx, "COMMON-LISP", "*STANDARD-OUTPUT*");

@@ -65,7 +65,7 @@ fn typep_covers_false_object_kinds_and_all_numeric_families() {
         .into();
     let string = make_string(&mut ctx, &runtime, &['q']).unwrap();
     let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)]).unwrap();
-    let package = runtime.find_package(&mut ctx, "COMMON-LISP").unwrap();
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
     let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
         .unwrap()
         .as_word();

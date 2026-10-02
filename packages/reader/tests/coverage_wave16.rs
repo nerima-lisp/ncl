@@ -49,7 +49,7 @@ fn read_options_setters_and_getters_preserve_each_reader_setting() {
     assert_eq!(opts.current_package().unwrap().as_str(), "COMMON-LISP");
     assert_eq!(
         opts.set_current_package(""),
-        Err(ReadError::InvalidSymbolToken("".to_owned()))
+        Err(ReadError::InvalidSymbolToken(String::new()))
     );
     assert_eq!(
         read_from_string(&mut ctx, &runtime, "ff", &opts)
@@ -86,9 +86,7 @@ fn dispatch_macro_forms_cover_function_vector_complex_and_radix_errors() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::UnexpectedEof)
-                    | Err(ReadError::InvalidNumber(_))
-                    | Err(ReadError::Object(_))
+                Err(ReadError::UnexpectedEof | ReadError::InvalidNumber(_) | ReadError::Object(_),)
             ),
             "{input}"
         );
@@ -134,7 +132,7 @@ fn feature_labels_comments_and_character_names_cover_dispatch_boundaries() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidFeatureExpression) | Err(ReadError::Object(_))
+                Err(ReadError::InvalidFeatureExpression | ReadError::Object(_))
             ),
             "{input}"
         );

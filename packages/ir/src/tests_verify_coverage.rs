@@ -23,15 +23,17 @@ fn region(kind: HandlerKind) -> HandlerRegion {
 
 #[test]
 fn verifier_covers_empty_and_unreachable_functions() {
-    assert!(verify(&finish(
-        "empty",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new()
-    ))
-    .is_ok());
+    assert!(
+        verify(&finish(
+            "empty",
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new()
+        ))
+        .is_ok()
+    );
     let function = finish(
         "unreachable",
         Vec::new(),
@@ -53,35 +55,39 @@ fn verifier_covers_empty_and_unreachable_functions() {
 #[test]
 fn verifier_reports_handler_definition_errors() {
     let mut unwind = region(HandlerKind::UnwindProtect);
-    assert!(errors(&finish(
-        "unwind",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        vec![block(
-            0,
+    assert!(
+        errors(&finish(
+            "unwind",
             Vec::new(),
-            Terminator::Return { values: Vec::new() }
-        )],
-        vec![unwind.clone()]
-    ))
-    .contains(&VerifyError::HandlerMismatch(BlockId(0))));
+            Vec::new(),
+            Vec::new(),
+            vec![block(
+                0,
+                Vec::new(),
+                Terminator::Return { values: Vec::new() }
+            )],
+            vec![unwind.clone()]
+        ))
+        .contains(&VerifyError::HandlerMismatch(BlockId(0)))
+    );
 
     unwind.cleanup = Some(BlockId(0));
     unwind.binding_targets = vec![ValueId(8)];
-    assert!(errors(&finish(
-        "unwind-bindings",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        vec![block(
-            0,
+    assert!(
+        errors(&finish(
+            "unwind-bindings",
             Vec::new(),
-            Terminator::Return { values: Vec::new() }
-        )],
-        vec![unwind]
-    ))
-    .contains(&VerifyError::HandlerMismatch(BlockId(0))));
+            Vec::new(),
+            Vec::new(),
+            vec![block(
+                0,
+                Vec::new(),
+                Terminator::Return { values: Vec::new() }
+            )],
+            vec![unwind]
+        ))
+        .contains(&VerifyError::HandlerMismatch(BlockId(0)))
+    );
 
     let mut catch = region(HandlerKind::Catch);
     catch.catch_tag = Some(ValueId(0));
@@ -107,19 +113,21 @@ fn verifier_reports_handler_definition_errors() {
 
     catch.id = HandlerRegionId(1);
     catch.parent = Some(HandlerRegionId(9));
-    assert!(errors(&finish(
-        "missing-parent",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        vec![block(
-            0,
+    assert!(
+        errors(&finish(
+            "missing-parent",
             Vec::new(),
-            Terminator::Return { values: Vec::new() }
-        )],
-        vec![catch]
-    ))
-    .contains(&VerifyError::MissingHandlerRegion(HandlerRegionId(9))));
+            Vec::new(),
+            Vec::new(),
+            vec![block(
+                0,
+                Vec::new(),
+                Terminator::Return { values: Vec::new() }
+            )],
+            vec![catch]
+        ))
+        .contains(&VerifyError::MissingHandlerRegion(HandlerRegionId(9)))
+    );
 }
 
 #[test]

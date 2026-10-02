@@ -189,7 +189,7 @@ fn let_bindings_and_function_designator_loads_cover_value_and_function_namespace
     );
     assert!(any_op(
         &lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 }
 
@@ -206,7 +206,7 @@ fn primitive_call_families_emit_builtin_ops_with_their_actual_arity_rules() {
         let expression = Expr::Call {
             operator: Operator::Name(SymbolRef::interned("COMMON-LISP", name)),
             arguments: (0..args)
-                .map(|value| Expr::Constant(Literal::fixnum(value as i64)))
+                .map(|value| Expr::Constant(Literal::fixnum(i64::try_from(value).unwrap())))
                 .collect(),
         };
         let lowered = lower_toplevel(&expression).expect("primitive call lowers");

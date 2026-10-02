@@ -35,7 +35,7 @@ fn any_terminator(function: &Function, predicate: impl Fn(&Terminator) -> bool) 
         .any(|block| predicate(&block.terminator))
 }
 
-fn lambda(body: Vec<Expr>, list: LambdaList) -> LambdaExpr {
+const fn lambda(body: Vec<Expr>, list: LambdaList) -> LambdaExpr {
     LambdaExpr {
         lambda_list: list,
         declarations: Vec::new(),
@@ -184,7 +184,7 @@ fn function_designators_and_wrappers_select_the_expected_call_operation() {
     assert_verifies(&named_lowered.entry);
     assert!(any_op(
         &named_lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
     assert!(any_op(
         &named_lowered.entry,

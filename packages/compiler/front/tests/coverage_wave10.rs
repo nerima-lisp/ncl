@@ -104,7 +104,7 @@ fn analysis_fast_path_keeps_plain_function_and_constant_blocks_local() {
     )));
     assert!(any_op(
         &lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
     assert!(
         lowered
@@ -127,7 +127,7 @@ fn mutually_recursive_labels_build_function_captures_for_each_definition() {
         }),
     };
     let second = LocalFunction {
-        name: second_name.clone(),
+        name: second_name,
         lambda: empty_lambda(Expr::Call {
             operator: Operator::Name(first_name.clone()),
             arguments: Vec::new(),
@@ -191,7 +191,7 @@ fn function_cell_store_accepts_common_lisp_extension_spelling() {
     assert_verifies(&lowered.entry);
     assert!(any_op(
         &lowered.entry,
-        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 }
 

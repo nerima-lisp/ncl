@@ -5,7 +5,7 @@
     clippy::unwrap_used
 )]
 
-use crate::{compile_function_aarch64, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
+use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
 use ncl_ir::{
     Compare, Constant, FunctionBuilder, HandlerKind, HandlerRegion, OpKind, Prim, Terminator, Ty,
 };
@@ -355,16 +355,36 @@ fn aarch64_calls_closures_handlers_and_all_terminators_compile() {
         .push_op(OpKind::LeaveHandler { region }, &[])
         .unwrap();
     builder
-        .push_op(OpKind::EnterHandler { region: unwind_region }, &[])
+        .push_op(
+            OpKind::EnterHandler {
+                region: unwind_region,
+            },
+            &[],
+        )
         .unwrap();
     builder
-        .push_op(OpKind::LeaveHandler { region: unwind_region }, &[])
+        .push_op(
+            OpKind::LeaveHandler {
+                region: unwind_region,
+            },
+            &[],
+        )
         .unwrap();
     builder
-        .push_op(OpKind::EnterHandler { region: progv_region }, &[])
+        .push_op(
+            OpKind::EnterHandler {
+                region: progv_region,
+            },
+            &[],
+        )
         .unwrap();
     builder
-        .push_op(OpKind::LeaveHandler { region: progv_region }, &[])
+        .push_op(
+            OpKind::LeaveHandler {
+                region: progv_region,
+            },
+            &[],
+        )
         .unwrap();
     builder
         .terminate(Terminator::Throw { condition: argc })
@@ -582,17 +602,17 @@ fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
         vec![Ty::Word],
     );
     let argc_index = builder.add_constant(Constant::Fixnum(599));
-    let argc = builder
+    let argument_count = builder
         .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
         .unwrap()[0];
-    let args = std::iter::once(argc)
+    let call_args = std::iter::once(argument_count)
         .chain((1..600).map(ncl_ir::ValueId))
         .collect::<Vec<_>>();
     let result = builder
         .push_op(
             OpKind::Call {
                 function: ncl_ir::ValueId(0),
-                args: args.clone(),
+                args: call_args,
             },
             &[Ty::Word],
         )
@@ -634,22 +654,22 @@ fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
             vec![],
         );
         let argc_index = builder.add_constant(Constant::Fixnum(599));
-        let argc = builder
+        let argument_count = builder
             .push_op(OpKind::Const { result: argc_index }, &[Ty::Word])
             .unwrap()[0];
-        let args = std::iter::once(argc)
+        let call_args = std::iter::once(argument_count)
             .chain((1..600).map(ncl_ir::ValueId))
             .collect::<Vec<_>>();
         builder
             .terminate(if terminator {
                 Terminator::CallReturn {
                     function: ncl_ir::ValueId(0),
-                    args,
+                    args: call_args,
                 }
             } else {
                 Terminator::TailCall {
                     function: ncl_ir::ValueId(0),
-                    args,
+                    args: call_args,
                 }
             })
             .unwrap();
@@ -677,9 +697,7 @@ fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
             &[],
         )
         .unwrap();
-    malformed_call
-        .terminate(Terminator::Unreachable)
-        .unwrap();
+    malformed_call.terminate(Terminator::Unreachable).unwrap();
     assert!(matches!(
         compile_function_aarch64(&malformed_call.finish(), &CoverageAbi),
         Err(CodegenError::Unsupported(_))
@@ -696,9 +714,7 @@ fn aarch64_coverage_reaches_large_frames_rest_arguments_and_contract_errors() {
     );
     let then_block = malformed_branch.create_block(vec![(Ty::Word, ncl_ir::ValueId(1))]);
     let else_block = malformed_branch.create_block(Vec::new());
-    malformed_branch
-        .position_at(ncl_ir::BlockId(0))
-        .unwrap();
+    malformed_branch.position_at(ncl_ir::BlockId(0)).unwrap();
     malformed_branch
         .terminate(Terminator::Branch {
             condition: ncl_ir::ValueId(0),

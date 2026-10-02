@@ -162,7 +162,7 @@ fn builtin_arity_mismatch_falls_back_to_a_real_function_cell_call() {
     ));
     assert!(any_op(
         &lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
     assert!(any_op(
         &lowered.entry,

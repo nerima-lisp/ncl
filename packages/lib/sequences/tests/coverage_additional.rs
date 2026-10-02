@@ -9,9 +9,9 @@ use std::collections::HashMap;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
+    ArrayElementType, FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word,
     make_bignum_from_i128, make_complex, make_double, make_ratio, make_simple_vector,
-    make_specialized_array, make_string, ArrayElementType, FunctionObject, ObjectError, Package,
-    Runtime, ThreadContext, Word,
+    make_specialized_array, make_string,
 };
 
 fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {

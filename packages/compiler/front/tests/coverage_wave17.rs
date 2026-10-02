@@ -202,7 +202,7 @@ fn expression_call_matrix_distinguishes_builtin_arity_and_general_fallback() {
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32
+        OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap()
     )));
     assert!(any_op(
         &lowered.entry,
@@ -250,7 +250,7 @@ fn bindings_keep_cell_store_separate_from_lexical_rebind_and_global_store() {
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32
+        OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
     assert!(any_op(&lowered.nested[0], |kind| matches!(
         kind,

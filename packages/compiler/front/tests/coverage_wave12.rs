@@ -147,7 +147,7 @@ fn capture_and_bindings_cover_local_function_calls_and_multiple_values() {
     let local = Expr::Let {
         sequential: false,
         bindings: vec![LetBinding {
-            name: variable.clone(),
+            name: variable,
             value: Some(Expr::Constant(Literal::fixnum(5))),
         }],
         declarations: Vec::new(),
@@ -197,7 +197,7 @@ fn expression_forms_cover_function_cells_and_control_terminators() {
     assert_verifies(&lowered.entry);
     assert!(any_op(
         &lowered.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 
     let block_name = symbol("DONE");

@@ -77,7 +77,7 @@ fn analysis_false_paths_walk_nested_control_without_creating_handlers() {
                         symbols: Box::new(Expr::Constant(Literal::Nil)),
                         values: Box::new(Expr::Constant(Literal::Nil)),
                         body: vec![Expr::Tagbody(vec![
-                            ncl_compiler_front::TagbodyItem::Tag(tag.clone()),
+                            ncl_compiler_front::TagbodyItem::Tag(tag),
                             ncl_compiler_front::TagbodyItem::Form(Expr::Constant(Literal::Nil)),
                         ])],
                     }],
@@ -162,7 +162,7 @@ fn capture_binding_matrix_keeps_bound_names_out_and_free_names_in() {
     let expression = Expr::Let {
         sequential: false,
         bindings: vec![LetBinding {
-            name: outer.clone(),
+            name: outer,
             value: Some(Expr::Constant(Literal::fixnum(11))),
         }],
         declarations: Vec::new(),
@@ -198,7 +198,7 @@ fn expression_designators_cover_local_lookup_lambda_operator_and_fallback_call()
         name: local_name.clone(),
         lambda: lambda(Expr::Constant(Literal::fixnum(3)), LambdaList::new()),
     };
-    let local_designator = Expr::Function(FunctionDesignator::Name(local_name.clone()));
+    let local_designator = Expr::Function(FunctionDesignator::Name(local_name));
     let lambda_call = Expr::Call {
         operator: Operator::Lambda(Box::new(lambda(
             Expr::Constant(Literal::fixnum(4)),
@@ -225,7 +225,7 @@ fn expression_designators_cover_local_lookup_lambda_operator_and_fallback_call()
     );
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
-        OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32
+        OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap()
     )));
     assert!(
         op_count(&lowered.entry, |kind| matches!(
@@ -260,7 +260,7 @@ fn capture_analysis_boxes_only_the_assigned_value_seen_by_a_closure() {
             Expr::Setq(vec![(captured.clone(), Expr::Constant(Literal::fixnum(4)))]),
             Expr::Setq(vec![(assigned.clone(), Expr::Constant(Literal::fixnum(3)))]),
             Expr::Lambda(Box::new(lambda(
-                Expr::Variable(captured.clone()),
+                Expr::Variable(captured),
                 LambdaList::new(),
             ))),
             Expr::Variable(assigned),

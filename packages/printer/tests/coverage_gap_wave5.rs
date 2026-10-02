@@ -145,9 +145,9 @@ fn circle_scan_traverses_general_and_specialized_arrays() {
 #[test]
 fn print_builtins_report_missing_arguments_and_circularity() {
     let (runtime, mut ctx) = context();
-    let princ = builtin(&runtime, &mut ctx, "COMMON-LISP", "PRINC");
+    let princ_fn = builtin(&runtime, &mut ctx, "COMMON-LISP", "PRINC");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, princ, &[]),
+        runtime.call_builtin(&mut ctx, princ_fn, &[]),
         Err(ObjectError::TypeError)
     );
 
@@ -160,9 +160,9 @@ fn print_builtins_report_missing_arguments_and_circularity() {
     let stream = runtime.call_builtin(&mut ctx, make_stream, &[]).unwrap();
     let cycle = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap();
     rplacd(&mut ctx, cycle, cycle).unwrap();
-    let print = builtin(&runtime, &mut ctx, "COMMON-LISP", "PRINT");
+    let output_fn = builtin(&runtime, &mut ctx, "COMMON-LISP", "PRINT");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, print, &[cycle, stream]),
+        runtime.call_builtin(&mut ctx, output_fn, &[cycle, stream]),
         Err(ObjectError::Layout)
     );
 }

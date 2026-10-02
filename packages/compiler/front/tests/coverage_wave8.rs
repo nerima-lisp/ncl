@@ -85,7 +85,7 @@ fn tagbody_fast_path_handles_assignment_and_back_edge() {
         declarations: Vec::new(),
         body: vec![Expr::Tagbody(vec![
             TagbodyItem::Tag(tag.clone()),
-            TagbodyItem::Form(Expr::Setq(vec![(x.clone(), Expr::Constant(Literal::T))])),
+            TagbodyItem::Form(Expr::Setq(vec![(x, Expr::Constant(Literal::T))])),
             TagbodyItem::Form(Expr::Go { tag }),
         ])],
     };
@@ -112,7 +112,7 @@ fn symbol_and_function_cells_cover_load_and_store_variants() {
     assert_verifies(&loaded.entry);
     assert!(any_op(
         &loaded.entry,
-        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32)
+        |kind| matches!(kind, OpKind::LoadField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap())
     ));
 
     let stored = Expr::Call {
@@ -126,7 +126,7 @@ fn symbol_and_function_cells_cover_load_and_store_variants() {
     assert_verifies(&stored.entry);
     assert!(any_op(
         &stored.entry,
-        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::VALUE as u32)
+        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap())
     ));
 
     let function_store = Expr::Call {
@@ -140,7 +140,7 @@ fn symbol_and_function_cells_cover_load_and_store_variants() {
     assert_verifies(&function_store.entry);
     assert!(any_op(
         &function_store.entry,
-        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == ncl_object::symbol_offset::FUNCTION as u32)
+        |kind| matches!(kind, OpKind::StoreField { field, .. } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap())
     ));
 }
 

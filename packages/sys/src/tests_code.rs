@@ -304,6 +304,57 @@ fn frame_chain_keeps_return_pc_low_bits_for_safepoint_lookup() {
     assert_eq!(frame[2], Word::fixnum(2));
 }
 
+#[test]
+fn registry_frame_scan_forwards_frame_and_register_roots() {
+    let mut bytes = vec![0; 16];
+    bytes[4..6].copy_from_slice(&5_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&5_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[10..12].copy_from_slice(&(1_u16 << 3).to_le_bytes());
+    bytes.push(0b0000_0100);
+    bytes.extend_from_slice(&3_u16.to_le_bytes());
+    let map = SafepointMap::decode(&bytes, 1).expect("valid registry safepoint map");
+
+    let mut code = alloc_code(16).expect("code allocation for registry scan");
+    assert!(publish_code(&mut code).is_ok());
+    let mut registry = CodeRegistry::default();
+    assert!(
+        registry
+            .register(
+                &code,
+                CodeObjectMetadata {
+                    entry_offset: 0,
+                    size: code.len(),
+                    frame_words: 5,
+                    function_name: "registry-scan".to_owned(),
+                    source_locations: Vec::new(),
+                    constant_slots: Vec::new(),
+                    safepoint_map: map,
+                    debug_table: Vec::new(),
+                },
+            )
+            .is_ok()
+    );
+
+    let mut frame = [
+        Word::from_bits(0),
+        Word::from_bits(code.address() as u64),
+        Word::fixnum(1),
+        Word::NIL,
+        Word::fixnum(2),
+    ];
+    let mut registers = [Word::NIL; 4];
+    registers[3] = Word::fixnum(3);
+    assert_eq!(
+        scan_frame_chain_with_registry(&mut frame, 0, &registry, &mut registers, |word| {
+            Word::fixnum(word.as_fixnum().unwrap_or(0) + 10)
+        },),
+        Some(2)
+    );
+    assert_eq!(frame[2], Word::fixnum(11));
+    assert_eq!(registers[3], Word::fixnum(13));
+}
+
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[test]
 fn published_machine_code_returns_42() {

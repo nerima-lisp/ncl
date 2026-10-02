@@ -52,6 +52,8 @@ fn parse_error_displays_its_message() {
 
 #[path = "tests_builder.rs"]
 mod tests_builder;
+#[path = "tests_coverage_additional.rs"]
+mod tests_coverage_additional;
 #[path = "tests_handler.rs"]
 mod tests_handler;
 #[path = "tests_text.rs"]

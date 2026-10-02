@@ -254,3 +254,52 @@ fn call_return_and_tail_call_end_with_their_exact_frame_transfers() {
         Inst::JmpReg(super::lowering::ENTRY),
     ])));
 }
+
+#[test]
+fn switch_lowering_emits_each_case_compare_and_stages_default_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(207),
+        "switch-case-argument-staging",
+        vec![Param {
+            name: "selector".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+    );
+    let first_case = builder.create_block(vec![(Ty::Word, ncl_ir::ValueId(1))]);
+    let second_case = builder.create_block(vec![(Ty::Word, ncl_ir::ValueId(2))]);
+    let default_case = builder.create_block(vec![(Ty::Word, ncl_ir::ValueId(3))]);
+    builder.position_at(ncl_ir::BlockId(0)).expect("entry");
+    builder
+        .terminate(Terminator::Switch {
+            value: ncl_ir::ValueId(0),
+            cases: vec![
+                (7, first_case, vec![ncl_ir::ValueId(0)]),
+                (-2, second_case, vec![ncl_ir::ValueId(0)]),
+            ],
+            default: default_case,
+            default_args: vec![ncl_ir::ValueId(0)],
+        })
+        .expect("switch");
+    for block in [first_case, second_case, default_case] {
+        builder.position_at(block).expect("switch target");
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .expect("switch return");
+    }
+
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64Abi).expect("switch");
+    for case in [7, -2] {
+        let expected = encoded([Inst::CmpRI(super::lowering::FUNCTION_OBJECT, case)]);
+        assert!(
+            compiled
+                .code
+                .windows(expected.len())
+                .any(|bytes| bytes == expected),
+            "switch comparison for {case} missing from {:02x?}",
+            compiled.code
+        );
+    }
+    assert!(compiled.code.windows(2).any(|bytes| bytes == [0x0f, 0x84]));
+    assert!(compiled.code.contains(&0xe9));
+}

@@ -106,6 +106,18 @@ mod tests {
         words.iter().flat_map(|word| word.to_le_bytes()).collect()
     }
 
+    fn aarch64_encoded(instructions: &[ncl_asm_aarch64::Inst]) -> Vec<u8> {
+        instructions
+            .iter()
+            .enumerate()
+            .flat_map(|(offset, instruction)| {
+                ncl_asm_aarch64::encode(instruction, offset * 4)
+                    .expect("encode")
+                    .to_le_bytes()
+            })
+            .collect()
+    }
+
     #[test]
     fn x86_decode_has_addresses() {
         let decoded = decode(Architecture::X86_64, &[0x90, 0xc3], 0x1000).expect("decode");
@@ -257,6 +269,496 @@ mod tests {
                 address: u64::MAX,
                 reason: "branch target overflows address space".into(),
             })
+        );
+    }
+
+    #[test]
+    fn aarch64_decodes_encoded_instruction_families() {
+        use ncl_asm_aarch64::{Extend, Inst, MemOperand, Reg, RegOrSp, Shift};
+
+        let x0 = Reg(0);
+        let x1 = Reg(1);
+        let x2 = Reg(2);
+        let sp = RegOrSp::Sp;
+        let unsigned = MemOperand::Unsigned {
+            base: sp,
+            offset: 8,
+            scale: 8,
+        };
+        let instructions = [
+            Inst::DmbIsh,
+            Inst::Brk { imm: 7 },
+            Inst::Ret { rn: x0 },
+            Inst::Br { rn: x1 },
+            Inst::Blr { rn: x2 },
+            Inst::MovZ {
+                rd: x0,
+                imm: 0x12,
+                shift: 16,
+            },
+            Inst::MovK {
+                rd: x0,
+                imm: 0x34,
+                shift: 32,
+            },
+            Inst::MovN {
+                rd: x0,
+                imm: 0x56,
+                shift: 48,
+            },
+            Inst::AddImm {
+                rd: sp,
+                rn: sp,
+                imm: 1,
+                shift: true,
+            },
+            Inst::SubsImm {
+                rd: sp,
+                rn: sp,
+                imm: 2,
+                shift: false,
+            },
+            Inst::Mov {
+                rd: RegOrSp::Reg(x0),
+                rn: RegOrSp::Reg(x1),
+            },
+            Inst::Add {
+                rd: RegOrSp::Reg(x0),
+                rn: RegOrSp::Reg(x1),
+                rm: x2,
+                shift: Shift::Lsl(3),
+            },
+            Inst::Sub {
+                rd: RegOrSp::Reg(x0),
+                rn: RegOrSp::Reg(x1),
+                rm: x2,
+                shift: Shift::Lsr(2),
+            },
+            Inst::Adds {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                shift: Shift::Asr(1),
+            },
+            Inst::Subs {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                shift: Shift::Lsl(1),
+            },
+            Inst::Add {
+                rd: sp,
+                rn: sp,
+                rm: x0,
+                shift: Shift::Lsl(1),
+            },
+            Inst::And {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                shift: Shift::Lsr(1),
+            },
+            Inst::Orr {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                shift: Shift::Lsl(1),
+            },
+            Inst::Eor {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                shift: Shift::Asr(1),
+            },
+            Inst::Tst {
+                rn: x1,
+                rm: x2,
+                shift: Shift::Lsl(1),
+            },
+            Inst::AndImm {
+                rd: x0,
+                rn: x1,
+                imm: 0xff,
+            },
+            Inst::OrrImm {
+                rd: x0,
+                rn: x1,
+                imm: 0xff,
+            },
+            Inst::EorImm {
+                rd: x0,
+                rn: x1,
+                imm: 0xff,
+            },
+            Inst::TstImm { rn: x1, imm: 0xff },
+            Inst::LslReg {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::LsrReg {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::AsrReg {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::LslImm {
+                rd: x0,
+                rn: x1,
+                amount: 3,
+            },
+            Inst::LsrImm {
+                rd: x0,
+                rn: x1,
+                amount: 3,
+            },
+            Inst::AsrImm {
+                rd: x0,
+                rn: x1,
+                amount: 3,
+            },
+            Inst::Csel {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+                cond: ncl_asm_aarch64::Cond::Ne,
+            },
+            Inst::Mul {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::Udiv {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::Sdiv {
+                rd: x0,
+                rn: x1,
+                rm: x2,
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: unsigned,
+            },
+            Inst::StrW {
+                rt: x0,
+                mem: MemOperand::Unsigned {
+                    base: sp,
+                    offset: 4,
+                    scale: 4,
+                },
+            },
+            Inst::Ldrb {
+                rt: x0,
+                mem: MemOperand::Unsigned {
+                    base: sp,
+                    offset: 1,
+                    scale: 1,
+                },
+            },
+            Inst::Ldrh {
+                rt: x0,
+                mem: MemOperand::Unsigned {
+                    base: sp,
+                    offset: 2,
+                    scale: 2,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: MemOperand::Unscaled {
+                    base: sp,
+                    offset: -8,
+                },
+            },
+            Inst::Str {
+                rt: x0,
+                mem: MemOperand::PreIndex {
+                    base: sp,
+                    offset: 8,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: MemOperand::PostIndex {
+                    base: sp,
+                    offset: 8,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: MemOperand::Register {
+                    base: sp,
+                    index: x1,
+                    extend: None,
+                    shift: 0,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: MemOperand::Register {
+                    base: sp,
+                    index: x1,
+                    extend: Some(Extend::Uxtw),
+                    shift: 0,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: MemOperand::Register {
+                    base: sp,
+                    index: x1,
+                    extend: Some(Extend::Uxtw),
+                    shift: 8,
+                },
+            },
+            Inst::Ldp {
+                rt: x0,
+                rt2: x1,
+                mem: unsigned,
+            },
+            Inst::Stp {
+                rt: x0,
+                rt2: x1,
+                mem: MemOperand::PreIndex {
+                    base: sp,
+                    offset: -8,
+                },
+            },
+            Inst::Ldr {
+                rt: x0,
+                mem: unsigned,
+            },
+            Inst::Str {
+                rt: x0,
+                mem: unsigned,
+            },
+        ];
+        let decoded =
+            decode(Architecture::Aarch64, &aarch64_encoded(&instructions), 0).expect("decode");
+        assert_eq!(decoded.len(), instructions.len());
+        assert!(decoded.iter().all(|instruction| instruction.size == 4));
+        assert!(
+            decoded
+                .iter()
+                .all(|instruction| instruction.branch_target.is_none())
+        );
+        assert_eq!(decoded[0].text, "dmb ish");
+        assert_eq!(decoded[1].text, "brk #7");
+        assert_eq!(decoded[2].text, "ret x0");
+        assert_eq!(decoded[3].text, "br x1");
+        assert_eq!(decoded[4].text, "blr x2");
+        assert_eq!(decoded[5].text, "movz x0, #0x12, lsl #16");
+        assert_eq!(decoded[6].text, "movk x0, #0x34, lsl #32");
+        assert_eq!(decoded[7].text, "movn x0, #0x56, lsl #48");
+        assert_eq!(decoded[8].text, "add sp, sp, #4096 (lsl #12)");
+        assert_eq!(decoded[9].text, "subs sp, sp, #2");
+        assert_eq!(decoded[10].text, "orr x0, x31, x1, lsl #0");
+        assert_eq!(decoded[11].text, "add x0, x1, x2, lsl #3");
+        assert_eq!(decoded[12].text, "sub x0, x1, x2, lsl #2");
+        assert_eq!(decoded[13].text, "adds x0, x1, x2, lsl #1");
+        assert_eq!(decoded[14].text, "subs x0, x1, x2, lsl #1");
+        assert_eq!(decoded[15].text, "add sp, sp, x0, lsl #1");
+        assert_eq!(decoded[16].text, "and x0, x1, x2, lsl #1");
+        assert_eq!(decoded[17].text, "orr x0, x1, x2, lsl #1");
+        assert_eq!(decoded[18].text, "eor x0, x1, x2, lsl #1");
+        assert_eq!(decoded[19].text, "tst xzr, x1, x2, lsl #1");
+        assert_eq!(decoded[20].text, "and x0, x1, #0xff");
+        assert_eq!(decoded[21].text, "orr x0, x1, #0xff");
+        assert_eq!(decoded[22].text, "eor x0, x1, #0xff");
+        assert_eq!(decoded[23].text, "tst xzr, x1, #0xff");
+        assert_eq!(decoded[24].text, "lsl x0, x1, x2");
+        assert_eq!(decoded[25].text, "lsr x0, x1, x2");
+        assert_eq!(decoded[26].text, "asr x0, x1, x2");
+        assert_eq!(decoded[27].text, "lsl x0, x1, #3");
+        assert_eq!(decoded[28].text, "lsr x0, x1, #3");
+        assert_eq!(decoded[29].text, "asr x0, x1, #3");
+        assert_eq!(decoded[30].text, "csel x0, x1, x2, ne");
+        assert_eq!(decoded[31].text, "mul x0, x1, x2");
+        assert_eq!(decoded[32].text, "udiv x0, x1, x2");
+        assert_eq!(decoded[33].text, "sdiv x0, x1, x2");
+        assert_eq!(decoded[34].text, "ldr x0, [sp, #8]");
+        assert_eq!(decoded[35].text, "str w0, [sp, #4]");
+        assert_eq!(decoded[36].text, "ldr w0, [sp, #1]");
+        assert_eq!(decoded[37].text, "ldr w0, [sp, #2]");
+        assert_eq!(decoded[38].text, "ldr x0, [sp, #-8]");
+        assert_eq!(decoded[39].text, "str x0, [sp, #8]!");
+        assert_eq!(decoded[40].text, "ldr x0, [sp], #8");
+        assert_eq!(decoded[41].text, "ldr x0, [sp, x1]");
+        assert_eq!(decoded[42].text, "ldr x0, [sp, x1, uxtw]");
+        assert_eq!(decoded[43].text, "ldr x0, [sp, x1, uxtw #8]");
+        assert_eq!(decoded[44].text, "ldp x0, x1, [sp, #8]");
+        assert_eq!(decoded[45].text, "stp x0, x1, [sp, #-8]!");
+        assert_eq!(decoded[46].text, "ldr x0, [sp, #8]");
+        assert_eq!(decoded[47].text, "str x0, [sp, #8]");
+        let floating_point = decode(
+            Architecture::Aarch64,
+            &aarch64_words(&[0xfd40_07e0, 0xfd00_07e0]),
+            0,
+        )
+        .expect("decode");
+        assert_eq!(floating_point[0].text, "ldr d0, [sp, #8]");
+        assert_eq!(floating_point[1].text, "str d0, [sp, #8]");
+    }
+
+    #[test]
+    fn aarch64_decodes_direct_branch_and_address_forms() {
+        let decoded = decode(
+            Architecture::Aarch64,
+            &aarch64_words(&[
+                0x9400_0002, // bl #8
+                0x3500_0042, // cbnz x2, #8
+                0x3400_0043, // cbz x3, #8
+                0x3710_0024, // tbnz x4, #2, #4
+                0x3610_0025, // tbz x5, #2, #4
+                0x1000_0006, // adr x6, #0
+                0x9000_0007, // adrp x7, #0
+                0x17ff_ffff, // b #-4
+            ]),
+            0x1000,
+        )
+        .expect("decode");
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|instruction| (instruction.text.as_str(), instruction.branch_target))
+                .collect::<Vec<_>>(),
+            vec![
+                ("bl #8", Some(0x1008)),
+                ("cbnz x2, #8", Some(0x100c)),
+                ("cbz x3, #8", Some(0x1010)),
+                ("tbnz x4, #2, #4", Some(0x1010)),
+                ("tbz x5, #2, #4", Some(0x1014)),
+                ("adr x6, #0x1014", Some(0x1014)),
+                ("adrp x7, #0x1000", Some(0x1000)),
+                ("b #-4", Some(0x1018)),
+            ]
+        );
+    }
+
+    #[test]
+    fn aarch64_rejects_invalid_logical_immediates_and_signed_word_loads() {
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x9200_fc00]),
+                0x3000,
+            ),
+            Err(DecodeError::Invalid {
+                address: 0x3000,
+                reason: "invalid logical immediate".into(),
+            })
+        );
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x9200_f800]),
+                0x3000,
+            ),
+            Err(DecodeError::Invalid {
+                address: 0x3000,
+                reason: "invalid logical immediate".into(),
+            })
+        );
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x9240_fc00]),
+                0x3000,
+            ),
+            Err(DecodeError::Invalid {
+                address: 0x3000,
+                reason: "invalid logical immediate".into(),
+            })
+        );
+        let decoded =
+            decode(Architecture::Aarch64, &aarch64_words(&[0xb840_03e0]), 0).expect("decode");
+        assert_eq!(decoded[0].text, "ldr x0, [sp, #0]");
+    }
+
+    #[test]
+    fn aarch64_decodes_remaining_memory_forms_and_reports_target_overflow() {
+        let widths = decode(
+            Architecture::Aarch64,
+            &aarch64_words(&[0x3900_07e0, 0x7900_07e0, 0xb940_07e0]),
+            0,
+        )
+        .expect("decode");
+        assert_eq!(
+            widths
+                .iter()
+                .map(|instruction| instruction.text.as_str())
+                .collect::<Vec<_>>(),
+            ["str w0, [sp, #1]", "str w0, [sp, #2]", "ldr w0, [sp, #4]"]
+        );
+
+        use ncl_asm_aarch64::{Inst, MemOperand, Reg, RegOrSp};
+        let pair = decode(
+            Architecture::Aarch64,
+            &aarch64_encoded(&[Inst::Ldp {
+                rt: Reg(0),
+                rt2: Reg(1),
+                mem: MemOperand::PostIndex {
+                    base: RegOrSp::Sp,
+                    offset: 8,
+                },
+            }]),
+            0,
+        )
+        .expect("decode");
+        assert_eq!(pair[0].text, "ldp x0, x1, [sp], #8");
+
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x9000_0020]),
+                u64::MAX,
+            ),
+            Err(DecodeError::Invalid {
+                address: u64::MAX,
+                reason: "branch target overflows address space".into(),
+            })
+        );
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x587f_ffe0]),
+                u64::MAX,
+            ),
+            Err(DecodeError::Invalid {
+                address: u64::MAX,
+                reason: "branch target overflows address space".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn decode_errors_have_stable_display_text() {
+        assert_eq!(
+            DecodeError::Truncated { address: 0x1000 }.to_string(),
+            "truncated instruction at 0x1000"
+        );
+        assert_eq!(
+            DecodeError::Unsupported {
+                address: 0x2000,
+                bytes: vec![0xff],
+            }
+            .to_string(),
+            "unsupported instruction at 0x2000"
+        );
+        assert_eq!(
+            DecodeError::Invalid {
+                address: 0x3000,
+                reason: "bad encoding".into(),
+            }
+            .to_string(),
+            "invalid instruction at 0x3000: bad encoding"
         );
     }
 }

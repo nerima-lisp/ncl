@@ -13,14 +13,16 @@ use ncl_conditions::ConditionError;
 use ncl_ffi::{
     AlienEnum, AlienRecord, AlienRoutine, AlienType, ArrayLength, CallableMode, FfiError,
     FieldOffset, LoaderMode, SharedObjectPath, SysPrimitive, SystemAreaPointer, alien_sap,
-    align_of, cast, deallocate_system_memory, extern_alien_name, field_offset,
-    find_foreign_symbol_address, foreign_symbol_address, foreign_symbol_dataref_sap,
-    foreign_symbol_sap, marshal_argument, memmove, offset_of, parse_type_name,
-    parse_type_specifier, record_size, sap_ref, sap_set, size_of, union_size, unmarshal_result,
+    align_of, allocate_system_memory, cast, deallocate_system_memory, dlerror_message,
+    dlopen_or_lose, extern_alien_name, field_offset, find_foreign_symbol_address,
+    foreign_symbol_address, foreign_symbol_dataref_sap, foreign_symbol_sap, load_shared_object,
+    marshal_argument, memmove, offset_of, parse_type_name, parse_type_specifier, record_size,
+    sap_ref, sap_set, signal_ffi_error, size_of, union_size, unmarshal_result,
 };
 use ncl_object::{
     DoubleFloat, ObjectError, Package, Runtime, ThreadContext, Word, double_value,
-    make_bignum_from_i128, make_bignum_from_limbs, make_double,
+    make_bignum_from_i128, make_bignum_from_limbs, make_double, symbol_function, symbol_is_macro,
+    symbol_is_special,
 };
 
 macro_rules! fixture {
@@ -178,6 +180,7 @@ fn parser_accepts_all_atomic_aliases_and_reports_structural_errors() {
         ("void", AlienType::Void),
         ("boolean", AlienType::Boolean),
         ("bool", AlienType::Boolean),
+        ("char", AlienType::Char),
         ("unsigned_char", AlienType::UnsignedChar),
         ("signed-short", AlienType::Short),
         ("short int", AlienType::Short),
@@ -195,10 +198,12 @@ fn parser_accepts_all_atomic_aliases_and_reports_structural_errors() {
         ("ssize-t", AlienType::SSizeT),
         ("float", AlienType::SingleFloat),
         ("single-float", AlienType::SingleFloat),
+        ("double", AlienType::DoubleFloat),
         ("double-float", AlienType::DoubleFloat),
         ("long-float", AlienType::LongFloat),
         ("cstring", AlienType::CString),
         ("utf8-string", AlienType::Utf8String),
+        ("sap", AlienType::SystemAreaPointer),
         ("system-area-pointer", AlienType::SystemAreaPointer),
     ];
     for (source, expected) in aliases {
@@ -227,6 +232,22 @@ fn parser_accepts_all_atomic_aliases_and_reports_structural_errors() {
     assert!(parse_type_specifier("(function int ((x int))").is_err());
     assert!(parse_type_specifier("(function int (int (named c-string)))").is_ok());
     assert!(parse_type_specifier("(function int int)").is_err());
+
+    assert_eq!(
+        parse_type_specifier("(pointer unsigned-char)"),
+        Ok(AlienType::pointer(AlienType::UnsignedChar))
+    );
+    assert_eq!(
+        parse_type_specifier("(array short 2)"),
+        Ok(AlienType::array(AlienType::Short, 2))
+    );
+    assert_eq!(
+        parse_type_specifier("(union pair (first int))"),
+        Ok(AlienType::union(
+            "pair",
+            vec![("first".to_owned(), AlienType::Int)]
+        ))
+    );
 }
 
 #[test]
@@ -370,7 +391,19 @@ fn marshal_covers_boolean_character_integer_float_pointer_and_composite_edges() 
         })
     );
     assert_eq!(
+        marshal_argument(&ctx, &AlienType::Short, Word::TRUE),
+        Err(FfiError::TypeMismatch {
+            type_name: "integer"
+        })
+    );
+    assert_eq!(
         marshal_argument(&ctx, &AlienType::UnsignedInt, Word::fixnum(-1)),
+        Err(FfiError::ValueOutOfRange {
+            type_name: "integer"
+        })
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedShort, Word::fixnum(-1)),
         Err(FfiError::ValueOutOfRange {
             type_name: "integer"
         })
@@ -872,6 +905,42 @@ fn memory_and_pointer_wrappers_keep_their_declared_contracts() {
 }
 
 #[test]
+fn loader_and_allocator_boundaries_report_exact_missing_primitives() {
+    missing(
+        load_shared_object(SharedObjectPath::new("libexample.so"), LoaderMode::Lazy),
+        SysPrimitive::DlopenSharedObject,
+    );
+    missing(
+        load_shared_object("libexample.so", false),
+        SysPrimitive::DlopenSharedObject,
+    );
+    missing(
+        dlopen_or_lose(SharedObjectPath::from("libexample.so")),
+        SysPrimitive::DlopenSharedObject,
+    );
+    missing(dlerror_message(), SysPrimitive::DlerrorMessage);
+    missing(
+        allocate_system_memory(0),
+        SysPrimitive::AllocateSystemMemory,
+    );
+}
+
+#[test]
+fn condition_boundary_reports_missing_hierarchy_and_unhandled_error() {
+    fixture!(runtime, ctx);
+    assert_eq!(
+        signal_ffi_error(&mut ctx, &runtime, "without registration"),
+        Err(FfiError::MissingConditionClass("SIMPLE-ERROR"))
+    );
+
+    ncl_conditions::register(&runtime).unwrap();
+    assert_eq!(
+        signal_ffi_error(&mut ctx, &runtime, "unhandled"),
+        Err(FfiError::Condition(ConditionError::Unhandled))
+    );
+}
+
+#[test]
 fn rooted_object_helper_propagates_closure_errors() {
     fixture!(runtime, ctx);
     let result: Result<(), FfiError> =
@@ -915,6 +984,27 @@ fn dynamic_symbol_names_are_owned_before_the_loader_boundary() {
             SysPrimitive::DlsymForeignSymbol
         ))
     );
+}
+
+#[test]
+fn registration_installs_function_flags_and_alien_classes() {
+    fixture!(runtime, ctx);
+    ncl_ffi::register(&runtime).unwrap();
+    let package = Package::from_word(runtime.find_package(&ctx, "NCL-FFI").unwrap());
+
+    let (call_foreign, _) = package.intern(&mut ctx, &runtime, "CALL-FOREIGN").unwrap();
+    assert_eq!(symbol_function(&ctx, call_foreign), Ok(Word::UNBOUND));
+
+    let (macro_symbol, _) = package.intern(&mut ctx, &runtime, "ADDR").unwrap();
+    assert_eq!(symbol_is_macro(&ctx, macro_symbol), Ok(true));
+
+    let (variable, _) = package.intern(&mut ctx, &runtime, "*").unwrap();
+    assert_eq!(symbol_function(&ctx, variable), Ok(Word::UNBOUND));
+    assert_eq!(symbol_is_special(&ctx, variable), Ok(true));
+
+    assert!(runtime.class(&mut ctx, "ARRAY").is_some());
+    assert!(runtime.class(&mut ctx, "CAST").is_some());
+    assert!(runtime.class(&mut ctx, "FUNCTION").is_some());
 }
 
 #[test]

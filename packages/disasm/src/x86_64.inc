@@ -775,6 +775,156 @@ mod tests {
     }
 
     #[test]
+    fn decodes_remaining_integer_and_two_byte_register_forms() {
+        let bytes = [
+            0x48, 0x09, 0xc8, // or %rcx, %rax
+            0x48, 0x0b, 0xc8, // or %rax, %rcx
+            0x48, 0x21, 0xc8, // and %rcx, %rax
+            0x48, 0x23, 0xc8, // and %rax, %rcx
+            0x48, 0x29, 0xc8, // sub %rcx, %rax
+            0x48, 0x2b, 0xc8, // sub %rax, %rcx
+            0x48, 0x31, 0xc8, // xor %rcx, %rax
+            0x48, 0x33, 0xc8, // xor %rax, %rcx
+            0x48, 0xc1, 0xe0, 1, // shl $1, %rax
+            0x48, 0xc1, 0xe8, 1, // shr $1, %rax
+            0x48, 0xd3, 0xf8, // sar %cl, %rax
+            0x48, 0xf7, 0xc0, // inc %rax
+            0x48, 0xf7, 0xc8, // dec %rax
+            0x48, 0xf7, 0xd0, // not %rax
+            0x48, 0xf7, 0xf8, // idiv %rax
+            0x0f, 0x95, 0xc0, // setne %ax
+            0x0f, 0xb6, 0xc0, // movzb %rax, %rax
+            0x0f, 0xbf, 0xc0, // movsw %rax, %rax
+        ];
+        assert_eq!(
+            decoded(&bytes, 0),
+            vec![
+                (3, "or %rcx, %rax".into(), None),
+                (3, "or %rax, %rcx".into(), None),
+                (3, "and %rcx, %rax".into(), None),
+                (3, "and %rax, %rcx".into(), None),
+                (3, "sub %rcx, %rax".into(), None),
+                (3, "sub %rax, %rcx".into(), None),
+                (3, "xor %rcx, %rax".into(), None),
+                (3, "xor %rax, %rcx".into(), None),
+                (4, "shl $1, %rax".into(), None),
+                (4, "shr $1, %rax".into(), None),
+                (3, "sar %cl, %rax".into(), None),
+                (3, "inc %rax".into(), None),
+                (3, "dec %rax".into(), None),
+                (3, "not %rax".into(), None),
+                (3, "idiv %rax".into(), None),
+                (3, "setne %ax".into(), None),
+                (3, "movzb %rax, %rax".into(), None),
+                (3, "movsw %rax, %rax".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_x86_branch_and_group_overflow_errors() {
+        assert!(matches!(
+            decode(&[0xe9, 0, 0, 0, 0], u64::MAX - 4),
+            Err(DecodeError::Invalid { reason, .. }) if reason == "branch target overflow"
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0xf7, 0xe0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0xc1, 0x00, 1], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+    }
+
+    #[test]
+    fn covers_remaining_operand_and_dispatch_paths() {
+        assert!(matches!(
+            decode(&[0x48, 0xb8, 0, 0], 0),
+            Err(DecodeError::Truncated { .. })
+        ));
+        assert_eq!(
+            decoded(&[0x48, 0x8b, 0x80, 1, 0, 0, 0], 0),
+            vec![(7, "mov 1(%rax), %rax".into(), None)]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x8b, 0x04, 0x08], 0),
+            vec![(4, "mov (%rax,%rcx), %rax".into(), None)]
+        );
+        assert_eq!(
+            decoded(&[0x52, 0x53, 0x55, 0x56], 0),
+            vec![
+                (1, "push %rdx".into(), None),
+                (1, "push %rbx".into(), None),
+                (1, "push %rbp".into(), None),
+                (1, "push %rsi".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x0f, 0x10, 0xc1, 0x48, 0x0f, 0x11, 0xc1], 0),
+            vec![
+                (4, "movsd %rcx, %xmm0".into(), None),
+                (4, "movsd %xmm0, %rcx".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x0f, 0x69, 0xc1], 0),
+            vec![(3, "imul %rax, %rcx".into(), None)]
+        );
+        for bytes in [[0x0f, 0x10, 0xc1], [0x0f, 0x01, 0xc0], [0xf2, 0x90, 0xc0]] {
+            assert!(matches!(decode(&bytes, 0), Err(DecodeError::Unsupported { .. })));
+        }
+        assert_eq!(
+            decoded(&[0x48, 0x3b, 0xc1, 0x48, 0x39, 0xc1], 0),
+            vec![
+                (3, "cmp %rcx, %rax".into(), None),
+                (3, "cmp %rax, %rcx".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x85, 0xc1], 0),
+            vec![(3, "test %rax, %rcx".into(), None)]
+        );
+        let mut immediate_groups = Vec::new();
+        for ext in [0u8, 1, 4, 5, 6] {
+            immediate_groups.extend([0x48, 0x81, 0xc0 | (ext << 3), 1, 0, 0, 0]);
+        }
+        assert_eq!(
+            decoded(&immediate_groups, 0)
+                .into_iter()
+                .map(|(_, text, _)| text)
+                .collect::<Vec<_>>(),
+            [
+                "add $1, %rax",
+                "or $1, %rax",
+                "and $1, %rax",
+                "sub $1, %rax",
+                "xor $1, %rax",
+            ]
+        );
+        assert!(matches!(
+            decode(&[0x48, 0xff, 0xc0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x62], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert_eq!(
+            decoded(&[0x48, 0xd3, 0xe0], 0),
+            vec![(3, "shl %cl, %rax".into(), None)]
+        );
+        assert!(matches!(
+            decode(&[0x48, 0xd3, 0xc0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0x81, 0xd0, 1, 0, 0, 0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+    }
+
+    #[test]
     fn branches_are_absolute() {
         let x = decode(&[0xe9, 1, 0, 0, 0, 0xc3], 0x1000).unwrap();
         assert_eq!(x[0].branch_target, Some(0x1006));

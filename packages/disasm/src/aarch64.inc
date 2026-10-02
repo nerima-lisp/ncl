@@ -65,7 +65,7 @@ fn memory(
         format!("w{}", word & 31)
     };
     let base = spreg((word >> 5) & 31);
-    let is_register = unscaled && word & 0x0000_0800 != 0;
+    let is_register = unscaled && word & 0x0000_0c00 == 0x0000_0800;
     let operand = if is_register {
         let option = (word >> 13) & 7;
         let amount = ((word >> 12) & 1) * size;
@@ -103,7 +103,7 @@ fn memory(
 }
 fn logical_immediate(n: u32, immr: u32, imms: u32) -> Option<u64> {
     let nbits = (n << 6) | (!imms & 0x3f);
-    let len = 31 - nbits.leading_zeros();
+    let len = 31u32.checked_sub(nbits.leading_zeros())?;
     if len < 1 {
         return None;
     }
@@ -319,9 +319,9 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
             }
             None => Err("invalid logical immediate".into()),
         }
-    } else if word & 0xffff_fc00 == 0x9ac0_2000
-        || word & 0xffff_fc00 == 0x9ac0_2400
-        || word & 0xffff_fc00 == 0x9ac0_2800
+    } else if word & 0xffe0_fc00 == 0x9ac0_2000
+        || word & 0xffe0_fc00 == 0x9ac0_2400
+        || word & 0xffe0_fc00 == 0x9ac0_2800
     {
         let op = match word & 0x3c00 {
             0x2000 => "lsl",
@@ -337,8 +337,8 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
             ),
             None,
         ))
-    } else if word & 0xffe0_0000 == 0xd340_0000 || word & 0xffe0_0000 == 0x9340_0000 {
-        let asr = word & 0x8000_0000 != 0;
+    } else if word & 0xffc0_0000 == 0xd340_0000 || word & 0xffc0_0000 == 0x9340_0000 {
+        let asr = word & 0x4000_0000 == 0;
         let lsr = !asr && word & 0x0000_fc00 == 0x0000_fc00;
         let op = if asr {
             "asr"
@@ -347,12 +347,17 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
         } else {
             "lsl"
         };
+        let amount = if asr || lsr {
+            (word >> 16) & 63
+        } else {
+            (64 - ((word >> 16) & 63)) & 63
+        };
         Ok((
             format!(
                 "{op} {}, {}, #{}",
                 reg(word & 31),
                 reg((word >> 5) & 31),
-                (word >> 10) & 63
+                amount
             ),
             None,
         ))
@@ -449,7 +454,7 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
                 .unwrap_or_else(|| "invalid memory operand".to_string()),
             None,
         ))
-    } else if word & 0xff00_0000 == 0x9a80_0000 {
+    } else if word & 0xffe0_0000 == 0x9a80_0000 {
         Ok((
             format!(
                 "csel {}, {}, {}, {}",
@@ -460,7 +465,7 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
             ),
             None,
         ))
-    } else if word & 0xffe0_001f == 0x9b00_7c00 {
+    } else if word & 0xffe0_fc1f == 0x9b00_7c00 {
         Ok((
             format!(
                 "mul {}, {}, {}",

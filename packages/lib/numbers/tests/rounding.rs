@@ -273,3 +273,70 @@ fn float_round_uses_half_even_and_rejects_zero_divisors() {
         Err(ObjectError::TypeError)
     );
 }
+
+#[test]
+fn rounding_ties_negative_divisors_and_bignum_ratios_have_exact_results() {
+    let (runtime, mut ctx) = setup();
+    for (value, divisor, quotient, remainder) in
+        [(5, 2, 2, 1), (3, 2, 2, -1), (-5, 2, -2, -1), (-3, 2, -2, 1)]
+    {
+        let result = call(
+            &runtime,
+            &mut ctx,
+            "ROUND",
+            &[Word::fixnum(value), Word::fixnum(divisor)],
+        )
+        .unwrap();
+        assert_eq!(integer(&ctx, result), quotient, "ROUND {value}/{divisor}");
+        assert_eq!(integer(&ctx, ctx.values()[1]), remainder, "ROUND remainder");
+    }
+
+    for (name, quotient, remainder) in [("FLOOR", -4, -1), ("CEILING", -3, 1), ("TRUNCATE", -3, 1)]
+    {
+        let result = call(
+            &runtime,
+            &mut ctx,
+            name,
+            &[Word::fixnum(7), Word::fixnum(-2)],
+        )
+        .unwrap();
+        assert_eq!(integer(&ctx, result), quotient, "{name} quotient");
+        assert_eq!(
+            integer(&ctx, ctx.values()[1]),
+            remainder,
+            "{name} remainder"
+        );
+    }
+
+    let bignum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, (1_i128 << 70) + 1)
+        .unwrap()
+        .into();
+    let ratio = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    let result = call(&runtime, &mut ctx, "FLOOR", &[bignum, ratio]).unwrap();
+    assert_eq!(integer(&ctx, result), 787_061_080_478_274_202_283);
+    let remainder = ctx.values()[1];
+    let ObjectRef::Ratio(remainder) = classify_object(&ctx, remainder) else {
+        panic!(
+            "expected ratio remainder, got {:?}",
+            classify_object(&ctx, remainder)
+        );
+    };
+    let remainder = ncl_object::Ratio::from_word(remainder);
+    assert_eq!(integer(&ctx, ratio_numerator(&ctx, remainder).unwrap()), 1);
+    assert_eq!(
+        integer(&ctx, ratio_denominator(&ctx, remainder).unwrap()),
+        2
+    );
+
+    let value = ncl_object::make_double(&mut ctx, &runtime, 3.5)
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_double(&mut ctx, &runtime, 1.0)
+        .unwrap()
+        .into();
+    let result = call(&runtime, &mut ctx, "FROUND", &[value, divisor]).unwrap();
+    assert_eq!(float(&ctx, result), 4.0);
+    assert_eq!(float(&ctx, ctx.values()[1]), -0.5);
+}

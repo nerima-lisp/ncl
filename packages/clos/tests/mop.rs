@@ -306,6 +306,85 @@ fn class_slots_support_legacy_length_and_cons_superclass_descriptors() {
 }
 
 #[test]
+fn class_slot_queries_reject_descriptors_without_slot_fields() {
+    let (runtime, mut ctx) = setup();
+    let malformed = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-SLOTS", &[malformed]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[malformed]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn slot_accessors_reject_non_fixnum_locations() {
+    let (runtime, mut ctx) = setup();
+    let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::TRUE]).unwrap();
+    let malformed = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::TRUE]).unwrap();
+
+    for name in [
+        "SLOT-VALUE-USING-CLASS",
+        "SLOT-BOUNDP-USING-CLASS",
+        "SLOT-MAKUNBOUND-USING-CLASS",
+    ] {
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[class, instance, malformed]),
+            Err(ncl_object::ObjectError::TypeError),
+            "non-fixnum slot locations must be rejected by {name}"
+        );
+    }
+}
+
+#[test]
+fn slot_accessors_require_the_instance_class_to_match_exactly() {
+    let (runtime, mut ctx) = setup();
+    let parent = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let child_name = Word::fixnum(81);
+    let child_slots = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+    let child = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        child_name,
+        parent,
+        child_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, child, &[Word::TRUE]).unwrap();
+    let slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(82),
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-VALUE-USING-CLASS",
+            &[parent, instance, slot],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-VALUE-USING-CLASS",
+            &[child, instance, slot],
+        ),
+        Ok(Word::TRUE)
+    );
+}
+
+#[test]
 fn descriptors_are_registration_ready() {
     for descriptor in mop::builtin_descriptors() {
         let implementation = mop::implementation(*descriptor);

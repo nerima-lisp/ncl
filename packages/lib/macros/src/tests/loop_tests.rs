@@ -352,3 +352,36 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     );
     Ok(())
 }
+
+#[test]
+fn expands_hash_iteration_without_using_variable() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::Hash(HashClause {
+                    variable: key,
+                    kind: HashIterationKind::Key,
+                    table,
+                    using: None,
+                }),
+                LoopClause::Do(vec![key]),
+            ],
+        },
+    )?;
+    let let_form = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, let_form[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let maphash = elements(&mut ctx, progn[1])?;
+    let lambda = elements(&mut ctx, maphash[1])?;
+    let parameters = elements(&mut ctx, lambda[1])?;
+    assert_eq!(parameters[0], key);
+    assert_ne!(parameters[1], key);
+    assert_eq!(maphash[2], table);
+    Ok(())
+}

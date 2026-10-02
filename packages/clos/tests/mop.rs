@@ -83,6 +83,54 @@ fn descriptors_expose_typed_class_and_slot_metadata() {
 }
 
 #[test]
+fn registered_mop_class_queries_return_direct_and_effective_metadata() {
+    let (runtime, mut ctx) = setup();
+    let parent = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let name = Word::fixnum(901);
+    let slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(902),
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+    let direct_slots = make_simple_vector(&mut ctx, &runtime, &[slot]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        name,
+        parent,
+        direct_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-NAME", &[class]),
+        Ok(name)
+    );
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[class]),
+        Ok(direct_slots)
+    );
+    let effective_slots = registered_call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_length(&ctx, effective_slots),
+        Ok(1)
+    );
+    let precedence =
+        registered_call(&mut ctx, &runtime, "CLASS-PRECEDENCE-LIST", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, precedence, 0),
+        Ok(class)
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, precedence, 1),
+        Ok(parent)
+    );
+}
+
+#[test]
 fn registered_mop_callbacks_cover_metadata_and_slot_lifecycle() {
     let (runtime, mut ctx) = setup();
     let superclass = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();

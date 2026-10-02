@@ -260,3 +260,52 @@ fn make_instance_initializes_slots_inherited_through_three_generations() {
         Word::fixnum(33)
     );
 }
+
+#[test]
+fn make_instance_resolves_symbol_classes_and_applies_slot_defaults() {
+    let (runtime, mut ctx) = setup();
+    let slot_name = Word::fixnum(301);
+    let initarg = Word::fixnum(302);
+    let slot =
+        make_simple_vector(&mut ctx, &runtime, &[slot_name, initarg, Word::fixnum(303)]).unwrap();
+    let slots = make_simple_vector(&mut ctx, &runtime, &[slot]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(304),
+        Word::NIL,
+        slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    runtime
+        .define_class(&mut ctx, "N26-DEFAULT-CLASS", class)
+        .unwrap();
+    let package = runtime.find_package(&ctx, "COMMON-LISP-USER").unwrap();
+    let class_symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "N26-DEFAULT-CLASS")
+        .unwrap()
+        .0;
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let slot_value = function(&runtime, &mut ctx, "COMMON-LISP", "SLOT-VALUE");
+
+    let default_instance = runtime
+        .call_builtin(&mut ctx, make, &[class_symbol])
+        .unwrap();
+    assert_eq!(
+        runtime
+            .call_builtin(&mut ctx, slot_value, &[default_instance, Word::fixnum(0)])
+            .unwrap(),
+        Word::fixnum(303)
+    );
+
+    let explicit_instance = runtime
+        .call_builtin(&mut ctx, make, &[class_symbol, initarg, Word::fixnum(305)])
+        .unwrap();
+    assert_eq!(
+        runtime
+            .call_builtin(&mut ctx, slot_value, &[explicit_instance, Word::fixnum(0)])
+            .unwrap(),
+        Word::fixnum(305)
+    );
+}

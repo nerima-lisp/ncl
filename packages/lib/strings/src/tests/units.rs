@@ -612,3 +612,192 @@ fn string_comparisons_ranges_and_unicode_boundaries_are_observable() {
         Err(ncl_object::ObjectError::TypeError)
     );
 }
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn string_designators_comparators_and_trim_directions_cover_edges() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let a = Word::character('a' as u32);
+    let b = Word::character('b' as u32);
+    let upper_a = Word::character('A' as u32);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR/=", &[a, b]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR>", &[b, a]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR<=", &[a, a]), Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "CHAR>=", &[a, a]), Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-NOT-EQUAL", &[a, upper_a]),
+        Word::NIL
+    );
+    assert_eq!(call(&runtime, &mut ctx, "CHAR-LESSP", &[a, b]), Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-GREATERP", &[b, a]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-NOT-LESSP", &[a, a]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-NOT-GREATERP", &[a, a]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-EQUAL", &[a, upper_a]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR-NOT-EQUAL", &[a, b]),
+        Word::TRUE
+    );
+
+    let one_char = ncl_object::make_string(&mut ctx, &runtime, &['x'])
+        .unwrap_or_else(|error| panic!("one-char string: {error:?}"));
+    let many_chars = ncl_object::make_string(&mut ctx, &runtime, &['x', 'y'])
+        .unwrap_or_else(|error| panic!("many-char string: {error:?}"));
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHARACTER", &[one_char]),
+        Word::character('x' as u32)
+    );
+    assert_eq!(
+        call_result(&runtime, &mut ctx, "CHARACTER", &[many_chars]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(call(&runtime, &mut ctx, "CHARACTER", &[a]), a);
+    assert_eq!(call(&runtime, &mut ctx, "STRINGP", &[one_char]), Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRINGP", &[Word::TRUE]),
+        Word::NIL
+    );
+
+    let symbol = keyword(&mut ctx, &runtime, "SymbolName");
+    let symbol_name = call(&runtime, &mut ctx, "STRING", &[symbol]);
+    assert_eq!(string_value(&ctx, symbol_name), "SymbolName");
+    assert_eq!(
+        call(&runtime, &mut ctx, "CHAR", &[symbol, Word::fixnum(0)]),
+        Word::character('S' as u32)
+    );
+    assert_eq!(
+        call_result(&runtime, &mut ctx, "STRING", &[Word::TRUE]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let left = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b'])
+        .unwrap_or_else(|error| panic!("left: {error:?}"));
+    let right = ncl_object::make_string(&mut ctx, &runtime, &['a', 'c'])
+        .unwrap_or_else(|error| panic!("right: {error:?}"));
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING/=", &[left, right]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING<", &[left, right]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING>", &[right, left]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING<=", &[left, left]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING>=", &[left, left]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-NOT-EQUAL", &[left, right]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-LESSP", &[left, right]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-GREATERP", &[right, left]),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-NOT-LESSP", &[left, left]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-NOT-GREATERP", &[left, left]),
+        Word::TRUE
+    );
+    let unknown = keyword(&mut ctx, &runtime, "UNKNOWN");
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            "STRING=",
+            &[left, right, unknown, Word::fixnum(0)],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let padded = ncl_object::make_string(&mut ctx, &runtime, &['.', ' ', 'x', ' ', '.'])
+        .unwrap_or_else(|error| panic!("padded: {error:?}"));
+    let bag = ncl_object::make_string(&mut ctx, &runtime, &['.', ' '])
+        .unwrap_or_else(|error| panic!("bag: {error:?}"));
+    let left_trimmed = call(&runtime, &mut ctx, "STRING-LEFT-TRIM", &[bag, padded]);
+    assert_eq!(string_value(&ctx, left_trimmed), "x .");
+    let right_trimmed = call(&runtime, &mut ctx, "STRING-RIGHT-TRIM", &[bag, padded]);
+    assert_eq!(string_value(&ctx, right_trimmed), ". x");
+    let trimmed = call(&runtime, &mut ctx, "STRING-TRIM", &[bag, padded]);
+    assert_eq!(string_value(&ctx, trimmed), "x");
+    assert_eq!(
+        call_result(&runtime, &mut ctx, "MAKE-STRING", &[Word::fixnum(-1)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn unicode_case_normalization_and_grapheme_edges_are_distinct() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let decomposed = ncl_object::make_string(&mut ctx, &runtime, &['e', '\u{301}'])
+        .unwrap_or_else(|error| panic!("decomposed: {error:?}"));
+    let nfc = call_unicode(&runtime, &mut ctx, "NORMALIZE-NFC", &[decomposed]);
+    assert_eq!(string_value(&ctx, nfc), "é");
+    let upper = ncl_object::make_string(&mut ctx, &runtime, &['É'])
+        .unwrap_or_else(|error| panic!("upper: {error:?}"));
+    let downcase = call_unicode(&runtime, &mut ctx, "FULL-DOWNCASE", &[upper]);
+    assert_eq!(string_value(&ctx, downcase), "é");
+
+    let clusters = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            '👩', '\u{200d}', '💻', '🇯', '🇵', '🇦', '🏳', '\u{fe0f}', '\u{200d}', '🌈',
+        ],
+    )
+    .unwrap_or_else(|error| panic!("clusters: {error:?}"));
+    let boundaries = call_unicode(&runtime, &mut ctx, "GRAPHEME-BOUNDARIES", &[clusters]);
+    let actual: Vec<_> = (0..ncl_object::simple_vector_length(&ctx, boundaries)
+        .unwrap_or_else(|error| panic!("boundary length: {error:?}")))
+        .map(|index| {
+            ncl_object::simple_vector_ref(&ctx, boundaries, index)
+                .unwrap_or_else(|error| panic!("boundary: {error:?}"))
+                .as_fixnum()
+                .unwrap_or_else(|| panic!("boundary is not a fixnum"))
+        })
+        .collect();
+    assert_eq!(actual, vec![0, 3, 5, 6, 10]);
+
+    let invalid_value = ncl_object::make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(256)])
+        .unwrap_or_else(|error| panic!("invalid value: {error:?}"));
+    assert_eq!(
+        call_unicode_result(&runtime, &mut ctx, "UTF8-TO-STRING", &[invalid_value]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}

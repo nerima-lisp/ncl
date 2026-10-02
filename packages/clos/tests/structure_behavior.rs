@@ -68,9 +68,11 @@ fn structure_builtins_copy_and_check_layout_and_slot_boundaries() {
         runtime.call_builtin(&mut ctx, reference, &[source, Word::fixnum(0)]),
         Ok(Word::fixnum(10))
     );
-    assert!(runtime
-        .call_builtin(&mut ctx, reference, &[source, Word::fixnum(2)])
-        .is_err());
+    assert!(
+        runtime
+            .call_builtin(&mut ctx, reference, &[source, Word::fixnum(2)])
+            .is_err()
+    );
     assert_eq!(
         runtime.call_builtin(&mut ctx, set, &[source, Word::fixnum(1), Word::fixnum(21)]),
         Ok(Word::fixnum(21))
@@ -108,9 +110,11 @@ fn structure_builtins_copy_and_check_layout_and_slot_boundaries() {
         runtime.call_builtin(&mut ctx, make, &[layout_word, Word::fixnum(1)]),
         Err(ObjectError::Layout)
     );
-    assert!(runtime
-        .call_builtin(&mut ctx, reference, &[Word::NIL, Word::fixnum(0)])
-        .is_err());
+    assert!(
+        runtime
+            .call_builtin(&mut ctx, reference, &[Word::NIL, Word::fixnum(0)])
+            .is_err()
+    );
 }
 
 #[test]

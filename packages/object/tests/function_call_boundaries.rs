@@ -2,10 +2,10 @@
 
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    make_code_object, make_simple_fun, Arity, Builtin, BuiltinArgs, BuiltinConvention,
-    BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    FunctionArguments, FunctionCaller, LambdaList, MultipleValues, ObjectError, Runtime,
-    ThreadContext,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
+    LambdaList, MultipleValues, ObjectError, Runtime, ThreadContext, make_code_object,
+    make_simple_fun,
 };
 use ncl_sys::Word;
 

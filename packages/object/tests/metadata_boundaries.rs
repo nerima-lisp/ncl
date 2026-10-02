@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    make_cons, make_string, LispError, ObjectError, Package, PackageError, Runtime, StringObject,
-    ThreadContext, Word,
+    LispError, ObjectError, Package, PackageError, Runtime, StringObject, ThreadContext, Word,
+    make_cons, make_string,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> StringObject {

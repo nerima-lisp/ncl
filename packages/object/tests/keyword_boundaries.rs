@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use ncl_object::package::Package;
-use ncl_object::{car, cdr, make_cons, ObjectError, Runtime, ThreadContext};
+use ncl_object::{ObjectError, Runtime, ThreadContext, car, cdr, make_cons};
 use ncl_sys::Word;
 
 fn context() -> (Runtime, ThreadContext) {

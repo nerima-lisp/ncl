@@ -493,5 +493,5 @@ pub(super) use value_types::value_is_raw_entry;
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
-#[path = "target_x86_64_lowering_tests.rs"]
+#[path = "tests_target_x86_64_lowering.rs"]
 mod tests;

@@ -443,5 +443,5 @@ pub fn compile_function_aarch64(
 }
 
 #[cfg(test)]
-#[path = "target_aarch64_tests.rs"]
+#[path = "tests_target_aarch64.rs"]
 mod tests;

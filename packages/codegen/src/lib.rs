@@ -25,7 +25,7 @@ mod tests_x86_64_fixture;
 #[cfg(test)]
 mod tests_x86_64_golden;
 #[cfg(test)]
-#[path = "x86_64_lowering_matrix_tests.rs"]
+#[path = "tests_x86_64_lowering_matrix.rs"]
 mod x86_64_lowering_matrix_tests;
 
 pub use abi::{

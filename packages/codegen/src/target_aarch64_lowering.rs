@@ -483,5 +483,5 @@ pub(super) use ops::lower_op;
 
 #[cfg(test)]
 #[allow(clippy::too_many_lines, missing_docs)]
-#[path = "target_aarch64_lowering_tests.rs"]
+#[path = "tests_target_aarch64_lowering.rs"]
 mod tests;

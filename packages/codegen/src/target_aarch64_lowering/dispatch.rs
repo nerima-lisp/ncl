@@ -374,5 +374,5 @@ pub fn lower_pending_check(
     clippy::useless_vec,
     missing_docs
 )]
-#[path = "dispatch_tests.rs"]
+#[path = "tests_aarch64_lowering_dispatch.rs"]
 mod tests;

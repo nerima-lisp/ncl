@@ -491,5 +491,5 @@ pub fn compile_function_x86_64(
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
-#[path = "target_x86_64_tests.rs"]
+#[path = "tests_target_x86_64.rs"]
 mod tests;

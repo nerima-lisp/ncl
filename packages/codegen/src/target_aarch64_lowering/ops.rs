@@ -458,5 +458,5 @@ pub fn lower_op(
 }
 
 #[cfg(test)]
-#[path = "ops_tests.rs"]
+#[path = "tests_aarch64_lowering_ops.rs"]
 mod tests;

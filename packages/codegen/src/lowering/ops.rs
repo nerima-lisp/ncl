@@ -267,5 +267,5 @@ pub(super) fn emit_return(
 
 #[cfg(test)]
 #[allow(clippy::expect_used, missing_docs)]
-#[path = "ops_tests.rs"]
+#[path = "tests_lowering_ops.rs"]
 mod tests;

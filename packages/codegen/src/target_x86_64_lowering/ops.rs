@@ -452,5 +452,5 @@ pub fn move_args(
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
-#[path = "ops_tests.rs"]
+#[path = "tests_x86_64_lowering_ops.rs"]
 mod tests;

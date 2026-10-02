@@ -288,11 +288,6 @@ impl Sccp {
         let constants = function.constants.clone();
         for block in &mut function.blocks {
             if !reachable.contains(&block.id) {
-                if !matches!(block.terminator, Terminator::Unreachable) || !block.ops.is_empty() {
-                    block.ops.clear();
-                    block.terminator = Terminator::Unreachable;
-                    changed = true;
-                }
                 continue;
             }
             for op in &mut block.ops {
@@ -366,7 +361,39 @@ impl Sccp {
                 changed = true;
             }
         }
+        changed |= Self::retain_referenced_blocks(function);
         changed
+    }
+
+    fn retain_referenced_blocks(function: &mut Function) -> bool {
+        let mut retained = HashSet::from([function.blocks[0].id]);
+        for block in &function.blocks {
+            match &block.terminator {
+                Terminator::Jump { target, .. } => {
+                    retained.insert(*target);
+                }
+                Terminator::Branch {
+                    then_target,
+                    else_target,
+                    ..
+                } => {
+                    retained.insert(*then_target);
+                    retained.insert(*else_target);
+                }
+                Terminator::Switch { cases, default, .. } => {
+                    retained.extend(cases.iter().map(|(_, target, _)| *target));
+                    retained.insert(*default);
+                }
+                Terminator::CallReturn { .. }
+                | Terminator::TailCall { .. }
+                | Terminator::Return { .. }
+                | Terminator::Throw { .. }
+                | Terminator::Unreachable => {}
+            }
+        }
+        let block_count = function.blocks.len();
+        function.blocks.retain(|block| retained.contains(&block.id));
+        function.blocks.len() != block_count
     }
 
     fn constant_value_from(constants: &[Constant], state: State) -> Option<&Constant> {

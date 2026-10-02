@@ -57,7 +57,9 @@ fn binary_duplicate() -> ncl_ir::Function {
 fn removes_redundant_pure_computation() {
     let mut function = binary_duplicate();
     let mut pass = GlobalValueNumbering;
-    assert!(pass.run(&mut function, &Module::default()).fixture());
+    let result = pass.run(&mut function, &Module::default());
+    assert!(result.is_ok(), "GVN failed: {result:?}");
+    assert!(result.unwrap_or(false));
     assert_eq!(function.blocks[0].ops.len(), 1);
     assert!(
         matches!(&function.blocks[0].terminator, Terminator::Return { values } if values.len() == 1)
@@ -90,6 +92,14 @@ fn store_invalidates_load_value() {
             &[Ty::Word],
         )
         .fixture()[0];
+    let duplicate = builder
+        .push_op(
+            OpKind::Load {
+                address: ValueId(0),
+            },
+            &[Ty::Word],
+        )
+        .fixture()[0];
     builder
         .push_op(
             OpKind::Store {
@@ -114,7 +124,7 @@ fn store_invalidates_load_value() {
         .fixture();
     let mut function = builder.finish();
     let mut pass = GlobalValueNumbering;
-    assert!(!pass.run(&mut function, &Module::default()).fixture());
+    assert!(pass.run(&mut function, &Module::default()).fixture());
     assert_eq!(
         function.blocks[0]
             .ops
@@ -123,5 +133,61 @@ fn store_invalidates_load_value() {
             .count(),
         2
     );
+    assert_ne!(first, duplicate);
     assert_ne!(first, second);
+}
+
+#[test]
+fn removes_duplicate_expression_in_a_dominated_branch_and_rewrites_return() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(3),
+        "dominated-duplicate",
+        vec![Param {
+            name: "condition".into(),
+            ty: Ty::Bool,
+        }],
+        vec![Ty::Bool],
+    );
+    let entry_value = builder
+        .push_op(OpKind::Move { value: ValueId(0) }, &[Ty::Bool])
+        .fixture()[0];
+    let then_block = builder.create_block(Vec::new());
+    let then_value = builder
+        .push_op(OpKind::Move { value: ValueId(0) }, &[Ty::Bool])
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![then_value],
+        })
+        .fixture();
+    let else_block = builder.create_block(Vec::new());
+    builder
+        .terminate(Terminator::Return {
+            values: vec![entry_value],
+        })
+        .fixture();
+    builder.position_at(ncl_ir::BlockId(0)).fixture();
+    builder
+        .terminate(Terminator::Branch {
+            condition: ValueId(0),
+            then_target: then_block,
+            then_args: vec![],
+            else_target: else_block,
+            else_args: vec![],
+        })
+        .fixture();
+    let mut function = builder.finish();
+
+    let mut pass = GlobalValueNumbering;
+    let result = pass.run(&mut function, &Module::default());
+    assert!(result.is_ok(), "GVN failed: {result:?}");
+    assert!(result.unwrap_or(false));
+    assert!(function.blocks[1].ops.is_empty());
+    assert_eq!(
+        function.blocks[1].terminator,
+        Terminator::Return {
+            values: vec![entry_value]
+        }
+    );
+    ncl_ir::verify(&function).fixture();
 }

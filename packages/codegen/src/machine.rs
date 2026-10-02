@@ -151,6 +151,20 @@ impl MachineFunction {
         &self.slots
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MachineOp;
+
+    #[test]
+    fn machine_operation_move_accessor_preserves_both_slots() {
+        let operation = MachineOp::move_value(3, 11);
+
+        assert_eq!(operation.as_move(), Some((3, 11)));
+        assert_eq!(MachineOp::Return.as_move(), None);
+        assert_ne!(operation, MachineOp::Return);
+    }
+}
 /// A source location attached to generated code.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DebugLocation {

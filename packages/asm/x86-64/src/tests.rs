@@ -17,9 +17,7 @@ fn indirect_call_and_jump_use_the_ff_opcode() {
     assert!(a.emit(&Inst::JmpReg(Reg::R15)).is_ok());
     assert_eq!(
         a.bytes(),
-        &[
-            0xff, 0xd0, 0x41, 0xff, 0xd3, 0x41, 0xff, 0xe0, 0x41, 0xff, 0xe7
-        ]
+        &[0xff, 0xd0, 0x41, 0xff, 0xd3, 0x41, 0xff, 0xe0, 0x41, 0xff, 0xe7]
     );
 }
 
@@ -34,22 +32,18 @@ fn unary_group_instructions_keep_the_f7_opcode() {
 #[test]
 fn memory_addressing_boundaries() {
     let mut a = Assembler::new();
-    assert!(
-        a.emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rsp, 0)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rbp, 0)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rax, 127)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rax, 128)))
-            .is_ok()
-    );
+    assert!(a
+        .emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rsp, 0)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rbp, 0)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rax, 127)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rax, 128)))
+        .is_ok());
     assert_eq!(
         a.bytes(),
         &[
@@ -95,9 +89,7 @@ fn backward_branches_are_patched() {
     };
     assert_eq!(
         blob.bytes,
-        &[
-            0xe9, 0xfb, 0xff, 0xff, 0xff, 0x0f, 0x85, 0xfa, 0xff, 0xff, 0xff
-        ]
+        &[0xe9, 0xfb, 0xff, 0xff, 0xff, 0x0f, 0x85, 0xfa, 0xff, 0xff, 0xff]
     );
 }
 
@@ -108,9 +100,7 @@ fn rip_relative_memory_uses_modrm_rm_five() {
     assert!(a.emit(&Inst::MovRM(Reg::Rax, Mem::rip(0x10))).is_ok());
     assert_eq!(
         a.bytes(),
-        &[
-            0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8b, 0x05, 0x10, 0, 0, 0
-        ]
+        &[0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8b, 0x05, 0x10, 0, 0, 0]
     );
 }
 
@@ -143,6 +133,41 @@ fn rel32_out_of_range_is_rejected() {
 fn invalid_nop_is_rejected() {
     let mut a = Assembler::new();
     assert_eq!(a.emit(&Inst::Nop(0)), Err(EncodeError::InvalidNopLength));
+    assert_eq!(a.emit(&Inst::Nop(10)), Err(EncodeError::InvalidNopLength));
+    assert_eq!(a.emit(&Inst::Nop(9)), Ok(()));
+    assert_eq!(a.bytes().len(), 9);
+}
+
+#[test]
+fn memory_mode_boundaries_are_encoded_and_invalid_rip_forms_rejected() {
+    let mut a = Assembler::new();
+    assert!(a
+        .emit(&Inst::Lea(
+            Reg::Rax,
+            Mem {
+                base: None,
+                index: None,
+                scale: Scale::Eight,
+                disp: -4,
+                rip: false,
+            }
+        ))
+        .is_ok());
+    assert_eq!(a.bytes(), &[0x48, 0x8d, 0x04, 0xc5, 0xfc, 0xff, 0xff, 0xff]);
+
+    let invalid = Mem {
+        base: Some(Reg::Rax),
+        index: None,
+        scale: Scale::One,
+        disp: 0,
+        rip: true,
+    };
+    assert_eq!(
+        a.emit(&Inst::MovRM(Reg::Rax, invalid)),
+        Err(EncodeError::InvalidOperand(
+            "rip-relative memory has base or index",
+        ))
+    );
 }
 
 #[test]
@@ -227,30 +252,24 @@ fn golden_corpus_covers_all_groups() {
 #[test]
 fn extended_memory_and_sse_forms_encode() {
     let mut a = Assembler::new();
-    assert!(
-        a.emit(&Inst::TestRM(Reg::R8, Mem::base(Reg::R12, 0)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::MovzxRM(Reg::R15, Mem::base(Reg::Rsp, 0), 8))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::MovsxRM(Reg::R12, Mem::base(Reg::R13, 128), 32))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::SseRM(SseOp::Addsd, Xmm(8), Mem::base(Reg::R12, 0)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::Cvtsi2sdRM(Xmm(8), Mem::base(Reg::Rsp, 0)))
-            .is_ok()
-    );
-    assert!(
-        a.emit(&Inst::Cvttsd2siRM(Reg::R15, Mem::base(Reg::Rsp, 8)))
-            .is_ok()
-    );
+    assert!(a
+        .emit(&Inst::TestRM(Reg::R8, Mem::base(Reg::R12, 0)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::MovzxRM(Reg::R15, Mem::base(Reg::Rsp, 0), 8))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::MovsxRM(Reg::R12, Mem::base(Reg::R13, 128), 32))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::SseRM(SseOp::Addsd, Xmm(8), Mem::base(Reg::R12, 0)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::Cvtsi2sdRM(Xmm(8), Mem::base(Reg::Rsp, 0)))
+        .is_ok());
+    assert!(a
+        .emit(&Inst::Cvttsd2siRM(Reg::R15, Mem::base(Reg::Rsp, 8)))
+        .is_ok());
     assert_eq!(
         a.bytes(),
         &[

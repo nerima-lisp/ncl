@@ -1,7 +1,7 @@
 //! Target-independent target contracts and the `AArch64` fixed-template backend.
 
-use crate::CodegenError;
 use crate::templates::TemplateKind;
+use crate::CodegenError;
 use ncl_asm_aarch64::{Assembler, Cond, Inst, Reg, RegOrSp};
 
 /// A machine target capable of encoding one fixed-template operation.
@@ -79,6 +79,86 @@ impl TargetIsa for AArch64TargetIsa {
             .finish()
             .map(|blob| blob.bytes)
             .map_err(|error| CodegenError::Encode(error.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AArch64TargetIsa, TargetIsa};
+    use crate::TemplateKind;
+    use ncl_asm_aarch64::{Cond, Inst, Label, Reg, RegOrSp};
+
+    #[test]
+    fn aarch64_target_exposes_fixed_register_contract() {
+        assert_eq!(AArch64TargetIsa.name(), "aarch64");
+        assert_eq!(AArch64TargetIsa::CONTEXT, Reg(21));
+        assert_eq!(AArch64TargetIsa::SCRATCH, [Reg(16), Reg(17)]);
+    }
+
+    #[test]
+    fn aarch64_skeleton_selects_control_flow_and_call_instructions() {
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Return),
+            vec![Inst::Ret { rn: Reg(30) }]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Branch),
+            vec![Inst::BCond {
+                cond: Cond::Ne,
+                label: Label(0),
+            }]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Jump),
+            vec![Inst::B { label: Label(0) }]
+        );
+        for kind in [
+            TemplateKind::Call,
+            TemplateKind::CallIndirect,
+            TemplateKind::MakeClosure,
+            TemplateKind::MakeValueCell,
+            TemplateKind::CallClosure,
+            TemplateKind::Builtin,
+            TemplateKind::EnterHandler,
+            TemplateKind::LeaveHandler,
+        ] {
+            assert_eq!(
+                AArch64TargetIsa::skeleton(kind),
+                vec![Inst::Blr { rn: Reg(17) }],
+                "call-like template {kind:?}"
+            );
+        }
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Alloc),
+            vec![Inst::Nop]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Const),
+            vec![Inst::Mov {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(16)),
+            }]
+        );
+    }
+
+    #[test]
+    fn aarch64_template_encoding_resolves_local_branch_labels() {
+        let target = AArch64TargetIsa;
+
+        for kind in [TemplateKind::Branch, TemplateKind::Jump] {
+            let bytes = target
+                .encode_template(kind)
+                .unwrap_or_else(|error| panic!("template encoding: {error:?}"));
+            assert_eq!(bytes.len(), 4, "one encoded instruction for {kind:?}");
+            assert_ne!(bytes, vec![0; 4], "encoded branch for {kind:?}");
+        }
+        assert_eq!(
+            target
+                .encode_template(TemplateKind::Return)
+                .unwrap_or_else(|error| panic!("template encoding: {error:?}"))
+                .len(),
+            4
+        );
     }
 }
 

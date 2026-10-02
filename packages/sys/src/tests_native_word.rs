@@ -1,4 +1,4 @@
-use super::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, Word, copy_native_words};
+use super::{copy_native_words, NativeWordCopyError, Word, CALL_ARGUMENTS_LIMIT};
 
 #[test]
 fn rejects_null_native_words_pointer() {
@@ -37,5 +37,14 @@ fn copies_aligned_native_words_and_rejects_unaligned_address() {
     assert_eq!(
         copy_native_words(words.as_ptr().addr() as u64 + 1, 0),
         Err(NativeWordCopyError::Unaligned)
+    );
+}
+
+#[test]
+fn accepts_an_empty_aligned_native_words_area() {
+    let words = [Word::NIL];
+    assert_eq!(
+        copy_native_words(words.as_ptr().addr() as u64, 0),
+        Ok(Vec::new())
     );
 }

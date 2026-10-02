@@ -147,6 +147,7 @@ fn supported_memory_primitives_emit_exact_operand_offsets() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn operation_lowering_emits_exact_load_store_and_compare_templates() {
     let function = FunctionBuilder::new(
         ncl_ir::FunctionId(217),
@@ -452,6 +453,7 @@ fn indirect_calls_emit_the_same_machine_call_template_as_direct_calls() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn move_args_emits_exact_parallel_copies_for_register_and_spill_cycles() {
     let register_slots = slots_with_locations(
         &[

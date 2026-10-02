@@ -421,5 +421,5 @@ pub fn read_forms(
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]
-#[path = "compile_tests.rs"]
+#[path = "tests/compile.rs"]
 mod compile_tests;

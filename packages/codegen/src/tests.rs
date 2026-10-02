@@ -167,6 +167,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     };
     assert!(
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .push_op(OpKind::Store { address, value }, &[])
             .is_ok()
@@ -186,6 +187,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     assert!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .push_op(
@@ -218,6 +220,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     ] {
         assert!(
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
                 .push_op(
                     OpKind::Prim {
@@ -239,6 +242,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         ncl_ir::Compare::Ge,
     ] {
         assert!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
                 .push_op(
@@ -266,6 +270,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     assert!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .terminate(Terminator::Return {

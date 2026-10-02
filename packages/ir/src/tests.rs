@@ -20,6 +20,7 @@ fn types_have_stable_display_and_primitive_effects() {
 
     for primitive in [Prim::Rplaca, Prim::Rplacd, Prim::Aset] {
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         assert!(!primitive.is_pure()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         assert!(primitive.invalidates_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         assert!(!primitive.reads_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions

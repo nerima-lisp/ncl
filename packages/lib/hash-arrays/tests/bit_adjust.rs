@@ -200,6 +200,63 @@ fn adjust_array_covers_fill_pointer_copy_and_option_validation() -> Result<(), O
     assert_eq!(array_row_major_ref(&ctx, expanded, 0)?, Word::fixnum(1));
     assert_eq!(array_row_major_ref(&ctx, expanded, 1)?, Word::fixnum(1));
     assert_eq!(array_row_major_ref(&ctx, expanded, 2)?, Word::fixnum(1));
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "VECTOR-PUSH",
+            &[Word::fixnum(1), expanded],
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-POP", &[expanded])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[expanded])?,
+        Word::fixnum(2)
+    );
+
+    let displacement_base = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[Word::fixnum(3), adjustable, Word::TRUE],
+    )?;
+    let target = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[Word::fixnum(5), initial, Word::fixnum(0)],
+    );
+    assert!(target.is_ok(), "target creation: {target:?}");
+    let target = target?;
+    array_row_major_set(&mut ctx, target, 1, Word::fixnum(1))?;
+    let displaced_dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let displaced_to = keyword(&runtime, &mut ctx, "DISPLACED-TO")?;
+    let displaced_offset = keyword(&runtime, &mut ctx, "DISPLACED-INDEX-OFFSET")?;
+    let displaced = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[
+            displacement_base,
+            displaced_dimensions,
+            displaced_to,
+            target,
+            displaced_offset,
+            Word::fixnum(1),
+        ],
+    );
+    assert!(displaced.is_ok(), "adjust displacement: {displaced:?}");
+    let displaced = displaced?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-DISPLACEMENT", &[displaced])?,
+        target
+    );
+    assert_eq!(ctx.values(), &[target, Word::fixnum(1)]);
+    assert_eq!(array_row_major_ref(&ctx, displaced, 0)?, Word::fixnum(1));
 
     let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
     assert_eq!(
@@ -331,6 +388,16 @@ fn bit_operations_cover_multidimensional_results_and_array_type_checks() -> Resu
         call(&runtime, &mut ctx, "BIT-AND", &[bits, general]),
         Err(ObjectError::TypeError)
     );
+    let mismatched = ncl_object::make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0)],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "BIT-AND", &[bits, mismatched]),
+        Err(ObjectError::TypeError)
+    );
     assert_eq!(
         call(&runtime, &mut ctx, "BIT-NOT", &[bits, general]),
         Err(ObjectError::TypeError)
@@ -341,6 +408,23 @@ fn bit_operations_cover_multidimensional_results_and_array_type_checks() -> Resu
     );
     assert_eq!(
         call(&runtime, &mut ctx, "SBIT", &[bits, Word::fixnum(-1)]),
+        Err(ObjectError::TypeError)
+    );
+    let bad_value = ncl_object::make_array(
+        &mut ctx,
+        &runtime,
+        &[1],
+        ncl_object::ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(2),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "BIT", &[bad_value, Word::fixnum(0)]),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -457,6 +541,10 @@ fn vector_mutators_cover_full_capacity_empty_pop_and_invalid_extension() -> Resu
         call(&runtime, &mut ctx, "VECTOR-POP", &[vector]),
         Err(ObjectError::TypeError)
     );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(0)
+    );
 
     let extension_zero = call(
         &runtime,
@@ -465,6 +553,10 @@ fn vector_mutators_cover_full_capacity_empty_pop_and_invalid_extension() -> Resu
         &[Word::fixnum(1), vector, Word::fixnum(0)],
     );
     assert_eq!(extension_zero, Err(ObjectError::TypeError));
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(0)
+    );
     assert_eq!(
         call(
             &runtime,

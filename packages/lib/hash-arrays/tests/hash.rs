@@ -502,6 +502,215 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
 }
 
 #[test]
+fn maphash_calls_the_callback_for_each_entry() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let table = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[])?;
+    let callback = common_lisp_symbol(&runtime, &mut ctx, "REMHASH")?;
+    let mut nested_tables = Vec::new();
+    for key in [1, 2, 3] {
+        let nested = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[])?;
+        call_ncl_ext(
+            &runtime,
+            &mut ctx,
+            "GETHASH-SET",
+            &[Word::fixnum(key), nested, Word::fixnum(key + 10)],
+        )?;
+        call_ncl_ext(
+            &runtime,
+            &mut ctx,
+            "GETHASH-SET",
+            &[Word::fixnum(key), table, nested],
+        )?;
+        nested_tables.push(nested);
+    }
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAPHASH", &[callback, table])?,
+        Word::NIL
+    );
+    for nested in nested_tables {
+        assert_eq!(
+            call(&runtime, &mut ctx, "HASH-TABLE-COUNT", &[nested])?,
+            Word::fixnum(0)
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(3)
+    );
+    Ok(())
+}
+
+#[test]
+fn array_predicates_and_dimensions_reject_non_arrays_and_invalid_indices() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let value = Word::fixnum(7);
+    assert_eq!(call(&runtime, &mut ctx, "ARRAYP", &[value])?, Word::NIL);
+    assert_eq!(call(&runtime, &mut ctx, "VECTORP", &[value])?, Word::NIL);
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-VECTOR-P", &[value])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[value])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BIT-VECTOR-P", &[value])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-RANK", &[value]),
+        Err(ObjectError::TypeError)
+    );
+
+    let array = call(&runtime, &mut ctx, "MAKE-ARRAY", &[Word::fixnum(2)])?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(-1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-DIMENSION", &[array, Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-IN-BOUNDS-P", &[array]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::TRUE],
+        ),
+        Ok(Word::NIL)
+    );
+    Ok(())
+}
+
+#[test]
+fn array_accessors_reject_wrong_arity_types_and_bounds() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let array = call(&runtime, &mut ctx, "MAKE-ARRAY", &[Word::fixnum(2)])?;
+    let vector = call(&runtime, &mut ctx, "VECTOR", &[Word::fixnum(1)])?;
+
+    for name in ["AREF", "ROW-MAJOR-AREF", "ARRAY-ROW-MAJOR-INDEX"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[array, Word::fixnum(2)]),
+            Err(ObjectError::TypeError)
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "AREF", &[array, Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ROW-MAJOR-AREF",
+            &[array, Word::fixnum(-1)]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SVREF", &[vector, Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn hash_table_options_and_accessors_reject_invalid_arguments() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+    let test = keyword(&runtime, &mut ctx, "TEST")?;
+    let weakness = keyword(&runtime, &mut ctx, "WEAKNESS")?;
+    let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test, Word::NIL]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[weakness, Word::TRUE],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[unknown, Word::NIL]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test]),
+        Err(ObjectError::TypeError)
+    );
+
+    for name in [
+        "GETHASH",
+        "HASH-TABLE-COUNT",
+        "HASH-TABLE-SIZE",
+        "HASH-TABLE-REHASH-SIZE",
+        "HASH-TABLE-REHASH-THRESHOLD",
+        "HASH-TABLE-TEST",
+        "CLRHASH",
+    ] {
+        let args = if name == "GETHASH" {
+            vec![Word::fixnum(1), Word::fixnum(2)]
+        } else {
+            vec![Word::fixnum(2)]
+        };
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &args),
+            Err(ObjectError::TypeError)
+        );
+    }
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "REMHASH",
+            &[Word::fixnum(1), Word::fixnum(2)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

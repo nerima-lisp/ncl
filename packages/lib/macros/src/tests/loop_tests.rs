@@ -438,6 +438,110 @@ fn expands_return_and_accumulators_to_expected_result_forms() -> Result<(), Obje
 }
 
 #[test]
+fn parses_return_and_nconc_count_clauses_without_merging_their_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let returned = symbol(&mut ctx, &runtime, "RETURNED")?;
+    let concatenated = symbol(&mut ctx, &runtime, "CONCATENATED")?;
+    let counted = symbol(&mut ctx, &runtime, "COUNTED")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let return_word = symbol(&mut ctx, &runtime, "RETURN")?;
+    let nconc = symbol(&mut ctx, &runtime, "NCONC")?;
+    let into = symbol(&mut ctx, &runtime, "INTO")?;
+    let count = symbol(&mut ctx, &runtime, "COUNT")?;
+    let ast = parse_loop(
+        &mut ctx,
+        &[
+            return_word,
+            returned,
+            nconc,
+            value,
+            into,
+            concatenated,
+            count,
+            value,
+            into,
+            counted,
+        ],
+    )?;
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [
+            LoopClause::Return(form),
+            LoopClause::Accumulate {
+                kind: AccumulatorKind::Nconc,
+                form: nconc_form,
+                variable: Some(nconc_variable),
+            },
+            LoopClause::Accumulate {
+                kind: AccumulatorKind::Count,
+                form: count_form,
+                variable: Some(count_variable),
+            },
+        ] if *form == returned
+            && *nconc_form == value
+            && *nconc_variable == concatenated
+            && *count_form == value
+            && *count_variable == counted
+    ));
+    Ok(())
+}
+
+#[test]
+fn expands_return_repeat_while_until_and_across_into_distinct_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let returned = symbol(&mut ctx, &runtime, "RETURNED")?;
+    let predicate = symbol(&mut ctx, &runtime, "PREDICATE")?;
+    let stop = symbol(&mut ctx, &runtime, "STOP")?;
+    let item = symbol(&mut ctx, &runtime, "ITEM")?;
+    let vector = symbol(&mut ctx, &runtime, "VECTOR")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::Repeat(Word::fixnum(2)),
+                LoopClause::While(predicate),
+                LoopClause::Until(stop),
+                LoopClause::Across {
+                    variable: item,
+                    vector,
+                },
+                LoopClause::Return(returned),
+            ],
+        },
+    )?;
+    for operator_name in ["<=", "NOT", ">=", "ARRAY-TOTAL-SIZE", "AREF", "+"] {
+        let operator = symbol(&mut ctx, &runtime, operator_name)?;
+        assert!(
+            contains_word(&mut ctx, expansion, operator)?,
+            "missing {operator_name}"
+        );
+    }
+    let return_from = symbol(&mut ctx, &runtime, "RETURN-FROM")?;
+    assert!(contains_word(&mut ctx, expansion, return_from)?);
+    assert!(contains_word(&mut ctx, expansion, returned)?);
+    assert!(contains_word(&mut ctx, expansion, item)?);
+    assert!(contains_word(&mut ctx, expansion, vector)?);
+    Ok(())
+}
+
+#[test]
+fn rejects_unimplemented_always_never_and_thereis_accumulators() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    for keyword in ["ALWAYS", "NEVER", "THEREIS"] {
+        let keyword = symbol(&mut ctx, &runtime, keyword)?;
+        assert_eq!(
+            parse_loop(&mut ctx, &[keyword, value]),
+            Err(ObjectError::TypeError),
+            "unsupported accumulator keyword {keyword:?} should be rejected"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn parses_list_and_vector_iteration_clauses() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let x = symbol(&mut ctx, &runtime, "X")?;

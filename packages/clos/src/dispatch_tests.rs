@@ -1,9 +1,13 @@
 #[cfg(test)]
 mod included_tests {
+    use super::super::domain::{
+        ClassId, DispatchArgument, DomainError, EqlValueId, GenericFunction, Method, MethodId,
+        MethodQualifier, Specializer,
+    };
     use super::super::COMMON_LISP;
     use ncl_object::{
-        FunctionArguments, FunctionCaller, FunctionObject, MultipleValues, Package, Runtime, Scope,
-        ThreadContext, Word, make_code_object, make_simple_fun, push_heap_root,
+        make_code_object, make_simple_fun, push_heap_root, FunctionArguments, FunctionCaller,
+        FunctionObject, MultipleValues, Package, Runtime, Scope, ThreadContext, Word,
     };
 
     struct RecordingCaller {
@@ -525,5 +529,96 @@ mod included_tests {
         assert_eq!(caller.calls[2].0, primary);
         assert_eq!(caller.calls[3].0, primary);
         assert_eq!(caller.calls[3].1[0], Word::NIL);
+    }
+
+    #[test]
+    fn generic_dispatch_rejects_duplicate_methods_and_reports_missing_removals() {
+        let mut generic = GenericFunction::default();
+        let method = Method::new(
+            MethodId::new(1),
+            vec![Specializer::Class(ClassId::new(1))],
+            MethodQualifier::Primary,
+            MethodId::new(11),
+        );
+        assert_eq!(generic.add_method(method.clone()), Ok(()));
+        assert_eq!(
+            generic.add_method(method),
+            Err(DomainError::DuplicateMethod)
+        );
+        assert!(!generic.remove_method(MethodId::new(99)));
+    }
+
+    #[test]
+    fn generic_dispatch_rejects_method_combination_without_primary_method() {
+        let mut generic = GenericFunction::default();
+        assert_eq!(
+            generic.add_method(Method::new(
+                MethodId::new(1),
+                vec![Specializer::Class(ClassId::new(1))],
+                MethodQualifier::Before,
+                MethodId::new(11),
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            generic
+                .compute_standard_method_combination(&[DispatchArgument::Class(ClassId::new(1))]),
+            Err(DomainError::MissingPrimaryMethod)
+        );
+    }
+
+    #[test]
+    fn generic_dispatch_rejects_class_and_eql_specializer_mismatches() {
+        let mut generic = GenericFunction::default();
+        assert_eq!(
+            generic.add_method(Method::new(
+                MethodId::new(1),
+                vec![Specializer::Class(ClassId::new(7))],
+                MethodQualifier::Primary,
+                MethodId::new(11),
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            generic.add_method(Method::new(
+                MethodId::new(2),
+                vec![Specializer::Eql(EqlValueId::new(7))],
+                MethodQualifier::Primary,
+                MethodId::new(12),
+            )),
+            Ok(())
+        );
+        assert!(generic
+            .compute_applicable_methods(&[DispatchArgument::Class(ClassId::new(8))])
+            .is_empty());
+        assert!(generic
+            .compute_applicable_methods(&[DispatchArgument::Eql(EqlValueId::new(8))])
+            .is_empty());
+    }
+
+    #[test]
+    fn generic_dispatch_invalidates_cache_for_class_redefinition() {
+        let mut generic = GenericFunction::default();
+        assert_eq!(
+            generic.add_method(Method::new(
+                MethodId::new(1),
+                vec![Specializer::Class(ClassId::new(1))],
+                MethodQualifier::Primary,
+                MethodId::new(11),
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            generic.compute_applicable_methods(&[DispatchArgument::Class(ClassId::new(1))]),
+            vec![MethodId::new(1)]
+        );
+        assert_eq!(generic.cache_len(), 1);
+        generic.invalidate_for_class_redefinition(ClassId::new(1));
+        assert_eq!(generic.cache_len(), 0);
+        assert_eq!(
+            generic.compute_applicable_methods(&[DispatchArgument::Class(ClassId::new(1))]),
+            vec![MethodId::new(1)]
+        );
+        assert_eq!(generic.cache_len(), 1);
     }
 }

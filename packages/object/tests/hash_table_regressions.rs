@@ -7,7 +7,10 @@ mod weak_entries;
 mod equalp;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
-use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
+use ncl_object::{
+    ObjectError, Package, Runtime, ThreadContext, allocate, make_cons, make_double, make_string,
+    make_symbol,
+};
 use ncl_sys::StorageCondition;
 use ncl_sys::Word;
 
@@ -82,6 +85,69 @@ fn moved_registered_context_allows_try_push_root() {
     let token = ncl_object::try_push_root(&mut ctx, &mut value)
         .unwrap_or_else(|error| panic!("push failed: {error:?}"));
     assert!(ncl_object::try_pop_root(&mut ctx, token).is_ok());
+}
+
+#[test]
+fn hash_table_options_accept_exact_boundaries_and_reject_non_finite_numbers() {
+    let (runtime, mut ctx) = setup();
+    let one =
+        make_double(&mut ctx, &runtime, 1.0).unwrap_or_else(|error| panic!("double: {error:?}"));
+    let threshold = HashTable::new_with_options(
+        &mut ctx,
+        &runtime,
+        HashTest::Eql,
+        Weakness::None,
+        Word::fixnum(8),
+        Some(Word::fixnum(1)),
+        Some(one.into()),
+    )
+    .unwrap_or_else(|error| panic!("boundary options: {error:?}"));
+    assert_eq!(threshold.capacity(&ctx), Ok(8));
+    assert_eq!(threshold.rehash_size(&ctx), Ok(Word::fixnum(1)));
+    assert_eq!(threshold.rehash_threshold(&ctx), Ok(one.into()));
+
+    for (requested, expected_capacity) in [(1_i64, 8_usize), (8, 8), (9, 16)] {
+        let table = HashTable::new_with_options(
+            &mut ctx,
+            &runtime,
+            HashTest::Eq,
+            Weakness::None,
+            Word::fixnum(requested),
+            None,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("size {requested}: {error:?}"));
+        assert_eq!(table.capacity(&ctx), Ok(expected_capacity));
+    }
+
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let non_finite = make_double(&mut ctx, &runtime, value)
+            .unwrap_or_else(|error| panic!("double {value:?}: {error:?}"));
+        assert_eq!(
+            HashTable::new_with_options(
+                &mut ctx,
+                &runtime,
+                HashTest::Eq,
+                Weakness::None,
+                Word::fixnum(8),
+                Some(non_finite.into()),
+                None,
+            ),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            HashTable::new_with_options(
+                &mut ctx,
+                &runtime,
+                HashTest::Eq,
+                Weakness::None,
+                Word::fixnum(8),
+                None,
+                Some(non_finite.into()),
+            ),
+            Err(ObjectError::TypeError)
+        );
+    }
 }
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {

@@ -148,3 +148,69 @@ fn aarch64_large_frame_tail_transfers_emit_the_dynamic_epilogues() {
         assert!(compiled.code.ends_with(&encoded(expected)));
     }
 }
+
+#[test]
+#[allow(clippy::expect_used)]
+fn aarch64_small_frame_tail_transfers_emit_the_fixed_epilogues() {
+    for (function_id, tail_call) in [(FunctionId(4), false), (FunctionId(5), true)] {
+        let mut builder = FunctionBuilder::new(
+            function_id,
+            if tail_call {
+                "small-frame-tail-call"
+            } else {
+                "small-frame-call-return"
+            },
+            std::iter::once(Param {
+                name: "callee".into(),
+                ty: Ty::Address,
+            })
+            .chain((0..20).map(|index| Param {
+                name: format!("value-{index}"),
+                ty: Ty::Word,
+            }))
+            .collect(),
+            Vec::new(),
+        );
+        let argc = builder.add_constant(Constant::Fixnum(0));
+        let argc = builder
+            .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+            .expect("argc")[0];
+        builder
+            .terminate(if tail_call {
+                Terminator::TailCall {
+                    function: ncl_ir::ValueId(0),
+                    args: vec![argc],
+                }
+            } else {
+                Terminator::CallReturn {
+                    function: ncl_ir::ValueId(0),
+                    args: vec![argc],
+                }
+            })
+            .expect("terminal call");
+        let compiled = compile_function_aarch64(&builder.finish(), &Aarch64Abi)
+            .expect("small-frame terminal call");
+        let body_bytes = compiled.frame_size - 32;
+        assert!(body_bytes > 0 && body_bytes <= 4095);
+        let mut expected = vec![Inst::AddImm {
+            rd: RegOrSp::Sp,
+            rn: RegOrSp::Sp,
+            imm: u16::try_from(body_bytes).expect("small frame"),
+            shift: false,
+        }];
+        expected.push(Inst::Ldp {
+            rt: Reg(29),
+            rt2: Reg(30),
+            mem: MemOperand::PostIndex {
+                base: RegOrSp::Sp,
+                offset: 32,
+            },
+        });
+        expected.push(if tail_call {
+            Inst::Br { rn: Reg(17) }
+        } else {
+            Inst::Ret { rn: Reg(30) }
+        });
+        assert!(compiled.code.ends_with(&encoded(expected)));
+    }
+}

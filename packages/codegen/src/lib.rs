@@ -21,11 +21,12 @@ mod tests_aarch64_coverage;
 #[cfg(test)]
 mod tests_x86_64;
 #[cfg(test)]
-mod tests_x86_64_coverage;
-#[cfg(test)]
 mod tests_x86_64_fixture;
 #[cfg(test)]
 mod tests_x86_64_golden;
+#[cfg(test)]
+#[path = "x86_64_lowering_matrix.rs"]
+mod x86_64_lowering_matrix;
 
 pub use abi::{
     Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,

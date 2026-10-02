@@ -3,7 +3,9 @@ use crate::{LowTag, Word};
 
 #[test]
 fn code_lifecycle_and_write_bounds() {
-    let Ok(mut code) = alloc_code(4) else {
+    let allocation = alloc_code(4);
+    assert!(allocation.is_ok(), "four-byte code allocation failed");
+    let Ok(mut code) = allocation else {
         return;
     };
     assert!(!code.is_published());
@@ -18,7 +20,9 @@ fn code_lifecycle_and_write_bounds() {
 #[test]
 fn code_allocation_boundaries_and_metadata_accessors() {
     assert!(matches!(alloc_code(0), Err(CodeError::EmptyAllocation)));
-    let Ok(mut code) = alloc_code(1) else { return };
+    let allocation = alloc_code(1);
+    assert!(allocation.is_ok(), "one-byte code allocation failed");
+    let Ok(mut code) = allocation else { return };
     let mut registry = CodeRegistry::default();
     assert_eq!(
         registry.register(
@@ -120,7 +124,9 @@ fn frame_walk_honors_limit_and_scan_forwards_register_roots() {
 
 #[test]
 fn registry_register_find_unregister() {
-    let Ok(mut code) = alloc_code(16) else {
+    let allocation = alloc_code(16);
+    assert!(allocation.is_ok(), "registry code allocation failed");
+    let Ok(mut code) = allocation else {
         return;
     };
     assert!(publish_code(&mut code).is_ok());
@@ -136,7 +142,9 @@ fn registry_register_find_unregister() {
     };
     let mut registry = CodeRegistry::default();
     assert!(registry.register(&code, metadata).is_ok());
-    let Some((found, offset)) = registry.find(code.address() + 3) else {
+    let lookup = registry.find(code.address() + 3);
+    assert!(lookup.is_some(), "registered code lookup failed");
+    let Some((found, offset)) = lookup else {
         return;
     };
     assert_eq!(found.entry_offset, 0);
@@ -156,10 +164,14 @@ fn map_decode_lookup_and_scan() {
     bytes[10..12].copy_from_slice(&8u16.to_le_bytes());
     bytes.push(0b0001_0100);
     bytes.extend_from_slice(&3u16.to_le_bytes());
-    let Ok(map) = SafepointMap::decode(&bytes, 1) else {
+    let decoded = SafepointMap::decode(&bytes, 1);
+    assert!(decoded.is_ok(), "valid safepoint map failed to decode");
+    let Ok(map) = decoded else {
         return;
     };
-    let Some(entry) = map.find_map(8) else {
+    let lookup = map.find_map(8);
+    assert!(lookup.is_some(), "decoded safepoint map lookup failed");
+    let Some(entry) = lookup else {
         return;
     };
     assert_eq!(entry.register_ids, [3]);
@@ -250,7 +262,12 @@ fn frame_chain_forwards_function_and_live_slots() {
     bytes[6..8].copy_from_slice(&5u16.to_le_bytes());
     bytes[8..10].copy_from_slice(&5u16.to_le_bytes());
     bytes.push(0b0001_0100);
-    let Ok(map) = SafepointMap::decode(&bytes, 1) else {
+    let decoded = SafepointMap::decode(&bytes, 1);
+    assert!(
+        decoded.is_ok(),
+        "frame-chain safepoint map failed to decode"
+    );
+    let Ok(map) = decoded else {
         return;
     };
     let mut frames = [
@@ -286,7 +303,9 @@ fn frame_chain_keeps_return_pc_low_bits_for_safepoint_lookup() {
     bytes[6..8].copy_from_slice(&3u16.to_le_bytes());
     bytes[8..10].copy_from_slice(&3u16.to_le_bytes());
     bytes.push(0b0000_0100);
-    let Ok(map) = SafepointMap::decode(&bytes, 1) else {
+    let decoded = SafepointMap::decode(&bytes, 1);
+    assert!(decoded.is_ok(), "return-pc safepoint map failed to decode");
+    let Ok(map) = decoded else {
         return;
     };
     let mut frame = [
@@ -364,7 +383,9 @@ fn published_machine_code_returns_42() {
     let bytes = [0x40, 0x05, 0x80, 0xd2, 0xc0, 0x03, 0x5f, 0xd6];
     #[cfg(target_arch = "x86_64")]
     let bytes = [0xb8, 0x2a, 0, 0, 0, 0xc3];
-    let Ok(mut code) = alloc_code(bytes.len()) else {
+    let allocation = alloc_code(bytes.len());
+    assert!(allocation.is_ok(), "machine-code allocation failed");
+    let Ok(mut code) = allocation else {
         return;
     };
     assert!(code.write_code(0, &bytes).is_ok());
@@ -391,7 +412,12 @@ fn invoke_entry_delivers_context_and_function_object() {
     let context = &raw mut thread;
     let function_object = 0x1234_5678_9abc_def0_u64;
 
-    let Ok(mut context_code) = alloc_code(context_bytes.len()) else {
+    let context_allocation = alloc_code(context_bytes.len());
+    assert!(
+        context_allocation.is_ok(),
+        "context machine-code allocation failed"
+    );
+    let Ok(mut context_code) = context_allocation else {
         return;
     };
     assert!(context_code.write_code(0, &context_bytes).is_ok());
@@ -399,7 +425,12 @@ fn invoke_entry_delivers_context_and_function_object() {
     let (returned_context, _) = crate::invoke_entry(&context_code, 0, context, 0, [0; 4], 0);
     assert_eq!(returned_context, context as usize as u64);
 
-    let Ok(mut function_code) = alloc_code(function_bytes.len()) else {
+    let function_allocation = alloc_code(function_bytes.len());
+    assert!(
+        function_allocation.is_ok(),
+        "function machine-code allocation failed"
+    );
+    let Ok(mut function_code) = function_allocation else {
         return;
     };
     assert!(function_code.write_code(0, &function_bytes).is_ok());

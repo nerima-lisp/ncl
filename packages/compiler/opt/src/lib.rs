@@ -401,9 +401,6 @@ pub use sccp::Sccp;
 mod dce;
 pub use dce::DeadCodeElimination;
 #[cfg(test)]
-#[path = "coverage_additional_tests.rs"]
-mod coverage_additional_tests;
-#[cfg(test)]
 #[path = "dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]
@@ -413,11 +410,17 @@ mod gvn_tests;
 #[path = "manager_tests.rs"]
 mod manager_tests;
 #[cfg(test)]
+#[path = "optimization_edge_cases.rs"]
+mod optimization_edge_cases;
+#[cfg(test)]
 #[path = "remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
 #[path = "tests_sccp.rs"]
 mod sccp_tests;
+#[cfg(test)]
+#[path = "sccp_unreachable_blocks.rs"]
+mod sccp_unreachable_blocks;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

@@ -220,7 +220,12 @@ mod tests {
             Err(MapError::InvalidHeader)
         );
 
-        let Ok(mut map) = SafepointMap::new(0, 4, 4, &[], &[0, 3], 0) else {
+        let map_result = SafepointMap::new(0, 4, 4, &[], &[0, 3], 0);
+        assert!(
+            map_result.is_ok(),
+            "valid safepoint map construction failed"
+        );
+        let Ok(mut map) = map_result else {
             return;
         };
         map.registers = vec![0, 4];
@@ -292,16 +297,31 @@ mod tests {
         };
         assert_eq!(empty_bitmap.validate(), Err(MapError::InvalidBitmap));
 
-        for error in [
-            MapError::FrameTooSmall,
-            MapError::SlotCountOutOfRange,
-            MapError::BitmapTooLarge,
-            MapError::RegisterCountOutOfRange,
-            MapError::InvalidBitmap,
-            MapError::InvalidHeader,
-            MapError::Truncated,
+        for (error, expected) in [
+            (
+                MapError::FrameTooSmall,
+                "frame must contain the four-word header",
+            ),
+            (
+                MapError::SlotCountOutOfRange,
+                "word slot count exceeds bitmap capacity",
+            ),
+            (
+                MapError::BitmapTooLarge,
+                "bitmap capacity does not fit in the wire header",
+            ),
+            (
+                MapError::RegisterCountOutOfRange,
+                "register count exceeds the register mask",
+            ),
+            (
+                MapError::InvalidBitmap,
+                "bitmap does not contain the required header bits",
+            ),
+            (MapError::InvalidHeader, "safepoint header is inconsistent"),
+            (MapError::Truncated, "truncated safepoint map"),
         ] {
-            assert!(!error.to_string().is_empty(), "{error:?}");
+            assert_eq!(error.to_string(), expected);
         }
     }
 }

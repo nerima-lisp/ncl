@@ -50,10 +50,10 @@ fn parse_error_displays_its_message() {
     assert_eq!(error, ParseError("bad integer".into())); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
 }
 
+#[path = "parser_verifier_edge_cases.rs"]
+mod parser_verifier_edge_cases;
 #[path = "tests_builder.rs"]
 mod tests_builder;
-#[path = "tests_coverage_additional.rs"]
-mod tests_coverage_additional;
 #[path = "tests_handler.rs"]
 mod tests_handler;
 #[path = "tests_text.rs"]

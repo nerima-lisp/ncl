@@ -1,5 +1,10 @@
 use super::*;
 
+fn builtin(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> ncl_object::FunctionObject {
+    ncl_object::FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).expect(name))
+        .expect("function object")
+}
+
 #[test]
 fn registration_marks_owned_macros_and_installs_function_cells() {
     let runtime = Runtime::new().expect("runtime");
@@ -100,8 +105,75 @@ fn quasiquote_expansion_emits_data_constructor_and_handles_unquote() {
     )
     .unwrap();
     let parts = elements(&mut ctx, expanded).unwrap();
-    assert_eq!(parts.len(), 3);
-    assert!(parts.iter().all(|part| *part != Word::NIL));
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "CONS").unwrap());
+    let quoted_value = elements(&mut ctx, parts[1]).unwrap();
+    assert_eq!(
+        quoted_value[0],
+        symbol(&mut ctx, &runtime, "QUOTE").unwrap()
+    );
+    assert_eq!(quoted_value[1], value);
+    let quoted_nil = elements(&mut ctx, parts[2]).unwrap();
+    assert_eq!(quoted_nil[0], symbol(&mut ctx, &runtime, "QUOTE").unwrap());
+    assert_eq!(quoted_nil[1], Word::NIL);
+}
+
+#[test]
+fn function_and_multiple_value_builtins_preserve_their_contracts() {
+    let runtime = Runtime::new().expect("runtime");
+    register(&runtime).expect("macro registration");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context registration");
+    let identity = builtin(&runtime, &mut ctx, "IDENTITY");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, identity, &[Word::fixnum(7)]),
+        Ok(Word::fixnum(7))
+    );
+    let not = builtin(&runtime, &mut ctx, "NOT");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, not, &[Word::NIL]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, not, &[Word::TRUE]),
+        Ok(Word::NIL)
+    );
+    let null = builtin(&runtime, &mut ctx, "NULL");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, null, &[Word::TRUE]),
+        Ok(Word::NIL)
+    );
+
+    let functionp = builtin(&runtime, &mut ctx, "FUNCTIONP");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, functionp, &[identity.as_word()]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, functionp, &[Word::fixnum(1)]),
+        Ok(Word::NIL)
+    );
+
+    let values = builtin(&runtime, &mut ctx, "VALUES");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, values, &[Word::fixnum(1), Word::fixnum(2)]),
+        Ok(Word::fixnum(1))
+    );
+    assert_eq!(ctx.values(), &[Word::fixnum(1), Word::fixnum(2)]);
+
+    let values_list = builtin(&runtime, &mut ctx, "VALUES-LIST");
+    let proper =
+        list(&mut ctx, &runtime, &[Word::fixnum(3), Word::fixnum(4)]).expect("proper list");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, values_list, &[proper]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(ctx.values(), &[Word::fixnum(3), Word::fixnum(4)]);
+    let dotted = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(4))
+        .expect("dotted list");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, values_list, &[dotted]),
+        Err(ObjectError::TypeError)
+    );
 }
 
 mod coverage_recovery;

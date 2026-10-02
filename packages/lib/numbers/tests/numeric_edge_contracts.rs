@@ -19,8 +19,12 @@ fn call(
     name: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function =
-        FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap();
+    let function = FunctionObject::try_from(
+        runtime
+            .function(ctx, "COMMON-LISP", name)
+            .unwrap_or_else(|| panic!("missing builtin {name}")),
+    )
+    .unwrap_or_else(|error| panic!("invalid builtin {name}: {error:?}"));
     runtime.call_builtin(ctx, function, args)
 }
 
@@ -256,6 +260,39 @@ fn rational_float_builtins_assert_multiple_values_and_boundaries() {
 }
 
 #[test]
+fn rationalize_negative_float_and_decode_zero_values() {
+    let (runtime, mut ctx) = setup();
+    let negative = make_double(&mut ctx, &runtime, -1.5).unwrap().into();
+    let rationalized = call(&runtime, &mut ctx, "RATIONALIZE", &[negative]).unwrap();
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(rationalized),).unwrap(),
+        ),
+        -3
+    );
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_denominator(&ctx, ncl_object::Ratio::from_word(rationalized),)
+                .unwrap(),
+        ),
+        2
+    );
+    assert_float_call(&runtime, &mut ctx, "FLOAT", &[negative], -1.5);
+
+    let zero = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    let decoded = call(&runtime, &mut ctx, "DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(float(&ctx, decoded).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1022);
+    assert_eq!(float(&ctx, ctx.values()[2]).to_bits(), 1.0_f64.to_bits());
+    let integer_decoded = call(&runtime, &mut ctx, "INTEGER-DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(integer(&ctx, integer_decoded), 0);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1074);
+    assert_eq!(integer(&ctx, ctx.values()[2]), 1);
+}
+
+#[test]
 fn complex_accessors_construct_conjugate_and_phase_values() {
     let (runtime, mut ctx) = setup();
     let real = make_double(&mut ctx, &runtime, 3.0).unwrap().into();
@@ -278,5 +315,140 @@ fn complex_accessors_construct_conjugate_and_phase_values() {
     assert_eq!(
         call(&runtime, &mut ctx, "REALPART", &[Word::TRUE]),
         Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the test covers the numeric predicate and comparison matrix"
+)]
+fn predicates_and_comparisons_cover_numeric_kinds_and_chain_failures() {
+    let (runtime, mut ctx) = setup();
+    let integer_value = Word::fixnum(-3);
+    let ratio_value = ratio(&mut ctx, &runtime, 3, 2);
+    let float_value = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    let complex_value = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .into();
+
+    for (name, value) in [
+        ("NUMBERP", integer_value),
+        ("INTEGERP", integer_value),
+        ("RATIONALP", ratio_value),
+        ("FLOATP", float_value),
+        ("REALP", float_value),
+        ("COMPLEXP", complex_value),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[value]).unwrap(),
+            Word::TRUE,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "ZEROP", &[Word::fixnum(0)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[Word::fixnum(2)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MINUSP", &[integer_value]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EVENP", &[Word::fixnum(4)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ODDP", &[Word::fixnum(5)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[complex_value]),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "=",
+            &[Word::fixnum(1), ratio_value, float_value],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">",
+            &[Word::fixnum(3), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<=",
+            &[Word::fixnum(1), Word::fixnum(1), Word::fixnum(2)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">=",
+            &[Word::fixnum(2), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "/=",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAX",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(9)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MIN",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(2)
     );
 }

@@ -25,6 +25,37 @@ fn top_level_wrappers_return_the_last_form() {
 }
 
 #[test]
+fn local_macro_expander_calls_a_compiled_function() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(progn (defun increment (x) (+ x 1))\
+                    (macrolet ((twice (x) (increment (increment x))))\
+                      (twice 5)))",
+        ),
+        "7"
+    );
+}
+
+#[test]
+fn compile_file_rejects_non_utf8_source() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-runtime-invalid-source-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&path, [0xff]).unwrap();
+    let mut runtime = Runtime::new().unwrap();
+
+    assert!(matches!(
+        runtime.compile_file(&path),
+        Err(RuntimeError::Native(message)) if message.contains("not valid UTF-8")
+    ));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn eval_when_selects_execute_and_rejects_malformed_situations() {
     let mut runtime = Runtime::new().unwrap();
 

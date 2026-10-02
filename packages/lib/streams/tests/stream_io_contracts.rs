@@ -258,3 +258,67 @@ fn file_policies_io_and_metadata_match_observable_contents() {
     assert_eq!(fs::read(&path).unwrap(), vec![b'a', b'b', 0xc3, 0xa9, b'!']);
     fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn character_peek_modes_and_eof_policies_cover_non_default_paths() {
+    let (runtime, mut ctx) = setup();
+    let make_input = builtin(&runtime, &mut ctx, "MAKE-STRING-INPUT-STREAM");
+    let peek = builtin(&runtime, &mut ctx, "PEEK-CHAR");
+    let read = builtin(&runtime, &mut ctx, "READ-CHAR");
+    let read_line = builtin(&runtime, &mut ctx, "READ-LINE");
+    let unread = builtin(&runtime, &mut ctx, "UNREAD-CHAR");
+    let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
+
+    let source = text(&mut ctx, &runtime, " a");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_input, &[source])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            peek,
+            &[
+                Word::character(u32::from('a')),
+                stream,
+                Word::NIL,
+                Word::fixnum(77),
+            ],
+        ),
+        Ok(Word::character(u32::from('a')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read, &[stream]),
+        Ok(Word::character(u32::from('a')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_line, &[stream, Word::NIL, Word::fixnum(91)],),
+        Ok(Word::fixnum(91))
+    );
+    assert_eq!(ctx.values()[1], Word::NIL);
+
+    let empty = text(&mut ctx, &runtime, "");
+    let empty_stream = runtime
+        .call_builtin(&mut ctx, make_input, &[empty])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            unread,
+            &[Word::character(u32::from('x')), empty_stream],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_char,
+            &[Word::character(u32::from('x')), empty_stream],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, write_byte, &[Word::fixnum(1), empty_stream],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}

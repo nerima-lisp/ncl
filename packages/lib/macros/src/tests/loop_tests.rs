@@ -97,6 +97,102 @@ fn parses_arithmetic_boundaries_and_equals_then() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn parses_nested_conditionals_with_else_and_rejects_empty_selectable_clause()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let test = symbol(&mut ctx, &runtime, "TEST")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let alternate = symbol(&mut ctx, &runtime, "ALTERNATE")?;
+    let nested_test = symbol(&mut ctx, &runtime, "NESTED-TEST")?;
+    let input = [
+        symbol(&mut ctx, &runtime, "WHEN")?,
+        test,
+        symbol(&mut ctx, &runtime, "DO")?,
+        body,
+        symbol(&mut ctx, &runtime, "AND")?,
+        symbol(&mut ctx, &runtime, "RETURN")?,
+        alternate,
+        symbol(&mut ctx, &runtime, "ELSE")?,
+        symbol(&mut ctx, &runtime, "UNLESS")?,
+        nested_test,
+        symbol(&mut ctx, &runtime, "DO")?,
+        alternate,
+        symbol(&mut ctx, &runtime, "END")?,
+        symbol(&mut ctx, &runtime, "END")?,
+    ];
+    let ast = parse_loop(&mut ctx, &input)?;
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [LoopClause::Conditional {
+            kind: ConditionalKind::When,
+            then,
+            otherwise,
+            ..
+        }] if then.len() == 2 && matches!(otherwise.as_slice(), [LoopClause::Conditional {
+            kind: ConditionalKind::Unless,
+            then,
+            otherwise: nested_otherwise,
+            ..
+        }] if then.len() == 1 && nested_otherwise.is_empty())
+    ));
+    let malformed = [
+        symbol(&mut ctx, &runtime, "WHEN")?,
+        test,
+        symbol(&mut ctx, &runtime, "END")?,
+    ];
+    assert_eq!(
+        parse_loop(&mut ctx, &malformed),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn expands_unless_with_then_and_else_progns() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let test = symbol(&mut ctx, &runtime, "TEST")?;
+    let then_form = symbol(&mut ctx, &runtime, "THEN-FORM")?;
+    let else_form = symbol(&mut ctx, &runtime, "ELSE-FORM")?;
+    let ast = LoopAst {
+        name: None,
+        clauses: vec![LoopClause::Conditional {
+            kind: ConditionalKind::Unless,
+            test,
+            then: vec![LoopClause::Do(vec![then_form])],
+            otherwise: vec![LoopClause::Do(vec![else_form])],
+        }],
+    };
+    let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let outer = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, outer[2])?;
+    let block_body = elements(&mut ctx, block[2])?;
+    let tagbody = elements(&mut ctx, block_body[1])?;
+    let let_symbol = symbol(&mut ctx, &runtime, "LET")?;
+    let let_form = tagbody
+        .iter()
+        .copied()
+        .find_map(|form| {
+            let parts = elements(&mut ctx, form).ok()?;
+            (parts.first() == Some(&let_symbol)).then_some(parts)
+        })
+        .ok_or(ObjectError::TypeError)?;
+    assert_eq!(let_form[0], symbol(&mut ctx, &runtime, "LET")?);
+    let if_form = elements(&mut ctx, let_form[2])?;
+    assert_eq!(if_form[0], symbol(&mut ctx, &runtime, "IF")?);
+    let condition = elements(&mut ctx, if_form[1])?;
+    assert_eq!(condition[0], symbol(&mut ctx, &runtime, "NOT")?);
+    assert_eq!(
+        elements(&mut ctx, if_form[2])?[0],
+        symbol(&mut ctx, &runtime, "PROGN")?
+    );
+    assert_eq!(
+        elements(&mut ctx, if_form[3])?[0],
+        symbol(&mut ctx, &runtime, "PROGN")?
+    );
+    Ok(())
+}
+
+#[test]
 fn parses_list_and_vector_iteration_clauses() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let x = symbol(&mut ctx, &runtime, "X")?;

@@ -236,3 +236,58 @@ fn symbol_builtins_cover_cells_properties_and_generated_names() -> Result<(), Ob
     );
     Ok(())
 }
+
+#[test]
+fn package_management_options_rename_and_delete_are_observable() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let make_package = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-PACKAGE");
+    let package_name = string(&mut ctx, &runtime, "NCL-MANAGED-PACKAGE");
+    let nickname_key = string(&mut ctx, &runtime, "NICKNAMES");
+    let nickname = string(&mut ctx, &runtime, "NCL-MANAGED-NICK");
+    let nicknames = list(&mut ctx, &runtime, &[nickname]);
+    let package = runtime.call_builtin(
+        &mut ctx,
+        make_package,
+        &[package_name, nickname_key, nicknames],
+    )?;
+
+    let package_nicknames = function(&runtime, &mut ctx, "COMMON-LISP", "PACKAGE-NICKNAMES");
+    let package_nickname_values = runtime.call_builtin(&mut ctx, package_nicknames, &[package])?;
+    assert_eq!(
+        introspection::list_items(&ctx, package_nickname_values)?,
+        vec![nickname]
+    );
+
+    let rename = function(&runtime, &mut ctx, "COMMON-LISP", "RENAME-PACKAGE");
+    let renamed_name = string(&mut ctx, &runtime, "NCL-RENAMED-PACKAGE");
+    let renamed_nickname = string(&mut ctx, &runtime, "NCL-RENAMED-NICK");
+    let renamed_nicknames = list(&mut ctx, &runtime, &[renamed_nickname]);
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            rename,
+            &[package, renamed_name, renamed_nicknames],
+        )?,
+        package
+    );
+    let package_name_function = function(&runtime, &mut ctx, "COMMON-LISP", "PACKAGE-NAME");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, package_name_function, &[package])?,
+        renamed_name
+    );
+
+    let delete = function(&runtime, &mut ctx, "COMMON-LISP", "DELETE-PACKAGE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[package]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[package]),
+        Ok(Word::NIL)
+    );
+    Ok(())
+}

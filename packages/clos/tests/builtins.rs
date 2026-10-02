@@ -1,7 +1,10 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
 
-use ncl_object::{BuiltinConvention, FunctionObject, Runtime, ThreadContext, Word};
+use ncl_object::{
+    BuiltinConvention, FunctionObject, Package, Runtime, ThreadContext, Word, make_cons,
+    make_simple_vector, make_string,
+};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -30,6 +33,71 @@ fn class_of_and_class_name_are_bound_builtins() {
         .call_builtin(&mut ctx, class_name, &[integer])
         .unwrap();
     assert_ne!(name, Word::UNBOUND);
+}
+
+#[test]
+fn class_of_reports_builtin_object_families() {
+    let (runtime, mut ctx) = setup();
+    let class_of = function(&runtime, &mut ctx, "CLASS-OF");
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "CLOS-COVERAGE-SYMBOL")
+        .unwrap()
+        .0;
+    let string = make_string(&mut ctx, &runtime, &['x']).unwrap();
+    let vector = make_simple_vector(&mut ctx, &runtime, &[Word::NIL]).unwrap();
+    let cons = make_cons(&mut ctx, &runtime, Word::TRUE, Word::NIL).unwrap();
+    let function_word = function(&runtime, &mut ctx, "CLASS-OF").as_word();
+    for (object, class_name) in [
+        (Word::NIL, "NULL"),
+        (Word::character(u32::from('x')), "CHARACTER"),
+        (symbol, "SYMBOL"),
+        (string, "STRING"),
+        (vector, "SIMPLE-VECTOR"),
+        (cons, "CONS"),
+        (function_word, "FUNCTION"),
+        (package, "PACKAGE"),
+    ] {
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, class_of, &[object]),
+            Ok(runtime.class(&mut ctx, class_name).unwrap()),
+            "class-of must identify {class_name}"
+        );
+    }
+}
+
+#[test]
+fn find_class_and_typep_accept_symbol_and_descriptor_designators() {
+    let (runtime, mut ctx) = setup();
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let integer_symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "INTEGER")
+        .unwrap()
+        .0;
+    let integer = runtime.class(&mut ctx, "INTEGER").unwrap();
+    let find_class = function(&runtime, &mut ctx, "FIND-CLASS");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_class, &[integer_symbol]),
+        Ok(integer)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_class, &[integer]),
+        Ok(integer)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_class, &[Word::fixnum(99)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let typep = function(&runtime, &mut ctx, "TYPEP");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[Word::fixnum(7), integer_symbol]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[Word::character(u32::from('x')), integer]),
+        Ok(Word::NIL)
+    );
 }
 
 #[test]

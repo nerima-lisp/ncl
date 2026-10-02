@@ -1,13 +1,14 @@
 #![allow(
+    clippy::float_cmp,
     clippy::unwrap_used,
     missing_docs,
-    reason = "tests assert on numeric builtin behavior"
+    reason = "tests assert on exact numeric builtin behavior"
 )]
 
 use ncl_object::{
     Bignum, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs,
-    bignum_sign, classify_object, make_bignum_from_i128, make_ratio, ratio_denominator,
-    ratio_numerator,
+    bignum_sign, classify_object, make_bignum_from_i128, make_complex, make_double, make_ratio,
+    ratio_denominator, ratio_numerator,
 };
 
 const MAX_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
@@ -283,4 +284,32 @@ fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     ));
     assert!(ncl_object::pop_root(&mut ctx, complex_token));
     assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
+fn unary_arithmetic_handles_zero_division_absolute_and_sign_values() {
+    let (runtime, mut ctx) = setup();
+    assert_ratio(&runtime, &mut ctx, "/", &[Word::fixnum(2)], 1, 2);
+    assert_eq!(
+        call(&runtime, &mut ctx, "/", &[Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let negative_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(-3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    assert_integer(&runtime, &mut ctx, "SIGNUM", &[negative_ratio], -1);
+    assert_ratio(&runtime, &mut ctx, "ABS", &[negative_ratio], 3, 2);
+
+    let real = make_double(&mut ctx, &runtime, 3.0).unwrap().into();
+    let imag = make_double(&mut ctx, &runtime, 4.0).unwrap().into();
+    let complex = make_complex(&mut ctx, &runtime, real, imag).unwrap().into();
+    let magnitude = call(&runtime, &mut ctx, "ABS", &[complex]).unwrap();
+    let ObjectRef::DoubleFloat(value) = classify_object(&ctx, magnitude) else {
+        panic!("expected complex ABS to return a float");
+    };
+    assert_eq!(
+        ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(value)).unwrap(),
+        5.0
+    );
 }

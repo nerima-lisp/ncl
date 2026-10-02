@@ -52,6 +52,19 @@ fn call_unicode(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[
         .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
 }
 
+fn call_unicode_result(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    let function = runtime
+        .function(ctx, "NCL-UNICODE", name)
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("missing unicode builtin {name}"));
+    runtime.call_builtin(ctx, function, args)
+}
+
 fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
     let package = runtime
         .find_package(ctx, "KEYWORD")
@@ -480,4 +493,122 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
             );
         }
     }
+}
+
+#[test]
+#[allow(
+    clippy::similar_names,
+    clippy::too_many_lines,
+    reason = "the test covers string comparison and Unicode boundary contracts"
+)]
+fn string_comparisons_ranges_and_unicode_boundaries_are_observable() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let left = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c'])
+        .unwrap_or_else(|error| panic!("left: {error:?}"));
+    let right = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'd'])
+        .unwrap_or_else(|error| panic!("right: {error:?}"));
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING<", &[left, right]),
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING/=", &[left, right]),
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING<=", &[left, right]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING>=", &[right, left]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING>", &[right, left]),
+        Word::fixnum(2)
+    );
+
+    let upper = ncl_object::make_string(&mut ctx, &runtime, &['A', 'B', 'C'])
+        .unwrap_or_else(|error| panic!("upper: {error:?}"));
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING=", &[left, upper]),
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "STRING-EQUAL", &[left, upper]),
+        Word::TRUE
+    );
+
+    let start = keyword(&mut ctx, &runtime, "START1");
+    let end = keyword(&mut ctx, &runtime, "END1");
+    let start2 = keyword(&mut ctx, &runtime, "START2");
+    let end2 = keyword(&mut ctx, &runtime, "END2");
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "STRING-EQUAL",
+            &[
+                left,
+                right,
+                start,
+                Word::fixnum(0),
+                end,
+                Word::fixnum(2),
+                start2,
+                Word::fixnum(0),
+                end2,
+                Word::fixnum(2),
+            ],
+        ),
+        Word::TRUE
+    );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            "STRING-EQUAL",
+            &[left, right, start, Word::fixnum(4)],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let composed = ncl_object::make_string(&mut ctx, &runtime, &['é'])
+        .unwrap_or_else(|error| panic!("composed: {error:?}"));
+    let nfd = call_unicode(&runtime, &mut ctx, "NORMALIZE-NFD", &[composed]);
+    assert_eq!(ncl_object::string_length(&ctx, nfd), Ok(2));
+    let compatibility = ncl_object::make_string(&mut ctx, &runtime, &['①'])
+        .unwrap_or_else(|error| panic!("compatibility: {error:?}"));
+    let nfkc = call_unicode(&runtime, &mut ctx, "NORMALIZE-NFKC", &[compatibility]);
+    assert_eq!(string_value(&ctx, nfkc), "1");
+    let nfkd = call_unicode(&runtime, &mut ctx, "NORMALIZE-NFKD", &[compatibility]);
+    assert_eq!(string_value(&ctx, nfkd), "1");
+    let title = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &['h', 'i', ' ', 'W', 'O', 'R', 'L', 'D'],
+    )
+    .unwrap_or_else(|error| panic!("title: {error:?}"));
+    let title_case = call_unicode(&runtime, &mut ctx, "FULL-TITLECASE", &[title]);
+    assert_eq!(string_value(&ctx, title_case), "Hi World");
+
+    let graphemes = ncl_object::make_string(&mut ctx, &runtime, &['a', '\u{301}', '🇯', '🇵'])
+        .unwrap_or_else(|error| panic!("graphemes: {error:?}"));
+    let boundaries = call_unicode(&runtime, &mut ctx, "GRAPHEME-BOUNDARIES", &[graphemes]);
+    assert_eq!(ncl_object::simple_vector_length(&ctx, boundaries), Ok(3));
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, boundaries, 1),
+        Ok(Word::fixnum(2))
+    );
+    let invalid = ncl_object::make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(255)])
+        .unwrap_or_else(|error| panic!("invalid bytes: {error:?}"));
+    assert_eq!(
+        call_unicode_result(&runtime, &mut ctx, "UTF8-TO-STRING", &[invalid]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }

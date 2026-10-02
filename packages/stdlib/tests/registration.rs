@@ -65,3 +65,19 @@ fn register_all_registers_callable_printer_and_format_builtins() {
         assert!(function.is_some(), "{name} must be callable");
     }
 }
+
+#[test]
+fn registration_order_is_the_published_standard_library_order() {
+    assert_eq!(ncl_stdlib::REGISTRATION_ORDER.first(), Some(&"ncl-types"));
+    assert_eq!(ncl_stdlib::REGISTRATION_ORDER.last(), Some(&"ncl-disasm"));
+    assert!(
+        ncl_stdlib::REGISTRATION_ORDER
+            .windows(2)
+            .any(|pair| pair == ["ncl-lib-streams", "ncl-lib-pathnames"])
+    );
+    assert!(
+        ncl_stdlib::REGISTRATION_ORDER
+            .windows(2)
+            .any(|pair| pair == ["ncl-lib-packages", "ncl-lib-format"])
+    );
+}

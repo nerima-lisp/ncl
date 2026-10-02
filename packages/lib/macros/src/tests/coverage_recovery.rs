@@ -142,7 +142,7 @@ fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords()
     let key_value = elements(&mut ctx, key_binding[1])?;
     assert_eq!(key_value[0], symbol(&mut ctx, &runtime, "IF")?);
     assert!(key_value.len() >= 3);
-    assert!(key_value.iter().any(|word| *word == default));
+    assert!(key_value.contains(&default));
     let supplied_binding = bindings
         .iter()
         .map(|binding| elements(&mut ctx, *binding))
@@ -223,7 +223,7 @@ fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings(
         .expect("&optional binding");
     let optional_value = elements(&mut ctx, optional_binding[1])?;
     assert_eq!(optional_value[0], symbol(&mut ctx, &runtime, "IF")?);
-    assert!(optional_value.iter().any(|word| *word == fallback));
+    assert!(optional_value.contains(&fallback));
     let supplied_binding = as_forms
         .iter()
         .find(|binding| binding.first() == Some(&supplied))

@@ -353,3 +353,27 @@ fn shadowing_import_replaces_an_inherited_name_and_rejects_non_symbols() -> Resu
     );
     Ok(())
 }
+
+#[test]
+fn deleting_packages_rejects_non_package_designators() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let package = runtime.ensure_package(&mut ctx, "N25-DELETE-EDGES")?;
+    let delete = function(&runtime, &mut ctx, "COMMON-LISP", "DELETE-PACKAGE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[package]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[package]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

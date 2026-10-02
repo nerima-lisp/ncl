@@ -75,6 +75,30 @@ fn eval_when_selects_execute_and_rejects_malformed_situations() {
 }
 
 #[test]
+fn eval_when_accepts_nested_situations_and_skips_compile_only_forms() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(progn (eval-when ((:execute :eval) 11) 12) 13)",
+        ),
+        "13"
+    );
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(eval-when (:compile-toplevel :load-toplevel) 14)",
+        ),
+        "NIL"
+    );
+    assert!(matches!(
+        runtime.eval("(eval-when (42) 15)"),
+        Err(RuntimeError::Front(_))
+    ));
+}
+
+#[test]
 fn evaluation_reports_undefined_functions_and_reader_errors() {
     let mut runtime = Runtime::new().unwrap();
 
@@ -105,6 +129,10 @@ fn non_local_control_restores_bindings_and_runs_cleanup() {
         ),
         "17"
     );
+    assert!(matches!(
+        runtime.eval("(throw 'missing 1)"),
+        Err(RuntimeError::Object(ncl_object::ObjectError::NonLocalExit))
+    ));
 }
 
 #[test]

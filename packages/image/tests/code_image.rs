@@ -42,6 +42,19 @@ fn published_code_executes_after_a_load() {
     assert_eq!(count, 1);
 }
 
+#[test]
+fn code_image_exposes_raw_metadata_and_accepts_empty_code() {
+    let image = CodeImage::from_raw(vec![1, 2, 3], 2, 7, "N25-EMPTY".to_owned()).unwrap();
+    assert_eq!(image.bytes(), &[1, 2, 3]);
+    assert_eq!(image.entry_offset(), 2);
+    assert_eq!(image.frame_words(), 7);
+    assert_eq!(image.function_name(), "N25-EMPTY");
+
+    let empty = CodeImage::from_raw(Vec::new(), 0, 0, "empty".to_owned()).unwrap();
+    assert!(empty.bytes().is_empty());
+    assert_eq!(empty.entry_offset(), 0);
+}
+
 /// Machine code that returns [`EXPECTED`] as one value.
 #[cfg(target_arch = "aarch64")]
 fn constant_program() -> Vec<u8> {

@@ -483,7 +483,7 @@ fn file_policies_cover_invalid_options_eof_and_close_paths() {
             .unwrap();
         assert_eq!(
             runtime.call_builtin(&mut ctx, file_position, &[stream, Word::fixnum(3)]),
-            Ok(Word::fixnum(3))
+            Err(ncl_object::ObjectError::TypeError)
         );
         assert_eq!(
             runtime.call_builtin(&mut ctx, input_stream_p, &[stream]),
@@ -538,11 +538,11 @@ fn file_policies_cover_invalid_options_eof_and_close_paths() {
         .unwrap();
     assert_eq!(
         runtime.call_builtin(&mut ctx, file_position, &[io_stream, Word::fixnum(3)]),
-        Ok(Word::fixnum(3))
+        Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
         runtime.call_builtin(&mut ctx, file_position, &[io_stream, Word::fixnum(0)]),
-        Ok(Word::fixnum(0))
+        Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
         runtime.call_builtin(&mut ctx, read_byte, &[io_stream]),

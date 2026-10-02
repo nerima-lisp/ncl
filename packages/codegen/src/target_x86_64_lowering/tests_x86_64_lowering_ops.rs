@@ -1,8 +1,9 @@
 use super::{lower_op, lower_prim, move_args};
 use crate::{Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate};
-use ncl_asm_x86_64::{Assembler, Inst, Mem, Reg};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem, Reg};
 use ncl_ir::{
-    BlockParam, Constant, FunctionBuilder, Op, OpKind, Param, Prim, Terminator, Ty, ValueId,
+    BlockParam, Compare, Constant, Convert, Function, FunctionBuilder, Op, OpKind, Param, Prim,
+    Terminator, Ty, ValueId,
 };
 use std::collections::BTreeMap;
 
@@ -46,6 +47,32 @@ fn slots_with_locations(
     }
 }
 
+fn encoded(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+    let mut assembler = Assembler::new();
+    for instruction in instructions {
+        assembler
+            .emit(&instruction)
+            .expect("expected instruction encoding");
+    }
+    assembler.bytes().to_vec()
+}
+
+fn lower_exact(
+    kind: OpKind,
+    result: Option<ValueId>,
+    function: &Function,
+    slots: &super::super::ValueSlots,
+) -> Vec<u8> {
+    let op = Op {
+        results: result.into_iter().map(|value| (value, Ty::Word)).collect(),
+        kind,
+        loc: None,
+    };
+    let mut assembler = Assembler::new();
+    lower_op(&mut assembler, &op, function, slots, &X86_64Abi).expect("operation lowering");
+    assembler.bytes().to_vec()
+}
+
 #[test]
 fn unsupported_primitives_return_typed_errors_after_loading_operands() {
     let slots = one_word_slots();
@@ -69,6 +96,216 @@ fn unsupported_primitives_return_typed_errors_after_loading_operands() {
                 if message.contains("primitive is not available")
         ));
     }
+}
+
+#[test]
+fn supported_memory_primitives_emit_exact_operand_offsets() {
+    let slots = one_word_slots();
+    for (prim, expected_instruction) in [
+        (
+            Prim::Car,
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FUNCTION_OBJECT, 0)),
+        ),
+        (
+            Prim::Cdr,
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FUNCTION_OBJECT, 8)),
+        ),
+        (
+            Prim::Svref,
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FUNCTION_OBJECT, 0)),
+        ),
+        (
+            Prim::Aref,
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FUNCTION_OBJECT, 0)),
+        ),
+        (
+            Prim::Rplaca,
+            Inst::MovMR(Mem::base(super::FUNCTION_OBJECT, 0), super::ENTRY),
+        ),
+        (
+            Prim::Rplacd,
+            Inst::MovMR(Mem::base(super::FUNCTION_OBJECT, 8), super::ENTRY),
+        ),
+        (
+            Prim::Aset,
+            Inst::MovMR(Mem::base(super::FUNCTION_OBJECT, 0), super::ENTRY),
+        ),
+    ] {
+        let mut actual = Assembler::new();
+        lower_prim(&mut actual, &prim, &[ValueId(0), ValueId(0)], None, &slots)
+            .expect("supported memory primitive");
+        let mut expected = Assembler::new();
+        expected
+            .emit(&expected_instruction)
+            .expect("expected memory instruction encoding");
+        assert!(
+            actual.bytes().ends_with(expected.bytes()),
+            "unexpected encoding for {prim:?}: {:02x?}",
+            actual.bytes()
+        );
+    }
+}
+
+#[test]
+fn operation_lowering_emits_exact_load_store_and_compare_templates() {
+    let function = FunctionBuilder::new(
+        ncl_ir::FunctionId(217),
+        "operation-templates",
+        Vec::new(),
+        Vec::new(),
+    )
+    .finish();
+    let slots = slots_with_locations(
+        &[
+            (ValueId(0), Location::Register(0)),
+            (ValueId(1), Location::Register(1)),
+            (ValueId(2), Location::Register(4)),
+        ],
+        0,
+    );
+
+    assert_eq!(
+        lower_exact(
+            OpKind::Move { value: ValueId(0) },
+            Some(ValueId(1)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::Convert {
+                op: Convert::WordToI64,
+                value: ValueId(0),
+            },
+            Some(ValueId(1)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::Load {
+                address: ValueId(0),
+            },
+            Some(ValueId(1)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::BinRI(BinOp::And, super::FUNCTION_OBJECT, -8),
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FUNCTION_OBJECT, 0),),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::LoadField {
+                object: ValueId(0),
+                field: 2,
+            },
+            Some(ValueId(1)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::BinRI(BinOp::And, super::FUNCTION_OBJECT, -8),
+            Inst::MovRM(
+                super::FUNCTION_OBJECT,
+                Mem::base(super::FUNCTION_OBJECT, 24),
+            ),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::Store {
+                address: ValueId(0),
+                value: ValueId(1),
+            },
+            None,
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::BinRI(BinOp::And, super::FUNCTION_OBJECT, -8),
+            Inst::MovRR(super::ENTRY, Reg::Rdx),
+            Inst::MovMR(Mem::base(super::FUNCTION_OBJECT, 0), super::ENTRY,),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::StoreField {
+                object: ValueId(0),
+                field: 3,
+                value: ValueId(1),
+            },
+            None,
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::BinRI(BinOp::And, super::FUNCTION_OBJECT, -8),
+            Inst::MovRR(super::ENTRY, Reg::Rdx),
+            Inst::MovMR(Mem::base(super::FUNCTION_OBJECT, 32), super::ENTRY,),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::LoadArg { index: 0 },
+            Some(ValueId(1)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::LoadFunctionObject,
+            Some(ValueId(1)),
+            &function,
+            &slots
+        ),
+        encoded([
+            Inst::MovRM(super::FUNCTION_OBJECT, Mem::base(super::FRAME_POINTER, 16),),
+            Inst::MovRR(Reg::Rdx, super::FUNCTION_OBJECT),
+        ])
+    );
+    assert_eq!(
+        lower_exact(
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: ValueId(0),
+                right: ValueId(1),
+            },
+            Some(ValueId(2)),
+            &function,
+            &slots,
+        ),
+        encoded([
+            Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax),
+            Inst::MovRR(super::ENTRY, Reg::Rdx),
+            Inst::CmpRR(super::FUNCTION_OBJECT, super::ENTRY),
+            Inst::Setcc(Cond::E, super::FUNCTION_OBJECT),
+            Inst::Movzx(super::FUNCTION_OBJECT, super::FUNCTION_OBJECT, 8),
+            Inst::MovRR(Reg::Rcx, super::FUNCTION_OBJECT),
+        ])
+    );
 }
 
 #[test]

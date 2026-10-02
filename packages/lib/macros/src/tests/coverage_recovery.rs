@@ -8,6 +8,18 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
     Ok((runtime, ctx))
 }
 
+fn named(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
+    symbol(ctx, runtime, name)
+}
+
+fn list_of(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
+    list(ctx, runtime, values)
+}
+
 fn call_macro(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -21,6 +33,146 @@ fn call_macro(
         &ncl_object::BuiltinArgs::new(&[form]),
         &mut ncl_object::MultipleValues::new(),
     )
+}
+
+#[test]
+fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let handler = named(&mut ctx, &runtime, "HANDLER")?;
+    let condition = named(&mut ctx, &runtime, "CONDITION")?;
+    let t = named(&mut ctx, &runtime, "T")?;
+    let handler_bind_name = named(&mut ctx, &runtime, "HANDLER-BIND")?;
+    let handler_case_name = named(&mut ctx, &runtime, "HANDLER-CASE")?;
+    let ignore_errors_name = named(&mut ctx, &runtime, "IGNORE-ERRORS")?;
+    let restart_bind_name = named(&mut ctx, &runtime, "RESTART-BIND")?;
+    let restart_case_name = named(&mut ctx, &runtime, "RESTART-CASE")?;
+    let simple_restart_name = named(&mut ctx, &runtime, "WITH-SIMPLE-RESTART")?;
+    let multiple_bind_name = named(&mut ctx, &runtime, "MULTIPLE-VALUE-BIND")?;
+    let multiple_list_name = named(&mut ctx, &runtime, "MULTIPLE-VALUE-LIST")?;
+    let handler_clause = list_of(&mut ctx, &runtime, &[t, handler])?;
+    let handler_clauses = list_of(&mut ctx, &runtime, &[handler_clause])?;
+    let handler_form = list_of(
+        &mut ctx,
+        &runtime,
+        &[handler_bind_name, handler_clauses, body],
+    )?;
+    let expanded = call_macro(&runtime, &mut ctx, "HANDLER-BIND", handler_form)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "LET")?
+    );
+
+    let variable = named(&mut ctx, &runtime, "C")?;
+    let variables = list_of(&mut ctx, &runtime, &[variable])?;
+    let error_clause = list_of(&mut ctx, &runtime, &[condition, variables, body])?;
+    let handler_case = list_of(&mut ctx, &runtime, &[handler_case_name, body, error_clause])?;
+    let expanded = call_macro(&runtime, &mut ctx, "HANDLER-CASE", handler_case)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "BLOCK")?
+    );
+
+    let ignore_errors = list_of(&mut ctx, &runtime, &[ignore_errors_name, body])?;
+    let expanded = call_macro(&runtime, &mut ctx, "IGNORE-ERRORS", ignore_errors)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "BLOCK")?
+    );
+
+    let restart_clause = list_of(&mut ctx, &runtime, &[handler, handler])?;
+    let restart_clauses = list_of(&mut ctx, &runtime, &[restart_clause])?;
+    let restart_bind = list_of(
+        &mut ctx,
+        &runtime,
+        &[restart_bind_name, restart_clauses, body],
+    )?;
+    let expanded = call_macro(&runtime, &mut ctx, "RESTART-BIND", restart_bind)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "LET")?
+    );
+
+    let restart_case_clause = list_of(&mut ctx, &runtime, &[handler, variables, body])?;
+    let restart_case = list_of(
+        &mut ctx,
+        &runtime,
+        &[restart_case_name, body, restart_case_clause],
+    )?;
+    let expanded = call_macro(&runtime, &mut ctx, "RESTART-CASE", restart_case)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "BLOCK")?
+    );
+
+    let simple_heading = list_of(&mut ctx, &runtime, &[handler, body])?;
+    let simple = list_of(
+        &mut ctx,
+        &runtime,
+        &[simple_restart_name, simple_heading, body],
+    )?;
+    let expanded = call_macro(&runtime, &mut ctx, "WITH-SIMPLE-RESTART", simple)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "BLOCK")?
+    );
+
+    let a = named(&mut ctx, &runtime, "A")?;
+    let values = list_of(&mut ctx, &runtime, &[a])?;
+    let multiple_bind = list_of(
+        &mut ctx,
+        &runtime,
+        &[multiple_bind_name, values, body, body],
+    )?;
+    let expanded = call_macro(&runtime, &mut ctx, "MULTIPLE-VALUE-BIND", multiple_bind)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "MULTIPLE-VALUE-CALL")?
+    );
+
+    let multiple_list = list_of(&mut ctx, &runtime, &[multiple_list_name, body])?;
+    let expanded = call_macro(&runtime, &mut ctx, "MULTIPLE-VALUE-LIST", multiple_list)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "MULTIPLE-VALUE-CALL")?
+    );
+    Ok(())
+}
+
+#[test]
+fn control_macro_expanders_cover_typecase_defaults_and_malformed_inputs() -> Result<(), ObjectError>
+{
+    let (runtime, mut ctx) = fixture()?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let value = named(&mut ctx, &runtime, "VALUE")?;
+    let integer = named(&mut ctx, &runtime, "INTEGER")?;
+    let typecase_name = named(&mut ctx, &runtime, "TYPECASE")?;
+    let case_name = named(&mut ctx, &runtime, "CASE")?;
+    let integer_clause = list_of(&mut ctx, &runtime, &[integer, body])?;
+    let otherwise = named(&mut ctx, &runtime, "OTHERWISE")?;
+    let otherwise_clause = list_of(&mut ctx, &runtime, &[otherwise, body])?;
+    let clauses = list_of(&mut ctx, &runtime, &[integer_clause, otherwise_clause])?;
+    let typecase = list_of(&mut ctx, &runtime, &[typecase_name, value, integer_clause])?;
+    let expanded = call_macro(&runtime, &mut ctx, "TYPECASE", typecase)?;
+    assert_eq!(
+        elements(&mut ctx, expanded)?[0],
+        named(&mut ctx, &runtime, "LET")?
+    );
+    let typecase_default = list_of(
+        &mut ctx,
+        &runtime,
+        &[typecase_name, value, integer_clause, otherwise_clause],
+    )?;
+    assert!(call_macro(&runtime, &mut ctx, "TYPECASE", typecase_default).is_ok());
+    let case = list_of(&mut ctx, &runtime, &[case_name, value, clauses])?;
+    assert!(call_macro(&runtime, &mut ctx, "CASE", case).is_ok());
+    let malformed = list_of(&mut ctx, &runtime, &[typecase_name])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "TYPECASE", malformed),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
 }
 
 #[test]

@@ -6,9 +6,42 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     LambdaList, LispError, MultipleValues, ObjectError, Parameter, ParameterType, ProgramError,
-    Runtime, ThreadContext, make_cons,
+    Runtime, ThreadContext, make_code_object, make_cons, make_simple_fun,
 };
-use ncl_sys::Word;
+use ncl_sys::{CodePtr, Word, alloc_code, publish_code};
+
+#[cfg(target_arch = "x86_64")]
+fn native_return_code(value: u64, count: u32) -> CodePtr {
+    let mut bytes = vec![0x48, 0xb8];
+    bytes.extend_from_slice(&value.to_le_bytes());
+    bytes.push(0xba);
+    bytes.extend_from_slice(&count.to_le_bytes());
+    bytes.push(0xc3);
+    let mut code = alloc_code(bytes.len()).unwrap_or_else(|error| panic!("alloc code: {error:?}"));
+    code.write_code(0, &bytes)
+        .unwrap_or_else(|error| panic!("write code: {error:?}"));
+    publish_code(&mut code).unwrap_or_else(|error| panic!("publish code: {error:?}"));
+    code
+}
+
+#[cfg(target_arch = "aarch64")]
+fn native_return_code(value: u64, count: u32) -> CodePtr {
+    assert!(value <= u64::from(u16::MAX));
+    let instructions = [
+        0xd2800000_u32 | ((value as u32) << 5),
+        0xd2800000_u32 | (count << 5) | 1,
+        0xd65f03c0,
+    ];
+    let bytes = instructions
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    let mut code = alloc_code(bytes.len()).unwrap_or_else(|error| panic!("alloc code: {error:?}"));
+    code.write_code(0, &bytes)
+        .unwrap_or_else(|error| panic!("write code: {error:?}"));
+    publish_code(&mut code).unwrap_or_else(|error| panic!("publish code: {error:?}"));
+    code
+}
 
 fn add_builtin(
     _ctx: &mut ThreadContext,
@@ -337,4 +370,140 @@ fn builtin_arity_mismatch_records_a_program_error() {
         ),
         Err(ObjectError::TypeError)
     );
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+#[test]
+fn builtin_function_caller_observes_native_return_counts() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+
+    let make_function = |ctx: &mut ThreadContext, code: &CodePtr| {
+        let descriptor = make_code_object(
+            ctx,
+            &runtime,
+            code.address(),
+            code.len(),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .unwrap_or_else(|error| panic!("code object: {error:?}"));
+        make_simple_fun(
+            ctx,
+            &runtime,
+            code.address(),
+            Word::NIL,
+            Word::NIL,
+            descriptor,
+        )
+        .unwrap_or_else(|error| panic!("simple function: {error:?}"))
+    };
+
+    let zero_code = native_return_code(0, 0);
+    let zero = make_function(&mut ctx, &zero_code);
+    values.set(&[Word::fixnum(99)]);
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(
+                ncl_object::FunctionObject::try_from(zero.as_word()).unwrap()
+            ),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Ok(Word::NIL)
+    );
+    assert_eq!(values.as_slice(), &[]);
+
+    let one_code = native_return_code(Word::fixnum(7).bits(), 1);
+    let one = make_function(&mut ctx, &one_code);
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(
+                ncl_object::FunctionObject::try_from(one.as_word()).unwrap()
+            ),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Ok(Word::fixnum(7))
+    );
+    // The native branch records its return area internally; the caller then
+    // mirrors the ThreadContext value list, which is empty for this native-only call.
+    assert_eq!(values.as_slice(), &[]);
+
+    let many_code = native_return_code(Word::fixnum(11).bits(), 2);
+    let many = make_function(&mut ctx, &many_code);
+    ctx.set_values(&[Word::fixnum(11), Word::fixnum(12)]);
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(
+                ncl_object::FunctionObject::try_from(many.as_word()).unwrap()
+            ),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Ok(Word::fixnum(11))
+    );
+    assert_eq!(values.as_slice(), &[Word::fixnum(11), Word::fixnum(12)]);
+}
+
+#[test]
+fn builtin_function_caller_reports_native_layout_and_builtin_arity_boundaries() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = make_code_object(&mut ctx, &runtime, 0, 0, Word::NIL, Word::NIL, Word::NIL)
+        .unwrap_or_else(|error| panic!("code object: {error:?}"));
+    let function = make_simple_fun(&mut ctx, &runtime, 0, Word::NIL, Word::NIL, descriptor)
+        .unwrap_or_else(|error| panic!("simple function: {error:?}"));
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(
+                ncl_object::FunctionObject::try_from(function.as_word()).unwrap()
+            ),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Err(ObjectError::Layout)
+    );
+
+    let builtin = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+                    convention: BuiltinConvention::Direct(Arity::exact(2)),
+                },
+                add_builtin,
+            ),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(builtin),
+            FunctionArguments::new(&[Word::fixnum(1)]),
+            &mut values,
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_lisp_error(), None);
 }

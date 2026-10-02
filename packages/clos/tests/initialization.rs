@@ -198,6 +198,95 @@ fn shared_initialize_rejects_odd_initargs_and_non_instance() {
 }
 
 #[test]
+fn make_instance_reports_undefined_initialize_instance_function_cell() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (initialize_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "INITIALIZE-INSTANCE")
+        .unwrap();
+    ctx.write_object_slot(
+        initialize_name,
+        ncl_object::symbol_offset::FUNCTION,
+        Word::UNBOUND,
+    )
+    .unwrap();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(111)]);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class]),
+        Err(ncl_object::ObjectError::UndefinedFunction)
+    );
+}
+
+#[test]
+fn initialize_instance_reports_undefined_shared_initialize_function_cell() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (shared_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "SHARED-INITIALIZE")
+        .unwrap();
+    ctx.write_object_slot(
+        shared_name,
+        ncl_object::symbol_offset::FUNCTION,
+        Word::UNBOUND,
+    )
+    .unwrap();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(112)]);
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+    let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, initialize, &[instance]),
+        Err(ncl_object::ObjectError::UndefinedFunction)
+    );
+}
+
+#[test]
+fn initialize_slots_prefers_initarg_over_default_and_preserves_unbound_default() {
+    let (runtime, mut ctx) = setup();
+    let first_name = Word::fixnum(121);
+    let first_initarg = Word::fixnum(122);
+    let second_name = Word::fixnum(123);
+    let second_initarg = Word::fixnum(124);
+    let first = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[first_name, first_initarg, Word::fixnum(900)],
+    )
+    .unwrap();
+    let second = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[second_name, second_initarg, Word::UNBOUND],
+    )
+    .unwrap();
+    let slots = make_simple_vector(&mut ctx, &runtime, &[first, second]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(125),
+        Word::NIL,
+        slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let instance = runtime
+        .call_builtin(&mut ctx, make, &[class, first_initarg, Word::fixnum(901)])
+        .unwrap();
+
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::fixnum(901))
+    );
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 1),
+        Ok(Word::UNBOUND)
+    );
+}
+
+#[test]
 fn make_instance_initializes_slots_inherited_through_three_generations() {
     let (runtime, mut ctx) = setup();
     let root_slot = Word::fixnum(101);

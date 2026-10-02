@@ -101,6 +101,177 @@ fn find_class_and_typep_accept_symbol_and_descriptor_designators() {
 }
 
 #[test]
+fn class_builtins_reject_unknown_designators_and_invalid_class_values() {
+    let (runtime, mut ctx) = setup();
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let unknown = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "CLOS-UNKNOWN-CLASS")
+        .unwrap()
+        .0;
+    let find_class = function(&runtime, &mut ctx, "FIND-CLASS");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_class, &[unknown]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_class, &[Word::fixnum(1)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let class_name = function(&runtime, &mut ctx, "CLASS-NAME");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, class_name, &[Word::NIL]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn typep_follows_user_class_inheritance_and_rejects_bad_type_designators() {
+    let (runtime, mut ctx) = setup();
+    let parent_name = make_string(&mut ctx, &runtime, &['P']).unwrap();
+    let child_name = make_string(&mut ctx, &runtime, &['C']).unwrap();
+    let other_name = make_string(&mut ctx, &runtime, &['O']).unwrap();
+    let standard_object = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let parent = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        parent_name,
+        standard_object,
+        Word::NIL,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let child = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        child_name,
+        parent,
+        Word::NIL,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let other = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        other_name,
+        standard_object,
+        Word::NIL,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, child, &[]).unwrap();
+    let typep = function(&runtime, &mut ctx, "TYPEP");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[instance, parent]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[instance, other]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[Word::fixnum(3), child]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, typep, &[instance, Word::fixnum(3)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn named_slot_builtins_cover_inheritance_boundness_and_unknown_names() {
+    let (runtime, mut ctx) = setup();
+    let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let parent_slot_name = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "CLOS-PARENT-SLOT")
+        .unwrap()
+        .0;
+    let child_slot_name = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "CLOS-CHILD-SLOT")
+        .unwrap()
+        .0;
+    let unknown_slot_name = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "CLOS-UNKNOWN-SLOT")
+        .unwrap()
+        .0;
+    let parent_slot =
+        make_simple_vector(&mut ctx, &runtime, &[parent_slot_name, Word::fixnum(0)]).unwrap();
+    let child_slot =
+        make_simple_vector(&mut ctx, &runtime, &[child_slot_name, Word::fixnum(1)]).unwrap();
+    let standard_object = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let parent_slots = make_simple_vector(&mut ctx, &runtime, &[parent_slot]).unwrap();
+    let parent = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        standard_object,
+        parent_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let child_slots = make_simple_vector(&mut ctx, &runtime, &[child_slot]).unwrap();
+    let child = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        parent,
+        child_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let instance =
+        ncl_clos::make_instance(&mut ctx, &runtime, child, &[Word::UNBOUND, Word::UNBOUND])
+            .unwrap();
+    let slot_boundp = function(&runtime, &mut ctx, "SLOT-BOUNDP");
+    let slot_makunbound = function(&runtime, &mut ctx, "SLOT-MAKUNBOUND");
+    let slot_value = function(&runtime, &mut ctx, "SLOT-VALUE");
+    let slot_set = function(&runtime, &mut ctx, "SLOT-VALUE-SET");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_boundp, &[instance, parent_slot_name]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            slot_set,
+            &[instance, parent_slot_name, Word::TRUE],
+        ),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_value, &[instance, parent_slot_name]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_boundp, &[instance, parent_slot_name]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_makunbound, &[instance, parent_slot_name]),
+        Ok(instance)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_boundp, &[instance, parent_slot_name]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            slot_set,
+            &[Word::NIL, child_slot_name, Word::TRUE]
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_value, &[instance, unknown_slot_name]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
 fn slot_builtins_round_trip_and_reject_non_instances() {
     let (runtime, mut ctx) = setup();
     let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();

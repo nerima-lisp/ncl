@@ -368,6 +368,12 @@ pub fn lower_pending_check(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::redundant_clone,
+    clippy::too_many_lines,
+    clippy::useless_vec,
+    missing_docs
+)]
 mod tests {
     use super::*;
     use crate::{AbiError, Allocation, Location};

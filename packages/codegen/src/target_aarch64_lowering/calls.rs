@@ -192,6 +192,7 @@ fn lower_named_global_call(
 }
 
 #[cfg(test)]
+#[allow(clippy::len_zero, missing_docs)]
 mod tests {
     use super::*;
     use crate::{AbiError, Allocation, Location};

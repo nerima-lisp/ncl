@@ -62,6 +62,7 @@ impl FrameLayout {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
 mod tests {
     use super::FrameLayout;
     use crate::CodegenError;

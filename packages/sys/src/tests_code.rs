@@ -313,9 +313,11 @@ fn registry_frame_scan_forwards_frame_and_register_roots() {
     bytes[10..12].copy_from_slice(&(1_u16 << 3).to_le_bytes());
     bytes.push(0b0000_0100);
     bytes.extend_from_slice(&3_u16.to_le_bytes());
-    let map = SafepointMap::decode(&bytes, 1).expect("valid registry safepoint map");
+    let map = SafepointMap::decode(&bytes, 1)
+        .unwrap_or_else(|error| panic!("valid registry safepoint map: {error:?}"));
 
-    let mut code = alloc_code(16).expect("code allocation for registry scan");
+    let mut code = alloc_code(16)
+        .unwrap_or_else(|error| panic!("code allocation for registry scan: {error:?}"));
     assert!(publish_code(&mut code).is_ok());
     let mut registry = CodeRegistry::default();
     assert!(

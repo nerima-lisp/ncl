@@ -118,6 +118,7 @@ pub(super) fn initialize_arguments(
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_possible_truncation, missing_docs)]
 mod tests {
     use super::*;
     use crate::{Allocation, LiveInterval, Location};

@@ -53,7 +53,7 @@ fn package_markers_distinguish_keywords_internal_symbols_and_packages() {
         assert!(
             matches!(
                 read_from_string(&mut ctx, &runtime, input, &opts),
-                Err(ReadError::InvalidSymbolToken(_)) | Err(ReadError::PackageNotFound(_))
+                Err(ReadError::InvalidSymbolToken(_) | ReadError::PackageNotFound(_))
             ),
             "input: {input}"
         );

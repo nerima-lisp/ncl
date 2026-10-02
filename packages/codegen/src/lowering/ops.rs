@@ -266,6 +266,7 @@ pub(super) fn emit_return(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::*;
     use crate::{ContextField, RuntimeFunction};

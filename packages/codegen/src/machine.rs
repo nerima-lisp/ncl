@@ -153,6 +153,7 @@ impl MachineFunction {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::{Block, CompiledFunction, MachineFunction, MachineOp};
     use crate::{FrameLayout, Relocation, SafepointMap};

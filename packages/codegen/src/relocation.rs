@@ -65,6 +65,7 @@ pub fn relocations_from_fixups(fixups: &[Fixup]) -> Result<Vec<Relocation>, Relo
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::*;
 

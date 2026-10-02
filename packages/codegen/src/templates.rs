@@ -104,6 +104,7 @@ pub const fn terminator_template(terminator: &Terminator) -> TemplateKind {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, missing_docs)]
 mod tests {
     use super::{Template, TemplateKind, op_template, terminator_template};
     use ncl_ir::{BlockId, ConstantIndex, OpKind, Terminator, ValueId};

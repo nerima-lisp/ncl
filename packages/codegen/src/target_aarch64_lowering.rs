@@ -482,6 +482,7 @@ pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 pub(super) use ops::lower_op;
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, missing_docs)]
 mod tests {
     use super::*;
     use crate::{AbiError, Allocation, Location};

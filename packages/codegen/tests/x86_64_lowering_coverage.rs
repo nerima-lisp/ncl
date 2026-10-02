@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::expect_used)]
 
 use ncl_codegen::{CodegenError, X86_64Abi, compile_function_x86_64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Param, Terminator, Ty, ValueId};

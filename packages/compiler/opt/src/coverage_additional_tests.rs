@@ -1,3 +1,9 @@
+#![allow(
+    clippy::similar_names,
+    clippy::single_element_loop,
+    clippy::too_many_lines
+)]
+
 use super::tests_support::Fixture;
 use crate::{
     DeadCodeElimination, FunctionPass, GlobalValueNumbering, InlineDirectCalls, Module, Sccp,

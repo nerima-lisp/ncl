@@ -69,7 +69,12 @@ pub(super) fn untag_function_object(assembler: &mut Assembler) -> Result<(), Cod
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    missing_docs
+)]
 mod tests {
     use super::{compare_condition, constant_word, materialise_boolean, untag_function_object};
     use crate::{CodegenError, RuntimeAbi, RuntimeFunction};

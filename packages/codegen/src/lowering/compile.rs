@@ -119,6 +119,7 @@ pub(super) fn validate_targets(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::{compile_function, slots, validate_targets};
     use crate::{CodegenError, X86_64Abi};

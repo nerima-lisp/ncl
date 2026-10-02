@@ -190,6 +190,7 @@ fn bit_is_set(bitmap: &[u8], bit: u16) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::{MapError, SafepointMap};
 

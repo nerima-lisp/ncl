@@ -42,10 +42,9 @@ fn verifier_accepts_call_closure_without_a_named_symbol() {
 #[test]
 fn parser_rejects_operation_indices_that_do_not_fit_in_u8() {
     let input = "fn @edge { 0,edge,0,0,0,1,0,0,1,0,ffffffffffffffff,7,100,7,0,0,0, }\n";
-    assert_eq!(
-        parse(input)
-            .expect_err("an oversized LoadArg index must be rejected")
-            .to_string(),
-        "integer out of range"
-    );
+    let error = match parse(input) {
+        Ok(function) => panic!("an oversized LoadArg index must be rejected: {function:?}"),
+        Err(error) => error.to_string(),
+    };
+    assert_eq!(error, "integer out of range");
 }

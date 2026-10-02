@@ -138,6 +138,7 @@ pub(super) fn encode(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::encode;
     use crate::{Block, CodegenError, FrameLayout, MachineFunction, X86_64Abi};

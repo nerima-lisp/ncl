@@ -12,10 +12,8 @@ fn print_error_variants_keep_display_and_source_contracts() {
     let object = PrintError::from(ObjectError::TypeError);
     assert_eq!(object.to_string(), "print: object error: TypeError");
     assert_eq!(
-        std::error::Error::source(&object)
-            .expect("object errors expose their source")
-            .to_string(),
-        "TypeError"
+        std::error::Error::source(&object).map(ToString::to_string),
+        Some("TypeError".to_owned())
     );
 
     for (error, expected) in [

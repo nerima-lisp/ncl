@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::too_many_lines)]
+
 use super::{Architecture, decode};
 
 fn aarch64_words(words: &[u32]) -> Vec<u8> {

@@ -102,6 +102,8 @@ pub fn resolve_labels(instructions: &[DecodedInstruction]) -> Vec<Option<String>
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+    use ncl_asm_aarch64::{Inst, MemOperand, Reg, RegOrSp};
+
     use super::{Architecture, DecodeError, decode, resolve_labels};
 
     fn aarch64_words(words: &[u32]) -> Vec<u8> {
@@ -365,7 +367,6 @@ mod tests {
             ["str w0, [sp, #1]", "str w0, [sp, #2]", "ldr w0, [sp, #4]"]
         );
 
-        use ncl_asm_aarch64::{Inst, MemOperand, Reg, RegOrSp};
         let pair = decode(
             Architecture::Aarch64,
             &aarch64_encoded(&[Inst::Ldp {

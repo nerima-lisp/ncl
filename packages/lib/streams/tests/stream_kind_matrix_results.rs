@@ -251,7 +251,7 @@ fn standard_stream_operations_report_directions_metadata_and_wrong_kinds() {
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
-        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, input]),
+        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, output]),
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(

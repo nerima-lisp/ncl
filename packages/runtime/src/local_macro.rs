@@ -378,5 +378,5 @@ pub fn call_local_macro(
 }
 
 #[cfg(test)]
-#[path = "local_macro_tests.rs"]
+#[path = "tests/local_macro.rs"]
 mod tests;

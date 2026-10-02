@@ -180,6 +180,7 @@ fn private_elf_writer_handles_sections_without_text_or_metadata() {
 
 #[test]
 fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
     assert_eq!(
         // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
@@ -191,6 +192,7 @@ fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
         })
     );
     let mut bytes = vec![0; 64];
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
     assert_eq!(
         // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
@@ -247,6 +249,7 @@ fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
         symbol: SymbolRef::External("loader".into()),
         addend: 0,
     });
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
     assert_eq!(
         // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions

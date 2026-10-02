@@ -18,6 +18,7 @@ fn types_have_stable_display_and_primitive_effects() {
         assert_eq!(ty.to_string(), name); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     }
 
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
     for primitive in [Prim::Rplaca, Prim::Rplacd, Prim::Aset] {
         // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions

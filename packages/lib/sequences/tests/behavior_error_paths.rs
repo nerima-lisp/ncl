@@ -1,4 +1,9 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![allow(
+    clippy::similar_names,
+    clippy::too_many_lines,
+    missing_docs,
+    clippy::unwrap_used
+)]
 
 use std::collections::HashMap;
 

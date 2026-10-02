@@ -137,7 +137,11 @@ fn selection_branch_matrix_returns_exact_keyed_and_bounded_results() {
 
     let nested_one = list(&runtime, &mut ctx, &[one, Word::character(u32::from('a'))]);
     let nested_two = list(&runtime, &mut ctx, &[two, Word::character(u32::from('b'))]);
-    let nested_three = list(&runtime, &mut ctx, &[three, Word::character(u32::from('c'))]);
+    let nested_three = list(
+        &runtime,
+        &mut ctx,
+        &[three, Word::character(u32::from('c'))],
+    );
     let nested = list(&runtime, &mut ctx, &[nested_one, nested_two, nested_three]);
     let car = function(&runtime, &mut ctx, "CAR");
     let key = keyword(&mut ctx, &runtime, "KEY");
@@ -199,8 +203,13 @@ fn selection_branch_matrix_returns_exact_keyed_and_bounded_results() {
         Ok(vec![four, four, four, four, four])
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "SUBSTITUTE-IF-NOT", &[four, atom, nested])
-            .map(|value| list_values(&ctx, value)),
+        call(
+            &runtime,
+            &mut ctx,
+            "SUBSTITUTE-IF-NOT",
+            &[four, atom, nested]
+        )
+        .map(|value| list_values(&ctx, value)),
         Ok(vec![four, four, four])
     );
 
@@ -255,11 +264,23 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
     let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two, three]).unwrap();
     let text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c']).unwrap();
 
-    assert_eq!(call(&runtime, &mut ctx, "LENGTH", &[list_value]), Ok(Word::fixnum(3)));
-    assert_eq!(call(&runtime, &mut ctx, "LENGTH", &[vector]), Ok(Word::fixnum(3)));
-    assert_eq!(call(&runtime, &mut ctx, "LENGTH", &[text]), Ok(Word::fixnum(3)));
+    assert_eq!(
+        call(&runtime, &mut ctx, "LENGTH", &[list_value]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "LENGTH", &[vector]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "LENGTH", &[text]),
+        Ok(Word::fixnum(3))
+    );
     assert_eq!(call(&runtime, &mut ctx, "ELT", &[vector, two]), Ok(three));
-    assert_eq!(call(&runtime, &mut ctx, "ELT", &[text, one]), Ok(Word::character(u32::from('b'))));
+    assert_eq!(
+        call(&runtime, &mut ctx, "ELT", &[text, one]),
+        Ok(Word::character(u32::from('b')))
+    );
     assert_eq!(
         call(&runtime, &mut ctx, "SUBSEQ", &[list_value, one, three])
             .map(|value| list_values(&ctx, value)),
@@ -276,22 +297,19 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
         Ok('b')
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "REVERSE", &[list_value])
-            .map(|value| list_values(&ctx, value)),
+        call(&runtime, &mut ctx, "REVERSE", &[list_value]).map(|value| list_values(&ctx, value)),
         Ok(vec![three, two, one])
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "REVERSE", &[vector])
-            .map(|value| vector_values(&ctx, value)),
+        call(&runtime, &mut ctx, "REVERSE", &[vector]).map(|value| vector_values(&ctx, value)),
         Ok(vec![three, two, one])
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "REVERSE", &[text])
-            .map(|value| {
-                (0..3)
-                    .map(|index| ncl_object::string_ref(&ctx, value, index).unwrap())
-                    .collect::<String>()
-            }),
+        call(&runtime, &mut ctx, "REVERSE", &[text]).map(|value| {
+            (0..3)
+                .map(|index| ncl_object::string_ref(&ctx, value, index).unwrap())
+                .collect::<String>()
+        }),
         Ok("cba".to_owned())
     );
 
@@ -306,7 +324,8 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
         Ok(fill_list)
     );
     assert_eq!(list_values(&ctx, fill_list), vec![one, four, four, four]);
-    let fill_vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two, three]).unwrap();
+    let fill_vector =
+        ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two, three]).unwrap();
     call(&runtime, &mut ctx, "FILL", &[fill_vector, four, start, two]).unwrap();
     assert_eq!(vector_values(&ctx, fill_vector), vec![one, two, four]);
     let fill_text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c']).unwrap();
@@ -314,7 +333,14 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
         &runtime,
         &mut ctx,
         "FILL",
-        &[fill_text, Word::character(u32::from('z')), start, one, end, two],
+        &[
+            fill_text,
+            Word::character(u32::from('z')),
+            start,
+            one,
+            end,
+            two,
+        ],
     )
     .unwrap();
     assert_eq!(
@@ -327,7 +353,12 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
     let destination = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, one, one]).unwrap();
     let replacement = list(&runtime, &mut ctx, &[two, three]);
     assert_eq!(
-        call(&runtime, &mut ctx, "REPLACE", &[destination, replacement, start, one]),
+        call(
+            &runtime,
+            &mut ctx,
+            "REPLACE",
+            &[destination, replacement, start, one]
+        ),
         Ok(destination)
     );
     assert_eq!(vector_values(&ctx, destination), vec![one, two, three]);
@@ -335,22 +366,44 @@ fn filter_and_list_branch_matrix_preserves_sequence_types_and_ranges() {
     let concatenated_vector = common_lisp_symbol(&mut ctx, &runtime, "VECTOR");
     let concatenated_string = common_lisp_symbol(&mut ctx, &runtime, "STRING");
     assert_eq!(
-        call(&runtime, &mut ctx, "CONCATENATE", &[concatenated_list, list_value, vector])
-            .map(|value| list_values(&ctx, value)),
+        call(
+            &runtime,
+            &mut ctx,
+            "CONCATENATE",
+            &[concatenated_list, list_value, vector]
+        )
+        .map(|value| list_values(&ctx, value)),
         Ok(vec![one, two, three, one, two, three])
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "CONCATENATE", &[concatenated_vector, list_value, text])
-            .map(|value| vector_values(&ctx, value)),
-        Ok(vec![one, two, three, Word::character(u32::from('a')), Word::character(u32::from('b')), Word::character(u32::from('c'))])
+        call(
+            &runtime,
+            &mut ctx,
+            "CONCATENATE",
+            &[concatenated_vector, list_value, text]
+        )
+        .map(|value| vector_values(&ctx, value)),
+        Ok(vec![
+            one,
+            two,
+            three,
+            Word::character(u32::from('a')),
+            Word::character(u32::from('b')),
+            Word::character(u32::from('c'))
+        ])
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "CONCATENATE", &[concatenated_string, text, text])
-            .map(|value| {
-                (0..6)
-                    .map(|index| ncl_object::string_ref(&ctx, value, index).unwrap())
-                    .collect::<String>()
-            }),
+        call(
+            &runtime,
+            &mut ctx,
+            "CONCATENATE",
+            &[concatenated_string, text, text]
+        )
+        .map(|value| {
+            (0..6)
+                .map(|index| ncl_object::string_ref(&ctx, value, index).unwrap())
+                .collect::<String>()
+        }),
         Ok("abcabc".to_owned())
     );
     let append_tail = list(&runtime, &mut ctx, &[one, two, three]);
@@ -384,10 +437,12 @@ fn higher_order_branch_matrix_returns_lists_vectors_and_short_circuits() {
     assert_eq!(mapped_values.len(), 3);
     assert_eq!(list_values(&ctx, mapped_values[0]), vec![one, four]);
     assert_eq!(list_values(&ctx, mapped_values[2]), vec![three, two]);
-    assert_eq!(call(&runtime, &mut ctx, "MAPC", &[list_fn, source]), Ok(source));
     assert_eq!(
-        call(&runtime, &mut ctx, "MAPLIST", &[car, source])
-            .map(|value| list_values(&ctx, value)),
+        call(&runtime, &mut ctx, "MAPC", &[list_fn, source]),
+        Ok(source)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAPLIST", &[car, source]).map(|value| list_values(&ctx, value)),
         Ok(vec![one, two, three])
     );
     assert_eq!(call(&runtime, &mut ctx, "MAPL", &[car, source]), Ok(source));
@@ -436,12 +491,9 @@ fn higher_order_branch_matrix_returns_lists_vectors_and_short_circuits() {
         Ok(destination)
     );
     assert_eq!(list_values(&ctx, destination), vec![one, two, three]);
-    let destination_vector = ncl_object::make_simple_vector(
-        &mut ctx,
-        &runtime,
-        &[Word::NIL, Word::NIL, Word::NIL],
-    )
-    .unwrap();
+    let destination_vector =
+        ncl_object::make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::NIL])
+            .unwrap();
     assert_eq!(
         call(
             &runtime,
@@ -451,21 +503,48 @@ fn higher_order_branch_matrix_returns_lists_vectors_and_short_circuits() {
         ),
         Ok(destination_vector)
     );
-    assert_eq!(vector_values(&ctx, destination_vector), vec![one, two, three]);
+    assert_eq!(
+        vector_values(&ctx, destination_vector),
+        vec![one, two, three]
+    );
     assert_eq!(
         call(&runtime, &mut ctx, "MAP", &[Word::NIL, list_fn]),
         Ok(Word::NIL)
     );
 
-    assert_eq!(call(&runtime, &mut ctx, "EVERY", &[atom, source]), Ok(Word::TRUE));
-    assert_eq!(call(&runtime, &mut ctx, "SOME", &[atom, source]), Ok(Word::TRUE));
-    assert_eq!(call(&runtime, &mut ctx, "NOTANY", &[atom, source]), Ok(Word::NIL));
-    assert_eq!(call(&runtime, &mut ctx, "NOTEVERY", &[atom, source]), Ok(Word::NIL));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EVERY", &[atom, source]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SOME", &[atom, source]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "NOTANY", &[atom, source]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "NOTEVERY", &[atom, source]),
+        Ok(Word::NIL)
+    );
     let nested = list(&runtime, &mut ctx, &[source, other]);
-    assert_eq!(call(&runtime, &mut ctx, "EVERY", &[atom, nested]), Ok(Word::NIL));
-    assert_eq!(call(&runtime, &mut ctx, "SOME", &[atom, nested]), Ok(Word::NIL));
-    assert_eq!(call(&runtime, &mut ctx, "NOTANY", &[atom, nested]), Ok(Word::TRUE));
-    assert_eq!(call(&runtime, &mut ctx, "NOTEVERY", &[atom, nested]), Ok(Word::TRUE));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EVERY", &[atom, nested]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SOME", &[atom, nested]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "NOTANY", &[atom, nested]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "NOTEVERY", &[atom, nested]),
+        Ok(Word::TRUE)
+    );
 
     let initial_value = keyword(&mut ctx, &runtime, "INITIAL-VALUE");
     let reduce = call(
@@ -480,7 +559,10 @@ fn higher_order_branch_matrix_returns_lists_vectors_and_short_circuits() {
     assert_eq!(reduce_values[1], three);
     let prior_reduce_values = list_values(&ctx, reduce_values[0]);
     assert_eq!(prior_reduce_values[1], two);
-    assert_eq!(list_values(&ctx, prior_reduce_values[0]), vec![Word::NIL, one]);
+    assert_eq!(
+        list_values(&ctx, prior_reduce_values[0]),
+        vec![Word::NIL, one]
+    );
 }
 
 #[test]
@@ -499,8 +581,7 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
     let car = function(&runtime, &mut ctx, "CAR");
 
     assert_eq!(
-        call(&runtime, &mut ctx, "UNION", &[first, second])
-            .map(|value| list_values(&ctx, value)),
+        call(&runtime, &mut ctx, "UNION", &[first, second]).map(|value| list_values(&ctx, value)),
         Ok(vec![one, two, three, four])
     );
     assert_eq!(
@@ -518,9 +599,15 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
             .map(|value| list_values(&ctx, value)),
         Ok(vec![one, four])
     );
-    assert_eq!(call(&runtime, &mut ctx, "SUBSETP", &[first, second]), Ok(Word::NIL));
+    assert_eq!(
+        call(&runtime, &mut ctx, "SUBSETP", &[first, second]),
+        Ok(Word::NIL)
+    );
     let subset = list(&runtime, &mut ctx, &[two, three]);
-    assert_eq!(call(&runtime, &mut ctx, "SUBSETP", &[subset, second]), Ok(Word::TRUE));
+    assert_eq!(
+        call(&runtime, &mut ctx, "SUBSETP", &[subset, second]),
+        Ok(Word::TRUE)
+    );
     assert_eq!(
         call(
             &runtime,
@@ -531,8 +618,13 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "UNION", &[first, second, test_not, equal])
-            .map(|value| list_values(&ctx, value)),
+        call(
+            &runtime,
+            &mut ctx,
+            "UNION",
+            &[first, second, test_not, equal]
+        )
+        .map(|value| list_values(&ctx, value)),
         Ok(vec![one])
     );
 
@@ -542,12 +634,27 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
     let pair_one = dotted(&runtime, &mut ctx, one, two);
     let pair_two = dotted(&runtime, &mut ctx, three, one);
     let alist = list(&runtime, &mut ctx, &[pair_one, pair_two]);
-    assert_eq!(call(&runtime, &mut ctx, "ASSOC", &[three, alist]), Ok(pair_two));
-    assert_eq!(call(&runtime, &mut ctx, "RASSOC", &[one, alist]), Ok(pair_two));
+    assert_eq!(
+        call(&runtime, &mut ctx, "ASSOC", &[three, alist]),
+        Ok(pair_two)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "RASSOC", &[one, alist]),
+        Ok(pair_two)
+    );
     let member_tail = ncl_object::cdr(&ctx, ncl_object::cdr(&ctx, first).unwrap()).unwrap();
-    assert_eq!(call(&runtime, &mut ctx, "MEMBER", &[three, first]), Ok(member_tail));
-    assert_eq!(call(&runtime, &mut ctx, "ASSOC", &[one, alist, test, equal]), Ok(pair_one));
-    assert_eq!(call(&runtime, &mut ctx, "RASSOC", &[one, alist, test_not, equal]), Ok(pair_one));
+    assert_eq!(
+        call(&runtime, &mut ctx, "MEMBER", &[three, first]),
+        Ok(member_tail)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ASSOC", &[one, alist, test, equal]),
+        Ok(pair_one)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "RASSOC", &[one, alist, test_not, equal]),
+        Ok(pair_one)
+    );
 
     let unsorted = list(&runtime, &mut ctx, &[three, one, two]);
     let comparator = equal;
@@ -566,8 +673,13 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
     let keyed_two = list(&runtime, &mut ctx, &[one, two]);
     let keyed_values = list(&runtime, &mut ctx, &[keyed_one, keyed_two]);
     assert_eq!(
-        call(&runtime, &mut ctx, "SORT", &[keyed_values, comparator, key, car])
-            .map(|value| list_values(&ctx, value)),
+        call(
+            &runtime,
+            &mut ctx,
+            "SORT",
+            &[keyed_values, comparator, key, car]
+        )
+        .map(|value| list_values(&ctx, value)),
         Ok(vec![keyed_one, keyed_two])
     );
 
@@ -575,25 +687,49 @@ fn order_and_equality_branch_matrix_preserves_order_and_content_contracts() {
     let nested_right_tail = list(&runtime, &mut ctx, &[two]);
     let nested_left = list(&runtime, &mut ctx, &[one, nested_left_tail]);
     let nested_right = list(&runtime, &mut ctx, &[one, nested_right_tail]);
-    assert_eq!(call(&runtime, &mut ctx, "EQUAL", &[nested_left, nested_right]), Ok(Word::TRUE));
-    assert_eq!(call(&runtime, &mut ctx, "EQUAL", &[nested_left, first]), Ok(Word::NIL));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUAL", &[nested_left, nested_right]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUAL", &[nested_left, first]),
+        Ok(Word::NIL)
+    );
     let lower = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b']).unwrap();
     let upper = ncl_object::make_string(&mut ctx, &runtime, &['A', 'B']).unwrap();
-    assert_eq!(call(&runtime, &mut ctx, "EQUAL", &[lower, upper]), Ok(Word::NIL));
-    assert_eq!(call(&runtime, &mut ctx, "EQUALP", &[lower, upper]), Ok(Word::TRUE));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUAL", &[lower, upper]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUALP", &[lower, upper]),
+        Ok(Word::TRUE)
+    );
     assert_eq!(
         call(
             &runtime,
             &mut ctx,
             "EQUALP",
-            &[Word::character(u32::from('z')), Word::character(u32::from('Z'))],
+            &[
+                Word::character(u32::from('z')),
+                Word::character(u32::from('Z'))
+            ],
         ),
         Ok(Word::TRUE)
     );
     let vector_one = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two]).unwrap();
     let vector_two = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two]).unwrap();
     let vector_three = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, three]).unwrap();
-    assert_eq!(call(&runtime, &mut ctx, "EQUAL", &[vector_one, vector_two]), Ok(Word::NIL));
-    assert_eq!(call(&runtime, &mut ctx, "EQUALP", &[vector_one, vector_two]), Ok(Word::TRUE));
-    assert_eq!(call(&runtime, &mut ctx, "EQUALP", &[vector_one, vector_three]), Ok(Word::NIL));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUAL", &[vector_one, vector_two]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUALP", &[vector_one, vector_two]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUALP", &[vector_one, vector_three]),
+        Ok(Word::NIL)
+    );
 }

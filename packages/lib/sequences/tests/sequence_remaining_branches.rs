@@ -136,7 +136,10 @@ fn equality_distinguishes_cons_arrays_and_specialized_bits() {
     let left = list(&runtime, &mut ctx, &[one, two]);
     let right = list(&runtime, &mut ctx, &[one, two]);
     let different = list(&runtime, &mut ctx, &[one, three]);
-    assert_eq!(call(&runtime, &mut ctx, "EQUAL", &[left, right]), Ok(Word::TRUE));
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQUAL", &[left, right]),
+        Ok(Word::TRUE)
+    );
     assert_eq!(
         call(&runtime, &mut ctx, "EQUAL", &[left, different]),
         Ok(Word::NIL)
@@ -204,12 +207,14 @@ fn order_and_list_destructive_operations_preserve_contracts() {
         call(&runtime, &mut ctx, "RPLACA", &[first, Word::fixnum(9)]),
         Ok(first)
     );
-    assert_eq!(list_values(&ctx, first), vec![Word::fixnum(9), two, three, four]);
+    assert_eq!(
+        list_values(&ctx, first),
+        vec![Word::fixnum(9), two, three, four]
+    );
 
     let reversed = list(&runtime, &mut ctx, &[one, two, three]);
     assert_eq!(
-        call(&runtime, &mut ctx, "NREVERSE", &[reversed])
-            .map(|value| list_values(&ctx, value)),
+        call(&runtime, &mut ctx, "NREVERSE", &[reversed]).map(|value| list_values(&ctx, value)),
         Ok(vec![three, two, one])
     );
     assert_eq!(
@@ -235,12 +240,7 @@ fn order_and_list_destructive_operations_preserve_contracts() {
     );
     assert_eq!(list_values(&ctx, keyed), vec![keyed_one, keyed_two]);
     assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "UNION",
-            &[first, second, key, car],
-        ),
+        call(&runtime, &mut ctx, "UNION", &[first, second, key, car],),
         Err(ObjectError::TypeError)
     );
 }

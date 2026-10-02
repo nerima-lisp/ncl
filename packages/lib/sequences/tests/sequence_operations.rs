@@ -415,7 +415,7 @@ fn list_and_sequence_builtins_preserve_values_and_mutation() {
         .unwrap(),
         three
     );
-    assert!(matches!(
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
@@ -424,8 +424,8 @@ fn list_and_sequence_builtins_preserve_values_and_mutation() {
             &[one, Word::fixnum(0)]
         ),
         Err(ObjectError::TypeError)
-    ));
-    assert!(matches!(
+    );
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
@@ -434,9 +434,9 @@ fn list_and_sequence_builtins_preserve_values_and_mutation() {
             &[vector, Word::fixnum(3), Word::fixnum(1)]
         ),
         Err(ObjectError::TypeError)
-    ));
+    );
     let improper = call(&runtime, &mut ctx, &functions, "LIST*", &[one, two, three]).unwrap();
-    assert!(matches!(
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
@@ -445,7 +445,7 @@ fn list_and_sequence_builtins_preserve_values_and_mutation() {
             &[improper, Word::NIL],
         ),
         Err(ObjectError::TypeError)
-    ));
+    );
 }
 
 #[test]
@@ -567,7 +567,7 @@ fn selection_options_search_and_mismatch_return_precise_indices() {
         Word::fixnum(2)
     );
     let test_not = keyword(&mut ctx, &runtime, "TEST-NOT");
-    assert!(matches!(
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
@@ -576,8 +576,8 @@ fn selection_options_search_and_mismatch_return_precise_indices() {
             &[one, sequence, test, equal, test_not, equal]
         ),
         Err(ObjectError::TypeError)
-    ));
-    assert!(matches!(
+    );
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
@@ -586,7 +586,7 @@ fn selection_options_search_and_mismatch_return_precise_indices() {
             &[one, sequence, start, Word::fixnum(9)]
         ),
         Err(ObjectError::TypeError)
-    ));
+    );
 }
 
 #[test]

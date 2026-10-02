@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(clippy::too_many_lines, missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin behavior")]
 
 use ncl_object::{

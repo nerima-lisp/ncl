@@ -141,7 +141,8 @@ pub(super) fn encode(
 #[allow(clippy::expect_used, missing_docs)]
 mod tests {
     use super::encode;
-    use crate::{Block, CodegenError, FrameLayout, MachineFunction, X86_64Abi};
+    use crate::{Block, CodegenError, FLAG_CALL, FrameLayout, MachineFunction, X86_64Abi};
+    use ncl_asm_x86_64::{Assembler, Inst, Reg};
     use ncl_ir::{
         BasicBlock, BlockId, DebugLocationId, Function, FunctionId, Op, OpKind, Terminator, Ty,
         ValueId,
@@ -166,6 +167,20 @@ mod tests {
         }
     }
 
+    fn function_with_blocks(blocks: Vec<BasicBlock>) -> Function {
+        Function {
+            id: FunctionId(2),
+            name: "encode-terminators".into(),
+            params: Vec::new(),
+            return_types: Vec::new(),
+            blocks,
+            locals: Vec::new(),
+            constants: Vec::new(),
+            handler_regions: Vec::new(),
+            debug: Vec::new(),
+        }
+    }
+
     fn machine(
         blocks: Vec<Block>,
         slots: Vec<(ValueId, u32)>,
@@ -179,6 +194,14 @@ mod tests {
             Vec::new(),
             slots,
         )
+    }
+
+    fn encoded(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+        let mut assembler = Assembler::new();
+        for instruction in instructions {
+            assembler.emit(&instruction).expect("instruction encoding");
+        }
+        assembler.bytes().to_vec()
     }
 
     #[test]
@@ -237,5 +260,226 @@ mod tests {
         assert_eq!(compiled.debug.len(), 1);
         assert_eq!(compiled.debug[0].location, Some(DebugLocationId(7)));
         assert!(compiled.debug[0].pc_offset > compiled.entry_offset);
+    }
+
+    #[test]
+    fn emits_branch_terminator_for_each_resolved_target() {
+        let branch = function_with_blocks(vec![
+            BasicBlock {
+                id: BlockId(0),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Branch {
+                    condition: ValueId(0),
+                    then_target: BlockId(1),
+                    else_target: BlockId(2),
+                    then_args: Vec::new(),
+                    else_args: Vec::new(),
+                },
+            },
+            BasicBlock {
+                id: BlockId(1),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+            BasicBlock {
+                id: BlockId(2),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+        ]);
+        let compiled = encode(
+            &branch,
+            machine(
+                vec![
+                    Block::new(BlockId(0), Vec::new()),
+                    Block::new(BlockId(1), Vec::new()),
+                    Block::new(BlockId(2), Vec::new()),
+                ],
+                vec![(ValueId(0), 4)],
+                5,
+            ),
+            &X86_64Abi,
+        )
+        .expect("branch encoded");
+        let expected_compare = encoded([Inst::CmpRI(Reg::R10, 0)]);
+        assert!(
+            compiled
+                .code
+                .windows(expected_compare.len())
+                .any(|bytes| bytes == expected_compare)
+        );
+        assert!(compiled.code.windows(2).any(|bytes| bytes == [0x0f, 0x85]));
+        assert!(compiled.code.contains(&0xe9));
+    }
+
+    #[test]
+    fn emits_switch_terminator_for_each_case_and_default_target() {
+        let switch = function_with_blocks(vec![
+            BasicBlock {
+                id: BlockId(0),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Switch {
+                    value: ValueId(0),
+                    cases: vec![(7, BlockId(1), Vec::new()), (-2, BlockId(2), Vec::new())],
+                    default: BlockId(3),
+                    default_args: Vec::new(),
+                },
+            },
+            BasicBlock {
+                id: BlockId(1),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+            BasicBlock {
+                id: BlockId(2),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+            BasicBlock {
+                id: BlockId(3),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+        ]);
+        let compiled = encode(
+            &switch,
+            machine(
+                vec![
+                    Block::new(BlockId(0), Vec::new()),
+                    Block::new(BlockId(1), Vec::new()),
+                    Block::new(BlockId(2), Vec::new()),
+                    Block::new(BlockId(3), Vec::new()),
+                ],
+                vec![(ValueId(0), 4)],
+                5,
+            ),
+            &X86_64Abi,
+        )
+        .expect("switch encoded");
+        for case in [7, -2] {
+            let expected_compare = encoded([Inst::CmpRI(Reg::R10, case)]);
+            assert!(
+                compiled
+                    .code
+                    .windows(expected_compare.len())
+                    .any(|bytes| bytes == expected_compare)
+            );
+        }
+        assert!(
+            compiled
+                .code
+                .windows(2)
+                .filter(|bytes| *bytes == [0x0f, 0x84])
+                .count()
+                >= 2
+        );
+        assert!(compiled.code.contains(&0xe9));
+    }
+
+    #[test]
+    fn emits_non_backedge_jump_terminator() {
+        let jump = function_with_blocks(vec![
+            BasicBlock {
+                id: BlockId(0),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            },
+            BasicBlock {
+                id: BlockId(1),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+        ]);
+        let compiled = encode(
+            &jump,
+            machine(
+                vec![
+                    Block::new(BlockId(0), Vec::new()),
+                    Block::new(BlockId(1), Vec::new()),
+                ],
+                Vec::new(),
+                4,
+            ),
+            &X86_64Abi,
+        )
+        .expect("non-backedge jump encoded");
+        assert!(compiled.code.contains(&0xe9));
+    }
+
+    #[test]
+    fn emits_call_return_and_tail_call_safepoints() {
+        for terminator in [
+            Terminator::CallReturn {
+                function: ValueId(0),
+                args: Vec::new(),
+            },
+            Terminator::TailCall {
+                function: ValueId(0),
+                args: Vec::new(),
+            },
+        ] {
+            let source = function(terminator, Vec::new());
+            let compiled = encode(
+                &source,
+                machine(
+                    vec![Block::new(BlockId(0), Vec::new())],
+                    vec![(ValueId(0), 4)],
+                    5,
+                ),
+                &X86_64Abi,
+            )
+            .expect("call terminator encoded");
+            assert!(
+                compiled
+                    .code
+                    .windows(3)
+                    .any(|bytes| bytes == [0x41, 0xff, 0xd3])
+            );
+            assert_eq!(compiled.safepoint_maps.len(), 1);
+            assert_eq!(compiled.safepoint_maps[0].map_flags, FLAG_CALL);
+        }
+    }
+
+    #[test]
+    fn emits_unreachable_and_rejects_throw_terminators() {
+        let unreachable = function(Terminator::Unreachable, Vec::new());
+        let compiled = encode(
+            &unreachable,
+            machine(vec![Block::new(BlockId(0), Vec::new())], Vec::new(), 4),
+            &X86_64Abi,
+        )
+        .expect("unreachable encoded");
+        assert!(compiled.code.ends_with(&[0x0f, 0x0b]));
+
+        let throw = function(
+            Terminator::Throw {
+                condition: ValueId(0),
+            },
+            Vec::new(),
+        );
+        assert_eq!(
+            encode(
+                &throw,
+                machine(
+                    vec![Block::new(BlockId(0), Vec::new())],
+                    vec![(ValueId(0), 4)],
+                    5,
+                ),
+                &X86_64Abi,
+            ),
+            Err(CodegenError::NonLocalExitUnsupported)
+        );
     }
 }

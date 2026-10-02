@@ -5,7 +5,8 @@
 mod mop;
 
 use ncl_object::{
-    BuiltinArgs, BuiltinPackage, MultipleValues, Runtime, ThreadContext, Word, make_simple_vector,
+    BuiltinArgs, BuiltinPackage, FunctionObject, MultipleValues, Runtime, ThreadContext, Word,
+    make_simple_vector,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -28,6 +29,17 @@ fn call(
         .unwrap();
     let mut values = MultipleValues::new();
     (descriptor.callback)(ctx, runtime, &BuiltinArgs::new(args), &mut values)
+}
+
+fn registered_call(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ncl_object::ObjectError> {
+    let function =
+        FunctionObject::try_from(runtime.function(ctx, "NCL-MOP", name).unwrap()).unwrap();
+    runtime.call_builtin(ctx, function, args)
 }
 
 #[test]
@@ -67,6 +79,84 @@ fn descriptors_expose_typed_class_and_slot_metadata() {
     assert_eq!(
         call(&mut ctx, &runtime, "SLOT-DEFINITION-LOCATION", &[slot]),
         Ok(Word::fixnum(0))
+    );
+}
+
+#[test]
+fn registered_mop_callbacks_cover_metadata_and_slot_lifecycle() {
+    let (runtime, mut ctx) = setup();
+    let superclass = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let name = ncl_object::make_string(&mut ctx, &runtime, &['R']).unwrap();
+    let slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        name,
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+    let slots = make_simple_vector(&mut ctx, &runtime, &[slot]).unwrap();
+    let class =
+        ncl_clos::make_class(&mut ctx, &runtime, name, superclass, slots, Word::fixnum(0)).unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+
+    let precedence =
+        registered_call(&mut ctx, &runtime, "CLASS-PRECEDENCE-LIST", &[class]).unwrap();
+    assert_eq!(ncl_object::simple_vector_length(&ctx, precedence), Ok(3));
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]),
+        Ok(ncl_object::simple_vector_ref(&ctx, class, mop::CLASS_EFFECTIVE_SLOTS).unwrap())
+    );
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[class]),
+        Ok(slots)
+    );
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "SLOT-DEFINITION-NAME", &[slot]),
+        Ok(name)
+    );
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "SLOT-DEFINITION-LOCATION", &[slot]),
+        Ok(Word::fixnum(0))
+    );
+
+    assert_eq!(
+        registered_call(
+            &mut ctx,
+            &runtime,
+            "SLOT-BOUNDP-USING-CLASS",
+            &[class, instance, slot],
+        ),
+        Ok(Word::NIL)
+    );
+    ncl_object::slot_set(
+        &mut ctx,
+        ncl_object::Instance::from_word(instance),
+        0,
+        Word::TRUE,
+    )
+    .unwrap();
+    assert_eq!(
+        registered_call(
+            &mut ctx,
+            &runtime,
+            "SLOT-VALUE-USING-CLASS",
+            &[class, instance, slot],
+        ),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        registered_call(
+            &mut ctx,
+            &runtime,
+            "SLOT-MAKUNBOUND-USING-CLASS",
+            &[class, instance, slot],
+        ),
+        Ok(instance)
+    );
+    let eql = mop::make_eql_specializer(&mut ctx, &runtime, Word::fixnum(7)).unwrap();
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "EQL-SPECIALIZER-OBJECT", &[eql]),
+        Ok(Word::fixnum(7))
     );
 }
 
@@ -318,6 +408,25 @@ fn class_slot_queries_reject_descriptors_without_slot_fields() {
         call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[malformed]),
         Err(ncl_object::ObjectError::TypeError)
     );
+}
+
+#[test]
+fn metadata_callbacks_reject_non_descriptors() {
+    let (runtime, mut ctx) = setup();
+    let malformed = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+
+    for name in [
+        "CLASS-PRECEDENCE-LIST",
+        "SLOT-DEFINITION-NAME",
+        "SLOT-DEFINITION-LOCATION",
+        "EQL-SPECIALIZER-OBJECT",
+    ] {
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[malformed]),
+            Err(ncl_object::ObjectError::TypeError),
+            "malformed metadata must be rejected by {name}"
+        );
+    }
 }
 
 #[test]

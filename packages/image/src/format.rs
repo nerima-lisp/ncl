@@ -356,4 +356,62 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn image_file_rejects_invalid_header_fields() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 0,
+            objects: Vec::new(),
+            roots: Vec::new(),
+            code: Vec::new(),
+            features: Vec::new(),
+        };
+        let bytes = image.to_bytes().unwrap();
+
+        let mut bad_magic = bytes.clone();
+        bad_magic[0] = b'X';
+        assert_eq!(
+            ImageFile::from_bytes(&bad_magic),
+            Err(crate::ImageError::BadMagic)
+        );
+
+        let mut bad_version = bytes.clone();
+        bad_version[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(
+            ImageFile::from_bytes(&bad_version),
+            Err(crate::ImageError::UnsupportedVersion {
+                found: u16::MAX,
+                supported: super::FORMAT_VERSION,
+            })
+        );
+
+        let mut bad_architecture = bytes.clone();
+        bad_architecture[10] = 0xff;
+        assert_eq!(
+            ImageFile::from_bytes(&bad_architecture),
+            Err(crate::ImageError::UnknownTag {
+                space: "architecture",
+                tag: 0xff,
+            })
+        );
+
+        for (offset, value, field) in [(11, 4, "pointer width"), (12, 2, "endianness")] {
+            let mut invalid = bytes.clone();
+            invalid[offset] = value;
+            assert_eq!(
+                ImageFile::from_bytes(&invalid),
+                Err(crate::ImageError::InvalidLayout { field })
+            );
+        }
+
+        let mut bad_header_size = bytes;
+        bad_header_size[13] = 63;
+        assert_eq!(
+            ImageFile::from_bytes(&bad_header_size),
+            Err(crate::ImageError::InvalidLayout {
+                field: "header size"
+            })
+        );
+    }
 }

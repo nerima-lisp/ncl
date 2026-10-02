@@ -53,6 +53,24 @@ fn load_rejects_non_default_external_formats_and_malformed_option_pairs() {
 }
 
 #[test]
+fn load_validates_path_and_option_arguments_before_opening_a_file() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert!(matches!(
+        runtime.eval("(load)"),
+        Err(RuntimeError::Object(ncl_object::ObjectError::TypeError))
+    ));
+    assert!(matches!(
+        runtime.eval("(load 42)"),
+        Err(RuntimeError::Object(ncl_object::ObjectError::TypeError))
+    ));
+    assert!(matches!(
+        runtime.eval("(load \"missing\" :if-does-not-exist t)"),
+        Err(RuntimeError::Object(ncl_object::ObjectError::TypeError))
+    ));
+}
+
+#[test]
 fn top_level_package_forms_update_the_reader_package_for_later_forms() {
     let mut runtime = Runtime::new().unwrap();
 

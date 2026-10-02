@@ -253,3 +253,107 @@ impl<'a> Reader<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid("string encoding"))
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "format tests assert on round-trip results"
+)]
+mod tests {
+    use super::{ImageFile, MAGIC, Reader};
+    use crate::record::{Record, Ref};
+    use ncl_sys::Word;
+
+    fn architecture() -> ncl_objfile::Architecture {
+        if cfg!(target_arch = "x86_64") {
+            ncl_objfile::Architecture::X86_64
+        } else {
+            ncl_objfile::Architecture::Aarch64
+        }
+    }
+
+    #[test]
+    fn image_file_round_trips_records_roots_and_features() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 17,
+            objects: vec![
+                Record::Cons {
+                    car: Ref::Immediate(Word::fixnum(1).bits()),
+                    cdr: Ref::Object(1),
+                },
+                Record::String("format-test".to_owned()),
+            ],
+            roots: vec![Ref::Object(0), Ref::Immediate(Word::NIL.bits())],
+            code: Vec::new(),
+            features: vec!["FORMAT-TEST".to_owned(), "SECOND-FEATURE".to_owned()],
+        };
+        let bytes = image.to_bytes().unwrap();
+        let decoded = ImageFile::from_bytes(&bytes).unwrap();
+        assert_eq!(decoded, image);
+        assert_eq!(&bytes[..MAGIC.len()], MAGIC);
+    }
+
+    #[test]
+    fn reader_reports_truncation_and_invalid_utf8_without_advancing() {
+        let mut truncated = Reader::new(&[1, 2]);
+        assert_eq!(
+            truncated.u32(),
+            Err(crate::ImageError::Truncated {
+                offset: 0,
+                needed: 4
+            })
+        );
+        assert_eq!(truncated.u8(), Ok(1));
+
+        let mut invalid = Reader::new(&[1, 0, 0, 0, 0xff]);
+        assert_eq!(
+            invalid.string(),
+            Err(crate::ImageError::InvalidLayout {
+                field: "string encoding"
+            })
+        );
+    }
+
+    #[test]
+    fn reader_decodes_little_endian_primitives_and_length_prefixed_strings() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[7]);
+        bytes.extend_from_slice(&0x1203_u16.to_le_bytes());
+        bytes.extend_from_slice(&0x4567_8901_u32.to_le_bytes());
+        bytes.extend_from_slice(&0x2345_6789_abcd_ef01_u64.to_le_bytes());
+        bytes.extend_from_slice(&4_u32.to_le_bytes());
+        bytes.extend_from_slice(b"NCL!");
+        let mut reader = Reader::new(&bytes);
+
+        assert_eq!(reader.u8(), Ok(7));
+        assert_eq!(reader.u16(), Ok(0x1203));
+        assert_eq!(reader.u32(), Ok(0x4567_8901));
+        assert_eq!(reader.u64(), Ok(0x2345_6789_abcd_ef01));
+        assert_eq!(reader.string(), Ok("NCL!".to_owned()));
+        assert_eq!(reader.take(0), Ok(&[][..]));
+    }
+
+    #[test]
+    fn image_file_rejects_payload_offsets_and_trailing_bytes() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 0,
+            objects: Vec::new(),
+            roots: Vec::new(),
+            code: Vec::new(),
+            features: Vec::new(),
+        };
+        let bytes = image.to_bytes().unwrap();
+
+        let mut wrong_offset = bytes;
+        wrong_offset[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            ImageFile::from_bytes(&wrong_offset),
+            Err(crate::ImageError::Truncated {
+                offset: u32::MAX as usize,
+                needed: 0
+            })
+        );
+    }
+}

@@ -1,5 +1,6 @@
 use super::compile_function_x86_64;
-use crate::{CodegenError, X86_64Abi};
+use crate::{AllocationTarget, CodegenError, X86_64Abi, allocate};
+use ncl_asm_x86_64::{Assembler, Inst, Mem, Reg};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Param, Terminator, Ty};
 
 #[test]
@@ -105,4 +106,82 @@ fn reserves_only_argument_overflow_for_a_non_closure_call() {
             .any(|bytes| bytes == [0x4c, 0x89, 0x5d])
     );
     assert!(compiled.frame_size >= 8 * 8);
+}
+
+#[test]
+fn generated_lambda_prologue_stages_rest_arguments_at_exact_incoming_slots() {
+    let params = [
+        "argc", "first", "second", "third", "fourth", "fifth", "sixth",
+    ]
+    .into_iter()
+    .map(|name| Param {
+        name: name.into(),
+        ty: Ty::Word,
+    })
+    .collect::<Vec<_>>();
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(204),
+        "generated-lambda-overflow-prologue",
+        params,
+        Vec::new(),
+    );
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let (_, local_words) = super::lowering::slots(
+        &function,
+        u32::try_from(function.params.len()).expect("parameter count"),
+        allocation.clone(),
+        0,
+    );
+    let incoming_base = u32::try_from(function.params.len()).expect("parameter count")
+        + local_words
+        + allocation.spill_words;
+    let compiled = compile_function_x86_64(&function, &X86_64Abi).expect("generated lambda");
+
+    let encode = |instruction: Inst| {
+        let mut assembler = Assembler::new();
+        assembler.emit(&instruction).expect("instruction encoding");
+        assembler.bytes().to_vec()
+    };
+    for (offset, expected) in [
+        (
+            0,
+            encode(Inst::MovRM(
+                super::lowering::ENTRY,
+                Mem::base(super::lowering::REST_ARGUMENT, 0),
+            )),
+        ),
+        (
+            8,
+            encode(Inst::MovRM(
+                super::lowering::ENTRY,
+                Mem::base(super::lowering::REST_ARGUMENT, 8),
+            )),
+        ),
+    ] {
+        assert!(
+            compiled
+                .code
+                .windows(expected.len())
+                .any(|bytes| bytes == expected),
+            "generated-lambda overflow load at +{offset} missing from {:02x?}",
+            compiled.code
+        );
+    }
+    let expected_rest_slot = encode(Inst::MovMR(
+        super::lowering::slot_mem_of(incoming_base + 4).expect("incoming rest slot"),
+        Reg::R9,
+    ));
+    assert!(
+        compiled
+            .code
+            .windows(expected_rest_slot.len())
+            .any(|bytes| bytes == expected_rest_slot),
+        "incoming rest register was not saved at slot {}: {:02x?}",
+        incoming_base + 4,
+        compiled.code
+    );
 }

@@ -105,8 +105,16 @@ fn quasiquote_expansion_emits_data_constructor_and_handles_unquote() {
     )
     .unwrap();
     let parts = elements(&mut ctx, expanded).unwrap();
-    assert_eq!(parts.len(), 3);
-    assert!(parts.iter().all(|part| *part != Word::NIL));
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "CONS").unwrap());
+    let quoted_value = elements(&mut ctx, parts[1]).unwrap();
+    assert_eq!(
+        quoted_value[0],
+        symbol(&mut ctx, &runtime, "QUOTE").unwrap()
+    );
+    assert_eq!(quoted_value[1], value);
+    let quoted_nil = elements(&mut ctx, parts[2]).unwrap();
+    assert_eq!(quoted_nil[0], symbol(&mut ctx, &runtime, "QUOTE").unwrap());
+    assert_eq!(quoted_nil[1], Word::NIL);
 }
 
 #[test]

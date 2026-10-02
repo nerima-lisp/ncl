@@ -372,5 +372,10 @@ fn read_forms_collects_forms_and_propagates_reader_errors() {
 
     let forms = read_forms(&mut context, &object, "(+ 1 2) 7").expect("read forms");
     assert_eq!(forms.len(), 2);
-    assert!(read_forms(&mut context, &object, "(+ 1").is_err());
+    assert!(matches!(
+        read_forms(&mut context, &object, "(+ 1"),
+        Err(crate::RuntimeError::Read(
+            ncl_reader::ReadError::UnexpectedEof
+        ))
+    ));
 }

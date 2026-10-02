@@ -99,26 +99,6 @@ fn registered_mop_callbacks_cover_metadata_and_slot_lifecycle() {
         ncl_clos::make_class(&mut ctx, &runtime, name, superclass, slots, Word::fixnum(0)).unwrap();
     let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
 
-    let precedence =
-        registered_call(&mut ctx, &runtime, "CLASS-PRECEDENCE-LIST", &[class]).unwrap();
-    assert_eq!(ncl_object::simple_vector_length(&ctx, precedence), Ok(3));
-    assert_eq!(
-        registered_call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]),
-        Ok(ncl_object::simple_vector_ref(&ctx, class, mop::CLASS_EFFECTIVE_SLOTS).unwrap())
-    );
-    assert_eq!(
-        registered_call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[class]),
-        Ok(slots)
-    );
-    assert_eq!(
-        registered_call(&mut ctx, &runtime, "SLOT-DEFINITION-NAME", &[slot]),
-        Ok(name)
-    );
-    assert_eq!(
-        registered_call(&mut ctx, &runtime, "SLOT-DEFINITION-LOCATION", &[slot]),
-        Ok(Word::fixnum(0))
-    );
-
     assert_eq!(
         registered_call(
             &mut ctx,

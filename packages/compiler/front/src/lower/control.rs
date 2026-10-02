@@ -316,18 +316,26 @@ impl Context<'_> {
             f.env()
                 .bind_variable(capture.clone(), super::super::env::Slot::Value(token));
             self.enter(f, id)?;
-            let params = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
+            let token_param = f.fresh_value();
+            let cell_params = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
             let target = self.block(
                 f,
-                params
-                    .iter()
-                    .copied()
+                std::iter::once(token_param)
+                    .chain(cell_params.iter().copied())
                     .map(|value| (Ty::Word, value))
                     .collect::<Vec<_>>(),
             );
-            entries.push((tag.clone(), id, capture, target, token, params));
+            entries.push((
+                tag.clone(),
+                id,
+                capture,
+                target,
+                token,
+                token_param,
+                cell_params,
+            ));
         }
-        for (tag, _, capture, _, _, _) in &entries {
+        for (tag, _, capture, _, _, _, _) in &entries {
             self.targets.push(NonLocalTarget {
                 name: tag.clone(),
                 capture: capture.clone(),
@@ -344,20 +352,31 @@ impl Context<'_> {
                             detail: "tagbody tag index is out of bounds".to_owned(),
                         })?
                         .3;
+                    let token = entries
+                        .get(next)
+                        .ok_or_else(|| LowerError::Ir {
+                            detail: "tagbody tag index is out of bounds".to_owned(),
+                        })?
+                        .4;
                     next += 1;
                     if !f.is_terminated() {
-                        let args = live
-                            .iter()
-                            .filter_map(|name| match f.env().lookup_variable(name) {
-                                Some(Slot::Cell(value)) => Some(value),
-                                // check-added-lines: allow(wildcard) only cell slots are live here.
-                                _ => None,
-                            })
+                        let args = std::iter::once(token)
+                            .chain(live.iter().filter_map(|name| {
+                                match f.env().lookup_variable(name) {
+                                    Some(Slot::Cell(value)) => Some(value),
+                                    // check-added-lines: allow(wildcard) only cell slots are live here.
+                                    _ => None,
+                                }
+                            }))
                             .collect();
                         f.terminate(Terminator::Jump { target, args })?;
                     }
                     f.position(target)?;
-                    if let Some((_, _, _, _, _, params)) = entries.get(next.saturating_sub(1)) {
+                    if let Some((_, _, capture, _, _, token_param, params)) =
+                        entries.get(next.saturating_sub(1))
+                    {
+                        f.env()
+                            .rebind_variable(capture, Slot::Value(*token_param));
                         for (name, value) in live.iter().zip(params) {
                             f.env().rebind_variable(name, Slot::Cell(*value));
                         }
@@ -380,7 +399,7 @@ impl Context<'_> {
             .collect::<Vec<_>>();
         let normal_path = !f.is_terminated();
         if normal_path {
-            for (_, id, _, _, _, _) in entries.iter().rev() {
+            for (_, id, _, _, _, _, _) in entries.iter().rev() {
                 self.leave(f, *id)?;
             }
             let args = live
@@ -393,8 +412,9 @@ impl Context<'_> {
                 .collect();
             f.terminate(Terminator::Jump { target: exit, args })?;
         }
-        for (_, id, _capture, target, token, _) in &entries {
+        for (_, id, _capture, target, token, _token_param, _) in &entries {
             let value = f.fresh_value();
+            let handler_token = f.fresh_value();
             let cell_params = live
                 .iter()
                 .map(|_| (Ty::Word, f.fresh_value()))
@@ -402,13 +422,16 @@ impl Context<'_> {
             let handler = self.block(
                 f,
                 std::iter::once((Ty::Word, value))
+                    .chain(std::iter::once((Ty::Word, handler_token)))
                     .chain(cell_params.iter().copied())
                     .collect(),
             );
             self.leave(f, *id)?;
             f.terminate(Terminator::Jump {
                 target: *target,
-                args: cell_params.iter().map(|(_, value)| *value).collect(),
+                args: std::iter::once(handler_token)
+                    .chain(cell_params.iter().map(|(_, value)| *value))
+                    .collect(),
             })?;
             self.regions.push(HandlerRegion {
                 id: *id,
@@ -417,7 +440,9 @@ impl Context<'_> {
                 handler,
                 cleanup: None,
                 catch_tag: Some(*token),
-                binding_targets: cell_sources.clone(),
+                binding_targets: std::iter::once(*token)
+                    .chain(cell_sources.iter().copied())
+                    .collect(),
                 depth: 0,
                 parent: None,
             });

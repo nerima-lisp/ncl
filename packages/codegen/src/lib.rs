@@ -25,8 +25,8 @@ mod tests_x86_64_fixture;
 #[cfg(test)]
 mod tests_x86_64_golden;
 #[cfg(test)]
-#[path = "x86_64_lowering_matrix_test.rs"]
-mod x86_64_lowering_matrix_test;
+#[path = "x86_64_lowering_matrix_tests.rs"]
+mod x86_64_lowering_matrix_tests;
 
 pub use abi::{
     Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,

@@ -106,6 +106,34 @@ fn cli_reports_source_errors_for_existing_files() {
 }
 
 #[test]
+fn cli_file_modes_report_success_and_script_suppresses_values() {
+    let path =
+        std::env::temp_dir().join(format!("ncl-cli-mode-success-{}.lisp", std::process::id()));
+    std::fs::write(&path, "41").unwrap_or_else(|error| panic!("failed to create source: {error}"));
+    let path = path.to_string_lossy().into_owned();
+
+    let load = run(&["--load", &path]);
+    assert_eq!(load.status.code(), Some(0), "{load:?}");
+    assert_eq!(String::from_utf8_lossy(&load.stdout), "41\n");
+    assert!(load.stderr.is_empty(), "{load:?}");
+
+    let script = run(&["--script", &path]);
+    assert_eq!(script.status.code(), Some(0), "{script:?}");
+    assert!(script.stdout.is_empty(), "{script:?}");
+    assert!(script.stderr.is_empty(), "{script:?}");
+
+    let compile = run(&["--compile-file", &path]);
+    assert_eq!(compile.status.code(), Some(0), "{compile:?}");
+    assert_eq!(String::from_utf8_lossy(&compile.stdout), "41\n");
+    assert!(compile.stderr.is_empty(), "{compile:?}");
+
+    let fasl = std::path::Path::new(&path).with_extension("fasl");
+    assert!(fasl.is_file(), "{fasl:?}");
+    std::fs::remove_file(&path).unwrap_or_else(|error| panic!("failed to remove source: {error}"));
+    std::fs::remove_file(&fasl).unwrap_or_else(|error| panic!("failed to remove fasl: {error}"));
+}
+
+#[test]
 fn repl_exits_cleanly_after_incomplete_form_at_eof() {
     let mut child = ncl()
         .stdin(std::process::Stdio::piped())

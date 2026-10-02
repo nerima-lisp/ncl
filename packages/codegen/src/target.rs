@@ -145,19 +145,21 @@ mod tests {
     fn aarch64_template_encoding_resolves_local_branch_labels() {
         let target = AArch64TargetIsa;
 
-        for kind in [TemplateKind::Branch, TemplateKind::Jump] {
+        for (kind, expected) in [
+            (TemplateKind::Branch, [0x21, 0x00, 0x00, 0x54]),
+            (TemplateKind::Jump, [0x01, 0x00, 0x00, 0x14]),
+        ] {
             let bytes = target
                 .encode_template(kind)
                 .unwrap_or_else(|error| panic!("template encoding: {error:?}"));
-            assert_eq!(bytes.len(), 4, "one encoded instruction for {kind:?}");
-            assert_ne!(bytes, vec![0; 4], "encoded branch for {kind:?}");
+            assert_eq!(bytes, expected, "encoded branch for {kind:?}");
         }
         assert_eq!(
             target
                 .encode_template(TemplateKind::Return)
                 .unwrap_or_else(|error| panic!("template encoding: {error:?}"))
-                .len(),
-            4
+                .as_slice(),
+            [0xc0, 0x03, 0x5f, 0xd6]
         );
     }
 }

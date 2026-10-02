@@ -441,3 +441,7 @@ pub fn compile_function_aarch64(
         debug: Vec::new(),
     })
 }
+
+#[cfg(test)]
+#[path = "tests_target_aarch64.rs"]
+mod tests;

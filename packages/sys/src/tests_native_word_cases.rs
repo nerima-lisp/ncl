@@ -48,3 +48,13 @@ fn accepts_an_empty_aligned_native_words_area() {
         Ok(Vec::new())
     );
 }
+
+#[test]
+fn rejects_native_words_when_the_byte_range_wraps() {
+    let alignment = std::mem::align_of::<Word>();
+    let address = usize::MAX - (alignment - 1);
+    assert_eq!(
+        copy_native_words(address as u64, 2),
+        Err(NativeWordCopyError::AddressOutOfRange)
+    );
+}

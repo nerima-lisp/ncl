@@ -850,3 +850,26 @@ fn x86_64_lowering_reports_reachable_invalid_operation_forms() {
         Err(CodegenError::Unsupported(message)) if message.contains("tagged argc")
     ));
 }
+
+#[test]
+fn x86_64_lowering_surfaces_missing_runtime_abi_address() {
+    let mut allocation = FunctionBuilder::new(
+        ncl_ir::FunctionId(156),
+        "x86-64-missing-runtime-address",
+        Vec::new(),
+        vec![Ty::Address],
+    );
+    let result = allocation
+        .push_op(OpKind::Alloc { words: 1 }, &[Ty::Address])
+        .expect("allocation")[0];
+    allocation
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("return");
+    assert!(matches!(
+        compile_function_x86_64(&allocation.finish(), &X86_64Abi),
+        Err(CodegenError::Unsupported(message))
+            if message.contains("runtime address is unavailable")
+    ));
+}

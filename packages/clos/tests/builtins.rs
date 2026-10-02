@@ -1,9 +1,11 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
 
+use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    BuiltinConvention, FunctionObject, Package, Runtime, ThreadContext, Word, make_cons,
-    make_simple_vector, make_string,
+    ArrayElementType, ArrayOptions, BuiltinConvention, FunctionObject, Package, Runtime,
+    ThreadContext, Word, make_array, make_bignum_from_i128, make_complex, make_cons, make_double,
+    make_ratio, make_simple_vector, make_string, make_structure,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -57,6 +59,57 @@ fn class_of_reports_builtin_object_families() {
         (cons, "CONS"),
         (function_word, "FUNCTION"),
         (package, "PACKAGE"),
+    ] {
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, class_of, &[object]),
+            Ok(runtime.class(&mut ctx, class_name).unwrap()),
+            "class-of must identify {class_name}"
+        );
+    }
+}
+
+#[test]
+fn class_of_identifies_numeric_container_and_structure_objects() {
+    let (runtime, mut ctx) = setup();
+    let class_of = function(&runtime, &mut ctx, "CLASS-OF");
+    let array = make_array(
+        &mut ctx,
+        &runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap();
+    let hash_table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap()
+        .as_word();
+    let layout = runtime.register_structure_layout(1).unwrap();
+    let structure = make_structure(&mut ctx, &runtime, layout, &[Word::TRUE]).unwrap();
+    let bignum = make_bignum_from_i128(&mut ctx, &runtime, i128::from(i64::MAX) + 1)
+        .unwrap()
+        .as_word();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .as_word();
+    let double_float = make_double(&mut ctx, &runtime, 1.5).unwrap().as_word();
+    let complex = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .as_word();
+
+    for (object, class_name) in [
+        (array, "ARRAY"),
+        (hash_table, "HASH-TABLE"),
+        (structure, "STRUCTURE-OBJECT"),
+        (bignum, "BIGNUM"),
+        (ratio, "RATIO"),
+        (double_float, "DOUBLE-FLOAT"),
+        (complex, "COMPLEX"),
     ] {
         assert_eq!(
             runtime.call_builtin(&mut ctx, class_of, &[object]),

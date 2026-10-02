@@ -12,14 +12,14 @@ use ncl_sys::Word;
 const TEST_ID: BuiltinIdentifier =
     BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("BOUNDARY"));
 
-fn descriptor() -> Builtin {
+const fn descriptor() -> Builtin {
     Builtin {
         lambda_list: LambdaList::new(&[], &[], None, &[], false),
         convention: BuiltinConvention::Direct(Arity::exact(0)),
     }
 }
 
-fn returns_error(
+const fn returns_error(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
     _args: &BuiltinArgs<'_>,
@@ -28,6 +28,11 @@ fn returns_error(
     Err(ObjectError::Unsupported)
 }
 
+#[allow(
+    clippy::missing_const_for_fn,
+    clippy::unnecessary_wraps,
+    reason = "callback implements BuiltinFunction contract"
+)]
 fn sets_pending_error(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -126,11 +131,14 @@ fn native_return_code(value: u64, count: u32) -> ncl_sys::CodePtr {
     };
     #[cfg(target_arch = "aarch64")]
     let bytes = {
-        assert!(value <= u64::from(u16::MAX));
+        assert!(u16::try_from(value).is_ok());
+        let Ok(value) = u32::try_from(value) else {
+            unreachable!("value was checked to fit in u16")
+        };
         [
-            0xd2800000_u32 | ((value as u32) << 5),
-            0xd2800000_u32 | (count << 5) | 1,
-            0xd65f03c0,
+            0xd280_0000_u32 | (value << 5),
+            0xd280_0000_u32 | (count << 5) | 1,
+            0xd65f_03c0,
         ]
         .into_iter()
         .flat_map(u32::to_le_bytes)
@@ -228,7 +236,9 @@ fn malformed_function_entry_is_reported_through_function_caller() {
             &mut ctx,
             &runtime,
             FunctionDesignator::Function(
-                ncl_object::FunctionObject::try_from(function.as_word()).unwrap(),
+                ncl_object::FunctionObject::try_from(function.as_word()).unwrap_or_else(|error| {
+                    panic!("make_simple_fun returned a function: {error:?}")
+                }),
             ),
             FunctionArguments::new(&[]),
             &mut values,

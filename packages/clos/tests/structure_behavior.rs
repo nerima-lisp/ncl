@@ -140,5 +140,5 @@ fn defstruct_public_macro_records_layout_and_accessor_contracts() {
     assert!(contains(&ctx, expansion, value));
     let accessor = intern(&runtime, &mut ctx, "VALUE");
     assert!(contains(&ctx, expansion, accessor));
-    assert_eq!(runtime.structure_layout_is_a(layout, layout), true);
+    assert!(runtime.structure_layout_is_a(layout, layout));
 }

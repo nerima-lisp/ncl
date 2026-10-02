@@ -26,11 +26,14 @@ fn native_return_code(value: u64, count: u32) -> CodePtr {
 
 #[cfg(target_arch = "aarch64")]
 fn native_return_code(value: u64, count: u32) -> CodePtr {
-    assert!(value <= u64::from(u16::MAX));
+    assert!(u16::try_from(value).is_ok());
+    let Ok(value) = u32::try_from(value) else {
+        unreachable!("value was checked to fit in u16")
+    };
     let instructions = [
-        0xd2800000_u32 | ((value as u32) << 5),
-        0xd2800000_u32 | (count << 5) | 1,
-        0xd65f03c0,
+        0xd280_0000_u32 | (value << 5),
+        0xd280_0000_u32 | (count << 5) | 1,
+        0xd65f_03c0,
     ];
     let bytes = instructions
         .into_iter()
@@ -412,7 +415,8 @@ fn builtin_function_caller_observes_native_return_counts() {
             &mut ctx,
             &runtime,
             FunctionDesignator::Function(
-                ncl_object::FunctionObject::try_from(zero.as_word()).unwrap()
+                ncl_object::FunctionObject::try_from(zero.as_word())
+                    .unwrap_or_else(|error| panic!("zero function: {error:?}"))
             ),
             FunctionArguments::new(&[]),
             &mut values,
@@ -428,7 +432,8 @@ fn builtin_function_caller_observes_native_return_counts() {
             &mut ctx,
             &runtime,
             FunctionDesignator::Function(
-                ncl_object::FunctionObject::try_from(one.as_word()).unwrap()
+                ncl_object::FunctionObject::try_from(one.as_word())
+                    .unwrap_or_else(|error| panic!("one function: {error:?}"))
             ),
             FunctionArguments::new(&[]),
             &mut values,
@@ -447,7 +452,8 @@ fn builtin_function_caller_observes_native_return_counts() {
             &mut ctx,
             &runtime,
             FunctionDesignator::Function(
-                ncl_object::FunctionObject::try_from(many.as_word()).unwrap()
+                ncl_object::FunctionObject::try_from(many.as_word())
+                    .unwrap_or_else(|error| panic!("many function: {error:?}"))
             ),
             FunctionArguments::new(&[]),
             &mut values,
@@ -474,7 +480,8 @@ fn builtin_function_caller_reports_native_layout_and_builtin_arity_boundaries() 
             &mut ctx,
             &runtime,
             FunctionDesignator::Function(
-                ncl_object::FunctionObject::try_from(function.as_word()).unwrap()
+                ncl_object::FunctionObject::try_from(function.as_word())
+                    .unwrap_or_else(|error| panic!("function: {error:?}"))
             ),
             FunctionArguments::new(&[]),
             &mut values,

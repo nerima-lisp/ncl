@@ -100,7 +100,11 @@ pub fn resolve_labels(instructions: &[DecodedInstruction]) -> Vec<Option<String>
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use super::{Architecture, decode, resolve_labels};
+    use super::{Architecture, DecodeError, decode, resolve_labels};
+
+    fn aarch64_words(words: &[u32]) -> Vec<u8> {
+        words.iter().flat_map(|word| word.to_le_bytes()).collect()
+    }
 
     #[test]
     fn x86_decode_has_addresses() {
@@ -160,6 +164,99 @@ mod tests {
                 .map(|instruction| instruction.text.as_str())
                 .collect::<Vec<_>>(),
             ["nop", "ret x30"]
+        );
+    }
+
+    #[test]
+    fn aarch64_decodes_control_flow_memory_and_arithmetic_forms() {
+        let decoded = decode(
+            Architecture::Aarch64,
+            &aarch64_words(&[
+                0x1400_0002, // b #8
+                0x5400_0041, // b.ne #8
+                0xf940_0883, // ldr x3, [x4, #16]
+                0xf900_07e3, // str x3, [sp, #8]
+                0x9104_8c20, // add x0, x1, #0x123
+                0xd100_43ff, // sub sp, sp, #16
+                0xa941_53f3, // ldp x19, x20, [sp, #16]
+                0x5800_0047, // ldr x7, #8
+            ]),
+            0x1000,
+        )
+        .expect("decode");
+
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|instruction| (
+                    instruction.size,
+                    instruction.text.as_str(),
+                    instruction.branch_target
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (4, "b #8", Some(0x1008)),
+                (4, "b.ne #8", Some(0x100c)),
+                (4, "ldr x3, [x4, #16]", None),
+                (4, "str x3, [sp, #8]", None),
+                (4, "add x0, x1, #291", None),
+                (4, "sub sp, sp, #16", None),
+                (4, "ldp x19, x20, [sp, #16]", None),
+                (4, "ldr x7, #0x1024", Some(0x1024)),
+            ]
+        );
+    }
+
+    #[test]
+    fn aarch64_branch_targets_resolve_to_local_labels() {
+        let decoded = decode(
+            Architecture::Aarch64,
+            &aarch64_words(&[
+                0x1400_0001, // b #4
+                0xd503_201f, // nop
+            ]),
+            0x2000,
+        )
+        .expect("decode");
+
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|instruction| (
+                    instruction.address,
+                    instruction.size,
+                    instruction.text.as_str(),
+                    instruction.branch_target
+                ))
+                .collect::<Vec<_>>(),
+            vec![(0x2000, 4, "b #4", Some(0x2004)), (0x2004, 4, "nop", None),]
+        );
+        assert_eq!(resolve_labels(&decoded), vec![Some("L1".to_owned()), None]);
+    }
+
+    #[test]
+    fn aarch64_reports_unsupported_truncated_and_invalid_input() {
+        assert_eq!(
+            decode(Architecture::Aarch64, &[0, 0, 0, 0], 0x3000),
+            Err(DecodeError::Unsupported {
+                address: 0x3000,
+                bytes: vec![0, 0, 0, 0],
+            })
+        );
+        assert_eq!(
+            decode(Architecture::Aarch64, &[0, 0, 0], 0x3000),
+            Err(DecodeError::Truncated { address: 0x3000 })
+        );
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0x1400_0001]),
+                u64::MAX
+            ),
+            Err(DecodeError::Invalid {
+                address: u64::MAX,
+                reason: "branch target overflows address space".into(),
+            })
         );
     }
 }

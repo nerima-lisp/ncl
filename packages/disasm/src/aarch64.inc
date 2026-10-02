@@ -65,7 +65,7 @@ fn memory(
         format!("w{}", word & 31)
     };
     let base = spreg((word >> 5) & 31);
-    let is_register = word & 0x0000_0800 != 0;
+    let is_register = unscaled && word & 0x0000_0800 != 0;
     let operand = if is_register {
         let option = (word >> 13) & 7;
         let amount = ((word >> 12) & 1) * size;

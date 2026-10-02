@@ -43,7 +43,8 @@ fn x86_64_instruction_skeleton_covers_every_template_kind() {
 
 #[test]
 fn x86_64_prologue_and_epilogue_have_the_fixed_frame_shape() {
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         prologue(),
@@ -52,7 +53,8 @@ fn x86_64_prologue_and_epilogue_have_the_fixed_frame_shape() {
             Inst::MovRR(ncl_asm_x86_64::Reg::Rbp, ncl_asm_x86_64::Reg::Rsp,)
         ]
     );
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         epilogue(),

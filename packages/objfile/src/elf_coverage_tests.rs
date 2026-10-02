@@ -180,7 +180,8 @@ fn private_elf_writer_handles_sections_without_text_or_metadata() {
 
 #[test]
 fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_elf(&[], ElfArchitecture::X86_64),
@@ -190,7 +191,8 @@ fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
         })
     );
     let mut bytes = vec![0; 64];
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_elf(&bytes, ElfArchitecture::X86_64),
@@ -245,7 +247,8 @@ fn public_elf_validation_and_generic_mapping_cover_reachable_errors() {
         symbol: SymbolRef::External("loader".into()),
         addend: 0,
     });
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         invalid_offset.write(),

@@ -217,7 +217,8 @@ fn public_macho_writer_and_reader_cover_reachable_architecture_paths() {
 
 #[test]
 fn public_macho_validator_reports_header_and_command_errors() {
-    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho(&[], MachArchitecture::X86_64),

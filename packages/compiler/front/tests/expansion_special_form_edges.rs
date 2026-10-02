@@ -21,7 +21,7 @@ fn declaration_error(f: &mut Fixture, specifier: Word) -> FrontError {
     f.declarations(form).unwrap_err()
 }
 
-fn assert_malformed(error: FrontError) {
+fn assert_malformed(error: &FrontError) {
     assert!(matches!(error, FrontError::MalformedForm { .. }));
 }
 
@@ -183,7 +183,7 @@ fn binding_edges_reject_empty_and_malformed_definitions() {
     let too_many = f.list(&[name, Word::fixnum(1), Word::fixnum(2)]);
     let bindings = f.list(&[too_many]);
     let let_star = f.form("LET*", &[bindings]);
-    assert_malformed(f.expand(let_star).unwrap_err());
+    assert_malformed(&f.expand(let_star).unwrap_err());
 
     let invalid_definition = f.list(&[Word::fixnum(1), Word::NIL]);
     let definitions = f.list(&[invalid_definition]);
@@ -196,12 +196,12 @@ fn binding_edges_reject_empty_and_malformed_definitions() {
     let empty_macro_definition = f.list(&[]);
     let definitions = f.list(&[empty_macro_definition]);
     let macrolet = f.form("MACROLET", &[definitions]);
-    assert_malformed(f.expand(macrolet).unwrap_err());
+    assert_malformed(&f.expand(macrolet).unwrap_err());
 
     let bad_symbol_macro = f.list(&[name]);
     let definitions = f.list(&[bad_symbol_macro]);
     let symbol_macrolet = f.form("SYMBOL-MACROLET", &[definitions]);
-    assert_malformed(f.expand(symbol_macrolet).unwrap_err());
+    assert_malformed(&f.expand(symbol_macrolet).unwrap_err());
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn function_and_control_edges_reject_invalid_shapes() {
     let argument_name = f.user("X");
     let compound_name = f.list(&[function_name, argument_name]);
     let function = f.form("FUNCTION", &[compound_name]);
-    assert_malformed(f.expand(function).unwrap_err());
+    assert_malformed(&f.expand(function).unwrap_err());
 
     let setq_name = f.user("X");
     let odd_setq = f.form("SETQ", &[setq_name]);
@@ -225,7 +225,7 @@ fn function_and_control_edges_reject_invalid_shapes() {
     let definitions = f.list(&[symbol_macro]);
     let setq = f.form("SETQ", &[symbol_macro_name, Word::fixnum(2)]);
     let form = f.form("SYMBOL-MACROLET", &[definitions, setq]);
-    assert_malformed(f.expand(form).unwrap_err());
+    assert_malformed(&f.expand(form).unwrap_err());
 
     let progn = f.cl("PROGN");
     let dotted = make_cons(&mut f.ctx, &f.runtime, progn, Word::fixnum(1)).unwrap();

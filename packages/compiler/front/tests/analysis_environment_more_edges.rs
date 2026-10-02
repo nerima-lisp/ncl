@@ -2,10 +2,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    lower_toplevel, Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal,
-    SymbolRef,
+    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef,
+    lower_toplevel,
 };
-use ncl_ir::{verify, Function, HandlerKind, OpKind, Terminator};
+use ncl_ir::{Function, HandlerKind, OpKind, Terminator, verify};
 
 fn symbol(name: &str) -> SymbolRef {
     SymbolRef::interned("COMMON-LISP-USER", name)
@@ -60,16 +60,20 @@ fn return_from_inside_unwind_protect_uses_escaping_block_analysis() {
 
     let lowered = lower_toplevel(&expression).expect("unwind-protected return lowers");
     assert_verifies(&lowered.entry);
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::Catch));
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::UnwindProtect));
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Catch)
+    );
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::UnwindProtect)
+    );
     assert!(any_terminator(&lowered.entry, |term| matches!(
         term,
         Terminator::Throw { .. }

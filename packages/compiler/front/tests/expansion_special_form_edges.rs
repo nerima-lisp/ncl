@@ -8,7 +8,7 @@ use forms::Fixture;
 use ncl_compiler_front::{
     Declaration, Expr, FormExpander, FrontError, Literal, MacroRegistry, Quality, SymbolRef,
 };
-use ncl_object::{make_cons, Word};
+use ncl_object::{Word, make_cons};
 
 fn declare(f: &mut Fixture, specifiers: &[Word]) -> Word {
     let mut elements = vec![f.cl("DECLARE")];

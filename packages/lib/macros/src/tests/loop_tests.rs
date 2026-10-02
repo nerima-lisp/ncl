@@ -8,6 +8,26 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
     Ok((runtime, ctx))
 }
 
+fn contains_word(ctx: &mut ThreadContext, form: Word, needle: Word) -> Result<bool, ObjectError> {
+    if form == needle || !form.is_cons() {
+        return Ok(form == needle);
+    }
+    let mut cursor = form;
+    loop {
+        if !cursor.is_cons() {
+            return if cursor == Word::NIL {
+                Ok(false)
+            } else {
+                contains_word(ctx, cursor, needle)
+            };
+        }
+        if contains_word(ctx, ncl_object::car(ctx, cursor)?, needle)? {
+            return Ok(true);
+        }
+        cursor = ncl_object::cdr(ctx, cursor)?;
+    }
+}
+
 #[test]
 fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
@@ -31,6 +51,83 @@ fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> 
         ast.clauses[1],
         LoopClause::Accumulate {
             kind: AccumulatorKind::Collect,
+            ..
+        }
+    ));
+    Ok(())
+}
+
+#[test]
+fn parses_control_clauses_and_non_collect_accumulators() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let input = [
+        symbol(&mut ctx, &runtime, "WITH")?,
+        symbol(&mut ctx, &runtime, "X")?,
+        symbol(&mut ctx, &runtime, "=")?,
+        Word::fixnum(1),
+        symbol(&mut ctx, &runtime, "REPEAT")?,
+        Word::fixnum(2),
+        symbol(&mut ctx, &runtime, "WHILE")?,
+        symbol(&mut ctx, &runtime, "PREDICATE")?,
+        symbol(&mut ctx, &runtime, "UNTIL")?,
+        symbol(&mut ctx, &runtime, "DONE")?,
+        symbol(&mut ctx, &runtime, "INITIALLY")?,
+        symbol(&mut ctx, &runtime, "START")?,
+        symbol(&mut ctx, &runtime, "FINALLY")?,
+        symbol(&mut ctx, &runtime, "STOP")?,
+        symbol(&mut ctx, &runtime, "APPEND")?,
+        symbol(&mut ctx, &runtime, "ITEMS")?,
+        symbol(&mut ctx, &runtime, "INTO")?,
+        symbol(&mut ctx, &runtime, "APPENDED")?,
+        symbol(&mut ctx, &runtime, "SUM")?,
+        symbol(&mut ctx, &runtime, "X")?,
+        symbol(&mut ctx, &runtime, "INTO")?,
+        symbol(&mut ctx, &runtime, "TOTAL")?,
+        symbol(&mut ctx, &runtime, "MAXIMIZE")?,
+        symbol(&mut ctx, &runtime, "X")?,
+        symbol(&mut ctx, &runtime, "INTO")?,
+        symbol(&mut ctx, &runtime, "HIGHEST")?,
+        symbol(&mut ctx, &runtime, "MINIMIZE")?,
+        symbol(&mut ctx, &runtime, "X")?,
+        symbol(&mut ctx, &runtime, "INTO")?,
+        symbol(&mut ctx, &runtime, "LOWEST")?,
+    ];
+    let ast = parse_loop(&mut ctx, &input)?;
+    assert!(matches!(ast.clauses[0], LoopClause::With { .. }));
+    assert!(matches!(ast.clauses[1], LoopClause::Repeat(_)));
+    assert!(matches!(ast.clauses[2], LoopClause::While(_)));
+    assert!(matches!(ast.clauses[3], LoopClause::Until(_)));
+    assert!(matches!(&ast.clauses[4], LoopClause::Initially(forms) if forms.len() == 1));
+    assert!(matches!(&ast.clauses[5], LoopClause::Finally(forms) if forms.len() == 1));
+    assert!(matches!(
+        ast.clauses[6],
+        LoopClause::Accumulate {
+            kind: AccumulatorKind::Append,
+            variable: Some(_),
+            ..
+        }
+    ));
+    assert!(matches!(
+        ast.clauses[7],
+        LoopClause::Accumulate {
+            kind: AccumulatorKind::Sum,
+            variable: Some(_),
+            ..
+        }
+    ));
+    assert!(matches!(
+        ast.clauses[8],
+        LoopClause::Accumulate {
+            kind: AccumulatorKind::Maximize,
+            variable: Some(_),
+            ..
+        }
+    ));
+    assert!(matches!(
+        ast.clauses[9],
+        LoopClause::Accumulate {
+            kind: AccumulatorKind::Minimize,
+            variable: Some(_),
             ..
         }
     ));
@@ -189,6 +286,154 @@ fn expands_unless_with_then_and_else_progns() -> Result<(), ObjectError> {
         elements(&mut ctx, if_form[3])?[0],
         symbol(&mut ctx, &runtime, "PROGN")?
     );
+    Ok(())
+}
+
+#[test]
+fn expands_control_clauses_accumulators_and_if_with_else() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let items = symbol(&mut ctx, &runtime, "ITEMS")?;
+    let appended = symbol(&mut ctx, &runtime, "APPENDED")?;
+    let total = symbol(&mut ctx, &runtime, "TOTAL")?;
+    let highest = symbol(&mut ctx, &runtime, "HIGHEST")?;
+    let lowest = symbol(&mut ctx, &runtime, "LOWEST")?;
+    let initial = symbol(&mut ctx, &runtime, "INITIAL-FORM")?;
+    let final_form = symbol(&mut ctx, &runtime, "FINAL-FORM")?;
+    let then_form = symbol(&mut ctx, &runtime, "THEN-FORM")?;
+    let else_form = symbol(&mut ctx, &runtime, "ELSE-FORM")?;
+    let predicate = symbol(&mut ctx, &runtime, "PREDICATE")?;
+    let done = symbol(&mut ctx, &runtime, "DONE")?;
+    let test = symbol(&mut ctx, &runtime, "TEST")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::With {
+                    variable: x,
+                    init: Word::fixnum(1),
+                },
+                LoopClause::Repeat(Word::fixnum(2)),
+                LoopClause::While(predicate),
+                LoopClause::Until(done),
+                LoopClause::Initially(vec![initial]),
+                LoopClause::Finally(vec![final_form]),
+                LoopClause::Accumulate {
+                    kind: AccumulatorKind::Append,
+                    form: items,
+                    variable: Some(appended),
+                },
+                LoopClause::Accumulate {
+                    kind: AccumulatorKind::Sum,
+                    form: x,
+                    variable: Some(total),
+                },
+                LoopClause::Accumulate {
+                    kind: AccumulatorKind::Maximize,
+                    form: x,
+                    variable: Some(highest),
+                },
+                LoopClause::Accumulate {
+                    kind: AccumulatorKind::Minimize,
+                    form: x,
+                    variable: Some(lowest),
+                },
+                LoopClause::Conditional {
+                    kind: ConditionalKind::If,
+                    test,
+                    then: vec![LoopClause::Do(vec![then_form])],
+                    otherwise: vec![LoopClause::Do(vec![else_form])],
+                },
+            ],
+        },
+    )?;
+    for operator_name in ["<=", "NOT", "APPEND", "INCF", "MAX", "MIN", "IF"] {
+        let operator = symbol(&mut ctx, &runtime, operator_name)?;
+        assert!(
+            contains_word(&mut ctx, expansion, operator)?,
+            "missing {operator_name}"
+        );
+    }
+    for form in [initial, final_form, then_form, else_form] {
+        assert!(contains_word(&mut ctx, expansion, form)?);
+    }
+    let outer = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, outer[2])?;
+    let block_body = elements(&mut ctx, block[2])?;
+    assert_eq!(block_body.len(), 5);
+    let initial_form = symbol(&mut ctx, &runtime, "INITIAL-FORM")?;
+    let final_form = symbol(&mut ctx, &runtime, "FINAL-FORM")?;
+    assert!(contains_word(&mut ctx, block_body[1], initial_form)?);
+    assert!(contains_word(&mut ctx, block_body[3], final_form)?);
+    assert!(contains_word(&mut ctx, expansion, predicate)?);
+    assert!(contains_word(&mut ctx, expansion, done)?);
+    Ok(())
+}
+
+#[test]
+fn expands_return_and_accumulators_to_expected_result_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let returned = symbol(&mut ctx, &runtime, "RETURNED")?;
+    let loop_name = symbol(&mut ctx, &runtime, "NAMED-LOOP")?;
+    let return_expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: Some(loop_name),
+            clauses: vec![LoopClause::Return(returned)],
+        },
+    )?;
+    let return_from = symbol(&mut ctx, &runtime, "RETURN-FROM")?;
+    assert!(contains_word(&mut ctx, return_expansion, return_from)?);
+    assert!(contains_word(&mut ctx, return_expansion, loop_name)?);
+    assert!(contains_word(&mut ctx, return_expansion, returned)?);
+
+    let cases = [
+        (
+            AccumulatorKind::Collect,
+            "COLLECTED",
+            "PUSH",
+            Some("NREVERSE"),
+        ),
+        (AccumulatorKind::Append, "APPENDED", "APPEND", None),
+        (AccumulatorKind::Nconc, "CONCATENATED", "NCONC", None),
+        (AccumulatorKind::Count, "COUNTED", "WHEN", None),
+        (AccumulatorKind::Sum, "TOTAL", "INCF", None),
+        (AccumulatorKind::Maximize, "HIGHEST", "MAX", None),
+        (AccumulatorKind::Minimize, "LOWEST", "MIN", None),
+    ];
+    for (kind, variable_name, update_operator, result_operator) in cases {
+        let variable = symbol(&mut ctx, &runtime, variable_name)?;
+        let value = symbol(&mut ctx, &runtime, "VALUE")?;
+        let expansion = expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![LoopClause::Accumulate {
+                    kind,
+                    form: value,
+                    variable: Some(variable),
+                }],
+            },
+        )?;
+        let update_operator = symbol(&mut ctx, &runtime, update_operator)?;
+        assert!(contains_word(&mut ctx, expansion, update_operator)?);
+        let outer = elements(&mut ctx, expansion)?;
+        let block = elements(&mut ctx, outer[2])?;
+        let block_body = elements(&mut ctx, block[2])?;
+        let result = block_body.last().copied().ok_or(ObjectError::TypeError)?;
+        if let Some(operator_name) = result_operator {
+            let result_form = elements(&mut ctx, result)?;
+            let result_operator = symbol(&mut ctx, &runtime, operator_name)?;
+            assert_eq!(result_form[0], result_operator);
+            assert_eq!(result_form[1], variable);
+        } else {
+            assert_eq!(result, variable);
+        }
+    }
     Ok(())
 }
 

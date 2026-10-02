@@ -1,7 +1,15 @@
 use super::compile_function_x86_64;
 use crate::{AllocationTarget, CodegenError, X86_64Abi, allocate};
-use ncl_asm_x86_64::{Assembler, Inst, Mem, Reg};
+use ncl_asm_x86_64::{Assembler, BinOp, Inst, Mem, Reg};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Param, Terminator, Ty};
+
+fn encoded(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+    let mut assembler = Assembler::new();
+    for instruction in instructions {
+        assembler.emit(&instruction).expect("instruction encoding");
+    }
+    assembler.bytes().to_vec()
+}
 
 #[test]
 fn rejects_a_function_without_an_entry_block_with_a_typed_error() {
@@ -184,4 +192,65 @@ fn generated_lambda_prologue_stages_rest_arguments_at_exact_incoming_slots() {
         incoming_base + 4,
         compiled.code
     );
+}
+
+#[test]
+fn call_return_and_tail_call_end_with_their_exact_frame_transfers() {
+    let mut call_return = FunctionBuilder::new(
+        ncl_ir::FunctionId(205),
+        "call-return-frame-transfer",
+        vec![Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        }],
+        Vec::new(),
+    );
+    let argc = call_return.add_constant(Constant::Fixnum(0));
+    let argc = call_return
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .expect("argc")[0];
+    call_return
+        .terminate(Terminator::CallReturn {
+            function: ncl_ir::ValueId(0),
+            args: vec![argc],
+        })
+        .expect("call return");
+    let call_return =
+        compile_function_x86_64(&call_return.finish(), &X86_64Abi).expect("call-return lowering");
+    assert!(call_return.code.ends_with(&encoded([
+        Inst::BinRI(BinOp::Add, Reg::Rsp, 16),
+        Inst::MovRR(Reg::Rsp, Reg::Rbp),
+        Inst::Pop(Reg::Rbp),
+        Inst::Ret,
+    ])));
+
+    let mut tail_call = FunctionBuilder::new(
+        ncl_ir::FunctionId(206),
+        "tail-call-frame-transfer",
+        vec![Param {
+            name: "callee".into(),
+            ty: Ty::Address,
+        }],
+        Vec::new(),
+    );
+    let argc = tail_call.add_constant(Constant::Fixnum(0));
+    let argc = tail_call
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .expect("argc")[0];
+    tail_call
+        .terminate(Terminator::TailCall {
+            function: ncl_ir::ValueId(0),
+            args: vec![argc],
+        })
+        .expect("tail call");
+    let tail_call =
+        compile_function_x86_64(&tail_call.finish(), &X86_64Abi).expect("tail-call lowering");
+    assert!(tail_call.code.ends_with(&encoded([
+        Inst::MovRR(Reg::Rsp, Reg::Rbp),
+        Inst::Pop(Reg::Rbp),
+        Inst::MovRM(Reg::Rax, Mem::base(Reg::Rsp, 0)),
+        Inst::MovMR(Mem::base(Reg::Rsp, 8), super::lowering::FUNCTION_OBJECT),
+        Inst::MovMR(Mem::base(Reg::Rsp, 16), Reg::Rax),
+        Inst::JmpReg(super::lowering::ENTRY),
+    ])));
 }

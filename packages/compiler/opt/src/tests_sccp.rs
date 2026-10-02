@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 use super::{Module, Sccp};
 use crate::FunctionPass;
 use std::fmt::Debug;
@@ -304,6 +306,168 @@ fn folds_constant_branch_and_removes_unreachable_block() {
         }
     );
     assert_eq!(function.blocks.len(), 2);
+}
+
+fn evaluate_fixnum_return(function: &Function) -> i64 {
+    let mut block_id = function.blocks[0].id;
+    loop {
+        let block = function
+            .blocks
+            .iter()
+            .find(|block| block.id == block_id)
+            .expect("evaluation reached a missing block");
+        match &block.terminator {
+            Terminator::Jump { target, .. } => block_id = *target,
+            Terminator::Branch {
+                condition,
+                then_target,
+                else_target,
+                ..
+            } => {
+                let condition_is_true = block
+                    .ops
+                    .iter()
+                    .find_map(|op| match op.kind {
+                        OpKind::Compare {
+                            op: Compare::Eq,
+                            left,
+                            right,
+                        } if op.results.first().map(|(id, _)| id) == Some(condition)
+                            && left == right =>
+                        {
+                            Some(true)
+                        }
+                        _ => None,
+                    })
+                    .expect("branch condition has no constant definition");
+                block_id = if condition_is_true {
+                    *then_target
+                } else {
+                    *else_target
+                };
+            }
+            Terminator::Return { values } => {
+                let value = values.first().expect("expected one return value");
+                let constant = block
+                    .ops
+                    .iter()
+                    .find_map(|op| match op.kind {
+                        OpKind::Const { result }
+                            if op.results.first().map(|(id, _)| id) == Some(value) =>
+                        {
+                            Some(&function.constants[result.0 as usize])
+                        }
+                        _ => None,
+                    })
+                    .expect("return value has no constant definition");
+                let Constant::Fixnum(value) = constant else {
+                    panic!("expected a fixnum return value, got {constant:?}");
+                };
+                return *value;
+            }
+            terminator => panic!("unsupported terminator in test evaluator: {terminator:?}"),
+        }
+    }
+}
+
+#[test]
+fn normalizes_unreachable_block_chain_without_changing_result() {
+    let mut builder = FunctionBuilder::new(FunctionId(6), "dead-chain", vec![], vec![Ty::I64]);
+    let condition_constant = builder.add_constant(Constant::Fixnum(7));
+    let live_constant = builder.add_constant(Constant::Fixnum(11));
+    let dead_constant = builder.add_constant(Constant::Fixnum(99));
+    let condition_value = builder
+        .push_op(
+            OpKind::Const {
+                result: condition_constant,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    let condition = builder
+        .push_op(
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: condition_value,
+                right: condition_value,
+            },
+            &[Ty::Bool],
+        )
+        .fixture()[0];
+    let entry = BlockId(0);
+    let live_block = builder.create_block(Vec::new());
+    let live_value = builder
+        .push_op(
+            OpKind::Const {
+                result: live_constant,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![live_value],
+        })
+        .fixture();
+    let dead_block = builder.create_block(Vec::new());
+    let dead_tail = builder.create_block(Vec::new());
+    let dead_value = builder
+        .push_op(
+            OpKind::Const {
+                result: dead_constant,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![dead_value],
+        })
+        .fixture();
+    builder.position_at(dead_block).fixture();
+    builder
+        .terminate(Terminator::Jump {
+            target: dead_tail,
+            args: vec![],
+        })
+        .fixture();
+    builder.position_at(entry).fixture();
+    builder
+        .terminate(Terminator::Branch {
+            condition,
+            then_target: live_block,
+            then_args: vec![],
+            else_target: dead_block,
+            else_args: vec![],
+        })
+        .fixture();
+    let mut function = builder.finish();
+    let before = function.clone();
+
+    assert_eq!(evaluate_fixnum_return(&before), 11);
+    let result = Sccp.run(&mut function, &Module::default());
+    assert!(
+        result.is_ok(),
+        "SCCP failed: {result:?}; function: {function:?}"
+    );
+    assert!(result.unwrap_or(false));
+    assert_eq!(evaluate_fixnum_return(&function), 11);
+    assert_eq!(
+        function
+            .blocks
+            .iter()
+            .map(|block| block.id)
+            .collect::<Vec<_>>(),
+        vec![entry, live_block]
+    );
+    assert_eq!(
+        function.blocks[0].terminator,
+        Terminator::Jump {
+            target: live_block,
+            args: vec![]
+        }
+    );
+    ncl_ir::verify(&function).fixture();
 }
 
 #[test]

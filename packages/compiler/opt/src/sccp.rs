@@ -370,28 +370,33 @@ impl Sccp {
             return false;
         };
         let mut retained = HashSet::from([entry.id]);
-        for block in &function.blocks {
-            match &block.terminator {
-                Terminator::Jump { target, .. } => {
-                    retained.insert(*target);
-                }
+        let mut worklist = VecDeque::from([entry.id]);
+        while let Some(block_id) = worklist.pop_front() {
+            let Some(block) = function.blocks.iter().find(|block| block.id == block_id) else {
+                continue;
+            };
+            let successors = match &block.terminator {
+                Terminator::Jump { target, .. } => vec![*target],
                 Terminator::Branch {
                     then_target,
                     else_target,
                     ..
-                } => {
-                    retained.insert(*then_target);
-                    retained.insert(*else_target);
-                }
-                Terminator::Switch { cases, default, .. } => {
-                    retained.extend(cases.iter().map(|(_, target, _)| *target));
-                    retained.insert(*default);
-                }
+                } => vec![*then_target, *else_target],
+                Terminator::Switch { cases, default, .. } => cases
+                    .iter()
+                    .map(|(_, target, _)| *target)
+                    .chain(std::iter::once(*default))
+                    .collect(),
                 Terminator::CallReturn { .. }
                 | Terminator::TailCall { .. }
                 | Terminator::Return { .. }
                 | Terminator::Throw { .. }
-                | Terminator::Unreachable => {}
+                | Terminator::Unreachable => Vec::new(),
+            };
+            for successor in successors {
+                if retained.insert(successor) {
+                    worklist.push_back(successor);
+                }
             }
         }
         let block_count = function.blocks.len();

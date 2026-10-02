@@ -4,8 +4,8 @@
     reason = "tests assert on reader behavior"
 )]
 
-use ncl_object::{classify, ObjectRef, Runtime, ThreadContext};
-use ncl_reader::{read, ReadError, ReadOptions, StringSource};
+use ncl_object::{ObjectRef, Runtime, ThreadContext, classify};
+use ncl_reader::{ReadError, ReadOptions, StringSource, read};
 
 #[test]
 fn malformed_dispatch_reports_the_error_and_allows_following_form() {

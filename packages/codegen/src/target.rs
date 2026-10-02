@@ -1,7 +1,7 @@
 //! Target-independent target contracts and the `AArch64` fixed-template backend.
 
-use crate::templates::TemplateKind;
 use crate::CodegenError;
+use crate::templates::TemplateKind;
 use ncl_asm_aarch64::{Assembler, Cond, Inst, Reg, RegOrSp};
 
 /// A machine target capable of encoding one fixed-template operation.

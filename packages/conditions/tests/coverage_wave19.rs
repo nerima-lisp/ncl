@@ -7,12 +7,12 @@
 //! Nineteenth-wave coverage for inherited condition reports and conversion.
 
 use ncl_conditions::{
-    condition_class, condition_from_lisp_error, condition_report, make_condition,
-    ConditionIdentifier,
+    ConditionIdentifier, condition_class, condition_from_lisp_error, condition_report,
+    make_condition,
 };
 use ncl_object::{
-    make_cons, make_string, CellError, FunctionObject, LispError, Package, ProgramError, Runtime,
-    ThreadContext, Word,
+    CellError, FunctionObject, LispError, Package, ProgramError, Runtime, ThreadContext, Word,
+    make_cons, make_string,
 };
 
 fn setup() -> (Runtime, ThreadContext) {

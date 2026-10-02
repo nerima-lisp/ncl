@@ -1,4 +1,4 @@
-use super::{copy_native_words, NativeWordCopyError, Word, CALL_ARGUMENTS_LIMIT};
+use super::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, Word, copy_native_words};
 
 #[test]
 fn rejects_null_native_words_pointer() {

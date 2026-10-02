@@ -4,8 +4,8 @@
     reason = "tests assert on public type behavior"
 )]
 
-use ncl_object::{make_bignum_from_i128, make_cons, Package, Runtime, ThreadContext, Word};
-use ncl_types::{parse_type_specifier, typep, TypeSpecifier, Value};
+use ncl_object::{Package, Runtime, ThreadContext, Word, make_bignum_from_i128, make_cons};
+use ncl_types::{TypeSpecifier, Value, parse_type_specifier, typep};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();

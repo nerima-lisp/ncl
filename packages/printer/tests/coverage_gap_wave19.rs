@@ -6,8 +6,8 @@
 
 //! Nineteenth-wave coverage for type-error report printing.
 
-use ncl_object::{make_string, Package, Runtime, ThreadContext, Word};
-use ncl_printer::{write, PrintOptions, StringSink};
+use ncl_object::{Package, Runtime, ThreadContext, Word, make_string};
+use ncl_printer::{PrintOptions, StringSink, write};
 
 fn context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();

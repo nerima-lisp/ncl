@@ -18,7 +18,7 @@ mod thread;
 mod word;
 
 #[cfg(test)]
-#[path = "tests_native_word.rs"]
+#[path = "tests_native_word_cases.rs"]
 mod native_word_tests;
 
 pub use code::{

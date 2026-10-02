@@ -1,5 +1,5 @@
 use crate::{
-    checked_u32, AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi,
+    AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, checked_u32,
 };
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};

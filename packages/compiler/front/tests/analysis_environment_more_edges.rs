@@ -127,7 +127,7 @@ fn throw_and_multiple_value_prog1_preserve_three_free_variable_captures() {
     assert_eq!(captures, 3);
     assert!(any_op(&lowered.nested[0], |kind| matches!(
         kind,
-        OpKind::LoadCapture { index: 0 | 1 | 2 }
+        OpKind::LoadCapture { index: 0..=2 }
     )));
 }
 

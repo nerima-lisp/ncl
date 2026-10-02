@@ -14,8 +14,8 @@ mod constants;
 mod rational_float;
 
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectRef, Runtime, ThreadContext, Word, classify_object,
-    double_value, make_complex, make_double,
+    BuiltinArgs, MultipleValues, Runtime, ThreadContext, Word, double_value, make_complex,
+    make_double,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -108,14 +108,15 @@ fn complex_helpers_return_zero_imaginary_and_conjugate() {
     let imag = make_double(&mut ctx, &runtime, 3.0).unwrap().into();
     let complex = make_complex(&mut ctx, &runtime, real, imag).unwrap().into();
     let result = call(complex::typed_conjugate, &runtime, &mut ctx, &[complex]);
-    assert!(matches!(
-        classify_object(&ctx, result),
-        ObjectRef::Complex(_)
-    ));
+    let real_part = call(complex::typed_realpart, &runtime, &mut ctx, &[result]);
+    assert_eq!(
+        double_value(&ctx, ncl_object::DoubleFloat::from_word(real_part)).unwrap(),
+        2.0
+    );
     let imag_part = call(complex::typed_imagpart, &runtime, &mut ctx, &[result]);
-    assert!(
-        (double_value(&ctx, ncl_object::DoubleFloat::from_word(imag_part)).unwrap() + 3.0).abs()
-            < 1e-15
+    assert_eq!(
+        double_value(&ctx, ncl_object::DoubleFloat::from_word(imag_part)).unwrap(),
+        -3.0
     );
     let zero = call(complex::typed_imagpart, &runtime, &mut ctx, &[real]);
     assert_eq!(

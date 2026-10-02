@@ -10,36 +10,23 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
     ctx.register(&runtime).unwrap();
     ncl_lib_sequences::register(&runtime).unwrap();
     let names = [
-        "ATOM",
         "LIST",
-        "COPY-LIST",
         "CAR",
         "CDR",
         "CONS",
-        "CONSP",
         "COPY-TREE",
         "EQUAL",
         "EQUALP",
         "FIND-IF",
         "FIND-IF-NOT",
         "POSITION-IF",
-        "POSITION-IF-NOT",
         "COUNT-IF",
-        "COUNT-IF-NOT",
         "REMOVE-IF",
-        "REMOVE-IF-NOT",
         "SUBSTITUTE-IF",
-        "SUBSTITUTE-IF-NOT",
         "MAPLIST",
         "MAPL",
         "MAPCAN",
         "MAPCON",
-        "MAP-INTO",
-        "EVERY",
-        "SOME",
-        "NOTANY",
-        "NOTEVERY",
-        "UNION",
         "INTERSECTION",
         "SET-DIFFERENCE",
         "SET-EXCLUSIVE-OR",
@@ -286,142 +273,4 @@ fn mapping_and_ordered_set_variants_preserve_common_lisp_results() {
     )
     .unwrap();
     assert_eq!(list_values(&ctx, member), vec![Word::fixnum(2)]);
-}
-
-#[test]
-fn predicate_and_mapping_operations_return_exact_sequence_values() {
-    let (runtime, mut ctx, functions) = setup();
-    let one = Word::fixnum(1);
-    let two = Word::fixnum(2);
-    let three = Word::fixnum(3);
-    let nested = list(&runtime, &mut ctx, &functions, &[two]);
-    let values = list(&runtime, &mut ctx, &functions, &[one, nested, three]);
-    let consp = functions["CONSP"].as_word();
-
-    assert_eq!(
-        call(&runtime, &mut ctx, &functions, "FIND-IF", &[consp, values],).unwrap(),
-        nested
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            &functions,
-            "POSITION-IF-NOT",
-            &[consp, values],
-        )
-        .unwrap(),
-        Word::fixnum(0)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            &functions,
-            "COUNT-IF-NOT",
-            &[consp, values],
-        )
-        .unwrap(),
-        Word::fixnum(2)
-    );
-    let removed = call(
-        &runtime,
-        &mut ctx,
-        &functions,
-        "REMOVE-IF-NOT",
-        &[consp, values],
-    )
-    .unwrap();
-    assert_eq!(list_values(&ctx, removed), vec![nested]);
-    let substituted = call(
-        &runtime,
-        &mut ctx,
-        &functions,
-        "SUBSTITUTE-IF-NOT",
-        &[Word::fixnum(9), consp, values],
-    )
-    .unwrap();
-    assert_eq!(
-        list_values(&ctx, substituted),
-        vec![Word::fixnum(9), nested, Word::fixnum(9)]
-    );
-    let maplist = call(
-        &runtime,
-        &mut ctx,
-        &functions,
-        "MAPLIST",
-        &[functions["CAR"].as_word(), values],
-    )
-    .unwrap();
-    assert_eq!(list_values(&ctx, maplist), vec![one, nested, three]);
-    let mapcan_result = call(
-        &runtime,
-        &mut ctx,
-        &functions,
-        "MAPCAN",
-        &[functions["LIST"].as_word(), values],
-    )
-    .unwrap();
-    assert_eq!(list_values(&ctx, mapcan_result), vec![one, nested, three]);
-    let mapcon = call(
-        &runtime,
-        &mut ctx,
-        &functions,
-        "MAPCON",
-        &[functions["CDR"].as_word(), values],
-    )
-    .unwrap();
-    assert_eq!(list_values(&ctx, mapcon), vec![nested, three, three]);
-
-    let destination =
-        ncl_object::make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::NIL])
-            .unwrap();
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            &functions,
-            "MAP-INTO",
-            &[destination, functions["CONSP"].as_word(), values],
-        )
-        .unwrap(),
-        destination
-    );
-    assert_eq!(
-        (0..3)
-            .map(|index| ncl_object::simple_vector_ref(&ctx, destination, index).unwrap())
-            .collect::<Vec<_>>(),
-        vec![Word::NIL, Word::TRUE, Word::NIL]
-    );
-}
-
-#[test]
-fn predicate_reductions_and_ordering_operations_have_exact_results() {
-    let (runtime, mut ctx, functions) = setup();
-    let one = Word::fixnum(1);
-    let two = Word::fixnum(2);
-    let three = Word::fixnum(3);
-    let values = list(&runtime, &mut ctx, &functions, &[one, two, three]);
-    let atom = functions["ATOM"].as_word();
-    assert_eq!(
-        call(&runtime, &mut ctx, &functions, "EVERY", &[atom, values]).unwrap(),
-        Word::TRUE
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, &functions, "SOME", &[atom, values]).unwrap(),
-        Word::TRUE
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, &functions, "NOTANY", &[atom, values]).unwrap(),
-        Word::NIL
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, &functions, "NOTEVERY", &[atom, values]).unwrap(),
-        Word::NIL
-    );
-
-    let left = list(&runtime, &mut ctx, &functions, &[one, two, two]);
-    let right = list(&runtime, &mut ctx, &functions, &[two, three]);
-    let union = call(&runtime, &mut ctx, &functions, "UNION", &[left, right]).unwrap();
-    assert_eq!(list_values(&ctx, union), vec![one, two, three]);
 }

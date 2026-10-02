@@ -313,3 +313,25 @@ fn malformed_records_and_references_report_their_decode_categories() {
         }
     );
 }
+
+#[test]
+fn malformed_object_payload_references_fail_during_reconstruction() {
+    // A one-object image whose cons points at a nonexistent second object.
+    let cons = [0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0];
+    assert_eq!(
+        load_error(&image_with_payload(1, 0, &cons)),
+        ImageError::InvalidLayout {
+            field: "object reference"
+        }
+    );
+
+    // The same invalid reference through a vector payload exercises the
+    // vector branch of the reconstruction pass.
+    let vector = [4, 1, 0, 0, 0, 1, 1, 0, 0, 0];
+    assert_eq!(
+        load_error(&image_with_payload(1, 0, &vector)),
+        ImageError::InvalidLayout {
+            field: "object reference"
+        }
+    );
+}

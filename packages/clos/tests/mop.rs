@@ -175,11 +175,133 @@ fn typed_slot_accessors_and_eql_specializer_round_trip() {
         ),
         Ok(instance)
     );
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-BOUNDP-USING-CLASS",
+            &[class, instance, slot],
+        ),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-VALUE-USING-CLASS",
+            &[class, instance, slot],
+        ),
+        Ok(Word::UNBOUND)
+    );
 
     let eql = mop::make_eql_specializer(&mut ctx, &runtime, Word::fixnum(42)).unwrap();
     assert_eq!(
         call(&mut ctx, &runtime, "EQL-SPECIALIZER-OBJECT", &[eql]),
         Ok(Word::fixnum(42))
+    );
+}
+
+#[test]
+fn typed_slot_accessors_reject_wrong_objects_and_locations() {
+    let (runtime, mut ctx) = setup();
+    let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let other_class = runtime.class(&mut ctx, "CLASS").unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::TRUE]).unwrap();
+    let name = Word::fixnum(31);
+    let slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        name,
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+    let no_location = mop::make_slot_descriptor(&mut ctx, &runtime, name, None).unwrap();
+    let negative_location = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        name,
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(-1)).unwrap()),
+    )
+    .unwrap();
+
+    for name in [
+        "SLOT-VALUE-USING-CLASS",
+        "SLOT-BOUNDP-USING-CLASS",
+        "SLOT-MAKUNBOUND-USING-CLASS",
+    ] {
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[other_class, instance, slot]),
+            Err(ncl_object::ObjectError::TypeError),
+            "class mismatch must be rejected by {name}"
+        );
+        assert_eq!(
+            call(&mut ctx, &runtime, name, &[class, Word::NIL, slot]),
+            Err(ncl_object::ObjectError::TypeError),
+            "non-instance must be rejected by {name}"
+        );
+    }
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-VALUE-USING-CLASS",
+            &[class, instance, Word::fixnum(99)],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    for malformed in [no_location, negative_location] {
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-BOUNDP-USING-CLASS",
+                &[class, instance, malformed],
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+    }
+}
+
+#[test]
+fn class_slots_support_legacy_length_and_cons_superclass_descriptors() {
+    let (runtime, mut ctx) = setup();
+    let parent = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let direct_slots = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(71)]).unwrap();
+    let legacy_class = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[Word::fixnum(70), Word::NIL, direct_slots, Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-SLOTS", &[legacy_class]),
+        Ok(direct_slots)
+    );
+
+    let mut scope = ncl_object::Scope::new(&mut ctx);
+    let parent_root = scope.root_many(&[ncl_object::Local::from_word(parent)]);
+    let parent_list = scope.make_list(&runtime, &parent_root).unwrap();
+    let parent_list = scope.get(parent_list).as_word();
+    let class_values = scope.root_many(&[
+        ncl_object::Local::from_word(Word::fixnum(72)),
+        ncl_object::Local::from_word(parent_list),
+        ncl_object::Local::from_word(Word::NIL),
+        ncl_object::Local::from_word(Word::fixnum(0)),
+    ]);
+    let cons_superclass_class = scope.make_simple_vector(&runtime, &class_values).unwrap();
+    let cons_superclass_class = scope.get(cons_superclass_class).as_word();
+    drop(scope);
+    let precedence = call(
+        &mut ctx,
+        &runtime,
+        "CLASS-PRECEDENCE-LIST",
+        &[cons_superclass_class],
+    )
+    .unwrap();
+    assert_eq!(ncl_object::simple_vector_length(&ctx, precedence), Ok(3));
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, precedence, 1),
+        Ok(parent)
     );
 }
 

@@ -256,6 +256,39 @@ fn rational_float_builtins_assert_multiple_values_and_boundaries() {
 }
 
 #[test]
+fn rationalize_negative_float_and_decode_zero_values() {
+    let (runtime, mut ctx) = setup();
+    let negative = make_double(&mut ctx, &runtime, -1.5).unwrap().into();
+    let rationalized = call(&runtime, &mut ctx, "RATIONALIZE", &[negative]).unwrap();
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(rationalized),).unwrap(),
+        ),
+        -3
+    );
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_denominator(&ctx, ncl_object::Ratio::from_word(rationalized),)
+                .unwrap(),
+        ),
+        2
+    );
+    assert_float_call(&runtime, &mut ctx, "FLOAT", &[negative], -1.5);
+
+    let zero = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    let decoded = call(&runtime, &mut ctx, "DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(float(&ctx, decoded).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1022);
+    assert_eq!(float(&ctx, ctx.values()[2]).to_bits(), 1.0_f64.to_bits());
+    let integer_decoded = call(&runtime, &mut ctx, "INTEGER-DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(integer(&ctx, integer_decoded), 0);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1074);
+    assert_eq!(integer(&ctx, ctx.values()[2]), 1);
+}
+
+#[test]
 fn complex_accessors_construct_conjugate_and_phase_values() {
     let (runtime, mut ctx) = setup();
     let real = make_double(&mut ctx, &runtime, 3.0).unwrap().into();

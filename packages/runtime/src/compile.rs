@@ -418,3 +418,77 @@ pub fn read_forms(
     }
     Ok(forms)
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::{decode_payload, encode_payload, optimization_level};
+    use ncl_compiler_front::ast::Expr;
+    use ncl_compiler_front::{Declaration, OptimizeQuality, Quality};
+
+    #[test]
+    fn optimization_level_follows_nested_declarations_and_safe_fallbacks() {
+        let speed = Declaration::Optimize(vec![OptimizeQuality {
+            quality: Quality::Speed,
+            value: 1,
+        }]);
+        let debug = Declaration::Optimize(vec![OptimizeQuality {
+            quality: Quality::Debug,
+            value: 2,
+        }]);
+        let safety = Declaration::Optimize(vec![OptimizeQuality {
+            quality: Quality::Safety,
+            value: 1,
+        }]);
+        let unsupported = Declaration::Optimize(vec![OptimizeQuality {
+            quality: Quality::Space,
+            value: 3,
+        }]);
+
+        let nested = Expr::Locally {
+            declarations: vec![speed, safety, debug],
+            body: Vec::new(),
+        };
+        assert_eq!(optimization_level(&nested), super::OptimizationLevel::Debug);
+
+        let unsafe_request = Expr::Progn(vec![
+            Expr::Locally {
+                declarations: vec![unsupported],
+                body: vec![Expr::Constant(ncl_compiler_front::literal::Literal::Nil)],
+            },
+            Expr::Constant(ncl_compiler_front::literal::Literal::Nil),
+        ]);
+        assert_eq!(
+            optimization_level(&unsafe_request),
+            super::OptimizationLevel::Safety
+        );
+    }
+
+    #[test]
+    fn payload_round_trips_and_rejects_tampering() {
+        let payload = encode_payload(b"(+ 1 2)").expect("payload encoding");
+        assert_eq!(
+            decode_payload(&payload).expect("payload decoding"),
+            "(+ 1 2)"
+        );
+
+        let mut wrong_version = payload.clone();
+        wrong_version[9] = 2;
+        assert!(
+            decode_payload(&wrong_version)
+                .expect_err("version must be rejected")
+                .to_string()
+                .contains("unsupported runtime FASL payload version")
+        );
+
+        let mut wrong_hash = payload;
+        let last = wrong_hash.last_mut().expect("encoded source");
+        *last ^= 1;
+        assert!(
+            decode_payload(&wrong_hash)
+                .expect_err("hash mismatch must be rejected")
+                .to_string()
+                .contains("runtime FASL source hash mismatch")
+        );
+    }
+}

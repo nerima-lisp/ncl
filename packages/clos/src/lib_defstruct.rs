@@ -106,4 +106,95 @@ mod defstruct_tests {
         assert!(contains(&ctx, result, right)?);
         Ok(())
     }
+
+    #[test]
+    fn inline_options_disable_generated_functions_and_read_only_setters() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        register(&runtime)?;
+        let package = runtime
+            .find_package(&ctx, "COMMON-LISP-USER")
+            .ok_or(ObjectError::TypeError)?;
+        let intern = |name: &str, ctx: &mut ThreadContext| {
+            Package::from_word(package)
+                .intern(ctx, &runtime, name)
+                .map(|(symbol, _)| symbol)
+        };
+        let defstruct = intern("DEFSTRUCT", &mut ctx)?;
+        let record = intern("OPTION-RECORD", &mut ctx)?;
+        let predicate = intern(":PREDICATE", &mut ctx)?;
+        let copier = intern(":COPIER", &mut ctx)?;
+        let type_option = intern(":TYPE", &mut ctx)?;
+        let structure = intern("STRUCTURE", &mut ctx)?;
+        let read_only_option = intern(":READ-ONLY", &mut ctx)?;
+        let value = intern("VALUE", &mut ctx)?;
+        let slot = list(
+            &mut ctx,
+            &runtime,
+            &[value, Word::NIL, read_only_option, Word::TRUE],
+        )?;
+        let form = list(
+            &mut ctx,
+            &runtime,
+            &[
+                defstruct,
+                record,
+                slot,
+                predicate,
+                Word::NIL,
+                copier,
+                Word::NIL,
+                type_option,
+                structure,
+            ],
+        )?;
+        let result = defstruct_macro_builtin(
+            &mut ctx,
+            &runtime,
+            &ncl_object::BuiltinArgs::new(&[form]),
+            &mut MultipleValues::default(),
+        )?;
+        let predicate_function = intern("OPTION-RECORD-P", &mut ctx)?;
+        let copier_function = intern("COPY-OPTION-RECORD", &mut ctx)?;
+        let setter = intern("%STRUCTURE-SET", &mut ctx)?;
+        let accessor = intern("OPTION-RECORD-VALUE", &mut ctx)?;
+        assert!(!contains(&ctx, result, predicate_function)?);
+        assert!(!contains(&ctx, result, copier_function)?);
+        assert!(!contains(&ctx, result, setter)?);
+        assert!(contains(&ctx, result, accessor)?);
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_defstruct_option_is_rejected() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        register(&runtime)?;
+        let package = runtime
+            .find_package(&ctx, "COMMON-LISP-USER")
+            .ok_or(ObjectError::TypeError)?;
+        let intern = |name: &str, ctx: &mut ThreadContext| {
+            Package::from_word(package)
+                .intern(ctx, &runtime, name)
+                .map(|(symbol, _)| symbol)
+        };
+        let defstruct = intern("DEFSTRUCT", &mut ctx)?;
+        let record = intern("UNKNOWN-OPTION-RECORD", &mut ctx)?;
+        let unknown = intern(":NOT-A-DEFSTRUCT-OPTION", &mut ctx)?;
+        let form = list(
+            &mut ctx,
+            &runtime,
+            &[defstruct, record, unknown, Word::TRUE],
+        )?;
+        let result = defstruct_macro_builtin(
+            &mut ctx,
+            &runtime,
+            &ncl_object::BuiltinArgs::new(&[form]),
+            &mut MultipleValues::default(),
+        );
+        assert_eq!(result, Err(ObjectError::TypeError));
+        Ok(())
+    }
 }

@@ -52,7 +52,7 @@ mod tests {
     use ncl_ir::{Constant, FunctionBuilder, OpKind, Ty};
 
     #[test]
-    fn function_entry_constants_are_raw_call_targets() {
+    fn function_entry_constants_are_raw_call_targets() -> Result<(), String> {
         let mut builder = FunctionBuilder::new(
             ncl_ir::FunctionId(1),
             "raw-entry",
@@ -61,17 +61,15 @@ mod tests {
         );
         let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(2)));
         let value = builder
-            .push_op(OpKind::Const { result: entry }, &[Ty::Word])
-            .expect("function entry constant")
+            .push_op(OpKind::Const { result: entry }, &[Ty::Word])?
             .into_iter()
             .next()
-            .expect("function entry value");
-        builder
-            .terminate(ncl_ir::Terminator::Return {
-                values: vec![value],
-            })
-            .expect("return");
+            .ok_or_else(|| "function entry value missing".to_owned())?;
+        builder.terminate(ncl_ir::Terminator::Return {
+            values: vec![value],
+        })?;
 
         assert!(value_is_raw_entry(&builder.finish(), value));
+        Ok(())
     }
 }

@@ -68,7 +68,7 @@ fn malformed_expander(
         })
 }
 
-fn expect_type_error<T>(result: Result<T, ObjectError>) -> Result<(), ObjectError> {
+fn expect_type_error<T>(result: &Result<T, ObjectError>) -> Result<(), ObjectError> {
     if matches!(result, Err(ObjectError::TypeError)) {
         Ok(())
     } else {
@@ -251,20 +251,20 @@ fn remf_and_expansion_support_validate_their_error_paths() -> Result<(), ObjectE
     assert_eq!(remf_body.len(), 4); // check-added-lines: allow(panic) test assertion
     assert_eq!(remf_body[3], Word::NIL); // check-added-lines: allow(panic,index) test assertion
 
-    expect_type_error(expand_incf(&mut ctx, &runtime, &registry, &[]))?;
-    expect_type_error(expand_decf(&mut ctx, &runtime, &registry, &[]))?;
-    expect_type_error(expand_push(&mut ctx, &runtime, &registry, &[x], false))?;
+    expect_type_error(&expand_incf(&mut ctx, &runtime, &registry, &[]))?;
+    expect_type_error(&expand_decf(&mut ctx, &runtime, &registry, &[]))?;
+    expect_type_error(&expand_push(&mut ctx, &runtime, &registry, &[x], false))?;
     expand_push(&mut ctx, &runtime, &registry, &[x, x], false)?;
-    expect_type_error(expand_pop(&mut ctx, &runtime, &registry, &[]))?;
-    expect_type_error(expand_remf(&mut ctx, &runtime, &registry, &[x]))?;
-    expect_type_error(expand_shiftf(&mut ctx, &runtime, &registry, &[x]))?;
-    expect_type_error(expand_rotatef(&mut ctx, &runtime, &registry, &[]))?;
+    expect_type_error(&expand_pop(&mut ctx, &runtime, &registry, &[]))?;
+    expect_type_error(&expand_remf(&mut ctx, &runtime, &registry, &[x]))?;
+    expect_type_error(&expand_shiftf(&mut ctx, &runtime, &registry, &[x]))?;
+    expect_type_error(&expand_rotatef(&mut ctx, &runtime, &registry, &[]))?;
 
     let bad_operator = symbol(&mut ctx, &runtime, "BAD-PLACE")?;
     registry.define(&ctx, bad_operator, malformed_expander)?;
     let bad_place = place_form(&mut ctx, &runtime, bad_operator, x)?;
-    expect_type_error(expand_incf(&mut ctx, &runtime, &registry, &[bad_place]))?;
-    expect_type_error(crate::setf_support::with_expansion_roots(
+    expect_type_error(&expand_incf(&mut ctx, &runtime, &registry, &[bad_place]))?;
+    expect_type_error(&crate::setf_support::with_expansion_roots(
         &mut ctx,
         &SetfExpansion {
             temporary_variables: vec![x],

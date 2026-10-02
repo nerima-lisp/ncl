@@ -366,7 +366,10 @@ impl Sccp {
     }
 
     fn retain_referenced_blocks(function: &mut Function) -> bool {
-        let mut retained = HashSet::from([function.blocks[0].id]);
+        let Some(entry) = function.blocks.first() else {
+            return false;
+        };
+        let mut retained = HashSet::from([entry.id]);
         for block in &function.blocks {
             match &block.terminator {
                 Terminator::Jump { target, .. } => {

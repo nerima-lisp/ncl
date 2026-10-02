@@ -41,6 +41,31 @@ fn allocation() -> Allocation {
     }
 }
 
+fn instruction_texts(assembler: Assembler) -> Vec<String> {
+    let bytes = assembler
+        .finish()
+        .unwrap_or_else(|error| panic!("AArch64 instruction encoding: {error:?}"))
+        .bytes;
+    ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &bytes, 0)
+        .unwrap_or_else(|error| panic!("AArch64 disassembly: {error:?}"))
+        .into_iter()
+        .map(|instruction| instruction.text)
+        .collect()
+}
+
+fn assert_in_order(actual: &[String], expected: &[&str]) {
+    let mut position = 0;
+    for expected_instruction in expected {
+        let Some(found) = actual[position..]
+            .iter()
+            .position(|instruction| instruction == expected_instruction)
+        else {
+            panic!("missing {expected_instruction:?} in {actual:?}");
+        };
+        position += found + 1;
+    }
+}
+
 fn function(regions: Vec<HandlerRegion>, blocks: Vec<BasicBlock>) -> Function {
     Function {
         id: FunctionId(1),
@@ -70,24 +95,25 @@ fn multiple_values_and_epilogues_cover_empty_nonempty_and_overflow_forms() {
         &abi,
     )
     .unwrap_or_else(|error| panic!("multiple values: {error:?}"));
-    assert!(
-        !assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("multiple-value encoding: {error:?}"))
-            .bytes
-            .is_empty()
+    let instructions = instruction_texts(assembler);
+    assert_in_order(
+        &instructions,
+        &[
+            "movz x1, #0x2, lsl #0",
+            "orr x16, x31, x1, lsl #0",
+            "orr x3, x31, x16, lsl #0",
+            "str x16, [x21, #8]",
+            "orr x16, x31, x2, lsl #0",
+            "str x16, [x21, #16]",
+            "str x1, [x21, #8]",
+        ],
     );
 
     let mut assembler = Assembler::new();
     lower_set_multiple_values(&mut assembler, &[], None, &allocation, &abi)
         .unwrap_or_else(|error| panic!("empty multiple values: {error:?}"));
-    assert!(
-        !assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("empty multiple-value encoding: {error:?}"))
-            .bytes
-            .is_empty()
-    );
+    let instructions = instruction_texts(assembler);
+    assert_eq!(instructions, ["movz x1, #0x0, lsl #0", "str x1, [x21, #8]"]);
     let mut assembler = Assembler::new();
     assert!(matches!(
         lower_set_multiple_values(
@@ -103,22 +129,32 @@ fn multiple_values_and_epilogues_cover_empty_nonempty_and_overflow_forms() {
     let mut assembler = Assembler::new();
     emit_epilogue(&mut assembler, &allocation, &abi, 0, &[ValueId(0)], false)
         .unwrap_or_else(|error| panic!("ordinary epilogue: {error:?}"));
-    assert!(
-        !assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("ordinary epilogue encoding: {error:?}"))
-            .bytes
-            .is_empty()
+    let instructions = instruction_texts(assembler);
+    assert_in_order(
+        &instructions,
+        &[
+            "orr x16, x31, x1, lsl #0",
+            "str x16, [x21, #8]",
+            "orr x0, x31, x1, lsl #0",
+            "movz x1, #0x1, lsl #0",
+            "str x1, [x21, #8]",
+            "ldp x29, x30, [sp], #32",
+            "ret x30",
+        ],
     );
     let mut assembler = Assembler::new();
     emit_epilogue(&mut assembler, &allocation, &abi, 16, &[], true)
         .unwrap_or_else(|error| panic!("propagating epilogue: {error:?}"));
-    assert!(
-        !assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("propagating epilogue encoding: {error:?}"))
-            .bytes
-            .is_empty()
+    let instructions = instruction_texts(assembler);
+    assert_eq!(
+        instructions,
+        [
+            "movz x0, #0x0, lsl #0",
+            "movz x1, #0x0, lsl #0",
+            "add sp, sp, #16",
+            "ldp x29, x30, [sp], #32",
+            "ret x30",
+        ]
     );
     let mut assembler = Assembler::new();
     assert!(matches!(

@@ -329,6 +329,58 @@
     "status": "warning",
     "total": 17327,
     "unexecuted": 17327,
+    "unexecuted_reasons": [
+      {
+        "count": 4772,
+        "lane": "other",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 3931,
+        "lane": "sequences-strings",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 2698,
+        "lane": "numbers",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 1487,
+        "lane": "other",
+        "reason": "package not found"
+      },
+      {
+        "count": 878,
+        "lane": "conditions-types",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 846,
+        "lane": "format-printer",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 842,
+        "lane": "clos",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      },
+      {
+        "count": 840,
+        "lane": "loop-macros",
+        "reason": "package not found"
+      },
+      {
+        "count": 647,
+        "lane": "reader-pathnames-streams",
+        "reason": "package not found"
+      },
+      {
+        "count": 386,
+        "lane": "reader-pathnames-streams",
+        "reason": "undefined function UNDEFINED-FUNCTION: COMPILE-AND-LOAD*"
+      }
+    ],
     "unit": "deftest"
   },
   "cl-bench": {

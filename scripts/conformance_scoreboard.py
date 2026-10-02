@@ -308,7 +308,7 @@ def make_scoreboard(
         })
         for key in (
             "unit", "total", "commit", "categories", "failure_clusters",
-            "execution", "results",
+            "unexecuted_reasons", "execution", "results",
         ):
             if key in ansi_counts:
                 ansi_data[key] = ansi_counts[key]
@@ -358,6 +358,29 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
         for rank, item in enumerate(ansi["failure_clusters"], 1):
             diagnostic = str(item["diagnostic"]).replace("|", "\\|")
             lines.append(f"| {rank} | `{diagnostic}` | {item['count']} | {item.get('lane', 'other')} |")
+    if "results" in ansi:
+        lines.extend([
+            "", "## ansi-test chapters", "",
+            "| chapter | lane | passed | failed | unexecuted | reason |",
+            "| --- | --- | ---: | ---: | ---: | --- |",
+        ])
+        for result in ansi["results"]:
+            passed = result["deftests"] if result["status"] == "passed" else 0
+            unexecuted = result["deftests"] - passed
+            reason = str(result.get("diagnostic", "")).replace("|", "\\|")
+            lines.append(
+                f"| {result['chapter']} | {result['lane']} | {passed} | 0 | "
+                f"{unexecuted} | `{reason}` |"
+            )
+    if "unexecuted_reasons" in ansi:
+        lines.extend([
+            "", "## Unexecuted reasons", "",
+            "| rank | reason | deftests | lane |",
+            "| ---: | --- | ---: | --- |",
+        ])
+        for rank, item in enumerate(ansi["unexecuted_reasons"], 1):
+            reason = str(item["reason"]).replace("|", "\\|")
+            lines.append(f"| {rank} | `{reason}` | {item['count']} | {item.get('lane', 'other')} |")
     return "\n".join(lines) + "\n"
 
 

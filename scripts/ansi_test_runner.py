@@ -74,8 +74,13 @@ def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
             value.decode(errors="replace") if isinstance(value, bytes) else value or ""
             for value in (error.stderr, error.stdout)
         )
-        return {"chapter": chapter.name, "lane": LANES.get(chapter.name, "other"),
-                "status": "timeout", "diagnostic": cluster(output)}
+        return {
+            "chapter": chapter.name,
+            "lane": LANES.get(chapter.name, "other"),
+            "deftests": deftest_count(chapter),
+            "status": "timeout",
+            "diagnostic": cluster(output),
+        }
     status = "passed" if result.returncode == 0 else "failed"
     if result.returncode < 0 or result.returncode >= 128:
         status = "crash"
@@ -110,6 +115,10 @@ def main() -> int:
     diagnostics = Counter(
         (result["diagnostic"], result["lane"]) for result in results
     )
+    unexecuted_reasons = Counter()
+    for result in results:
+        if result["status"] != "passed":
+            unexecuted_reasons[(result["diagnostic"], result["lane"])] += result["deftests"]
     lane_counts: dict[str, dict[str, int]] = {}
     for result in results:
         values = lane_counts.setdefault(
@@ -138,6 +147,11 @@ def main() -> int:
         "failure_clusters": [
             {"diagnostic": message, "count": count, "lane": lane}
             for (message, lane), count in diagnostics.most_common(20)
+        ],
+        "unexecuted_reasons": [
+            {"reason": message, "count": count, "lane": lane}
+            for (message, lane), count in unexecuted_reasons.most_common(20)
+            if count > 0
         ],
         "execution": {
             "chapter_load_passed": chapter_passed,

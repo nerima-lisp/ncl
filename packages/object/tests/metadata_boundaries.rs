@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-#![allow(missing_docs)]
 
 use ncl_object::{
     make_cons, make_string, LispError, ObjectError, Package, PackageError, Runtime, StringObject,

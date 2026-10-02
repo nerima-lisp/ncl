@@ -5,8 +5,8 @@
 )]
 
 use ncl_object::{
-    FunctionObject, Instance, Package, Runtime, ThreadContext, Word, make_simple_vector, pop_root,
-    push_root, slot_ref, slot_set,
+    make_simple_vector, pop_root, push_root, slot_ref, slot_set, FunctionObject, Instance, Package,
+    Runtime, ThreadContext, Word,
 };
 
 #[path = "../src/initialization.rs"]
@@ -396,5 +396,91 @@ fn make_instance_resolves_symbol_classes_and_applies_slot_defaults() {
             .call_builtin(&mut ctx, slot_value, &[explicit_instance, Word::fixnum(0)])
             .unwrap(),
         Word::fixnum(305)
+    );
+}
+
+#[test]
+fn make_instance_accepts_registered_class_vector_designator() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (class_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "STANDARD-OBJECT")
+        .unwrap();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    let symbol_instance = runtime.call_builtin(&mut ctx, make, &[class_name]).unwrap();
+    assert!(matches!(
+        ncl_object::classify_object(&ctx, symbol_instance),
+        ncl_object::ObjectRef::Instance(_)
+    ));
+
+    let key = Word::fixnum(131);
+    let class = class_with_slots(&mut ctx, &runtime, &[key]);
+    let vector_instance = runtime
+        .call_builtin(&mut ctx, make, &[class, key, Word::TRUE])
+        .unwrap();
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(vector_instance), 0),
+        Ok(Word::TRUE)
+    );
+}
+
+#[test]
+fn make_instance_rejects_invalid_class_designators() {
+    let (runtime, mut ctx) = setup();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[Word::fixnum(132)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (unknown, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "NCL-UNKNOWN-CLASS-DESIGNATOR")
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[unknown]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_instance_rejects_malformed_effective_slot_descriptors() {
+    let (runtime, mut ctx) = setup();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let class = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[
+            Word::fixnum(134),
+            Word::NIL,
+            Word::NIL,
+            Word::fixnum(0),
+            Word::fixnum(133),
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_instance_and_initialize_instance_reject_odd_initargs() {
+    let (runtime, mut ctx) = setup();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(135)]);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class, Word::fixnum(136)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+    let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, initialize, &[instance, Word::fixnum(137)]),
+        Err(ncl_object::ObjectError::TypeError)
     );
 }

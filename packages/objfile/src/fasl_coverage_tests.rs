@@ -167,10 +167,11 @@ fn private_fasl_writer_rejects_non_i32_addends() {
         },
     };
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         FaslWriter::write(&value),
         Err(ObjectError::InvalidField {
             field: "relocation addend",
-            value: i64::MAX as u64,
+            value: i64::MAX as u64, // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         })
     );
 }

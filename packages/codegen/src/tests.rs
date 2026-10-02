@@ -136,7 +136,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         },
         &[Ty::Word],
     );
-    assert!(address_result.is_ok());
+    assert!(address_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(address) = address_result
         .ok()
         .and_then(|values| values.into_iter().next())
@@ -150,7 +150,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         },
         &[Ty::Word],
     );
-    assert!(value_result.is_ok());
+    assert!(value_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(value) = value_result
         .ok()
         .and_then(|values| values.into_iter().next())
@@ -158,7 +158,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     let loaded_result = builder.push_op(OpKind::Load { address }, &[Ty::Word]);
-    assert!(loaded_result.is_ok());
+    assert!(loaded_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(loaded) = loaded_result
         .ok()
         .and_then(|values| values.into_iter().next())
@@ -166,6 +166,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     assert!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .push_op(OpKind::Store { address, value }, &[])
             .is_ok()
@@ -177,7 +178,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         },
         &[Ty::Word],
     );
-    assert!(loaded_field_result.is_ok());
+    assert!(loaded_field_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(loaded_field) = loaded_field_result
         .ok()
         .and_then(|values| values.into_iter().next())
@@ -185,6 +186,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     assert!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .push_op(
                 OpKind::StoreField {
@@ -215,6 +217,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         ncl_ir::Prim::Aset,
     ] {
         assert!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
                 .push_op(
                     OpKind::Prim {
@@ -236,6 +239,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         ncl_ir::Compare::Ge,
     ] {
         assert!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
                 .push_op(
                     OpKind::Compare {
@@ -254,7 +258,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         },
         &[Ty::Word],
     );
-    assert!(result_values.is_ok());
+    assert!(result_values.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(result) = result_values
         .ok()
         .and_then(|values| values.into_iter().next())
@@ -262,6 +266,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         return;
     };
     assert!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
             .terminate(Terminator::Return {
                 values: vec![result],
@@ -270,12 +275,12 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     );
 
     let compiled_result = compile_function(&builder.finish(), &X86_64Abi);
-    assert!(compiled_result.is_ok());
+    assert!(compiled_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(compiled) = compiled_result.ok() else {
         return;
     };
-    assert!(!compiled.code.is_empty());
-    assert_eq!(compiled.safepoint_maps.len(), 0);
+    assert!(!compiled.code.is_empty()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(compiled.safepoint_maps.len(), 0); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
 }
 
 #[test]
@@ -445,7 +450,7 @@ fn golden_branch_emits_two_resolved_targets() {
 #[test]
 fn machine_function_exposes_lowered_blocks_and_relocations() {
     let frame = FrameLayout::new(1, 2, 1);
-    assert!(frame.is_ok(), "valid frame layout rejected: {frame:?}");
+    assert!(frame.is_ok(), "valid frame layout rejected: {frame:?}"); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let Some(frame) = frame.ok() else {
         return;
     };
@@ -467,17 +472,18 @@ fn machine_function_exposes_lowered_blocks_and_relocations() {
         vec![(ncl_ir::ValueId(9), 8)],
     );
 
-    assert_eq!(machine.entry(), ncl_ir::BlockId(2));
-    assert_eq!(machine.blocks().len(), 1);
-    assert_eq!(machine.blocks()[0].id(), ncl_ir::BlockId(2));
-    assert_eq!(machine.blocks()[0].offset(), 0);
+    assert_eq!(machine.entry(), ncl_ir::BlockId(2)); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(machine.blocks().len(), 1); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(machine.blocks()[0].id(), ncl_ir::BlockId(2)); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(machine.blocks()[0].offset(), 0); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert_eq!(
-        machine.blocks()[0].operations(),
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        machine.blocks()[0].operations(), // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         &[MachineOp::move_value(5, 8), MachineOp::Return]
     );
-    assert_eq!(machine.frame(), frame);
-    assert_eq!(machine.relocations(), &[relocation]);
-    assert_eq!(machine.slots(), &[(ncl_ir::ValueId(9), 8)]);
+    assert_eq!(machine.frame(), frame); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(machine.relocations(), &[relocation]); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert_eq!(machine.slots(), &[(ncl_ir::ValueId(9), 8)]); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
 }
 
 #[test]

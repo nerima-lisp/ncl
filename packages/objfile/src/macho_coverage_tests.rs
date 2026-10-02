@@ -122,10 +122,11 @@ fn private_macho_command_parser_reports_missing_and_bad_sizes() {
 #[test]
 fn private_macho_command_parser_checks_section_field_bounds() {
     let mut command = vec![0; 155];
-    command[32..36].copy_from_slice(&0x19u32.to_le_bytes());
-    command[36..40].copy_from_slice(&152u32.to_le_bytes());
-    command[96..100].copy_from_slice(&1u32.to_le_bytes());
+    command[32..36].copy_from_slice(&0x19u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    command[36..40].copy_from_slice(&152u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    command[96..100].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho_commands(&command, 184, 1),
         Err(ObjectError::Truncated {
             offset: 152,
@@ -134,10 +135,11 @@ fn private_macho_command_parser_checks_section_field_bounds() {
     );
 
     let mut section = vec![0; 155];
-    section[32..36].copy_from_slice(&0x19u32.to_le_bytes());
-    section[36..40].copy_from_slice(&152u32.to_le_bytes());
-    section[96..100].copy_from_slice(&1u32.to_le_bytes());
+    section[32..36].copy_from_slice(&0x19u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    section[36..40].copy_from_slice(&152u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    section[96..100].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho_commands(&section, 184, 1),
         Err(ObjectError::Truncated {
             offset: 152,
@@ -149,8 +151,9 @@ fn private_macho_command_parser_checks_section_field_bounds() {
 #[test]
 fn private_macho_command_parser_reports_truncated_command_fields() {
     let mut command = vec![0; 36];
-    command[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    command[32..36].copy_from_slice(&0x19u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert!(matches!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho_commands(&command, 40, 1),
         Err(ObjectError::Truncated {
             offset: 36,
@@ -159,9 +162,10 @@ fn private_macho_command_parser_reports_truncated_command_fields() {
     ));
 
     let mut section_count = vec![0; 99];
-    section_count[32..36].copy_from_slice(&0x19u32.to_le_bytes());
-    section_count[36..40].copy_from_slice(&72u32.to_le_bytes());
+    section_count[32..36].copy_from_slice(&0x19u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    section_count[36..40].copy_from_slice(&72u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert!(matches!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho_commands(&section_count, 104, 1),
         Err(ObjectError::Truncated {
             offset: 96,
@@ -173,9 +177,10 @@ fn private_macho_command_parser_reports_truncated_command_fields() {
 #[test]
 fn private_macho_command_parser_rejects_non_segment_commands() {
     let mut command = vec![0; 40];
-    command[32..36].copy_from_slice(&0x2u32.to_le_bytes());
-    command[36..40].copy_from_slice(&8u32.to_le_bytes());
+    command[32..36].copy_from_slice(&0x2u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    command[36..40].copy_from_slice(&8u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho_commands(&command, 40, 1),
         Err(ObjectError::InvalidStructure("missing Mach-O load command"))
     );
@@ -204,15 +209,16 @@ fn public_macho_writer_and_reader_cover_reachable_architecture_paths() {
             }],
         };
         let bytes_result = value.write();
-        assert!(bytes_result.is_ok());
+        assert!(bytes_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         let bytes = bytes_result.unwrap_or_default();
-        assert_eq!(MachReader::validate(&bytes, architecture), Ok(()));
+        assert_eq!(MachReader::validate(&bytes, architecture), Ok(())); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     }
 }
 
 #[test]
 fn public_macho_validator_reports_header_and_command_errors() {
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho(&[], MachArchitecture::X86_64),
         Err(ObjectError::Truncated {
             offset: 0,
@@ -220,18 +226,20 @@ fn public_macho_validator_reports_header_and_command_errors() {
         })
     );
     let mut bytes = vec![0; 32];
-    bytes[0..4].copy_from_slice(&0xfeed_facf_u32.to_le_bytes());
-    bytes[4..8].copy_from_slice(&0x0100_0007u32.to_le_bytes());
-    bytes[16..20].copy_from_slice(&1u32.to_le_bytes());
-    bytes[20..24].copy_from_slice(&8u32.to_le_bytes());
+    bytes[0..4].copy_from_slice(&0xfeed_facf_u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    bytes[4..8].copy_from_slice(&0x0100_0007u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    bytes[16..20].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    bytes[20..24].copy_from_slice(&8u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho(&bytes, MachArchitecture::X86_64),
         Err(ObjectError::InvalidStructure(
             "invalid Mach-O load commands"
         ))
     );
-    bytes[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
+    bytes[20..24].copy_from_slice(&u32::MAX.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert!(matches!(
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_macho(&bytes, MachArchitecture::X86_64),
         Err(ObjectError::InvalidStructure(
             "invalid Mach-O load commands"

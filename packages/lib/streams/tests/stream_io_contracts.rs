@@ -322,3 +322,180 @@ fn character_peek_modes_and_eof_policies_cover_non_default_paths() {
         Err(ncl_object::ObjectError::TypeError)
     );
 }
+
+#[test]
+fn file_input_character_reads_update_position_and_honor_eof_value() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let read_char = builtin(&runtime, &mut ctx, "READ-CHAR");
+    let read_char_no_hang = builtin(&runtime, &mut ctx, "READ-CHAR-NO-HANG");
+    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let direction = keyword(&runtime, &mut ctx, "DIRECTION");
+    let input = keyword(&runtime, &mut ctx, "INPUT");
+    let path = std::env::temp_dir().join(format!(
+        "ncl-streams-character-input-{}",
+        std::process::id()
+    ));
+    fs::write(&path, b"AZ").unwrap();
+    let path_word = text(&mut ctx, &runtime, &path.to_string_lossy());
+    let stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, input])
+        .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[stream]),
+        Ok(Word::character(u32::from('A')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream]),
+        Ok(Word::fixnum(1))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char_no_hang, &[stream]),
+        Ok(Word::character(u32::from('Z')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[stream, Word::NIL, Word::fixnum(77)],),
+        Ok(Word::fixnum(77))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream]),
+        Ok(Word::fixnum(2))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[stream]),
+        Ok(Word::TRUE)
+    );
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn file_io_writes_and_reads_bytes_after_position_reset() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
+    let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
+    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
+    let file_length = builtin(&runtime, &mut ctx, "FILE-LENGTH");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let direction = keyword(&runtime, &mut ctx, "DIRECTION");
+    let io = keyword(&runtime, &mut ctx, "IO");
+    let path = std::env::temp_dir().join(format!("ncl-streams-file-io-{}", std::process::id()));
+    fs::write(&path, b"_").unwrap();
+    let path_word = text(&mut ctx, &runtime, &path.to_string_lossy());
+    let stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, io])
+        .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_char,
+            &[Word::character(u32::from('é')), stream],
+        ),
+        Ok(Word::character(u32::from('é')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, write_byte, &[Word::fixnum(33), stream]),
+        Ok(Word::fixnum(33))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_length, &[stream]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream, Word::fixnum(0)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[stream]),
+        Ok(Word::TRUE)
+    );
+    let reopened = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, io])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[reopened]),
+        Ok(Word::fixnum(0xc3))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[reopened]),
+        Ok(Word::fixnum(0xa9))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[reopened]),
+        Ok(Word::fixnum(33))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[reopened]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(fs::read(&path).unwrap(), vec![0xc3, 0xa9, 33]);
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn open_policies_report_errors_and_create_missing_input_only_when_requested() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let direction = keyword(&runtime, &mut ctx, "DIRECTION");
+    let input = keyword(&runtime, &mut ctx, "INPUT");
+    let output = keyword(&runtime, &mut ctx, "OUTPUT");
+    let if_exists = keyword(&runtime, &mut ctx, "IF-EXISTS");
+    let if_does_not_exist = keyword(&runtime, &mut ctx, "IF-DOES-NOT-EXIST");
+    let error = keyword(&runtime, &mut ctx, "ERROR");
+    let nil = keyword(&runtime, &mut ctx, "NIL");
+    let create = keyword(&runtime, &mut ctx, "CREATE");
+    let existing = std::env::temp_dir().join(format!(
+        "ncl-streams-policy-existing-{}",
+        std::process::id()
+    ));
+    let missing =
+        std::env::temp_dir().join(format!("ncl-streams-policy-missing-{}", std::process::id()));
+    fs::write(&existing, b"keep").unwrap();
+    let existing_word = text(&mut ctx, &runtime, &existing.to_string_lossy());
+    let missing_word = text(&mut ctx, &runtime, &missing.to_string_lossy());
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            open,
+            &[existing_word, direction, output, if_exists, error],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(fs::read(&existing).unwrap(), b"keep");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, open, &[missing_word, direction, input],),
+        Err(ncl_object::ObjectError::Layout)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            open,
+            &[missing_word, direction, input, if_does_not_exist, nil,],
+        ),
+        Ok(Word::NIL)
+    );
+    let created = runtime
+        .call_builtin(
+            &mut ctx,
+            open,
+            &[missing_word, direction, input, if_does_not_exist, create],
+        )
+        .unwrap();
+    assert_eq!(fs::read(&missing).unwrap(), b"");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[created]),
+        Ok(Word::TRUE)
+    );
+    fs::remove_file(existing).unwrap();
+    fs::remove_file(missing).unwrap();
+}

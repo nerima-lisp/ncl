@@ -313,3 +313,49 @@ fn unary_arithmetic_handles_zero_division_absolute_and_sign_values() {
         5.0
     );
 }
+
+#[test]
+fn arithmetic_reports_i128_boundary_overflow_without_wrapping() {
+    let (runtime, mut ctx) = setup();
+    let min = make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    let max = make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    let one = Word::fixnum(1);
+    let minus_one = Word::fixnum(-1);
+
+    for (name, args) in [
+        ("+", vec![max, one]),
+        ("-", vec![min, one]),
+        ("*", vec![max, Word::fixnum(2)]),
+        ("/", vec![min, minus_one]),
+        ("ABS", vec![min]),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &args),
+            Err(ObjectError::TypeError),
+            "{name} must reject an unrepresentable i128 result",
+        );
+    }
+}
+
+#[test]
+fn signum_and_abs_preserve_zero_contracts() {
+    let (runtime, mut ctx) = setup();
+    assert_integer(&runtime, &mut ctx, "SIGNUM", &[Word::fixnum(0)], 0);
+    assert_integer(&runtime, &mut ctx, "ABS", &[Word::fixnum(0)], 0);
+
+    let negative = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+    let signum = call(&runtime, &mut ctx, "SIGNUM", &[negative]).unwrap();
+    let ObjectRef::DoubleFloat(signum) = classify_object(&ctx, signum) else {
+        panic!("SIGNUM of a float must remain a float");
+    };
+    assert_eq!(
+        ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(signum))
+            .unwrap()
+            .to_bits(),
+        (-1.0_f64).to_bits()
+    );
+}

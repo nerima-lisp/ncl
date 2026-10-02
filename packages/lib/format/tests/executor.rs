@@ -47,6 +47,16 @@ fn executes_integer_radices_and_line_controls() {
 }
 
 #[test]
+fn executes_zero_and_multiple_tilde_repeats_with_expected_line_state() {
+    let (runtime, mut ctx) = context();
+    let control = parse("head~3~~0~~&tail").expect("control");
+    let mut sink = StringSink::new();
+
+    assert_eq!(execute(&control, &[], &mut ctx, &runtime, &mut sink), Ok(0));
+    assert_eq!(sink.into_string(), "head~~~\ntail");
+}
+
+#[test]
 fn rejects_missing_and_non_integer_arguments() {
     let (runtime, mut ctx) = context();
     let mut sink = StringSink::new();

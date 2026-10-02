@@ -195,3 +195,81 @@ fn rounding_covers_ratio_divisors_and_float_result_variants() {
         ));
     }
 }
+
+#[test]
+fn rounding_observes_negative_divisor_and_half_even_contracts() {
+    let (runtime, mut ctx) = setup();
+    let divisor = Word::fixnum(-2);
+    for (name, quotient, remainder) in [
+        ("FLOOR", -4, -1),
+        ("CEILING", -3, 1),
+        ("TRUNCATE", -3, 1),
+        ("ROUND", -4, -1),
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[Word::fixnum(7), divisor]).unwrap();
+        assert_eq!(integer(&ctx, result), quotient, "{name} quotient");
+        assert_eq!(
+            integer(&ctx, ctx.values()[1]),
+            remainder,
+            "{name} remainder"
+        );
+    }
+
+    for (value, quotient, remainder) in [(5, 2, 1), (7, 4, -1), (-5, -2, -1), (-7, -4, 1)] {
+        let result = call(
+            &runtime,
+            &mut ctx,
+            "ROUND",
+            &[Word::fixnum(value), Word::fixnum(2)],
+        )
+        .unwrap();
+        assert_eq!(
+            integer(&ctx, result),
+            quotient,
+            "ROUND({value}, 2) quotient"
+        );
+        assert_eq!(
+            integer(&ctx, ctx.values()[1]),
+            remainder,
+            "ROUND({value}, 2) remainder"
+        );
+    }
+}
+
+#[test]
+fn rounding_uses_one_as_the_default_divisor() {
+    let (runtime, mut ctx) = setup();
+    for name in ["FLOOR", "CEILING", "TRUNCATE", "ROUND"] {
+        let result = call(&runtime, &mut ctx, name, &[Word::fixnum(-7)]).unwrap();
+        assert_eq!(integer(&ctx, result), -7, "{name} quotient");
+        assert_eq!(integer(&ctx, ctx.values()[1]), 0, "{name} remainder");
+    }
+}
+
+#[test]
+fn float_round_uses_half_even_and_rejects_zero_divisors() {
+    let (runtime, mut ctx) = setup();
+    let one = ncl_object::make_double(&mut ctx, &runtime, 1.0)
+        .unwrap()
+        .into();
+    for (value, quotient, remainder) in [(2.5_f64, 2.0_f64, 0.5_f64), (3.5_f64, 4.0_f64, -0.5_f64)]
+    {
+        let value = ncl_object::make_double(&mut ctx, &runtime, value)
+            .unwrap()
+            .into();
+        let result = call(&runtime, &mut ctx, "FROUND", &[value, one]).unwrap();
+        assert_eq!(float(&ctx, result).to_bits(), quotient.to_bits());
+        assert_eq!(float(&ctx, ctx.values()[1]).to_bits(), remainder.to_bits());
+    }
+
+    let value = ncl_object::make_double(&mut ctx, &runtime, 1.0)
+        .unwrap()
+        .into();
+    let zero = ncl_object::make_double(&mut ctx, &runtime, 0.0)
+        .unwrap()
+        .into();
+    assert_eq!(
+        call(&runtime, &mut ctx, "FFLOOR", &[value, zero]),
+        Err(ObjectError::TypeError)
+    );
+}

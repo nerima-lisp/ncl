@@ -317,6 +317,29 @@ fn function_binding_check_reports_missing_registration_and_uninterned_symbol() {
 }
 
 #[test]
+fn function_binding_check_reports_a_missing_package_and_continues() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nNOPE\tMISSING\tfunction\ttest\t1\tno\t\nTEST\tUNINTERNED\tfunction\ttest\t1\tno\t\n";
+    runtime.ensure_package(&mut ctx, "TEST").unwrap();
+
+    let error =
+        assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test").unwrap_err();
+    let missing = match error {
+        OwnershipError::Missing(missing) => missing,
+        other => panic!("expected Missing, got {other}"),
+    };
+    assert_eq!(missing.len(), 2);
+    assert_eq!(missing[0].package, "NOPE");
+    assert_eq!(missing[0].symbol, "MISSING");
+    assert_eq!(missing[0].reason, "package not found");
+    assert_eq!(missing[1].package, "TEST");
+    assert_eq!(missing[1].symbol, "UNINTERNED");
+    assert_eq!(missing[1].reason, "symbol not interned");
+}
+
+#[test]
 fn ownership_error_display_and_source_preserve_error_details() {
     let object = OwnershipError::Object(ObjectError::TypeError);
     assert_eq!(object.to_string(), "object error: TypeError");

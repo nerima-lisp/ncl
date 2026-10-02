@@ -3,10 +3,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, Character, CodeObject, ObjectRef, ObjectType, Package, Runtime,
-    ThreadContext, Word, WordView, classify, classify_object, make_array, make_bignum_from_i128,
-    make_closure, make_code_object, make_complex, make_cons, make_double, make_instance,
-    make_ratio, make_readtable, make_simple_fun, make_simple_vector, make_specialized_array,
-    make_stream, make_string, make_structure,
+    ThreadContext, Word, WordView, allocate, classify, classify_object, make_array,
+    make_bignum_from_i128, make_closure, make_code_object, make_complex, make_cons, make_double,
+    make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
+    make_specialized_array, make_stream, make_string, make_structure,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -308,5 +308,31 @@ fn heap_classification_round_trips_each_supported_representation() {
     assert_eq!(
         WordView::from(classify_object(&ctx, stream)).as_word(),
         stream
+    );
+}
+
+#[test]
+fn unknown_heap_widetag_preserves_other_representation() {
+    let (runtime, mut ctx) = setup();
+    let object = allocate(&mut ctx, &runtime, 0x7f, 1).unwrap();
+
+    assert_eq!(runtime.widetag(object), Some(0x7f));
+    assert_eq!(
+        classify_object(&ctx, object),
+        ObjectRef::Other {
+            word: object,
+            widetag: 0x7f,
+        }
+    );
+    assert_eq!(
+        WordView::from(classify_object(&ctx, object)),
+        WordView::Other {
+            word: object,
+            widetag: 0x7f,
+        }
+    );
+    assert_eq!(
+        WordView::from(classify_object(&ctx, object)).as_word(),
+        object
     );
 }

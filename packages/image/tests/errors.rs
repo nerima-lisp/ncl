@@ -7,7 +7,10 @@
 //! Error and side-effect coverage for the public image API.
 
 use ncl_image::{CodeImage, ImageError, load, save};
-use ncl_object::{ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word, make_array};
+use ncl_object::{
+    ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word, make_array, make_readtable,
+    make_stream,
+};
 use ncl_sys::{CodeError, alloc_code};
 
 fn empty_image() -> Vec<u8> {
@@ -32,6 +35,15 @@ fn image_with_payload(object_count: u32, root_count: u32, payload: &[u8]) -> Vec
     let mut image = empty_image();
     image[16..20].copy_from_slice(&object_count.to_le_bytes());
     image[20..24].copy_from_slice(&root_count.to_le_bytes());
+    image[44..48].copy_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+    image.truncate(64);
+    image.extend_from_slice(payload);
+    image
+}
+
+fn image_with_code_payload(payload: &[u8]) -> Vec<u8> {
+    let mut image = empty_image();
+    image[24..28].copy_from_slice(&1_u32.to_le_bytes());
     image[44..48].copy_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
     image.truncate(64);
     image.extend_from_slice(payload);
@@ -113,6 +125,32 @@ fn malformed_headers_report_precise_errors_without_mutating_runtime() {
 }
 
 #[test]
+fn load_rejects_an_image_for_a_different_architecture() {
+    let mut image = empty_image();
+    image[10] = if cfg!(target_arch = "x86_64") { 2 } else { 1 };
+
+    assert_eq!(
+        load_error(&image),
+        ImageError::InvalidField {
+            field: "architecture"
+        }
+    );
+}
+
+#[test]
+fn malformed_code_payload_reports_the_code_layout_error() {
+    // Empty function name, entry offset 1, and an empty code body.
+    let payload = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    assert_eq!(
+        load_error(&image_with_code_payload(&payload)),
+        ImageError::InvalidLayout {
+            field: "code entry offset"
+        }
+    );
+}
+
+#[test]
 fn saving_an_unsupported_array_reports_kind_and_preserves_features() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
@@ -139,6 +177,37 @@ fn saving_an_unsupported_array_reports_kind_and_preserves_features() {
         Err(ImageError::UnsupportedKind {
             kind: "non-simple array"
         })
+    );
+    assert_eq!(runtime.features(), features_before);
+}
+
+#[test]
+fn saving_readtables_and_streams_reports_their_unsupported_kinds() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    runtime.add_feature("before-unsupported-descriptor");
+    let features_before = runtime.features();
+
+    let readtable = make_readtable(&mut ctx, &runtime, Word::NIL, Word::NIL, Word::NIL).unwrap();
+    assert_eq!(
+        save(&runtime, &mut ctx, &[readtable.into()], &[]),
+        Err(ImageError::UnsupportedKind { kind: "readtable" })
+    );
+
+    let stream = make_stream(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap();
+    assert_eq!(
+        save(&runtime, &mut ctx, &[stream.into()], &[]),
+        Err(ImageError::UnsupportedKind { kind: "stream" })
     );
     assert_eq!(runtime.features(), features_before);
 }

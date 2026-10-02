@@ -401,6 +401,9 @@ pub use sccp::Sccp;
 mod dce;
 pub use dce::DeadCodeElimination;
 #[cfg(test)]
+#[path = "coverage_additional_tests.rs"]
+mod coverage_additional_tests;
+#[cfg(test)]
 #[path = "dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]

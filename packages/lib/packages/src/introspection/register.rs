@@ -1,11 +1,10 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, NAME, NAME_PACKAGE, ONE_OBJECT, ONE_PACKAGE, ObjectError,
-    PACKAGE_PACKAGE, Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols,
-    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
-    package_management, package_name, package_nicknames, package_shadowing_symbols,
-    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
-    use_package,
+    BuiltinPackage, LambdaList, NAME, ONE_OBJECT, ONE_PACKAGE, ObjectError, PACKAGE_PACKAGE,
+    Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols, find_package,
+    find_symbol, import, intern, list_all_packages, package_error_package, package_management,
+    package_name, package_nicknames, package_shadowing_symbols, package_use_list,
+    package_used_by_list, packagep, shadow, unexport, unintern, unuse_package, use_package,
 };
 
 const fn descriptor(required: &'static [Parameter]) -> Builtin {
@@ -38,13 +37,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("LIST-ALL-PACKAGES", &[][..], list_all_packages),
         ("FIND-ALL-SYMBOLS", &[NAME][..], find_all_symbols),
         ("PACKAGE-ERROR-PACKAGE", ONE_OBJECT, package_error_package),
-        ("FIND-SYMBOL", NAME_PACKAGE, find_symbol),
-        ("INTERN", NAME_PACKAGE, intern),
-        ("EXPORT", SYMBOLS_PACKAGE, export),
-        ("UNEXPORT", SYMBOLS_PACKAGE, unexport),
-        ("UNINTERN", NAME_PACKAGE, unintern),
-        ("IMPORT", SYMBOLS_PACKAGE, import),
-        ("SHADOW", SYMBOLS_PACKAGE, shadow),
         ("USE-PACKAGE", PACKAGE_PACKAGE, use_package),
         ("UNUSE-PACKAGE", PACKAGE_PACKAGE, unuse_package),
         (
@@ -64,8 +56,51 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinImplementation::direct(descriptor(params), function),
         )?;
     }
+    for (name, function) in [
+        ("EXPORT", export as ncl_object::RustBuiltin),
+        ("UNEXPORT", unexport),
+        ("IMPORT", import),
+        ("SHADOW", shadow),
+    ] {
+        runtime.register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::with_optional(&[super::SYMBOLS], &[super::PACKAGE]),
+                    convention: BuiltinConvention::Adapted,
+                },
+                function,
+            ),
+        )?;
+    }
+    for (name, function) in [
+        ("FIND-SYMBOL", find_symbol as ncl_object::RustBuiltin),
+        ("INTERN", intern),
+        ("UNINTERN", unintern),
+    ] {
+        runtime.register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::with_optional(&[super::NAME], &[super::PACKAGE]),
+                    convention: BuiltinConvention::Adapted,
+                },
+                function,
+            ),
+        )?;
+    }
+    register_package_constructors(runtime, &mut ctx)?;
+    Ok(())
+}
+
+fn register_package_constructors(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-PACKAGE")),
         BuiltinImplementation::direct(
             Builtin {
@@ -79,7 +114,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new("RENAME-PACKAGE"),

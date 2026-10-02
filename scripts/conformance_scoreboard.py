@@ -301,14 +301,26 @@ def make_scoreboard(
     """Build a JSON-serializable scoreboard from two process results."""
     ansi_data: dict[str, Any] = {"status": ansi.status}
     if ansi_counts is not None:
-        ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
+        ansi_data.update({
+            key: int(ansi_counts[key])
+            for key in ("passed", "failed", "unexecuted")
+            if key in ansi_counts
+        })
+        for key in (
+            "unit", "total", "commit", "categories", "failure_clusters",
+            "unexecuted_reasons", "execution", "results",
+        ):
+            if key in ansi_counts:
+                ansi_data[key] = ansi_counts[key]
+        if ansi_data.get("unexecuted", 0) > 0:
+            ansi_data["status"] = "warning"
     bench_data: dict[str, Any] = {"status": bench.status}
     if bench_times is not None:
         bench_data["samples"] = len(bench_times)
         if bench_times:
             bench_data["geometric_mean"] = geometric_mean(bench_times)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "measured_on": date.today().isoformat(),
         "sources": SOURCES,
         "ansi-test": ansi_data,
@@ -329,6 +341,46 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     lines.extend(["", "| suite | commit |", "| --- | --- |"])
     for name in ("ansi-test", "cl-bench"):
         lines.append(f"| {name} | `{scoreboard['sources'][name]['commit']}` |")
+    if "categories" in ansi:
+        lines.extend([
+            "", "## ansi-test categories", "",
+            "| lane | passed | failed | unexecuted | timeout/crash |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ])
+        for lane, values in sorted(ansi["categories"].items()):
+            lines.append(
+                f"| {lane} | {values.get('passed', 0)} | {values.get('failed', 0)} | "
+                f"{values.get('unexecuted', 0)} | "
+                f"{values.get('timeout', 0) + values.get('crash', 0)} |"
+            )
+    if "failure_clusters" in ansi:
+        lines.extend(["", "## Failure clusters", "", "| rank | diagnostic | count | lane |", "| ---: | --- | ---: | --- |"])
+        for rank, item in enumerate(ansi["failure_clusters"], 1):
+            diagnostic = str(item["diagnostic"]).replace("|", "\\|")
+            lines.append(f"| {rank} | `{diagnostic}` | {item['count']} | {item.get('lane', 'other')} |")
+    if "results" in ansi:
+        lines.extend([
+            "", "## ansi-test chapters", "",
+            "| chapter | lane | passed | failed | unexecuted | reason |",
+            "| --- | --- | ---: | ---: | ---: | --- |",
+        ])
+        for result in ansi["results"]:
+            passed = result["deftests"] if result["status"] == "passed" else 0
+            unexecuted = result["deftests"] - passed
+            reason = str(result.get("diagnostic", "")).replace("|", "\\|")
+            lines.append(
+                f"| {result['chapter']} | {result['lane']} | {passed} | 0 | "
+                f"{unexecuted} | `{reason}` |"
+            )
+    if "unexecuted_reasons" in ansi:
+        lines.extend([
+            "", "## Unexecuted reasons", "",
+            "| rank | reason | deftests | lane |",
+            "| ---: | --- | ---: | --- |",
+        ])
+        for rank, item in enumerate(ansi["unexecuted_reasons"], 1):
+            reason = str(item["reason"]).replace("|", "\\|")
+            lines.append(f"| {rank} | `{reason}` | {item['count']} | {item.get('lane', 'other')} |")
     return "\n".join(lines) + "\n"
 
 
@@ -347,6 +399,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--source-retries", type=int, default=DEFAULT_SOURCE_RETRIES)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--output", type=Path, help="write the report to this path")
+    parser.add_argument("--markdown-output", type=Path, help="also write a Markdown report")
     args = parser.parse_args(argv)
     ansi_command = _command(args.ansi_command)
     bench_command = _command(args.cl_bench_command)
@@ -387,6 +440,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.output.write_text(output, encoding="utf-8")
     else:
         print(output, end="")
+    markdown_path = args.markdown_output
+    if markdown_path is None and args.output and args.output.suffix == ".json":
+        markdown_path = args.output.with_suffix(".md")
+    if markdown_path:
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(render_markdown(scoreboard), encoding="utf-8")
     # A test failure is a measurement result, not a harness failure.  Only
     # process supervision or malformed runner output makes the harness fail.
     return 0 if ansi.status in ("passed", "failed") and bench.status in ("passed", "failed") else 1

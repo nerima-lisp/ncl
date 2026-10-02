@@ -262,6 +262,32 @@ fn package_management_options_rename_and_delete_are_observable() -> Result<(), O
         vec![nickname]
     );
 
+    let dependency = runtime.ensure_package(&mut ctx, "NCL-MANAGED-USED")?;
+    let use_key = string(&mut ctx, &runtime, "USE");
+    let dependency_list = list(&mut ctx, &runtime, &[dependency]);
+    let package_use_list = function(&runtime, &mut ctx, "COMMON-LISP", "PACKAGE-USE-LIST");
+    let configured_name = string(&mut ctx, &runtime, "NCL-MANAGED-USES");
+    let configured = runtime.call_builtin(
+        &mut ctx,
+        make_package,
+        &[configured_name, use_key, dependency_list],
+    )?;
+    let configured_uses = runtime.call_builtin(&mut ctx, package_use_list, &[configured])?;
+    assert_eq!(
+        introspection::list_items(&ctx, configured_uses)?,
+        vec![dependency]
+    );
+    let invalid_name = string(&mut ctx, &runtime, "NCL-MANAGED-INVALID");
+    let unknown_option = string(&mut ctx, &runtime, "UNKNOWN-OPTION");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            make_package,
+            &[invalid_name, unknown_option, Word::NIL],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
     let rename = function(&runtime, &mut ctx, "COMMON-LISP", "RENAME-PACKAGE");
     let renamed_name = string(&mut ctx, &runtime, "NCL-RENAMED-PACKAGE");
     let renamed_nickname = string(&mut ctx, &runtime, "NCL-RENAMED-NICK");
@@ -288,6 +314,42 @@ fn package_management_options_rename_and_delete_are_observable() -> Result<(), O
     assert_eq!(
         runtime.call_builtin(&mut ctx, delete, &[package]),
         Ok(Word::NIL)
+    );
+    Ok(())
+}
+
+#[test]
+fn shadowing_import_replaces_an_inherited_name_and_rejects_non_symbols() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let source = runtime.ensure_package(&mut ctx, "NCL-SHADOW-SOURCE")?;
+    let target = runtime.ensure_package(&mut ctx, "NCL-SHADOW-TARGET")?;
+    let (inherited, _) = Package::from_word(source).intern(&mut ctx, &runtime, "SHARED")?;
+    let shared_name = string(&mut ctx, &runtime, "SHARED");
+    Package::from_word(source).export(&mut ctx, &runtime, shared_name)?;
+    Package::from_word(target).use_package(&mut ctx, &runtime, source)?;
+
+    let shadowing_import = function(&runtime, &mut ctx, "COMMON-LISP", "SHADOWING-IMPORT");
+    let symbols = list(&mut ctx, &runtime, &[inherited]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, shadowing_import, &[symbols, target]),
+        Ok(Word::TRUE)
+    );
+    let shared_name = string(&mut ctx, &runtime, "SHARED");
+    let shadowed = Package::from_word(target)
+        .find_symbol(&mut ctx, shared_name)?
+        .ok_or(ObjectError::Layout)?
+        .0;
+    assert_eq!(shadowed, inherited);
+
+    let invalid = list(&mut ctx, &runtime, &[Word::fixnum(1)]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, shadowing_import, &[invalid, target]),
+        Err(ObjectError::TypeError)
     );
     Ok(())
 }

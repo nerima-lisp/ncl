@@ -3,7 +3,7 @@
 
 use ncl_object::{
     FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
-    make_string,
+    make_string, symbol_value,
 };
 use std::fs;
 
@@ -50,6 +50,30 @@ fn data_stream(runtime: &Runtime, ctx: &mut ThreadContext, bytes: &[u8]) -> Word
     let mut values = vec![Word::fixnum(0), Word::fixnum(0)];
     values.extend(bytes.iter().map(|byte| Word::fixnum(i64::from(*byte))));
     let state = make_simple_vector(ctx, runtime, &values).unwrap();
+    make_stream(
+        ctx,
+        runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        state,
+        Word::NIL,
+    )
+    .unwrap()
+    .into()
+}
+
+fn standard_stream(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Word {
+    let package = runtime.ensure_package(ctx, "COMMON-LISP").unwrap();
+    let symbol = Package::from_word(package)
+        .intern(ctx, runtime, name)
+        .unwrap()
+        .0;
+    symbol_value(ctx, symbol).unwrap()
+}
+
+fn state_stream(runtime: &Runtime, ctx: &mut ThreadContext, values: &[Word]) -> Word {
+    let state = make_simple_vector(ctx, runtime, values).unwrap();
     make_stream(
         ctx,
         runtime,
@@ -543,6 +567,131 @@ fn file_remaining_policy_metadata_and_close_results() {
     assert_eq!(
         runtime.call_builtin(&mut ctx, close, &[io_stream]),
         Err(ncl_object::ObjectError::TypeError)
+    );
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn remaining_file_io_data_standard_and_layout_results() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let read = builtin(&runtime, &mut ctx, "READ-CHAR");
+    let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
+    let peek = builtin(&runtime, &mut ctx, "PEEK-CHAR");
+    let write = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let finish = builtin(&runtime, &mut ctx, "FINISH-OUTPUT");
+    let position = builtin(&runtime, &mut ctx, "FILE-POSITION");
+    let length = builtin(&runtime, &mut ctx, "FILE-LENGTH");
+    let direction = keyword(&runtime, &mut ctx, "DIRECTION");
+    let output = keyword(&runtime, &mut ctx, "OUTPUT");
+    let io = keyword(&runtime, &mut ctx, "IO");
+    let exists = keyword(&runtime, &mut ctx, "IF-EXISTS");
+    let overwrite = keyword(&runtime, &mut ctx, "OVERWRITE");
+    let (path, path_word) = path_word(&mut ctx, &runtime, "remaining-io");
+    fs::write(&path, b"ab").unwrap();
+
+    let io_stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, io])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, io_stream]),
+        Ok(Word::character(u32::from('a')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read, &[io_stream]),
+        Ok(Word::character(u32::from('a')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[io_stream]),
+        Ok(Word::fixnum(i64::from(b'b')))
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            read_byte,
+            &[io_stream, Word::NIL, Word::fixnum(84)]
+        ),
+        Ok(Word::fixnum(84))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[io_stream]),
+        Ok(Word::TRUE)
+    );
+
+    let output_stream = runtime
+        .call_builtin(
+            &mut ctx,
+            open,
+            &[path_word, direction, output, exists, overwrite],
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, position, &[output_stream, Word::fixnum(2)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write,
+            &[Word::character(u32::from('Z')), output_stream],
+        ),
+        Ok(Word::character(u32::from('Z')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[output_stream]),
+        Ok(Word::TRUE)
+    );
+
+    let data = data_stream(&runtime, &mut ctx, b"_");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, write, &[Word::character(u32::from('Q')), data],),
+        Ok(Word::character(u32::from('Q')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, position, &[data]),
+        Ok(Word::fixnum(1))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, length, &[data]),
+        Ok(Word::fixnum(1))
+    );
+
+    let make_output = builtin(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM");
+    let output_for_finish = runtime.call_builtin(&mut ctx, make_output, &[]).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[output_for_finish]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, finish, &[output_for_finish]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let standard_input = standard_stream(&runtime, &mut ctx, "*STANDARD-INPUT*");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, standard_input]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            read_byte,
+            &[standard_input, Word::NIL, Word::fixnum(85)],
+        ),
+        Ok(Word::fixnum(85))
+    );
+
+    let invalid_kind = state_stream(&runtime, &mut ctx, &[Word::fixnum(-99), Word::fixnum(0)]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, length, &[invalid_kind]),
+        Err(ncl_object::ObjectError::Layout)
+    );
+    let invalid_tag = state_stream(&runtime, &mut ctx, &[Word::TRUE, Word::fixnum(0)]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, position, &[invalid_tag]),
+        Err(ncl_object::ObjectError::Layout)
     );
     let _ = fs::remove_file(path);
 }

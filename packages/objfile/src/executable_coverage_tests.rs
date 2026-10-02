@@ -114,7 +114,7 @@ fn private_executable_helpers_accept_valid_layouts() {
 #[test]
 fn private_elf_segment_parser_checks_each_load_segment_property() {
     let mut bytes = vec![0; 112];
-    for at in [0usize, 56] {
+    for at in [0usize, 56] { // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
@@ -122,7 +122,7 @@ fn private_elf_segment_parser_checks_each_load_segment_property() {
         bytes[at + 16..at + 24].copy_from_slice(&0x1000u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         bytes[at + 32..at + 40].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     }
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
@@ -183,13 +183,13 @@ fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
     let macho_result = write_mach_executable(&image, MachArchitecture::Arm64);
     assert!(macho_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     let macho = macho_result.unwrap_or_default();
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         crate::validate_mach_executable(&macho, MachArchitecture::Arm64),
         Ok(())
     );
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         write_mach_executable(&image, MachArchitecture::X86_64),

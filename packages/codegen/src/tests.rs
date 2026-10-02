@@ -165,7 +165,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     else {
         return;
     };
-    assert!(
+    assert!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
@@ -186,7 +186,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     else {
         return;
     };
-    assert!(
+    assert!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder
@@ -218,7 +218,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         ncl_ir::Prim::Rplacd,
         ncl_ir::Prim::Aset,
     ] {
-        assert!(
+        assert!( // check-added-lines: allow(panic,index,as-cast) test
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
@@ -241,7 +241,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
         ncl_ir::Compare::Gt,
         ncl_ir::Compare::Ge,
     ] {
-        assert!(
+        assert!( // check-added-lines: allow(panic,index,as-cast) test
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             // check-added-lines: allow(panic,index,as-cast) test fixture assertions
             builder
@@ -269,7 +269,7 @@ fn generic_lowering_covers_memory_comparisons_and_fixed_primitives() {
     else {
         return;
     };
-    assert!(
+    assert!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         builder

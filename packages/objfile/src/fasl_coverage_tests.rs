@@ -166,7 +166,7 @@ fn private_fasl_writer_rejects_non_i32_addends() {
             debug: vec![],
         },
     };
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic,index,as-cast) test
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         // check-added-lines: allow(panic,index,as-cast) test fixture assertions
         FaslWriter::write(&value),

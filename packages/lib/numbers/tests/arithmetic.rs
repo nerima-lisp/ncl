@@ -7,8 +7,9 @@
 
 use ncl_object::{
     Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_complex,
-    make_double, make_ratio, ratio_denominator, ratio_numerator,
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
+    ratio_numerator,
 };
 
 const MAX_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
@@ -299,10 +300,26 @@ fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     let complex_result = runtime
         .call_builtin(&mut ctx, function, &[complex, Word::fixnum(1)])
         .unwrap();
-    assert!(matches!(
-        classify_object(&ctx, complex_result),
-        ObjectRef::Complex(_)
-    ));
+    let ObjectRef::Complex(complex_result) = classify_object(&ctx, complex_result) else {
+        panic!("expected complex result after addition");
+    };
+    let complex_result = ncl_object::Complex::from_word(complex_result);
+    let real = complex_real(&ctx, complex_result).unwrap();
+    let imag = complex_imag(&ctx, complex_result).unwrap();
+    let ObjectRef::DoubleFloat(real) = classify_object(&ctx, real) else {
+        panic!("expected double-float real component");
+    };
+    let ObjectRef::DoubleFloat(imag) = classify_object(&ctx, imag) else {
+        panic!("expected double-float imaginary component");
+    };
+    assert_eq!(
+        double_value(&ctx, DoubleFloat::from_word(real)).unwrap(),
+        3.0
+    );
+    assert_eq!(
+        double_value(&ctx, DoubleFloat::from_word(imag)).unwrap(),
+        3.0
+    );
     assert!(ncl_object::pop_root(&mut ctx, complex_token));
     assert!(ncl_object::pop_root(&mut ctx, token));
 }

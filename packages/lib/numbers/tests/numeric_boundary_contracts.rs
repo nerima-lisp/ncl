@@ -1,14 +1,18 @@
 #![allow(
     clippy::float_cmp,
+    clippy::cast_possible_wrap,
+    clippy::manual_let_else,
+    clippy::option_if_let_else,
     clippy::too_many_lines,
+    clippy::unreadable_literal,
     clippy::unwrap_used,
     missing_docs
 )]
 
 use ncl_object::{
+    DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128, make_complex,
-    make_double, make_ratio, ratio_denominator, ratio_numerator, DoubleFloat, FunctionObject,
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    make_double, make_ratio, ratio_denominator, ratio_numerator,
 };
 
 fn setup() -> (Runtime, ThreadContext) {

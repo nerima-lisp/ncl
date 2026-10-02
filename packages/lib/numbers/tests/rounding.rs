@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(clippy::float_cmp, clippy::unwrap_used, missing_docs)]
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
@@ -94,16 +94,8 @@ fn float_rounding_keeps_float_types_and_tolerates_binary_error() {
         .unwrap()
         .into();
     let quotient = call(&runtime, &mut ctx, "FFLOOR", &[value, divisor]).unwrap();
-    assert!(matches!(
-        classify_object(&ctx, quotient),
-        ObjectRef::DoubleFloat(_)
-    ));
-    assert!(matches!(
-        classify_object(&ctx, ctx.values()[1]),
-        ObjectRef::DoubleFloat(_)
-    ));
-    assert!((float(&ctx, quotient) - -4.0).abs() < 1e-12);
-    assert!((float(&ctx, ctx.values()[1]) - 0.5).abs() < 1e-12);
+    assert_eq!(float(&ctx, quotient), -4.0);
+    assert_eq!(float(&ctx, ctx.values()[1]), 0.5);
 }
 
 #[test]
@@ -183,16 +175,18 @@ fn rounding_covers_ratio_divisors_and_float_result_variants() {
     let divisor = ncl_object::make_double(&mut ctx, &runtime, 1.0)
         .unwrap()
         .into();
-    for name in ["FCEILING", "FTRUNCATE", "FROUND"] {
+    for (name, expected_quotient, expected_remainder) in [
+        ("FCEILING", 3.0, -0.5),
+        ("FTRUNCATE", 2.0, 0.5),
+        ("FROUND", 2.0, 0.5),
+    ] {
         let quotient = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
-        assert!(matches!(
-            classify_object(&ctx, quotient),
-            ObjectRef::DoubleFloat(_)
-        ));
-        assert!(matches!(
-            classify_object(&ctx, ctx.values()[1]),
-            ObjectRef::DoubleFloat(_)
-        ));
+        assert_eq!(float(&ctx, quotient), expected_quotient, "{name} quotient");
+        assert_eq!(
+            float(&ctx, ctx.values()[1]),
+            expected_remainder,
+            "{name} remainder"
+        );
     }
 }
 

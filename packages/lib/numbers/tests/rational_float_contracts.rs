@@ -1,4 +1,9 @@
-#![allow(clippy::float_cmp, clippy::unwrap_used, missing_docs)]
+#![allow(
+    clippy::float_cmp,
+    clippy::map_unwrap_or,
+    clippy::unwrap_used,
+    missing_docs
+)]
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,

@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(clippy::float_cmp, clippy::unwrap_used, missing_docs)]
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
@@ -312,7 +312,8 @@ fn complex_accessors_construct_conjugate_and_phase_values() {
     .unwrap();
     assert_eq!(real_result, Word::fixnum(7));
     let cis = call(&runtime, &mut ctx, "CIS", &[Word::fixnum(0)]).unwrap();
-    assert!(matches!(classify_object(&ctx, cis), ObjectRef::Complex(_)));
+    assert_float_call(&runtime, &mut ctx, "REALPART", &[cis], 1.0);
+    assert_float_call(&runtime, &mut ctx, "IMAGPART", &[cis], 0.0);
     assert_eq!(
         call(&runtime, &mut ctx, "REALPART", &[Word::TRUE]),
         Err(ObjectError::TypeError)

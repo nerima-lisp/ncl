@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(clippy::float_cmp, clippy::unwrap_used, missing_docs)]
 
 use ncl_object::{
     FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, make_bignum_from_i128,

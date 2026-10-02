@@ -1,7 +1,10 @@
 #![allow(
     clippy::float_cmp,
+    clippy::excessive_precision,
+    clippy::option_if_let_else,
     clippy::too_many_lines,
     clippy::unwrap_used,
+    clippy::unreadable_literal,
     missing_docs,
     reason = "tests assert exact numeric builtin behavior"
 )]
@@ -859,7 +862,7 @@ fn exact_power_paths_cover_repeated_squaring_and_ratio_inversion() {
     )
     .unwrap();
     let overflow_value = float(&ctx, overflow);
-    let expected_overflow = 2.8948022309329049e76;
+    let expected_overflow = 2.894_802_230_932_905e76;
     assert!(
         ((overflow_value - expected_overflow) / expected_overflow).abs() < 1e-12,
         "EXPT overflow value: {overflow_value}"

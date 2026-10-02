@@ -2,8 +2,8 @@
 
 use ncl_object::{
     Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext,
-    Word, bignum_limbs, bignum_sign, classify_object, double_value, symbol_is_constant,
-    symbol_is_special, symbol_value,
+    Word, bignum_limbs, bignum_sign, classify_object, double_value, instance_class,
+    symbol_is_constant, symbol_is_special, symbol_value,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -222,10 +222,9 @@ fn registration_survives_gc_stress_and_strict_forwarding() {
 
     let random_state = common_lisp_symbol(&runtime, &mut ctx, "*RANDOM-STATE*");
     let state = symbol_value(&ctx, random_state).unwrap();
-    assert!(matches!(
-        classify_object(&ctx, state),
-        ObjectRef::Instance(_)
-    ));
+    let state_class = instance_class(&ctx, ncl_object::Instance::from_word(state)).unwrap();
+    let expected_class = runtime.class(&mut ctx, "RANDOM-STATE").unwrap();
+    assert_eq!(state_class, expected_class);
     let pi = common_lisp_symbol(&runtime, &mut ctx, "PI");
     assert!(float(&ctx, symbol_value(&ctx, pi).unwrap()).is_finite());
 }

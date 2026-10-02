@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
-use ncl_object::{FunctionObject, ObjectError, Runtime, ThreadContext, Word, make_complex};
+use ncl_object::{
+    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, Runtime, ThreadContext, Word,
+    make_array, make_complex, make_double, make_ratio,
+};
 
 fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
     let runtime = Runtime::new().unwrap();
@@ -103,5 +106,93 @@ fn equalp_compares_complex_components_and_hash_table_entries() {
             &[left, different_key],
         ),
         Ok(Word::NIL)
+    );
+}
+
+#[test]
+fn equality_returns_exact_values_for_depth_cross_type_and_general_array_edges() {
+    let (runtime, mut ctx, functions) = setup();
+    let build_deep = |ctx: &mut ThreadContext| {
+        let mut value = Word::NIL;
+        for _ in 0..66 {
+            value = ncl_object::make_cons(ctx, &runtime, Word::fixnum(1), value).unwrap();
+        }
+        value
+    };
+    let left = build_deep(&mut ctx);
+    let right = build_deep(&mut ctx);
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[left, right]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUALP", &[left, right]),
+        Ok(Word::NIL)
+    );
+
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .as_word();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[Word::fixnum(2), ratio],
+        ),
+        Ok(Word::NIL)
+    );
+    let complex = make_complex(&mut ctx, &runtime, Word::fixnum(4), Word::fixnum(0))
+        .unwrap()
+        .as_word();
+    let double = make_double(&mut ctx, &runtime, 4.0).unwrap().as_word();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUALP", &[double, complex],),
+        Ok(Word::TRUE)
+    );
+
+    let left_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap()
+        .as_word();
+    let right_table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::None)
+        .unwrap()
+        .as_word();
+    HashTable::from_word(left_table)
+        .insert(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap();
+    HashTable::from_word(right_table)
+        .insert(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUALP",
+            &[left_table, right_table],
+        ),
+        Ok(Word::NIL)
+    );
+
+    let options = ArrayOptions {
+        element_type: ArrayElementType::T,
+        initial_element: Word::fixnum(7),
+        adjustable: false,
+        fill_pointer: None,
+        displaced_to: None,
+        displaced_index_offset: 0,
+    };
+    let left_array = make_array(&mut ctx, &runtime, &[2], options).unwrap();
+    let right_array = make_array(&mut ctx, &runtime, &[2], options).unwrap();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUALP",
+            &[left_array, right_array],
+        ),
+        Ok(Word::TRUE)
     );
 }

@@ -23,6 +23,7 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         "FIND",
         "INTERSECTION",
         "LIST",
+        "LISTP",
         "LIST*",
         "MAP",
         "MAP-INTO",
@@ -33,6 +34,7 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         "MAPL",
         "MAPLIST",
         "MEMBER",
+        "NCONC",
         "NREVERSE",
         "NOTANY",
         "NOTEVERY",
@@ -155,7 +157,31 @@ fn sequence_construction_and_access_report_exact_results_and_errors() {
             .collect::<String>(),
         "ab"
     );
+    let concatenated_chars = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONCATENATE",
+        &[list_type, text],
+    )
+    .unwrap();
+    assert_eq!(
+        list_values(&ctx, concatenated_chars),
+        vec![
+            Word::character(u32::from('a')),
+            Word::character(u32::from('b'))
+        ]
+    );
 
+    let cons = ncl_object::make_cons(&mut ctx, &runtime, one, Word::NIL).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "ATOM", &[cons]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "LISTP", &[cons]),
+        Ok(Word::TRUE)
+    );
     assert_eq!(
         call(&runtime, &mut ctx, &functions, "LIST*", &[]),
         Err(ObjectError::TypeError)
@@ -172,12 +198,35 @@ fn sequence_construction_and_access_report_exact_results_and_errors() {
         Err(ObjectError::TypeError)
     );
     assert_eq!(
+        call(&runtime, &mut ctx, &functions, "LISTP", &[dotted]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "APPEND", &[]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "NCONC", &[]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
         call(
             &runtime,
             &mut ctx,
             &functions,
             "CONCATENATE",
             &[Word::fixnum(9), source],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    let unknown_type = common_lisp_symbol(&mut ctx, &runtime, "UNKNOWN");
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "CONCATENATE",
+            &[unknown_type, source],
         ),
         Err(ObjectError::TypeError)
     );
@@ -299,6 +348,16 @@ fn higher_order_variants_preserve_tail_semantics_and_short_circuit_results() {
     )
     .unwrap();
     assert_eq!(list_values(&ctx, mapped), vec![Word::TRUE; 3]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "MAP",
+            &[Word::NIL, atom, source],
+        ),
+        Ok(Word::NIL)
+    );
     let destination = list(&runtime, &mut ctx, &functions, &[Word::NIL, Word::NIL]);
     let consp_results = call(
         &runtime,
@@ -309,6 +368,22 @@ fn higher_order_variants_preserve_tail_semantics_and_short_circuit_results() {
     );
     assert_eq!(consp_results, Ok(destination));
     assert_eq!(list_values(&ctx, destination), vec![Word::NIL, Word::NIL]);
+
+    let destination = list(&runtime, &mut ctx, &functions, &[Word::NIL, Word::NIL]);
+    let first_pair = list(&runtime, &mut ctx, &functions, &[one]);
+    let second_pair = list(&runtime, &mut ctx, &functions, &[two]);
+    let source_pairs = list(&runtime, &mut ctx, &functions, &[first_pair, second_pair]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "MAP-INTO",
+            &[destination, functions["CAR"].as_word(), source_pairs],
+        ),
+        Ok(destination)
+    );
+    assert_eq!(list_values(&ctx, destination), vec![one, two]);
 
     let text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b']).unwrap();
     assert_eq!(

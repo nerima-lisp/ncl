@@ -364,6 +364,13 @@ fn array_boundaries_cover_rank_displacement_fill_pointer_and_vector_lifecycle() 
     );
     assert!(array_row_major_set(&mut ctx, displaced, 2, Word::fixnum(88)).is_ok());
     assert_eq!(simple_vector_ref(&ctx, target, 3), Ok(Word::fixnum(88)));
+}
+
+#[test]
+fn adjustable_vector_boundaries_preserve_fill_pointer_and_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
 
     let vector = make_array(
         &mut ctx,

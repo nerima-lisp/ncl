@@ -5,19 +5,17 @@
     reason = "coverage tests assert on concrete public API behavior"
 )]
 
-//! Behavior-focused coverage for the public FFI data model and scalar boundary.
+//! Behavior-focused tests for the public FFI data model and scalar boundary.
 
 use std::error::Error;
 
 use ncl_conditions::ConditionError;
 use ncl_ffi::{
     AlienEnum, AlienRecord, AlienRoutine, AlienType, ArrayLength, CallableMode, FfiError,
-    FieldOffset, LoaderMode, SharedObjectPath, SysPrimitive, SystemAreaPointer, alien_sap,
-    align_of, allocate_system_memory, cast, deallocate_system_memory, dlerror_message,
-    dlopen_or_lose, extern_alien_name, field_offset, find_foreign_symbol_address,
-    foreign_symbol_address, foreign_symbol_dataref_sap, foreign_symbol_sap, load_shared_object,
-    marshal_argument, memmove, offset_of, parse_type_name, parse_type_specifier, record_size,
-    sap_ref, sap_set, signal_ffi_error, size_of, union_size, unmarshal_result,
+    FieldOffset, SysPrimitive, SystemAreaPointer, alien_sap, align_of, allocate_system_memory,
+    cast, deallocate_system_memory, field_offset, marshal_argument, memmove, offset_of,
+    parse_type_name, parse_type_specifier, record_size, sap_ref, sap_set, signal_ffi_error,
+    size_of, union_size, unmarshal_result,
 };
 use ncl_object::{
     DoubleFloat, ObjectError, Package, Runtime, ThreadContext, Word, double_value,
@@ -883,9 +881,6 @@ fn memory_and_pointer_wrappers_keep_their_declared_contracts() {
         })
     );
     assert_eq!(cast(&AlienType::Int, address), address);
-    assert_eq!(extern_alien_name("pkg::symbol"), "pkg::symbol");
-    assert_eq!(SharedObjectPath::from("libc").as_str(), "libc");
-
     missing(
         deallocate_system_memory(address, 0),
         SysPrimitive::DeallocateSystemMemory,
@@ -905,20 +900,7 @@ fn memory_and_pointer_wrappers_keep_their_declared_contracts() {
 }
 
 #[test]
-fn loader_and_allocator_boundaries_report_exact_missing_primitives() {
-    missing(
-        load_shared_object(SharedObjectPath::new("libexample.so"), LoaderMode::Lazy),
-        SysPrimitive::DlopenSharedObject,
-    );
-    missing(
-        load_shared_object("libexample.so", false),
-        SysPrimitive::DlopenSharedObject,
-    );
-    missing(
-        dlopen_or_lose(SharedObjectPath::from("libexample.so")),
-        SysPrimitive::DlopenSharedObject,
-    );
-    missing(dlerror_message(), SysPrimitive::DlerrorMessage);
+fn allocator_boundary_reports_exact_missing_primitive() {
     missing(
         allocate_system_memory(0),
         SysPrimitive::AllocateSystemMemory,
@@ -949,41 +931,6 @@ fn rooted_object_helper_propagates_closure_errors() {
             Err(FfiError::RootStackCorrupt)
         });
     assert_eq!(result, Err(FfiError::RootStackCorrupt));
-}
-
-#[test]
-fn dynamic_symbol_names_are_owned_before_the_loader_boundary() {
-    let path = SharedObjectPath::new(String::from("libexample.so"));
-    assert_eq!(path.as_str(), "libexample.so");
-    let name = ncl_ffi::ForeignSymbolName::new(String::from("entry"));
-    assert_eq!(name.as_str(), "entry");
-    assert_eq!(ncl_ffi::ForeignSymbolName::from("entry").as_str(), "entry");
-    assert_eq!(LoaderMode::from(true), LoaderMode::Lazy);
-    assert_eq!(LoaderMode::from(false), LoaderMode::Now);
-    assert_eq!(
-        find_foreign_symbol_address(name),
-        Err(FfiError::MissingSysPrimitive(
-            SysPrimitive::DlsymForeignSymbol
-        ))
-    );
-    assert_eq!(
-        foreign_symbol_address("entry"),
-        Err(FfiError::MissingSysPrimitive(
-            SysPrimitive::DlsymForeignSymbol
-        ))
-    );
-    assert_eq!(
-        foreign_symbol_sap("entry"),
-        Err(FfiError::MissingSysPrimitive(
-            SysPrimitive::DlsymForeignSymbol
-        ))
-    );
-    assert_eq!(
-        foreign_symbol_dataref_sap("entry"),
-        Err(FfiError::MissingSysPrimitive(
-            SysPrimitive::DlsymForeignSymbol
-        ))
-    );
 }
 
 #[test]

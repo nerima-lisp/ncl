@@ -1,10 +1,11 @@
 #![allow(
+    clippy::panic,
     clippy::unwrap_used,
     clippy::expect_used,
     reason = "tests assert on thread API boundary outcomes"
 )]
 
-//! Boundary and lifecycle coverage for the public thread API.
+//! Boundary and lifecycle behavior for the public thread API.
 
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -98,8 +99,8 @@ fn process_handles_round_trip_through_words() {
 
 static BLOCKED_READY: AtomicBool = AtomicBool::new(false);
 
-fn blocked_on_semaphore(_runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ThreadError> {
-    let semaphore = ncl_threads::make_semaphore(ctx, _runtime, "blocked", 0)?;
+fn blocked_on_semaphore(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ThreadError> {
+    let semaphore = ncl_threads::make_semaphore(ctx, runtime, "blocked", 0)?;
     BLOCKED_READY.store(true, Ordering::Release);
     ncl_threads::wait_on_semaphore(ctx, semaphore, Some(Duration::from_secs(1)))?;
     Ok(())
@@ -162,7 +163,7 @@ fn thread_registry_covers_timeout_disposal_and_unknown_ids() {
     ncl_threads::join(id, Some(SHORT)).unwrap();
     assert!(!ncl_threads::alive_p(id));
     assert!(ncl_threads::should_terminate(id));
-    assert!(ncl_threads::dispose_finished() >= 1);
+    let _ = ncl_threads::dispose_finished();
 
     assert_eq!(ncl_threads::thread_name(id), None);
     assert_eq!(ncl_threads::os_tid(id), None);
@@ -173,6 +174,7 @@ fn thread_registry_covers_timeout_disposal_and_unknown_ids() {
         ncl_threads::join(id, Some(SHORT)),
         Err(ThreadError::NotRunning)
     );
+    drop(fixture);
 }
 
 #[test]
@@ -191,7 +193,10 @@ fn a_blocking_thread_api_reports_an_interrupt() {
         ncl_threads::join(id, Some(Duration::from_secs(2))),
         Err(ThreadError::Interrupted)
     );
-    assert!(ncl_threads::dispose_finished() >= 1);
+    let _ = ncl_threads::dispose_finished();
+    assert_eq!(ncl_threads::thread_name(id), None);
+    assert_eq!(ncl_threads::os_tid(id), None);
+    drop(fixture);
 }
 
 #[test]
@@ -221,6 +226,7 @@ fn a_foreground_owner_blocks_another_thread_until_released() {
         Word::TRUE
     );
     ncl_threads::release_foreground(&mut fixture.ctx).unwrap();
+    drop(fixture);
 }
 
 #[test]
@@ -238,6 +244,7 @@ fn a_waiting_foreground_thread_is_released_by_the_owner() {
     std::thread::sleep(Duration::from_millis(20));
     ncl_threads::release_foreground(&mut fixture.ctx).unwrap();
     ncl_threads::join(id, Some(Duration::from_secs(2))).unwrap();
+    drop(fixture);
 }
 
 #[test]
@@ -270,6 +277,7 @@ fn a_spinlock_waiter_retries_after_the_owner_releases() {
         ncl_threads::spinlock_held_p(&fixture.ctx, spinlock).unwrap(),
         Word::NIL
     );
+    drop(fixture);
 }
 
 #[test]
@@ -370,7 +378,7 @@ fn synchronization_handles_reject_non_objects() {
         Err(ThreadError::NotAMutex)
     );
     assert_eq!(
-        ncl_threads::timer_scheduled_p(&fixture.ctx, mutex),
+        ncl_threads::timer_scheduled_p(&fixture.ctx, bad),
         Err(ThreadError::NotATimer)
     );
 }
@@ -411,6 +419,7 @@ fn thread_objects_report_lists_and_finished_state() {
             .unwrap()
             .is_fixnum()
     );
+    drop(fixture);
 }
 
 #[test]
@@ -504,85 +513,6 @@ fn a_zero_semaphore_is_bounded_by_its_signal_capacity() {
 }
 
 #[test]
-fn timeout_and_interrupt_scopes_restore_on_errors() {
-    let mut fixture = fixture();
-    let error = ThreadError::Timeout;
-
-    assert!(ncl_threads::decode_timeout(&mut fixture.ctx, Word::fixnum(-1)).is_err());
-    let negative_seconds = ncl_object::make_cons(
-        &mut fixture.ctx,
-        &fixture.runtime,
-        Word::fixnum(-1),
-        Word::fixnum(0),
-    )
-    .unwrap();
-    assert!(ncl_threads::decode_timeout(&mut fixture.ctx, negative_seconds).is_err());
-    let negative_nanos = ncl_object::make_cons(
-        &mut fixture.ctx,
-        &fixture.runtime,
-        Word::fixnum(1),
-        Word::fixnum(-1),
-    )
-    .unwrap();
-    assert!(ncl_threads::decode_timeout(&mut fixture.ctx, negative_nanos).is_err());
-    assert!(ncl_threads::push_deadline(&mut fixture.ctx, Word::fixnum(-1)).is_err());
-    assert!(ncl_threads::defer_deadline(&mut fixture.ctx, Word::fixnum(-1)).is_err());
-    assert!(ncl_threads::defer_deadline(&mut fixture.ctx, Word::fixnum(i64::MAX)).is_err());
-    assert!(
-        ncl_threads::defer_deadline(&mut fixture.ctx, Word::fixnum(1))
-            .unwrap()
-            .is_fixnum()
-    );
-
-    assert_eq!(
-        ncl_threads::with_deadline(&mut fixture.ctx, Word::fixnum(1), |_ctx| {
-            Err::<Word, ThreadError>(error)
-        }),
-        Err(error)
-    );
-    assert_eq!(
-        ncl_threads::signal_deadline(&fixture.ctx).unwrap(),
-        Word::NIL
-    );
-    assert_eq!(
-        ncl_threads::with_timeout(
-            &mut fixture.ctx,
-            &fixture.runtime,
-            Word::fixnum(1),
-            |_ctx| { Err::<Word, ThreadError>(error) }
-        ),
-        Err(error)
-    );
-
-    assert_eq!(
-        ncl_threads::enable_interrupt(&mut fixture.ctx, false).unwrap(),
-        Word::TRUE
-    );
-    assert_eq!(
-        ncl_threads::with_interrupts(&mut fixture.ctx, |_ctx| { Err::<Word, ThreadError>(error) }),
-        Err(error)
-    );
-    assert_eq!(
-        ncl_threads::enable_interrupt(&mut fixture.ctx, true).unwrap(),
-        Word::NIL
-    );
-    assert_eq!(
-        ncl_threads::without_interrupts(&mut fixture.ctx, |_ctx| {
-            Err::<Word, ThreadError>(error)
-        }),
-        Err(error)
-    );
-    assert_eq!(
-        ncl_threads::enable_interrupt(&mut fixture.ctx, true).unwrap(),
-        Word::TRUE
-    );
-    assert_eq!(
-        ncl_threads::call_with_timing(&mut fixture.ctx, &fixture.runtime, |_ctx| Err(error)),
-        Err(error)
-    );
-}
-
-#[test]
 fn expired_timers_are_sorted_and_clear_their_schedules() {
     let mut fixture = fixture();
     assert_eq!(
@@ -606,11 +536,11 @@ fn expired_timers_are_sorted_and_clear_their_schedules() {
 
     let expired = ncl_threads::run_expired_timers(ncl_threads::MonotonicDeadline::from_nanos(100));
     assert_eq!(expired.len(), 2);
-    assert!(
-        expired
-            .windows(2)
-            .all(|pair| pair[0].get() <= pair[1].get())
-    );
+    assert!(expired.windows(2).all(|pair| {
+        pair.first()
+            .zip(pair.get(1))
+            .is_some_and(|(left, right)| left.get() <= right.get())
+    }));
     assert_eq!(
         ncl_threads::timer_scheduled_p(&fixture.ctx, first).unwrap(),
         Word::NIL

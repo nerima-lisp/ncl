@@ -5,7 +5,9 @@
 mod forms;
 
 use forms::Fixture;
-use ncl_compiler_front::{Expr, LambdaExpr, LambdaList, Literal, LowerError, ParamName, lower_toplevel};
+use ncl_compiler_front::{
+    Expr, LambdaExpr, LambdaList, Literal, LowerError, ParamName, lower_toplevel,
+};
 use ncl_ir::{Compare, Constant, Function, HandlerKind, OpKind, Terminator, verify};
 use ncl_object::Word;
 
@@ -53,16 +55,20 @@ fn source_global_setq_and_read_emit_distinct_value_cell_paths() {
         OpKind::StoreField { field, .. }
             if *field == u32::try_from(ncl_object::symbol_offset::VALUE).unwrap()
     )));
-    assert!(lowered
-        .entry
-        .constants
-        .iter()
-        .any(|constant| matches!(constant, Constant::Fixnum(17))));
-    assert!(lowered
-        .entry
-        .constants
-        .iter()
-        .any(|constant| matches!(constant, Constant::Unbound)));
+    assert!(
+        lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(17)))
+    );
+    assert!(
+        lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Unbound))
+    );
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
         OpKind::Compare {
@@ -146,21 +152,27 @@ fn source_nonlocal_return_runs_cleanup_and_progv_restores_on_throw() {
     let lowered = lower_toplevel(&expression).expect("lower cleanup and progv");
 
     assert_verifies(&lowered.entry);
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::Catch));
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::UnwindProtect));
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::Progv));
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Catch)
+    );
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::UnwindProtect)
+    );
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Progv)
+    );
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
         OpKind::Builtin { name, .. } if name == "throw"
@@ -193,11 +205,13 @@ fn source_nested_go_uses_an_escaping_tagbody_handler_and_captured_token() {
 
     assert_verifies(&lowered.entry);
     assert_eq!(lowered.nested.len(), 1);
-    assert!(lowered
-        .entry
-        .handler_regions
-        .iter()
-        .any(|region| region.kind == HandlerKind::Catch));
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Catch)
+    );
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
         OpKind::MakeClosure { captures, .. } if !captures.is_empty()
@@ -243,7 +257,10 @@ fn source_flet_and_labels_preserve_function_namespace_captures() {
     assert!(
         any_op(&lowered.entry, |kind| matches!(
             kind,
-            OpKind::CallClosure { named_symbol: None, .. }
+            OpKind::CallClosure {
+                named_symbol: None,
+                ..
+            }
         )),
         "expected local call in entry: {}",
         lowered.entry
@@ -319,9 +336,15 @@ fn source_lambda_list_prologue_covers_optional_keywords_rest_and_aux() {
     let nested = &lowered.nested[0];
     assert_verifies(nested);
     assert_eq!(nested.params.len(), 3, "argc, required, and optional");
-    assert_eq!(count_ops(nested, |kind| matches!(kind, OpKind::Compare { .. })), 2);
     assert_eq!(
-        count_ops(nested, |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CONS")),
+        count_ops(nested, |kind| matches!(kind, OpKind::Compare { .. })),
+        2
+    );
+    assert_eq!(
+        count_ops(
+            nested,
+            |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "CONS")
+        ),
         1
     );
     for builtin in [
@@ -336,10 +359,12 @@ fn source_lambda_list_prologue_covers_optional_keywords_rest_and_aux() {
         )));
     }
     for expected in [12, 13, 14] {
-        assert!(nested
-            .constants
-            .iter()
-            .any(|constant| matches!(constant, Constant::Fixnum(value) if *value == expected)));
+        assert!(
+            nested
+                .constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Fixnum(value) if *value == expected))
+        );
     }
     assert!(any_terminator(nested, |term| matches!(
         term,

@@ -23,10 +23,7 @@ fn print_error_variants_keep_display_and_source_contracts() {
             PrintError::Sink("closed".to_owned()),
             "print: sink error: closed",
         ),
-        (
-            PrintError::NotReadable,
-            "print: object is not readable",
-        ),
+        (PrintError::NotReadable, "print: object is not readable"),
         (
             PrintError::Circularity,
             "print: circular structure without *print-circle*",

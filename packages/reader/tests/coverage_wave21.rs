@@ -4,7 +4,9 @@
     reason = "coverage tests assert on reader behavior"
 )]
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, classify_object, make_cons, simple_vector_set};
+use ncl_object::{
+    ObjectRef, Runtime, ThreadContext, Word, classify_object, make_cons, simple_vector_set,
+};
 use ncl_reader::{
     ReadError, ReadOptions, copy_readtable, get_dispatch_macro_character, get_macro_character,
     read_from_string, set_dispatch_macro_character, set_syntax_from_char,
@@ -23,7 +25,10 @@ fn readtable_mutations_preserve_macro_lookup_and_non_ascii_boundaries() {
     let (runtime, mut ctx, mut options) = setup();
     let table = copy_readtable(&mut ctx, &runtime, options.readtable()).unwrap();
 
-    assert_eq!(get_macro_character(&mut ctx, table, '\u{100}').unwrap(), None);
+    assert_eq!(
+        get_macro_character(&mut ctx, table, '\u{100}').unwrap(),
+        None
+    );
     assert_eq!(
         get_dispatch_macro_character(&mut ctx, table, '#', '\u{100}').unwrap(),
         None
@@ -43,7 +48,10 @@ fn readtable_mutations_preserve_macro_lookup_and_non_ascii_boundaries() {
     let symbol = read_from_string(&mut ctx, &runtime, "~", &options)
         .unwrap()
         .unwrap();
-    assert!(matches!(classify_object(&ctx, symbol), ObjectRef::Symbol(_)));
+    assert!(matches!(
+        classify_object(&ctx, symbol),
+        ObjectRef::Symbol(_)
+    ));
 
     set_dispatch_macro_character(&mut ctx, &runtime, table, '#', 'q', function).unwrap();
     assert_eq!(

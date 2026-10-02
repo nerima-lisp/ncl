@@ -890,10 +890,20 @@ fn dce_keeps_handler_targets_and_prim_condition_targets_reachable() {
         )
         .fixture();
     builder
-        .push_op(OpKind::EnterHandler { region: HandlerRegionId(0) }, &[])
+        .push_op(
+            OpKind::EnterHandler {
+                region: HandlerRegionId(0),
+            },
+            &[],
+        )
         .fixture();
     builder
-        .push_op(OpKind::LeaveHandler { region: HandlerRegionId(0) }, &[])
+        .push_op(
+            OpKind::LeaveHandler {
+                region: HandlerRegionId(0),
+            },
+            &[],
+        )
         .fixture();
     builder
         .terminate(Terminator::Return { values: Vec::new() })
@@ -936,7 +946,11 @@ fn dce_handles_empty_functions_without_inventing_blocks() {
         handler_regions: Vec::new(),
         debug: Vec::new(),
     };
-    assert!(!DeadCodeElimination.run(&mut function, &Module::default()).fixture());
+    assert!(
+        !DeadCodeElimination
+            .run(&mut function, &Module::default())
+            .fixture()
+    );
     assert!(function.blocks.is_empty());
 }
 
@@ -1022,7 +1036,11 @@ fn gvn_accepts_empty_functions_as_a_noop() {
         handler_regions: Vec::new(),
         debug: Vec::new(),
     };
-    assert!(!GlobalValueNumbering.run(&mut function, &Module::default()).fixture());
+    assert!(
+        !GlobalValueNumbering
+            .run(&mut function, &Module::default())
+            .fixture()
+    );
 }
 
 #[test]

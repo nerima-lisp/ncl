@@ -375,8 +375,7 @@ impl Context<'_> {
                     if let Some((_, _, capture, _, _, token_param, params)) =
                         entries.get(next.saturating_sub(1))
                     {
-                        f.env()
-                            .rebind_variable(capture, Slot::Value(*token_param));
+                        f.env().rebind_variable(capture, Slot::Value(*token_param));
                         for (name, value) in live.iter().zip(params) {
                             f.env().rebind_variable(name, Slot::Cell(*value));
                         }

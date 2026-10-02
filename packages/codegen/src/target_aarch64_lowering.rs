@@ -605,35 +605,50 @@ mod tests {
                 &[],
                 &[],
                 &allocation,
-                &TestAbi { fail_runtime: true, ..abi },
+                &TestAbi {
+                    fail_runtime: true,
+                    ..abi
+                },
             ),
             Err(CodegenError::Unsupported(_))
         ));
 
         assert!(context_mem(&abi, ContextField::Pending).is_ok());
         assert!(matches!(
-            context_mem(&TestAbi { fail_context: true, ..abi }, ContextField::Pending),
+            context_mem(
+                &TestAbi {
+                    fail_context: true,
+                    ..abi
+                },
+                ContextField::Pending
+            ),
             Err(CodegenError::Unsupported(_))
         ));
         assert!(matches!(
-            context_mem(&TestAbi { context_offset: -1, ..abi }, ContextField::Pending),
+            context_mem(
+                &TestAbi {
+                    context_offset: -1,
+                    ..abi
+                },
+                ContextField::Pending
+            ),
             Err(CodegenError::FrameOverflow)
         ));
         assert!(runtime_address(&abi, RuntimeFunction::Unwind).is_ok());
         assert!(matches!(
-            runtime_address(&TestAbi { fail_runtime: true, ..abi }, RuntimeFunction::Unwind),
+            runtime_address(
+                &TestAbi {
+                    fail_runtime: true,
+                    ..abi
+                },
+                RuntimeFunction::Unwind
+            ),
             Err(CodegenError::Unsupported(_))
         ));
 
         let mut assembler = Assembler::new();
-        let call_pc = lower_alloc(
-            &mut assembler,
-            2,
-            Some(ValueId(0)),
-            &allocation,
-            &abi,
-        )
-        .unwrap_or_else(|error| panic!("allocation lowering: {error:?}"));
+        let call_pc = lower_alloc(&mut assembler, 2, Some(ValueId(0)), &allocation, &abi)
+            .unwrap_or_else(|error| panic!("allocation lowering: {error:?}"));
         assert!(call_pc > 0);
         assert!(!encoded(assembler).is_empty());
         let mut assembler = Assembler::new();
@@ -651,7 +666,10 @@ mod tests {
         assert!(matches!(
             lower_safepoint(
                 &mut assembler,
-                &TestAbi { fail_runtime: true, ..abi },
+                &TestAbi {
+                    fail_runtime: true,
+                    ..abi
+                },
             ),
             Err(CodegenError::Unsupported(_))
         ));
@@ -696,7 +714,10 @@ mod tests {
                 "identity",
                 &[ValueId(0)],
                 &allocation,
-                &TestAbi { fail_builtin: true, ..abi },
+                &TestAbi {
+                    fail_builtin: true,
+                    ..abi
+                },
             ),
             Err(CodegenError::Unsupported(_))
         ));

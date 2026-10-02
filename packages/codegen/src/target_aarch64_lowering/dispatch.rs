@@ -444,20 +444,24 @@ mod tests {
             &abi,
         )
         .unwrap_or_else(|error| panic!("multiple values: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("multiple-value encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("multiple-value encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
 
         let mut assembler = Assembler::new();
         lower_set_multiple_values(&mut assembler, &[], None, &allocation, &abi)
             .unwrap_or_else(|error| panic!("empty multiple values: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("empty multiple-value encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("empty multiple-value encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
         let mut assembler = Assembler::new();
         assert!(matches!(
             lower_set_multiple_values(
@@ -471,28 +475,25 @@ mod tests {
         ));
 
         let mut assembler = Assembler::new();
-        emit_epilogue(
-            &mut assembler,
-            &allocation,
-            &abi,
-            0,
-            &[ValueId(0)],
-            false,
-        )
-        .unwrap_or_else(|error| panic!("ordinary epilogue: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("ordinary epilogue encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        emit_epilogue(&mut assembler, &allocation, &abi, 0, &[ValueId(0)], false)
+            .unwrap_or_else(|error| panic!("ordinary epilogue: {error:?}"));
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("ordinary epilogue encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
         let mut assembler = Assembler::new();
         emit_epilogue(&mut assembler, &allocation, &abi, 16, &[], true)
             .unwrap_or_else(|error| panic!("propagating epilogue: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("propagating epilogue encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("propagating epilogue encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
         let mut assembler = Assembler::new();
         assert!(matches!(
             emit_epilogue(
@@ -546,17 +547,19 @@ mod tests {
         let handler_label = assembler.new_label();
         let mut labels = HashMap::new();
         labels.insert(BlockId(1), handler_label);
-        assert!(try_dispatch_candidates(
-            &mut assembler,
-            &dispatch_function,
-            BlockId(0),
-            &allocation(),
-            &TestAbi {
-                fail_context: false,
-            },
-            &labels,
-        )
-        .is_err());
+        assert!(
+            try_dispatch_candidates(
+                &mut assembler,
+                &dispatch_function,
+                BlockId(0),
+                &allocation(),
+                &TestAbi {
+                    fail_context: false,
+                },
+                &labels,
+            )
+            .is_err()
+        );
 
         let no_tag = HandlerRegion {
             id: HandlerRegionId(3),
@@ -569,12 +572,15 @@ mod tests {
             depth: 0,
             parent: None,
         };
-        let no_tag_function = function(vec![no_tag], vec![BasicBlock {
-            id: BlockId(1),
-            params: Vec::new(),
-            ops: Vec::new(),
-            terminator: ncl_ir::Terminator::Unreachable,
-        }]);
+        let no_tag_function = function(
+            vec![no_tag],
+            vec![BasicBlock {
+                id: BlockId(1),
+                params: Vec::new(),
+                ops: Vec::new(),
+                terminator: ncl_ir::Terminator::Unreachable,
+            }],
+        );
         let mut assembler = Assembler::new();
         let handler_label = assembler.new_label();
         let mut labels = HashMap::new();
@@ -623,15 +629,14 @@ mod tests {
             Err(CodegenError::Unsupported(_))
         ));
         assert!(matches!(
-            mv_area_mem(
-                &TestAbi { fail_context: true },
-                0,
-            ),
+            mv_area_mem(&TestAbi { fail_context: true }, 0,),
             Err(CodegenError::Abi(_))
         ));
         assert!(matches!(
             mv_area_mem(
-                &TestAbi { fail_context: false },
+                &TestAbi {
+                    fail_context: false
+                },
                 -2,
             ),
             Err(CodegenError::FrameOverflow)

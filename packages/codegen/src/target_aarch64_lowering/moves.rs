@@ -130,12 +130,7 @@ mod tests {
     fn parallel_move_covers_arity_noop_direct_and_temporary_paths() {
         let mut assembler = Assembler::new();
         assert_eq!(
-            move_args(
-                &mut assembler,
-                &allocation(&[(0, 1)]),
-                &[ValueId(0)],
-                &[],
-            ),
+            move_args(&mut assembler, &allocation(&[(0, 1)]), &[ValueId(0)], &[],),
             Err(CodegenError::Unsupported(
                 "block argument arity mismatch".into()
             ))
@@ -149,11 +144,13 @@ mod tests {
             &params(&[2]),
         )
         .unwrap_or_else(|error| panic!("direct move: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("direct move encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("direct move encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
 
         let mut assembler = Assembler::new();
         move_args(
@@ -163,11 +160,13 @@ mod tests {
             &params(&[2]),
         )
         .unwrap_or_else(|error| panic!("no-op move: {error:?}"));
-        assert!(assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("no-op move encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("no-op move encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
 
         let mut assembler = Assembler::new();
         move_args(
@@ -177,11 +176,13 @@ mod tests {
             &params(&[2, 3]),
         )
         .unwrap_or_else(|error| panic!("overlapping move: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("overlapping move encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("overlapping move encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
 
         let mut assembler = Assembler::new();
         assert_eq!(

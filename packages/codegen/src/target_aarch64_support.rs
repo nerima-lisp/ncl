@@ -193,15 +193,8 @@ mod tests {
             incoming_args_base: Some(0),
         };
         let mut maps = Vec::new();
-        add_map(
-            &mut maps,
-            12,
-            frame,
-            &allocation,
-            1,
-            FLAG_CALL,
-        )
-        .unwrap_or_else(|error| panic!("safepoint map: {error:?}"));
+        add_map(&mut maps, 12, frame, &allocation, 1, FLAG_CALL)
+            .unwrap_or_else(|error| panic!("safepoint map: {error:?}"));
         let map = maps.first().unwrap_or_else(|| panic!("map is recorded"));
         assert_eq!(map.registers, vec![1]);
         assert_eq!(map.map_flags, FLAG_CALL);
@@ -249,11 +242,13 @@ mod tests {
         let mut assembler = Assembler::new();
         initialize_arguments(&mut assembler, &function(params), &allocation)
             .unwrap_or_else(|error| panic!("ordinary arguments: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("ordinary argument encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("ordinary argument encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
 
         let params = (0..6)
             .map(|index| Param {
@@ -268,10 +263,12 @@ mod tests {
         let mut assembler = Assembler::new();
         initialize_arguments(&mut assembler, &function(params), &allocation)
             .unwrap_or_else(|error| panic!("generated-lambda arguments: {error:?}"));
-        assert!(!assembler
-            .finish()
-            .unwrap_or_else(|error| panic!("generated-lambda encoding: {error:?}"))
-            .bytes
-            .is_empty());
+        assert!(
+            !assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("generated-lambda encoding: {error:?}"))
+                .bytes
+                .is_empty()
+        );
     }
 }

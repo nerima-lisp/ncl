@@ -503,12 +503,7 @@ mod tests {
         let allocation = allocation();
         let mut assembler = Assembler::new();
         assert_eq!(
-            lower_load_capture(
-                &mut assembler,
-                u32::MAX,
-                None,
-                &allocation,
-            ),
+            lower_load_capture(&mut assembler, u32::MAX, None, &allocation,),
             Err(CodegenError::FrameOverflow)
         );
 

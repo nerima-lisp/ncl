@@ -277,13 +277,7 @@ mod tests {
         lower_call(
             &mut assembler,
             ValueId(0),
-            &[
-                ValueId(1),
-                ValueId(2),
-                ValueId(3),
-                ValueId(4),
-                ValueId(5),
-            ],
+            &[ValueId(1), ValueId(2), ValueId(3), ValueId(4), ValueId(5)],
             &allocation,
         )
         .unwrap_or_else(|error| panic!("outgoing call: {error:?}"));

@@ -497,4 +497,30 @@ mod tests {
             ));
         }
     }
+
+    #[test]
+    fn primitive_helpers_cover_capture_offset_and_resultless_success_boundaries() {
+        let allocation = allocation();
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            lower_load_capture(
+                &mut assembler,
+                u32::MAX,
+                None,
+                &allocation,
+            ),
+            Err(CodegenError::FrameOverflow)
+        );
+
+        let mut assembler = Assembler::new();
+        lower_prim(
+            &mut assembler,
+            &Prim::FixnumAdd,
+            &[ValueId(0), ValueId(1)],
+            None,
+            &allocation,
+        )
+        .unwrap_or_else(|error| panic!("resultless primitive: {error:?}"));
+        assert!(!encoded(assembler).is_empty());
+    }
 }

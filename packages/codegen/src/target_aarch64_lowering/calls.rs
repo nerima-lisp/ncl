@@ -190,3 +190,149 @@ fn lower_named_global_call(
         .bind(call)
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AbiError, Allocation, Location};
+    use std::collections::BTreeMap;
+
+    #[derive(Clone, Copy)]
+    struct TestAbi {
+        fail_undefined: bool,
+    }
+
+    impl RuntimeAbi for TestAbi {
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, AbiError> {
+            Err(AbiError::MissingBuiltin(identifier))
+        }
+
+        fn field_offset(&self, field: crate::ContextField) -> Result<i32, AbiError> {
+            crate::Aarch64Abi.field_offset(field)
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+            if self.fail_undefined && function == RuntimeFunction::UndefinedFunction {
+                Err(AbiError::UnsupportedRuntimeFunction(function))
+            } else {
+                Ok(0x4000)
+            }
+        }
+    }
+
+    fn allocation() -> Allocation {
+        Allocation {
+            intervals: Vec::new(),
+            locations: vec![
+                (ValueId(0), Location::Register(1)),
+                (ValueId(1), Location::Register(2)),
+                (ValueId(2), Location::Register(3)),
+                (ValueId(3), Location::Register(4)),
+                (ValueId(4), Location::Register(5)),
+                (ValueId(5), Location::Register(6)),
+            ],
+            spill_words: 0,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        }
+    }
+
+    fn assert_encodes(assembler: Assembler) {
+        assert!(
+            assembler
+                .finish()
+                .unwrap_or_else(|error| panic!("AArch64 call encoding: {error:?}"))
+                .bytes
+                .len()
+                > 0
+        );
+    }
+
+    #[test]
+    fn call_lowering_covers_register_and_outgoing_argument_abis() {
+        let allocation = allocation();
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            lower_call(&mut assembler, ValueId(0), &[], &allocation),
+            Err(CodegenError::Unsupported(
+                "calls require a tagged argc argument".into()
+            ))
+        );
+
+        let mut assembler = Assembler::new();
+        lower_call(
+            &mut assembler,
+            ValueId(0),
+            &[ValueId(1), ValueId(2), ValueId(3), ValueId(4)],
+            &allocation,
+        )
+        .unwrap_or_else(|error| panic!("register call: {error:?}"));
+        assert_encodes(assembler);
+
+        let mut assembler = Assembler::new();
+        lower_call(
+            &mut assembler,
+            ValueId(0),
+            &[
+                ValueId(1),
+                ValueId(2),
+                ValueId(3),
+                ValueId(4),
+                ValueId(5),
+            ],
+            &allocation,
+        )
+        .unwrap_or_else(|error| panic!("outgoing call: {error:?}"));
+        assert_encodes(assembler);
+    }
+
+    #[test]
+    fn closure_calls_cover_direct_and_named_global_error_boundaries() {
+        let allocation = allocation();
+        let abi = TestAbi {
+            fail_undefined: false,
+        };
+        let mut assembler = Assembler::new();
+        lower_closure_call(
+            &mut assembler,
+            ValueId(0),
+            &[ValueId(1), ValueId(2)],
+            &allocation,
+            None,
+            &abi,
+        )
+        .unwrap_or_else(|error| panic!("direct closure call: {error:?}"));
+        assert_encodes(assembler);
+
+        let mut assembler = Assembler::new();
+        lower_closure_call(
+            &mut assembler,
+            ValueId(0),
+            &[ValueId(1), ValueId(2)],
+            &allocation,
+            Some(ValueId(1)),
+            &abi,
+        )
+        .unwrap_or_else(|error| panic!("named closure call: {error:?}"));
+        assert_encodes(assembler);
+
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_closure_call(
+                &mut assembler,
+                ValueId(0),
+                &[ValueId(1)],
+                &allocation,
+                Some(ValueId(1)),
+                &TestAbi {
+                    fail_undefined: true,
+                },
+            ),
+            Err(CodegenError::Abi(_))
+        ));
+    }
+}

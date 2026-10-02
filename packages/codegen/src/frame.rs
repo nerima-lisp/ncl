@@ -60,3 +60,31 @@ impl FrameLayout {
         self.frame_words * WORD_BYTES
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FrameLayout;
+    use crate::CodegenError;
+
+    #[test]
+    fn aligns_frame_size_and_reports_overflow_at_each_sum_boundary() {
+        let layout = FrameLayout::new(1, 2, 3).expect("small frame");
+        assert_eq!(layout.frame_words, 10);
+        assert_eq!(layout.local_offset_bytes(), 40);
+        assert_eq!(layout.size_bytes(), 80);
+        assert_eq!(FrameLayout::new(0, 0, 0).unwrap().frame_words, 4);
+
+        for counts in [
+            (u32::MAX, 0, 0),
+            (0, u32::MAX, 0),
+            (0, 0, u32::MAX),
+            (0, u32::MAX - 4, 0),
+        ] {
+            assert_eq!(
+                FrameLayout::new(counts.0, counts.1, counts.2),
+                Err(CodegenError::FrameOverflow),
+                "counts {counts:?}"
+            );
+        }
+    }
+}

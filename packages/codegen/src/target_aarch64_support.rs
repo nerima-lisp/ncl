@@ -116,3 +116,162 @@ pub(super) fn initialize_arguments(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Allocation, LiveInterval, Location};
+    use ncl_ir::{FunctionId, Param, Ty, ValueId};
+    use std::collections::BTreeMap;
+
+    fn function(params: Vec<Param>) -> Function {
+        Function {
+            id: FunctionId(1),
+            name: "argument-test".into(),
+            params,
+            return_types: Vec::new(),
+            blocks: Vec::new(),
+            locals: Vec::new(),
+            constants: Vec::new(),
+            handler_regions: Vec::new(),
+            debug: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn safepoint_maps_filter_live_types_and_preserve_call_abi_roots() {
+        let frame = FrameLayout::new(0, 5, 2).unwrap_or_else(|error| panic!("frame: {error:?}"));
+        let allocation = Allocation {
+            intervals: vec![
+                LiveInterval {
+                    value: ValueId(0),
+                    start: 0,
+                    end: 2,
+                    ty: Ty::Word,
+                    crosses_call: false,
+                    crosses_safepoint: false,
+                    crosses_handler: false,
+                },
+                LiveInterval {
+                    value: ValueId(1),
+                    start: 0,
+                    end: 2,
+                    ty: Ty::Address,
+                    crosses_call: false,
+                    crosses_safepoint: false,
+                    crosses_handler: false,
+                },
+                LiveInterval {
+                    value: ValueId(2),
+                    start: 0,
+                    end: 2,
+                    ty: Ty::I64,
+                    crosses_call: false,
+                    crosses_safepoint: false,
+                    crosses_handler: false,
+                },
+                LiveInterval {
+                    value: ValueId(3),
+                    start: 4,
+                    end: 5,
+                    ty: Ty::Word,
+                    crosses_call: false,
+                    crosses_safepoint: false,
+                    crosses_handler: false,
+                },
+            ],
+            locations: vec![
+                (ValueId(0), Location::Register(1)),
+                (ValueId(1), Location::Spill(0)),
+                (ValueId(2), Location::Register(2)),
+                (ValueId(3), Location::Spill(1)),
+                (ValueId(4), Location::Register(1)),
+            ],
+            spill_words: 2,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: Some(0),
+        };
+        let mut maps = Vec::new();
+        add_map(
+            &mut maps,
+            12,
+            frame,
+            &allocation,
+            1,
+            FLAG_CALL,
+        )
+        .unwrap_or_else(|error| panic!("safepoint map: {error:?}"));
+        let map = maps.first().unwrap_or_else(|| panic!("map is recorded"));
+        assert_eq!(map.registers, vec![1]);
+        assert_eq!(map.map_flags, FLAG_CALL);
+        assert!(map.bitmap.iter().any(|byte| *byte != 0));
+
+        let mut maps = Vec::new();
+        let no_call = Allocation {
+            incoming_args_base: None,
+            ..allocation.clone()
+        };
+        add_map(&mut maps, 16, frame, &no_call, 4, 0)
+            .unwrap_or_else(|error| panic!("non-call map: {error:?}"));
+        assert_eq!(maps.len(), 1);
+
+        let too_wide = FrameLayout {
+            argument_words: 0,
+            local_words: 0,
+            outgoing_words: 0,
+            frame_words: u32::MAX,
+        };
+        assert_eq!(
+            add_map(&mut Vec::new(), 0, too_wide, &allocation, 0, 0),
+            Err(CodegenError::FrameOverflow)
+        );
+    }
+
+    #[test]
+    fn argument_initialization_covers_generated_lambda_and_stack_arguments() {
+        let params = (0..6)
+            .map(|index| Param {
+                name: format!("arg-{index}"),
+                ty: Ty::Word,
+            })
+            .collect::<Vec<_>>();
+        let allocation = Allocation {
+            intervals: Vec::new(),
+            locations: (0..6)
+                .map(|index| (ValueId(index), Location::Register(index as u16)))
+                .collect(),
+            spill_words: 0,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        };
+        let mut assembler = Assembler::new();
+        initialize_arguments(&mut assembler, &function(params), &allocation)
+            .unwrap_or_else(|error| panic!("ordinary arguments: {error:?}"));
+        assert!(!assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("ordinary argument encoding: {error:?}"))
+            .bytes
+            .is_empty());
+
+        let params = (0..6)
+            .map(|index| Param {
+                name: if index == 0 {
+                    "argc".into()
+                } else {
+                    format!("arg-{index}")
+                },
+                ty: Ty::Word,
+            })
+            .collect::<Vec<_>>();
+        let mut assembler = Assembler::new();
+        initialize_arguments(&mut assembler, &function(params), &allocation)
+            .unwrap_or_else(|error| panic!("generated-lambda arguments: {error:?}"));
+        assert!(!assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("generated-lambda encoding: {error:?}"))
+            .bytes
+            .is_empty());
+    }
+}

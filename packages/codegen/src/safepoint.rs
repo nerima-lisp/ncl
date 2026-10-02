@@ -226,4 +226,81 @@ mod tests {
         assert_eq!(map.validate(), Err(MapError::InvalidHeader));
         assert_eq!(map.encode(), Err(MapError::InvalidHeader));
     }
+
+    #[test]
+    fn encodes_a_valid_map_and_rejects_frame_bitmap_and_slot_boundaries() {
+        let map =
+            SafepointMap::new(0x1234, 8, 8, &[4, 7], &[0, 15], 0xa).expect("valid safepoint map");
+        assert_eq!(map.bitmap, vec![0x94]);
+        assert_eq!(map.register_mask, 0x8001);
+        assert_eq!(
+            map.encode().expect("wire map"),
+            vec![
+                0x34, 0x12, 0, 0, 8, 0, 8, 0, 8, 0, 1, 0x80, 0xa, 0, 0, 0, 0x94, 0, 0, 15, 0,
+            ]
+        );
+
+        assert_eq!(
+            SafepointMap::new(0, 3, 4, &[], &[], 0),
+            Err(MapError::FrameTooSmall)
+        );
+        assert_eq!(
+            SafepointMap::new(0, 4, 0, &[], &[], 0),
+            Err(MapError::SlotCountOutOfRange)
+        );
+        assert_eq!(
+            SafepointMap::new(0, 4, 4, &[4], &[], 0),
+            Err(MapError::SlotCountOutOfRange)
+        );
+        assert_eq!(
+            SafepointMap::new(0, 4, 4, &[], &[16], 0),
+            Err(MapError::RegisterCountOutOfRange)
+        );
+
+        let too_many_live_slots = vec![2; usize::from(u16::MAX) + 1];
+        assert_eq!(
+            SafepointMap::new(0, 4, 4, &too_many_live_slots, &[], 0),
+            Err(MapError::SlotCountOutOfRange)
+        );
+    }
+
+    #[test]
+    fn validates_each_wire_invariant_and_formats_all_map_errors() {
+        let mut map = SafepointMap::new(0, 4, 4, &[], &[], 0).expect("valid map");
+
+        map.frame_words = 3;
+        assert_eq!(map.validate(), Err(MapError::FrameTooSmall));
+        map.frame_words = 4;
+
+        map.bitmap[0] |= 1;
+        assert_eq!(map.validate(), Err(MapError::InvalidBitmap));
+        map.bitmap[0] &= !1;
+        map.word_slot_count = 5;
+        assert_eq!(map.validate(), Err(MapError::InvalidBitmap));
+        map.word_slot_count = 4;
+
+        let empty_bitmap = SafepointMap {
+            pc_offset: 0,
+            frame_words: 4,
+            slot_words: 0,
+            word_slot_count: 0,
+            register_mask: 0,
+            map_flags: 0,
+            bitmap: Vec::new(),
+            registers: Vec::new(),
+        };
+        assert_eq!(empty_bitmap.validate(), Err(MapError::InvalidBitmap));
+
+        for error in [
+            MapError::FrameTooSmall,
+            MapError::SlotCountOutOfRange,
+            MapError::BitmapTooLarge,
+            MapError::RegisterCountOutOfRange,
+            MapError::InvalidBitmap,
+            MapError::InvalidHeader,
+            MapError::Truncated,
+        ] {
+            assert!(!error.to_string().is_empty(), "{error:?}");
+        }
+    }
 }

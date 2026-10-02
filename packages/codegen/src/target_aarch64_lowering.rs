@@ -480,3 +480,241 @@ pub(super) mod primitives;
 pub(super) use calls::{lower_call, lower_closure_call};
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 pub(super) use ops::lower_op;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AbiError, Allocation, Location};
+    use std::collections::BTreeMap;
+
+    #[derive(Clone, Copy)]
+    struct TestAbi {
+        fail_builtin: bool,
+        fail_context: bool,
+        fail_runtime: bool,
+        context_offset: i32,
+    }
+
+    impl TestAbi {
+        const fn working() -> Self {
+            Self {
+                fail_builtin: false,
+                fail_context: false,
+                fail_runtime: false,
+                context_offset: 8,
+            }
+        }
+    }
+
+    impl RuntimeAbi for TestAbi {
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, AbiError> {
+            if self.fail_builtin {
+                Err(AbiError::MissingBuiltin(identifier))
+            } else {
+                Ok(0x1000)
+            }
+        }
+
+        fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+            if self.fail_context {
+                Err(AbiError::UnsupportedContextField(field))
+            } else {
+                Ok(self.context_offset)
+            }
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+            if self.fail_runtime {
+                Err(AbiError::UnsupportedRuntimeFunction(function))
+            } else {
+                Ok(0x2000)
+            }
+        }
+    }
+
+    fn allocation() -> Allocation {
+        Allocation {
+            intervals: Vec::new(),
+            locations: vec![
+                (ValueId(0), Location::Register(1)),
+                (ValueId(1), Location::Spill(0)),
+                (ValueId(2), Location::Spill(600)),
+            ],
+            spill_words: 601,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        }
+    }
+
+    fn encoded(assembler: Assembler) -> Vec<u8> {
+        assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("AArch64 instruction encoding: {error:?}"))
+            .bytes
+    }
+
+    #[test]
+    fn lowering_helpers_cover_spills_runtime_calls_and_abi_boundaries() {
+        let allocation = allocation();
+        let abi = TestAbi::working();
+
+        for register in [Reg(16), Reg(17)] {
+            let mut assembler = Assembler::new();
+            load_value(&mut assembler, &allocation, ValueId(2), register)
+                .unwrap_or_else(|error| panic!("long spill load: {error:?}"));
+            assert!(!encoded(assembler).is_empty());
+        }
+        let mut assembler = Assembler::new();
+        store_value(&mut assembler, &allocation, ValueId(2), Reg(16))
+            .unwrap_or_else(|error| panic!("long spill store: {error:?}"));
+        assert!(!encoded(assembler).is_empty());
+
+        let mut assembler = Assembler::new();
+        lower_runtime_builtin(
+            &mut assembler,
+            RuntimeFunction::MakeValueCell,
+            &[1, 2],
+            &[ValueId(0), ValueId(1)],
+            &allocation,
+            &abi,
+        )
+        .unwrap_or_else(|error| panic!("runtime builtin: {error:?}"));
+        assert!(!encoded(assembler).is_empty());
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_runtime_builtin(
+                &mut assembler,
+                RuntimeFunction::MakeValueCell,
+                &[1, 2, 3, 4],
+                &[ValueId(0)],
+                &allocation,
+                &abi,
+            ),
+            Err(CodegenError::Unsupported(message))
+                if message == "AArch64 runtime calls support at most four arguments"
+        ));
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_runtime_builtin(
+                &mut assembler,
+                RuntimeFunction::MakeValueCell,
+                &[],
+                &[],
+                &allocation,
+                &TestAbi { fail_runtime: true, ..abi },
+            ),
+            Err(CodegenError::Unsupported(_))
+        ));
+
+        assert!(context_mem(&abi, ContextField::Pending).is_ok());
+        assert!(matches!(
+            context_mem(&TestAbi { fail_context: true, ..abi }, ContextField::Pending),
+            Err(CodegenError::Unsupported(_))
+        ));
+        assert!(matches!(
+            context_mem(&TestAbi { context_offset: -1, ..abi }, ContextField::Pending),
+            Err(CodegenError::FrameOverflow)
+        ));
+        assert!(runtime_address(&abi, RuntimeFunction::Unwind).is_ok());
+        assert!(matches!(
+            runtime_address(&TestAbi { fail_runtime: true, ..abi }, RuntimeFunction::Unwind),
+            Err(CodegenError::Unsupported(_))
+        ));
+
+        let mut assembler = Assembler::new();
+        let call_pc = lower_alloc(
+            &mut assembler,
+            2,
+            Some(ValueId(0)),
+            &allocation,
+            &abi,
+        )
+        .unwrap_or_else(|error| panic!("allocation lowering: {error:?}"));
+        assert!(call_pc > 0);
+        assert!(!encoded(assembler).is_empty());
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            lower_alloc(&mut assembler, u32::MAX, None, &allocation, &abi),
+            Err(CodegenError::FrameOverflow)
+        );
+
+        let mut assembler = Assembler::new();
+        let call_pc = lower_safepoint(&mut assembler, &abi)
+            .unwrap_or_else(|error| panic!("safepoint lowering: {error:?}"));
+        assert!(call_pc > 0);
+        assert!(!encoded(assembler).is_empty());
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_safepoint(
+                &mut assembler,
+                &TestAbi { fail_runtime: true, ..abi },
+            ),
+            Err(CodegenError::Unsupported(_))
+        ));
+
+        let mut assembler = Assembler::new();
+        lower_builtin(&mut assembler, "identity", &[ValueId(0)], &allocation, &abi)
+            .unwrap_or_else(|error| panic!("builtin lowering: {error:?}"));
+        assert!(!encoded(assembler).is_empty());
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_builtin(
+                &mut assembler,
+                "identity",
+                &[ValueId(0), ValueId(0), ValueId(0), ValueId(0), ValueId(0)],
+                &allocation,
+                &abi,
+            ),
+            Err(CodegenError::Unsupported(_))
+        ));
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_builtin(&mut assembler, "make-rest-list", &[], &allocation, &abi),
+            Err(CodegenError::Unsupported(message))
+                if message == "make-rest-list requires argc and start"
+        ));
+        let mut assembler = Assembler::new();
+        let mut generated_lambda = allocation.clone();
+        generated_lambda.incoming_args_base = Some(0);
+        lower_builtin(
+            &mut assembler,
+            "make-rest-list",
+            &[ValueId(0), ValueId(1)],
+            &generated_lambda,
+            &abi,
+        )
+        .unwrap_or_else(|error| panic!("rest builtin lowering: {error:?}"));
+        assert!(!encoded(assembler).is_empty());
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_builtin(
+                &mut assembler,
+                "identity",
+                &[ValueId(0)],
+                &allocation,
+                &TestAbi { fail_builtin: true, ..abi },
+            ),
+            Err(CodegenError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn constant_table_entry_distinguishes_valid_and_invalid_indices() {
+        let constants = vec![Constant::Nil];
+        assert!(matches!(
+            constant_table_entry(&constants, ConstantIndex(0)),
+            Ok(Constant::Nil)
+        ));
+        assert_eq!(
+            constant_table_entry(&constants, ConstantIndex(1)),
+            Err(CodegenError::InvalidConstantIndex {
+                index: 1,
+                length: 1,
+            })
+        );
+    }
+}

@@ -102,3 +102,204 @@ pub const fn terminator_template(terminator: &Terminator) -> TemplateKind {
         Terminator::Unreachable => TemplateKind::Unreachable,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Template, TemplateKind, op_template, terminator_template};
+    use ncl_ir::{BlockId, ConstantIndex, OpKind, Terminator, ValueId};
+
+    #[test]
+    fn maps_every_ir_operation_to_its_fixed_template() {
+        let value = ValueId(0);
+        let operation_cases = [
+            (
+                OpKind::Const {
+                    result: ConstantIndex(0),
+                },
+                TemplateKind::Const,
+            ),
+            (OpKind::Move { value }, TemplateKind::Move),
+            (OpKind::Load { address: value }, TemplateKind::Load),
+            (
+                OpKind::Store {
+                    address: value,
+                    value,
+                },
+                TemplateKind::Store,
+            ),
+            (
+                OpKind::LoadField {
+                    object: value,
+                    field: 0,
+                },
+                TemplateKind::LoadField,
+            ),
+            (
+                OpKind::StoreField {
+                    object: value,
+                    field: 0,
+                    value,
+                },
+                TemplateKind::StoreField,
+            ),
+            (OpKind::Alloc { words: 1 }, TemplateKind::Alloc),
+            (OpKind::LoadArg { index: 0 }, TemplateKind::LoadArg),
+            (OpKind::LoadCapture { index: 0 }, TemplateKind::LoadCapture),
+            (OpKind::LoadFunctionObject, TemplateKind::LoadCapture),
+            (
+                OpKind::Call {
+                    function: value,
+                    args: Vec::new(),
+                },
+                TemplateKind::Call,
+            ),
+            (
+                OpKind::CallIndirect {
+                    callee: value,
+                    args: Vec::new(),
+                },
+                TemplateKind::CallIndirect,
+            ),
+            (
+                OpKind::MakeClosure {
+                    entry: value,
+                    captures: Vec::new(),
+                },
+                TemplateKind::MakeClosure,
+            ),
+            (OpKind::MakeValueCell { value }, TemplateKind::MakeValueCell),
+            (
+                OpKind::CallClosure {
+                    closure: value,
+                    args: Vec::new(),
+                    named_symbol: None,
+                },
+                TemplateKind::CallClosure,
+            ),
+            (
+                OpKind::Builtin {
+                    name: "identity".into(),
+                    args: Vec::new(),
+                },
+                TemplateKind::Builtin,
+            ),
+            (
+                OpKind::Prim {
+                    op: ncl_ir::Prim::FixnumAdd,
+                    args: vec![value],
+                    condition: None,
+                },
+                TemplateKind::Prim,
+            ),
+            (
+                OpKind::Compare {
+                    op: ncl_ir::Compare::Eq,
+                    left: value,
+                    right: value,
+                },
+                TemplateKind::Compare,
+            ),
+            (
+                OpKind::Convert {
+                    op: ncl_ir::Convert::WordToI64,
+                    value,
+                },
+                TemplateKind::Convert,
+            ),
+            (
+                OpKind::SetMultipleValues {
+                    values: vec![value],
+                },
+                TemplateKind::SetMultipleValues,
+            ),
+            (OpKind::Safepoint, TemplateKind::Safepoint),
+            (
+                OpKind::EnterHandler {
+                    region: ncl_ir::HandlerRegionId(0),
+                },
+                TemplateKind::EnterHandler,
+            ),
+            (
+                OpKind::LeaveHandler {
+                    region: ncl_ir::HandlerRegionId(0),
+                },
+                TemplateKind::LeaveHandler,
+            ),
+        ];
+
+        for (operation, expected) in operation_cases {
+            assert_eq!(op_template(&operation), expected, "{operation:?}");
+        }
+    }
+
+    #[test]
+    fn maps_every_ir_terminator_and_keeps_template_payloads_separate() {
+        let value = ValueId(0);
+        let terminator_cases = [
+            (
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![value],
+                },
+                TemplateKind::Jump,
+            ),
+            (
+                Terminator::Branch {
+                    condition: value,
+                    then_target: BlockId(1),
+                    then_args: Vec::new(),
+                    else_target: BlockId(2),
+                    else_args: Vec::new(),
+                },
+                TemplateKind::Branch,
+            ),
+            (
+                Terminator::Switch {
+                    value,
+                    cases: vec![(1, BlockId(1), Vec::new())],
+                    default: BlockId(2),
+                    default_args: Vec::new(),
+                },
+                TemplateKind::Switch,
+            ),
+            (
+                Terminator::CallReturn {
+                    function: value,
+                    args: Vec::new(),
+                },
+                TemplateKind::CallReturn,
+            ),
+            (
+                Terminator::TailCall {
+                    function: value,
+                    args: Vec::new(),
+                },
+                TemplateKind::TailCall,
+            ),
+            (
+                Terminator::Return {
+                    values: vec![value],
+                },
+                TemplateKind::Return,
+            ),
+            (Terminator::Throw { condition: value }, TemplateKind::Throw),
+            (Terminator::Unreachable, TemplateKind::Unreachable),
+        ];
+
+        for (terminator, expected) in terminator_cases {
+            assert_eq!(terminator_template(&terminator), expected, "{terminator:?}");
+        }
+
+        let operation = OpKind::Move { value };
+        let template = Template::op(TemplateKind::Move, operation.clone());
+        assert_eq!(template.kind, TemplateKind::Move);
+        assert_eq!(template.op, Some(operation));
+        assert_eq!(template.terminator, None);
+
+        let terminator = Terminator::Return { values: Vec::new() };
+        let template = Template::terminator(TemplateKind::Return, terminator.clone());
+        assert_eq!(template.kind, TemplateKind::Return);
+        assert_eq!(template.op, None);
+        assert_eq!(template.terminator, Some(terminator));
+    }
+}

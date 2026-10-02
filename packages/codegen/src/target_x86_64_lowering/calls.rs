@@ -343,3 +343,101 @@ pub fn lower_closure_call(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+mod tests {
+    use super::{lower_call, lower_closure_call};
+    use crate::{AllocationTarget, CodegenError, RuntimeAbi, RuntimeFunction, allocate};
+    use ncl_asm_x86_64::Assembler;
+    use ncl_ir::{FunctionBuilder, Param, Ty, ValueId};
+
+    struct MissingAbi;
+
+    impl RuntimeAbi for MissingAbi {
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, crate::AbiError> {
+            Err(crate::AbiError::MissingBuiltin(identifier))
+        }
+
+        fn field_offset(&self, field: crate::ContextField) -> Result<i32, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedContextField(field))
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedRuntimeFunction(function))
+        }
+    }
+
+    fn slots_for_params(count: usize) -> super::super::ValueSlots {
+        let params = (0..count)
+            .map(|index| Param {
+                name: format!("arg{index}"),
+                ty: Ty::Word,
+            })
+            .collect::<Vec<_>>();
+        let function =
+            FunctionBuilder::new(ncl_ir::FunctionId(211), "call-slots", params, Vec::new())
+                .finish();
+        super::super::slots(
+            &function,
+            u32::try_from(count).expect("parameter count"),
+            allocate(&function, AllocationTarget::X86_64),
+            0,
+        )
+        .0
+    }
+
+    #[test]
+    fn rejects_calls_without_a_tagged_argument_count() {
+        let slots = slots_for_params(0);
+        let mut assembler = Assembler::new();
+        assert!(matches!(
+            lower_call(
+                &mut assembler,
+                ValueId(0),
+                &[],
+                &slots,
+                false,
+            ),
+            Err(CodegenError::Unsupported(message))
+                if message.contains("tagged argc")
+        ));
+        assert!(matches!(
+            lower_closure_call(
+                &mut assembler,
+                ValueId(0),
+                &[],
+                0,
+                &slots,
+                None,
+                &MissingAbi,
+            ),
+            Err(CodegenError::Unsupported(message))
+                if message.contains("closure calls require")
+        ));
+    }
+
+    #[test]
+    fn named_closure_calls_report_a_missing_undefined_function_entry() {
+        let slots = slots_for_params(2);
+        let mut assembler = Assembler::new();
+        let result = lower_closure_call(
+            &mut assembler,
+            ValueId(0),
+            &[ValueId(1)],
+            0,
+            &slots,
+            Some(ValueId(1)),
+            &MissingAbi,
+        );
+        assert!(matches!(
+            result,
+            Err(CodegenError::Abi(message))
+                if message.contains("runtime address is unavailable")
+                    && message.contains("UndefinedFunction")
+        ));
+    }
+}

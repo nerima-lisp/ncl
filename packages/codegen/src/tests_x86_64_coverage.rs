@@ -850,3 +850,52 @@ fn x86_64_lowering_reports_reachable_invalid_operation_forms() {
         Err(CodegenError::Unsupported(message)) if message.contains("tagged argc")
     ));
 }
+
+#[test]
+fn x86_64_lowering_surfaces_missing_builtin_and_runtime_abi_addresses() {
+    let mut builtin = FunctionBuilder::new(
+        ncl_ir::FunctionId(155),
+        "x86-64-missing-builtin-address",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let result = builtin
+        .push_op(
+            OpKind::Builtin {
+                name: "identity".into(),
+                args: Vec::new(),
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin")[0];
+    builtin
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("return");
+    assert!(matches!(
+        compile_function_x86_64(&builtin.finish(), &X86_64Abi),
+        Err(CodegenError::Unsupported(message))
+            if message.contains("builtin address is unavailable")
+    ));
+
+    let mut allocation = FunctionBuilder::new(
+        ncl_ir::FunctionId(156),
+        "x86-64-missing-runtime-address",
+        Vec::new(),
+        vec![Ty::Address],
+    );
+    let result = allocation
+        .push_op(OpKind::Alloc { words: 1 }, &[Ty::Address])
+        .expect("allocation")[0];
+    allocation
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("return");
+    assert!(matches!(
+        compile_function_x86_64(&allocation.finish(), &X86_64Abi),
+        Err(CodegenError::Unsupported(message))
+            if message.contains("runtime address is unavailable")
+    ));
+}

@@ -94,3 +94,104 @@ pub fn move_args(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Allocation, Location};
+    use ncl_ir::{BlockParam, Ty};
+    use std::collections::BTreeMap;
+
+    fn allocation(locations: &[(u32, u16)]) -> Allocation {
+        Allocation {
+            intervals: Vec::new(),
+            locations: locations
+                .iter()
+                .map(|(value, register)| (ValueId(*value), Location::Register(*register)))
+                .collect(),
+            spill_words: 0,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        }
+    }
+
+    fn params(values: &[u32]) -> Vec<BlockParam> {
+        values
+            .iter()
+            .map(|value| BlockParam {
+                value: ValueId(*value),
+                ty: Ty::Word,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parallel_move_covers_arity_noop_direct_and_temporary_paths() {
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            move_args(
+                &mut assembler,
+                &allocation(&[(0, 1)]),
+                &[ValueId(0)],
+                &[],
+            ),
+            Err(CodegenError::Unsupported(
+                "block argument arity mismatch".into()
+            ))
+        );
+
+        let mut assembler = Assembler::new();
+        move_args(
+            &mut assembler,
+            &allocation(&[(0, 1), (2, 3)]),
+            &[ValueId(0)],
+            &params(&[2]),
+        )
+        .unwrap_or_else(|error| panic!("direct move: {error:?}"));
+        assert!(!assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("direct move encoding: {error:?}"))
+            .bytes
+            .is_empty());
+
+        let mut assembler = Assembler::new();
+        move_args(
+            &mut assembler,
+            &allocation(&[(0, 1), (2, 1)]),
+            &[ValueId(0)],
+            &params(&[2]),
+        )
+        .unwrap_or_else(|error| panic!("no-op move: {error:?}"));
+        assert!(assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("no-op move encoding: {error:?}"))
+            .bytes
+            .is_empty());
+
+        let mut assembler = Assembler::new();
+        move_args(
+            &mut assembler,
+            &allocation(&[(0, 1), (1, 2), (2, 2), (3, 1)]),
+            &[ValueId(0), ValueId(1)],
+            &params(&[2, 3]),
+        )
+        .unwrap_or_else(|error| panic!("overlapping move: {error:?}"));
+        assert!(!assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("overlapping move encoding: {error:?}"))
+            .bytes
+            .is_empty());
+
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            move_args(
+                &mut assembler,
+                &allocation(&[(0, 1)]),
+                &[ValueId(9)],
+                &params(&[0]),
+            ),
+            Err(CodegenError::UnknownValue(ValueId(9)))
+        );
+    }
+}

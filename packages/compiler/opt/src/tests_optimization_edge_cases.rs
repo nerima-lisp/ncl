@@ -49,7 +49,12 @@ fn dce_removes_an_unreachable_block_without_changing_the_entry_return() {
     builder.position_at(dead).fixture();
     let dead_constant = builder.add_constant(Constant::Fixnum(99));
     let dead_value = builder
-        .push_op(OpKind::Const { result: dead_constant }, &[Ty::I64])
+        .push_op(
+            OpKind::Const {
+                result: dead_constant,
+            },
+            &[Ty::I64],
+        )
         .fixture()[0];
     builder
         .terminate(Terminator::Return {
@@ -66,7 +71,11 @@ fn dce_removes_an_unreachable_block_without_changing_the_entry_return() {
     assert_eq!(function.blocks.len(), 2);
     let before_return = function.blocks[0].terminator.clone();
 
-    assert!(DeadCodeElimination.run(&mut function, &Module::default()).fixture());
+    assert!(
+        DeadCodeElimination
+            .run(&mut function, &Module::default())
+            .fixture()
+    );
 
     assert_eq!(function.blocks.len(), 1);
     assert_eq!(function.blocks[0].terminator, before_return);

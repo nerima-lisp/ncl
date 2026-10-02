@@ -48,6 +48,7 @@ pub fn lower_call(
     callee: ValueId,
     args: &[ValueId],
     slots: &ValueSlots,
+    raw_entry: bool,
 ) -> Result<(), CodegenError> {
     let Some((argc, rest)) = args.split_first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
@@ -57,6 +58,15 @@ pub fn lower_call(
     };
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    load_immediate(
+        assembler,
+        RETURN_VALUE,
+        i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()),
+    )?;
+    emit(assembler, Inst::BinRR(BinOp::And, ENTRY, RETURN_VALUE))?;
+    if !raw_entry {
+        emit(assembler, Inst::MovRR(RETURN_VALUE, ENTRY))?;
+    }
     load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
     // `slot_mem_of(i)` addresses `rbp - (i + 1) * 8`, so it grows *downward*
     // (higher `i` means a lower address). `REST_ARGUMENT` must nonetheless
@@ -111,6 +121,32 @@ pub fn lower_call(
     }
     if rest.len() > ARGUMENT_REGISTERS.len() {
         emit(assembler, Inst::MovRR(FUNCTION_OBJECT, ENTRY))?;
+    }
+    if !raw_entry {
+        emit(
+            assembler,
+            Inst::MovRM(
+                ENTRY,
+                Mem::base(
+                    RETURN_VALUE,
+                    i32::try_from(
+                        ncl_object::function_offset::ENTRY
+                            .checked_add(1)
+                            .and_then(|slot| slot.checked_mul(8))
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+                ),
+            ),
+        )?;
+        emit(
+            assembler,
+            Inst::ShiftImm(
+                Shift::Sar,
+                ENTRY,
+                u8::try_from(ncl_sys::FIXNUM_TAG_BITS).map_err(|_| CodegenError::FrameOverflow)?,
+            ),
+        )?;
     }
     Ok(())
 }

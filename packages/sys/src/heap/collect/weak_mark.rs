@@ -11,6 +11,56 @@ pub(super) struct WeakMarkContext<'a> {
     pub(super) pending: &'a mut Vec<usize>,
 }
 
+pub(super) fn weak_referent_indices(state: &super::super::State) -> HashSet<usize> {
+    let mut result = HashSet::new();
+    for &table in &state.weak_tables {
+        if !state.objects.get(table).is_some_and(|object| object.alive) {
+            continue;
+        }
+        let Some((weakness, kv, _, marker, high_water)) =
+            super::super::Heap::hash_table_cleanup_data(state, table)
+        else {
+            continue;
+        };
+        let Some(kv_object) = state.objects.get(kv) else {
+            continue;
+        };
+        for position in 0..high_water {
+            let key_offset = super::VECTOR_DATA + position * 2;
+            let Some(key) = kv_object
+                .words
+                .get(key_offset)
+                .copied()
+                .map(Word::from_bits)
+            else {
+                continue;
+            };
+            if key.bits() == marker {
+                continue;
+            }
+            let Some(value) = kv_object
+                .words
+                .get(key_offset + 1)
+                .copied()
+                .map(Word::from_bits)
+            else {
+                continue;
+            };
+            let candidates = match weakness {
+                Weakness::Key | Weakness::KeyOrValue => [Some(key), None],
+                Weakness::Value => [Some(value), None],
+                Weakness::KeyAndValue => [Some(key), Some(value)],
+            };
+            for candidate in candidates.into_iter().flatten() {
+                if let Some(index) = super::super::Heap::find(state, candidate) {
+                    result.insert(index);
+                }
+            }
+        }
+    }
+    result
+}
+
 impl WeakMarkContext<'_> {
     pub(super) fn drain(&mut self) {
         loop {

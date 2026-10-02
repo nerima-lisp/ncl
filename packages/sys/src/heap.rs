@@ -11,6 +11,8 @@ use std::sync::{Condvar, Mutex};
 mod collect;
 #[path = "heap/scan.rs"]
 mod scan;
+#[path = "heap/weak_tables.rs"]
+mod weak_tables;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
@@ -45,6 +47,7 @@ impl Heap {
                 gc_epoch: 0,
                 objects: Vec::new(),
                 object_starts: HashMap::new(),
+                weak_tables: HashSet::new(),
                 layouts: HashMap::new(),
                 threads: Vec::new(),
                 dirty_cards: HashSet::new(),
@@ -398,13 +401,6 @@ impl Heap {
     pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
         self.write_word_at(object, slot + 1, value)
     }
-    pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
-        let mut state = self.lock_state();
-        self.find_for_mutator(&state, object)
-            .and_then(|index| state.objects[index].words.get_mut(slot))
-            .map(|target| *target = value.bits())
-            .is_some()
-    }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();
         let index = self.find_for_mutator(&state, object)?;
@@ -412,16 +408,6 @@ impl Heap {
         let header = (entry.kind != PageKind::Cons).then(|| entry.words.first().copied())??;
         drop(state);
         Some(u8::try_from(header & WIDETAG_MASK).unwrap_or(0))
-    }
-    fn write_words(&self, object: Word, values: &[(usize, Word)]) {
-        let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, object) {
-            for (slot, value) in values {
-                if *slot < state.objects[index].words.len() {
-                    state.objects[index].words[*slot] = value.bits();
-                }
-            }
-        }
     }
     pub(crate) fn barrier(&self, object: Word, slot: usize) {
         let mut state = self.lock_state();

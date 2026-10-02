@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(
+    clippy::float_cmp,
+    clippy::unwrap_used,
+    missing_docs,
+    reason = "tests assert exact numeric builtin behavior"
+)]
 
 use ncl_object::{
     FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,

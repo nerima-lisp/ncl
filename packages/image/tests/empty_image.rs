@@ -11,12 +11,30 @@ fn empty_root_image_round_trips_feature_payload_without_roots_or_code() {
     runtime.add_feature("IMAGE-EMPTY-ROUND-TRIP");
 
     let bytes = save(&runtime, &mut ctx, &[], &[]).expect("empty image");
-    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 0);
-    assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 0);
-    assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 0);
-    assert_eq!(u32::from_le_bytes(bytes[28..32].try_into().unwrap()), 1);
-    assert_eq!(u32::from_le_bytes(bytes[44..48].try_into().unwrap()), 26);
-    assert_eq!(u32::from_le_bytes(bytes[64..68].try_into().unwrap()), 22);
+    assert_eq!(
+        u32::from_le_bytes(bytes[16..20].try_into().expect("image header field")),
+        0
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[20..24].try_into().expect("image header field")),
+        0
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[24..28].try_into().expect("image header field")),
+        0
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().expect("image header field")),
+        1
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[44..48].try_into().expect("image header field")),
+        26
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[64..68].try_into().expect("image header field")),
+        22
+    );
     assert_eq!(&bytes[68..], b"IMAGE-EMPTY-ROUND-TRIP");
     let runtime2 = Runtime::new().expect("destination runtime");
     let mut ctx2 = ThreadContext::new();

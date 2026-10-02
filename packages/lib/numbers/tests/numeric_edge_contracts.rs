@@ -319,6 +319,10 @@ fn complex_accessors_construct_conjugate_and_phase_values() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the test covers the numeric predicate and comparison matrix"
+)]
 fn predicates_and_comparisons_cover_numeric_kinds_and_chain_failures() {
     let (runtime, mut ctx) = setup();
     let integer_value = Word::fixnum(-3);

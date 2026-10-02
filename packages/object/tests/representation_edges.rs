@@ -67,6 +67,10 @@ fn immediate_views_keep_the_tagged_word_contract() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the test covers every supported heap representation"
+)]
 fn heap_classification_round_trips_each_supported_representation() {
     let (runtime, mut ctx) = setup();
     let package_word = runtime.find_package(&ctx, "COMMON-LISP").unwrap();

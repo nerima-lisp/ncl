@@ -105,7 +105,7 @@ fn optimization_level_walks_all_supported_expression_shapes() {
             "lambda function designator",
             Expr::Function(FunctionDesignator::Lambda(Box::new(lambda.clone()))),
         ),
-        ("lambda", Expr::Lambda(Box::new(lambda.clone()))),
+        ("lambda", Expr::Lambda(Box::new(lambda))),
         (
             "if",
             Expr::If {
@@ -345,7 +345,7 @@ fn fasl_headers_and_payload_shape_errors_are_rejected() {
     assert!(decode_payload(&[]).is_err());
 
     let payload = encode_payload(b"(+ 1 2)").expect("payload encoding");
-    let mut wrong_length = payload.clone();
+    let mut wrong_length = payload;
     wrong_length[11] = 0xff;
     assert!(
         decode_payload(&wrong_length)

@@ -32,8 +32,9 @@ mod included_tests {
                 }
             };
             self.calls.push((function, args.as_slice().to_vec()));
-            let result = Word::fixnum(self.calls.len() as i64);
-            values.set(&[result, Word::fixnum(900 + self.calls.len() as i64)]);
+            let call_count = i64::try_from(self.calls.len()).expect("call count fits in fixnum");
+            let result = Word::fixnum(call_count);
+            values.set(&[result, Word::fixnum(900 + call_count)]);
             Ok(result)
         }
     }
@@ -149,6 +150,10 @@ mod included_tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the test covers qualifier dispatch and missing-method behavior"
+    )]
     fn registered_dispatch_handles_method_qualifiers_and_missing_methods() {
         let (runtime, mut context) = setup();
         let package = runtime
@@ -470,7 +475,8 @@ mod included_tests {
         assert!(matches!(
             ncl_object::classify_object(
                 scope.context(),
-                ncl_object::car(scope.context(), caller.calls[0].1[0]).unwrap()
+                ncl_object::car(scope.context(), caller.calls[0].1[0])
+                    .expect("around argument list")
             ),
             ncl_object::ObjectRef::SimpleVector(_)
         ));

@@ -1,7 +1,8 @@
 #![allow(
+    clippy::float_cmp,
     clippy::unwrap_used,
     missing_docs,
-    reason = "tests assert on numeric builtin behavior"
+    reason = "tests assert on exact numeric builtin behavior"
 )]
 
 use ncl_object::{

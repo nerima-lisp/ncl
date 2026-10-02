@@ -496,6 +496,11 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
 }
 
 #[test]
+#[allow(
+    clippy::similar_names,
+    clippy::too_many_lines,
+    reason = "the test covers string comparison and Unicode boundary contracts"
+)]
 fn string_comparisons_ranges_and_unicode_boundaries_are_observable() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();

@@ -203,7 +203,7 @@ fn modifying_macros_emit_the_expected_value_and_store_forms() -> Result<(), Obje
     let push_parts = elements(&mut ctx, push)?;
     let push_binding = elements(&mut ctx, push_parts[1])?[0]; // check-added-lines: allow(index) fixed expansion shape
     let push_binding_parts = elements(&mut ctx, push_binding)?;
-    let cons = head(&mut ctx, push_binding_parts[1])?;
+    let cons = head(&mut ctx, push_binding_parts[1])?; // check-added-lines: allow(index) fixed expansion shape
     assert_eq!(cons, symbol(&mut ctx, &runtime, "CONS")?); // check-added-lines: allow(panic) test assertion
 
     let test = symbol(&mut ctx, &runtime, "TEST")?;
@@ -244,38 +244,38 @@ fn remf_and_expansion_support_validate_their_error_paths() -> Result<(), ObjectE
     assert_eq!(remf_body[3], Word::NIL); // check-added-lines: allow(panic,index) test assertion
 
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_incf(&mut ctx, &runtime, &registry, &[]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_decf(&mut ctx, &runtime, &registry, &[]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_push(&mut ctx, &runtime, &registry, &[x], false),
         Err(ObjectError::TypeError)
     );
     expand_push(&mut ctx, &runtime, &registry, &[x, x], false)?;
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_pop(&mut ctx, &runtime, &registry, &[]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_remf(&mut ctx, &runtime, &registry, &[x]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_shiftf(&mut ctx, &runtime, &registry, &[x]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_rotatef(&mut ctx, &runtime, &registry, &[]),
         Err(ObjectError::TypeError)
     );
@@ -284,12 +284,12 @@ fn remf_and_expansion_support_validate_their_error_paths() -> Result<(), ObjectE
     registry.define(&ctx, bad_operator, malformed_expander)?;
     let bad_place = place_form(&mut ctx, &runtime, bad_operator, x)?;
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         expand_incf(&mut ctx, &runtime, &registry, &[bad_place]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        // check-added-lines: allow(panic)
+        // check-added-lines: allow(panic) test assertion
         crate::setf_support::with_expansion_roots(
             &mut ctx,
             &SetfExpansion {

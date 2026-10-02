@@ -228,6 +228,40 @@ fn package_introspection_lists_survive_gc_stress() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn package_mutations_reject_bad_designators_and_preserve_locked_packages() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let package = runtime.ensure_package(&mut ctx, "N25-MUTATION-EDGES")?;
+    let rename = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "RENAME-PACKAGE")
+            .unwrap_or_else(|| panic!("RENAME-PACKAGE was not registered")),
+    )?;
+    let new_name = ncl_object::make_string(&mut ctx, &runtime, &['N', '2', '5', '-', 'R'])?;
+    let invalid_nickname = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, rename, &[package, new_name, invalid_nickname],),
+        Err(ObjectError::TypeError)
+    );
+
+    let delete = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "DELETE-PACKAGE")
+            .unwrap_or_else(|| panic!("DELETE-PACKAGE was not registered")),
+    )?;
+    Package::from_word(package).set_locked(&mut ctx, true)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete, &[package]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn package_local_nickname_resolution_survives_gc_stress() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

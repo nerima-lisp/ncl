@@ -182,7 +182,7 @@ jobs:
       - run: nix develop --command mkdocs build --strict --config-file docs/mkdocs.yml
 
   flake-check:
-    name: Flake check (${{ matrix.system }})
+    name: Flake check (${{ matrix.system }}, ${{ matrix.check }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -190,17 +190,32 @@ jobs:
         include:
           - system: aarch64-darwin
             runner: macos-14
+            check: default
+          - system: aarch64-darwin
+            runner: macos-14
+            check: cargo-test
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
+            check: default
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+            check: cargo-test
           - system: x86_64-linux
             runner: ubuntu-24.04
+            check: default
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+            check: cargo-test
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - run: nix flake check --system "${{ matrix.system }}"
+      - name: Evaluate flake checks
+        run: nix flake check --no-build --system "${{ matrix.system }}"
+      - name: Build selected check
+        run: nix build --no-link --print-build-logs ".#checks.${{ matrix.system }}.${{ matrix.check }}"
 
   coverage:
     name: Coverage report

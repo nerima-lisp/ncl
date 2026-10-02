@@ -275,42 +275,207 @@ mod tests {
         }
     }
 
-    #[test]
-    fn aarch64_primitives_cover_memory_and_boolean_forms() {
-        let allocation = allocation();
-        for primitive in [
-            Prim::FixnumAdd,
-            Prim::FixnumSub,
-            Prim::FixnumMul,
-            Prim::FixnumEq,
-            Prim::Eq,
-            Prim::Eql,
-            Prim::FixnumLt,
-            Prim::FixnumLe,
-            Prim::Car,
-            Prim::Cdr,
-            Prim::Svref,
-            Prim::Aref,
-            Prim::Rplaca,
-            Prim::Rplacd,
-            Prim::Aset,
-        ] {
-            let mut assembler = Assembler::new();
-            assert!(
-                lower_prim(
-                    &mut assembler,
-                    &primitive,
-                    &[ValueId(0), ValueId(1)],
-                    Some(ValueId(2)),
-                    &allocation,
-                )
-                .is_ok(),
-                "{primitive:?}"
-            );
-            assert!(assembler.offset() > 0, "{primitive:?}");
-        }
+    fn encoded(assembler: Assembler) -> Vec<u8> {
+        assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("AArch64 instruction encoding: {error:?}"))
+            .bytes
     }
 
+    fn assert_instruction(bytes: &[u8], offset: usize, instruction: &Inst) {
+        let actual = u32::from_le_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .unwrap_or_else(|_| panic!("complete AArch64 instruction")),
+        );
+        let expected = ncl_asm_aarch64::encode(instruction, offset)
+            .unwrap_or_else(|error| panic!("expected encoding: {error:?}"));
+        assert_eq!(actual, expected, "instruction at byte offset {offset}");
+    }
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn aarch64_primitives_emit_their_operation_kind() {
+        let allocation = allocation();
+        let cases = [
+            (
+                Prim::FixnumAdd,
+                8,
+                Inst::Add {
+                    rd: Reg(16).into(),
+                    rn: Reg(16).into(),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::FixnumSub,
+                8,
+                Inst::Sub {
+                    rd: Reg(16).into(),
+                    rn: Reg(16).into(),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::FixnumMul,
+                8,
+                Inst::Mul {
+                    rd: Reg(16),
+                    rn: Reg(16),
+                    rm: Reg(17),
+                },
+            ),
+            (
+                Prim::FixnumEq,
+                8,
+                Inst::Cmp {
+                    rn: Reg(16),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::Eq,
+                8,
+                Inst::Cmp {
+                    rn: Reg(16),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::Eql,
+                8,
+                Inst::Cmp {
+                    rn: Reg(16),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::FixnumLt,
+                8,
+                Inst::Cmp {
+                    rn: Reg(16),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+            (
+                Prim::FixnumLe,
+                8,
+                Inst::Cmp {
+                    rn: Reg(16),
+                    rm: Reg(17),
+                    shift: Shift::Lsl(0),
+                },
+            ),
+        ];
+        for (primitive, offset, expected_instruction) in cases {
+            let mut assembler = Assembler::new();
+            lower_prim(
+                &mut assembler,
+                &primitive,
+                &[ValueId(0), ValueId(1)],
+                Some(ValueId(2)),
+                &allocation,
+            )
+            .unwrap_or_else(|error| panic!("{primitive:?}: {error:?}"));
+            assert_instruction(&encoded(assembler), offset, &expected_instruction);
+        }
+
+        for (primitive, offset, expected_instruction) in [
+            (
+                Prim::Car,
+                12,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            ),
+            (
+                Prim::Cdr,
+                12,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 8,
+                    },
+                },
+            ),
+            (
+                Prim::Svref,
+                12,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            ),
+            (
+                Prim::Aref,
+                12,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            ),
+            (
+                Prim::Rplaca,
+                12,
+                Inst::Str {
+                    rt: Reg(17),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            ),
+            (
+                Prim::Rplacd,
+                12,
+                Inst::Str {
+                    rt: Reg(17),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 8,
+                    },
+                },
+            ),
+            (
+                Prim::Aset,
+                12,
+                Inst::Str {
+                    rt: Reg(17),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            ),
+        ] {
+            let mut assembler = Assembler::new();
+            lower_prim(
+                &mut assembler,
+                &primitive,
+                &[ValueId(0), ValueId(1)],
+                Some(ValueId(2)),
+                &allocation,
+            )
+            .unwrap_or_else(|error| panic!("{primitive:?}: {error:?}"));
+            assert_instruction(&encoded(assembler), offset, &expected_instruction);
+        }
+    }
     #[test]
     fn aarch64_primitives_reject_malformed_and_unimplemented_forms() {
         let allocation = allocation();

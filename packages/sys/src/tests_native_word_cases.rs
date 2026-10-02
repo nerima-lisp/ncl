@@ -39,3 +39,12 @@ fn copies_aligned_native_words_and_rejects_unaligned_address() {
         Err(NativeWordCopyError::Unaligned)
     );
 }
+
+#[test]
+fn accepts_an_empty_aligned_native_words_area() {
+    let words = [Word::NIL];
+    assert_eq!(
+        copy_native_words(words.as_ptr().addr() as u64, 0),
+        Ok(Vec::new())
+    );
+}

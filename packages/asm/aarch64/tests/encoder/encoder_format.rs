@@ -89,6 +89,22 @@ fn assembler_rejects_invalid_emission_without_advancing() {
 }
 
 #[test]
+fn register_and_label_boundaries_are_typed_errors() {
+    assert_eq!(Reg::new(30).map(Reg::number), Ok(30));
+    assert_eq!(Reg::new(31), Err(EncodeError::InvalidRegister(31)));
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assert_eq!(assembler.bind(label), Ok(()));
+    assert_eq!(
+        assembler.bind(label),
+        Err(EncodeError::DuplicateLabel(label))
+    );
+    assert_eq!(assembler.emit(&Inst::B { label }), Ok(()));
+    assert_eq!(assembler.finish().unwrap().bytes, [0, 0, 0, 20]);
+}
+
+#[test]
 fn encode_errors_have_stable_actionable_display() {
     assert_eq!(
         EncodeError::InvalidRegister(31).to_string(),

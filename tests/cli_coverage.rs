@@ -53,6 +53,17 @@ fn cli_rejects_unknown_options() {
 }
 
 #[test]
+fn cli_rejects_positional_arguments() {
+    let result = run(&["program.lisp"]);
+    assert_eq!(result.status.code(), Some(2), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), "");
+    assert_eq!(
+        String::from_utf8_lossy(&result.stderr),
+        "unsupported option: program.lisp\n"
+    );
+}
+
+#[test]
 fn cli_reports_evaluation_and_file_errors() {
     let eval = run(&["--eval", "("]);
     assert_eq!(eval.status.code(), Some(1));
@@ -68,4 +79,58 @@ fn cli_reports_evaluation_and_file_errors() {
             "{mode}: {result:?}"
         );
     }
+}
+
+#[test]
+fn cli_reports_source_errors_for_existing_files() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-cli-invalid-source-{}.lisp",
+        std::process::id()
+    ));
+    std::fs::write(&path, "(")
+        .unwrap_or_else(|error| panic!("failed to create invalid source: {error}"));
+    let path = path.to_string_lossy().into_owned();
+
+    for mode in ["--load", "--script", "--compile-file"] {
+        let result = run(&[mode, &path]);
+        assert_eq!(result.status.code(), Some(1), "{mode}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout), "", "{mode}");
+        assert!(
+            String::from_utf8_lossy(&result.stderr).starts_with("ncl: "),
+            "{mode}: {result:?}"
+        );
+    }
+
+    std::fs::remove_file(&path)
+        .unwrap_or_else(|error| panic!("failed to remove invalid source: {error}"));
+}
+
+#[test]
+fn repl_exits_cleanly_after_incomplete_form_at_eof() {
+    let mut child = ncl()
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to start ncl REPL: {error}"));
+    let mut stdin = child
+        .stdin
+        .take()
+        .unwrap_or_else(|| panic!("REPL stdin unavailable"));
+    std::io::Write::write_all(&mut stdin, b"(\n")
+        .unwrap_or_else(|error| panic!("failed to write REPL input: {error}"));
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .unwrap_or_else(|error| panic!("failed to collect REPL output: {error}"));
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).is_empty(),
+        "{output:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("> "),
+        "{output:?}"
+    );
 }

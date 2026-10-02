@@ -404,7 +404,7 @@ pub use dce::DeadCodeElimination;
 #[path = "dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]
-#[path = "gvn_tests.rs"]
+#[path = "tests_gvn.rs"]
 mod gvn_tests;
 #[cfg(test)]
 #[path = "manager_tests.rs"]
@@ -413,7 +413,7 @@ mod manager_tests;
 #[path = "remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
-#[path = "sccp_tests.rs"]
+#[path = "tests_sccp.rs"]
 mod sccp_tests;
 #[cfg(test)]
 #[path = "tests.rs"]

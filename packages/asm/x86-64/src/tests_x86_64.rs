@@ -143,6 +143,42 @@ fn rel32_out_of_range_is_rejected() {
 fn invalid_nop_is_rejected() {
     let mut a = Assembler::new();
     assert_eq!(a.emit(&Inst::Nop(0)), Err(EncodeError::InvalidNopLength));
+    assert_eq!(a.emit(&Inst::Nop(10)), Err(EncodeError::InvalidNopLength));
+    assert_eq!(a.emit(&Inst::Nop(9)), Ok(()));
+    assert_eq!(a.bytes().len(), 9);
+}
+
+#[test]
+fn memory_mode_boundaries_are_encoded_and_invalid_rip_forms_rejected() {
+    let mut a = Assembler::new();
+    assert!(
+        a.emit(&Inst::Lea(
+            Reg::Rax,
+            Mem {
+                base: None,
+                index: None,
+                scale: Scale::Eight,
+                disp: -4,
+                rip: false,
+            }
+        ))
+        .is_ok()
+    );
+    assert_eq!(a.bytes(), &[0x48, 0x8d, 0x04, 0xc5, 0xfc, 0xff, 0xff, 0xff]);
+
+    let invalid = Mem {
+        base: Some(Reg::Rax),
+        index: None,
+        scale: Scale::One,
+        disp: 0,
+        rip: true,
+    };
+    assert_eq!(
+        a.emit(&Inst::MovRM(Reg::Rax, invalid)),
+        Err(EncodeError::InvalidOperand(
+            "rip-relative memory has base or index",
+        ))
+    );
 }
 
 #[test]

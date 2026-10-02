@@ -74,6 +74,51 @@ fn frame_walk_and_scan_reject_invalid_ranges() {
 }
 
 #[test]
+fn frame_walk_honors_limit_and_scan_forwards_register_roots() {
+    let words = [
+        Word::pointer(8, LowTag::OtherPointer),
+        Word::from_bits(0x1000),
+        Word::fixnum(1),
+        Word::from_bits(0x10),
+        Word::from_bits(0),
+        Word::from_bits(0x1004),
+        Word::fixnum(2),
+        Word::from_bits(0x20),
+        Word::from_bits(0),
+        Word::from_bits(0x1008),
+        Word::fixnum(3),
+        Word::from_bits(0x30),
+    ];
+    let headers = walk_frame_headers(&words, 0, 1);
+    assert_eq!(headers.len(), 1);
+    assert_eq!(headers[0].previous, 8);
+    assert!(walk_frame_headers(&words, words.len(), 1).is_empty());
+
+    let map = Safepoint {
+        pc_offset: 0,
+        frame_words: 4,
+        slot_words: 4,
+        word_slot_count: 3,
+        register_mask: 1 << 3,
+        map_flags: 0,
+        slot_bitmap: vec![0b0000_0100],
+        register_ids: vec![3],
+    };
+    let mut frame = [Word::NIL; 4];
+    frame[2] = Word::fixnum(10);
+    let mut registers = [Word::NIL; 4];
+    registers[3] = Word::fixnum(20);
+    assert_eq!(
+        scan_frame_with_registers(&mut frame, 0, &map, &mut registers, |word| {
+            Word::fixnum(word.as_fixnum().unwrap_or(0) + 1)
+        }),
+        Some(2)
+    );
+    assert_eq!(frame[2], Word::fixnum(11));
+    assert_eq!(registers[3], Word::fixnum(21));
+}
+
+#[test]
 fn registry_register_find_unregister() {
     let Ok(mut code) = alloc_code(16) else {
         return;

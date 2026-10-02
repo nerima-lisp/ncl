@@ -39,6 +39,10 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         "COUNT",
         "SEARCH",
         "MISMATCH",
+        "FILL",
+        "REPLACE",
+        "REDUCE",
+        "CAR",
     ];
     let functions = names
         .into_iter()
@@ -48,6 +52,197 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         })
         .collect();
     (runtime, ctx, functions)
+}
+
+#[test]
+fn destructive_sequence_operations_honor_ranges_and_sequence_types() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let nine = Word::fixnum(9);
+    let start = keyword(&mut ctx, &runtime, "START");
+    let end = keyword(&mut ctx, &runtime, "END");
+
+    let source_list = list(&runtime, &mut ctx, &functions, &[one, one, one, one]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "FILL",
+            &[
+                source_list,
+                nine,
+                start,
+                Word::fixnum(1),
+                end,
+                Word::fixnum(3)
+            ],
+        )
+        .unwrap(),
+        source_list
+    );
+    assert_eq!(values(&ctx, source_list), vec![one, nine, nine, one]);
+
+    let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, one, one]).unwrap();
+    let replacement = list(&runtime, &mut ctx, &functions, &[nine, nine]);
+    call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "REPLACE",
+        &[vector, replacement, start, Word::fixnum(1)],
+    )
+    .unwrap();
+    assert_eq!(
+        (0..3)
+            .map(|index| ncl_object::simple_vector_ref(&ctx, vector, index).unwrap())
+            .collect::<Vec<_>>(),
+        vec![one, nine, nine]
+    );
+
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'a', 'a']).unwrap();
+    call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "FILL",
+        &[
+            text,
+            Word::character(u32::from('z')),
+            start,
+            Word::fixnum(1),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        (0..3)
+            .map(|index| ncl_object::string_ref(&ctx, text, index).unwrap())
+            .collect::<String>(),
+        "azz"
+    );
+}
+
+#[test]
+fn equality_distinguishes_array_shapes_and_non_bit_specializations() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let short = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one]).unwrap();
+    let long = ncl_object::make_simple_vector(&mut ctx, &runtime, &[one, two]).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUALP", &[short, long]).unwrap(),
+        Word::NIL
+    );
+
+    let left =
+        make_specialized_array(&mut ctx, &runtime, ArrayElementType::Fixnum, &[one, two]).unwrap();
+    let right =
+        make_specialized_array(&mut ctx, &runtime, ArrayElementType::Fixnum, &[one, two]).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[left, right]).unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUALP", &[left, right]).unwrap(),
+        Word::TRUE
+    );
+
+    let mismatched_table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::None)
+        .unwrap()
+        .as_word();
+    HashTable::from_word(mismatched_table)
+        .insert(&mut ctx, &runtime, one, two)
+        .unwrap();
+    let empty_table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::None)
+        .unwrap()
+        .as_word();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUALP",
+            &[mismatched_table, empty_table],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+}
+
+#[test]
+fn selection_rejects_dotted_and_non_sequence_arguments() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let dotted = ncl_object::make_cons(&mut ctx, &runtime, one, two).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "FIND", &[one, dotted]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "FIND",
+            &[one, Word::fixnum(99)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn reduce_applies_key_ranges_direction_and_initial_value() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let three = Word::fixnum(3);
+    let source = list(&runtime, &mut ctx, &functions, &[one, two, three]);
+    let reduce = [
+        functions["LIST"].as_word(),
+        source,
+        keyword(&mut ctx, &runtime, "INITIAL-VALUE"),
+        Word::fixnum(0),
+        keyword(&mut ctx, &runtime, "FROM-END"),
+        Word::TRUE,
+        keyword(&mut ctx, &runtime, "START"),
+        Word::fixnum(1),
+        keyword(&mut ctx, &runtime, "END"),
+        Word::fixnum(3),
+    ];
+    let result = call(&runtime, &mut ctx, &functions, "REDUCE", &reduce).unwrap();
+    assert_eq!(ncl_object::car(&ctx, result).unwrap(), two);
+    let first = ncl_object::car(&ctx, ncl_object::cdr(&ctx, result).unwrap()).unwrap();
+    assert_eq!(ncl_object::car(&ctx, first), Ok(three));
+    let initial = ncl_object::cdr(&ctx, first).unwrap();
+    assert_eq!(ncl_object::car(&ctx, initial), Ok(Word::fixnum(0)));
+    assert_eq!(ncl_object::cdr(&ctx, initial).unwrap(), Word::NIL);
+
+    let key = functions["CAR"].as_word();
+    let keyed_one = list(&runtime, &mut ctx, &functions, &[one]);
+    let keyed_two = list(&runtime, &mut ctx, &functions, &[two]);
+    let keyed_source = list(&runtime, &mut ctx, &functions, &[keyed_one, keyed_two]);
+    let key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    let end_keyword = keyword(&mut ctx, &runtime, "END");
+    let keyed_result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "REDUCE",
+        &[
+            functions["LIST"].as_word(),
+            keyed_source,
+            key_keyword,
+            key,
+            end_keyword,
+            Word::NIL,
+        ],
+    )
+    .unwrap();
+    assert_eq!(ncl_object::car(&ctx, keyed_result).unwrap(), one);
+    let keyed_tail = ncl_object::cdr(&ctx, keyed_result).unwrap();
+    assert_eq!(ncl_object::car(&ctx, keyed_tail), Ok(two));
+    assert_eq!(ncl_object::cdr(&ctx, keyed_tail).unwrap(), Word::NIL);
 }
 
 fn call(

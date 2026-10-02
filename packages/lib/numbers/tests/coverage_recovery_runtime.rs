@@ -19,8 +19,12 @@ fn call(
     name: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function =
-        FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap();
+    let function = FunctionObject::try_from(
+        runtime
+            .function(ctx, "COMMON-LISP", name)
+            .unwrap_or_else(|| panic!("missing builtin {name}")),
+    )
+    .unwrap_or_else(|error| panic!("invalid builtin {name}: {error:?}"));
     runtime.call_builtin(ctx, function, args)
 }
 
@@ -311,5 +315,136 @@ fn complex_accessors_construct_conjugate_and_phase_values() {
     assert_eq!(
         call(&runtime, &mut ctx, "REALPART", &[Word::TRUE]),
         Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn predicates_and_comparisons_cover_numeric_kinds_and_chain_failures() {
+    let (runtime, mut ctx) = setup();
+    let integer_value = Word::fixnum(-3);
+    let ratio_value = ratio(&mut ctx, &runtime, 3, 2);
+    let float_value = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    let complex_value = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .into();
+
+    for (name, value) in [
+        ("NUMBERP", integer_value),
+        ("INTEGERP", integer_value),
+        ("RATIONALP", ratio_value),
+        ("FLOATP", float_value),
+        ("REALP", float_value),
+        ("COMPLEXP", complex_value),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[value]).unwrap(),
+            Word::TRUE,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "ZEROP", &[Word::fixnum(0)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[Word::fixnum(2)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MINUSP", &[integer_value]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EVENP", &[Word::fixnum(4)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ODDP", &[Word::fixnum(5)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[complex_value]),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "=",
+            &[Word::fixnum(1), ratio_value, float_value],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">",
+            &[Word::fixnum(3), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<=",
+            &[Word::fixnum(1), Word::fixnum(1), Word::fixnum(2)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">=",
+            &[Word::fixnum(2), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "/=",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAX",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(9)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MIN",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(2)
     );
 }

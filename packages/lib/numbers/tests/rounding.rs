@@ -2,7 +2,7 @@
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, double_value,
+    classify_object, double_value, ratio_denominator, ratio_numerator,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -149,5 +149,49 @@ fn rounding_reports_unrepresentable_i128_min_negation() {
             Err(ObjectError::TypeError),
             "{name} result",
         );
+    }
+}
+
+#[test]
+fn rounding_covers_ratio_divisors_and_float_result_variants() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(2))
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    let quotient = call(&runtime, &mut ctx, "FLOOR", &[value, divisor]).unwrap();
+    assert_eq!(integer(&ctx, quotient), 2);
+    let remainder = ctx.values()[1];
+    let ObjectRef::Ratio(remainder) = classify_object(&ctx, remainder) else {
+        panic!(
+            "expected ratio remainder, got {:?}",
+            classify_object(&ctx, remainder)
+        );
+    };
+    let remainder = ncl_object::Ratio::from_word(remainder);
+    assert_eq!(integer(&ctx, ratio_numerator(&ctx, remainder).unwrap()), 1);
+    assert_eq!(
+        integer(&ctx, ratio_denominator(&ctx, remainder).unwrap()),
+        2
+    );
+
+    let value = ncl_object::make_double(&mut ctx, &runtime, 2.5)
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_double(&mut ctx, &runtime, 1.0)
+        .unwrap()
+        .into();
+    for name in ["FCEILING", "FTRUNCATE", "FROUND"] {
+        let quotient = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        assert!(matches!(
+            classify_object(&ctx, quotient),
+            ObjectRef::DoubleFloat(_)
+        ));
+        assert!(matches!(
+            classify_object(&ctx, ctx.values()[1]),
+            ObjectRef::DoubleFloat(_)
+        ));
     }
 }

@@ -104,3 +104,33 @@ fn rejects_invalid_repeat_parameters_and_preserves_consumed_argument_count() {
     );
     assert_eq!(sink.into_string(), "7");
 }
+
+#[test]
+fn rejects_character_and_relative_repeat_parameters() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~'x%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent,
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~v~").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Tilde,
+        })
+    );
+}

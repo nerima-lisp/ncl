@@ -2,7 +2,8 @@
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, double_value, make_complex, make_double, make_ratio,
+    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
+    make_ratio,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -316,6 +317,91 @@ fn complex_accessors_construct_conjugate_and_phase_values() {
         call(&runtime, &mut ctx, "REALPART", &[Word::TRUE]),
         Err(ObjectError::TypeError)
     );
+}
+
+#[test]
+fn complex_real_and_complex_boundaries_return_ansi_components() {
+    let (runtime, mut ctx) = setup();
+    let real = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+
+    let realpart = call(&runtime, &mut ctx, "REALPART", &[real]).unwrap();
+    assert_eq!(float(&ctx, realpart), -2.5);
+    let imagpart = call(&runtime, &mut ctx, "IMAGPART", &[real]).unwrap();
+    assert_eq!(float(&ctx, imagpart), 0.0);
+    assert_eq!(call(&runtime, &mut ctx, "CONJUGATE", &[real]), Ok(real));
+    let phase = call(&runtime, &mut ctx, "PHASE", &[Word::fixnum(-1)]).unwrap();
+    assert_eq!(float(&ctx, phase), std::f64::consts::PI);
+
+    let complex = call(&runtime, &mut ctx, "COMPLEX", &[real, Word::fixnum(3)]).unwrap();
+    let ObjectRef::Complex(complex) = classify_object(&ctx, complex) else {
+        panic!("COMPLEX with a non-zero imaginary part must return a complex number");
+    };
+    assert_eq!(
+        float(
+            &ctx,
+            complex_real(&ctx, ncl_object::Complex::from_word(complex)).unwrap()
+        ),
+        -2.5
+    );
+    assert_eq!(
+        float(
+            &ctx,
+            complex_imag(&ctx, ncl_object::Complex::from_word(complex)).unwrap()
+        ),
+        3.0
+    );
+
+    let cis = call(&runtime, &mut ctx, "CIS", &[Word::fixnum(0)]).unwrap();
+    let ObjectRef::Complex(cis) = classify_object(&ctx, cis) else {
+        panic!("CIS always returns a complex number");
+    };
+    assert_eq!(
+        float(
+            &ctx,
+            complex_real(&ctx, ncl_object::Complex::from_word(cis)).unwrap()
+        ),
+        1.0
+    );
+    assert_eq!(
+        float(
+            &ctx,
+            complex_imag(&ctx, ncl_object::Complex::from_word(cis)).unwrap()
+        ),
+        0.0
+    );
+}
+
+#[test]
+fn arithmetic_callbacks_reject_wrong_argument_counts_and_types() {
+    let (runtime, mut ctx) = setup();
+
+    for (name, args) in [
+        ("EQ", vec![]),
+        ("EQ", vec![Word::fixnum(1)]),
+        (
+            "EQ",
+            vec![Word::fixnum(1), Word::fixnum(1), Word::fixnum(1)],
+        ),
+        ("EQL", vec![Word::fixnum(1)]),
+        ("1+", vec![]),
+        ("1+", vec![Word::fixnum(1), Word::fixnum(2)]),
+        ("ABS", vec![]),
+        ("SIGNUM", vec![]),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &args),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
+
+    for name in ["+", "-", "*", "/", "=", "<", "MAX", "MIN"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[Word::TRUE]),
+            Err(ObjectError::TypeError),
+            "{name} must reject a non-number"
+        );
+    }
 }
 
 #[test]

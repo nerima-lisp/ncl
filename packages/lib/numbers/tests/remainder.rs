@@ -149,3 +149,40 @@ fn remainder_handles_ratios_floats_and_zero_lcm_inputs() {
         0,
     );
 }
+
+#[test]
+fn remainder_covers_zero_and_i128_division_overflow_cases() {
+    let (runtime, mut ctx) = setup();
+    let zero_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(0), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .into();
+    assert_integer_call(&runtime, &mut ctx, "MOD", &[zero_ratio, divisor], 0);
+
+    let minimum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    for name in ["MOD", "REM"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[minimum, Word::fixnum(-1)]),
+            Ok(Word::fixnum(0)),
+            "{name} handles MIN_INT / -1 as an exact zero remainder"
+        );
+    }
+
+    let one = make_double(&mut ctx, &runtime, 1.0).unwrap().into();
+    let zero = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    for name in ["MOD", "REM"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[one, zero]),
+            Err(ObjectError::TypeError),
+            "{name} rejects a floating-point zero divisor"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "LCM", &[Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+}

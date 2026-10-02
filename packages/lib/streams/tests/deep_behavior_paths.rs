@@ -406,3 +406,169 @@ fn malformed_stream_state_reports_layout_errors_in_state_and_adapters() {
         Err(ncl_object::ObjectError::Layout)
     );
 }
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn file_policies_cover_invalid_options_eof_and_close_paths() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let read_char = builtin(&runtime, &mut ctx, "READ-CHAR");
+    let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
+    let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
+    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
+    let file_length = builtin(&runtime, &mut ctx, "FILE-LENGTH");
+    let finish_output = builtin(&runtime, &mut ctx, "FINISH-OUTPUT");
+    let input_stream_p = builtin(&runtime, &mut ctx, "INPUT-STREAM-P");
+    let direction = keyword(&runtime, &mut ctx, "DIRECTION");
+    let input = keyword(&runtime, &mut ctx, "INPUT");
+    let output = keyword(&runtime, &mut ctx, "OUTPUT");
+    let io = keyword(&runtime, &mut ctx, "IO");
+    let if_missing = keyword(&runtime, &mut ctx, "IF-DOES-NOT-EXIST");
+    let if_exists = keyword(&runtime, &mut ctx, "IF-EXISTS");
+    let invalid = keyword(&runtime, &mut ctx, "INVALID");
+    let supersede = keyword(&runtime, &mut ctx, "SUPERSEDE");
+    let new_version = keyword(&runtime, &mut ctx, "NEW-VERSION");
+    let rename = keyword(&runtime, &mut ctx, "RENAME");
+    let path = std::env::temp_dir().join(format!(
+        "ncl-stream-deep-policy-cases-{}",
+        std::process::id()
+    ));
+    let path_string = path.to_string_lossy().into_owned();
+    let path_word = text(&mut ctx, &runtime, &path_string);
+    let missing = std::env::temp_dir().join(format!(
+        "ncl-stream-deep-policy-missing-{}",
+        std::process::id()
+    ));
+    let missing_string = missing.to_string_lossy().into_owned();
+    let missing_word = text(&mut ctx, &runtime, &missing_string);
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(&missing);
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            open,
+            &[missing_word, direction, input, if_missing, invalid],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            open,
+            &[missing_word, direction, output, if_missing, invalid],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    fs::write(&path, b"xy").unwrap();
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            open,
+            &[path_word, direction, output, if_exists, invalid],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    for policy in [supersede, new_version, rename] {
+        fs::write(&path, b"xy").unwrap();
+        let stream = runtime
+            .call_builtin(
+                &mut ctx,
+                open,
+                &[path_word, direction, output, if_exists, policy],
+            )
+            .unwrap();
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, file_position, &[stream, Word::fixnum(3)]),
+            Ok(Word::fixnum(3))
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, input_stream_p, &[stream]),
+            Ok(Word::NIL)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, file_length, &[stream]),
+            Ok(Word::fixnum(0))
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, close, &[stream]),
+            Ok(Word::TRUE)
+        );
+    }
+
+    fs::write(&path, b"xy").unwrap();
+    let default_input = runtime.call_builtin(&mut ctx, open, &[path_word]).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_length, &[default_input]),
+        Ok(Word::fixnum(2))
+    );
+    runtime
+        .call_builtin(&mut ctx, close, &[default_input])
+        .unwrap();
+
+    let input_stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, input])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[input_stream]),
+        Ok(Word::fixnum(i64::from(b'x')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[input_stream]),
+        Ok(Word::character(u32::from('y')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[input_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[input_stream]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[input_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let io_stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, io])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[io_stream, Word::fixnum(3)]),
+        Ok(Word::fixnum(3))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[io_stream, Word::fixnum(0)]),
+        Ok(Word::fixnum(0))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[io_stream]),
+        Ok(Word::fixnum(i64::from(b'x')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[io_stream]),
+        Ok(Word::character(u32::from('y')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[io_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[io_stream]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, finish_output, &[io_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, write_byte, &[Word::fixnum(1), io_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    fs::remove_file(path).unwrap();
+    let _ = fs::remove_file(missing);
+}

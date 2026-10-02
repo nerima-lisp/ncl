@@ -340,3 +340,63 @@ fn rounding_ties_negative_divisors_and_bignum_ratios_have_exact_results() {
     assert_eq!(float(&ctx, result), 4.0);
     assert_eq!(float(&ctx, ctx.values()[1]), -0.5);
 }
+
+#[test]
+fn float_rounding_returns_ansi_quotients_and_remainders() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_double(&mut ctx, &runtime, 7.0)
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_double(&mut ctx, &runtime, 2.0)
+        .unwrap()
+        .into();
+
+    for (name, quotient, remainder) in [
+        ("FLOOR", 3.0, 1.0),
+        ("FCEILING", 4.0, -1.0),
+        ("FTRUNCATE", 3.0, 1.0),
+        ("FROUND", 4.0, -1.0),
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        assert_eq!(float(&ctx, result), quotient, "{name} quotient");
+        assert_eq!(float(&ctx, ctx.values()[1]), remainder, "{name} remainder");
+    }
+}
+
+#[test]
+fn rounding_rejects_non_numbers_and_exact_cross_product_overflow() {
+    let (runtime, mut ctx) = setup();
+    for name in [
+        "FLOOR",
+        "CEILING",
+        "TRUNCATE",
+        "ROUND",
+        "FFLOOR",
+        "FCEILING",
+        "FTRUNCATE",
+        "FROUND",
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[Word::TRUE]),
+            Err(ObjectError::TypeError),
+            "{name} must reject a non-number"
+        );
+    }
+
+    let numerator = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    let value = ncl_object::make_ratio(&mut ctx, &runtime, numerator, Word::fixnum(2))
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .into();
+    for name in ["FLOOR", "CEILING", "TRUNCATE", "ROUND"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[value, divisor]),
+            Err(ObjectError::TypeError),
+            "{name} reports exact cross-product overflow"
+        );
+    }
+}

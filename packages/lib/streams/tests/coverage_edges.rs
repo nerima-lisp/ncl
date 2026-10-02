@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin behavior")]
 
 use ncl_object::{
-    make_simple_vector, make_stream, make_string, symbol_value, FunctionObject, Package, Runtime,
-    ThreadContext, Word,
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
+    make_string, symbol_value,
 };
 use std::fs;
 
@@ -358,5 +358,97 @@ fn short_string_input_and_data_output_expose_boundary_values() {
     assert_eq!(
         runtime.call_builtin(&mut ctx, read_byte, &[readable_data]),
         Ok(Word::fixnum(i64::from(b'A')))
+    );
+}
+
+#[test]
+fn character_eof_close_and_invalid_state_paths_are_observable() {
+    let (runtime, mut ctx) = setup();
+    let make_input = builtin(&runtime, &mut ctx, "MAKE-STRING-INPUT-STREAM");
+    let make_output = builtin(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM");
+    let read_char = builtin(&runtime, &mut ctx, "READ-CHAR");
+    let read_line = builtin(&runtime, &mut ctx, "READ-LINE");
+    let peek_char = builtin(&runtime, &mut ctx, "PEEK-CHAR");
+    let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
+    let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let write_string = builtin(&runtime, &mut ctx, "WRITE-STRING");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let finish_output = builtin(&runtime, &mut ctx, "FINISH-OUTPUT");
+    let get_output = builtin(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING");
+
+    let empty = text(&mut ctx, &runtime, "");
+    let input = runtime
+        .call_builtin(&mut ctx, make_input, &[empty])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[input]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, input]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_line, &[input]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    let common_lisp = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let standard_input_symbol = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "*STANDARD-INPUT*")
+        .unwrap()
+        .0;
+    let standard_input = symbol_value(&ctx, standard_input_symbol).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, standard_input]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let output = runtime.call_builtin(&mut ctx, make_output, &[]).unwrap();
+    let value = text(&mut ctx, &runtime, "x");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_string,
+            &[value, output, Word::fixnum(0), Word::fixnum(-1)],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[output]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, finish_output, &[output]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, get_output, &[output]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_char,
+            &[Word::character(u32::from('x')), output],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let invalid_position =
+        make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(0), Word::fixnum(-1)]).unwrap();
+    let invalid_stream = make_stream(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        invalid_position,
+        Word::NIL,
+    )
+    .unwrap()
+    .into();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[invalid_stream]),
+        Err(ncl_object::ObjectError::Layout)
     );
 }

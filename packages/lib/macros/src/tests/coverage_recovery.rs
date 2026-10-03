@@ -35,6 +35,20 @@ fn call_macro(
     )
 }
 
+fn assert_same_form(ctx: &mut ThreadContext, actual: Word, expected: Word) -> Result<(), ObjectError> {
+    let actual_parts = elements(ctx, actual)?;
+    let expected_parts = elements(ctx, expected)?;
+    assert_eq!(actual_parts.len(), expected_parts.len());
+    for (actual_part, expected_part) in actual_parts.into_iter().zip(expected_parts) {
+        if actual_part.is_cons() || expected_part.is_cons() {
+            assert_same_form(ctx, actual_part, expected_part)?;
+        } else {
+            assert_eq!(actual_part, expected_part);
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
 -> Result<(), ObjectError> {
@@ -743,5 +757,193 @@ fn loop_parser_covers_directions_accumulators_conditionals_and_errors() -> Resul
         super::super::r#loop::parse_loop(&mut ctx, &bad_input),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn control_short_expansions_match_the_complete_constructor_shape() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let test = named(&mut ctx, &runtime, "TEST")?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let progn_name = named(&mut ctx, &runtime, "PROGN")?;
+    let progn = list_of(&mut ctx, &runtime, &[progn_name, body])?;
+    let cases = [
+        ("WHEN", vec!["IF"], vec![test, progn, Word::NIL]),
+        ("UNLESS", vec!["IF"], vec![test, Word::NIL, progn]),
+        ("AND", vec!["IF"], vec![test, body, Word::NIL]),
+        (
+            "RETURN-FROM",
+            vec!["RETURN-FROM"],
+            vec![Word::NIL, Word::NIL],
+        ),
+    ];
+    for (name, expected_head, expected_tail) in cases {
+        let operator = named(&mut ctx, &runtime, name)?;
+        let form = match name {
+            "WHEN" | "UNLESS" => list_of(&mut ctx, &runtime, &[operator, test, body])?,
+            "AND" => list_of(&mut ctx, &runtime, &[operator, test, body])?,
+            "COND" => {
+                let clause = list_of(&mut ctx, &runtime, &[test])?;
+                list_of(&mut ctx, &runtime, &[operator, clause])?
+            }
+            "RETURN-FROM" => list_of(&mut ctx, &runtime, &[operator])?,
+            _ => return Err(ObjectError::TypeError),
+        };
+        let expanded = if name == "RETURN-FROM" {
+            call_macro(&runtime, &mut ctx, "RETURN", form)?
+        } else {
+            call_macro(&runtime, &mut ctx, name, form)?
+        };
+        let mut expected = vec![named(&mut ctx, &runtime, expected_head[0])?];
+        expected.extend(expected_tail);
+        let expected = list_of(&mut ctx, &runtime, &expected)?;
+        assert_same_form(&mut ctx, expanded, expected)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn quasiquote_constructor_shapes_are_exact_for_atoms_lists_and_vectors() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = named(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let value = named(&mut ctx, &runtime, "VALUE")?;
+    let a = named(&mut ctx, &runtime, "A")?;
+    let b = named(&mut ctx, &runtime, "B")?;
+    let quote = named(&mut ctx, &runtime, "QUOTE")?;
+    let cons = named(&mut ctx, &runtime, "CONS")?;
+    let nil_quote = list_of(&mut ctx, &runtime, &[quote, Word::NIL])?;
+    let quote_a = list_of(&mut ctx, &runtime, &[quote, a])?;
+    let quote_b = list_of(&mut ctx, &runtime, &[quote, b])?;
+    let cons_b = list_of(&mut ctx, &runtime, &[cons, quote_b, nil_quote])?;
+    let expected_list = list_of(&mut ctx, &runtime, &[cons, quote_a, cons_b])?;
+    let list_datum = list_of(&mut ctx, &runtime, &[a, b])?;
+    let quote_value = list_of(&mut ctx, &runtime, &[quote, value])?;
+    let cases = [
+        (value, quote_value),
+        (list_datum, expected_list),
+    ];
+    for (datum, expected) in cases {
+        let form = list_of(&mut ctx, &runtime, &[op, datum])?;
+        let expanded = call_macro(&runtime, &mut ctx, "QUASIQUOTE", form)?;
+        assert_same_form(&mut ctx, expanded, expected)?;
+    }
+
+    let unquote = named(&mut ctx, &runtime, "UNQUOTE")?;
+    let splice = named(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+    let append = named(&mut ctx, &runtime, "APPEND")?;
+    let spliced = list_of(&mut ctx, &runtime, &[splice, value])?;
+    let datum = list_of(&mut ctx, &runtime, &[spliced, a])?;
+    let expected_tail = list_of(&mut ctx, &runtime, &[cons, quote_a, nil_quote])?;
+    let expected = list_of(&mut ctx, &runtime, &[append, value, expected_tail])?;
+    let form = list_of(&mut ctx, &runtime, &[op, datum])?;
+    let expanded = call_macro(&runtime, &mut ctx, "QUASIQUOTE", form)?;
+    assert_same_form(&mut ctx, expanded, expected)?;
+
+    let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[value, a])?;
+    let vector_form = list_of(&mut ctx, &runtime, &[op, vector])?;
+    let vector_code_tail = list_of(&mut ctx, &runtime, &[cons, quote_a, nil_quote])?;
+    let vector_code = list_of(&mut ctx, &runtime, &[cons, quote_value, vector_code_tail])?;
+    let function = named(&mut ctx, &runtime, "FUNCTION")?;
+    let vector_name = named(&mut ctx, &runtime, "VECTOR")?;
+    let apply = named(&mut ctx, &runtime, "APPLY")?;
+    let vector_function = list_of(&mut ctx, &runtime, &[function, vector_name])?;
+    let expected = list_of(&mut ctx, &runtime, &[apply, vector_function, vector_code])?;
+    let expanded = call_macro(&runtime, &mut ctx, "QUASIQUOTE", vector_form)?;
+    assert_same_form(&mut ctx, expanded, expected)?;
+    let unquoted = list_of(&mut ctx, &runtime, &[unquote, value])?;
+    let direct = list_of(&mut ctx, &runtime, &[op, unquoted])?;
+    assert_eq!(call_macro(&runtime, &mut ctx, "QUASIQUOTE", direct)?, value);
+    Ok(())
+}
+
+#[test]
+fn control_expanders_cover_remaining_structural_forms_table_driven() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let test = named(&mut ctx, &runtime, "TEST")?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let x = named(&mut ctx, &runtime, "X")?;
+    let init = named(&mut ctx, &runtime, "INIT")?;
+    let step = named(&mut ctx, &runtime, "STEP")?;
+    let tag = named(&mut ctx, &runtime, "TAG")?;
+
+    let when = named(&mut ctx, &runtime, "WHEN")?;
+    let unless = named(&mut ctx, &runtime, "UNLESS")?;
+    let when_form = list_of(&mut ctx, &runtime, &[when, test, body, init])?;
+    let unless_form = list_of(&mut ctx, &runtime, &[unless, test, body])?;
+    let prog_variable = list_of(&mut ctx, &runtime, &[x, init])?;
+    let prog_variables = list_of(
+        &mut ctx,
+        &runtime,
+        &[prog_variable],
+    )?;
+    let prog = named(&mut ctx, &runtime, "PROG")?;
+    let prog_form = list_of(&mut ctx, &runtime, &[prog, prog_variables, tag])?;
+    let do_variable = list_of(&mut ctx, &runtime, &[x, init, step])?;
+    let do_variables = list_of(
+        &mut ctx,
+        &runtime,
+        &[do_variable],
+    )?;
+    let end_clause = list_of(&mut ctx, &runtime, &[test, body])?;
+    let nth_value = named(&mut ctx, &runtime, "NTH-VALUE")?;
+    let nth_value_form = list_of(&mut ctx, &runtime, &[nth_value, Word::fixnum(1), body])?;
+
+    let cases = [
+        ("WHEN", when_form, "IF"),
+        ("UNLESS", unless_form, "IF"),
+        ("PROG", prog_form, "BLOCK"),
+        ("NTH-VALUE", nth_value_form, "MULTIPLE-VALUE-CALL"),
+    ];
+    for (name, form, expected_head) in cases {
+        let expanded = call_macro(&runtime, &mut ctx, name, form)?;
+        assert_eq!(
+            elements(&mut ctx, expanded)?.first().copied(),
+            Some(named(&mut ctx, &runtime, expected_head)?),
+            "{name} expansion head"
+        );
+    }
+
+    let do_star = named(&mut ctx, &runtime, "DO*")?;
+    let let_star = named(&mut ctx, &runtime, "LET*")?;
+    let do_star_form = list_of(&mut ctx, &runtime, &[do_star, do_variables, end_clause, tag])?;
+    let do_star_expansion = call_macro(&runtime, &mut ctx, "DO*", do_star_form)?;
+    let do_star = elements(&mut ctx, do_star_expansion)?;
+    let do_star_body = elements(&mut ctx, do_star[2])?;
+    assert_eq!(do_star_body[0], let_star);
+    Ok(())
+}
+
+#[test]
+fn quasiquote_vectors_and_nested_splicing_preserve_constructor_shapes() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = named(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let splice = named(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+    let nested = named(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let value = named(&mut ctx, &runtime, "VALUE")?;
+    let spliced = list_of(&mut ctx, &runtime, &[splice, value])?;
+    let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[spliced, value])?;
+    let vector_form = list_of(&mut ctx, &runtime, &[op, vector])?;
+    let vector_expansion = call_macro(&runtime, &mut ctx, "QUASIQUOTE", vector_form)?;
+    let vector_parts = elements(&mut ctx, vector_expansion)?;
+    assert_eq!(vector_parts[0], named(&mut ctx, &runtime, "APPLY")?);
+    let function_form = elements(&mut ctx, vector_parts[1])?;
+    assert_eq!(
+        function_form,
+        vec![
+            named(&mut ctx, &runtime, "FUNCTION")?,
+            named(&mut ctx, &runtime, "VECTOR")?
+        ]
+    );
+
+    let nested_datum = list_of(&mut ctx, &runtime, &[splice, value])?;
+    let nested_datum_form = list_of(&mut ctx, &runtime, &[nested, nested_datum])?;
+    let nested_form = list_of(&mut ctx, &runtime, &[op, nested_datum_form])?;
+    let list = named(&mut ctx, &runtime, "LIST")?;
+    let quote = named(&mut ctx, &runtime, "QUOTE")?;
+    let nested_expansion = call_macro(&runtime, &mut ctx, "QUASIQUOTE", nested_form)?;
+    let nested_parts = elements(&mut ctx, nested_expansion)?;
+    assert_eq!(nested_parts[0], list);
+    assert_eq!(elements(&mut ctx, nested_parts[1])?, vec![quote, nested]);
+    assert_eq!(nested_parts.len(), 3);
     Ok(())
 }

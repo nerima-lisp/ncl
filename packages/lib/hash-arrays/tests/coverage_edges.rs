@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    ArrayElementType, FunctionObject, ObjectError, Runtime, ThreadContext, Word, car, cdr,
-    make_string,
+    ArrayElementType, ArrayOptions, FunctionObject, ObjectError, Runtime, ThreadContext, Word,
+    array_row_major_ref, car, cdr, make_array, make_string,
 };
 
 fn call(
@@ -34,6 +34,19 @@ fn call_ext(
 fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
     let package = runtime
         .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    Ok(ncl_object::Package::from_word(package)
+        .intern(ctx, runtime, name)?
+        .0)
+}
+
+fn common_lisp_symbol(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+) -> Result<Word, ObjectError> {
+    let package = runtime
+        .find_package(ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
     Ok(ncl_object::Package::from_word(package)
         .intern(ctx, runtime, name)?
@@ -251,13 +264,271 @@ fn bit_setters_cover_zero_values_and_non_bit_type_errors() -> Result<(), ObjectE
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        call_ext(
-            &runtime,
-            &mut ctx,
-            "AREF-SET",
-            &[general, Word::fixnum(0)],
-        ),
+        call_ext(&runtime, &mut ctx, "AREF-SET", &[general, Word::fixnum(0)],),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn make_array_element_types_are_table_driven_and_preserve_contents() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
+    let initial_element = keyword(&runtime, &mut ctx, "INITIAL-ELEMENT")?;
+    let cases = [
+        ("T", Word::NIL),
+        ("BIT", Word::fixnum(1)),
+        ("CHARACTER", Word::character(u32::from('x'))),
+        ("BASE-CHAR", Word::character(u32::from('y'))),
+        ("FIXNUM", Word::fixnum(-3)),
+        ("SIGNED-BYTE", Word::fixnum(4)),
+        ("UNSIGNED-BYTE", Word::fixnum(5)),
+        ("SINGLE-FLOAT", Word::NIL),
+        ("DOUBLE-FLOAT", Word::NIL),
+    ];
+    for (name, initial) in cases {
+        let requested = keyword(&runtime, &mut ctx, name)?;
+        let array = call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[
+                Word::fixnum(2),
+                element_type,
+                requested,
+                initial_element,
+                initial,
+            ],
+        )?;
+        assert_eq!(
+            call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[array])?,
+            common_lisp_symbol(&runtime, &mut ctx, name)?,
+            "element type {name}"
+        );
+        assert_eq!(
+            array_row_major_ref(&ctx, array, 0)?,
+            initial,
+            "initial contents for {name}"
+        );
+        assert_eq!(
+            array_row_major_ref(&ctx, array, 1)?,
+            initial,
+            "initial contents for {name}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn make_array_rejects_invalid_option_combinations_with_exact_errors() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
+    let initial_element = keyword(&runtime, &mut ctx, "INITIAL-ELEMENT")?;
+    let initial_contents = keyword(&runtime, &mut ctx, "INITIAL-CONTENTS")?;
+    let fill_pointer = keyword(&runtime, &mut ctx, "FILL-POINTER")?;
+    let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
+    let second_dimension = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let multidimensional =
+        ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(2), second_dimension)?;
+    let cases = [
+        (
+            "odd options",
+            vec![Word::fixnum(1), element_type],
+            ObjectError::TypeError,
+        ),
+        (
+            "unknown option",
+            vec![Word::fixnum(1), unknown, Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "unknown element type",
+            vec![Word::fixnum(1), element_type, unknown],
+            ObjectError::TypeError,
+        ),
+        (
+            "initial element and contents",
+            vec![
+                Word::fixnum(1),
+                initial_element,
+                Word::NIL,
+                initial_contents,
+                Word::NIL,
+            ],
+            ObjectError::TypeError,
+        ),
+        (
+            "fill pointer on multidimensional array",
+            vec![multidimensional, fill_pointer, Word::fixnum(0)],
+            ObjectError::TypeError,
+        ),
+    ];
+    for (name, args, expected) in cases {
+        assert_eq!(
+            call(&runtime, &mut ctx, "MAKE-ARRAY", &args),
+            Err(expected),
+            "case {name}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn bit_vector_predicates_distinguish_all_array_kinds() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let fixed = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let adjustable = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: true,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let with_fill_pointer = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let displaced_target = make_array(
+        &mut ctx,
+        &runtime,
+        &[3],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let displaced = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: Some(displaced_target),
+            displaced_index_offset: 1,
+        },
+    )?;
+    let simple_vector = call(&runtime, &mut ctx, "VECTOR", &[Word::fixnum(0)])?;
+    let cases = [
+        ("fixed bit array", fixed, Word::TRUE, Word::TRUE),
+        ("adjustable bit array", adjustable, Word::NIL, Word::TRUE),
+        (
+            "fill pointer bit array",
+            with_fill_pointer,
+            Word::NIL,
+            Word::TRUE,
+        ),
+        ("displaced bit array", displaced, Word::NIL, Word::TRUE),
+        ("simple vector", simple_vector, Word::NIL, Word::NIL),
+        ("integer", Word::fixnum(0), Word::NIL, Word::NIL),
+    ];
+    for (name, value, simple_expected, bit_expected) in cases {
+        assert_eq!(
+            call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[value])?,
+            simple_expected,
+            "simple bit vector case {name}"
+        );
+        assert_eq!(
+            call(&runtime, &mut ctx, "BIT-VECTOR-P", &[value])?,
+            bit_expected,
+            "bit vector case {name}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn hash_table_operations_reject_non_tables_with_exact_errors() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let key = keyword(&runtime, &mut ctx, "TEST")?;
+    let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
+    let cases = [
+        (
+            "gethash",
+            "GETHASH",
+            vec![Word::NIL, Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "remhash",
+            "REMHASH",
+            vec![Word::NIL, Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "clrhash",
+            "CLRHASH",
+            vec![Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "hash table count",
+            "HASH-TABLE-COUNT",
+            vec![Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "hash table size",
+            "HASH-TABLE-SIZE",
+            vec![Word::NIL],
+            ObjectError::TypeError,
+        ),
+        (
+            "hash table test",
+            "HASH-TABLE-TEST",
+            vec![Word::NIL],
+            ObjectError::TypeError,
+        ),
+    ];
+    for (name, builtin, args, expected) in cases {
+        assert_eq!(
+            call(&runtime, &mut ctx, builtin, &args),
+            Err(expected),
+            "case {name}"
+        );
+    }
+    for (name, args) in [
+        ("unknown make option", vec![unknown, Word::NIL]),
+        ("odd make options", vec![key]),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &args),
+            Err(ObjectError::TypeError),
+            "case {name}"
+        );
+    }
     Ok(())
 }

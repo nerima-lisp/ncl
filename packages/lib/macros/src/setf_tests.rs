@@ -397,3 +397,195 @@ fn setf_expansion_support_rejects_invalid_shapes_and_arguments() -> Result<(), O
     ))?;
     Ok(())
 }
+
+#[test]
+fn setf_arity_and_registry_boundaries_return_the_exact_error() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "PLACE")?;
+    let cases = vec![
+        ("INCF", Vec::new()),
+        ("DECF", Vec::new()),
+        ("PUSH", vec![place]),
+        ("POP", Vec::new()),
+        ("REMF", vec![place]),
+        ("SHIFTF", vec![place]),
+        ("ROTATEF", Vec::new()),
+    ];
+    for (name, arguments) in cases {
+        let result = match name {
+            "INCF" => expand_incf(&mut ctx, &runtime, &registry, &arguments),
+            "DECF" => expand_decf(&mut ctx, &runtime, &registry, &arguments),
+            "PUSH" => expand_push(&mut ctx, &runtime, &registry, &arguments, false),
+            "POP" => expand_pop(&mut ctx, &runtime, &registry, &arguments),
+            "REMF" => expand_remf(&mut ctx, &runtime, &registry, &arguments),
+            "SHIFTF" => expand_shiftf(&mut ctx, &runtime, &registry, &arguments),
+            "ROTATEF" => expand_rotatef(&mut ctx, &runtime, &registry, &arguments),
+            _ => return Err(ObjectError::TypeError),
+        };
+        assert_eq!(result, Err(ObjectError::TypeError));
+    }
+
+    let other_runtime = Runtime::new()?;
+    let mut other_ctx = ThreadContext::new();
+    other_ctx.register(&other_runtime)?;
+    let other_place = symbol(&mut other_ctx, &other_runtime, "PLACE")?;
+    assert_eq!(
+        expand_setf(&mut other_ctx, &other_runtime, &registry, &[other_place, other_place]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn setf_rotation_matrix_preserves_sources_and_emits_complete_shapes() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let first = symbol(&mut ctx, &runtime, "FIRST")?;
+    let second = symbol(&mut ctx, &runtime, "SECOND")?;
+    let replacement = symbol(&mut ctx, &runtime, "REPLACEMENT")?;
+    let cases = vec![
+        (expand_shiftf as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, vec![first, second, replacement]),
+        (expand_rotatef as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, vec![first, second]),
+    ];
+    for (expand, arguments) in cases {
+        let expanded = expand(&mut ctx, &runtime, &registry, &arguments)?;
+        let outer = elements(&mut ctx, expanded)?;
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET*")?);
+        let bindings = elements(&mut ctx, outer[1])?;
+        assert_eq!(bindings.len(), 2);
+        let body = elements(&mut ctx, outer[2])?;
+        assert_eq!(body[0], symbol(&mut ctx, &runtime, "PROGN")?);
+        assert_eq!(body.len(), 4);
+        let first_binding = elements(&mut ctx, bindings[0])?;
+        assert_eq!(body.last().copied(), first_binding.first().copied());
+    }
+    Ok(())
+}
+
+#[test]
+fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "PLACE")?;
+
+    let default_cases = [
+        (expand_incf as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, "+"),
+        (expand_decf, "-"),
+    ];
+    for (expand, operator) in default_cases {
+        let expanded = expand(&mut ctx, &runtime, &registry, &[place])?;
+        let outer = elements(&mut ctx, expanded)?;
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET")?);
+        let bindings = elements(&mut ctx, outer[1])?;
+        let binding = elements(&mut ctx, bindings[0])?;
+        let arithmetic = elements(&mut ctx, binding[1])?;
+        assert_eq!(
+            arithmetic,
+            vec![symbol(&mut ctx, &runtime, operator)?, place, Word::fixnum(1)]
+        );
+    }
+
+    type Expander = fn(
+        &mut ThreadContext,
+        &Runtime,
+        &PlaceRegistry,
+        &[Word],
+    ) -> Result<Word, ObjectError>;
+    let error_cases: [(&str, Expander, Vec<Word>); 7] = [
+        ("SETF", expand_setf, vec![place]),
+        ("PSETF", expand_psetf, vec![place]),
+        ("INCF", expand_incf, Vec::new()),
+        ("DECF", expand_decf, Vec::new()),
+        ("SHIFTF", expand_shiftf, vec![place]),
+        ("ROTATEF", expand_rotatef, Vec::new()),
+        ("REMF", expand_remf, vec![place]),
+    ];
+    for (name, expand, arguments) in error_cases {
+        assert_eq!(
+            expand(&mut ctx, &runtime, &registry, &arguments),
+            Err(ObjectError::TypeError),
+            "{name} malformed arguments"
+        );
+    }
+
+    let unknown_operator = symbol(&mut ctx, &runtime, "UNKNOWN-PLACE")?;
+    let unknown = list(&mut ctx, &runtime, &[unknown_operator, place])?;
+    assert_eq!(
+        expand_setf(&mut ctx, &runtime, &registry, &[unknown, place]),
+        Err(ObjectError::UndefinedFunction)
+    );
+
+    let other_runtime = Runtime::new()?;
+    let other_registry = PlaceRegistry::new(&other_runtime);
+    assert_eq!(
+        expand_setf(&mut ctx, &runtime, &other_registry, &[place, Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn pushnew_and_rotate_expansions_preserve_their_complete_forms() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "PLACE")?;
+    let item = symbol(&mut ctx, &runtime, "ITEM")?;
+    let test = symbol(&mut ctx, &runtime, "TEST")?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let pushnew = expand_push(
+        &mut ctx,
+        &runtime,
+        &registry,
+        &[item, place, test, key],
+        true,
+    )?;
+    let pushnew_parts = elements(&mut ctx, pushnew)?;
+    let pushnew_bindings = elements(&mut ctx, pushnew_parts[1])?;
+    let pushnew_binding = elements(&mut ctx, pushnew_bindings[0])?;
+    let adjoin = elements(&mut ctx, pushnew_binding[1])?;
+    assert_eq!(
+        adjoin,
+        vec![
+            symbol(&mut ctx, &runtime, "ADJOIN")?,
+            item,
+            place,
+            test,
+            key,
+        ]
+    );
+
+    let left = symbol(&mut ctx, &runtime, "LEFT")?;
+    let right = symbol(&mut ctx, &runtime, "RIGHT")?;
+    let shifted = expand_shiftf(
+        &mut ctx,
+        &runtime,
+        &registry,
+        &[left, right, Word::fixnum(9)],
+    )?;
+    let shifted_parts = elements(&mut ctx, shifted)?;
+    assert_eq!(shifted_parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    let shifted_body = elements(&mut ctx, shifted_parts[2])?;
+    assert_eq!(shifted_body[0], symbol(&mut ctx, &runtime, "PROGN")?);
+    assert_eq!(shifted_body.len(), 4);
+
+    let rotated = expand_rotatef(&mut ctx, &runtime, &registry, &[left, right])?;
+    let rotated_parts = elements(&mut ctx, rotated)?;
+    assert_eq!(rotated_parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    let rotated_body = elements(&mut ctx, rotated_parts[2])?;
+    assert_eq!(rotated_body[0], symbol(&mut ctx, &runtime, "PROGN")?);
+    assert_eq!(rotated_body.len(), 4);
+    Ok(())
+}

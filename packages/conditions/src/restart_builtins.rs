@@ -403,3 +403,14 @@ fn register_ncl_ext_builtins(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "coverage tests assert on internal helper results"
+    )]
+
+    include!("tests/restart_builtins.rs");
+}

@@ -171,3 +171,138 @@ pub fn plist_get(ctx: &ThreadContext, plist: Word, key: Word) -> Result<Option<W
     }
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unnecessary_wraps,
+        clippy::unwrap_used,
+        reason = "coverage tests assert on internal helper results"
+    )]
+
+    use super::*;
+    use ncl_object::{Instance, car, cdr, make_cons, make_simple_vector, slot_ref};
+
+    fn default_value(
+        _runtime: std::ptr::NonNull<()>,
+        _ctx: &mut ThreadContext,
+        _function: Word,
+        _arguments: &[Word],
+    ) -> Result<Word, ObjectError> {
+        Ok(Word::fixnum(123))
+    }
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn slot_specs_round_trip_in_positional_order() {
+        let (runtime, mut ctx) = setup();
+        let class =
+            make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::NIL, Word::NIL])
+                .unwrap_or_else(|error| panic!("class: {error:?}"));
+        let specs = [
+            SlotSpec {
+                initarg: Word::fixnum(11),
+                initform: Word::fixnum(21),
+            },
+            SlotSpec {
+                initarg: Word::fixnum(12),
+                initform: Word::NIL,
+            },
+        ];
+        set_slot_specs(&mut ctx, &runtime, class, &specs).unwrap();
+        let read = slot_specs(&ctx, class).unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[0].initarg, Word::fixnum(11));
+        assert_eq!(read[0].initform, Word::fixnum(21));
+        assert_eq!(read[1].initarg, Word::fixnum(12));
+        assert_eq!(read[1].initform, Word::NIL);
+    }
+
+    #[test]
+    fn keyword_and_plist_get_distinguish_match_and_miss() {
+        let (runtime, mut ctx) = setup();
+        let key = keyword(&mut ctx, &runtime, "VALUE").unwrap();
+        let same_key = keyword(&mut ctx, &runtime, "VALUE").unwrap();
+        let other_key = keyword(&mut ctx, &runtime, "OTHER").unwrap();
+        let value_tail = make_cons(&mut ctx, &runtime, Word::fixnum(99), Word::NIL).unwrap();
+        let plist = make_cons(&mut ctx, &runtime, key, value_tail).unwrap();
+        assert_eq!(plist_get(&ctx, plist, same_key), Ok(Some(Word::fixnum(99))));
+        assert_eq!(plist_get(&ctx, plist, other_key), Ok(None));
+        assert_eq!(car(&ctx, plist), Ok(key));
+        assert!(cdr(&ctx, plist).is_ok());
+    }
+
+    #[test]
+    fn instantiate_uses_supplied_values_and_nil_for_missing_slots() {
+        let (runtime, mut ctx) = setup();
+        let class =
+            make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::NIL, Word::NIL])
+                .unwrap_or_else(|error| panic!("class: {error:?}"));
+        let key = keyword(&mut ctx, &runtime, "VALUE").unwrap();
+        set_slot_specs(
+            &mut ctx,
+            &runtime,
+            class,
+            &[
+                SlotSpec {
+                    initarg: key,
+                    initform: Word::NIL,
+                },
+                SlotSpec {
+                    initarg: Word::NIL,
+                    initform: Word::NIL,
+                },
+            ],
+        )
+        .unwrap();
+        let instance = instantiate(&mut ctx, &runtime, class, &[key, Word::fixnum(77)]).unwrap();
+        let instance = Instance::from_word(instance);
+        assert_eq!(slot_ref(&ctx, instance, 0), Ok(Word::fixnum(77)));
+        assert_eq!(slot_ref(&ctx, instance, 1), Ok(Word::NIL));
+    }
+
+    #[test]
+    fn instantiate_invokes_an_initform_for_an_unsupplied_initarg() {
+        let (runtime, mut ctx) = setup();
+        let class =
+            make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::NIL, Word::NIL])
+                .unwrap();
+        let key = keyword(&mut ctx, &runtime, "DEFAULT").unwrap();
+        set_slot_specs(
+            &mut ctx,
+            &runtime,
+            class,
+            &[SlotSpec {
+                initarg: key,
+                initform: Word::fixnum(88),
+            }],
+        )
+        .unwrap();
+        ctx.set_condition_handler_invoker(default_value);
+        ctx.set_evaluator_runtime(std::ptr::NonNull::from(&runtime).as_ptr().cast());
+
+        let instance = instantiate(&mut ctx, &runtime, class, &[]).unwrap();
+        assert_eq!(
+            slot_ref(&ctx, Instance::from_word(instance), 0),
+            Ok(Word::fixnum(123))
+        );
+    }
+
+    #[test]
+    fn plist_get_rejects_an_odd_property_list() {
+        let (runtime, mut ctx) = setup();
+        let key = keyword(&mut ctx, &runtime, "VALUE").unwrap();
+        let malformed = make_cons(&mut ctx, &runtime, key, Word::fixnum(42)).unwrap();
+
+        assert_eq!(plist_get(&ctx, malformed, key), Err(ObjectError::TypeError));
+    }
+}

@@ -360,3 +360,119 @@ impl StandardMethodCombination {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod additional_tests {
+    #![allow(clippy::unwrap_used, reason = "coverage tests assert on domain results")]
+
+    use super::*;
+
+    #[test]
+    fn value_accessors_and_class_redefinition_report_state() {
+        let slot = SlotDefinition::new(SlotId::new(4), Allocation::Class, Some(19));
+        assert_eq!(slot.id(), SlotId::new(4));
+        assert_eq!(slot.allocation(), Allocation::Class);
+        assert_eq!(slot.initarg(), Some(19));
+        assert_eq!(slot.location(), None);
+
+        let mut class = Class::new(ClassId::new(8), Vec::new(), vec![slot]);
+        assert_eq!(class.id(), ClassId::new(8));
+        assert!(class.direct_superclasses().is_empty());
+        assert_eq!(class.version(), 0);
+        class.finalize_inheritance(&[]).unwrap();
+        assert_eq!(class.version(), 1);
+        assert_eq!(class.effective_slots()[0].location(), Some(0));
+        class.redefine(Vec::new());
+        assert_eq!(class.version(), 2);
+        assert!(class.class_precedence_list().is_empty());
+        assert!(class.effective_slots().is_empty());
+    }
+
+    #[test]
+    fn class_finalization_rejects_missing_unfinalized_and_duplicate_inputs() {
+        let mut missing = Class::new(ClassId::new(2), vec![ClassId::new(99)], Vec::new());
+        assert_eq!(
+            missing.finalize_inheritance(&[]),
+            Err(DomainError::UnknownClass)
+        );
+
+        let mut parent = Class::new(ClassId::new(1), Vec::new(), Vec::new());
+        let mut child = Class::new(ClassId::new(2), vec![ClassId::new(1)], Vec::new());
+        assert_eq!(
+            child.finalize_inheritance(&[parent.clone()]),
+            Err(DomainError::UnfinalizedClass)
+        );
+        parent.finalize_inheritance(&[]).unwrap();
+
+        let slot = SlotDefinition::new(SlotId::new(7), Allocation::Instance, None);
+        let mut duplicate = Class::new(
+            ClassId::new(3),
+            vec![ClassId::new(1)],
+            vec![slot, slot],
+        );
+        assert_eq!(
+            duplicate.finalize_inheritance(&[parent]),
+            Err(DomainError::DuplicateSlot)
+        );
+    }
+
+    #[test]
+    fn generic_function_rejects_duplicates_and_missing_primary() {
+        let mut generic = GenericFunction::default();
+        let method = Method::new(
+            MethodId::new(1),
+            vec![Specializer::Class(ClassId::new(1))],
+            MethodQualifier::Before,
+            MethodId::new(10),
+        );
+        assert_eq!(method.id(), MethodId::new(1));
+        assert_eq!(method.specializers(), &[Specializer::Class(ClassId::new(1))]);
+        assert_eq!(method.qualifier(), MethodQualifier::Before);
+        assert_eq!(method.body(), MethodId::new(10));
+        generic.add_method(method).unwrap();
+        assert_eq!(
+            generic.add_method(Method::new(
+                MethodId::new(2),
+                vec![Specializer::Class(ClassId::new(1))],
+                MethodQualifier::Before,
+                MethodId::new(11),
+            )),
+            Err(DomainError::DuplicateMethod)
+        );
+        assert!(generic.find_method(&[], MethodQualifier::Primary).is_none());
+        assert!(!generic.remove_method(MethodId::new(99)));
+        assert_eq!(
+            generic.compute_standard_method_combination(&[DispatchArgument::Class(ClassId::new(1))]),
+            Err(DomainError::MissingPrimaryMethod)
+        );
+    }
+
+    #[test]
+    fn generic_function_filters_arity_and_specializer_kind() {
+        let mut generic = GenericFunction::default();
+        generic
+            .add_method(Method::new(
+                MethodId::new(1),
+                vec![Specializer::Class(ClassId::new(1)), Specializer::Class(ClassId::new(2))],
+                MethodQualifier::Primary,
+                MethodId::new(10),
+            ))
+            .unwrap();
+        generic
+            .add_method(Method::new(
+                MethodId::new(2),
+                vec![Specializer::Eql(EqlValueId::new(3))],
+                MethodQualifier::Primary,
+                MethodId::new(11),
+            ))
+            .unwrap();
+        assert!(generic.applicable_methods(&[ClassId::new(1)]).is_empty());
+        assert!(generic
+            .compute_applicable_methods(&[DispatchArgument::Class(ClassId::new(3))])
+            .is_empty());
+        assert_eq!(
+            generic.compute_applicable_methods(&[DispatchArgument::Eql(EqlValueId::new(3))]),
+            vec![MethodId::new(2)]
+        );
+    }
+}

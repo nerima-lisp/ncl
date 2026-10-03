@@ -265,3 +265,130 @@ fn method_match(
     }
     Ok(Some(score))
 }
+
+#[cfg(test)]
+mod helper_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::similar_names,
+        reason = "coverage tests assert on helper results"
+    )]
+
+    use super::*;
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().expect("runtime");
+        let mut context = ThreadContext::new();
+        context.register(&runtime).expect("context");
+        (runtime, context)
+    }
+
+    fn list<'ctx>(
+        scope: &mut Scope<'ctx>,
+        runtime: &Runtime,
+        words: &[Word],
+    ) -> ncl_object::Handle<'ctx> {
+        let locals = words
+            .iter()
+            .copied()
+            .map(Local::from_word)
+            .collect::<Vec<_>>();
+        let values = scope.root_many(&locals);
+        scope.make_list(runtime, &values).expect("list")
+    }
+
+    fn word<'ctx>(scope: &Scope<'ctx>, handle: ncl_object::Handle<'ctx>) -> Word {
+        scope.get(handle).as_word()
+    }
+
+    #[test]
+    fn list_and_symbol_helpers_validate_object_shapes() -> Result<(), ObjectError> {
+        let (runtime, mut context) = setup();
+        let mut scope = Scope::new(&mut context);
+        let symbol = scope.intern(&runtime, COMMON_LISP, "HELPER")?;
+        let symbol_word = word(&scope, symbol);
+        let proper = list(&mut scope, &runtime, &[symbol_word, Word::fixnum(7)]);
+
+        assert_eq!(form_elements(scope.context(), word(&scope, proper))?.len(), 2);
+        assert_eq!(symbol_name_string(scope.context(), symbol_word)?, "HELPER");
+        assert_eq!(form_elements(scope.context(), Word::fixnum(0)), Err(ObjectError::TypeError));
+        assert_eq!(symbol_name_string(scope.context(), Word::fixnum(0)), Err(ObjectError::TypeError));
+        Ok(())
+    }
+
+    #[test]
+    fn list_construction_and_method_registry_helpers_round_trip() -> Result<(), ObjectError> {
+        let (runtime, mut context) = setup();
+        let mut scope = Scope::new(&mut context);
+        let name = scope.intern(&runtime, COMMON_LISP, "HELPER-GENERIC")?;
+        let slot = scope.intern(&runtime, COMMON_LISP, "VALUE")?;
+        let accessor = scope.intern(&runtime, COMMON_LISP, "VALUE-OF")?;
+        let quoted_slot = quoted(&mut scope, &runtime, slot)?;
+        let quote = scope.intern(&runtime, COMMON_LISP, "QUOTE")?;
+        assert_eq!(car(scope.context(), word(&scope, quoted_slot))?, word(&scope, quote));
+
+        let accessor_form = make_accessor_definition(&mut scope, &runtime, accessor, slot)?;
+        assert_eq!(form_elements(scope.context(), word(&scope, accessor_form))?.len(), 4);
+        let accessor_local = Local::from_word(word(&scope, accessor_form));
+        let accessor_values = scope.root_many(&[accessor_local]);
+        let progn = make_progn(&mut scope, &runtime, &accessor_values)?;
+        assert_eq!(form_elements(scope.context(), word(&scope, progn))?.len(), 2);
+
+        let specializers = scope.root(Local::from_word(Word::NIL));
+        let qualifier = scope.root(Local::from_word(Word::fixnum(METHOD_QUALIFIER_PRIMARY)));
+        let function = scope.root(Local::from_word(Word::fixnum(42)));
+        let entry = method_registry_entry(&mut scope, &runtime, specializers, qualifier, function)?;
+        set_method_registry(&mut scope, &runtime, name, entry)?;
+        assert!(has_method_registry(&mut scope, &runtime, name)?);
+        let registry = method_registry(&mut scope, &runtime, name)?;
+        assert_ne!(word(&scope, registry), Word::NIL);
+        Ok(())
+    }
+
+    #[test]
+    fn method_definition_and_dispatch_helpers_cover_tagged_and_eql_forms() -> Result<(), ObjectError> {
+        let (runtime, mut context) = setup();
+        let mut scope = Scope::new(&mut context);
+        let tag = scope.intern(&runtime, "NCL", "*CLOS-METHOD-DEFINITION*")?;
+        let eql = scope.intern(&runtime, COMMON_LISP, "EQL")?;
+        let parameter = scope.intern(&runtime, COMMON_LISP, "X")?;
+        let tag_word = word(&scope, tag);
+        let parameter_word = word(&scope, parameter);
+        let tagged = list(
+            &mut scope,
+            &runtime,
+            &[tag_word, Word::fixnum(METHOD_QUALIFIER_AFTER), parameter_word],
+        );
+        let (specializers, qualifier) = method_definition_parts(&mut scope, &runtime, tagged)?;
+        assert_eq!(word(&scope, specializers), word(&scope, parameter));
+        assert_eq!(word(&scope, qualifier), Word::fixnum(METHOD_QUALIFIER_AFTER));
+
+        let untagged = list(&mut scope, &runtime, &[parameter_word]);
+        let (_, primary) = method_definition_parts(&mut scope, &runtime, untagged)?;
+        assert_eq!(word(&scope, primary), Word::fixnum(METHOD_QUALIFIER_PRIMARY));
+
+        let eql_symbol_word = word(&scope, eql);
+        let eql_designator = list(&mut scope, &runtime, &[eql_symbol_word, Word::fixnum(9)]);
+        let eql_designator_word = word(&scope, eql_designator);
+        let specializer = list(&mut scope, &runtime, &[parameter_word, eql_designator_word]);
+        let specializer_word = word(&scope, specializer);
+        let specializers = list(&mut scope, &runtime, &[specializer_word]);
+        let specializers_word = word(&scope, specializers);
+        assert_eq!(method_match(scope.context_mut(), &runtime, specializers_word, &[Word::fixnum(9)])?, Some(10_000));
+        assert_eq!(method_match(scope.context_mut(), &runtime, specializers_word, &[Word::fixnum(8)])?, None);
+        assert!(eql_word(scope.context(), Word::fixnum(1), Word::fixnum(1)));
+        assert!(!eql_word(scope.context(), Word::fixnum(1), Word::fixnum(2)));
+        Ok(())
+    }
+
+    #[test]
+    fn class_depth_counts_parent_descriptors() -> Result<(), ObjectError> {
+        let (runtime, mut context) = setup();
+        let root = make_class(&mut context, &runtime, Word::fixnum(1), Word::NIL, Word::NIL, Word::NIL)?;
+        let child = make_class(&mut context, &runtime, Word::fixnum(2), root, Word::NIL, Word::NIL)?;
+        assert_eq!(class_depth(&context, root)?, 0);
+        assert_eq!(class_depth(&context, child)?, 1);
+        assert_eq!(class_depth(&context, Word::fixnum(0)), Err(ObjectError::TypeError));
+        Ok(())
+    }
+}

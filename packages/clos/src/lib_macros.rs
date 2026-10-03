@@ -428,3 +428,13 @@ fn rewrite_method_form<'ctx>(
     }
     scope.make_list(runtime, &rewritten)
 }
+
+#[cfg(test)]
+mod macro_smoke_tests {
+    #![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "coverage tests assert on macro results"
+    )]
+    include!("tests/lib_macros.rs");
+}

@@ -99,11 +99,10 @@ fn package_nickname_cases_round_trip_in_order() {
         for nickname in case.nicknames {
             let value = make_string(&mut ctx, &runtime, &nickname.chars().collect::<Vec<_>>())
                 .expect("nickname");
-            assert_eq!(
+            assert!(
                 package
                     .add_nickname(&mut ctx, &runtime, value)
-                    .expect("add nickname"),
-                true
+                    .expect("add nickname")
             );
         }
 

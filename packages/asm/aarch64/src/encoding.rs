@@ -492,3 +492,7 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::StrD { rt, mem: m } => float_mem(*m, *rt, false),
     }
 }
+
+#[cfg(test)]
+#[path = "tests_encoding.rs"]
+mod tests_encoding;

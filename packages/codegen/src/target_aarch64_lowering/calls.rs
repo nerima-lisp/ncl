@@ -243,14 +243,23 @@ mod tests {
     }
 
     fn assert_encodes(assembler: Assembler) {
-        assert!(
-            assembler
-                .finish()
-                .unwrap_or_else(|error| panic!("AArch64 call encoding: {error:?}"))
-                .bytes
-                .len()
-                > 0
+        let bytes = assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("AArch64 call encoding: {error:?}"))
+            .bytes;
+        assert!(!bytes.is_empty());
+        assert_eq!(bytes.len() % 4, 0);
+    }
+
+    fn assert_first_instruction(bytes: &[u8], instruction: &Inst) {
+        let actual = u32::from_le_bytes(
+            bytes[..4]
+                .try_into()
+                .unwrap_or_else(|_| panic!("complete AArch64 instruction")),
         );
+        let expected = ncl_asm_aarch64::encode(instruction, 0)
+            .unwrap_or_else(|error| panic!("expected AArch64 encoding: {error:?}"));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -272,7 +281,17 @@ mod tests {
             &allocation,
         )
         .unwrap_or_else(|error| panic!("register call: {error:?}"));
-        assert_encodes(assembler);
+        let bytes = assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("register call encoding: {error:?}"))
+            .bytes;
+        assert_first_instruction(
+            &bytes,
+            &Inst::Mov {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(1)),
+            },
+        );
 
         let mut assembler = Assembler::new();
         lower_call(
@@ -282,7 +301,18 @@ mod tests {
             &allocation,
         )
         .unwrap_or_else(|error| panic!("outgoing call: {error:?}"));
-        assert_encodes(assembler);
+        let bytes = assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("outgoing call encoding: {error:?}"))
+            .bytes;
+        assert_eq!(bytes.len() % 4, 0);
+        assert_first_instruction(
+            &bytes,
+            &Inst::Mov {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(1)),
+            },
+        );
     }
 
     #[test]

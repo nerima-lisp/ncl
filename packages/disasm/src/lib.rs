@@ -277,6 +277,43 @@ mod tests {
     }
 
     #[test]
+    fn aarch64_stream_boundaries_and_label_resolution_are_explicit() {
+        assert_eq!(
+            decode(Architecture::Aarch64, &[0, 0, 0], 0x3000),
+            Err(DecodeError::Truncated { address: 0x3000 })
+        );
+        assert_eq!(
+            decode(
+                Architecture::Aarch64,
+                &aarch64_words(&[0xd503_201f, 0xd503_201f]),
+                u64::MAX - 1,
+            ),
+            Err(DecodeError::Invalid {
+                address: u64::MAX - 1,
+                reason: "instruction address overflows address space".into(),
+            })
+        );
+
+        let instructions = vec![
+            super::DecodedInstruction {
+                address: 0x1000,
+                size: 4,
+                bytes: vec![],
+                text: "b".into(),
+                branch_target: Some(0x1004),
+            },
+            super::DecodedInstruction {
+                address: 0x1004,
+                size: 4,
+                bytes: vec![],
+                text: "nop".into(),
+                branch_target: None,
+            },
+        ];
+        assert_eq!(resolve_labels(&instructions), vec![Some("L1".into()), None]);
+    }
+
+    #[test]
     fn aarch64_decodes_direct_branch_and_address_forms() {
         let decoded = decode(
             Architecture::Aarch64,

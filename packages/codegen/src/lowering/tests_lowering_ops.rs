@@ -453,3 +453,50 @@ fn emit_return_writes_the_return_value_and_exact_value_count() {
     expected_one.emit(&Inst::Ret).expect("return");
     assert_eq!(one.bytes(), expected_one.bytes());
 }
+
+#[test]
+fn compare_and_return_bytes_are_checked_against_explicit_templates() {
+    let slots = [(ValueId(0), 0), (ValueId(1), 1), (ValueId(2), 2)];
+    let function = Function {
+        id: ncl_ir::FunctionId(2),
+        name: "exact-lowering-ops".into(),
+        params: Vec::new(),
+        return_types: Vec::new(),
+        blocks: Vec::new(),
+        locals: Vec::new(),
+        constants: Vec::new(),
+        handler_regions: Vec::new(),
+        debug: Vec::new(),
+    };
+    let operation = Op {
+        results: vec![(ValueId(2), ncl_ir::Ty::Word)],
+        kind: OpKind::Compare {
+            op: Compare::Ge,
+            left: ValueId(0),
+            right: ValueId(1),
+        },
+        loc: None,
+    };
+    let mut actual = Assembler::new();
+    lower_op(
+        &mut actual,
+        &operation,
+        &function,
+        &slots,
+        &Abi,
+        FrameLayout::new(0, 3, 0).expect("exact frame"),
+        &mut Vec::new(),
+    )
+    .expect("compare lowering");
+    let mut expected = Assembler::new();
+    for instruction in [
+        Inst::MovRM(Reg::R10, Mem::base(Reg::Rbp, -8)),
+        Inst::MovRM(Reg::R11, Mem::base(Reg::Rbp, -16)),
+        Inst::CmpRR(Reg::R10, Reg::R11),
+        Inst::Setcc(Cond::Ge, Reg::R10),
+        Inst::MovMR(Mem::base(Reg::Rbp, -24), Reg::R10),
+    ] {
+        expected.emit(&instruction).expect("expected compare encoding");
+    }
+    assert_eq!(actual.bytes(), expected.bytes());
+}

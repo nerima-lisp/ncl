@@ -660,3 +660,98 @@ fn move_args_emits_exact_parallel_copies_for_register_and_spill_cycles() {
         non_overlapping_expected.bytes()
     );
 }
+
+#[test]
+fn resultless_operations_and_all_handler_kinds_emit_their_templates() {
+    let function = FunctionBuilder::new(
+        ncl_ir::FunctionId(219),
+        "resultless-operation-templates",
+        Vec::new(),
+        Vec::new(),
+    )
+    .finish();
+    let slots = slots_with_locations(
+        &[
+            (ValueId(0), Location::Register(0)),
+            (ValueId(1), Location::Register(1)),
+        ],
+        0,
+    );
+
+    for (kind, emits_bytes) in [
+        (OpKind::Move { value: ValueId(0) }, true),
+        (
+            OpKind::Convert {
+                op: Convert::WordToI64,
+                value: ValueId(0),
+            },
+            true,
+        ),
+        (OpKind::LoadArg { index: 0 }, false),
+        (OpKind::LoadFunctionObject, false),
+        (
+            OpKind::Compare {
+                op: Compare::Eq,
+                left: ValueId(0),
+                right: ValueId(1),
+            },
+            true,
+        ),
+    ] {
+        let bytes = lower_exact(kind.clone(), None, &function, &slots);
+        assert_eq!(
+            bytes.is_empty(),
+            !emits_bytes,
+            "unexpected resultless operation encoding: {kind:?}"
+        );
+    }
+
+    for region_kind in [
+        ncl_ir::HandlerKind::Catch,
+        ncl_ir::HandlerKind::UnwindProtect,
+        ncl_ir::HandlerKind::Progv,
+    ] {
+        let region = ncl_ir::HandlerRegionId(0);
+        let mut handler_function = FunctionBuilder::new(
+            ncl_ir::FunctionId(220),
+            "handler-operation-templates",
+            Vec::new(),
+            Vec::new(),
+        );
+        handler_function.add_handler_region(ncl_ir::HandlerRegion {
+            id: region,
+            kind: region_kind,
+            protected: vec![ncl_ir::BlockId(0)],
+            handler: ncl_ir::BlockId(0),
+            cleanup: Some(ncl_ir::BlockId(0)),
+            catch_tag: Some(ValueId(0)),
+            binding_targets: vec![ValueId(1)],
+            depth: 1,
+            parent: None,
+        });
+        let handler_function = handler_function.finish();
+        let enter = Op {
+            results: Vec::new(),
+            kind: OpKind::EnterHandler { region },
+            loc: None,
+        };
+        let leave = Op {
+            results: Vec::new(),
+            kind: OpKind::LeaveHandler { region },
+            loc: None,
+        };
+        for op in [&enter, &leave] {
+            let mut assembler = Assembler::new();
+            let call_pc = lower_op(
+                &mut assembler,
+                op,
+                &handler_function,
+                &slots,
+                &X86_64FixtureAbi,
+            )
+            .expect("handler operation lowering");
+            assert!(call_pc.is_some());
+            assert!(!assembler.bytes().is_empty());
+        }
+    }
+}

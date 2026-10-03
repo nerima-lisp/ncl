@@ -17,8 +17,8 @@ pub const REGISTRATION_ORDER: &[&str] = &[
     "ncl-lib-sequences",
     "ncl-lib-strings",
     "ncl-lib-hash-arrays",
-    "ncl-lib-streams",
     "ncl-lib-pathnames",
+    "ncl-lib-streams",
     "ncl-lib-packages",
     "ncl-lib-format",
     "ncl-lib-macros",
@@ -64,8 +64,8 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_lib_strings::register(runtime)?;
     ncl_lib_hash_arrays::register(runtime)?;
     ncl_lib_macros::register(runtime)?;
-    ncl_lib_streams::register(runtime)?;
     ncl_lib_pathnames::register(runtime)?;
+    ncl_lib_streams::register(runtime)?;
     ncl_lib_packages::register(runtime)?;
     ncl_lib_format::register(runtime)?;
     ncl_threads::register(runtime)?;

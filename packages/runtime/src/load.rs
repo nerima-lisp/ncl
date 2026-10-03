@@ -5,10 +5,10 @@ use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FileError, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, car, cdr, classify_object, make_cons, pop_heap_root, push_heap_root,
-    symbol_name, symbol_package,
+    BuiltinPackage, FileError, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
+    ObjectRef, ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable,
+    Runtime as ObjectRuntime, ThreadContext, Word, car, cdr, classify_object, make_cons,
+    pop_heap_root, push_heap_root, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -56,15 +56,23 @@ fn load_with_runtime(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let path_word = args.required(0)?;
-    let ObjectRef::String(_) = classify_object(ctx, path_word) else {
+    let path = if matches!(classify_object(ctx, path_word), ObjectRef::Structure(_)) {
+        let function = object
+            .function(ctx, "COMMON-LISP", "NAMESTRING")
+            .ok_or(ObjectError::UndefinedFunction)?;
+        let function = FunctionObject::try_from(function)?;
+        let namestring = object.call_builtin(ctx, function, &[path_word])?;
+        ncl_compiler_front::form::word_string(ctx, namestring)
+            .map_err(|_| ObjectError::TypeError)?
+    } else if matches!(classify_object(ctx, path_word), ObjectRef::String(_)) {
+        ncl_compiler_front::form::word_string(ctx, path_word).map_err(|_| ObjectError::TypeError)?
+    } else {
         ctx.set_pending_lisp_error(LispError::TypeError {
             datum: path_word,
             expected: ObjectType::String,
         });
         return Err(ObjectError::TypeError);
     };
-    let path = ncl_compiler_front::form::word_string(ctx, path_word)
-        .map_err(|_| ObjectError::TypeError)?;
     let mut if_missing = true;
     for index in (1..args.len()).step_by(2) {
         let keyword = args.get(index).ok_or(ObjectError::Layout)?;
@@ -147,7 +155,7 @@ pub fn keyword_name(
 
 const LOAD_PATH: &[Parameter] = &[Parameter {
     name: BuiltinName::new("PATHNAME"),
-    ty: ParameterType::StringDesignator,
+    ty: ParameterType::Any,
 }];
 const LOAD_REST: Parameter = Parameter {
     name: BuiltinName::new("OPTIONS"),

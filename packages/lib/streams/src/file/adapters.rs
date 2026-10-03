@@ -8,6 +8,7 @@ use super::{
 };
 use ncl_object::{
     FunctionObject, make_simple_vector, make_stream, simple_vector_length, stream_direction,
+    string_length, string_ref,
 };
 use std::fs;
 use std::io::{IsTerminal, Read};
@@ -268,11 +269,28 @@ pub fn file_position_adapter(
 
 pub fn file_length_adapter(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let state = stream_state(ctx, Stream::from_word(args.required(0)?))?;
+    let value = args.required(0)?;
+    if matches!(classify_object(ctx, value), ObjectRef::Structure(_)) {
+        let function = runtime
+            .function(ctx, "COMMON-LISP", "NAMESTRING")
+            .ok_or(ObjectError::UndefinedFunction)?;
+        let function = FunctionObject::try_from(function)?;
+        let namestring = runtime.call_builtin(ctx, function, &[value])?;
+        let path = (0..string_length(ctx, namestring)?)
+            .map(|index| string_ref(ctx, namestring, index))
+            .collect::<Result<String, _>>()?;
+        let length: u64 = fs::metadata(path)
+            .map_err(|_| ObjectError::TypeError)?
+            .len();
+        return Ok(Word::fixnum(
+            i64::try_from(length).map_err(|_| ObjectError::Layout)?,
+        ));
+    }
+    let state = stream_state(ctx, Stream::from_word(value))?;
     ensure_open(ctx, state)?;
     let kind = state_kind(ctx, state)?;
     let length = if kind == StreamKind::FileOutput || kind == StreamKind::FileIo {

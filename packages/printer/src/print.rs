@@ -3,9 +3,9 @@
 use std::collections::HashSet;
 
 use ncl_object::{
-    Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object,
-    make_string, simple_vector_length, simple_vector_ref, string_length, string_ref,
-    structure_layout, structure_ref, symbol_name,
+    Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word, car, cdr,
+    classify_object, make_string, simple_vector_length, simple_vector_ref, string_length,
+    string_ref, structure_layout, structure_ref, symbol_name,
 };
 
 use crate::circle::{CircleLabel, CircleState, labelable};
@@ -255,6 +255,15 @@ impl<'a> Printer<'a> {
             return self.print_opaque("STRUCTURE", object);
         };
         let name = simple_vector_ref(&*self.ctx, class, 0)?;
+        if self
+            .runtime
+            .structure_class_name(&*self.ctx, name)
+            .ok()
+            .as_deref()
+            == Some("COMMON-LISP::PATHNAME")
+        {
+            return self.print_pathname(object);
+        }
         self.write_str("#S(")?;
         let qualified_name = self.runtime.structure_class_name(&*self.ctx, name).ok();
         if let Some(qualified_name) = qualified_name {
@@ -280,6 +289,44 @@ impl<'a> Printer<'a> {
             self.print(structure_ref(&*self.ctx, object, index)?)?;
         }
         self.write_char(')')
+    }
+
+    fn print_pathname(&mut self, object: Word) -> Result<(), PrintError> {
+        self.write_str("#P\"")?;
+        let directory = structure_ref(&*self.ctx, object, 2)?;
+        let mut cursor = directory;
+        while cursor != Word::NIL {
+            let component = car(&*self.ctx, cursor)?;
+            let text = if let Ok(name) = symbol_name(&*self.ctx, component) {
+                self.string_text(name)?
+            } else {
+                self.string_text(component)?
+            };
+            if text == "ABSOLUTE" {
+                self.write_char('/')?;
+            } else if text != "RELATIVE" {
+                self.write_str(&text)?;
+                self.write_char('/')?;
+            }
+            cursor = cdr(&*self.ctx, cursor)?;
+        }
+        for (index, separator) in [(3, '\0'), (4, '.')] {
+            let component = structure_ref(&*self.ctx, object, index)?;
+            if component == Word::NIL {
+                continue;
+            }
+            if separator != '\0' {
+                self.write_char(separator)?;
+            }
+            let text = self.string_text(component)?;
+            for character in text.chars() {
+                if character == '"' || character == '\\' {
+                    self.write_char('\\')?;
+                }
+                self.write_char(character)?;
+            }
+        }
+        self.write_char('"')
     }
 }
 

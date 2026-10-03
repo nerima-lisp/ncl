@@ -6,7 +6,9 @@ use super::{
     state_kind, stream_element_type, stream_external_format, stream_from_args, stream_state,
     symbol_text, text,
 };
-use ncl_object::{make_simple_vector, make_stream, simple_vector_length, stream_direction};
+use ncl_object::{
+    FunctionObject, make_simple_vector, make_stream, simple_vector_length, stream_direction,
+};
 use std::fs;
 use std::io::{IsTerminal, Read};
 
@@ -25,8 +27,8 @@ pub fn open_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let path = text(ctx, args.required(0)?)?;
     let path_word = args.required(0)?;
+    let path = open_path(ctx, runtime, path_word)?;
     let (direction_word, direction) = direction_word(ctx, args)?;
     let exists = fs::metadata(&path).is_ok();
     let format = format_word(ctx, args)?;
@@ -62,6 +64,22 @@ pub fn open_adapter(
         );
     }
     Err(ObjectError::TypeError)
+}
+
+fn open_path(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    designator: Word,
+) -> Result<String, ObjectError> {
+    if let Ok(path) = text(ctx, designator) {
+        return Ok(path);
+    }
+    let namestring = runtime
+        .function(ctx, "COMMON-LISP", "NAMESTRING")
+        .ok_or(ObjectError::TypeError)
+        .and_then(|word| FunctionObject::try_from(word).map_err(|_| ObjectError::TypeError))?;
+    let pathname = runtime.call_builtin(ctx, namestring, &[designator])?;
+    text(ctx, pathname)
 }
 
 fn open_input_adapter(

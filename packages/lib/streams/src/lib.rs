@@ -53,3 +53,7 @@ const STRING_PARAMETERS: &[ncl_object::Parameter] = &[
 ];
 
 pub use registration::register;
+
+#[cfg(test)]
+#[path = "tests/coverage.rs"]
+mod coverage_tests;

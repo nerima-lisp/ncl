@@ -19,3 +19,7 @@ impl Display for ParseError {
 impl Error for ParseError {}
 
 pub use parser::parse;
+
+#[cfg(test)]
+#[path = "text/tests/coverage.rs"]
+mod tests;

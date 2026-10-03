@@ -133,6 +133,46 @@ fn private_elf_writer_round_trip_contains_symbols_and_sections() {
     );
     assert!(bytes.windows(5).any(|window| window == b"entry"));
 }
+#[test]
+fn generic_sections_map_to_expected_elf_kinds_and_payloads() {
+    let sections = [
+        Section {
+            id: SectionId(1),
+            name: ".text".into(),
+            bytes: vec![1],
+        },
+        Section {
+            id: SectionId(2),
+            name: ".ncl".into(),
+            bytes: vec![2],
+        },
+        Section {
+            id: SectionId(3),
+            name: ".rodata".into(),
+            bytes: vec![3],
+        },
+    ];
+    assert_eq!(
+        sections_from_generic(&sections),
+        vec![
+            ElfSection {
+                id: SectionId(1),
+                kind: ElfSectionKind::Text,
+                bytes: vec![1],
+            },
+            ElfSection {
+                id: SectionId(2),
+                kind: ElfSectionKind::Metadata,
+                bytes: vec![2],
+            },
+            ElfSection {
+                id: SectionId(3),
+                kind: ElfSectionKind::Rodata,
+                bytes: vec![3],
+            },
+        ]
+    );
+}
 
 #[test]
 fn private_elf_validator_rejects_bad_section_table_metadata() {

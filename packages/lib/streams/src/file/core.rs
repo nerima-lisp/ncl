@@ -163,3 +163,129 @@ pub fn make_file_stream(
         },
     )
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::items_after_test_module,
+    clippy::too_many_lines
+)]
+mod tests {
+    use super::*;
+    use ncl_object::{Package, make_string};
+
+    fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
+        let package = runtime
+            .ensure_package(ctx, "KEYWORD")
+            .expect("keyword package");
+        Package::from_word(package)
+            .intern(ctx, runtime, name)
+            .expect("keyword symbol")
+            .0
+    }
+
+    #[test]
+    fn options_and_policies_accept_supported_values_and_reject_invalid_values() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let if_exists = symbol(&mut ctx, &runtime, "IF-EXISTS");
+        let if_missing = symbol(&mut ctx, &runtime, "IF-DOES-NOT-EXIST");
+        let direction = symbol(&mut ctx, &runtime, "DIRECTION");
+        let external = symbol(&mut ctx, &runtime, "EXTERNAL-FORMAT");
+        let values = [
+            symbol(&mut ctx, &runtime, "ERROR"),
+            symbol(&mut ctx, &runtime, "NIL"),
+            symbol(&mut ctx, &runtime, "APPEND"),
+            symbol(&mut ctx, &runtime, "OVERWRITE"),
+            symbol(&mut ctx, &runtime, "SUPERSEDE"),
+        ];
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, values[0]])),
+            Ok(ExistsPolicy::Error)
+        );
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, values[1]])),
+            Ok(ExistsPolicy::Nil)
+        );
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, values[2]])),
+            Ok(ExistsPolicy::Append)
+        );
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, values[3]])),
+            Ok(ExistsPolicy::Overwrite)
+        );
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, values[4]])),
+            Ok(ExistsPolicy::Supersede)
+        );
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[])),
+            Ok(ExistsPolicy::Supersede)
+        );
+        let invalid = symbol(&mut ctx, &runtime, "UNKNOWN");
+        assert_eq!(
+            exists_policy(&ctx, &BuiltinArgs::new(&[Word::NIL, if_exists, invalid])),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            missing_policy(&ctx, &BuiltinArgs::new(&[]), MissingPolicy::Create),
+            Ok(MissingPolicy::Create)
+        );
+        assert_eq!(
+            missing_policy(
+                &ctx,
+                &BuiltinArgs::new(&[Word::NIL, if_missing, values[0]]),
+                MissingPolicy::Nil
+            ),
+            Ok(MissingPolicy::Error)
+        );
+        assert_eq!(
+            missing_policy(
+                &ctx,
+                &BuiltinArgs::new(&[Word::NIL, if_missing, values[1]]),
+                MissingPolicy::Error
+            ),
+            Ok(MissingPolicy::Nil)
+        );
+        let create = symbol(&mut ctx, &runtime, "CREATE");
+        assert_eq!(
+            missing_policy(
+                &ctx,
+                &BuiltinArgs::new(&[Word::NIL, if_missing, create]),
+                MissingPolicy::Error
+            ),
+            Ok(MissingPolicy::Create)
+        );
+        assert_eq!(
+            missing_policy(
+                &ctx,
+                &BuiltinArgs::new(&[Word::NIL, if_missing, invalid]),
+                MissingPolicy::Error
+            ),
+            Err(ObjectError::TypeError)
+        );
+        let direction_args = [Word::NIL, direction, symbol(&mut ctx, &runtime, "IO")];
+        assert_eq!(
+            direction_word(&ctx, &BuiltinArgs::new(&direction_args))
+                .expect("direction")
+                .1,
+            "IO"
+        );
+        assert_eq!(
+            direction_word(&ctx, &BuiltinArgs::new(&[]))
+                .expect("default")
+                .1,
+            "INPUT"
+        );
+        let format_args = [Word::NIL, external, Word::fixnum(7)];
+        assert_eq!(
+            format_word(&ctx, &BuiltinArgs::new(&format_args)),
+            Ok(Word::fixnum(7))
+        );
+        assert_eq!(format_word(&ctx, &BuiltinArgs::new(&[])), Ok(Word::NIL));
+        let text_value = make_string(&mut ctx, &runtime, &['a', 'b']).expect("string");
+        assert_eq!(text(&ctx, text_value).expect("text"), "ab");
+    }
+}

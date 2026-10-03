@@ -1,7 +1,7 @@
 use crate::{ObjectError, RelocKind, Relocation, Section, SectionId, SymbolRef};
 
 #[cfg(test)]
-#[path = "elf_coverage_tests.rs"]
+#[path = "tests/elf.rs"]
 mod coverage_tests;
 
 /// ELF machine architecture.

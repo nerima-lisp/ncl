@@ -66,6 +66,79 @@ fn bounds(
     Ok((start, end))
 }
 
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+    use ncl_object::{Package, make_string};
+
+    #[test]
+    fn bounds_support_numeric_and_keyword_ranges() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let string = make_string(&mut ctx, &runtime, &['a', 'b', 'c']).expect("string");
+        let keyword = runtime
+            .ensure_package(&mut ctx, "KEYWORD")
+            .expect("keyword");
+        let package = Package::from_word(keyword);
+        let start = package
+            .intern(&mut ctx, &runtime, "START")
+            .expect("start")
+            .0;
+        let end = package.intern(&mut ctx, &runtime, "END").expect("end").0;
+        let unknown = package
+            .intern(&mut ctx, &runtime, "UNKNOWN")
+            .expect("unknown")
+            .0;
+        let length = string_length(&ctx, string).expect("length");
+        assert_eq!(
+            bounds(
+                &ctx,
+                &runtime,
+                &BuiltinArgs::new(&[Word::fixnum(1), Word::fixnum(3)]),
+                0,
+                length
+            ),
+            Ok((1, 3))
+        );
+        assert_eq!(
+            bounds(
+                &ctx,
+                &runtime,
+                &BuiltinArgs::new(&[start, Word::fixnum(1), end, Word::fixnum(2)]),
+                0,
+                length
+            ),
+            Ok((1, 2))
+        );
+        assert_eq!(
+            bounds(
+                &ctx,
+                &runtime,
+                &BuiltinArgs::new(&[Word::fixnum(2), Word::fixnum(1)]),
+                0,
+                length
+            ),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            bounds(
+                &ctx,
+                &runtime,
+                &BuiltinArgs::new(&[unknown, Word::fixnum(1)]),
+                0,
+                length
+            ),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            bounds(&ctx, &runtime, &BuiltinArgs::new(&[start]), 0, length),
+            Err(ObjectError::TypeError)
+        );
+    }
+}
+
 pub fn write_string_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

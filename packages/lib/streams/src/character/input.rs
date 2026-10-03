@@ -150,6 +150,39 @@ const fn is_peek_whitespace(character: char) -> bool {
     matches!(character, ' ' | '\t' | '\n' | '\x0c' | '\r')
 }
 
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn peek_modes_and_whitespace_classification_are_exact() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        assert!(matches!(
+            classify_peek_type(&ctx, Word::NIL),
+            Ok(PeekMode::Next)
+        ));
+        assert!(matches!(
+            classify_peek_type(&ctx, Word::TRUE),
+            Ok(PeekMode::NonWhitespace)
+        ));
+        assert!(matches!(
+            classify_peek_type(&ctx, Word::character(u32::from('x'))),
+            Ok(PeekMode::Character('x'))
+        ));
+        assert!(matches!(
+            classify_peek_type(&ctx, Word::fixnum(1)),
+            Err(ObjectError::TypeError)
+        ));
+        for character in [' ', '\t', '\n', '\x0c', '\r'] {
+            assert!(is_peek_whitespace(character));
+        }
+        assert!(!is_peek_whitespace('x'));
+    }
+}
+
 fn peek_until(
     ctx: &mut ThreadContext,
     stream: Stream,

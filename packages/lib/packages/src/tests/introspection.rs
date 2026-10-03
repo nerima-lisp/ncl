@@ -1,6 +1,20 @@
 use super::*;
 use ncl_object::FunctionObject;
 
+fn call(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = FunctionObject::try_from(
+        runtime
+            .function(ctx, "COMMON-LISP", name)
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    runtime.call_builtin(ctx, function, args)
+}
+
 #[test]
 fn introspection_and_mutation_round_trip() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -344,5 +358,102 @@ fn package_local_nickname_resolution_survives_gc_stress() -> Result<(), ObjectEr
     assert!(ncl_object::pop_root(&mut ctx, nickname_token));
     assert!(ncl_object::pop_root(&mut ctx, target_token));
     assert!(ncl_object::pop_root(&mut ctx, owner_token));
+    Ok(())
+}
+
+#[test]
+fn package_builtins_cover_designators_and_mutations() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let package = runtime.ensure_package(&mut ctx, "N25-PACKAGE-COVERAGE")?;
+    let other = runtime.ensure_package(&mut ctx, "N25-PACKAGE-OTHER")?;
+    let package_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            'N', '2', '5', '-', 'P', 'A', 'C', 'K', 'A', 'G', 'E', '-', 'C', 'O', 'V', 'E', 'R',
+            'A', 'G', 'E',
+        ],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "FIND-PACKAGE", &[package_name])?,
+        package
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FIND-PACKAGE", &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PACKAGEP", &[package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PACKAGEP", &[Word::NIL])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PACKAGE-NICKNAMES", &[package])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PACKAGE-SHADOWING-SYMBOLS", &[package])?,
+        Word::NIL
+    );
+
+    let name = ncl_object::make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])?;
+    let symbol = call(&runtime, &mut ctx, "INTERN", &[name, package])?;
+    let symbols = ncl_object::make_cons(&mut ctx, &runtime, symbol, Word::NIL)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "EXPORT", &[symbols, package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "UNEXPORT", &[symbols, package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "IMPORT", &[symbols, package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "UNINTERN", &[name, package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "UNINTERN", &[name, package])?,
+        Word::NIL
+    );
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "USE-PACKAGE", &[other, package])?,
+        Word::TRUE
+    );
+    let used = call(&runtime, &mut ctx, "PACKAGE-USE-LIST", &[package])?;
+    assert_eq!(list_items(&ctx, used)?, vec![other]);
+    assert_eq!(
+        call(&runtime, &mut ctx, "UNUSE-PACKAGE", &[other, package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "UNUSE-PACKAGE", &[other, package])?,
+        Word::NIL
+    );
+
+    let new_name =
+        ncl_object::make_string(&mut ctx, &runtime, &['R', 'E', 'N', 'A', 'M', 'E', 'D'])?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "RENAME-PACKAGE", &[package, new_name])?,
+        package
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "DELETE-PACKAGE", &[package])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "DELETE-PACKAGE", &[package])?,
+        Word::NIL
+    );
     Ok(())
 }

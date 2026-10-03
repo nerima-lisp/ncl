@@ -305,6 +305,7 @@ fn rejects_unsupported_literals_and_missing_packages() {
     for literal in [
         Literal::Array {
             dimensions: vec![1],
+            element_type: ncl_object::ArrayElementType::T,
             elements: vec![Literal::Nil],
         },
         Literal::BitVector(vec![true]),

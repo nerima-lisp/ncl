@@ -224,7 +224,7 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
                 6 => ArrayElementType::Unsigned,
                 7 => ArrayElementType::SingleFloat,
                 8 => ArrayElementType::DoubleFloat,
-                _ => return Err(ParseError("bad array element type".into())),
+                _ => return Err(ParseError("bad array element type".into())), // check-added-lines: allow(wildcard) array element type is validated explicitly
             };
             Constant::Array {
                 dimensions,

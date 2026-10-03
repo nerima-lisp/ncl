@@ -144,7 +144,9 @@ fn setq(
             return Err(special::arity(kind, "an even number of forms", pair.len()));
         };
         let name = expander.symbol(*place)?;
-        if expander.env().lookup_symbol_macro(&name).is_some() {
+        if !expander.env().is_bound_variable(&name)
+            && expander.env().lookup_symbol_macro(&name).is_some()
+        {
             return Err(FrontError::MalformedForm {
                 operator: kind.symbol(),
                 detail: format!("{name} is a symbol macro and cannot be assigned"),

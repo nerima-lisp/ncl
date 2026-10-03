@@ -141,6 +141,11 @@ const PROBES: &[Probe] = &[
         expected: "#(1 2 3 4)",
     },
     Probe {
+        name: "array-literal-rank-two",
+        source: "(aref #2A((1 2) (3 4)) 1 0)",
+        expected: "3",
+    },
+    Probe {
         name: "backquote-in-defmacro-body",
         source: "(progn (defmacro my-add (a b) `(+ ,a ,b)) (my-add 1 2))",
         expected: "3",
@@ -208,6 +213,11 @@ const PROBES: &[Probe] = &[
         name: "macrolet-shadows-global",
         source: "(progn (defmacro shadowed () 1) (macrolet ((shadowed () 2)) (shadowed)))",
         expected: "2",
+    },
+    Probe {
+        name: "symbol-macrolet-respects-lexical-shadowing",
+        source: "(symbol-macrolet ((x 7)) (list x (let ((x 2)) x)))",
+        expected: "(7 2)",
     },
     // B7: ECASE/CCASE signal a type-error on no match (was: silently NIL).
     Probe {

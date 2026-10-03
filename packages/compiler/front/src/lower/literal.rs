@@ -54,7 +54,11 @@ fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Cons
         | Literal::Character(_)
         | Literal::String(_)
         | Literal::Array { .. }
-        | Literal::BitVector(_) => unreachable!(),
+        | Literal::BitVector(_) => {
+            return Err(LowerError::Unsupported {
+                form: "quoted structure",
+            });
+        }
     };
     let elements = children
         .into_iter()
@@ -114,7 +118,8 @@ fn array_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Constant
                     .map(|bit| Literal::fixnum(i64::from(*bit)))
                     .collect(),
             ),
-            _ => {
+            _ => { // check-added-lines: allow(wildcard) only array literals reach this helper
+                // check-added-lines: allow(unsupported) array-like literal fallback
                 return Err(LowerError::Unsupported {
                     form: "quoted structure",
                 });

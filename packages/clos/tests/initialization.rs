@@ -400,6 +400,50 @@ fn make_instance_resolves_symbol_classes_and_applies_slot_defaults() {
 }
 
 #[test]
+fn make_instance_uses_slot_name_when_initarg_is_nil_and_accepts_short_descriptors() {
+    let (runtime, mut ctx) = setup();
+    let named_slot = Word::fixnum(306);
+    let short_slot = Word::fixnum(307);
+    let named_descriptor =
+        make_simple_vector(&mut ctx, &runtime, &[named_slot, Word::NIL]).unwrap();
+    let short_descriptor = make_simple_vector(&mut ctx, &runtime, &[short_slot]).unwrap();
+    let slots =
+        make_simple_vector(&mut ctx, &runtime, &[named_descriptor, short_descriptor]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(308),
+        Word::NIL,
+        slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let instance = runtime
+        .call_builtin(
+            &mut ctx,
+            make,
+            &[
+                class,
+                named_slot,
+                Word::fixnum(309),
+                short_slot,
+                Word::fixnum(310),
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::fixnum(309))
+    );
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 1),
+        Ok(Word::fixnum(310))
+    );
+}
+
+#[test]
 fn make_instance_accepts_registered_class_vector_designator() {
     let (runtime, mut ctx) = setup();
     let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
@@ -481,6 +525,17 @@ fn make_instance_and_initialize_instance_reject_odd_initargs() {
     let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
     assert_eq!(
         runtime.call_builtin(&mut ctx, initialize, &[instance, Word::fixnum(137)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn initialize_instance_rejects_non_instance_with_exact_error() {
+    let (runtime, mut ctx) = setup();
+    let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, initialize, &[Word::NIL]),
         Err(ncl_object::ObjectError::TypeError)
     );
 }

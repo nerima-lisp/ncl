@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, car, cdr, make_string,
+    ArrayElementType, FunctionObject, ObjectError, Runtime, ThreadContext, Word, car, cdr,
+    make_string,
 };
 
 fn call(
@@ -12,6 +13,19 @@ fn call(
 ) -> Result<Word, ObjectError> {
     let function = runtime
         .function(ctx, "COMMON-LISP", name)
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .ok_or(ObjectError::UndefinedFunction)?;
+    runtime.call_builtin(ctx, function, args)
+}
+
+fn call_ext(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = runtime
+        .function(ctx, "NCL-EXT", name)
         .and_then(|word| FunctionObject::try_from(word).ok())
         .ok_or(ObjectError::UndefinedFunction)?;
     runtime.call_builtin(ctx, function, args)
@@ -179,6 +193,71 @@ fn make_array_accepts_string_and_simple_vector_initial_contents() -> Result<(), 
     assert_eq!(
         call(&runtime, &mut ctx, "AREF", &[values, Word::fixnum(1)])?,
         Word::fixnum(8)
+    );
+    Ok(())
+}
+
+#[test]
+fn bit_setters_cover_zero_values_and_non_bit_type_errors() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let bits = ncl_object::make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(1)],
+    )?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "SBIT",
+            &[bits, Word::fixnum(0), Word::fixnum(0)]
+        )?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SBIT", &[bits, Word::fixnum(0)])?,
+        Word::fixnum(0)
+    );
+
+    let general = ncl_object::make_array(
+        &mut ctx,
+        &runtime,
+        &[1],
+        ncl_object::ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "SBIT",
+            &[general, Word::fixnum(0), Word::fixnum(1)]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[Word::fixnum(7)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call_ext(&runtime, &mut ctx, "AREF-SET", &[general]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call_ext(
+            &runtime,
+            &mut ctx,
+            "AREF-SET",
+            &[general, Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
     );
     Ok(())
 }

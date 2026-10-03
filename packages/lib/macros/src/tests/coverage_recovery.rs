@@ -176,6 +176,38 @@ fn control_macro_expanders_cover_typecase_defaults_and_malformed_inputs() -> Res
 }
 
 #[test]
+fn control_boolean_and_cond_expanders_cover_empty_and_short_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let and_name = named(&mut ctx, &runtime, "AND")?;
+    let or_name = named(&mut ctx, &runtime, "OR")?;
+    let cond_name = named(&mut ctx, &runtime, "COND")?;
+    let value = named(&mut ctx, &runtime, "VALUE")?;
+    let empty_and = list_of(&mut ctx, &runtime, &[and_name])?;
+    let true_word = call_macro(&runtime, &mut ctx, "AND", empty_and)?;
+    assert_eq!(true_word, Word::TRUE);
+    let empty_or = list_of(&mut ctx, &runtime, &[or_name])?;
+    let false_word = call_macro(&runtime, &mut ctx, "OR", empty_or)?;
+    assert_eq!(false_word, Word::NIL);
+    let single_and_form = list_of(&mut ctx, &runtime, &[and_name, value])?;
+    let single_and = call_macro(&runtime, &mut ctx, "AND", single_and_form)?;
+    assert_eq!(single_and, value);
+    let single_or_form = list_of(&mut ctx, &runtime, &[or_name, value])?;
+    let single_or = call_macro(&runtime, &mut ctx, "OR", single_or_form)?;
+    assert_eq!(single_or, value);
+    let empty_cond_form = list_of(&mut ctx, &runtime, &[cond_name])?;
+    let empty_cond = call_macro(&runtime, &mut ctx, "COND", empty_cond_form)?;
+    assert_eq!(empty_cond, Word::NIL);
+    let clause = list_of(&mut ctx, &runtime, &[value])?;
+    let one_cond_form = list_of(&mut ctx, &runtime, &[cond_name, clause])?;
+    let one_cond = call_macro(&runtime, &mut ctx, "COND", one_cond_form)?;
+    let parts = elements(&mut ctx, one_cond)?;
+    assert_eq!(parts[0], named(&mut ctx, &runtime, "IF")?);
+    assert_eq!(parts[1], value);
+    assert_eq!(parts[2], value);
+    Ok(())
+}
+
+#[test]
 fn define_condition_expands_slots_accessors_and_report_option() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = symbol(&mut ctx, &runtime, "MY-CONDITION")?;

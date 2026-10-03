@@ -490,6 +490,9 @@ fn setf_rotation_matrix_preserves_sources_and_emits_complete_shapes() -> Result<
 #[test]
 fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Result<(), ObjectError>
 {
+    type Expander =
+        fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>;
+
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
@@ -529,8 +532,6 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
         );
     }
 
-    type Expander =
-        fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>;
     let error_cases: [(&str, Expander, Vec<Word>); 7] = [
         ("SETF", expand_setf, vec![place]),
         ("PSETF", expand_psetf, vec![place]),

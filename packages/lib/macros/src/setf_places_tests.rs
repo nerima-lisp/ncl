@@ -77,13 +77,13 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
 #[test]
 fn registered_place_expanders_emit_their_concrete_access_and_store_operators()
 -> Result<(), ObjectError> {
+    type Expander = fn(&mut ThreadContext, &Runtime, &[Word]) -> Result<SetfExpansion, ObjectError>;
+
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     registry_with_builtins(&runtime, &mut ctx)?;
     let target = symbol(&mut ctx, &runtime, "TARGET")?;
     let index = Word::fixnum(1);
-    type Expander = fn(&mut ThreadContext, &Runtime, &[Word]) -> Result<SetfExpansion, ObjectError>;
-
     let cases: [(&str, Expander, Vec<Word>, &str, &str); 9] = [
         ("CAR", car_place, vec![target], "CAR", "PROGN"),
         ("CDR", cdr_place, vec![target], "CDR", "PROGN"),

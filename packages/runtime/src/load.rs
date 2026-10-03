@@ -8,7 +8,7 @@ use ncl_object::{
     BuiltinPackage, FileError, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
     ObjectRef, ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable,
     Runtime as ObjectRuntime, ThreadContext, Word, car, cdr, classify_object, make_cons,
-    pop_heap_root, push_heap_root, symbol_name, symbol_package,
+    pop_heap_root, push_heap_root, set_symbol_value, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -56,6 +56,7 @@ fn load_with_runtime(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let path_word = args.required(0)?;
+    let pathname = crate::pathname_binding::pathname_from_designator(ctx, object, path_word)?;
     let path = if matches!(classify_object(ctx, path_word), ObjectRef::Structure(_)) {
         let function = object
             .function(ctx, "COMMON-LISP", "NAMESTRING")
@@ -99,7 +100,11 @@ fn load_with_runtime(
             }
         }
     }
-    match file(runtime, Path::new(&path)) {
+    let (variable, previous) =
+        crate::pathname_binding::bind_pathname_variable(ctx, object, "*LOAD-PATHNAME*", pathname)?;
+    let result = file(runtime, Path::new(&path));
+    set_symbol_value(ctx, variable, previous)?;
+    match result {
         Ok(value) => {
             values.set(&[value]);
             Ok(value)

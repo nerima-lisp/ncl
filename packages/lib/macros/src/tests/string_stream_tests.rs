@@ -45,6 +45,33 @@ fn contains_word(ctx: &mut ThreadContext, form: Word, needle: Word) -> Result<bo
     }
 }
 
+fn contains_operator(
+    ctx: &mut ThreadContext,
+    form: Word,
+    operator_name: &str,
+) -> Result<bool, ObjectError> {
+    let Ok(parts) = elements(ctx, form) else {
+        return Ok(false);
+    };
+    if let Some(operator) = parts.first().copied()
+        && let ncl_object::ObjectRef::Symbol(operator) = ncl_object::classify_object(ctx, operator)
+    {
+        let name = ncl_object::symbol_name(ctx, operator)?;
+        let name = (0..ncl_object::string_length(ctx, name)?)
+            .map(|index| ncl_object::string_ref(ctx, name, index))
+            .collect::<std::result::Result<String, _>>()?;
+        if name == operator_name {
+            return Ok(true);
+        }
+    }
+    for part in parts {
+        if contains_operator(ctx, part, operator_name)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[test]
 fn string_stream_macros_expand_to_stream_builtin_forms() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -177,7 +204,12 @@ fn input_stream_macro_allows_unknown_keywords_with_allow_other_keys() -> Result<
     )?;
     let input_form = list(&mut ctx, &runtime, &[input, input_spec, body])?;
 
-    assert!(expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", input_form).is_ok());
+    let expansion = expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", input_form)?;
+    assert!(contains_operator(
+        &mut ctx,
+        expansion,
+        "MAKE-STRING-INPUT-STREAM"
+    )?);
     assert_eq!(ctx.take_pending_lisp_error(), None);
     Ok(())
 }
@@ -323,5 +355,207 @@ fn input_stream_macro_handles_end_index_and_invalid_keyword_arguments() -> Resul
         ),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn output_stream_macro_expands_initial_string_and_element_type_options() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let macro_name = symbol(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let initial = ncl_object::make_string(&mut ctx, &runtime, &['a'])?;
+    let character = symbol(&mut ctx, &runtime, "CHARACTER")?;
+    let quote = symbol(&mut ctx, &runtime, "QUOTE")?;
+    let element_type = list(&mut ctx, &runtime, &[quote, character])?;
+    let allow_other_keys = keyword(&mut ctx, &runtime, "ALLOW-OTHER-KEYS")?;
+    let unknown = keyword(&mut ctx, &runtime, "UNUSED")?;
+    let element_type_keyword = keyword(&mut ctx, &runtime, "ELEMENT-TYPE")?;
+    let write = symbol(&mut ctx, &runtime, "WRITE-STRING")?;
+    let body = list(&mut ctx, &runtime, &[write, initial, stream])?;
+    let spec = list(
+        &mut ctx,
+        &runtime,
+        &[
+            stream,
+            initial,
+            element_type_keyword,
+            element_type,
+            unknown,
+            Word::TRUE,
+            allow_other_keys,
+            Word::TRUE,
+        ],
+    )?;
+    let form = list(&mut ctx, &runtime, &[macro_name, spec, body])?;
+    let expansion = expand(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING", form)?;
+    assert!(contains_operator(&mut ctx, expansion, "WRITE-STRING")?);
+    assert!(contains_operator(
+        &mut ctx,
+        expansion,
+        "GET-OUTPUT-STREAM-STRING"
+    )?);
+    Ok(())
+}
+
+#[test]
+fn output_stream_macro_reports_invalid_spec_and_unknown_keyword_errors() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let macro_name = symbol(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let body = Word::NIL;
+    let element_type_keyword = keyword(&mut ctx, &runtime, "ELEMENT-TYPE")?;
+    let unknown_keyword = keyword(&mut ctx, &runtime, "UNUSED")?;
+
+    let bad_variable = ncl_object::make_string(&mut ctx, &runtime, &['x'])?;
+    let spec = list(&mut ctx, &runtime, &[bad_variable])?;
+    let form = list(&mut ctx, &runtime, &[macro_name, spec, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+
+    let invalid_element = list(
+        &mut ctx,
+        &runtime,
+        &[stream, element_type_keyword, Word::NIL],
+    )?;
+    let form = list(&mut ctx, &runtime, &[macro_name, invalid_element, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+
+    let unknown = list(&mut ctx, &runtime, &[stream, unknown_keyword, Word::TRUE])?;
+    let form = list(&mut ctx, &runtime, &[macro_name, unknown, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-OUTPUT-TO-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ctx.take_pending_lisp_error(),
+        Some(ncl_object::LispError::ProgramError(
+            ncl_object::ProgramError::UnknownKeyword
+        ))
+    );
+    Ok(())
+}
+
+#[test]
+fn input_stream_macro_expands_end_only_and_index_options() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let macro_name = symbol(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let index = symbol(&mut ctx, &runtime, "INDEX")?;
+    let end_keyword = keyword(&mut ctx, &runtime, "END")?;
+    let index_keyword = keyword(&mut ctx, &runtime, "INDEX")?;
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b'])?;
+    let read = symbol(&mut ctx, &runtime, "READ-CHAR")?;
+    let body = list(&mut ctx, &runtime, &[read, stream])?;
+    let spec = list(
+        &mut ctx,
+        &runtime,
+        &[
+            stream,
+            text,
+            end_keyword,
+            Word::fixnum(1),
+            index_keyword,
+            index,
+        ],
+    )?;
+    let form = list(&mut ctx, &runtime, &[macro_name, spec, body])?;
+    let expansion = expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", form)?;
+    let parts = elements(&mut ctx, expansion)?;
+    assert_eq!(parts.len(), 3);
+    let bindings = elements(&mut ctx, parts[1])?;
+    assert_eq!(bindings.len(), 2);
+    assert!(contains_operator(&mut ctx, expansion, "FILE-POSITION")?);
+    assert!(contains_operator(&mut ctx, expansion, "SETQ")?);
+    Ok(())
+}
+
+#[test]
+fn input_stream_macro_rejects_duplicate_and_malformed_options() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let macro_name = symbol(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING")?;
+    let stream = symbol(&mut ctx, &runtime, "S")?;
+    let text = ncl_object::make_string(&mut ctx, &runtime, &['a'])?;
+    let body = Word::NIL;
+    let index_keyword = keyword(&mut ctx, &runtime, "INDEX")?;
+    let start = keyword(&mut ctx, &runtime, "START")?;
+    let duplicate = list(
+        &mut ctx,
+        &runtime,
+        &[stream, text, start, Word::fixnum(0), start, Word::fixnum(1)],
+    )?;
+    let form = list(&mut ctx, &runtime, &[macro_name, duplicate, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+
+    let bad_index = list(
+        &mut ctx,
+        &runtime,
+        &[stream, text, index_keyword, Word::fixnum(0)],
+    )?;
+    let form = list(&mut ctx, &runtime, &[macro_name, bad_index, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+
+    let odd = list(&mut ctx, &runtime, &[stream, text, start])?;
+    let form = list(&mut ctx, &runtime, &[macro_name, odd, body])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "WITH-INPUT-FROM-STRING", form),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn restart_case_expands_options_and_with_simple_restart_report() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let restart_case = symbol(&mut ctx, &runtime, "RESTART-CASE")?;
+    let protected = Word::NIL;
+    let name = symbol(&mut ctx, &runtime, "USE-VALUE")?;
+    let arg = symbol(&mut ctx, &runtime, "VALUE")?;
+    let report_function_keyword = keyword(&mut ctx, &runtime, "REPORT-FUNCTION")?;
+    let lambda = list(&mut ctx, &runtime, &[arg])?;
+    let report = ncl_object::make_string(&mut ctx, &runtime, &['r'])?;
+    let clause = list(
+        &mut ctx,
+        &runtime,
+        &[name, lambda, report_function_keyword, report, Word::TRUE],
+    )?;
+    let form = list(&mut ctx, &runtime, &[restart_case, protected, clause])?;
+    let expansion = expand(&mut ctx, &runtime, "RESTART-CASE", form)?;
+    assert!(contains_operator(&mut ctx, expansion, "BLOCK")?);
+    assert!(contains_operator(&mut ctx, expansion, "PUSH-RESTART")?);
+
+    let simple = symbol(&mut ctx, &runtime, "WITH-SIMPLE-RESTART")?;
+    let heading = list(&mut ctx, &runtime, &[name, report])?;
+    let form = list(&mut ctx, &runtime, &[simple, heading, Word::TRUE])?;
+    let expansion = expand(&mut ctx, &runtime, "WITH-SIMPLE-RESTART", form)?;
+    assert!(contains_operator(&mut ctx, expansion, "PUSH-RESTART")?);
     Ok(())
 }

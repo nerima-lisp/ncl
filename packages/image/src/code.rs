@@ -107,3 +107,39 @@ impl CodeImage {
         Ok(code)
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::needless_pass_by_value,
+    clippy::unwrap_used,
+    reason = "tests assert on code-space failures"
+)]
+mod tests {
+    use super::CodeImage;
+    use crate::error::ImageError;
+
+    #[test]
+    fn raw_code_image_preserves_metadata_and_rejects_bad_offsets() {
+        let image = CodeImage::from_raw(vec![1, 2, 3], 2, 7, "demo".to_owned()).unwrap();
+        assert_eq!(image.bytes(), &[1, 2, 3]);
+        assert_eq!(image.entry_offset(), 2);
+        assert_eq!(image.frame_words(), 7);
+        assert_eq!(image.function_name(), "demo");
+        assert_eq!(
+            CodeImage::from_raw(vec![1], 2, 0, String::new()),
+            Err(ImageError::InvalidLayout {
+                field: "code entry offset"
+            })
+        );
+    }
+
+    #[test]
+    fn writable_code_capture_reports_not_published() {
+        let code = ncl_sys::alloc_code(1).unwrap();
+        assert_eq!(
+            CodeImage::capture(&code, 0, 0, "unpublished"),
+            Err(ImageError::Code(ncl_sys::CodeError::NotPublished))
+        );
+    }
+}

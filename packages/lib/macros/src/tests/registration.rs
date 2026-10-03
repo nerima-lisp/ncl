@@ -14,36 +14,35 @@ fn registration_marks_owned_macros_and_installs_function_cells() {
     let package = runtime.find_package(&ctx, CL).expect("COMMON-LISP");
     let symbol = Package::from_word(package)
         .intern(&mut ctx, &runtime, "WHEN")
-        .expect("WHEN")
+        .unwrap()
         .0;
-    assert!(ncl_object::symbol_is_macro(&ctx, symbol).expect("macro flag"));
+    assert!(ncl_object::symbol_is_macro(&ctx, symbol).unwrap());
     assert_ne!(
-        ncl_object::symbol_function(&ctx, symbol).expect("function cell"),
+        ncl_object::symbol_function(&ctx, symbol).unwrap(),
         Word::UNBOUND
     );
     for name in MACROS {
         let symbol = Package::from_word(package)
             .intern(&mut ctx, &runtime, name)
-            .expect(name)
+            .unwrap()
             .0;
         assert_ne!(
-            ncl_object::symbol_function(&ctx, symbol).expect(name),
-            Word::UNBOUND,
-            "registered macro {name} has an unbound function cell"
+            ncl_object::symbol_function(&ctx, symbol).unwrap(),
+            Word::UNBOUND
         );
     }
     for name in ["DEFUN", "DEFMACRO", "DEFVAR", "DEFPARAMETER", "DEFCONSTANT"] {
         let symbol = Package::from_word(package)
             .intern(&mut ctx, &runtime, name)
-            .expect(name)
+            .unwrap()
             .0;
-        assert!(ncl_object::symbol_is_macro(&ctx, symbol).expect(name));
+        assert!(ncl_object::symbol_is_macro(&ctx, symbol).unwrap());
     }
     let hook = Package::from_word(package)
         .intern(&mut ctx, &runtime, "*MACROEXPAND-HOOK*")
-        .expect("*MACROEXPAND-HOOK*")
+        .unwrap()
         .0;
-    assert!(ncl_object::symbol_is_special(&ctx, hook).expect("special flag"));
+    assert!(ncl_object::symbol_is_special(&ctx, hook).unwrap());
     assert!(
         runtime
             .function(&mut ctx, CL, "GET-SETF-EXPANSION")
@@ -142,7 +141,6 @@ fn function_and_multiple_value_builtins_preserve_their_contracts() {
         runtime.call_builtin(&mut ctx, null, &[Word::TRUE]),
         Ok(Word::NIL)
     );
-
     let functionp = builtin(&runtime, &mut ctx, "FUNCTIONP");
     assert_eq!(
         runtime.call_builtin(&mut ctx, functionp, &[identity.as_word()]),
@@ -152,24 +150,21 @@ fn function_and_multiple_value_builtins_preserve_their_contracts() {
         runtime.call_builtin(&mut ctx, functionp, &[Word::fixnum(1)]),
         Ok(Word::NIL)
     );
-
     let values = builtin(&runtime, &mut ctx, "VALUES");
     assert_eq!(
         runtime.call_builtin(&mut ctx, values, &[Word::fixnum(1), Word::fixnum(2)]),
         Ok(Word::fixnum(1))
     );
     assert_eq!(ctx.values(), &[Word::fixnum(1), Word::fixnum(2)]);
-
     let values_list = builtin(&runtime, &mut ctx, "VALUES-LIST");
-    let proper =
-        list(&mut ctx, &runtime, &[Word::fixnum(3), Word::fixnum(4)]).expect("proper list");
+    let proper = list(&mut ctx, &runtime, &[Word::fixnum(3), Word::fixnum(4)]).unwrap();
     assert_eq!(
         runtime.call_builtin(&mut ctx, values_list, &[proper]),
         Ok(Word::fixnum(3))
     );
     assert_eq!(ctx.values(), &[Word::fixnum(3), Word::fixnum(4)]);
-    let dotted = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(4))
-        .expect("dotted list");
+    let dotted =
+        ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(4)).unwrap();
     assert_eq!(
         runtime.call_builtin(&mut ctx, values_list, &[dotted]),
         Err(ObjectError::TypeError)

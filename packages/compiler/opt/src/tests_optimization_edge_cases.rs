@@ -35,6 +35,85 @@ fn params() -> Vec<Param> {
 }
 
 #[test]
+fn dce_removes_an_unreachable_block_without_changing_the_entry_return() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(3),
+        "dce-unreachable",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::I64,
+        }],
+        vec![Ty::I64],
+    );
+    let dead = builder.create_block(Vec::new());
+    builder.position_at(dead).fixture();
+    let dead_constant = builder.add_constant(Constant::Fixnum(99));
+    let dead_value = builder
+        .push_op(
+            OpKind::Const {
+                result: dead_constant,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![dead_value],
+        })
+        .fixture();
+    builder.position_at(BlockId(0)).fixture();
+    builder
+        .terminate(Terminator::Return {
+            values: vec![ValueId(0)],
+        })
+        .fixture();
+    let mut function = builder.finish();
+    assert_eq!(function.blocks.len(), 2);
+    let before_return = function.blocks[0].terminator.clone();
+
+    assert!(
+        DeadCodeElimination
+            .run(&mut function, &Module::default())
+            .fixture()
+    );
+
+    assert_eq!(function.blocks.len(), 1);
+    assert_eq!(function.blocks[0].terminator, before_return);
+    assert!(function.blocks[0].ops.is_empty());
+    ncl_ir::verify(&function).fixture();
+}
+
+#[test]
+fn inline_leaf_preserves_the_returned_argument_value() {
+    let mut module = Module {
+        functions: vec![super::tests_support::caller(), super::tests_support::leaf()],
+    };
+    let call_result = match module.functions[0].blocks[0].ops[1].results.as_slice() {
+        [(value, _)] => *value,
+        _ => unreachable!(),
+    };
+    let mut pass = InlineDirectCalls::default();
+    let snapshot = module.clone();
+    assert!(pass.run(&mut module.functions[0], &snapshot).fixture());
+
+    let caller = &module.functions[0];
+    assert_eq!(caller.blocks[0].ops.len(), 2);
+    assert!(matches!(
+        caller.blocks[0].ops[1].kind,
+        OpKind::Move { value: ValueId(0) }
+    ));
+    let inlined_result = caller.blocks[0].ops[1].results[0].0;
+    assert_ne!(inlined_result, call_result);
+    assert_eq!(
+        caller.blocks[0].terminator,
+        Terminator::Return {
+            values: vec![inlined_result]
+        }
+    );
+    module.verify().fixture();
+}
+
+#[test]
 fn dce_removes_dead_pure_values_but_keeps_side_effects_and_dependencies() {
     let mut builder = FunctionBuilder::new(FunctionId(20), "dce-shapes", params(), Vec::new());
     let constant = builder.add_constant(Constant::Fixnum(7));

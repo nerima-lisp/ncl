@@ -589,3 +589,186 @@ fn folds_constant_switch_to_matching_case_and_removes_default() {
     assert_eq!(function.blocks.len(), 2);
     ncl_ir::verify(&function).fixture();
 }
+
+#[test]
+fn folds_non_equal_fixnum_comparisons_to_boolean_constants() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(7),
+        "compare-boundaries",
+        vec![],
+        vec![Ty::Bool, Ty::Bool, Ty::Bool, Ty::Bool],
+    );
+    let left = builder.add_constant(Constant::Fixnum(2));
+    let right = builder.add_constant(Constant::Fixnum(3));
+    let left_value = builder
+        .push_op(OpKind::Const { result: left }, &[Ty::I64])
+        .fixture()[0];
+    let right_value = builder
+        .push_op(OpKind::Const { result: right }, &[Ty::I64])
+        .fixture()[0];
+    let mut comparisons = Vec::new();
+    for op in [Compare::Ne, Compare::Lt, Compare::Le, Compare::Ge] {
+        comparisons.push(
+            builder
+                .push_op(
+                    OpKind::Compare {
+                        op,
+                        left: left_value,
+                        right: right_value,
+                    },
+                    &[Ty::Bool],
+                )
+                .fixture()[0],
+        );
+    }
+    builder
+        .terminate(Terminator::Return {
+            values: comparisons.clone(),
+        })
+        .fixture();
+    let mut function = builder.finish();
+
+    assert!(Sccp.run(&mut function, &Module::default()).fixture());
+    let folded = &function.blocks[0].ops[2..];
+    let values = folded
+        .iter()
+        .map(|op| match op.kind {
+            OpKind::Const { result } => &function.constants[result.0 as usize],
+            ref kind => panic!("comparison was not folded: {kind:?}"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values,
+        [&Constant::T, &Constant::T, &Constant::T, &Constant::Nil]
+    );
+    assert_eq!(
+        function.blocks[0].terminator,
+        Terminator::Return {
+            values: comparisons
+        }
+    );
+    ncl_ir::verify(&function).fixture();
+}
+
+#[test]
+fn leaves_fixnum_division_failures_unfolded() {
+    for (index, left, right) in [(8, 7, 0), (9, i64::MIN, -1)] {
+        let mut builder =
+            FunctionBuilder::new(FunctionId(index), "div-failure", vec![], vec![Ty::I64]);
+        let left_constant = builder.add_constant(Constant::Fixnum(left));
+        let right_constant = builder.add_constant(Constant::Fixnum(right));
+        let left_value = builder
+            .push_op(
+                OpKind::Const {
+                    result: left_constant,
+                },
+                &[Ty::I64],
+            )
+            .fixture()[0];
+        let right_value = builder
+            .push_op(
+                OpKind::Const {
+                    result: right_constant,
+                },
+                &[Ty::I64],
+            )
+            .fixture()[0];
+        let division = builder
+            .push_op(
+                OpKind::Prim {
+                    op: Prim::FixnumDiv,
+                    args: vec![left_value, right_value],
+                    condition: None,
+                },
+                &[Ty::I64],
+            )
+            .fixture()[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![division],
+            })
+            .fixture();
+        let mut function = builder.finish();
+
+        assert!(!Sccp.run(&mut function, &Module::default()).fixture());
+        assert!(matches!(
+            function.blocks[0].ops[2].kind,
+            OpKind::Prim {
+                op: Prim::FixnumDiv,
+                ..
+            }
+        ));
+        assert_eq!(
+            function.blocks[0].terminator,
+            Terminator::Return {
+                values: vec![division]
+            }
+        );
+        ncl_ir::verify(&function).fixture();
+    }
+}
+
+#[test]
+fn merges_equal_constants_through_a_block_parameter() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(10),
+        "merge-constant",
+        vec![ncl_ir::Param {
+            name: "condition".into(),
+            ty: Ty::Bool,
+        }],
+        vec![Ty::I64],
+    );
+    let seven = builder.add_constant(Constant::Fixnum(7));
+    let value = builder
+        .push_op(OpKind::Const { result: seven }, &[Ty::I64])
+        .fixture()[0];
+    let then_block = builder.create_block(Vec::new());
+    builder
+        .terminate(Terminator::Jump {
+            target: BlockId(3),
+            args: vec![value],
+        })
+        .fixture();
+    let else_block = builder.create_block(Vec::new());
+    builder
+        .terminate(Terminator::Jump {
+            target: BlockId(3),
+            args: vec![value],
+        })
+        .fixture();
+    let join_block = builder.create_block(vec![(Ty::I64, ValueId(3))]);
+    let result = builder
+        .push_op(OpKind::Move { value: ValueId(3) }, &[Ty::I64])
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .fixture();
+    builder.position_at(BlockId(0)).fixture();
+    builder
+        .terminate(Terminator::Branch {
+            condition: ValueId(0),
+            then_target: then_block,
+            then_args: vec![],
+            else_target: else_block,
+            else_args: vec![],
+        })
+        .fixture();
+    let mut function = builder.finish();
+
+    assert!(Sccp.run(&mut function, &Module::default()).fixture());
+    assert!(
+        matches!(function.blocks[3].ops[0].kind, OpKind::Const { result } if function.constants[result.0 as usize] == Constant::Fixnum(7))
+    );
+    assert_eq!(
+        function.blocks[3].terminator,
+        Terminator::Return {
+            values: vec![result]
+        }
+    );
+    assert_eq!(function.blocks[3].id, join_block);
+    assert_eq!(function.blocks.len(), 4);
+    ncl_ir::verify(&function).fixture();
+}

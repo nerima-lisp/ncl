@@ -89,3 +89,28 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "registration tests assert on owned bindings"
+)]
+mod tests {
+    use super::register;
+    use ncl_object::{Runtime, ThreadContext, Word};
+
+    #[test]
+    fn registration_is_repeatable_and_keeps_owned_bindings_available() {
+        let runtime = Runtime::new().unwrap();
+        register(&runtime).unwrap();
+        register(&runtime).unwrap();
+
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        assert_eq!(
+            runtime.function(&mut ctx, "NCL-IMAGE", "QUIT"),
+            Some(Word::UNBOUND)
+        );
+        assert_eq!(runtime.class(&mut ctx, "EXIT"), Some(Word::fixnum(1)));
+    }
+}

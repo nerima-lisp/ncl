@@ -107,3 +107,17 @@ impl CodeImage {
         Ok(code)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "code tests assert on codec values")]
+mod tests {
+    use super::CodeImage;
+
+    #[test]
+    fn raw_code_metadata_and_published_bytes_are_preserved() {
+        let image = CodeImage::from_raw(vec![0x90, 0xc3], 1, 3, "unit-code".to_owned()).unwrap();
+        let published = image.publish().unwrap();
+        assert!(published.is_published());
+        assert_eq!(published.as_slice(), &[0x90, 0xc3]);
+    }
+}

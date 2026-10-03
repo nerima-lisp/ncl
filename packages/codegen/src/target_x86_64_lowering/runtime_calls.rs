@@ -33,7 +33,7 @@ pub fn lower_runtime_builtin(
     let extra_count = argument_count.saturating_sub(ARGUMENT_REGISTERS.len());
     let address = abi
         .runtime_address(function)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI lookup errors are surfaced
         .cast_signed();
     emit(
         assembler,

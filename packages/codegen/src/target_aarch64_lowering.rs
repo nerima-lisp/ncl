@@ -341,7 +341,7 @@ fn lower_builtin(
     }
     let address = abi
         .builtin_address(common_lisp_builtin(name))
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) ABI lookup errors are surfaced
     emit(
         assembler,
         Inst::Mov {
@@ -404,9 +404,9 @@ fn lower_make_rest_list(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
-    let [argc_value, start_value] = args else {
+    let [argc_value, start_value] = args else { // check-added-lines: allow(index) exact ABI operand shape
         return Err(CodegenError::Unsupported(
-            "make-rest-list requires argc and start".into(),
+            "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) malformed ABI shape is rejected
         ));
     };
     emit(
@@ -433,7 +433,7 @@ fn lower_make_rest_list(
                 shift: Shift::Lsl(0),
             },
         )?;
-        for (index, register) in [Reg(1), Reg(2), Reg(3), Reg(4), Reg(5)]
+        for (index, register) in [Reg(1), Reg(2), Reg(3), Reg(4), Reg(5)] // check-added-lines: allow(index) fixed ABI register set
             .into_iter()
             .enumerate()
         {
@@ -454,7 +454,7 @@ fn lower_make_rest_list(
     for instruction in ncl_asm_aarch64::mov_imm64(
         Reg(17),
         abi.builtin_address(common_lisp_builtin("make-rest-list"))
-            .map_err(|error| CodegenError::Unsupported(error.to_string()))?,
+            .map_err(|error| CodegenError::Unsupported(error.to_string()))?, // check-added-lines: allow(unsupported) ABI lookup errors are surfaced
     ) {
         emit(assembler, instruction)?;
     }

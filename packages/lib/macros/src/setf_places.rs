@@ -168,7 +168,7 @@ fn cadr_place(
     if args.len() != 1 {
         return Err(ObjectError::TypeError);
     }
-    let nth_args = [Word::fixnum(1), args[0]];
+    let nth_args = [Word::fixnum(1), args[0]]; // check-added-lines: allow(index) length is validated above
     nth_place(ctx, runtime, &nth_args)
 }
 

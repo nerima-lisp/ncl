@@ -17,8 +17,6 @@ mod tests;
 #[cfg(test)]
 mod tests_aarch64;
 #[cfg(test)]
-mod tests_aarch64_coverage;
-#[cfg(test)]
 mod tests_x86_64;
 #[cfg(test)]
 mod tests_x86_64_fixture;

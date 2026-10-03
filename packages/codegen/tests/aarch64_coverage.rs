@@ -5,7 +5,9 @@
     clippy::unwrap_used
 )]
 
-use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
+use ncl_codegen::{
+    CodegenError, ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64,
+};
 use ncl_ir::{
     Compare, Constant, FunctionBuilder, HandlerKind, HandlerRegion, OpKind, Prim, Terminator, Ty,
 };
@@ -16,11 +18,11 @@ impl RuntimeAbi for CoverageAbi {
     fn builtin_address(
         &self,
         _identifier: ncl_object::BuiltinIdentifier,
-    ) -> Result<u64, crate::AbiError> {
+    ) -> Result<u64, ncl_codegen::AbiError> {
         Ok(0x1000)
     }
 
-    fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
+    fn field_offset(&self, field: ContextField) -> Result<i32, ncl_codegen::AbiError> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
             ContextField::TlabBump => layout.tlab_bump,
@@ -33,10 +35,10 @@ impl RuntimeAbi for CoverageAbi {
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
         };
-        i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
+        i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))
     }
 
-    fn runtime_address(&self, _function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+    fn runtime_address(&self, _function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         Ok(0x1000)
     }
 
@@ -45,7 +47,7 @@ impl RuntimeAbi for CoverageAbi {
     }
 }
 
-fn compile(builder: FunctionBuilder) -> crate::CompiledFunction {
+fn compile(builder: FunctionBuilder) -> ncl_codegen::CompiledFunction {
     compile_function_aarch64(&builder.finish(), &CoverageAbi).expect("AArch64 lowering")
 }
 

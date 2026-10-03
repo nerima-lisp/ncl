@@ -1,10 +1,10 @@
 //! Text serialization parser.
 use super::ParseError;
 use crate::{
-    BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert,
-    DebugLocation, DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind,
-    HandlerRegion, HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind,
-    Terminator, Ty, ValueId,
+    BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
+    DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind, HandlerRegion,
+    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind, Terminator, Ty,
+    ValueId,
 };
 
 pub(super) fn u32(value: u64) -> Result<u32, ParseError> {

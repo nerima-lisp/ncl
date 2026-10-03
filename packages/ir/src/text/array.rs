@@ -16,7 +16,10 @@ pub(super) fn read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
         6 => ArrayElementType::Unsigned,
         7 => ArrayElementType::SingleFloat,
         8 => ArrayElementType::DoubleFloat,
-        _ => return Err(ParseError("bad array element type".into())),
+        other => {
+            let _ = other;
+            return Err(ParseError("bad array element type".into()));
+        }
     };
     Ok(Constant::Array {
         dimensions,

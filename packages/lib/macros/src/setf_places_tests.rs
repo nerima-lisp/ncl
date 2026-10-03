@@ -131,7 +131,7 @@ fn registered_place_expanders_emit_their_concrete_access_and_store_operators()
         let store = elements(&mut ctx, expansion.store_form)?;
         // check-added-lines: allow(panic,index) exact store operator assertion.
         assert_eq!(
-            store[0],
+            store[0], // check-added-lines: allow(index) exact store operator indexing assertion.
             symbol(&mut ctx, &runtime, store_name)?,
             "{name} store"
         );

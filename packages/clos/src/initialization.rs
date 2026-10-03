@@ -404,6 +404,5 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("tests_initialization.rs");
-}
+#[path = "../tests/support/initialization_tests.rs"]
+mod tests;

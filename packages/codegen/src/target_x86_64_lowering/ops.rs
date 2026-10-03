@@ -1,67 +1,16 @@
+use super::ops_helpers::{
+    compare_condition, constant_word, materialise_boolean, untag_function_object,
+};
+use super::value_is_raw_entry;
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call,
     load_heap_constant, load_immediate, load_slot, lower_alloc, lower_builtin, lower_call,
     lower_closure_call, lower_load_capture, lower_runtime_builtin, lower_safepoint, slot_mem_of,
     store_closure_capture, store_slot,
 };
-use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
+use crate::{CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
-use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
-
-fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
-    match constant {
-        ncl_ir::Constant::Fixnum(value) => Ok(i64::from_ne_bytes(
-            ncl_sys::Word::fixnum(*value).bits().to_ne_bytes(),
-        )),
-        ncl_ir::Constant::Character(value) => Ok(i64::from_ne_bytes(
-            ncl_sys::Word::character(*value).bits().to_ne_bytes(),
-        )),
-        ncl_ir::Constant::Nil => Ok(i64::from_ne_bytes(ncl_sys::Word::NIL.bits().to_ne_bytes())),
-        ncl_ir::Constant::Unbound => Ok(i64::from_ne_bytes(
-            ncl_sys::Word::UNBOUND.bits().to_ne_bytes(),
-        )),
-        ncl_ir::Constant::T => Ok(i64::from_ne_bytes(ncl_sys::Word::TRUE.bits().to_ne_bytes())),
-        ncl_ir::Constant::FunctionEntry(function) => abi
-            .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
-            .ok_or_else(|| {
-                CodegenError::Unsupported("function entry constant is unavailable".into())
-                // check-added-lines: allow(unsupported) existing codegen error variant
-            }),
-        ncl_ir::Constant::SingleFloat(_)
-        | ncl_ir::Constant::DoubleFloat(_)
-        | ncl_ir::Constant::Symbol { .. }
-        | ncl_ir::Constant::Object(_) // check-added-lines: allow(unsupported) explicit unsupported constant
-        | ncl_ir::Constant::StringBytes(_)
-        | ncl_ir::Constant::Bignum { .. }
-        | ncl_ir::Constant::Ratio { .. }
-        | ncl_ir::Constant::Complex { .. }
-        | ncl_ir::Constant::Structure { .. } => Err(CodegenError::Unsupported( // check-added-lines: allow(unsupported) runtime-table constants are loaded through code objects
-            // check-added-lines: allow(unsupported) existing codegen error variant
-            "constant requires a runtime table".into(),
-        )),
-    }
-}
-
-const fn compare_condition(op: Compare) -> Cond {
-    match op {
-        Compare::Eq => Cond::E,
-        Compare::Ne => Cond::Ne,
-        Compare::Lt => Cond::L,
-        Compare::Le => Cond::Le,
-        Compare::Gt => Cond::G,
-        Compare::Ge => Cond::Ge,
-    }
-}
-/// Materialises a boolean byte into a full word, since `setcc` leaves the upper bits stale.
-fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
-    emit(assembler, Inst::Setcc(condition, FUNCTION_OBJECT))?;
-    emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
-}
-fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
-    let mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
-        .map_err(|_| CodegenError::FrameOverflow)?;
-    emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
-}
+use ncl_ir::{BlockParam, Function, Op, OpKind, Prim, ValueId};
 
 #[allow(clippy::too_many_lines)]
 fn lower_prim(
@@ -271,12 +220,18 @@ pub fn lower_op(
         OpKind::Safepoint => {
             call_pc = Some(lower_safepoint(assembler, abi)?);
         }
-        OpKind::Call { function, args }
-        | OpKind::CallIndirect {
-            callee: function,
+        OpKind::Call {
+            function: callee,
             args,
-        } => {
-            lower_call(assembler, *function, args, slots)?;
+        }
+        | OpKind::CallIndirect { callee, args } => {
+            lower_call(
+                assembler,
+                *callee,
+                args,
+                slots,
+                value_is_raw_entry(function, *callee),
+            )?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
@@ -494,3 +449,8 @@ pub fn move_args(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+#[path = "tests_x86_64_lowering_ops.rs"]
+mod tests;

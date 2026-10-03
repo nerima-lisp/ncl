@@ -49,3 +49,7 @@ fn symbol_text(ctx: &ThreadContext, string: Word) -> Result<String, ObjectError>
         .map(|index| crate::string_ref(ctx, string, index))
         .collect()
 }
+
+#[cfg(test)]
+#[path = "../tests/support/structure_registry_tests.rs"]
+mod tests;

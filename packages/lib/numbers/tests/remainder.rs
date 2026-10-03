@@ -1,7 +1,13 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(
+    clippy::float_cmp,
+    clippy::unwrap_used,
+    missing_docs,
+    reason = "tests assert exact numeric builtin behavior"
+)]
 
 use ncl_object::{
     FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,
+    double_value, make_double, make_ratio, ratio_denominator, ratio_numerator,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -104,6 +110,119 @@ fn gcd_lcm_and_isqrt_cover_identity_and_boundaries() {
     assert_integer_call(&runtime, &mut ctx, "ISQRT", &[Word::fixnum(16)], 4);
     assert_eq!(
         call(&runtime, &mut ctx, "ISQRT", &[Word::fixnum(-1)]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn remainder_handles_ratios_floats_and_zero_lcm_inputs() {
+    let (runtime, mut ctx) = setup();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let result = call(&runtime, &mut ctx, "MOD", &[ratio, divisor]).unwrap();
+    let ObjectRef::Ratio(value) = classify_object(&ctx, result) else {
+        panic!("expected ratio remainder");
+    };
+    let value = ncl_object::Ratio::from_word(value);
+    assert_eq!(integer(&ctx, ratio_numerator(&ctx, value).unwrap()), 1);
+    assert_eq!(integer(&ctx, ratio_denominator(&ctx, value).unwrap()), 3);
+
+    let value = make_double(&mut ctx, &runtime, -7.5).unwrap().into();
+    let divisor = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    let result = call(&runtime, &mut ctx, "REM", &[value, divisor]).unwrap();
+    let ObjectRef::DoubleFloat(result) = classify_object(&ctx, result) else {
+        panic!("expected float remainder");
+    };
+    assert_eq!(
+        double_value(&ctx, ncl_object::DoubleFloat::from_word(result)).unwrap(),
+        -1.5
+    );
+    assert_integer_call(
+        &runtime,
+        &mut ctx,
+        "LCM",
+        &[Word::fixnum(0), Word::fixnum(9)],
+        0,
+    );
+}
+
+#[test]
+fn negative_ratio_remainders_distinguish_mod_from_rem() {
+    let (runtime, mut ctx) = setup();
+    let value = make_ratio(&mut ctx, &runtime, Word::fixnum(-7), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(5))
+        .unwrap()
+        .into();
+
+    for (name, numerator, denominator) in [("MOD", 1, 15), ("REM", -1, 3)] {
+        let result = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        let ObjectRef::Ratio(result) = classify_object(&ctx, result) else {
+            panic!("{name} remainder must remain an exact ratio");
+        };
+        let result = ncl_object::Ratio::from_word(result);
+        assert_eq!(
+            integer(&ctx, ratio_numerator(&ctx, result).unwrap()),
+            numerator
+        );
+        assert_eq!(
+            integer(&ctx, ratio_denominator(&ctx, result).unwrap()),
+            denominator
+        );
+    }
+}
+
+#[test]
+fn remainder_covers_zero_and_i128_division_overflow_cases() {
+    let (runtime, mut ctx) = setup();
+    let zero_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(0), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .into();
+    assert_integer_call(&runtime, &mut ctx, "MOD", &[zero_ratio, divisor], 0);
+
+    let minimum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    for name in ["MOD", "REM"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[minimum, Word::fixnum(-1)]),
+            Ok(Word::fixnum(0)),
+            "{name} handles MIN_INT / -1 as an exact zero remainder"
+        );
+    }
+
+    let one = make_double(&mut ctx, &runtime, 1.0).unwrap().into();
+    let zero = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    for name in ["MOD", "REM"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[one, zero]),
+            Err(ObjectError::TypeError),
+            "{name} rejects a floating-point zero divisor"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "LCM", &[Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn gcd_rejects_an_unrepresentable_absolute_i128_minimum() {
+    let (runtime, mut ctx) = setup();
+    let minimum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "GCD", &[minimum, Word::fixnum(0)]),
         Err(ObjectError::TypeError)
     );
 }

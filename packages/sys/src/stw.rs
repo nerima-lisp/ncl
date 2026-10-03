@@ -96,28 +96,26 @@ impl Heap {
 mod tests {
     use super::Heap;
     use crate::{HeapConfig, Thread};
-    use std::sync::{Arc, Barrier, mpsc};
+    use std::sync::{Arc, mpsc};
     use std::thread;
 
     #[test]
     fn poll_thread_rejoins_when_a_new_epoch_starts_before_wakeup() {
         let heap = Arc::new(Heap::new(HeapConfig::default()));
         let (pointer_sender, pointer_receiver) = mpsc::channel();
-        let ready = Arc::new(Barrier::new(2));
+        let (start_sender, start_receiver) = mpsc::channel();
         let worker_heap = Arc::clone(&heap);
-        let worker_ready = Arc::clone(&ready);
         let worker = thread::spawn(move || {
             let mut thread = Thread::new();
             assert_eq!(worker_heap.register_thread(&mut thread), Ok(()));
             pointer_sender
                 .send(std::ptr::from_mut(&mut thread) as usize)
                 .ok();
-            worker_ready.wait();
+            assert!(start_receiver.recv().is_ok());
             worker_heap.poll_thread(&mut thread);
             worker_heap.unregister_thread(&thread);
         });
         let pointer = pointer_receiver.recv().unwrap_or(0);
-        ready.wait();
 
         {
             let mut stop_world = heap
@@ -128,6 +126,7 @@ mod tests {
             stop_world.epoch = 1;
         }
         heap.stop_world_ready.notify_all();
+        assert!(start_sender.send(()).is_ok());
 
         let mut stop_world = heap
             .stop_world

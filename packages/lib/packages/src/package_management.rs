@@ -1,4 +1,5 @@
-use super::{list_items, package_arg, package_designator, string_designator, with_rooted_words};
+use super::{list_items, package_arg, package_designator, string_designator};
+use crate::with_rooted_words;
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
     Runtime, ThreadContext, Word, classify_object,

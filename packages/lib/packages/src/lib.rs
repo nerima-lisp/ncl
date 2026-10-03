@@ -36,11 +36,14 @@ struct NicknameDesignator(Word);
 #[derive(Clone, Copy)]
 struct PackageDesignatorArg(PackageDesignator);
 
-fn with_rooted_words<T>(
+pub(crate) fn with_rooted_words<T, E>(
     ctx: &mut ThreadContext,
     words: &mut [Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, LispError>,
-) -> Result<T, LispError> {
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<ObjectError>,
+{
     let tokens = words
         .iter_mut()
         .map(|word| ncl_object::push_root(ctx, word))
@@ -49,7 +52,7 @@ fn with_rooted_words<T>(
     let mut cleanup_error = None;
     for token in tokens.into_iter().rev() {
         if !ncl_object::pop_root(ctx, token) {
-            cleanup_error = Some(LispError::Object(ObjectError::Layout));
+            cleanup_error = Some(E::from(ObjectError::Layout));
         }
     }
     match (result, cleanup_error) {

@@ -13,28 +13,6 @@ use ncl_object::{
     slot_ref, symbol_name,
 };
 
-fn with_rooted_words<T>(
-    ctx: &mut ThreadContext,
-    words: &mut [Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
-) -> Result<T, ObjectError> {
-    let tokens = words
-        .iter_mut()
-        .map(|word| ncl_object::push_root(ctx, word))
-        .collect::<Vec<_>>();
-    let result = f(ctx, words);
-    let mut cleanup_error = None;
-    for token in tokens.into_iter().rev() {
-        if !ncl_object::pop_root(ctx, token) {
-            cleanup_error = Some(ObjectError::Layout);
-        }
-    }
-    match (result, cleanup_error) {
-        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
-        (Ok(value), None) => Ok(value),
-    }
-}
-
 const OBJECT: Parameter = Parameter {
     name: BuiltinName::new("OBJECT"),
     ty: ParameterType::Any,
@@ -185,9 +163,9 @@ fn list_all_packages(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut packages = runtime.all_packages(ctx)?;
-    with_rooted_words(ctx, &mut packages, |ctx, packages| {
+    super::with_rooted_words(ctx, &mut packages, |ctx, packages| {
         let mut list = [Word::NIL];
-        with_rooted_words(ctx, &mut list, |ctx, list| {
+        super::with_rooted_words(ctx, &mut list, |ctx, list| {
             for package in packages.iter().rev().copied() {
                 list[0] = ncl_object::make_cons(ctx, runtime, package, list[0])?;
             }
@@ -209,8 +187,8 @@ fn find_all_symbols(
         Package::from_word(package).for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
     }
     let mut symbols = Vec::new();
-    with_rooted_words(ctx, std::slice::from_mut(&mut name), |ctx, name| {
-        with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
+    super::with_rooted_words(ctx, std::slice::from_mut(&mut name), |ctx, name| {
+        super::with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
             for symbol in candidates.iter().copied() {
                 if symbols.contains(&symbol) {
                     continue;
@@ -225,13 +203,13 @@ fn find_all_symbols(
                     symbols.push(symbol);
                 }
             }
-            Ok(())
+            Ok::<(), ObjectError>(())
         })?;
-        Ok(())
+        Ok::<(), ObjectError>(())
     })?;
-    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+    super::with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
         let mut list = [Word::NIL];
-        with_rooted_words(ctx, &mut list, |ctx, list| {
+        super::with_rooted_words(ctx, &mut list, |ctx, list| {
             for symbol in symbols.iter().rev().copied() {
                 list[0] = ncl_object::make_cons(ctx, runtime, symbol, list[0])?;
             }
@@ -281,7 +259,7 @@ fn find_symbol(
         return Ok(Word::NIL);
     };
     let mut symbol = symbol;
-    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
+    let status = super::with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
         status_word(ctx, runtime, status)
     })?;
     values.set(&[symbol, status]);
@@ -302,7 +280,7 @@ fn intern(
         .collect::<Result<String, _>>()?;
     let (symbol, status) = package.intern(ctx, runtime, &name)?;
     let mut symbol = symbol;
-    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
+    let status = super::with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
         status_word(ctx, runtime, status)
     })?;
     values.set(&[symbol, status]);
@@ -317,8 +295,8 @@ fn mutate_symbols(
 ) -> Result<Word, ObjectError> {
     let mut symbols = list_items(ctx, args.required(0)?)?;
     let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
-    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
-        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+    super::with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        super::with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for symbol in symbols.iter().copied() {
                 let name = match classify_object(ctx, symbol) {
                     ObjectRef::Symbol(symbol) => symbol_name(ctx, symbol)?,
@@ -372,8 +350,8 @@ fn import(
 ) -> Result<Word, ObjectError> {
     let mut symbols = list_items(ctx, args.required(0)?)?;
     let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
-    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
-        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+    super::with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        super::with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for symbol in symbols.iter().copied() {
                 if !matches!(classify_object(ctx, symbol), ObjectRef::Symbol(_)) {
                     return Err(ObjectError::TypeError);
@@ -394,8 +372,8 @@ fn shadow(
 ) -> Result<Word, ObjectError> {
     let mut names = list_items(ctx, args.required(0)?)?;
     let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
-    with_rooted_words(ctx, &mut names, |ctx, names| {
-        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+    super::with_rooted_words(ctx, &mut names, |ctx, names| {
+        super::with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for name in names.iter().copied() {
                 let name = string_designator(ctx, name)?.as_word();
                 Package::from_word(package[0]).shadow(ctx, runtime, name)?;

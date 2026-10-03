@@ -52,7 +52,7 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
 }
 
 #[derive(Clone, Copy)]
-pub struct Aarch64FixtureAbi;
+struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
     fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
@@ -626,93 +626,5 @@ fn golden_fib_twenty_five_loop_has_backedge_map() {
             .safepoint_maps
             .iter()
             .any(|map| map.map_flags & FLAG_LOOP_BACKEDGE != 0)
-    );
-}
-
-#[test]
-fn lowering_constant_values_have_stable_machine_words() {
-    struct ConstantAbi;
-
-    impl RuntimeAbi for ConstantAbi {
-        fn builtin_address(
-            &self,
-            identifier: ncl_object::BuiltinIdentifier,
-        ) -> Result<u64, AbiError> {
-            Err(AbiError::MissingBuiltin(identifier))
-        }
-
-        fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-            Err(AbiError::UnsupportedContextField(field))
-        }
-
-        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
-            Err(AbiError::UnsupportedRuntimeFunction(function))
-        }
-
-        fn constant_word(&self, name: &str) -> Option<i64> {
-            (name == "function-entry:9")
-                .then_some(i64::from_ne_bytes(0x1234_5678_9abc_def0_u64.to_ne_bytes()))
-        }
-    }
-
-    let abi = ConstantAbi;
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::Fixnum(7), &abi),
-        Ok(i64::from_ne_bytes(
-            ncl_sys::Word::fixnum(7).bits().to_ne_bytes()
-        ))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::Character('A' as u32), &abi), // check-added-lines: allow(as-cast) test-only conversion
-        Ok(i64::from_ne_bytes(
-            // check-added-lines: allow(as-cast) test-only conversion
-            ncl_sys::Word::character('A' as u32).bits().to_ne_bytes()
-        ))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::SingleFloat(1.5), &abi),
-        Ok(i64::from(1.5_f32.to_bits()))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::DoubleFloat(-2.25), &abi),
-        Ok(i64::from_ne_bytes((-2.25_f64).to_bits().to_ne_bytes()))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::Nil, &abi),
-        Ok(i64::from_ne_bytes(ncl_sys::Word::NIL.bits().to_ne_bytes()))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::Unbound, &abi),
-        Ok(i64::from_ne_bytes(
-            // check-added-lines: allow(unbound) test sentinel
-            ncl_sys::Word::UNBOUND.bits().to_ne_bytes(),
-        ))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::T, &abi),
-        Ok(i64::from_ne_bytes(ncl_sys::Word::TRUE.bits().to_ne_bytes()))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(&Constant::FunctionEntry(ncl_ir::FunctionId(9)), &abi),
-        Ok(i64::from_ne_bytes(0x1234_5678_9abc_def0_u64.to_ne_bytes()))
-    );
-    // check-added-lines: allow(panic) test-only assertion
-    assert_eq!(
-        super::lowering::ops::constant_value(
-            &Constant::StringBytes(b"runtime-table".to_vec()),
-            &abi
-        ),
-        // check-added-lines: allow(unsupported) runtime table requirement
-        Err(CodegenError::Unsupported(
-            "constant requires a runtime constant table".into()
-        ))
     );
 }

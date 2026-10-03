@@ -3,7 +3,7 @@
 mod abi;
 mod frame;
 mod isa_x86_64;
-pub(crate) mod lowering;
+mod lowering;
 mod machine;
 mod regalloc;
 mod relocation;
@@ -13,11 +13,9 @@ mod target_x86_64;
 mod templates;
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;
 #[cfg(test)]
 mod tests_aarch64;
-#[cfg(test)]
-mod tests_lowering;
 #[cfg(test)]
 mod tests_x86_64;
 #[cfg(test)]

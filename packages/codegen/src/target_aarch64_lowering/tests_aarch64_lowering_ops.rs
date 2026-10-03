@@ -242,3 +242,117 @@ fn lower_op_emits_exact_aarch64_memory_and_compare_templates() {
         ]
     );
 }
+
+#[derive(Clone, Copy)]
+struct WorkingAbi;
+
+impl RuntimeAbi for WorkingAbi {
+    fn builtin_address(&self, _identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        Ok(0x1000)
+    }
+
+    fn field_offset(&self, field: crate::ContextField) -> Result<i32, AbiError> {
+        Ok(match field {
+            crate::ContextField::TlabBump => 8,
+            crate::ContextField::TlabLimit => 16,
+            crate::ContextField::SafepointRequest => 24,
+            crate::ContextField::MultipleValueArea => 32,
+            crate::ContextField::Pending => 40,
+            crate::ContextField::MultipleValueCount => 48,
+            crate::ContextField::Handler => 56,
+            crate::ContextField::Cleanup => 64,
+            crate::ContextField::Catch => 72,
+        })
+    }
+
+    fn runtime_address(&self, _function: crate::RuntimeFunction) -> Result<u64, AbiError> {
+        Ok(0x2000)
+    }
+}
+
+#[test]
+fn lower_op_covers_runtime_and_heap_operation_dispatch() {
+    let mut function = function();
+    function.constants.push(Constant::StringBytes(vec![1, 2]));
+    let abi = WorkingAbi;
+    let allocation = allocation();
+    let cases = [
+        operation(
+            OpKind::Const {
+                result: ncl_ir::ConstantIndex(0),
+            },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::Const {
+                result: ncl_ir::ConstantIndex(1),
+            },
+            None,
+        ),
+        operation(OpKind::LoadCapture { index: 0 }, Some(ValueId(1))),
+        operation(
+            OpKind::Prim {
+                op: ncl_ir::Prim::Car,
+                args: vec![ValueId(0)],
+                condition: None,
+            },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::SetMultipleValues {
+                values: vec![ValueId(0), ValueId(1)],
+            },
+            Some(ValueId(1)),
+        ),
+        operation(OpKind::Alloc { words: 2 }, Some(ValueId(1))),
+        operation(OpKind::Safepoint, None),
+        operation(
+            OpKind::Call {
+                function: ValueId(0),
+                args: vec![ValueId(1)],
+            },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::MakeClosure {
+                entry: ValueId(0),
+                captures: vec![ValueId(1)],
+            },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::MakeValueCell { value: ValueId(0) },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::CallClosure {
+                closure: ValueId(0),
+                args: vec![ValueId(1)],
+                named_symbol: None,
+            },
+            Some(ValueId(1)),
+        ),
+        operation(
+            OpKind::Builtin {
+                name: "identity".into(),
+                args: vec![ValueId(0)],
+            },
+            Some(ValueId(1)),
+        ),
+    ];
+
+    for op in cases {
+        let mut assembler = Assembler::new();
+        let result = lower_op(&mut assembler, &op, &function, &allocation, &abi);
+        assert!(result.is_ok(), "operation failed: {op:?}: {result:?}");
+        let encoded_result = assembler.finish();
+        assert!(encoded_result.is_ok(), "operation encoding failed: {op:?}");
+        let Ok(encoded) = encoded_result else {
+            continue;
+        };
+        assert!(
+            !encoded.bytes.is_empty(),
+            "operation emitted no bytes: {op:?}"
+        );
+    }
+}

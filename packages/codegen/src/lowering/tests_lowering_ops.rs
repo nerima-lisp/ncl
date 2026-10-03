@@ -424,3 +424,32 @@ fn checks_all_compare_conditions_and_memory_boundaries() {
         Err(CodegenError::UnknownValue(ValueId(2)))
     );
 }
+
+#[test]
+fn emit_return_writes_the_return_value_and_exact_value_count() {
+    let slots = [(ValueId(0), 0)];
+
+    let mut empty = Assembler::new();
+    emit_return(&mut empty, &[], &slots, &Abi).expect("empty return");
+    let mut expected_empty = Assembler::new();
+    expected_empty
+        .emit(&Inst::MovRI(Reg::Rax, Imm::I64(0)))
+        .expect("zero return value");
+    expected_empty
+        .emit(&Inst::MovRI(Reg::Rdx, Imm::I64(0)))
+        .expect("zero return count");
+    expected_empty.emit(&Inst::Ret).expect("return");
+    assert_eq!(empty.bytes(), expected_empty.bytes());
+
+    let mut one = Assembler::new();
+    emit_return(&mut one, &[ValueId(0)], &slots, &Abi).expect("one-value return");
+    let mut expected_one = Assembler::new();
+    expected_one
+        .emit(&Inst::MovRM(Reg::Rax, Mem::base(Reg::Rbp, -8)))
+        .expect("load return value");
+    expected_one
+        .emit(&Inst::MovRI(Reg::Rdx, Imm::I64(0)))
+        .expect("one-value count");
+    expected_one.emit(&Inst::Ret).expect("return");
+    assert_eq!(one.bytes(), expected_one.bytes());
+}

@@ -18,3 +18,5 @@ mod encoder_families;
 mod encoder_fixups;
 #[path = "encoder/encoder_format.rs"]
 mod encoder_format;
+#[path = "encoder/public_edges.rs"]
+mod public_edges;

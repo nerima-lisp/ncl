@@ -104,3 +104,65 @@ fn lowering_helpers_preserve_typed_abi_and_slot_failures() {
     );
     assert_eq!(slot_mem_of(u32::MAX), Err(CodegenError::FrameOverflow));
 }
+
+#[test]
+fn runtime_builtin_and_multiple_values_use_exact_abi_locations() {
+    let slots = super::ValueSlots {
+        values: Vec::new(),
+        allocation: crate::Allocation {
+            intervals: Vec::new(),
+            locations: vec![(ncl_ir::ValueId(0), crate::Location::Register(0))],
+            spill_words: 0,
+            safepoint_registers: std::collections::BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        },
+        spill_base: 0,
+        outgoing_base: 0,
+        incoming_args_base: None,
+    };
+    let abi = crate::tests_x86_64_fixture::X86_64FixtureAbi;
+
+    let mut actual_builtin = Assembler::new();
+    lower_runtime_builtin(
+        &mut actual_builtin,
+        RuntimeFunction::SafepointSlow,
+        &[7],
+        &[ValueId(0)],
+        &slots,
+        &abi,
+    )
+    .expect("runtime builtin");
+    let mut expected_builtin = Assembler::new();
+    for instruction in [
+        ncl_asm_x86_64::Inst::MovRR(super::ARGUMENT_COUNT, super::THREAD_CONTEXT),
+        ncl_asm_x86_64::Inst::MovRI(super::ENTRY, ncl_asm_x86_64::Imm::I32(0x1000)),
+        ncl_asm_x86_64::Inst::MovRI(super::ARGUMENT_REGISTERS[0], ncl_asm_x86_64::Imm::I32(7)),
+        ncl_asm_x86_64::Inst::MovRR(super::ARGUMENT_REGISTERS[1], ncl_asm_x86_64::Reg::Rax),
+    ] {
+        expected_builtin
+            .emit(&instruction)
+            .expect("builtin instruction");
+    }
+    assert_eq!(actual_builtin.bytes(), expected_builtin.bytes());
+
+    let mut actual_values = Assembler::new();
+    store_return_values(&mut actual_values, &slots, &[ValueId(0)], &abi).expect("multiple values");
+    let mut expected_values = Assembler::new();
+    expected_values
+        .emit(&ncl_asm_x86_64::Inst::MovRR(
+            super::FUNCTION_OBJECT,
+            ncl_asm_x86_64::Reg::Rax,
+        ))
+        .expect("value load");
+    expected_values
+        .emit(&ncl_asm_x86_64::Inst::MovMR(
+            ncl_asm_x86_64::Mem::base(
+                super::THREAD_CONTEXT,
+                i32::try_from(ncl_sys::thread_layout().mv).expect("multiple value offset"),
+            ),
+            super::FUNCTION_OBJECT,
+        ))
+        .expect("value store");
+    assert_eq!(actual_values.bytes(), expected_values.bytes());
+}

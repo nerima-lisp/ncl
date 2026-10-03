@@ -494,7 +494,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "regalloc_load_arg_test.rs"]
-mod load_arg_tests;

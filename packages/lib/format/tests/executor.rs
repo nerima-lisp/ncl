@@ -133,7 +133,6 @@ fn rejects_character_and_relative_repeat_parameters() {
         })
     );
 }
-
 #[test]
 fn executes_character_radix_float_width_and_printer_directives() {
     let (runtime, mut ctx) = context();
@@ -456,5 +455,41 @@ fn executes_remaining_directive_edges_and_reports_typed_parameter_errors() {
             &mut StringSink::new(),
         )
         .is_err()
+    );
+}
+#[test]
+fn format_errors_expose_specific_messages_and_sources() {
+    use std::error::Error;
+
+    let cases = [
+        (
+            FormatError::MissingArgument {
+                directive: ncl_lib_format::DirectiveKind::A,
+            },
+            "format: missing argument for ~A",
+        ),
+        (
+            FormatError::InvalidParameter {
+                directive: ncl_lib_format::DirectiveKind::Percent,
+            },
+            "format: invalid parameter for ~Percent",
+        ),
+        (
+            FormatError::NonInteger {
+                directive: ncl_lib_format::DirectiveKind::D,
+            },
+            "format: expected integer for ~D",
+        ),
+    ];
+    for (error, message) in cases {
+        assert_eq!(error.to_string(), message);
+        assert!(error.source().is_none());
+    }
+
+    let print_error = FormatError::from(PrintError::Sink("closed".to_owned()));
+    assert_eq!(print_error.to_string(), "format: print: sink error: closed");
+    assert_eq!(
+        print_error.source().map(ToString::to_string),
+        Some("print: sink error: closed".to_owned())
     );
 }

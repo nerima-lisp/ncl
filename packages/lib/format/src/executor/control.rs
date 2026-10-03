@@ -1,8 +1,33 @@
 use ncl_object::{ObjectRef, Word, classify_object};
 
 use super::parameters::{parameter_i64, repeat_count_for};
-use super::{ExecutionState, FormatError, next_argument};
-use crate::{Directive, DirectiveKind};
+use super::{Directive, DirectiveKind, ExecutionState, FormatError};
+
+pub(super) fn next_argument(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<Word, FormatError> {
+    let value = state.arguments.get(*state.argument_index).copied().ok_or(
+        FormatError::MissingArgument {
+            directive: directive.kind,
+        },
+    )?;
+    *state.argument_index += 1;
+    Ok(value)
+}
+
+pub(super) fn next_argument_kind(
+    state: &mut ExecutionState<'_>,
+    directive: DirectiveKind,
+) -> Result<Word, FormatError> {
+    let value = state
+        .arguments
+        .get(*state.argument_index)
+        .copied()
+        .ok_or(FormatError::MissingArgument { directive })?;
+    *state.argument_index += 1;
+    Ok(value)
+}
 
 pub(super) fn execute_control_kind(
     directive: &Directive,

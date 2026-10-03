@@ -18,7 +18,7 @@ mod value;
 
 pub(super) use compound::split_justification;
 use compound::{execute_justification, split_branches};
-use control::{execute_character, execute_control_kind};
+use control::{execute_character, execute_control_kind, next_argument, next_argument_kind};
 use parameters::{object_string, parameter_i64, parameter_usize, parameter_width};
 use value::execute_value_kind;
 
@@ -480,30 +480,4 @@ struct ExecutionState<'a> {
     runtime: &'a Runtime,
     sink: &'a mut dyn CharSink,
     line_start: &'a mut bool,
-}
-
-fn next_argument(
-    directive: &Directive,
-    state: &mut ExecutionState<'_>,
-) -> Result<Word, FormatError> {
-    let value = state.arguments.get(*state.argument_index).copied().ok_or(
-        FormatError::MissingArgument {
-            directive: directive.kind,
-        },
-    )?;
-    *state.argument_index += 1;
-    Ok(value)
-}
-
-fn next_argument_kind(
-    state: &mut ExecutionState<'_>,
-    directive: DirectiveKind,
-) -> Result<Word, FormatError> {
-    let value = state
-        .arguments
-        .get(*state.argument_index)
-        .copied()
-        .ok_or(FormatError::MissingArgument { directive })?;
-    *state.argument_index += 1;
-    Ok(value)
 }

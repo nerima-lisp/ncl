@@ -83,6 +83,28 @@ fn define_condition_class_instantiates_slots_and_reports() {
 }
 
 #[test]
+fn non_string_custom_report_falls_back_to_the_registered_class_name() {
+    let (runtime, mut ctx) = setup();
+    let define = builtin(&runtime, &mut ctx, "NCL-EXT", "DEFINE-CONDITION-CLASS");
+    let name = symbol(&mut ctx, &runtime, "NCL-TEST", "NONSTRING-REPORT");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            define,
+            &[name, Word::NIL, Word::NIL, Word::fixnum(99)],
+        ),
+        Ok(name)
+    );
+
+    let class = condition_class(&mut ctx, &runtime, "NONSTRING-REPORT").unwrap();
+    let condition = make_condition(&mut ctx, &runtime, class, &[]).unwrap();
+    assert_eq!(
+        condition_report(&ctx, condition).as_deref(),
+        Some("NONSTRING-REPORT condition")
+    );
+}
+
+#[test]
 fn slot_metadata_uses_initform_when_initarg_is_absent() {
     let (runtime, mut ctx) = setup();
     let type_name = symbol(&mut ctx, &runtime, "COMMON-LISP", "SIMPLE-CONDITION");

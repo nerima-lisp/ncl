@@ -83,7 +83,7 @@ fn adapter_normalizes_symbol_and_string_values_for_type_queries() {
 #[test]
 fn type_errors_display_source_and_convert_between_layers() {
     let invalid = TypeError::InvalidSpecifier(Word::fixnum(7));
-    assert!(invalid.to_string().contains("invalid type specifier"));
+    assert_eq!(invalid.to_string(), "invalid type specifier: Word(0xe)");
     assert_eq!(
         TypeError::InvalidForm.to_string(),
         "invalid type specifier form"

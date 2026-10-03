@@ -99,6 +99,20 @@ fn unsupported_primitives_return_typed_errors_after_loading_operands() {
 }
 
 #[test]
+fn primitive_without_operands_reports_the_operand_error_without_emitting_bytes() {
+    let slots = one_word_slots();
+    let mut assembler = Assembler::new();
+
+    assert_eq!(
+        lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &slots,),
+        Err(CodegenError::Unsupported(
+            "primitive has no operands".into()
+        ))
+    );
+    assert_eq!(assembler.bytes(), &[]);
+}
+
+#[test]
 fn supported_memory_primitives_emit_exact_operand_offsets() {
     let slots = one_word_slots();
     for (prim, expected_instruction) in [
@@ -306,6 +320,11 @@ fn operation_lowering_emits_exact_load_store_and_compare_templates() {
             Inst::Movzx(super::FUNCTION_OBJECT, super::FUNCTION_OBJECT, 8),
             Inst::MovRR(Reg::Rcx, super::FUNCTION_OBJECT),
         ])
+    );
+
+    assert_eq!(
+        lower_exact(OpKind::Move { value: ValueId(0) }, None, &function, &slots),
+        encoded([Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax)])
     );
 }
 

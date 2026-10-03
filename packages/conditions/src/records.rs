@@ -210,3 +210,47 @@ pub fn cleanup_next_depth(ctx: &ThreadContext, previous: Word) -> Result<Word, O
         CleanupRecord::from_word(previous).depth(ctx)? + 1,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "coverage tests assert on record helpers")]
+
+    use super::*;
+    use ncl_object::{Runtime, make_simple_vector};
+
+    #[test]
+    fn record_heads_and_depths_round_trip_for_handler_restart_and_cleanup() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let handler = make_simple_vector(
+            &mut ctx,
+            &runtime,
+            &[HANDLER_TAG, Word::NIL, Word::NIL, Word::NIL, Word::fixnum(4)],
+        )
+        .unwrap();
+        let restart = make_simple_vector(
+            &mut ctx,
+            &runtime,
+            &[RESTART_TAG, Word::NIL, Word::fixnum(8), Word::NIL, Word::NIL, Word::NIL, handler, Word::fixnum(5)],
+        )
+        .unwrap();
+        let cleanup = make_simple_vector(
+            &mut ctx,
+            &runtime,
+            &[Word::NIL, Word::NIL, Word::fixnum(6)],
+        )
+        .unwrap();
+
+        assert_eq!(cluster_next_depth(&ctx, Word::NIL), Ok(Word::fixnum(1)));
+        assert_eq!(cluster_record_depth(&ctx, handler), Ok(4));
+        assert_eq!(cluster_record_depth(&ctx, restart), Ok(5));
+        assert_eq!(record_previous(&ctx, restart), Ok(handler));
+        assert_eq!(cleanup_next_depth(&ctx, Word::NIL), Ok(Word::fixnum(1)));
+        assert_eq!(cleanup_next_depth(&ctx, cleanup), Ok(Word::fixnum(7)));
+        set_cluster_head(&mut ctx, restart);
+        assert_eq!(cluster_head(&ctx), restart);
+        set_cleanup_head(&mut ctx, cleanup);
+        assert_eq!(cleanup_head(&ctx), cleanup);
+    }
+}

@@ -226,6 +226,25 @@ mod structure_tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn structure_builtins_reject_missing_and_non_numeric_arguments() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        let mut values = MultipleValues::default();
+        let empty = ncl_object::BuiltinArgs::new(&[]);
+        assert_eq!(structure_make_builtin(&mut context, &runtime, &empty, &mut values), Err(ObjectError::TypeError));
+        assert_eq!(structure_ref_builtin(&mut context, &runtime, &empty, &mut values), Err(ObjectError::TypeError));
+        assert_eq!(structure_set_builtin(&mut context, &runtime, &empty, &mut values), Err(ObjectError::TypeError));
+        assert_eq!(structure_predicate_builtin(&mut context, &runtime, &empty, &mut values), Err(ObjectError::TypeError));
+        assert_eq!(structure_copy_builtin(&mut context, &runtime, &empty, &mut values), Err(ObjectError::TypeError));
+
+        let non_numeric_layout = [Word::TRUE];
+        let args = ncl_object::BuiltinArgs::new(&non_numeric_layout);
+        assert_eq!(structure_make_builtin(&mut context, &runtime, &args, &mut values), Err(ObjectError::TypeError));
+        Ok(())
+    }
 }
 
 const fn descriptor(arity: BuiltinArity) -> Builtin {

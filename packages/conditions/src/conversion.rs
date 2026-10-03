@@ -153,3 +153,34 @@ pub fn condition_from_lisp_error(
         .map(ConditionRecord::as_word)
         .map_err(object_error)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::indexing_slicing, clippy::unwrap_used, reason = "coverage tests assert on helper results")]
+
+    use super::*;
+
+    #[test]
+    fn words_preserves_each_object_word() {
+        let values = [Word::fixnum(1), Word::NIL];
+        let converted = words(&values);
+
+        assert_eq!(converted[0].as_word(), values[0]);
+        assert_eq!(converted[1].as_word(), values[1]);
+    }
+
+    #[test]
+    fn fixnum_saturates_values_that_do_not_fit_in_a_lisp_fixnum() {
+        assert_eq!(fixnum(usize::MAX), Word::fixnum(i64::MAX));
+        assert_eq!(fixnum(7), Word::fixnum(7));
+    }
+
+    #[test]
+    fn object_error_preserves_object_errors_and_maps_condition_errors() {
+        assert_eq!(object_error(ConditionError::Object(ObjectError::TypeError)), ObjectError::TypeError);
+        assert_eq!(object_error(ConditionError::Unhandled), ObjectError::Layout);
+        assert_eq!(object_error(ConditionError::NotACondition), ObjectError::Layout);
+        assert_eq!(object_error(ConditionError::RestartNotFound), ObjectError::Layout);
+        assert_eq!(object_error(ConditionError::ChainCorrupt), ObjectError::Layout);
+    }
+}

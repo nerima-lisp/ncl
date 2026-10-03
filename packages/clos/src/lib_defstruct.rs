@@ -197,4 +197,18 @@ mod defstruct_tests {
         assert_eq!(result, Err(ObjectError::TypeError));
         Ok(())
     }
+
+    #[test]
+    fn contains_rejects_absent_values_and_non_lists() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let present = Word::fixnum(1);
+        let absent = Word::fixnum(2);
+        assert!(!contains(&ctx, present, absent)?);
+        let nested = list(&mut ctx, &runtime, &[present, Word::NIL])?;
+        assert!(!contains(&ctx, nested, absent)?);
+        assert!(contains(&ctx, nested, Word::NIL)?);
+        Ok(())
+    }
 }

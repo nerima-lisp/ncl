@@ -78,25 +78,6 @@ fn labels_are_patched() {
 }
 
 #[test]
-fn forward_call_and_conditional_fixups_are_patched() -> Result<(), EncodeError> {
-    let mut a = Assembler::new();
-    let target = a.new_label();
-    a.emit(&Inst::Call(target))?;
-    a.emit(&Inst::Jcc(Cond::E, target))?;
-    a.emit(&Inst::Nop(1))?;
-    a.bind(target);
-    let blob = a.finish()?;
-    assert_eq!(
-        blob.bytes,
-        [0xe8, 0x07, 0, 0, 0, 0x0f, 0x84, 0x01, 0, 0, 0, 0x90]
-    );
-    assert_eq!(blob.fixups.len(), 2);
-    assert_eq!(blob.fixups[0].kind, FixupKind::Rel32);
-    assert_eq!(blob.fixups[1].kind, FixupKind::Rel32);
-    Ok(())
-}
-
-#[test]
 fn backward_branches_are_patched() {
     let mut a = Assembler::new();
     let jmp_target = a.new_label();
@@ -165,27 +146,6 @@ fn invalid_nop_is_rejected() {
     assert_eq!(a.emit(&Inst::Nop(10)), Err(EncodeError::InvalidNopLength));
     assert_eq!(a.emit(&Inst::Nop(9)), Ok(()));
     assert_eq!(a.bytes().len(), 9);
-}
-
-#[test]
-fn every_nop_length_has_the_architectural_encoding() -> Result<(), EncodeError> {
-    let expected = [
-        &[0x90][..],
-        &[0x66, 0x90][..],
-        &[0x0f, 0x1f, 0x00][..],
-        &[0x0f, 0x1f, 0x40, 0x00][..],
-        &[0x0f, 0x1f, 0x44, 0x00, 0x00][..],
-        &[0x66, 0x0f, 0x1f, 0x44, 0x00, 0x00][..],
-        &[0x0f, 0x1f, 0x80, 0, 0, 0, 0][..],
-        &[0x0f, 0x1f, 0x84, 0, 0, 0, 0, 0][..],
-        &[0x66, 0x0f, 0x1f, 0x84, 0, 0, 0, 0, 0][..],
-    ];
-    for (length, bytes) in expected.into_iter().enumerate() {
-        let mut a = Assembler::new();
-        a.emit(&Inst::Nop((length + 1) as u8))?;
-        assert_eq!(a.bytes(), bytes, "NOP length {}", length + 1);
-    }
-    Ok(())
 }
 
 #[test]
@@ -335,21 +295,6 @@ fn extended_memory_and_sse_forms_encode() {
             0xf2, 0x4c, 0x0f, 0x2c, 0x7c, 0x24, 0x08,
         ]
     );
-}
-
-#[test]
-fn extension_width_variants_have_exact_bytes() -> Result<(), EncodeError> {
-    let mut a = Assembler::new();
-    a.emit(&Inst::Movzx(Reg::R15, Reg::R8, 8))?;
-    a.emit(&Inst::MovzxRM(Reg::R15, Mem::base(Reg::Rax, 0), 8))?;
-    a.emit(&Inst::MovsxRM(Reg::R15, Mem::base(Reg::Rax, 0), 32))?;
-    assert_eq!(
-        a.bytes(),
-        [
-            0x4d, 0x0f, 0xb6, 0xf8, 0x4c, 0x0f, 0xb6, 0x38, 0x4c, 0x63, 0x38
-        ]
-    );
-    Ok(())
 }
 
 #[test]

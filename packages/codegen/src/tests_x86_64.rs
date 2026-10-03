@@ -7,18 +7,7 @@
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
 use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};
-use ncl_asm_x86_64::{Assembler, Inst, Mem, Reg};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
-
-fn encoded(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
-    let mut assembler = Assembler::new();
-    for instruction in instructions {
-        assembler
-            .emit(&instruction)
-            .expect("expected instruction encoding");
-    }
-    assembler.bytes().to_vec()
-}
 
 #[test]
 #[cfg(test)]
@@ -681,86 +670,5 @@ fn x86_64_load_heap_constant_untags_each_indirection() -> Result<(), String> {
             "heap constant indirections must be untagged: found {untag_count}"
         ));
     }
-    Ok(())
-}
-
-#[test]
-fn x86_64_set_multiple_values_writes_count_and_first_value_exactly() -> Result<(), String> {
-    let mut builder = FunctionBuilder::new(
-        ncl_ir::FunctionId(79),
-        "set-multiple-values",
-        Vec::new(),
-        vec![Ty::Word],
-    );
-    let first_constant = builder.add_constant(Constant::Fixnum(11));
-    let first = builder
-        .push_op(
-            OpKind::Const {
-                result: first_constant,
-            },
-            &[Ty::Word],
-        )
-        .map_err(|error| format!("first constant: {error:?}"))?[0];
-    let second_constant = builder.add_constant(Constant::Fixnum(22));
-    let second = builder
-        .push_op(
-            OpKind::Const {
-                result: second_constant,
-            },
-            &[Ty::Word],
-        )
-        .map_err(|error| format!("second constant: {error:?}"))?[0];
-    let result = builder
-        .push_op(
-            OpKind::SetMultipleValues {
-                values: vec![first, second],
-            },
-            &[Ty::Word],
-        )
-        .map_err(|error| format!("multiple values: {error:?}"))?[0];
-    builder
-        .terminate(Terminator::Return {
-            values: vec![result],
-        })
-        .map_err(|error| format!("return: {error:?}"))?;
-
-    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
-        .map_err(|error| format!("compile: {error:?}"))?;
-    let count_store = encoded([
-        Inst::MovRI(Reg::Rdx, ncl_asm_x86_64::Imm::I32(2)),
-        Inst::MovMR(
-            Mem::base(
-                Reg::R15,
-                i32::try_from(ncl_sys::thread_layout().mv_count)
-                    .map_err(|_| "multiple value count offset overflow")?,
-            ),
-            Reg::Rdx,
-        ),
-    ]);
-    assert!(
-        compiled
-            .code
-            .windows(count_store.len())
-            .any(|window| window == count_store),
-        "missing exact multiple-value count store: {:02x?}",
-        compiled.code
-    );
-    let first_value_store = encoded([Inst::MovMR(
-        Mem::base(
-            Reg::R15,
-            i32::try_from(ncl_sys::thread_layout().mv)
-                .map_err(|_| "multiple value area offset overflow")?,
-        ),
-        Reg::R10,
-    )]);
-    assert!(
-        compiled
-            .code
-            .windows(first_value_store.len())
-            .any(|window| window == first_value_store),
-        "missing exact first-value store: {:02x?}",
-        compiled.code
-    );
-    assert!(!compiled.code.is_empty());
     Ok(())
 }

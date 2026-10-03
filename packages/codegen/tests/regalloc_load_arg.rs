@@ -1,4 +1,6 @@
-use super::{AllocationTarget, allocate};
+#![allow(missing_docs)]
+
+use ncl_codegen::{AllocationTarget, allocate};
 use ncl_ir::{FunctionBuilder, FunctionId, OpKind, Terminator, Ty, ValueId};
 
 #[test]

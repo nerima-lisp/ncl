@@ -491,3 +491,7 @@ impl HashTable {
         usize::try_from(self.read_i64(ctx, slot)?).map_err(|_| ObjectError::Layout)
     }
 }
+
+#[cfg(test)]
+#[path = "hash_table_tests.rs"]
+mod tests;

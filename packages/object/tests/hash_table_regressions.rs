@@ -8,8 +8,8 @@ mod equalp;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, allocate, make_cons, make_double, make_string,
-    make_symbol,
+    ObjectError, Package, Runtime, ThreadContext, allocate, make_bignum_from_i128, make_cons,
+    make_double, make_string, make_symbol,
 };
 use ncl_sys::StorageCondition;
 use ncl_sys::Word;
@@ -148,6 +148,20 @@ fn hash_table_options_accept_exact_boundaries_and_reject_non_finite_numbers() {
             Err(ObjectError::TypeError)
         );
     }
+    let zero_bignum = make_bignum_from_i128(&mut ctx, &runtime, 0)
+        .unwrap_or_else(|error| panic!("zero bignum: {error:?}"));
+    assert_eq!(
+        HashTable::new_with_options(
+            &mut ctx,
+            &runtime,
+            HashTest::Eq,
+            Weakness::None,
+            zero_bignum.into(),
+            None,
+            None,
+        ),
+        Err(ObjectError::TypeError)
+    );
 }
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {

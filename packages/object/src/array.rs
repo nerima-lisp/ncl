@@ -490,3 +490,7 @@ pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
 #[cfg(test)]
 #[path = "tests_array_coverage.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "array_boundary_tests.rs"]
+mod boundary_tests;

@@ -220,7 +220,34 @@ fn specialized_arrays_validate_element_type() {
         ncl_object::specialized_array_ref(&ctx, array, 0),
         Ok(Word::fixnum(1))
     );
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, array, 0, Word::fixnum(0)),
+        Ok(())
+    );
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, array, 0),
+        Ok(Word::fixnum(0))
+    );
     assert!(ncl_object::specialized_array_set(&mut ctx, array, 0, Word::fixnum(2)).is_err());
+    let characters = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Character,
+        &[Word::character(65)],
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, characters, 0, Word::character(66)),
+        Ok(())
+    );
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, characters, 0),
+        Ok(Word::character(66))
+    );
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, characters, 0, Word::fixnum(2)),
+        Err(ncl_object::ObjectError::TypeError)
+    );
     assert_eq!(
         classify_object(&ctx, array),
         ObjectRef::SpecializedArray(array)

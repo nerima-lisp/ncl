@@ -46,6 +46,16 @@ fn contains(ctx: &ThreadContext, value: Word, target: Word) -> bool {
                 || contains(ctx, ncl_object::cdr(ctx, value).unwrap(), target)))
 }
 
+fn list_items(ctx: &ThreadContext, mut value: Word) -> Vec<Word> {
+    let mut items = Vec::new();
+    while value != Word::NIL {
+        assert!(value.is_cons(), "expected a proper list");
+        items.push(ncl_object::car(ctx, value).unwrap());
+        value = ncl_object::cdr(ctx, value).unwrap();
+    }
+    items
+}
+
 fn defstruct(runtime: &Runtime, ctx: &mut ThreadContext, form: Word) -> Result<Word, ObjectError> {
     let function =
         FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", "DEFSTRUCT").unwrap())
@@ -149,4 +159,64 @@ fn print_function_is_recorded_and_non_structure_type_is_rejected() {
     );
     let invalid = defstruct(&runtime, &mut ctx, invalid_form);
     assert_eq!(invalid, Err(ObjectError::TypeError));
+}
+
+#[test]
+fn trailing_options_preserve_explicit_names_and_quoted_defstruct_result() {
+    let (runtime, mut ctx) = setup();
+    let defstruct_name = intern(&runtime, &mut ctx, "DEFSTRUCT");
+    let record = intern(&runtime, &mut ctx, "COVERAGE-TRAILING");
+    let left = intern(&runtime, &mut ctx, "LEFT");
+    let right = intern(&runtime, &mut ctx, "RIGHT");
+    let conc_name = intern(&runtime, &mut ctx, ":CONC-NAME");
+    let predicate = intern(&runtime, &mut ctx, ":PREDICATE");
+    let copier = intern(&runtime, &mut ctx, ":COPIER");
+    let constructor = intern(&runtime, &mut ctx, ":CONSTRUCTOR");
+    let type_option = intern(&runtime, &mut ctx, ":TYPE");
+    let structure = intern(&runtime, &mut ctx, "STRUCTURE");
+    let prefix = intern(&runtime, &mut ctx, "TRAILING-");
+    let left_accessor = intern(&runtime, &mut ctx, "TRAILING-LEFT");
+    let right_accessor = intern(&runtime, &mut ctx, "TRAILING-RIGHT");
+    let predicate_name = intern(&runtime, &mut ctx, "TRAILING-P");
+    let copier_name = intern(&runtime, &mut ctx, "COPY-TRAILING");
+    let constructor_name = intern(&runtime, &mut ctx, "MAKE-TRAILING");
+    let lambda = list(&mut ctx, &runtime, &[left, right]);
+    let form = list(
+        &mut ctx,
+        &runtime,
+        &[
+            defstruct_name,
+            record,
+            left,
+            right,
+            conc_name,
+            prefix,
+            predicate,
+            predicate_name,
+            copier,
+            copier_name,
+            constructor,
+            constructor_name,
+            lambda,
+            type_option,
+            structure,
+        ],
+    );
+
+    let expansion = defstruct(&runtime, &mut ctx, form).unwrap();
+    let expansion_items = list_items(&ctx, expansion);
+    let quote = intern_in(&runtime, &mut ctx, "COMMON-LISP", "QUOTE");
+
+    assert_eq!(
+        expansion_items
+            .last()
+            .copied()
+            .map(|value| list_items(&ctx, value)),
+        Some(vec![quote, record])
+    );
+    assert!(contains(&ctx, expansion, constructor_name));
+    assert!(contains(&ctx, expansion, left_accessor));
+    assert!(contains(&ctx, expansion, right_accessor));
+    assert!(contains(&ctx, expansion, predicate_name));
+    assert!(contains(&ctx, expansion, copier_name));
 }

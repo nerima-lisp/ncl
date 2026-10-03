@@ -322,3 +322,65 @@ fn float_ratio(value: f64) -> Result<(u128, u32), ObjectError> {
         Ok((significand, exponent.unsigned_abs()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_capacity, validate_rehash_size, validate_rehash_threshold};
+    use crate::{
+        ObjectError, Runtime, ThreadContext, make_bignum_from_i128, make_double, make_ratio,
+    };
+    use ncl_sys::Word;
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn option_values_validate_numeric_boundaries() {
+        assert_eq!(normalize_capacity(1), Ok(8));
+        assert_eq!(normalize_capacity(8), Ok(8));
+        assert_eq!(normalize_capacity(9), Ok(16));
+        assert_eq!(normalize_capacity(u128::MAX), Err(ObjectError::TypeError));
+
+        let (runtime, mut ctx) = setup();
+        let positive_bignum = make_bignum_from_i128(&mut ctx, &runtime, 17)
+            .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+        assert_eq!(validate_rehash_size(&ctx, positive_bignum.into()), Ok(()));
+        let factor = make_double(&mut ctx, &runtime, 2.0)
+            .unwrap_or_else(|error| panic!("factor: {error:?}"));
+        assert_eq!(validate_rehash_size(&ctx, factor.into()), Ok(()));
+        assert_eq!(validate_rehash_size(&ctx, Word::fixnum(1)), Ok(()));
+        assert_eq!(
+            validate_rehash_size(&ctx, Word::fixnum(0)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            validate_rehash_size(&ctx, Word::fixnum(-1)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            validate_rehash_size(&ctx, Word::TRUE),
+            Err(ObjectError::TypeError)
+        );
+
+        let half = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+            .unwrap_or_else(|error| panic!("ratio: {error:?}"));
+        assert_eq!(validate_rehash_threshold(&ctx, half.into()), Ok(()));
+        assert_eq!(
+            validate_rehash_threshold(&ctx, Word::fixnum(0)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            validate_rehash_threshold(&ctx, Word::fixnum(2)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            validate_rehash_threshold(&ctx, Word::TRUE),
+            Err(ObjectError::TypeError)
+        );
+    }
+}

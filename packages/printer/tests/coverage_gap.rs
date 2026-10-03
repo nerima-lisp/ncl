@@ -167,6 +167,22 @@ impl CharSink for FailingSink {
     }
 }
 
+struct RecordingSink(String);
+
+impl CharSink for RecordingSink {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        self.0.push(character);
+        Ok(())
+    }
+}
+
+#[test]
+fn default_char_sink_write_str_forwards_each_character_in_order() {
+    let mut sink = RecordingSink(String::new());
+    sink.write_str("A\nβ").unwrap();
+    assert_eq!(sink.0, "A\nβ");
+}
+
 #[test]
 fn sink_errors_and_print_errors_are_observable() {
     let (runtime, mut ctx) = context();

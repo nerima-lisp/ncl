@@ -65,6 +65,34 @@ fn parser_reports_bad_tags_and_descriptors() {
 }
 
 #[test]
+fn parser_rejects_invalid_headers_trailing_fields_and_missing_payloads() {
+    assert_eq!(
+        parse("function @edge { 0,edge,0,0,0,0,0,0,0, }")
+            .expect_err("invalid function header must fail")
+            .to_string(),
+        "expected fn header"
+    );
+    assert_eq!(
+        parse("fn @edge { x,edge,0,0,0,0,0,0,0, }")
+            .expect_err("invalid integer must fail")
+            .to_string(),
+        "bad integer"
+    );
+    assert_eq!(
+        parse("fn @edge { 0,edge, }\n")
+            .expect_err("missing payload must fail")
+            .to_string(),
+        "unexpected end"
+    );
+    assert_eq!(
+        parse("fn @edge { 0,edge,0,0,0,0,0,0,0,deadbeef }")
+            .expect_err("trailing input must fail")
+            .to_string(),
+        "trailing input"
+    );
+}
+
+#[test]
 fn parser_rejects_bad_names_and_integer_ranges() {
     assert_eq!(error("0,edge_zz,0,0,0,0,0,0,0,"), "bad escape");
     assert_eq!(error("0,edge_ff,0,0,0,0,0,0,0,"), "invalid utf8");

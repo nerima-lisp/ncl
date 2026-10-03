@@ -1,5 +1,8 @@
 use super::{lower_op, lower_prim, move_args};
-use crate::{Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate};
+use crate::{
+    Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate,
+    tests_x86_64_fixture::X86_64FixtureAbi,
+};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem, Reg};
 use ncl_ir::{
     BlockParam, Compare, Constant, Convert, Function, FunctionBuilder, Op, OpKind, Param, Prim,
@@ -96,6 +99,20 @@ fn unsupported_primitives_return_typed_errors_after_loading_operands() {
                 if message.contains("primitive is not available")
         ));
     }
+}
+
+#[test]
+fn primitive_without_operands_reports_the_operand_error_without_emitting_bytes() {
+    let slots = one_word_slots();
+    let mut assembler = Assembler::new();
+
+    assert_eq!(
+        lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &slots,),
+        Err(CodegenError::Unsupported(
+            "primitive has no operands".into()
+        ))
+    );
+    assert_eq!(assembler.bytes(), &[]);
 }
 
 #[test]
@@ -307,6 +324,11 @@ fn operation_lowering_emits_exact_load_store_and_compare_templates() {
             Inst::MovRR(Reg::Rcx, super::FUNCTION_OBJECT),
         ])
     );
+
+    assert_eq!(
+        lower_exact(OpKind::Move { value: ValueId(0) }, None, &function, &slots),
+        encoded([Inst::MovRR(super::FUNCTION_OBJECT, Reg::Rax)])
+    );
 }
 
 #[test]
@@ -412,6 +434,85 @@ fn operation_errors_keep_constant_handler_and_copy_contracts_typed() {
         Err(CodegenError::Unsupported(message))
             if message.contains("block argument arity mismatch")
     ));
+}
+
+#[test]
+fn builtin_lowering_reports_arity_and_stages_generated_lambda_arguments() {
+    let function = FunctionBuilder::new(
+        ncl_ir::FunctionId(218),
+        "builtin-arity-and-rest-arguments",
+        Vec::new(),
+        Vec::new(),
+    )
+    .finish();
+    let mut slots = slots_with_locations(
+        &[
+            (ValueId(0), Location::Register(0)),
+            (ValueId(1), Location::Register(1)),
+        ],
+        0,
+    );
+    slots.incoming_args_base = Some(0);
+
+    let mut assembler = Assembler::new();
+    let missing_rest_operands = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "make-rest-list".into(),
+            args: Vec::new(),
+        },
+        loc: None,
+    };
+    assert!(matches!(
+        lower_op(
+            &mut assembler,
+            &missing_rest_operands,
+            &function,
+            &slots,
+            &X86_64Abi,
+        ),
+        Err(CodegenError::Unsupported(message))
+            if message == "make-rest-list requires argc and start"
+    ));
+
+    let too_many_arguments = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "identity".into(),
+            args: (0..=4).map(ValueId).collect(),
+        },
+        loc: None,
+    };
+    assert!(matches!(
+        lower_op(
+            &mut assembler,
+            &too_many_arguments,
+            &function,
+            &slots,
+            &X86_64Abi,
+        ),
+        Err(CodegenError::Unsupported(message))
+            if message == "x86-64 builtins support at most four arguments"
+    ));
+
+    let rest_builtin = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "make-rest-list".into(),
+            args: vec![ValueId(0), ValueId(1)],
+        },
+        loc: None,
+    };
+    let mut staged = Assembler::new();
+    lower_op(
+        &mut staged,
+        &rest_builtin,
+        &function,
+        &slots,
+        &X86_64FixtureAbi,
+    )
+    .expect("generated lambda rest arguments lower");
+    assert!(!staged.bytes().is_empty());
 }
 
 #[test]

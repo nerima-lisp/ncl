@@ -325,3 +325,19 @@ pub fn parse_integer(
     )?;
     Ok((integer, index))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::digit_value;
+
+    #[test]
+    fn digit_value_accepts_case_insensitive_digits_only_within_base() {
+        assert_eq!(digit_value('0', 2), Some(0));
+        assert_eq!(digit_value('1', 2), Some(1));
+        assert_eq!(digit_value('2', 2), None);
+        assert_eq!(digit_value('a', 16), Some(10));
+        assert_eq!(digit_value('F', 16), Some(15));
+        assert_eq!(digit_value('g', 16), None);
+        assert_eq!(digit_value('_', 36), None);
+    }
+}

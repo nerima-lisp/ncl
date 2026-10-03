@@ -33,7 +33,7 @@ macro_rules! function_address {
 
 #[cfg(test)]
 mod tests {
-    use super::function_address;
+    use super::{FunctionAddressError, function_address};
 
     fn sample() {}
 
@@ -43,5 +43,14 @@ mod tests {
             function_address(sample as *const ()),
             Ok(address) if address != 0
         ));
+    }
+
+    #[test]
+    fn function_address_error_has_a_stable_message() {
+        assert_eq!(
+            FunctionAddressError.to_string(),
+            "native function address does not fit in u64"
+        );
+        assert!(std::error::Error::source(&FunctionAddressError).is_none());
     }
 }

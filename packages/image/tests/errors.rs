@@ -315,6 +315,23 @@ fn malformed_records_and_references_report_their_decode_categories() {
 }
 
 #[test]
+fn truncated_feature_payload_reports_the_feature_string_boundary() {
+    let mut image = empty_image();
+    image[28..32].copy_from_slice(&1_u32.to_le_bytes());
+    image[44..48].copy_from_slice(&1_u32.to_le_bytes());
+    image.truncate(64);
+    image.push(0);
+
+    assert_eq!(
+        load_error(&image),
+        ImageError::Truncated {
+            offset: 0,
+            needed: 4,
+        }
+    );
+}
+
+#[test]
 fn malformed_object_payload_references_fail_during_reconstruction() {
     // A one-object image whose cons points at a nonexistent second object.
     let cons = [0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0];

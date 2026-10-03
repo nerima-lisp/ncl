@@ -186,3 +186,16 @@ fn remainder_covers_zero_and_i128_division_overflow_cases() {
         Err(ObjectError::TypeError)
     );
 }
+
+#[test]
+fn gcd_rejects_an_unrepresentable_absolute_i128_minimum() {
+    let (runtime, mut ctx) = setup();
+    let minimum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "GCD", &[minimum, Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+}

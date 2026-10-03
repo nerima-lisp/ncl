@@ -23,5 +23,8 @@ mod builtins {
 pub use builtins::{general_category, register};
 
 #[cfg(test)]
+#[path = "tests/additional.rs"]
+mod additional_tests;
+#[cfg(test)]
 #[path = "tests/units.rs"]
 mod tests;

@@ -10,6 +10,9 @@ mod remainder;
 mod rounding;
 mod transcendental;
 
+#[cfg(test)]
+mod tests_coverage;
+
 use core::cell::Cell;
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,

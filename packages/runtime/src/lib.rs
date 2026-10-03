@@ -162,24 +162,19 @@ impl Runtime {
                 .chain(lowered.nested)
                 .collect(),
         };
-        let mut passes = ncl_opt::PassManager::new();
-        passes.add_function_pass(ncl_opt::InlineDirectCalls::default());
-        passes
-            .run(&mut module)
-            .map_err(|error| RuntimeError::Native(error.to_string()))?;
         module.functions.sort_by_key(|function| function.id);
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
         let mut compiled = Vec::with_capacity(module.functions.len());
-        for function in &module.functions {
-            compiled.push((function, self.compile_native(function)?));
-        }
-        for (function, (code, metadata)) in &compiled {
+        for function in module.functions.iter().rev() {
+            let (code, metadata) = self.compile_native(function)?;
             let entry = code.address().saturating_add(metadata.entry_offset);
             self.functions
                 .insert(function.id.0, PublishedFunction { entry });
+            compiled.push((function, (code, metadata)));
         }
+        compiled.reverse();
         for (function, (code, metadata)) in compiled.iter().skip(1) {
             let entry = code.address().saturating_add(metadata.entry_offset);
             let (_function_object, entry_code) =

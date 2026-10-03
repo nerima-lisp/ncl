@@ -239,9 +239,14 @@ fn validate_parameters(
     directive: DirectiveKind,
     parameters: &[Parameter],
 ) -> Result<(), ParseErrorKind> {
-    let nonnegative = |parameter: Option<&Parameter>| match parameter {
-        Some(Parameter::Integer(value)) if *value < 0 => Err(ParseErrorKind::InvalidParameter),
-        _ => Ok(()),
+    let nonnegative = |parameter: Option<&Parameter>| {
+        if let Some(Parameter::Integer(value)) = parameter
+            && *value < 0
+        {
+            Err(ParseErrorKind::InvalidParameter)
+        } else {
+            Ok(())
+        }
     };
     match directive {
         DirectiveKind::R => {
@@ -285,7 +290,23 @@ fn validate_parameters(
         | DirectiveKind::Bar
         | DirectiveKind::Underscore
         | DirectiveKind::I => nonnegative(parameters.first())?,
-        _ => {}
+        DirectiveKind::C
+        | DirectiveKind::Slash
+        | DirectiveKind::Star
+        | DirectiveKind::BracketOpen
+        | DirectiveKind::BracketClose
+        | DirectiveKind::BraceOpen
+        | DirectiveKind::BraceClose
+        | DirectiveKind::Question
+        | DirectiveKind::ParenOpen
+        | DirectiveKind::ParenClose
+        | DirectiveKind::P
+        | DirectiveKind::Semicolon
+        | DirectiveKind::UpArrow
+        | DirectiveKind::Newline
+        | DirectiveKind::Less
+        | DirectiveKind::Greater
+        | DirectiveKind::ColonGreater => {}
     }
     Ok(())
 }

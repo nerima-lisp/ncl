@@ -38,9 +38,9 @@ mod structure_registry;
 mod symbol_extensions;
 pub mod typed;
 pub use array::{
-    ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
-    make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
-    simple_vector_set, string_length, string_ref, string_set,
+    ArrayElementType, ArrayOptions, array_dimensions, array_element_type, array_row_major_ref,
+    array_row_major_set, make_array, make_simple_vector, make_string, simple_vector_length,
+    simple_vector_ref, simple_vector_set, string_length, string_ref, string_set,
 };
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,

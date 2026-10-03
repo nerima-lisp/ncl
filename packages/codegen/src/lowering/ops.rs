@@ -44,6 +44,7 @@ pub(super) fn constant_value(
         | Constant::Bignum { .. }
         | Constant::Ratio { .. }
         | Constant::Complex { .. }
+        | Constant::Array { .. }
         // check-added-lines: allow(unsupported) runtime-table constants are loaded through code objects
         | Constant::Structure { .. } => Err(CodegenError::Unsupported(
             "constant requires a runtime constant table".into(),
@@ -264,3 +265,8 @@ pub(super) fn emit_return(
     )?;
     emit(assembler, &Inst::Ret)
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+#[path = "tests_lowering_ops.rs"]
+mod tests;

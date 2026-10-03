@@ -169,6 +169,7 @@ pub fn lower_op(
                     | ncl_ir::Constant::Object(_)
                     | ncl_ir::Constant::StringBytes(_)
                     | ncl_ir::Constant::Structure { .. }
+                    | ncl_ir::Constant::Array { .. }
                     | ncl_ir::Constant::Bignum { .. }
                     | ncl_ir::Constant::Ratio { .. }
                     | ncl_ir::Constant::Complex { .. }
@@ -456,3 +457,7 @@ pub fn lower_op(
     }
     Ok(call_pc)
 }
+
+#[cfg(test)]
+#[path = "tests_aarch64_lowering_ops.rs"]
+mod tests;

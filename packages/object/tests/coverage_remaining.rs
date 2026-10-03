@@ -276,6 +276,8 @@ fn raw_slots_and_mutators_report_boundary_errors() {
         rplacd(&mut context, Word::TRUE, Word::NIL),
         Err(ObjectError::TypeError)
     );
+    assert_eq!(rplaca(&mut context, cons, Word::TRUE), Ok(cons));
+    assert_eq!(ncl_object::car(&context, cons), Ok(Word::TRUE));
 
     let mut unregistered = ThreadContext::new();
     assert_eq!(

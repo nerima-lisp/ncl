@@ -163,6 +163,32 @@ fn constant(w: &mut Writer, c: &Constant) {
                 w.u(element.0.into());
             }
         }
+        Constant::Array {
+            dimensions,
+            element_type,
+            elements,
+        } => {
+            w.u(15);
+            vec_len(w, dimensions.len());
+            for dimension in dimensions {
+                w.u((*dimension).try_into().unwrap_or(u64::MAX));
+            }
+            w.u(match element_type {
+                crate::ArrayElementType::T => 0,
+                crate::ArrayElementType::Bit => 1,
+                crate::ArrayElementType::Character => 2,
+                crate::ArrayElementType::BaseChar => 3,
+                crate::ArrayElementType::Fixnum => 4,
+                crate::ArrayElementType::Signed => 5,
+                crate::ArrayElementType::Unsigned => 6,
+                crate::ArrayElementType::SingleFloat => 7,
+                crate::ArrayElementType::DoubleFloat => 8,
+            });
+            vec_len(w, elements.len());
+            for element in elements {
+                w.u(element.0.into());
+            }
+        }
         Constant::Nil => w.u(7),
         Constant::T => w.u(8),
         Constant::Unbound => w.u(9),
@@ -247,8 +273,11 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         OpKind::Const { result } => w.u(result.0.into()),
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. }
         | OpKind::MakeValueCell { value } => w.u(value.0.into()),
+        OpKind::Convert { op, value } => {
+            w.s(&format!("{op:?}"));
+            w.u(value.0.into());
+        }
         OpKind::Store { address, value } => {
             w.u(address.0.into());
             w.u(value.0.into());

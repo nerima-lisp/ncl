@@ -2,8 +2,7 @@ use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word, 
 
 #[path = "collect/weak_mark.rs"]
 mod weak_mark;
-use weak_mark::WeakMarkContext;
-
+use weak_mark::{WeakMarkContext, weak_referent_indices};
 const HASH_TABLE_WIDETAG: u8 = 5;
 const HASH_TABLE_WEAKNESS: usize = 2;
 const HASH_TABLE_COUNT: usize = 3;
@@ -14,7 +13,6 @@ const HASH_TABLE_KV: usize = 12;
 const HASH_TABLE_INDEX: usize = 13;
 const VECTOR_DATA: usize = 2;
 const TOMBSTONE: i64 = -2;
-
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
@@ -66,13 +64,9 @@ impl super::Heap {
                 frame_values.extend(values);
             }
         }
+        let weak_referents = weak_referent_indices(&state);
+        let mut precise_indices = HashSet::new();
         let mut conservative_indices = Vec::new();
-        for value in conservative_values {
-            if let Some(index) = Self::find_conservative(&state, value) {
-                state.objects[index].pinned = true;
-                conservative_indices.push(index);
-            }
-        }
         if !full {
             for (index, _) in state.dirty_cards.clone() {
                 if state.objects.get(index).is_some_and(|object| object.alive) {
@@ -85,16 +79,29 @@ impl super::Heap {
                 // SAFETY: registered root slots outlive registration.
                 let value = unsafe { *root };
                 if let Some(index) = Self::find(&state, value) {
+                    precise_indices.insert(index);
                     stack.push(index);
                 }
             }
         }
-        stack.extend(conservative_indices);
         for value in frame_values {
             if let Some(index) = Self::find(&state, value) {
+                precise_indices.insert(index);
                 stack.push(index);
             }
         }
+        for value in conservative_values {
+            if let Some(index) = Self::find_conservative(&state, value) {
+                if weak_referents.contains(&index) && !precise_indices.contains(&index) {
+                    continue;
+                }
+                if let Some(object) = state.objects.get_mut(index) {
+                    object.pinned = true;
+                }
+                conservative_indices.push(index);
+            }
+        }
+        stack.extend(conservative_indices);
         let mut mark = WeakMarkContext {
             state: &state,
             full,
@@ -111,7 +118,6 @@ impl super::Heap {
             hook();
         }
     }
-
     fn move_live_objects(
         state: &mut super::State,
         live: &mut HashSet<usize>,
@@ -152,6 +158,9 @@ impl super::Heap {
             moved.insert(old_address, new_address);
             state.object_starts.insert(new_address, new_index);
             state.objects.push(copy);
+            if state.weak_tables.contains(&index) {
+                state.weak_tables.insert(new_index);
+            }
             live.insert(new_index);
         }
         moved
@@ -239,12 +248,10 @@ impl super::Heap {
         }
         hooks
     }
-
     fn is_hash_table(state: &super::State, index: usize) -> bool {
         state.objects[index].kind != PageKind::Cons
             && state.objects[index].words.first().copied() == Some(u64::from(HASH_TABLE_WIDETAG))
     }
-
     fn hash_table_weakness(state: &super::State, index: usize) -> Option<Weakness> {
         match Word::from_bits(
             state.objects[index]
@@ -283,7 +290,6 @@ impl super::Heap {
         }
         result
     }
-
     fn clear_dead_hash_table_entries(
         state: &mut super::State,
         moved: &HashMap<usize, usize>,

@@ -145,7 +145,7 @@ fn random_builtin(
     }
     let mut rooted_state = state;
     let token = ncl_object::push_root(ctx, &mut rooted_state);
-    let result = match classify_object(ctx, limit) {
+    let result = (|| match classify_object(ctx, limit) {
         ObjectRef::DoubleFloat(value) => {
             let bound = ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(value))?;
             if !bound.is_finite() || bound <= 0.0 {
@@ -176,7 +176,7 @@ fn random_builtin(
                 )
         }
         _ => Err(ObjectError::TypeError),
-    };
+    })();
     if !ncl_object::pop_root(ctx, token) {
         return Err(ObjectError::Layout);
     }

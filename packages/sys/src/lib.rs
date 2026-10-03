@@ -18,6 +18,7 @@ mod thread;
 mod word;
 
 #[cfg(test)]
+#[path = "tests_native_word_cases.rs"]
 mod native_word_tests;
 
 pub use code::{
@@ -340,6 +341,13 @@ pub fn request_safepoint(thread: &mut Thread) {
 pub fn publish_safepoint(thread: &mut Thread) {
     thread.publish_snapshot();
     thread.poll_safepoint();
+}
+
+/// Refresh the conservative stack and callee-saved-register snapshot without polling.
+pub fn publish_conservative_snapshot(thread: &mut Thread) {
+    if !thread.has_native_frame_snapshot() {
+        thread.publish_snapshot();
+    }
 }
 
 /// Publish a conservative candidate discovered in a native stack or register.

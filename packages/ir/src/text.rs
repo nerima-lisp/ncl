@@ -1,5 +1,6 @@
 //! Stable, dependency-free textual serialization for IR.
 
+mod array;
 mod parser;
 mod printer;
 

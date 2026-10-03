@@ -119,7 +119,7 @@ fn a_symbol_macro_replaces_a_reference() {
 }
 
 #[test]
-fn a_symbol_macro_shadows_a_let_binding() {
+fn a_let_binding_shadows_a_symbol_macro() {
     let mut f = Fixture::new();
     let name = f.user("X");
     let binding = f.list(&[name, Word::fixnum(2)]);
@@ -133,7 +133,10 @@ fn a_symbol_macro_shadows_a_let_binding() {
     match f.expand(form).unwrap() {
         Expr::Let { body, .. } => match &body[0] {
             Expr::SymbolMacrolet { body, .. } => {
-                assert_eq!(body, &vec![Expr::Constant(Literal::fixnum(1))]);
+                assert_eq!(
+                    body,
+                    &vec![Expr::Variable(SymbolRef::interned("COMMON-LISP-USER", "X"))]
+                );
             }
             other => panic!("expected SymbolMacrolet, got {other:?}"),
         },

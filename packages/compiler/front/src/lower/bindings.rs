@@ -228,7 +228,7 @@ impl Context<'_> {
             .zip(ids.iter().copied())
             .zip(captures.iter())
         {
-            let params = lambda_params(&definition.lambda.lambda_list)?;
+            let params = lambda_params(&definition.lambda.lambda_list);
             let mut nested =
                 FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
             bind_captures(&mut nested, variable_captures)?;

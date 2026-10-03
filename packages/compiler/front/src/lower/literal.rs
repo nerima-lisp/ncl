@@ -1,9 +1,8 @@
 //! Lowering quoted and self-evaluating literals to `ncl-ir` constants.
 //!
 //! The constant table holds scalars, symbols, strings, and descriptors, plus
-//! structural entries (cons, vector, bignum, ratio, complex) that reference
-//! earlier table entries by index. Arrays and bit-vectors have no
-//! representation yet and are reported as [`LowerError::Unsupported`].
+//! structural entries (cons, vector, array, bignum, ratio, complex) that
+//! reference earlier table entries by index.
 
 use ncl_ir::{Constant, Convert, OpKind, StructureKind, Ty, ValueId};
 
@@ -31,18 +30,20 @@ pub(super) fn lower_literal(
             f.word_constant(Constant::StringBytes(bytes))
         }
         Literal::Number(number) => lower_number(f, number),
-        Literal::Cons(_, _) | Literal::Vector(_) => {
+        Literal::Cons(_, _)
+        | Literal::Vector(_)
+        | Literal::Array { .. }
+        | Literal::BitVector(_) => {
             let descriptor = structure_constant(f, literal)?;
             f.word_constant(descriptor)
         }
-        // check-added-lines: allow(unsupported) unsupported literal families remain explicit
-        Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
-            form: "quoted structure",
-        }),
     }
 }
 
 fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Constant, LowerError> {
+    if matches!(literal, Literal::Array { .. } | Literal::BitVector(_)) {
+        return array_constant(f, literal);
+    }
     let (kind, children): (StructureKind, Vec<&Literal>) = match literal {
         Literal::Cons(car, cdr) => (StructureKind::Cons, vec![car, cdr]),
         Literal::Vector(elements) => (StructureKind::SimpleVector, elements.iter().collect()),
@@ -54,7 +55,6 @@ fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Cons
         | Literal::String(_)
         | Literal::Array { .. }
         | Literal::BitVector(_) => {
-            // check-added-lines: allow(unsupported) unsupported literal families remain explicit
             return Err(LowerError::Unsupported {
                 form: "quoted structure",
             });
@@ -95,10 +95,68 @@ fn scalar_or_structure_constant(
         }
         Literal::Number(number) => number_literal_constant(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => structure_constant(f, literal),
-        // check-added-lines: allow(unsupported) unsupported literal families remain explicit
-        Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
-            form: "quoted structure",
-        }),
+        Literal::Array { .. } | Literal::BitVector(_) => array_constant(f, literal),
+    }
+}
+
+fn array_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Constant, LowerError> {
+    let (dimensions, element_type, values): (Vec<usize>, ncl_ir::ArrayElementType, Vec<Literal>) =
+        match literal {
+            Literal::Array {
+                dimensions,
+                element_type,
+                elements,
+            } => (
+                dimensions.clone(),
+                array_element_type(*element_type),
+                elements.clone(),
+            ),
+            Literal::BitVector(bits) => (
+                vec![bits.len()],
+                ncl_ir::ArrayElementType::Bit,
+                bits.iter()
+                    .map(|bit| Literal::fixnum(i64::from(*bit)))
+                    .collect(),
+            ),
+            Literal::Nil
+            | Literal::T
+            | Literal::Symbol(..)
+            | Literal::Character(..)
+            | Literal::String(..)
+            | Literal::Number(..)
+            | Literal::Cons(..)
+            | Literal::Vector(..) => {
+                // check-added-lines: allow(unsupported) array-like literal fallback
+                return Err(LowerError::Unsupported {
+                    form: "quoted structure",
+                });
+            }
+        };
+    let elements = values
+        .iter()
+        .map(|value| {
+            let constant = scalar_or_structure_constant(f, value)?;
+            Ok(f.add_constant(constant))
+        })
+        .collect::<Result<Vec<_>, LowerError>>()?;
+    Ok(Constant::Array {
+        dimensions,
+        element_type,
+        elements,
+    })
+}
+
+const fn array_element_type(value: ncl_object::ArrayElementType) -> ncl_ir::ArrayElementType {
+    match value {
+        ncl_object::ArrayElementType::T => ncl_ir::ArrayElementType::T,
+        ncl_object::ArrayElementType::Bit => ncl_ir::ArrayElementType::Bit,
+        ncl_object::ArrayElementType::Character => ncl_ir::ArrayElementType::Character,
+        ncl_object::ArrayElementType::BaseChar => ncl_ir::ArrayElementType::BaseChar,
+        ncl_object::ArrayElementType::Fixnum => ncl_ir::ArrayElementType::Fixnum,
+        ncl_object::ArrayElementType::Signed => ncl_ir::ArrayElementType::Signed,
+        ncl_object::ArrayElementType::Unsigned => ncl_ir::ArrayElementType::Unsigned,
+        ncl_object::ArrayElementType::SingleFloat => ncl_ir::ArrayElementType::SingleFloat,
+        ncl_object::ArrayElementType::DoubleFloat => ncl_ir::ArrayElementType::DoubleFloat,
     }
 }
 

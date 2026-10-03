@@ -43,7 +43,8 @@ pub(super) fn check_op(
                     crate::Constant::Object(index) => {
                         check_constant_reference(*index, function, block.id, errors);
                     }
-                    crate::Constant::Structure { elements, .. } => {
+                    crate::Constant::Structure { elements, .. }
+                    | crate::Constant::Array { elements, .. } => {
                         for index in elements {
                             check_constant_reference(*index, function, block.id, errors);
                         }
@@ -421,6 +422,7 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         | crate::Constant::Object(_)
         | crate::Constant::StringBytes(_)
         | crate::Constant::Structure { .. }
+        | crate::Constant::Array { .. }
         | crate::Constant::Bignum { .. }
         | crate::Constant::Ratio { .. }
         | crate::Constant::Complex { .. }

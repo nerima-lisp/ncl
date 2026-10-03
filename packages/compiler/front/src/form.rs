@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 use ncl_object::{
     Bignum, Complex, DoubleFloat, ObjectRef, Package, Ratio, ThreadContext, Word, array_dimensions,
-    array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify, classify_object,
-    complex_imag, complex_real, double_value, ratio_denominator, ratio_numerator,
+    array_element_type, array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify,
+    classify_object, complex_imag, complex_real, double_value, ratio_denominator, ratio_numerator,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
     symbol_package,
 };
@@ -142,7 +142,7 @@ pub fn literal(
         ObjectRef::Cons(_) => cons_literal(ctx, table, word),
         ObjectRef::String(_) => Ok(Literal::String(word_characters(ctx, word)?)),
         ObjectRef::SimpleVector(_) => vector_literal(ctx, table, word),
-        ObjectRef::Array(_) => array_literal(ctx, table, word),
+        ObjectRef::Array(_) | ObjectRef::SpecializedArray(_) => array_literal(ctx, table, word),
         ObjectRef::Bignum(_)
         | ObjectRef::Ratio(_)
         | ObjectRef::DoubleFloat(_)
@@ -254,6 +254,7 @@ fn array_literal(
     word: Word,
 ) -> Result<Literal, FrontError> {
     let dimensions = array_dimensions(ctx, word)?;
+    let element_type = array_element_type(ctx, word)?;
     let total = dimensions
         .iter()
         .try_fold(1_usize, |size, dimension| size.checked_mul(*dimension))
@@ -264,6 +265,7 @@ fn array_literal(
     }
     Ok(Literal::Array {
         dimensions,
+        element_type,
         elements,
     })
 }

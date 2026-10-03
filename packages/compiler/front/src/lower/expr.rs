@@ -389,7 +389,7 @@ impl Context<'_> {
         self_name: Option<&SymbolRef>,
     ) -> Result<FunctionId, LowerError> {
         let id = self.module.fresh_function();
-        let params = lambda_params(&lambda.lambda_list)?;
+        let params = lambda_params(&lambda.lambda_list);
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
         bind_captures(&mut nested, captures)?;
         for (index, (name, _)) in function_captures.iter().enumerate() {

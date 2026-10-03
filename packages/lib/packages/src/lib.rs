@@ -372,3 +372,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 #[cfg(test)]
 #[path = "tests/lib.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/package_symbol_contracts.rs"]
+mod package_symbol_contracts;

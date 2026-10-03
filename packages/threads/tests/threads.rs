@@ -188,6 +188,34 @@ fn current_thread_is_the_main_thread() {
 }
 
 #[test]
+fn main_thread_object_records_its_fixed_identity_and_state() {
+    let runtime = runtime();
+    ncl_threads::register(&runtime).unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+
+    let main = ncl_threads::make_main_thread_object(&mut ctx, &runtime, "main thread").unwrap();
+    assert_eq!(ncl_threads::object_id(&ctx, main).unwrap().get(), 0);
+    assert_eq!(ncl_threads::thread_alive_p(&ctx, main).unwrap(), Word::TRUE);
+    assert_eq!(ncl_threads::main_thread_p(&ctx, main).unwrap(), Word::TRUE);
+    assert_eq!(
+        ncl_threads::thread_state_of(&ctx, main).unwrap(),
+        ncl_threads::STATE_RUNNING
+    );
+    assert_eq!(
+        ncl_threads::thread_os_tid_of(&ctx, main)
+            .unwrap()
+            .as_fixnum(),
+        Some(0)
+    );
+    let name = ncl_threads::thread_name_of(&ctx, main).unwrap();
+    let name = (0..ncl_object::string_length(&ctx, name).unwrap())
+        .map(|index| ncl_object::string_ref(&ctx, name, index).unwrap())
+        .collect::<String>();
+    assert_eq!(name, "main thread");
+}
+
+#[test]
 fn thread_yield_and_finished_state_are_available() {
     ncl_threads::thread_yield();
     assert_eq!(ncl_threads::finished_state(), ncl_threads::STATE_FINISHED);

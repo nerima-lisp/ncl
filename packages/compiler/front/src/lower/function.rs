@@ -222,6 +222,7 @@ const fn constant_type(constant: &Constant) -> Ty {
         | Constant::Bignum { .. }
         | Constant::Ratio { .. }
         | Constant::Complex { .. }
+        | Constant::Array { .. }
         | Constant::Nil
         | Constant::T
         | Constant::Unbound

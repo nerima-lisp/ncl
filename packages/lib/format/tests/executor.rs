@@ -47,6 +47,16 @@ fn executes_integer_radices_and_line_controls() {
 }
 
 #[test]
+fn executes_zero_and_multiple_tilde_repeats_with_expected_line_state() {
+    let (runtime, mut ctx) = context();
+    let control = parse("head~3~~0~~&tail").expect("control");
+    let mut sink = StringSink::new();
+
+    assert_eq!(execute(&control, &[], &mut ctx, &runtime, &mut sink), Ok(0));
+    assert_eq!(sink.into_string(), "head~~~\ntail");
+}
+
+#[test]
 fn rejects_missing_and_non_integer_arguments() {
     let (runtime, mut ctx) = context();
     let mut sink = StringSink::new();
@@ -74,4 +84,63 @@ fn ampersand_does_not_add_a_second_newline_at_line_start() {
     let mut sink = StringSink::new();
     execute(&control, &[], &mut ctx, &runtime, &mut sink).expect("execute");
     assert_eq!(sink.into_string(), "a\nb");
+}
+
+#[test]
+fn rejects_invalid_repeat_parameters_and_preserves_consumed_argument_count() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~-1%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~0%~A").expect("control"),
+            &[Word::fixnum(7)],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Ok(1)
+    );
+    assert_eq!(sink.into_string(), "7");
+}
+
+#[test]
+fn rejects_character_and_relative_repeat_parameters() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~'x%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent,
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~v~").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Tilde,
+        })
+    );
 }

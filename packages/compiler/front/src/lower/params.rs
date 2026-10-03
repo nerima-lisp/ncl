@@ -19,7 +19,6 @@ impl Context<'_> {
         base: usize,
     ) -> Result<(), LowerError> {
         for (offset, optional) in list.optional.iter().enumerate() {
-            let name = param_name(&optional.name)?;
             let argc_word = f.one(OpKind::LoadArg { index: 0 }, Ty::Word)?;
             let argc = f.one(
                 OpKind::Convert {
@@ -74,10 +73,9 @@ impl Context<'_> {
                 args: vec![supplied_value, present_flag],
             })?;
             f.position(merge)?;
-            f.env().bind_variable(name, Slot::Value(value_slot));
+            bind_pattern(f, &optional.name, value_slot)?;
             if let Some(supplied_p) = &optional.supplied_p {
-                f.env()
-                    .bind_variable(param_name(supplied_p)?, Slot::Value(flag_slot));
+                bind_pattern(f, supplied_p, flag_slot)?;
             }
         }
         Ok(())
@@ -126,7 +124,6 @@ impl Context<'_> {
                 )?;
             }
             for key in &list.keys {
-                let name = param_name(&key.name)?;
                 let keyword = f.symbol(&key.keyword)?;
                 f.safepoint()?;
                 let value = f.one(
@@ -145,16 +142,15 @@ impl Context<'_> {
                     Ty::Word,
                 )?;
                 let value = self.bind_keyword_default(f, key, value, supplied)?;
-                f.env().bind_variable(name, Slot::Value(value));
+                bind_pattern(f, &key.name, value)?;
                 if let Some(supplied_p) = &key.supplied_p {
-                    f.env()
-                        .bind_variable(param_name(supplied_p)?, Slot::Value(supplied));
+                    bind_pattern(f, supplied_p, supplied)?;
                 }
             }
         }
         if let Some(rest_name) = &list.rest {
             f.env().bind_variable(
-                param_name(rest_name)?,
+                param_name(rest_name),
                 Slot::Value(rest.ok_or_else(|| LowerError::Ir {
                     detail: "rest parameter has no argument list".to_owned(),
                 })?),
@@ -173,8 +169,7 @@ impl Context<'_> {
                 Some(form) => self.lower_expr(f, form)?,
                 None => f.nil()?,
             };
-            f.env()
-                .bind_variable(param_name(&aux.name)?, Slot::Value(value));
+            bind_pattern(f, &aux.name, value)?;
         }
         Ok(())
     }
@@ -251,33 +246,31 @@ impl Context<'_> {
     }
 }
 
-fn param_name(name: &ParamName) -> Result<SymbolRef, LowerError> {
+fn param_name(name: &ParamName) -> SymbolRef {
     match name {
-        ParamName::Symbol(symbol) => Ok(symbol.clone()),
-        ParamName::Pattern(_) => Err(LowerError::UnsupportedLambdaList {
-            feature: "destructuring parameter",
-        }),
+        ParamName::Symbol(symbol) => symbol.clone(),
+        ParamName::Pattern(_) => SymbolRef::interned("NCL-INTERNAL", "DESTRUCTURED"),
     }
 }
 
-pub(super) fn lambda_params(list: &LambdaList) -> Result<Vec<Param>, LowerError> {
+pub(super) fn lambda_params(list: &LambdaList) -> Vec<Param> {
     let mut params = vec![Param {
         name: "argc".to_owned(),
         ty: Ty::Word,
     }];
     for name in &list.required {
         params.push(Param {
-            name: param_name(name)?.name,
+            name: param_name(name).name,
             ty: Ty::Word,
         });
     }
     for optional in &list.optional {
         params.push(Param {
-            name: param_name(&optional.name)?.name,
+            name: param_name(&optional.name).name,
             ty: Ty::Word,
         });
     }
-    Ok(params)
+    params
 }
 
 pub(super) fn bind_captures(
@@ -307,8 +300,45 @@ pub(super) fn bind_required(
             },
             Ty::Word,
         )?;
-        f.env()
-            .bind_variable(param_name(name)?, Slot::Value(loaded));
+        bind_pattern(f, name, loaded)?;
+    }
+    Ok(())
+}
+
+fn bind_pattern(
+    f: &mut FunctionLowerer,
+    name: &ParamName,
+    value: ValueId,
+) -> Result<(), LowerError> {
+    match name {
+        ParamName::Symbol(symbol) => {
+            f.env().bind_variable(symbol.clone(), Slot::Value(value));
+        }
+        ParamName::Pattern(pattern) => {
+            let mut cursor = value;
+            for nested in &pattern.required {
+                f.safepoint()?;
+                let element = f.one(
+                    OpKind::Builtin {
+                        name: "CAR".to_owned(),
+                        args: vec![cursor],
+                    },
+                    Ty::Word,
+                )?;
+                bind_pattern(f, nested, element)?;
+                f.safepoint()?;
+                cursor = f.one(
+                    OpKind::Builtin {
+                        name: "CDR".to_owned(),
+                        args: vec![cursor],
+                    },
+                    Ty::Word,
+                )?;
+            }
+            if let Some(rest) = &pattern.rest {
+                bind_pattern(f, rest, cursor)?;
+            }
+        }
     }
     Ok(())
 }

@@ -87,6 +87,14 @@ pub fn read_sharp(
                         .map_err(|_| ReadError::InvalidNumber("radix out of range".to_owned()))?;
                     read_radix(ctx, runtime, source, base).map(Some)
                 }
+                Some('a' | 'A') => {
+                    source.read_char();
+                    let rank = usize::try_from(number)
+                        .ok()
+                        .filter(|rank| *rank > 0)
+                        .ok_or(ReadError::ArraySyntax)?;
+                    crate::array::read_array(ctx, runtime, source, opts, rt, labels, rank).map(Some)
+                }
                 _ => Err(ReadError::InvalidNumber(
                     "expected '=', '#', or 'r' after a radix or label number".to_owned(),
                 )),

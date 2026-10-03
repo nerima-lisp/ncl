@@ -7,7 +7,7 @@ use crate::{
     ValueId,
 };
 
-fn u32(value: u64) -> Result<u32, ParseError> {
+pub(super) fn u32(value: u64) -> Result<u32, ParseError> {
     u32::try_from(value).map_err(|_| ParseError("integer out of range".into()))
 }
 
@@ -53,7 +53,7 @@ pub fn parse(input: &str) -> Result<Function, ParseError> {
     }
     Ok(function)
 }
-struct Reader<'a> {
+pub(super) struct Reader<'a> {
     fields: Vec<&'a str>,
     at: usize,
 }
@@ -73,17 +73,32 @@ impl<'a> Reader<'a> {
         self.at += 1;
         Ok(value)
     }
-    fn u(&mut self) -> Result<u64, ParseError> {
+    pub(super) fn u(&mut self) -> Result<u64, ParseError> {
         u64::from_str_radix(self.next()?, 16).map_err(|_| ParseError("bad integer".into()))
     }
     fn i(&mut self) -> Result<i64, ParseError> {
         let s = self.next()?;
-        i64::from_str_radix(
-            s.strip_prefix('i')
-                .ok_or_else(|| ParseError("bad signed integer".into()))?,
-            16,
-        )
-        .map_err(|_| ParseError("bad integer".into()))
+        let digits = s
+            .strip_prefix('i')
+            .ok_or_else(|| ParseError("bad signed integer".into()))?;
+        if let Some(negative) = digits.strip_prefix('-') {
+            let magnitude =
+                u64::from_str_radix(negative, 16).map_err(|_| ParseError("bad integer".into()))?;
+            if magnitude > 1_u64 << 63 {
+                return Err(ParseError("integer out of range".into()));
+            }
+            if magnitude == 1_u64 << 63 {
+                Ok(i64::MIN)
+            } else {
+                let magnitude = i64::try_from(magnitude)
+                    .map_err(|_| ParseError("integer out of range".into()))?;
+                Ok(-magnitude)
+            }
+        } else {
+            let raw =
+                u64::from_str_radix(digits, 16).map_err(|_| ParseError("bad integer".into()))?;
+            Ok(raw.cast_signed())
+        }
     }
     fn s(&mut self) -> Result<String, ParseError> {
         unesc(self.next()?)
@@ -192,6 +207,7 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
                     .collect::<Result<Vec<_>, ParseError>>()?,
             }
         }
+        15 => super::array::read(r)?,
         7 => Constant::Nil,
         8 => Constant::T,
         9 => Constant::Unbound,

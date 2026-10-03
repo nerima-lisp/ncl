@@ -67,6 +67,9 @@ impl<'a> FormExpander<'a> {
     /// that form is itself a bare reference to another symbol macro, the chain
     /// is followed so `(symbol-macrolet ((x y) (y 1)) x)` resolves to `1`.
     fn symbol_macro_expansion(&self, name: &SymbolRef) -> Option<Expr> {
+        if self.env.is_bound_variable(name) {
+            return None;
+        }
         let mut expansion = self.env.lookup_symbol_macro(name)?.expansion.clone();
         let mut remaining = SYMBOL_MACRO_LIMIT;
         while remaining > 0 {

@@ -366,3 +366,13 @@ pub fn lower_pending_check(
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::redundant_clone,
+    clippy::too_many_lines,
+    clippy::useless_vec,
+    missing_docs
+)]
+#[path = "tests_aarch64_lowering_dispatch.rs"]
+mod tests;

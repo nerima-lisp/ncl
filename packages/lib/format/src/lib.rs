@@ -351,3 +351,26 @@ const fn directive_kind(value: char) -> Result<DirectiveKind, ParseErrorKind> {
         _other => Err(ParseErrorKind::UnknownDirective),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn covers_parser_parameter_validation_edges() {
+        assert!(parse("~,A").is_err());
+        assert!(parse("~37R").is_err());
+        assert!(parse("~0T").is_err());
+        assert!(parse("~-1A").is_err());
+        assert!(parse("~-1%").is_err());
+        assert!(parse("~9223372036854775808A").is_err());
+        assert!(parse("~\n  tail").is_ok());
+        assert_eq!(directive_kind('\n'), Ok(DirectiveKind::Newline));
+        assert_eq!(directive_kind('?'), Ok(DirectiveKind::Question));
+        assert_eq!(directive_kind('!'), Err(ParseErrorKind::UnknownDirective));
+        assert!(validate_parameters(DirectiveKind::R, &[Parameter::Integer(1)]).is_err());
+        assert!(validate_parameters(DirectiveKind::T, &[Parameter::Integer(0)]).is_err());
+        assert!(validate_parameters(DirectiveKind::A, &[Parameter::Integer(-1)]).is_err());
+        assert!(validate_parameters(DirectiveKind::C, &[]).is_ok());
+    }
+}

@@ -116,3 +116,24 @@ fn tab_count(directive: &Directive) -> Result<usize, FormatError> {
     })?;
     Ok(column.div_ceil(increment))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_nonpositive_tab_parameters() {
+        for parameters in [
+            vec![crate::Parameter::Integer(0)],
+            vec![crate::Parameter::Integer(1), crate::Parameter::Integer(0)],
+        ] {
+            let directive = Directive {
+                parameters,
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::T,
+            };
+            assert!(tab_count(&directive).is_err());
+        }
+    }
+}

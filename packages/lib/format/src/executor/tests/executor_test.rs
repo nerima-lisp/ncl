@@ -138,6 +138,30 @@ fn covers_compound_edges_and_argument_errors() {
         )
         .is_err()
     );
+    let inner = make_cons(&mut ctx, &runtime, one, Word::NIL).expect("inner");
+    let outer = make_cons(&mut ctx, &runtime, inner, Word::NIL).expect("outer");
+    assert_eq!(run("~{~{~A~}~}", &[outer], &mut ctx, &runtime), "one");
+    let improper = make_cons(&mut ctx, &runtime, one, Word::fixnum(1)).expect("improper");
+    assert!(
+        execute(
+            &crate::parse("~{~A~}").expect("brace"),
+            &[improper],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
+    assert!(
+        execute(
+            &crate::parse("~?").expect("nested"),
+            &[string(&runtime, &mut ctx, "~A"), improper],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -263,5 +287,214 @@ fn covers_parameter_and_printer_helpers() {
             }
         )
         .is_ok()
+    );
+}
+
+#[test]
+fn covers_control_directive_variants() {
+    let (runtime, mut ctx) = context();
+    assert_eq!(run("~|~2I~2T", &[], &mut ctx, &runtime), "\u{c}   ");
+    assert_eq!(
+        run(
+            "~P/~P/~P",
+            &[Word::fixnum(1), Word::fixnum(2), Word::TRUE],
+            &mut ctx,
+            &runtime
+        ),
+        "/s/"
+    );
+    assert_eq!(
+        run(
+            "~#%",
+            &[Word::fixnum(1), Word::fixnum(2)],
+            &mut ctx,
+            &runtime
+        ),
+        "\n\n"
+    );
+    assert_eq!(
+        run(
+            "~2*~A",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+            &mut ctx,
+            &runtime
+        ),
+        "3"
+    );
+    assert_eq!(
+        run(
+            "~-2*~A",
+            &[Word::fixnum(1), Word::fixnum(2)],
+            &mut ctx,
+            &runtime
+        ),
+        "1"
+    );
+    assert_eq!(run("~^tail", &[], &mut ctx, &runtime), "");
+    assert!(
+        execute(
+            &crate::parse("~C").unwrap(),
+            &[Word::character(0x0011_0000)],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
+    assert!(
+        execute(
+            &crate::parse("~C").unwrap(),
+            &[Word::fixnum(1)],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
+    assert!(crate::parse("~1,0T").is_err());
+}
+
+#[test]
+fn covers_value_padding_scales_and_direct_parameter_edges() {
+    let (runtime, mut ctx) = context();
+    let float = make_double(&mut ctx, &runtime, 1.25).expect("float");
+    assert_eq!(
+        run("~8,2,1E", &[float.into()], &mut ctx, &runtime),
+        "  1.25e1"
+    );
+    assert_eq!(
+        run("~8,2,1F", &[float.into()], &mut ctx, &runtime),
+        "   12.50"
+    );
+    assert_eq!(
+        run("~8,2,,,'0$", &[float.into()], &mut ctx, &runtime),
+        "00001.25"
+    );
+    assert_eq!(
+        run("~8,2@F", &[float.into()], &mut ctx, &runtime),
+        "1.25    "
+    );
+    assert_eq!(run("~16R", &[Word::fixnum(255)], &mut ctx, &runtime), "FF");
+    assert_eq!(
+        run(
+            "~8A/~8@S",
+            &[string(&runtime, &mut ctx, "x"); 2],
+            &mut ctx,
+            &runtime
+        ),
+        "       x/\"x\"     "
+    );
+    assert!(
+        execute(
+            &crate::parse("~A").unwrap(),
+            &[Word::fixnum(1)],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_ok()
+    );
+    assert!(parameter_width(Some(&crate::Parameter::Character('x')), DirectiveKind::A).is_err());
+    assert!(
+        parameters::parameter_usize(Some(&crate::Parameter::Relative), DirectiveKind::F).is_err()
+    );
+    assert_eq!(parameters::parameter_i64(None), None);
+    assert_eq!(
+        parameters::parameter_i64(Some(&crate::Parameter::Integer(3))),
+        Some(3)
+    );
+    assert_eq!(
+        parameters::parameter_i64(Some(&crate::Parameter::Unsupplied)),
+        None
+    );
+}
+
+#[test]
+fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
+    let (runtime, mut ctx) = context();
+    let float = make_double(&mut ctx, &runtime, 1.25).expect("float");
+    assert_eq!(run("a~/", &[], &mut ctx, &runtime), "a\n");
+    assert_eq!(
+        run("~8,2@$", &[float.into()], &mut ctx, &runtime),
+        "1.25    "
+    );
+
+    let mut sink = StringSink::new();
+    let mut argument_index = 0;
+    let mut line_start = true;
+    let float_word: Word = float.into();
+    let mut state = ExecutionState {
+        arguments: &[float_word],
+        argument_index: &mut argument_index,
+        ctx: &mut ctx,
+        runtime: &runtime,
+        sink: &mut sink,
+        line_start: &mut line_start,
+    };
+    let fallback = crate::Directive {
+        parameters: Vec::new(),
+        colon: false,
+        at_sign: false,
+        kind: DirectiveKind::A,
+    };
+    assert!(control::execute_control_kind(&fallback, &mut state).is_err());
+    assert!(
+        value::execute_value_kind(
+            &crate::Directive {
+                kind: DirectiveKind::Percent,
+                ..fallback
+            },
+            &mut state
+        )
+        .is_err()
+    );
+
+    let scaled = crate::Directive {
+        parameters: vec![
+            crate::Parameter::Integer(0),
+            crate::Parameter::Integer(2),
+            crate::Parameter::Integer(i64::MAX),
+        ],
+        colon: false,
+        at_sign: false,
+        kind: DirectiveKind::F,
+    };
+    *state.argument_index = 0;
+    assert!(value::execute_value_kind(&scaled, &mut state).is_err());
+
+    let invalid_radix = crate::Directive {
+        parameters: vec![crate::Parameter::Integer(1)],
+        colon: false,
+        at_sign: false,
+        kind: DirectiveKind::R,
+    };
+    *state.argument_index = 0;
+    assert!(value::execute_value_kind(&invalid_radix, &mut state).is_err());
+
+    let padded = crate::Directive {
+        parameters: vec![
+            crate::Parameter::Integer(8),
+            crate::Parameter::Integer(2),
+            crate::Parameter::Unsupplied,
+            crate::Parameter::Unsupplied,
+            crate::Parameter::Integer(1),
+        ],
+        colon: false,
+        at_sign: false,
+        kind: DirectiveKind::F,
+    };
+    *state.argument_index = 0;
+    assert!(value::execute_value_kind(&padded, &mut state).is_ok());
+
+    let nested = crate::parse("~{~{~A~}~}").expect("nested control");
+    assert_eq!(
+        matching(
+            &nested.parts,
+            0,
+            nested.parts.len(),
+            DirectiveKind::BraceOpen,
+            DirectiveKind::BraceClose,
+        ),
+        Ok(nested.parts.len() - 1)
     );
 }

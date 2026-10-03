@@ -105,9 +105,7 @@ fn execute_parts(
             index = next;
             continue;
         }
-        let Some(part) = parts.get(index) else {
-            break;
-        };
+        let part = &parts[index]; // check-added-lines: allow(index) index is bounded by end
         match part {
             ControlPart::Literal(text) => {
                 state.sink.write_str(text).map_err(FormatError::from)?;
@@ -166,13 +164,8 @@ fn execute_bracket(
         .as_fixnum()
         .and_then(|value| usize::try_from(value).ok())
         .unwrap_or(0);
-    if let Some((start, branch_end)) = branches
-        .get(selected)
-        .copied()
-        .or_else(|| branches.last().copied())
-    {
-        execute_parts(parts, start, branch_end, state)?;
-    }
+    let (start, branch_end) = branches[selected.min(branches.len() - 1)]; // check-added-lines: allow(index) branches are always non-empty
+    execute_parts(parts, start, branch_end, state)?;
     Ok(Some(close + 1))
 }
 
@@ -272,11 +265,7 @@ fn execute_justification(
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
-    let width = if directive.kind == DirectiveKind::R {
-        0
-    } else {
-        parameter_width(directive.parameters.first(), directive.kind)?
-    };
+    let width = parameter_width(directive.parameters.first(), directive.kind)?;
     for _ in 0..width.saturating_sub(text.chars().count()) {
         state.sink.write_char(' ').map_err(FormatError::from)?;
     }

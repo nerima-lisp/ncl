@@ -1,5 +1,8 @@
 use super::{lower_op, lower_prim, move_args};
-use crate::{Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate};
+use crate::{
+    Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate,
+    tests_x86_64_fixture::X86_64FixtureAbi,
+};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem, Reg};
 use ncl_ir::{
     BlockParam, Compare, Constant, Convert, Function, FunctionBuilder, Op, OpKind, Param, Prim,
@@ -501,7 +504,13 @@ fn builtin_lowering_reports_arity_and_stages_generated_lambda_arguments() {
         loc: None,
     };
     let mut staged = Assembler::new();
-    lower_op(&mut staged, &rest_builtin, &function, &slots, &X86_64Abi)
+    lower_op(
+        &mut staged,
+        &rest_builtin,
+        &function,
+        &slots,
+        &X86_64FixtureAbi,
+    )
         .expect("generated lambda rest arguments lower");
     assert!(!staged.bytes().is_empty());
 }

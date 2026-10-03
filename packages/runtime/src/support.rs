@@ -328,7 +328,10 @@ fn resolve_array(
     elements: &[ncl_ir::ConstantIndex],
     resolved: &impl Fn(&ncl_ir::ConstantIndex) -> Result<Word, ObjectError>,
 ) -> Result<Word, ObjectError> {
-    let values = elements.iter().map(resolved).collect::<Result<Vec<_>, _>>()?;
+    let values = elements
+        .iter()
+        .map(resolved)
+        .collect::<Result<Vec<_>, _>>()?;
     let element_type = match element_type {
         ncl_ir::ArrayElementType::T => ArrayElementType::T,
         ncl_ir::ArrayElementType::Bit => ArrayElementType::Bit,

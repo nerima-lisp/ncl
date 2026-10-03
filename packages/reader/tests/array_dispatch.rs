@@ -25,7 +25,10 @@ fn reads_rank_two_array_in_row_major_order() {
 
     assert!(matches!(classify_object(&ctx, array), ObjectRef::Array(_)));
     assert_eq!(array_dimensions(&ctx, array).unwrap(), vec![2, 2]);
-    assert_eq!(array_element_type(&ctx, array).unwrap(), ArrayElementType::T);
+    assert_eq!(
+        array_element_type(&ctx, array).unwrap(),
+        ArrayElementType::T
+    );
     assert_eq!(
         (0..4)
             .map(|index| array_row_major_ref(&ctx, array, index).unwrap())

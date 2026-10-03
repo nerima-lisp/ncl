@@ -26,6 +26,7 @@
     reason = "rooted Word slots are passed by reference so each read re-reads the collector-updated value; a by-value copy would be stale after GC"
 )]
 
+mod array;
 mod dispatch;
 mod error;
 mod features;

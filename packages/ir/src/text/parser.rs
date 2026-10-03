@@ -7,7 +7,7 @@ use crate::{
     Terminator, Ty, ValueId,
 };
 
-fn u32(value: u64) -> Result<u32, ParseError> {
+pub(super) fn u32(value: u64) -> Result<u32, ParseError> {
     u32::try_from(value).map_err(|_| ParseError("integer out of range".into()))
 }
 
@@ -53,7 +53,7 @@ pub fn parse(input: &str) -> Result<Function, ParseError> {
     }
     Ok(function)
 }
-struct Reader<'a> {
+pub(super) struct Reader<'a> {
     fields: Vec<&'a str>,
     at: usize,
 }
@@ -73,7 +73,7 @@ impl<'a> Reader<'a> {
         self.at += 1;
         Ok(value)
     }
-    fn u(&mut self) -> Result<u64, ParseError> {
+    pub(super) fn u(&mut self) -> Result<u64, ParseError> {
         u64::from_str_radix(self.next()?, 16).map_err(|_| ParseError("bad integer".into()))
     }
     fn i(&mut self) -> Result<i64, ParseError> {
@@ -207,33 +207,7 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
                     .collect::<Result<Vec<_>, ParseError>>()?,
             }
         }
-        15 => {
-            let dimensions = (0..r.u()?)
-                .map(|_| {
-                    usize::try_from(r.u()?)
-                        .map_err(|_| ParseError("array dimension overflow".into()))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let element_type = match r.u()? {
-                0 => ArrayElementType::T,
-                1 => ArrayElementType::Bit,
-                2 => ArrayElementType::Character,
-                3 => ArrayElementType::BaseChar,
-                4 => ArrayElementType::Fixnum,
-                5 => ArrayElementType::Signed,
-                6 => ArrayElementType::Unsigned,
-                7 => ArrayElementType::SingleFloat,
-                8 => ArrayElementType::DoubleFloat,
-                _ => return Err(ParseError("bad array element type".into())), // check-added-lines: allow(wildcard) array element type is validated explicitly
-            };
-            Constant::Array {
-                dimensions,
-                element_type,
-                elements: (0..r.u()?)
-                    .map(|_| Ok(ConstantIndex(u32(r.u()?)?)))
-                    .collect::<Result<Vec<_>, ParseError>>()?,
-            }
-        }
+        15 => super::array::read(r)?,
         7 => Constant::Nil,
         8 => Constant::T,
         9 => Constant::Unbound,

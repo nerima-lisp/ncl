@@ -194,6 +194,17 @@ fn parses_arithmetic_boundaries_and_equals_then() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn parses_equals_without_then_as_a_general_variable_binding() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let variable = symbol(&mut ctx, &runtime, "X")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let ast = parse_loop(&mut ctx, &[for_word, variable, equals, Word::fixnum(1)])?;
+    assert!(matches!(ast.clauses[0], LoopClause::Equals { .. }));
+    Ok(())
+}
+
+#[test]
 fn parses_nested_conditionals_with_else_and_rejects_empty_selectable_clause()
 -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;

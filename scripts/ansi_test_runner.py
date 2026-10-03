@@ -60,10 +60,16 @@ def deftest_count(chapter: Path) -> int:
 
 
 def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
+    ansi_dir = chapter.parent
+    chapter_load = chapter.name + "/load.lsp"
     try:
         result = subprocess.run(
-            [ncl, "--load", "load.lsp"],
-            cwd=chapter,
+            [
+                ncl,
+                "--eval",
+                f'(progn (load "gclload1.lsp") (load "{chapter_load}"))',
+            ],
+            cwd=ansi_dir,
             capture_output=True,
             text=True,
             timeout=timeout,

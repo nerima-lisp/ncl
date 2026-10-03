@@ -10,7 +10,7 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FindStatus, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
-    slot_ref, symbol_name,
+    slot_ref, symbol_name, symbol_value,
 };
 
 fn with_rooted_words<T>(
@@ -53,9 +53,9 @@ const SYMBOLS: Parameter = Parameter {
 };
 const ONE_PACKAGE: &[Parameter] = &[PACKAGE];
 const ONE_OBJECT: &[Parameter] = &[OBJECT];
-const NAME_PACKAGE: &[Parameter] = &[NAME, PACKAGE];
-const SYMBOLS_PACKAGE: &[Parameter] = &[SYMBOLS, PACKAGE];
-const PACKAGE_PACKAGE: &[Parameter] = &[PACKAGE, PACKAGE];
+const NAME_OPTIONAL_PACKAGE: &[Parameter] = &[NAME];
+const SYMBOLS_OPTIONAL_PACKAGE: &[Parameter] = &[SYMBOLS];
+const PACKAGE_OPTIONAL_PACKAGE: &[Parameter] = &[PACKAGE];
 pub fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::String(_) => Ok(StringObject::from_word(word)),
@@ -84,12 +84,23 @@ pub fn package_designator(
 }
 
 pub fn package_arg(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     index: usize,
 ) -> Result<Package, ObjectError> {
-    package_designator(ctx, runtime, args.required(index)?)
+    let package = match args.get(index) {
+        Some(package) => package,
+        None => {
+            let common = runtime
+                .find_package(ctx, "COMMON-LISP")
+                .ok_or(ObjectError::Layout)?;
+            let (current_package, _) =
+                Package::from_word(common).intern(ctx, runtime, "*PACKAGE*")?;
+            symbol_value(ctx, current_package)?
+        }
+    };
+    package_designator(ctx, runtime, package)
 }
 
 pub fn list_items(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {

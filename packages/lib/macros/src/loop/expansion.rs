@@ -119,6 +119,16 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 }
                 hash_iteration = Some((variable, kind, table, using));
             }
+            HeldLoopClause::Equals { variable, init } => {
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                body.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "SETQ",
+                    &[variable, init],
+                )?);
+            }
             HeldLoopClause::EqualsThen {
                 variable,
                 init,
@@ -145,6 +155,11 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 } else {
                     held_form(ctx, runtime, &mut held, "CAR", &[cursor])?
                 };
+                let next = if let Some(by) = by {
+                    held_form(ctx, runtime, &mut held, "FUNCALL", &[by, cursor])?
+                } else {
+                    held_form(ctx, runtime, &mut held, "CDR", &[cursor])?
+                };
                 bind_for_variable(
                     ctx,
                     runtime,
@@ -155,11 +170,6 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     &mut bindings,
                     &mut body,
                 )?;
-                let next = if let Some(by) = by {
-                    held_form(ctx, runtime, &mut held, "FUNCALL", &[by, cursor])?
-                } else {
-                    held_form(ctx, runtime, &mut held, "CDR", &[cursor])?
-                };
                 updates.extend([cursor, next]);
             }
             HeldLoopClause::Across { variable, vector } => {

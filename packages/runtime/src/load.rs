@@ -288,16 +288,14 @@ fn eval_top_level_inner(
     }
     let mut result = Word::NIL;
     let evaluated = (|| {
-        let body_forms = elements
-            .get(1 + body_start..)
-            .ok_or_else(|| RuntimeError::Native("load: top-level body is missing".to_owned()))?;
+        // `body_start < arguments.len()` above, and `elements` contains the
+        // head followed by those arguments, so this slice cannot be absent.
+        let body_forms = &elements[1 + body_start..];
         for body in body_forms {
             let body_form = if name == "PROGN" || name == "EVAL-WHEN" {
                 *body
             } else {
-                let prefix = elements.get(..=body_start).ok_or_else(|| {
-                    RuntimeError::Native("load: top-level prefix is missing".to_owned())
-                })?;
+                let prefix = &elements[..=body_start];
                 wrap_top_level_form(runtime, prefix, *body)?
             };
             result = if name == "PROGN" || name == "EVAL-WHEN" {

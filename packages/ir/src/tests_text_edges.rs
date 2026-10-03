@@ -63,10 +63,7 @@ fn parser_reports_bad_tags_and_descriptors() {
     );
     assert_eq!(error("0,edge,0,0,1,b,99,"), "bad structure kind");
     assert_eq!(error("0,edge,0,0,1,f,0,99,0,"), "bad array element type");
-    assert_eq!(
-        error("0,edge,0,0,1,f,1,0,"),
-        "unexpected end"
-    );
+    assert_eq!(error("0,edge,0,0,1,f,1,0,"), "unexpected end");
 }
 
 #[test]

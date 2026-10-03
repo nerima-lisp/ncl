@@ -243,6 +243,54 @@ fn parser_reports_structural_and_descriptor_errors() {
 }
 
 #[test]
+fn parser_rejects_invalid_utf8_and_numeric_payloads() {
+    let function = finish(
+        "payload",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::StringBytes(vec![0xc3, 0x28])],
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    );
+    let printed = function.to_string();
+    assert_eq!(
+        parse_error(&printed.replace(",payload,", ",_c3_28,")),
+        "invalid utf8"
+    );
+
+    let string = finish(
+        "string",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::StringBytes(vec![1])],
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    )
+    .to_string();
+    assert_eq!(
+        parse_error(&string.replace(",6,1,1,", ",6,1,100,1,")),
+        "integer out of range"
+    );
+
+    let structure = finish(
+        "structure",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Structure {
+            kind: StructureKind::Cons,
+            elements: Vec::new(),
+        }],
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    )
+    .to_string();
+    assert_eq!(
+        parse_error(&structure.replace(",b,0,0,", ",b,9,0,0,")),
+        "bad structure kind"
+    );
+}
+
+#[test]
 fn parser_round_trips_all_string_dispatch_variants() {
     let mut ops = [
         Prim::Car,

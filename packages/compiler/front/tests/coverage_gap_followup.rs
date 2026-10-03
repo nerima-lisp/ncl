@@ -1,8 +1,8 @@
 #![allow(clippy::expect_used, missing_docs)]
 
 use ncl_compiler_front::{
-    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, LocalFunction, Operator,
-    SymbolRef, lower_toplevel,
+    AuxParam, Expr, FunctionDesignator, KeyParam, LambdaExpr, LambdaList, LetBinding, Literal,
+    LocalFunction, Operator, OptionalParam, ParamName, SymbolRef, TypeSpecifier, lower_toplevel,
 };
 use ncl_ir::{Constant, Function, HandlerKind, OpKind, verify};
 
@@ -166,5 +166,157 @@ fn function_name_designator_and_multiple_value_call_keep_real_arguments() {
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,
         OpKind::CallClosure { args, .. } if args.len() == 4
+    )));
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn expression_lowering_covers_wrappers_symbol_cells_builtins_and_parameter_shapes() {
+    let closure = || Expr::Lambda(Box::new(lambda(Expr::Constant(Literal::fixnum(41)))));
+    let wrapped = [
+        Expr::Progn(vec![Expr::Constant(Literal::Nil), closure()]),
+        Expr::Locally {
+            declarations: Vec::new(),
+            body: vec![closure()],
+        },
+        Expr::The {
+            type_specifier: TypeSpecifier::new(Literal::T),
+            value: Box::new(closure()),
+        },
+        Expr::LoadTimeValue {
+            form: Box::new(closure()),
+            read_only: true,
+        },
+        Expr::Macrolet {
+            definitions: Vec::new(),
+            declarations: Vec::new(),
+            body: vec![closure()],
+        },
+        Expr::SymbolMacrolet {
+            definitions: Vec::new(),
+            declarations: Vec::new(),
+            body: vec![closure()],
+        },
+    ];
+    for designator in wrapped {
+        let lowered = lower_toplevel(&Expr::Call {
+            operator: Operator::Name(symbol("FUNCALL")),
+            arguments: vec![designator, Expr::Constant(Literal::fixnum(3))],
+        })
+        .expect("wrapped closure designator lowers");
+        assert_verifies(&lowered.entry);
+        assert!(any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::CallClosure {
+                named_symbol: None,
+                args,
+                ..
+            } if args.len() == 2
+        )));
+    }
+
+    let symbol_value = symbol("VALUE");
+    for (name, arguments, expected_field, expected_store) in [
+        (
+            "symbol-value",
+            vec![Expr::Constant(Literal::Symbol(symbol_value))],
+            0,
+            false,
+        ),
+        (
+            "set-symbol-value",
+            vec![
+                Expr::Constant(Literal::Symbol(symbol("VALUE"))),
+                Expr::Constant(Literal::fixnum(8)),
+            ],
+            0,
+            true,
+        ),
+    ] {
+        let lowered = lower_toplevel(&Expr::Call {
+            operator: Operator::Name(symbol(name)),
+            arguments,
+        })
+        .expect("symbol cell call lowers");
+        assert_verifies(&lowered.entry);
+        assert!(any_op(&lowered.entry, |kind| match kind {
+            OpKind::LoadField { field, .. } => !expected_store && *field == expected_field,
+            OpKind::StoreField { field, .. } => expected_store && *field == expected_field,
+            _ => false,
+        }));
+    }
+    let fdefinition_set = lower_toplevel(&Expr::Call {
+        operator: Operator::Name(SymbolRef::interned("NCL", "FDEFINITION-SET")),
+        arguments: vec![
+            Expr::Constant(Literal::Symbol(symbol("FUNCTION"))),
+            Expr::Constant(Literal::Symbol(symbol("TARGET"))),
+        ],
+    })
+    .expect("fdefinition-set lowers");
+    assert_verifies(&fdefinition_set.entry);
+    assert!(any_op(&fdefinition_set.entry, |kind| matches!(
+        kind,
+        OpKind::StoreField { field: 1, .. }
+    )));
+
+    for (name, arity) in [
+        ("+", 2),
+        ("*", 2),
+        ("-", 2),
+        ("<", 2),
+        ("CAR", 1),
+        ("CONS", 2),
+    ] {
+        let lowered = lower_toplevel(&Expr::Call {
+            operator: Operator::Name(symbol(name)),
+            arguments: (0..arity)
+                .map(|n| Expr::Constant(Literal::fixnum(i64::from(n))))
+                .collect(),
+        })
+        .expect("builtin call lowers");
+        assert_verifies(&lowered.entry);
+        assert!(any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::Builtin { name: actual, .. } if actual.eq_ignore_ascii_case(name)
+        )));
+    }
+
+    let list = LambdaList {
+        required: vec![ParamName::Symbol(symbol("required"))],
+        optional: vec![OptionalParam {
+            name: ParamName::Symbol(symbol("optional")),
+            default: None,
+            supplied_p: Some(ParamName::Symbol(symbol("optional-p"))),
+        }],
+        rest: Some(ParamName::Symbol(symbol("rest"))),
+        keys: vec![KeyParam {
+            keyword: symbol(":KEY"),
+            name: ParamName::Symbol(symbol("key")),
+            default: Some(Expr::Constant(Literal::fixnum(17))),
+            supplied_p: Some(ParamName::Symbol(symbol("key-p"))),
+        }],
+        allow_other_keys: true,
+        aux: vec![AuxParam {
+            name: ParamName::Symbol(symbol("aux")),
+            default: None,
+        }],
+        ..LambdaList::new()
+    };
+    let lowered = lower_toplevel(&Expr::Lambda(Box::new(LambdaExpr {
+        lambda_list: list,
+        declarations: Vec::new(),
+        docstring: None,
+        body: vec![Expr::Constant(Literal::T)],
+    })))
+    .expect("complete lambda list lowers");
+    assert_verifies(&lowered.entry);
+    assert_verifies(&lowered.nested[0]);
+    assert!(any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::Builtin { name, .. } if name == "check-keywords"
+    )));
+    assert!(any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::Builtin { name, .. } if name == "make-rest-list"
     )));
 }

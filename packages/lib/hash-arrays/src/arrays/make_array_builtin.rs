@@ -41,6 +41,7 @@ pub(super) fn make_array_builtin(
                     "UNSIGNED-BYTE" => ArrayElementType::Unsigned,
                     "SINGLE-FLOAT" => ArrayElementType::SingleFloat,
                     "DOUBLE-FLOAT" => ArrayElementType::DoubleFloat,
+                    name if runtime.class(ctx, name).is_some() => ArrayElementType::T,
                     _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown element types
                 }
             }

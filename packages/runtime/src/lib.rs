@@ -44,6 +44,13 @@ pub struct Runtime {
 pub(crate) struct PublishedFunction {
     pub(crate) entry: usize,
 }
+
+fn eval_reader_form(runtime: NonNull<()>, form: Word) -> Result<Word, ObjectError> {
+    ncl_sys::with_opaque_mut(runtime, |runtime: &mut Runtime| {
+        runtime.eval_form(form).map_err(|_| ObjectError::TypeError)
+    })
+}
+
 impl Runtime {
     /// Create a runtime and register the standard library exactly once.
     ///
@@ -91,7 +98,9 @@ impl Runtime {
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
+        self.context.set_reader_evaluator(eval_reader_form);
         let result = load::source_forms(self, source);
+        self.context.clear_reader_evaluator();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -105,7 +114,9 @@ impl Runtime {
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
+        self.context.set_reader_evaluator(eval_reader_form);
         let result = compile::source(self, source);
+        self.context.clear_reader_evaluator();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -121,7 +132,9 @@ impl Runtime {
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
+        self.context.set_reader_evaluator(eval_reader_form);
         let result = compile::file(self, path.as_ref());
+        self.context.clear_reader_evaluator();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -141,7 +154,9 @@ impl Runtime {
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
+        self.context.set_reader_evaluator(eval_reader_form);
         let result = load::file(self, path.as_ref());
+        self.context.clear_reader_evaluator();
         self.context.clear_evaluator_runtime();
         result
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::unreadable_literal)]
+
 use ncl_object::{FunctionObject, Runtime, ThreadContext, Word};
 
 fn setup() -> (Runtime, ThreadContext) {

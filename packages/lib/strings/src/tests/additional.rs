@@ -390,14 +390,14 @@ fn string_comparisons_ranges_and_trimming_return_values() {
 fn character_and_string_boundary_contracts_are_explicit() {
     let (runtime, mut ctx) = runtime();
     let nul = Word::character(0);
-    let max = Word::character(0x10ffff);
+    let max = Word::character(0x0010_ffff);
     assert_eq!(
         call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-CODE", &[nul]),
         Word::fixnum(0)
     );
     assert_eq!(
         call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-CODE", &[max]),
-        Word::fixnum(0x10ffff)
+        Word::fixnum(0x0010_ffff)
     );
     assert_eq!(
         call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-UPCASE", &[nul]),

@@ -590,6 +590,104 @@ fn quasiquote_handles_nested_markers_vectors_and_bare_splice_error() -> Result<(
 }
 
 #[test]
+fn multiple_value_helpers_capture_and_flatten_list_arguments() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let values = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "VALUES")
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    let capture = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES")
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            values,
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        ),
+        Ok(Word::fixnum(1))
+    );
+    let captured = runtime.call_builtin(&mut ctx, capture, &[])?;
+    assert_eq!(
+        elements(&mut ctx, captured)?,
+        vec![Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)]
+    );
+
+    let call_list = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "MULTIPLE-VALUE-CALL-LIST")
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    let first = list(&mut ctx, &runtime, &[Word::fixnum(4), Word::fixnum(5)])?;
+    let second = list(&mut ctx, &runtime, &[Word::fixnum(6)])?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, call_list, &[values.as_word(), first, second]),
+        Ok(Word::fixnum(4))
+    );
+    assert_eq!(
+        ctx.values(),
+        &[Word::fixnum(4), Word::fixnum(5), Word::fixnum(6)]
+    );
+    let dotted = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(8))?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, call_list, &[values.as_word(), dotted]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn quasiquote_expansion_handles_direct_splicing_nested_markers_and_bad_arity()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;
+    let splice = symbol(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+    let nested = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+
+    let direct_datum = list(&mut ctx, &runtime, &[unquote, value])?;
+    let direct = list(&mut ctx, &runtime, &[op, direct_datum])?;
+    assert_eq!(call_macro(&runtime, &mut ctx, "QUASIQUOTE", direct)?, value);
+
+    let spliced = list(&mut ctx, &runtime, &[splice, value])?;
+    let datum = list(&mut ctx, &runtime, &[spliced, value])?;
+    let splicing_form = list(&mut ctx, &runtime, &[op, datum])?;
+    let expansion = call_macro(&runtime, &mut ctx, "QUASIQUOTE", splicing_form)?;
+    assert_eq!(
+        elements(&mut ctx, expansion)?[0],
+        symbol(&mut ctx, &runtime, "APPEND")?
+    );
+
+    let nested_unquote = list(&mut ctx, &runtime, &[unquote, value])?;
+    let nested_datum = list(&mut ctx, &runtime, &[nested, nested_unquote])?;
+    let nested_form = list(&mut ctx, &runtime, &[op, nested_datum])?;
+    let nested_expansion = call_macro(&runtime, &mut ctx, "QUASIQUOTE", nested_form)?;
+    assert_eq!(
+        elements(&mut ctx, nested_expansion)?[0],
+        symbol(&mut ctx, &runtime, "LIST")?
+    );
+
+    let bad_arity_short = list(&mut ctx, &runtime, &[op])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "QUASIQUOTE", bad_arity_short),
+        Err(ObjectError::TypeError)
+    );
+    let bad_arity_long = list(&mut ctx, &runtime, &[op, value, value])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "QUASIQUOTE", bad_arity_long,),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn loop_parser_covers_directions_accumulators_conditionals_and_errors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let x = symbol(&mut ctx, &runtime, "X")?;

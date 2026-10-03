@@ -701,3 +701,247 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     );
     Ok(())
 }
+
+#[test]
+fn expands_hash_iteration_without_using_variable() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::Hash(HashClause {
+                    variable: key,
+                    kind: HashIterationKind::Key,
+                    table,
+                    using: None,
+                }),
+                LoopClause::Do(vec![key]),
+            ],
+        },
+    )?;
+    let let_form = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, let_form[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let maphash = elements(&mut ctx, progn[1])?;
+    let lambda = elements(&mut ctx, maphash[1])?;
+    let parameters = elements(&mut ctx, lambda[1])?;
+    assert_eq!(parameters[0], key);
+    assert_ne!(parameters[1], key);
+    assert_eq!(maphash[2], table);
+    Ok(())
+}
+
+#[test]
+fn expands_for_directions_and_limits_to_matching_update_and_stop_operators()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let init = Word::fixnum(0);
+    let limit = Word::fixnum(3);
+    let clauses = [
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "UP")?,
+            init,
+            step: None,
+            direction: None,
+            limit: None,
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "DOWN")?,
+            init,
+            step: None,
+            direction: Some(StepDirection::DownFrom),
+            limit: None,
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "TO")?,
+            init,
+            step: Some(Word::fixnum(2)),
+            direction: Some(StepDirection::From),
+            limit: Some((LimitDirection::To, limit)),
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "UP-TO")?,
+            init,
+            step: None,
+            direction: Some(StepDirection::UpFrom),
+            limit: Some((LimitDirection::UpTo, limit)),
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "BELOW")?,
+            init,
+            step: None,
+            direction: Some(StepDirection::From),
+            limit: Some((LimitDirection::Below, limit)),
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "DOWN-TO")?,
+            init,
+            step: None,
+            direction: Some(StepDirection::DownFrom),
+            limit: Some((LimitDirection::DownTo, limit)),
+        }),
+        LoopClause::For(ForClause {
+            variable: symbol(&mut ctx, &runtime, "ABOVE")?,
+            init,
+            step: None,
+            direction: Some(StepDirection::From),
+            limit: Some((LimitDirection::Above, limit)),
+        }),
+    ];
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: clauses.to_vec(),
+        },
+    )?;
+
+    for operator_name in ["+", "-", ">", ">=", "<", "<="] {
+        let operator = symbol(&mut ctx, &runtime, operator_name)?;
+        assert!(
+            contains_word(&mut ctx, expansion, operator)?,
+            "missing FOR operator {operator_name}"
+        );
+    }
+    for variable_name in ["UP", "DOWN", "TO", "UP-TO", "BELOW", "DOWN-TO", "ABOVE"] {
+        let variable = symbol(&mut ctx, &runtime, variable_name)?;
+        assert!(contains_word(&mut ctx, expansion, variable)?);
+    }
+    Ok(())
+}
+
+#[test]
+fn expands_list_iteration_on_and_by_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let item = symbol(&mut ctx, &runtime, "ITEM")?;
+    let cursor = symbol(&mut ctx, &runtime, "CURSOR")?;
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let next = symbol(&mut ctx, &runtime, "NEXT")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::In {
+                    variable: item,
+                    sequence,
+                    on: false,
+                    by: None,
+                },
+                LoopClause::In {
+                    variable: cursor,
+                    sequence,
+                    on: true,
+                    by: Some(next),
+                },
+                LoopClause::Do(vec![item, cursor]),
+            ],
+        },
+    )?;
+
+    for operator_name in ["CAR", "CDR", "FUNCALL", "ENDP", "SETQ"] {
+        let operator = symbol(&mut ctx, &runtime, operator_name)?;
+        assert!(
+            contains_word(&mut ctx, expansion, operator)?,
+            "missing list iteration operator {operator_name}"
+        );
+    }
+    assert!(contains_word(&mut ctx, expansion, next)?);
+    assert!(contains_word(&mut ctx, expansion, sequence)?);
+    Ok(())
+}
+
+#[test]
+fn expands_hash_without_driver_with_stop_test_and_preserves_user_it_binding()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let test = symbol(&mut ctx, &runtime, "TEST")?;
+    let it = symbol(&mut ctx, &runtime, "IT")?;
+    let expansion = expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &LoopAst {
+            name: None,
+            clauses: vec![
+                LoopClause::Hash(HashClause {
+                    variable: key,
+                    kind: HashIterationKind::Key,
+                    table,
+                    using: None,
+                }),
+                LoopClause::While(test),
+                LoopClause::Conditional {
+                    kind: ConditionalKind::When,
+                    test,
+                    then: vec![LoopClause::Do(vec![it])],
+                    otherwise: vec![],
+                },
+            ],
+        },
+    )?;
+
+    for operator_name in ["MAPHASH", "OR", "WHEN", "GO", "LET", "IF"] {
+        let operator = symbol(&mut ctx, &runtime, operator_name)?;
+        assert!(
+            contains_word(&mut ctx, expansion, operator)?,
+            "missing hash/conditional operator {operator_name}"
+        );
+    }
+    assert!(contains_word(&mut ctx, expansion, it)?);
+    assert!(contains_word(&mut ctx, expansion, table)?);
+    Ok(())
+}
+
+#[test]
+fn rejects_duplicate_hash_iteration_during_expansion() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let other_key = symbol(&mut ctx, &runtime, "OTHER-KEY")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let hash = |variable| {
+        LoopClause::Hash(HashClause {
+            variable,
+            kind: HashIterationKind::Key,
+            table,
+            using: None,
+        })
+    };
+    assert_eq!(
+        expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![hash(key), hash(other_key)],
+            },
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let same_variable_using = LoopClause::Hash(HashClause {
+        variable: key,
+        kind: HashIterationKind::Key,
+        table,
+        using: Some((HashIterationKind::Value, key)),
+    });
+    assert_eq!(
+        expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![same_variable_using],
+            },
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

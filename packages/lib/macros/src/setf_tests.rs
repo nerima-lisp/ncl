@@ -68,7 +68,7 @@ fn malformed_expander(
         })
 }
 
-fn expect_type_error<T>(result: &Result<T, ObjectError>) -> Result<(), ObjectError> {
+fn expect_type_error<T: std::fmt::Debug>(result: &Result<T, ObjectError>) -> Result<(), ObjectError> {
     if matches!(result, Err(ObjectError::TypeError)) {
         Ok(())
     } else {
@@ -273,6 +273,126 @@ fn remf_and_expansion_support_validate_their_error_paths() -> Result<(), ObjectE
             store_form: Word::NIL,
             access_form: Word::NIL,
         },
+        |_ctx, _, _, _, _, _| Ok(()),
+    ))?;
+    Ok(())
+}
+
+#[test]
+fn get_setf_expansion_returns_all_five_expansion_values() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let place = symbol(&mut ctx, &runtime, "PLACE")?;
+    let mut values = ncl_object::MultipleValues::new();
+
+    let result = crate::get_setf_expansion_callback(&runtime, &mut ctx, &[place], &mut values)?;
+
+    assert_eq!(result, place);
+    assert_eq!(values.len(), 5);
+    let returned = values.as_slice();
+    assert_eq!(returned[0], Word::NIL);
+    assert_eq!(returned[1], Word::NIL);
+    let store_variables = elements(&mut ctx, returned[2])?;
+    assert_eq!(store_variables.len(), 1);
+    let store_form = elements(&mut ctx, returned[3])?;
+    assert_eq!(store_form[0], symbol(&mut ctx, &runtime, "SETQ")?);
+    assert_eq!(store_form[1], place);
+    assert_eq!(store_form[2], store_variables[0]);
+    assert_eq!(returned[4], place);
+    Ok(())
+}
+
+#[test]
+fn expansion_support_roots_values_and_propagates_callback_errors() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let temporary = symbol(&mut ctx, &runtime, "TEMPORARY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let store = symbol(&mut ctx, &runtime, "STORE")?;
+    let store_form = symbol(&mut ctx, &runtime, "STORE-FORM")?;
+    let access = symbol(&mut ctx, &runtime, "ACCESS")?;
+    let expansion = SetfExpansion {
+        temporary_variables: vec![temporary],
+        value_forms: vec![value],
+        store_variables: vec![store],
+        store_form,
+        access_form: access,
+    };
+
+    let observed: Result<(), ObjectError> = crate::setf_support::with_expansion_roots(
+        &mut ctx,
+        &expansion,
+        |_ctx, temporaries, values, stores, actual_store_form, actual_access| {
+            assert_eq!(temporaries, &[temporary]);
+            assert_eq!(values, &[value]);
+            assert_eq!(stores, &[store]);
+            assert_eq!(actual_store_form, store_form);
+            assert_eq!(actual_access, access);
+            Err(ObjectError::UndefinedFunction)
+        },
+    );
+    assert_eq!(observed, Err(ObjectError::UndefinedFunction));
+
+    let expansion_values = crate::setf_support::expansion_values(&mut ctx, &runtime, &expansion)?;
+    let temporary_values = elements(&mut ctx, expansion_values[0])?;
+    let value_forms = elements(&mut ctx, expansion_values[1])?;
+    let store_values = elements(&mut ctx, expansion_values[2])?;
+    assert_eq!(temporary_values, vec![temporary]);
+    assert_eq!(value_forms, vec![value]);
+    assert_eq!(store_values, vec![store]);
+    assert_eq!(expansion_values[3], store_form);
+    assert_eq!(expansion_values[4], access);
+    Ok(())
+}
+
+#[test]
+fn setf_expansion_support_rejects_invalid_shapes_and_arguments() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "PLACE")?;
+    let operator = symbol(&mut ctx, &runtime, "INVALID-PLACE")?;
+    registry.define(&ctx, operator, malformed_expander)?;
+    let malformed_place = place_form(&mut ctx, &runtime, operator, place)?;
+
+    let empty_setf = expand_setf(&mut ctx, &runtime, &registry, &[])?;
+    named(&mut ctx, &runtime, empty_setf, "PROGN")?;
+    expect_type_error(&expand_psetf(&mut ctx, &runtime, &registry, &[place]))?;
+    expect_type_error(&expand_setf(
+        &mut ctx,
+        &runtime,
+        &registry,
+        &[malformed_place, Word::fixnum(1)],
+    ))?;
+    let symbol_place_expansion = expand_setf(
+        &mut ctx,
+        &runtime,
+        &registry,
+        &[place, Word::fixnum(1)],
+    )?;
+    named(
+        &mut ctx,
+        &runtime,
+        symbol_place_expansion,
+        "PROGN",
+    )?;
+
+    let invalid_store_count = SetfExpansion {
+        temporary_variables: Vec::new(),
+        value_forms: Vec::new(),
+        store_variables: vec![place, operator],
+        store_form: Word::NIL,
+        access_form: place,
+    };
+    expect_type_error(&crate::setf_support::with_expansion_roots(
+        &mut ctx,
+        &invalid_store_count,
         |_ctx, _, _, _, _, _| Ok(()),
     ))?;
     Ok(())

@@ -2,7 +2,7 @@
 
 //! Acceptance tests for the ownership gate against the embedded table.
 
-use ncl_object::{Package, Runtime, ThreadContext, Word};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
 use ncl_ownership::{
     Kind, Missing, OwnershipError, Row, assert_crate_coverage_from_table,
     assert_crate_function_bindings_from_table, rows_for_crate_from_str,
@@ -260,4 +260,127 @@ fn strict_function_check_rejects_an_unbound_symbol_cell() {
         ncl_object::symbol_function(&ctx, symbol).unwrap(),
         Word::UNBOUND
     );
+}
+
+#[test]
+fn coverage_reports_missing_package_and_symbol() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let missing_package = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nNOPE\tFOO\tother\ttest\t1\tno\t\n";
+    let error =
+        assert_crate_coverage_from_table(&runtime, &mut ctx, missing_package, "test").unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("NOPE::FOO (other): package not found")
+    );
+
+    let missing_symbol = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nCOMMON-LISP\tNO-SUCH-SYMBOL\tother\ttest\t1\tno\t\n";
+    let error =
+        assert_crate_coverage_from_table(&runtime, &mut ctx, missing_symbol, "test").unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("COMMON-LISP::NO-SUCH-SYMBOL (other): symbol not interned")
+    );
+}
+
+#[test]
+fn coverage_accepts_non_registry_kinds_and_condition_rows() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    runtime.ensure_package(&mut ctx, "TEST").unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nTEST\tOTHER\tother+special-operator+type\ttest\t1\tno\t\nTEST\tCONDITION\tcondition\ttest\t1\tno\t\n";
+    let condition = intern_symbol(&runtime, &mut ctx, "TEST", "CONDITION");
+    runtime
+        .define_class(&mut ctx, "CONDITION", condition)
+        .unwrap();
+    intern_symbol(&runtime, &mut ctx, "TEST", "OTHER");
+    assert!(assert_crate_coverage_from_table(&runtime, &mut ctx, table, "test").is_ok());
+}
+
+#[test]
+fn function_binding_check_reports_missing_registration_and_uninterned_symbol() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nTEST\tMISSING\tfunction\ttest\t1\tno\t\nTEST\tUNINTERNED\tfunction\ttest\t1\tno\t\n";
+    runtime.ensure_package(&mut ctx, "TEST").unwrap();
+    intern_symbol(&runtime, &mut ctx, "TEST", "MISSING");
+    let error =
+        assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test").unwrap_err();
+    let report = error.to_string();
+    assert!(report.contains("TEST::MISSING (function): function not registered"));
+    assert!(report.contains("TEST::UNINTERNED (function): symbol not interned"));
+}
+
+#[test]
+fn function_binding_check_reports_a_missing_package_and_continues() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nNOPE\tMISSING\tfunction\ttest\t1\tno\t\nTEST\tUNINTERNED\tfunction\ttest\t1\tno\t\n";
+    runtime.ensure_package(&mut ctx, "TEST").unwrap();
+
+    let error =
+        assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test").unwrap_err();
+    let missing = match error {
+        OwnershipError::Missing(missing) => missing,
+        other => panic!("expected Missing, got {other}"),
+    };
+    assert_eq!(missing.len(), 2);
+    assert_eq!(missing[0].package, "NOPE");
+    assert_eq!(missing[0].symbol, "MISSING");
+    assert_eq!(missing[0].reason, "package not found");
+    assert_eq!(missing[1].package, "TEST");
+    assert_eq!(missing[1].symbol, "UNINTERNED");
+    assert_eq!(missing[1].reason, "symbol not interned");
+}
+
+#[test]
+fn ownership_error_display_and_source_preserve_error_details() {
+    let object = OwnershipError::Object(ObjectError::TypeError);
+    assert_eq!(object.to_string(), "object error: TypeError");
+    assert!(std::error::Error::source(&object).is_some());
+    assert_eq!(format!("{object:?}"), "object error: TypeError");
+
+    let missing = OwnershipError::Missing(vec![Missing {
+        package: "TEST".to_owned(),
+        symbol: "FOO".to_owned(),
+        kind: vec![Kind::Function, Kind::Macro],
+        reason: "not registered",
+    }]);
+    assert_eq!(
+        missing.to_string(),
+        "TEST::FOO (function+macro): not registered"
+    );
+    assert!(std::error::Error::source(&missing).is_none());
+    let no_rows = OwnershipError::NoRows {
+        crate_name: "test".to_owned(),
+    };
+    assert_eq!(no_rows.to_string(), "no Phase 1 rows for crate test");
+    let bad_row = OwnershipError::BadRow {
+        line: 4,
+        reason: "invalid kind",
+    };
+    assert_eq!(bad_row.to_string(), "symbols.tsv line 4: invalid kind");
+    let converted = OwnershipError::from(ObjectError::Layout);
+    assert!(matches!(
+        converted,
+        OwnershipError::Object(ObjectError::Layout)
+    ));
+}
+
+#[test]
+fn function_binding_check_ignores_rows_without_function_kind() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nCOMMON-LISP\tT\tother\ttest\t1\tno\t\n";
+    assert!(assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test").is_ok());
+    let no_rows =
+        assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "other").unwrap_err();
+    assert!(matches!(no_rows, OwnershipError::NoRows { .. }));
 }

@@ -115,3 +115,19 @@ fn process_p_rejects_non_processes() {
     );
     assert!(ncl_threads::process_pid(ctx, Word::fixnum(3)).is_err());
 }
+
+#[test]
+fn process_rejects_a_pid_that_cannot_be_stored_as_a_fixnum() {
+    let mut fixture = fixture();
+    let Fixture { runtime, ctx } = &mut fixture;
+
+    assert_eq!(
+        ncl_threads::make_process(
+            ctx,
+            runtime,
+            u64::try_from(i64::MAX).unwrap() + 1,
+            Word::NIL,
+        ),
+        Err(ThreadError::NotAProcess)
+    );
+}

@@ -107,7 +107,12 @@ def main() -> int:
     for path in rust_files:
         relative = path.relative_to(ROOT)
         source = path.read_text(encoding="utf-8", errors="replace")
-        test_only = "tests" in path.parts or path.name.startswith("tests_")
+        test_only = (
+            "tests" in path.parts
+            or path.name == "tests.rs"
+            or path.name.startswith("tests_")
+            or path.name.endswith("_tests.rs")
+        )
         if len(source.splitlines()) > 500 and not test_only:
             failures.append(f"{relative}: file exceeds 500 lines")
         if path.name == "mod.rs":

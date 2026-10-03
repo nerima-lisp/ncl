@@ -133,6 +133,11 @@ fn decode_timeout_accepts_nil_fixnum_and_cons() {
     let bad =
         ncl_object::make_cons(ctx, runtime, Word::fixnum(1), Word::fixnum(2_000_000_000)).unwrap();
     assert!(ncl_threads::decode_timeout(ctx, bad).is_err());
+    let bad_seconds = ncl_object::make_cons(ctx, runtime, Word::TRUE, Word::fixnum(0)).unwrap();
+    assert_eq!(
+        ncl_threads::decode_timeout(ctx, bad_seconds),
+        Err(ThreadError::Object(ncl_object::ObjectError::TypeError))
+    );
     assert!(ncl_threads::decode_timeout(ctx, Word::TRUE).is_err());
 }
 
@@ -177,6 +182,27 @@ fn with_timeout_binds_and_restores_exit_timeout() {
         ncl_threads::with_timeout(ctx, runtime, Word::fixnum(60), |_ctx| Ok(Word::fixnum(9)))
             .unwrap();
     assert_eq!(value.as_fixnum(), Some(9));
+    assert_eq!(ncl_threads::signal_deadline(ctx).unwrap(), Word::NIL);
+}
+
+#[test]
+fn deadline_scopes_restore_state_after_body_errors() {
+    let mut fixture = fixture();
+    let Fixture { runtime, ctx, .. } = &mut fixture;
+    let error = ThreadError::Timeout;
+
+    assert_eq!(
+        ncl_threads::with_deadline(ctx, Word::fixnum(1), |_ctx| {
+            Err::<Word, ThreadError>(error)
+        }),
+        Err(error)
+    );
+    assert_eq!(ncl_threads::signal_deadline(ctx).unwrap(), Word::NIL);
+
+    let value = ncl_threads::with_timeout(ctx, runtime, Word::fixnum(1), |_ctx| {
+        Err::<Word, ThreadError>(error)
+    });
+    assert_eq!(value, Err(error));
     assert_eq!(ncl_threads::signal_deadline(ctx).unwrap(), Word::NIL);
 }
 

@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    ObjectError, ObjectRef, Runtime, ThreadContext, car, cdr, classify, classify_object,
-    make_simple_vector, make_string, simple_vector_ref, string_ref,
+    FromLispArg, LispError, ObjectError, ObjectRef, ObjectType, Runtime, ThreadContext, car, cdr,
+    classify, classify_object, make_simple_vector, make_string, simple_vector_ref, string_ref,
 };
 use ncl_sys::{LowTag, StorageCondition, Word};
 
@@ -33,6 +33,38 @@ fn classify_covers_immediate_and_pointer_lowtags() {
 fn classify_unbound_as_immediate_and_preserve_fixnum_two() {
     assert_eq!(classify(Word::UNBOUND), ObjectRef::Immediate(Word::UNBOUND));
     assert_eq!(classify(Word::fixnum(2)), ObjectRef::Fixnum(2));
+}
+
+#[test]
+fn classify_distinguishes_nil_cons_and_special_lowtags() {
+    assert_eq!(classify(Word::NIL), ObjectRef::Symbol(Word::NIL));
+    let cons = Word::pointer(0x1_0000_0000, LowTag::List);
+    assert_eq!(classify(cons), ObjectRef::Cons(cons));
+    let function = Word::pointer(0x1000, LowTag::Function);
+    let instance = Word::pointer(0x1000, LowTag::Instance);
+    assert_eq!(classify(function), ObjectRef::Function(function));
+    assert_eq!(classify(instance), ObjectRef::Instance(instance));
+}
+
+#[test]
+fn list_argument_conversion_accepts_nil_and_cons_but_reports_exact_type_error() {
+    let ctx = ThreadContext::new();
+    assert_eq!(
+        <ncl_object::List as FromLispArg>::from_lisp_arg(&ctx, Word::NIL),
+        Ok(ncl_object::List::Nil)
+    );
+    let cons = Word::pointer(0x1_0000_0000, LowTag::List);
+    assert!(matches!(
+        <ncl_object::List as FromLispArg>::from_lisp_arg(&ctx, cons),
+        Ok(ncl_object::List::Cons(value)) if value.as_word() == cons
+    ));
+    assert_eq!(
+        <ncl_object::List as FromLispArg>::from_lisp_arg(&ctx, Word::TRUE),
+        Err(LispError::TypeError {
+            datum: Word::TRUE,
+            expected: ObjectType::Cons,
+        })
+    );
 }
 
 #[test]

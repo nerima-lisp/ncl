@@ -151,6 +151,70 @@ impl MachineFunction {
         &self.slots
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+mod tests {
+    use super::{Block, CompiledFunction, MachineFunction, MachineOp};
+    use crate::{FrameLayout, Relocation, SafepointMap};
+    use ncl_ir::{BlockId, ValueId};
+
+    #[test]
+    fn machine_operation_move_accessor_preserves_both_slots() {
+        let operation = MachineOp::move_value(3, 11);
+
+        assert_eq!(operation.as_move(), Some((3, 11)));
+        assert_eq!(MachineOp::Return.as_move(), None);
+        assert_ne!(operation, MachineOp::Return);
+    }
+
+    #[test]
+    fn exposes_lowered_block_function_and_compiled_metadata() {
+        let block = Block::new(BlockId(4), vec![MachineOp::Return]);
+        assert_eq!(block.id(), BlockId(4));
+        assert_eq!(block.operations(), &[MachineOp::Return]);
+        assert_eq!(block.offset(), 0);
+
+        let frame = FrameLayout::new(0, 1, 0).expect("frame");
+        let map = SafepointMap::new(3, 5, 5, &[4], &[], 1).expect("map");
+        let relocation = Relocation {
+            offset: 8,
+            kind: crate::RelocationKind::PcRelative32,
+            target: ncl_asm_x86_64::Label(2),
+            addend: 0,
+        };
+        let function = MachineFunction::new(
+            BlockId(4),
+            vec![block],
+            frame,
+            vec![map.clone()],
+            vec![relocation],
+            vec![(ValueId(7), 4)],
+        );
+        assert_eq!(function.entry(), BlockId(4));
+        assert_eq!(function.blocks().len(), 1);
+        assert_eq!(function.frame(), frame);
+        assert_eq!(function.safepoints(), &[map]);
+        assert_eq!(function.relocations(), &[relocation]);
+        assert_eq!(function.slots(), &[(ValueId(7), 4)]);
+
+        let compiled = CompiledFunction {
+            code: vec![0xc3],
+            entry_offset: 3,
+            relocations: vec![relocation],
+            safepoint_maps: function.safepoints().to_vec(),
+            frame_size: frame.size_bytes(),
+            debug: vec![super::DebugLocation {
+                pc_offset: 4,
+                location: None,
+            }],
+        };
+        assert_eq!(compiled.code, vec![0xc3]);
+        assert_eq!(compiled.entry_offset, 3);
+        assert_eq!(compiled.frame_size, 48);
+        assert_eq!(compiled.debug.len(), 1);
+    }
+}
 /// A source location attached to generated code.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DebugLocation {

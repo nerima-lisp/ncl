@@ -247,8 +247,11 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         OpKind::Const { result } => w.u(result.0.into()),
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. }
         | OpKind::MakeValueCell { value } => w.u(value.0.into()),
+        OpKind::Convert { op, value } => {
+            w.s(&format!("{op:?}"));
+            w.u(value.0.into());
+        }
         OpKind::Store { address, value } => {
             w.u(address.0.into());
             w.u(value.0.into());

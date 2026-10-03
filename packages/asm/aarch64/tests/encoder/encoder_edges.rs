@@ -395,3 +395,85 @@ fn addressing_logical_shift_and_float_edges_are_observed() {
         .is_err()
     );
 }
+
+#[test]
+fn pair_addressing_modes_encode_and_reject_unrepresentable_offsets() {
+    let cases = [
+        (
+            Inst::Ldp {
+                rt: x(0),
+                rt2: x(1),
+                mem: MemOperand::Unsigned {
+                    base: RegOrSp::Sp,
+                    offset: 8,
+                    scale: 8,
+                },
+            },
+            0xA840_87E0,
+        ),
+        (
+            Inst::Stp {
+                rt: x(0),
+                rt2: x(1),
+                mem: MemOperand::PreIndex {
+                    base: RegOrSp::Sp,
+                    offset: 8,
+                },
+            },
+            0xA980_87E0,
+        ),
+        (
+            Inst::Ldp {
+                rt: x(0),
+                rt2: x(1),
+                mem: MemOperand::PostIndex {
+                    base: RegOrSp::Sp,
+                    offset: -8,
+                },
+            },
+            0xA8FF_87E0,
+        ),
+        (
+            Inst::Stp {
+                rt: x(0),
+                rt2: x(1),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Sp,
+                    offset: -8,
+                },
+            },
+            0xA83F_87E0,
+        ),
+    ];
+    for (instruction, expected) in cases {
+        assert_eq!(encode(&instruction, 0), Ok(expected), "{instruction:?}");
+    }
+
+    for mem in [
+        MemOperand::Unsigned {
+            base: RegOrSp::Sp,
+            offset: 8,
+            scale: 4,
+        },
+        MemOperand::Unscaled {
+            base: RegOrSp::Sp,
+            offset: 4,
+        },
+        MemOperand::PreIndex {
+            base: RegOrSp::Sp,
+            offset: 512,
+        },
+    ] {
+        assert!(matches!(
+            encode(
+                &Inst::Ldp {
+                    rt: x(0),
+                    rt2: x(1),
+                    mem,
+                },
+                0
+            ),
+            Err(EncodeError::ImmediateOutOfRange { .. })
+        ));
+    }
+}

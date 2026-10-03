@@ -78,3 +78,40 @@ pub fn store_closure_capture(
         Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), RETURN_VALUE),
     )
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+mod tests {
+    use super::{load_heap_constant, store_closure_capture};
+    use crate::{AllocationTarget, CodegenError, allocate};
+    use ncl_asm_x86_64::Assembler;
+    use ncl_ir::{FunctionBuilder, ValueId};
+
+    #[test]
+    fn support_helpers_reject_offsets_that_cannot_fit_the_machine_address() {
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            load_heap_constant(&mut assembler, ncl_ir::ConstantIndex(u32::MAX)),
+            Err(CodegenError::FrameOverflow)
+        );
+
+        let function = FunctionBuilder::new(
+            ncl_ir::FunctionId(217),
+            "capture-offset",
+            Vec::new(),
+            Vec::new(),
+        )
+        .finish();
+        let slots = super::super::slots(
+            &function,
+            0,
+            allocate(&function, AllocationTarget::X86_64),
+            0,
+        )
+        .0;
+        assert_eq!(
+            store_closure_capture(&mut assembler, ValueId(0), usize::MAX, ValueId(1), &slots,),
+            Err(CodegenError::FrameOverflow)
+        );
+    }
+}

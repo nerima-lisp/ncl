@@ -82,6 +82,88 @@ impl TargetIsa for AArch64TargetIsa {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{AArch64TargetIsa, TargetIsa};
+    use crate::TemplateKind;
+    use ncl_asm_aarch64::{Cond, Inst, Label, Reg, RegOrSp};
+
+    #[test]
+    fn aarch64_target_exposes_fixed_register_contract() {
+        assert_eq!(AArch64TargetIsa.name(), "aarch64");
+        assert_eq!(AArch64TargetIsa::CONTEXT, Reg(21));
+        assert_eq!(AArch64TargetIsa::SCRATCH, [Reg(16), Reg(17)]);
+    }
+
+    #[test]
+    fn aarch64_skeleton_selects_control_flow_and_call_instructions() {
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Return),
+            vec![Inst::Ret { rn: Reg(30) }]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Branch),
+            vec![Inst::BCond {
+                cond: Cond::Ne,
+                label: Label(0),
+            }]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Jump),
+            vec![Inst::B { label: Label(0) }]
+        );
+        for kind in [
+            TemplateKind::Call,
+            TemplateKind::CallIndirect,
+            TemplateKind::MakeClosure,
+            TemplateKind::MakeValueCell,
+            TemplateKind::CallClosure,
+            TemplateKind::Builtin,
+            TemplateKind::EnterHandler,
+            TemplateKind::LeaveHandler,
+        ] {
+            assert_eq!(
+                AArch64TargetIsa::skeleton(kind),
+                vec![Inst::Blr { rn: Reg(17) }],
+                "call-like template {kind:?}"
+            );
+        }
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Alloc),
+            vec![Inst::Nop]
+        );
+        assert_eq!(
+            AArch64TargetIsa::skeleton(TemplateKind::Const),
+            vec![Inst::Mov {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(16)),
+            }]
+        );
+    }
+
+    #[test]
+    fn aarch64_template_encoding_resolves_local_branch_labels() {
+        let target = AArch64TargetIsa;
+
+        for (kind, expected) in [
+            (TemplateKind::Branch, [0x21, 0x00, 0x00, 0x54]),
+            (TemplateKind::Jump, [0x01, 0x00, 0x00, 0x14]),
+        ] {
+            let bytes = target
+                .encode_template(kind)
+                .unwrap_or_else(|error| panic!("template encoding: {error:?}"));
+            assert_eq!(bytes, expected, "encoded branch for {kind:?}");
+        }
+        assert_eq!(
+            target
+                .encode_template(TemplateKind::Return)
+                .unwrap_or_else(|error| panic!("template encoding: {error:?}"))
+                .as_slice(),
+            [0xc0, 0x03, 0x5f, 0xd6]
+        );
+    }
+}
+
 #[path = "target_aarch64.rs"]
 mod target_aarch64;
 pub use target_aarch64::compile_function_aarch64;

@@ -161,3 +161,143 @@ fn package_local_nickname_builtins_reject_locked_package() {
         Err(ObjectError::TypeError)
     );
 }
+
+#[test]
+fn package_local_nickname_designators_and_removal_edges_are_value_based() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let owner = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-OWNER")?;
+    let first_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-FIRST")?;
+    let _second_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-SECOND")?;
+    let _third_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-THIRD")?;
+    let owner_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-DESIGNATOR-OWNER".chars().collect::<Vec<_>>(),
+    )?;
+    let first_target_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-DESIGNATOR-FIRST".chars().collect::<Vec<_>>(),
+    )?;
+    let second_target_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-DESIGNATOR-SECOND".chars().collect::<Vec<_>>(),
+    )?;
+    let third_target_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-DESIGNATOR-THIRD".chars().collect::<Vec<_>>(),
+    )?;
+    let first_name = ncl_object::make_string(&mut ctx, &runtime, &['F', 'I', 'R', 'S', 'T'])?;
+    let second_name = ncl_object::make_string(&mut ctx, &runtime, &['S', 'E', 'C', 'O', 'N', 'D'])?;
+    let third_name = ncl_object::make_string(&mut ctx, &runtime, &['T', 'H', 'I', 'R', 'D'])?;
+    let owner_symbol = ncl_object::make_symbol(&mut ctx, &runtime, owner_name)?;
+    let second_target_symbol = ncl_object::make_symbol(&mut ctx, &runtime, second_target_name)?;
+    let second_nickname_symbol = ncl_object::make_symbol(&mut ctx, &runtime, second_name)?;
+
+    let add = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "ADD-PACKAGE-LOCAL-NICKNAME")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let remove = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "REMOVE-PACKAGE-LOCAL-NICKNAME")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let list = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "PACKAGE-LOCAL-NICKNAMES")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+
+    let cases = [
+        (
+            "string designators",
+            [first_name, first_target_name, owner_name],
+            first_name,
+        ),
+        (
+            "symbol/package designators",
+            [second_nickname_symbol, second_target_symbol, owner_symbol],
+            second_name,
+        ),
+    ];
+    for (label, arguments, expected) in cases {
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, add, &arguments),
+            Ok(expected),
+            "add {label}"
+        );
+    }
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, add, &[first_name, first_target, owner]),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, add, &[third_name, third_target_name, owner]),
+        Ok(third_name)
+    );
+    let entries = runtime.call_builtin(&mut ctx, list, &[owner_symbol])?;
+    let entries = introspection::list_items(&ctx, entries)?;
+    let entry_names = entries
+        .iter()
+        .map(|entry| ncl_object::car(&ctx, *entry))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(entry_names, vec![third_name, second_name, first_name]);
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, remove, &[second_nickname_symbol, owner_name]),
+        Ok(Word::TRUE)
+    );
+    let entries = runtime.call_builtin(&mut ctx, list, &[owner])?;
+    let entries = introspection::list_items(&ctx, entries)?;
+    let entry_names = entries
+        .iter()
+        .map(|entry| ncl_object::car(&ctx, *entry))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(entry_names, vec![third_name, first_name]);
+    let missing_name =
+        ncl_object::make_string(&mut ctx, &runtime, &['M', 'I', 'S', 'S', 'I', 'N', 'G'])?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, remove, &[missing_name, owner]),
+        Ok(Word::NIL)
+    );
+
+    let invalid_cases = [
+        ("nickname", [Word::fixnum(1), first_target, owner]),
+        ("target", [first_name, Word::fixnum(2), owner]),
+        ("package", [first_name, first_target, Word::fixnum(3)]),
+        (
+            "unknown target",
+            [
+                first_name,
+                ncl_object::make_string(
+                    &mut ctx,
+                    &runtime,
+                    &['N', '2', '5', '-', 'M', 'I', 'S', 'S', 'I', 'N', 'G'],
+                )?,
+                owner,
+            ],
+        ),
+    ];
+    for (label, arguments) in invalid_cases {
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, add, &arguments),
+            Err(ObjectError::TypeError),
+            "invalid {label}"
+        );
+    }
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, list, &[Word::fixnum(4)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

@@ -2,7 +2,7 @@
 
 use super::*;
 use ncl_object::{
-    FunctionObject, ObjectError, StringObject, symbol_function, symbol_plist, symbol_value,
+    symbol_function, symbol_plist, symbol_value, FunctionObject, ObjectError, StringObject,
 };
 
 fn function(
@@ -21,6 +21,13 @@ fn function(
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     ncl_object::make_string(ctx, runtime, &value.chars().collect::<Vec<_>>()).unwrap()
+}
+
+fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+    let length = ncl_object::string_length(ctx, value)?;
+    (0..length)
+        .map(|index| ncl_object::string_ref(ctx, value, index))
+        .collect()
 }
 
 fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
@@ -229,11 +236,9 @@ fn symbol_builtins_cover_cells_properties_and_generated_names() -> Result<(), Ob
     let gentemp_prefix = string(&mut ctx, &runtime, "T-");
     let temp = runtime.call_builtin(&mut ctx, gentemp, &[gentemp_prefix, package])?;
     let temp_name = ncl_object::symbol_name(&ctx, temp)?;
-    assert!(
-        Package::from_word(package)
-            .find_symbol(&mut ctx, temp_name)?
-            .is_some()
-    );
+    assert!(Package::from_word(package)
+        .find_symbol(&mut ctx, temp_name)?
+        .is_some());
     Ok(())
 }
 
@@ -375,5 +380,132 @@ fn deleting_packages_rejects_non_package_designators() -> Result<(), ObjectError
         runtime.call_builtin(&mut ctx, delete, &[Word::fixnum(1)]),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn package_designators_and_find_symbol_statuses_are_value_based() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let package_word = runtime.ensure_package(&mut ctx, "NCL-DESIGNATOR")?;
+    let package_name = string(&mut ctx, &runtime, "NCL-DESIGNATOR");
+    let package_symbol = ncl_object::make_symbol(&mut ctx, &runtime, package_name)?;
+    let find_package = function(&runtime, &mut ctx, "COMMON-LISP", "FIND-PACKAGE");
+    let find_package_cases = [
+        ("string", package_name, Ok(package_word)),
+        ("symbol", package_symbol, Ok(package_word)),
+        (
+            "missing",
+            string(&mut ctx, &runtime, "NCL-NO-DESIGNATOR"),
+            Ok(Word::NIL),
+        ),
+        ("invalid", Word::fixnum(7), Err(ObjectError::TypeError)),
+    ];
+    for (label, designator, expected) in find_package_cases {
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, find_package, &[designator]),
+            expected,
+            "find-package {label}"
+        );
+    }
+
+    let source_word = runtime.ensure_package(&mut ctx, "NCL-STATUS-SOURCE")?;
+    let target_word = runtime.ensure_package(&mut ctx, "NCL-STATUS-TARGET")?;
+    let source_name = string(&mut ctx, &runtime, "NCL-STATUS-SOURCE");
+    let target_name = string(&mut ctx, &runtime, "NCL-STATUS-TARGET");
+    let symbol_name = string(&mut ctx, &runtime, "STATUS-SYMBOL");
+    let intern = function(&runtime, &mut ctx, "COMMON-LISP", "INTERN");
+    let symbol = runtime.call_builtin(&mut ctx, intern, &[symbol_name, source_name])?;
+    assert_eq!(
+        text(&ctx, ncl_object::symbol_name(&ctx, ctx.values()[1])?)?,
+        "INTERNAL"
+    );
+
+    let find_symbol = function(&runtime, &mut ctx, "COMMON-LISP", "FIND-SYMBOL");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_symbol, &[symbol_name, source_name])?,
+        symbol
+    );
+    assert_eq!(
+        text(&ctx, ncl_object::symbol_name(&ctx, ctx.values()[1])?)?,
+        "INTERNAL"
+    );
+
+    let export = function(&runtime, &mut ctx, "COMMON-LISP", "EXPORT");
+    let symbols = list(&mut ctx, &runtime, &[symbol]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, export, &[symbols, source_name]),
+        Ok(Word::TRUE)
+    );
+    let source_symbol = ncl_object::make_symbol(&mut ctx, &runtime, source_name)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_symbol, &[symbol_name, source_symbol])?,
+        symbol
+    );
+    assert_eq!(
+        text(&ctx, ncl_object::symbol_name(&ctx, ctx.values()[1])?)?,
+        "EXTERNAL"
+    );
+
+    Package::from_word(target_word).use_package(&mut ctx, &runtime, source_word)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_symbol, &[symbol_name, target_name])?,
+        symbol
+    );
+    assert_eq!(
+        text(&ctx, ncl_object::symbol_name(&ctx, ctx.values()[1])?)?,
+        "INHERITED"
+    );
+    Ok(())
+}
+
+#[test]
+fn package_error_accessor_returns_its_package_slot() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_conditions::register(&runtime)?;
+    register(&runtime)?;
+
+    let package = runtime.ensure_package(&mut ctx, "NCL-PACKAGE-ERROR")?;
+    let condition = ncl_conditions::make_typed_condition(
+        &mut ctx,
+        &runtime,
+        ncl_conditions::ConditionIdentifier::PackageError,
+        &[ncl_conditions::ConditionSlotValue::from_word(package)],
+    )
+    .map_err(|error| match error {
+        ncl_conditions::ConditionError::Object(error) => error,
+        _ => ObjectError::Layout,
+    })?
+    .as_word();
+    let accessor = function(&runtime, &mut ctx, "COMMON-LISP", "PACKAGE-ERROR-PACKAGE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, accessor, &[condition]),
+        Ok(package)
+    );
+    Ok(())
+}
+
+#[test]
+fn package_symbol_mutators_reject_non_symbol_members() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let package = runtime.ensure_package(&mut ctx, "NCL-MUTATOR-EDGES")?;
+    let invalid_symbols = list(&mut ctx, &runtime, &[Word::fixnum(1)]);
+    for name in ["EXPORT", "UNEXPORT", "IMPORT"] {
+        let operation = function(&runtime, &mut ctx, "COMMON-LISP", name);
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, operation, &[invalid_symbols, package]),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
     Ok(())
 }

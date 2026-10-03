@@ -1,7 +1,7 @@
 use crate::ObjectError;
 
 #[cfg(test)]
-#[path = "types_coverage_tests.rs"]
+#[path = "tests/types.rs"]
 mod coverage_tests;
 
 pub fn target_usize(

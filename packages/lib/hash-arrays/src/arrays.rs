@@ -426,5 +426,5 @@ mod vector;
 pub use register::register;
 
 #[cfg(test)]
-#[path = "arrays/tests.rs"]
+#[path = "arrays/tests/coverage.rs"]
 mod tests;

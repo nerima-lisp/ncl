@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[cfg(test)]
-#[path = "error_coverage_tests.rs"]
+#[path = "tests/error.rs"]
 mod coverage_tests;
 
 /// Errors produced while encoding or validating an object artifact.

@@ -491,5 +491,5 @@ pub fn copy_pprint_dispatch(
 include!("pprint_dispatch.rs");
 
 #[cfg(test)]
-#[path = "builtins_tests.rs"]
+#[path = "tests/builtins.rs"]
 mod tests;

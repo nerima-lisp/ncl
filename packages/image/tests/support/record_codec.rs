@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, reason = "record tests assert on codec values")]
 use super::{Record, Ref, get_record, get_ref, get_refs, put_record, put_ref, put_refs};
 use crate::error::ImageError;
 use crate::format::Reader;

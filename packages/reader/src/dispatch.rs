@@ -455,3 +455,19 @@ fn read_label_number(source: &mut dyn CharSource) -> Result<i64, ReadError> {
         .parse::<i64>()
         .map_err(|_| ReadError::NumberOutOfRange)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::read_label_number;
+    use crate::ReadError;
+    use crate::input::StringSource;
+
+    #[test]
+    fn label_number_requires_digits() {
+        let mut source = StringSource::new("=");
+        assert_eq!(
+            read_label_number(&mut source),
+            Err(ReadError::InvalidNumber("missing label number".to_owned()))
+        );
+    }
+}

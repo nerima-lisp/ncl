@@ -338,7 +338,7 @@ pub fn write_to_string(
 mod tests {
     use super::{Printer, character_code, write_to_string};
     use crate::{PrintOptions, StringSink};
-    use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_simple_vector};
+    use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_simple_vector, make_symbol};
 
     #[test]
     fn printer_writes_immediates_and_pretty_separators() {
@@ -373,5 +373,19 @@ mod tests {
         let cons = make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).unwrap();
         let rendered = write_to_string(&mut ctx, &runtime, cons, &PrintOptions::new()).unwrap();
         assert_eq!(ncl_object::string_length(&ctx, rendered).unwrap(), 5);
+    }
+
+    #[test]
+    fn printer_dispatches_symbol_objects_directly() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let name =
+            ncl_object::make_string(&mut ctx, &runtime, &['D', 'I', 'R', 'E', 'C', 'T']).unwrap();
+        let symbol = make_symbol(&mut ctx, &runtime, name).unwrap();
+        let mut sink = StringSink::new();
+        let mut printer = Printer::new(&mut ctx, &runtime, &mut sink, PrintOptions::new());
+        printer.print(symbol).unwrap();
+        assert_eq!(sink.into_string(), "#:DIRECT");
     }
 }

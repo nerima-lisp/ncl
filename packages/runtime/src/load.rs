@@ -103,7 +103,9 @@ fn load_with_runtime(
             Ok(Word::NIL)
         }
         Err(RuntimeError::Io { error, .. }) if error.kind() == std::io::ErrorKind::NotFound => {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound {
+                pathname: path_word,
+            }));
             Err(ObjectError::TypeError)
         }
         Err(
@@ -116,7 +118,9 @@ fn load_with_runtime(
             | RuntimeError::UndefinedFunction { .. }
             | RuntimeError::NativeFailure { .. },
         ) => {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath {
+                pathname: path_word,
+            }));
             Err(ObjectError::TypeError)
         }
     }

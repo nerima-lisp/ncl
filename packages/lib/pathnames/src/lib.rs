@@ -4,8 +4,8 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package,
     Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object, make_cons,
-    make_string, make_structure, string_length, string_ref, structure_layout, structure_ref,
-    symbol_name, with_root,
+    make_string, make_structure, set_symbol_special, set_symbol_value, string_length, string_ref,
+    structure_layout, structure_ref, symbol_name, symbol_value, with_root,
 };
 
 mod operations;
@@ -365,6 +365,20 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         .0;
     runtime.define_class(&mut ctx, "PATHNAME", Word::fixnum(1))?;
     runtime.register_structure_class_with_parent(&ctx, layout, None, pathname_symbol)?;
+    for name in [
+        "*DEFAULT-PATHNAME-DEFAULTS*",
+        "*LOAD-PATHNAME*",
+        "*COMPILE-FILE-PATHNAME*",
+    ] {
+        let symbol = Package::from_word(package)
+            .intern(&mut ctx, runtime, name)?
+            .0;
+        set_symbol_special(&mut ctx, symbol, true)?;
+        // check-added-lines: allow(unbound) initialize newly interned special
+        if symbol_value(&ctx, symbol)? == Word::UNBOUND {
+            set_symbol_value(&mut ctx, symbol, Word::NIL)?;
+        }
+    }
     let rest = LambdaList::with_rest(&[], PATHNAME_KEYS);
     let mut direct = |name: &'static str,
                       function: ncl_object::RustBuiltin,

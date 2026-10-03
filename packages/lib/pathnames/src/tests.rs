@@ -157,3 +157,42 @@ fn file_metadata_and_designators_return_values() -> Result<(), ObjectError> {
     assert_eq!(string_value(&ctx, host)?, ""); // check-added-lines: allow(panic) host namestring assertion
     Ok(())
 }
+
+#[test]
+fn pathname_file_operations_return_observable_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let pattern = make_string(&mut ctx, &runtime, &['/', 't', 'm', 'p', '/', '*'])?;
+    let entries = call(&runtime, &mut ctx, "DIRECTORY", &[pattern])?;
+    assert_ne!(entries, Word::NIL); // check-added-lines: allow(panic) directory result assertion
+
+    let source = make_string(
+        &mut ctx,
+        &runtime,
+        &['/', 't', 'm', 'p', '/', 'a', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let from = make_string(
+        &mut ctx,
+        &runtime,
+        &['/', 't', 'm', 'p', '/', '*', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let to = make_string(
+        &mut ctx,
+        &runtime,
+        &['/', 'v', 'a', 'r', '/', '*', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let translated = call(
+        &runtime,
+        &mut ctx,
+        "TRANSLATE-PATHNAME",
+        &[source, from, to],
+    )?;
+    let translated_name = call(&runtime, &mut ctx, "NAMESTRING", &[translated])?;
+    assert_eq!(string_value(&ctx, translated_name)?, "/var/a.lisp"); // check-added-lines: allow(panic) translation value assertion
+
+    let home = call(&runtime, &mut ctx, "USER-HOMEDIR-PATHNAME", &[])?;
+    assert_eq!(call(&runtime, &mut ctx, "PATHNAMEP", &[home])?, Word::TRUE); // check-added-lines: allow(panic) pathname predicate assertion
+    Ok(())
+}

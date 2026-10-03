@@ -1,11 +1,16 @@
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Package, Runtime, SLOTS, ThreadContext, Word, car,
-    cdr, component_string, directory_text, is_pathname, make_cons, make_pathname, make_string,
-    namestring_value, pathname_designator, relative_directory, string_length, structure_ref,
-    symbol_text, text, with_root,
+    cdr, component_string, directory_text, make_cons, make_pathname, make_string, namestring_value,
+    pathname_designator, relative_directory, structure_ref, symbol_text, text, with_root,
 };
+use ncl_object::{FileError, LispError};
+use std::env;
 use std::fs;
 use std::path::Path;
+
+#[path = "parse.rs"]
+mod parse;
+pub use parse::{parse_namestring_builtin, parse_namestring_value};
 
 pub fn has_wildcards(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectError> {
     if word == Word::NIL {
@@ -127,8 +132,11 @@ pub fn truename_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (_, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
-    let canonical = fs::canonicalize(name).map_err(|_| ObjectError::TypeError)?;
+    let (pathname, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
+    let canonical = fs::canonicalize(name).map_err(|_| {
+        ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath { pathname }));
+        ObjectError::TypeError
+    })?;
     let string = make_string(
         ctx,
         runtime,
@@ -143,11 +151,16 @@ pub fn file_length_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (_, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
+    let (pathname, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
     Ok(Word::fixnum(
         i64::try_from(
             fs::metadata(name)
-                .map_err(|_| ObjectError::TypeError)?
+                .map_err(|_| {
+                    ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath {
+                        pathname,
+                    }));
+                    ObjectError::TypeError
+                })?
                 .len(),
         )
         .map_err(|_| ObjectError::Layout)?,
@@ -160,8 +173,11 @@ pub fn delete_file_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (_, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
-    fs::remove_file(name).map_err(|_| ObjectError::TypeError)?;
+    let (pathname, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
+    fs::remove_file(name).map_err(|_| {
+        ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath { pathname }));
+        ObjectError::TypeError
+    })?;
     Ok(Word::TRUE)
 }
 
@@ -271,6 +287,144 @@ pub fn enough_namestring_builtin(
     )
 }
 
+pub fn user_homedir_pathname_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let home = env::var("HOME").map_err(|_| ObjectError::TypeError)?;
+    let value = make_string(ctx, runtime, &home.chars().collect::<Vec<_>>())?;
+    parse_namestring_value(ctx, runtime, value)
+}
+
+pub fn directory_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let (pattern, name) = filesystem_path(ctx, runtime, args.required(0)?)?;
+    let path = Path::new(&name);
+    let parent = path.parent().unwrap_or_else(|| Path::new(".")); // check-added-lines: allow(panic) filesystem paths without a parent use current directory
+    let file_pattern = path
+        .file_name()
+        .and_then(|part| part.to_str())
+        .unwrap_or("*");
+    let mut matches = Vec::new();
+    for entry in fs::read_dir(parent).map_err(|_| ObjectError::TypeError)? {
+        let entry = entry.map_err(|_| ObjectError::TypeError)?;
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if wildcard_match(file_pattern, &file_name) {
+            let found = make_string(
+                ctx,
+                runtime,
+                &entry.path().to_string_lossy().chars().collect::<Vec<_>>(),
+            )?;
+            matches.push(parse_namestring_value(ctx, runtime, found)?);
+        }
+    }
+    let _ = pattern;
+    list(ctx, runtime, &matches)
+}
+
+fn replace_wildcard(pattern: &str, value: &str) -> String {
+    if let Some(star) = pattern.find('*') {
+        let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
+        let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
+        if value.starts_with(prefix)
+            && value.ends_with(suffix)
+            && value.len() >= prefix.len() + suffix.len()
+        {
+            return format!(
+                "{}{}{}",
+                prefix,
+                &value[prefix.len()..value.len() - suffix.len()], // check-added-lines: allow(index) validated prefix and suffix lengths
+                suffix
+            );
+        }
+    }
+    value.to_owned()
+}
+
+fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
+    let star = pattern.find('*')?;
+    let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
+    let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
+    (value.starts_with(prefix)
+        && value.ends_with(suffix)
+        && value.len() >= prefix.len() + suffix.len())
+    .then(|| value[prefix.len()..value.len() - suffix.len()].to_owned()) // check-added-lines: allow(index) validated prefix and suffix lengths
+}
+
+fn substitute_wildcard(pattern: &str, capture: &str) -> String {
+    pattern.find('*').map_or_else(
+        || pattern.to_owned(),
+        |index| format!("{}{}{}", &pattern[..index], capture, &pattern[index + 1..]), // check-added-lines: allow(index) index came from find
+    )
+}
+
+pub fn translate_pathname_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let source = pathname_designator(ctx, runtime, args.required(0)?)?;
+    let from = pathname_designator(ctx, runtime, args.required(1)?)?;
+    let to = pathname_designator(ctx, runtime, args.required(2)?)?;
+    let source_name = namestring_value(ctx, source)?;
+    let from_name = namestring_value(ctx, from)?;
+    let to_name = namestring_value(ctx, to)?;
+    if !wildcard_match(&from_name, &source_name) {
+        return Err(ObjectError::TypeError);
+    }
+    let translated = wildcard_capture(&from_name, &source_name).map_or_else(
+        || replace_wildcard(&to_name, &source_name),
+        |capture| substitute_wildcard(&to_name, &capture),
+    );
+    let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
+    parse_namestring_value(ctx, runtime, string)
+}
+
+pub fn logical_pathname_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    parse_namestring_builtin(ctx, runtime, args, values)
+}
+
+pub fn logical_pathname_translations_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let _ = args.required(0)?;
+    Ok(Word::NIL)
+}
+
+pub fn load_logical_pathname_translations_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let _ = args.required(0)?;
+    Ok(Word::NIL)
+}
+
+pub fn translate_logical_pathname_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    logical_pathname_builtin(ctx, runtime, args, values)
+}
+
 pub fn wild_pathname_p_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -332,72 +486,4 @@ pub fn list(
         })?;
     }
     Ok(result)
-}
-
-pub fn parse_namestring_value(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    input: Word,
-) -> Result<Word, ObjectError> {
-    let source = text(ctx, input)?;
-    let absolute = source.starts_with('/');
-    let trimmed = source.trim_start_matches('/');
-    let mut parts = trimmed
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
-    let filename = if source.ends_with('/') {
-        None
-    } else {
-        parts.pop()
-    };
-    let (name, type_) = filename.map_or((None, None), |file| match file.rsplit_once('.') {
-        Some((base, extension)) if !base.is_empty() => (Some(base), Some(extension)),
-        _ => (Some(file), None), // check-added-lines: allow(wildcard) extension is optional
-    });
-    let marker = keyword_symbol(ctx, runtime, if absolute { "ABSOLUTE" } else { "RELATIVE" })?;
-    let components = std::iter::once(marker)
-        .chain(
-            parts
-                .into_iter()
-                .map(|part| make_string(ctx, runtime, &part.chars().collect::<Vec<_>>()))
-                .collect::<Result<Vec<_>, _>>()?,
-        )
-        .collect::<Vec<_>>();
-    let directory = ncl_object::with_roots(ctx, &components, |ctx, rooted| {
-        let words = rooted.iter().map(|slot| slot.get()).collect::<Vec<_>>();
-        list(ctx, runtime, &words)
-    })?;
-    let mut slots = [Word::NIL; SLOTS];
-    // check-added-lines: allow(index) fixed pathname slot layout
-    slots[2] = directory; // check-added-lines: allow(index) fixed pathname slot layout
-    // check-added-lines: allow(index) fixed pathname slot layout
-    slots[3] = match name {
-        Some(value) => make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())?,
-        None => Word::NIL,
-    };
-    // check-added-lines: allow(index) fixed pathname slot layout
-    slots[4] = match type_ {
-        Some(value) => make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())?,
-        None => Word::NIL,
-    };
-    make_pathname(ctx, runtime, &slots)
-}
-
-pub fn parse_namestring_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let input = args.required(0)?;
-    let pathname = if is_pathname(ctx, runtime, input) {
-        input
-    } else {
-        parse_namestring_value(ctx, runtime, input)?
-    };
-    let position =
-        Word::fixnum(i64::try_from(string_length(ctx, input)?).map_err(|_| ObjectError::Layout)?);
-    values.set(&[pathname, position, Word::NIL]);
-    Ok(pathname)
 }

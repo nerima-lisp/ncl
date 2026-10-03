@@ -91,13 +91,7 @@ fn character_input_modes_are_exact_for_table_cases() {
         .call_builtin(
             &mut ctx,
             make_input,
-            &[
-                bounded_text,
-                start,
-                Word::fixnum(2),
-                end,
-                Word::fixnum(4),
-            ],
+            &[bounded_text, start, Word::fixnum(2), end, Word::fixnum(4)],
         )
         .unwrap();
     for expected in ['2', '3'] {
@@ -111,7 +105,11 @@ fn character_input_modes_are_exact_for_table_cases() {
         Ok(Word::fixnum(17)),
     );
     assert_eq!(
-        runtime.call_builtin(&mut ctx, unread, &[Word::character(u32::from('x')), bounded]),
+        runtime.call_builtin(
+            &mut ctx,
+            unread,
+            &[Word::character(u32::from('x')), bounded]
+        ),
         Ok(Word::character(u32::from('x'))),
     );
 
@@ -121,7 +119,9 @@ fn character_input_modes_are_exact_for_table_cases() {
         let stream = runtime
             .call_builtin(&mut ctx, make_input, &[source_text])
             .unwrap();
-        let line = runtime.call_builtin(&mut ctx, read_line, &[stream]).unwrap();
+        let line = runtime
+            .call_builtin(&mut ctx, read_line, &[stream])
+            .unwrap();
         assert_eq!(string(&ctx, line), expected);
         assert_eq!(ctx.values()[1], more, "line termination for {source:?}");
     }
@@ -165,9 +165,13 @@ fn character_output_ranges_and_line_states_are_exact_for_table_cases() {
             Ok(args[0]),
             "write-string range {options:?}",
         );
-        let value = runtime.call_builtin(&mut ctx, get_output, &[output]).unwrap();
+        let value = runtime
+            .call_builtin(&mut ctx, get_output, &[output])
+            .unwrap();
         assert_eq!(string(&ctx, value), expected);
-        let reset = runtime.call_builtin(&mut ctx, get_output, &[output]).unwrap();
+        let reset = runtime
+            .call_builtin(&mut ctx, get_output, &[output])
+            .unwrap();
         assert_eq!(string(&ctx, reset), "");
     }
 
@@ -178,18 +182,16 @@ fn character_output_ranges_and_line_states_are_exact_for_table_cases() {
     );
     let line_text = text(&mut ctx, &runtime, "xy");
     assert_eq!(
-        runtime.call_builtin(
-            &mut ctx,
-            write_line,
-            &[line_text, output],
-        ),
+        runtime.call_builtin(&mut ctx, write_line, &[line_text, output],),
         Ok(line_text),
     );
     assert_eq!(
         runtime.call_builtin(&mut ctx, fresh_line, &[output]),
         Ok(Word::NIL),
     );
-    let value = runtime.call_builtin(&mut ctx, get_output, &[output]).unwrap();
+    let value = runtime
+        .call_builtin(&mut ctx, get_output, &[output])
+        .unwrap();
     assert_eq!(string(&ctx, value), "xy\n");
 }
 

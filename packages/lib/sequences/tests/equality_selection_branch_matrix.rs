@@ -15,14 +15,7 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
     ctx.register(&runtime).unwrap();
     ncl_lib_sequences::register(&runtime).unwrap();
     let functions = [
-        "COUNT",
-        "EQUAL",
-        "EQUALP",
-        "FIND",
-        "LIST",
-        "MISMATCH",
-        "POSITION",
-        "SEARCH",
+        "COUNT", "EQUAL", "EQUALP", "FIND", "LIST", "MISMATCH", "POSITION", "SEARCH",
     ]
     .into_iter()
     .map(|name| {
@@ -76,7 +69,10 @@ fn equality_branch_matrix_compares_mixed_arrays_and_numeric_fallbacks() {
     let vector = make_simple_vector(
         &mut ctx,
         &runtime,
-        &[Word::character(u32::from('A')), Word::character(u32::from('B'))],
+        &[
+            Word::character(u32::from('A')),
+            Word::character(u32::from('B')),
+        ],
     )
     .unwrap();
     assert_eq!(
@@ -190,9 +186,10 @@ fn selection_branch_matrix_returns_exact_keyed_test_not_and_empty_results() {
     let nested_one = list(&runtime, &mut ctx, &functions, &[one]);
     let nested_two = list(&runtime, &mut ctx, &functions, &[two]);
     let nested = list(&runtime, &mut ctx, &functions, &[nested_one, nested_two]);
-    let equal = FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "EQUAL").unwrap())
-        .unwrap()
-        .as_word();
+    let equal =
+        FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "EQUAL").unwrap())
+            .unwrap()
+            .as_word();
 
     assert_eq!(
         call(

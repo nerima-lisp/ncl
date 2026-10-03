@@ -16,8 +16,8 @@ fn call(
     name: &str,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function = FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap())
-        .unwrap();
+    let function =
+        FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap();
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         runtime.call_builtin(
             ctx,
@@ -53,7 +53,11 @@ fn list_and_registration_branches_return_table_values_or_errors() {
     let malformed_tail = dotted(&runtime, &mut ctx, one, malformed_value_cell);
 
     let cases = [
-        ("GETF hit", call(&runtime, &mut ctx, "GETF", &[property_list, one]), Ok(two)),
+        (
+            "GETF hit",
+            call(&runtime, &mut ctx, "GETF", &[property_list, one]),
+            Ok(two),
+        ),
         (
             "GETF default",
             call(
@@ -71,7 +75,12 @@ fn list_and_registration_branches_return_table_values_or_errors() {
         ),
         (
             "GETF dotted cursor",
-            call(&runtime, &mut ctx, "GETF", &[malformed_tail, Word::fixnum(9)]),
+            call(
+                &runtime,
+                &mut ctx,
+                "GETF",
+                &[malformed_tail, Word::fixnum(9)],
+            ),
             Err(ObjectError::TypeError),
         ),
         (
@@ -142,7 +151,11 @@ fn copy_tree_and_higher_order_empty_branches_preserve_exact_values() {
         ("NOTANY", Word::TRUE),
         ("NOTEVERY", Word::NIL),
     ] {
-        assert_eq!(call(&runtime, &mut ctx, name, &[atom, Word::NIL]), Ok(expected), "{name}");
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[atom, Word::NIL]),
+            Ok(expected),
+            "{name}"
+        );
     }
 
     let string = ncl_object::make_string(&mut ctx, &runtime, &['x']).unwrap();

@@ -263,6 +263,7 @@ fn form_conversion_preserves_numbers_collections_and_errors() {
         ncl_compiler_front::form::literal(&mut fixture.ctx, &mut table, array).unwrap(),
         Literal::Array {
             dimensions: vec![2],
+            element_type: ArrayElementType::T,
             elements: vec![Literal::fixnum(4), Literal::fixnum(4)]
         }
     );

@@ -200,9 +200,14 @@ fn capture_analysis_boxes_assigned_lexical_values_and_loads_captures() {
 }
 
 #[test]
-fn parameter_pattern_is_rejected_by_lowering_with_typed_error() {
+fn parameter_pattern_lowering_emits_argument_decomposition() {
+    let x = symbol("X");
+    let y = symbol("Y");
     let pattern = LambdaList {
-        required: vec![ParamName::Pattern(Box::new(LambdaList::new()))],
+        required: vec![ParamName::Pattern(Box::new(LambdaList {
+            required: vec![ParamName::Symbol(x), ParamName::Symbol(y)],
+            ..LambdaList::new()
+        }))],
         ..LambdaList::new()
     };
     let expression = Expr::Lambda(Box::new(LambdaExpr {
@@ -211,17 +216,25 @@ fn parameter_pattern_is_rejected_by_lowering_with_typed_error() {
         docstring: None,
         body: vec![Expr::Constant(Literal::Nil)],
     }));
-    let error = lower_toplevel(&expression).unwrap_err();
-    assert_eq!(
-        error,
-        ncl_compiler_front::LowerError::UnsupportedLambdaList {
-            feature: "destructuring parameter"
-        }
-    );
-    assert_eq!(
-        error.to_string(),
-        "unsupported lambda list feature: destructuring parameter"
-    );
+    let lowered = lower_toplevel(&expression).expect("destructuring parameter lowers");
+    assert_verifies(&lowered.entry);
+    let nested = lowered
+        .nested
+        .first()
+        .expect("destructuring lambda is lowered as a nested function");
+    assert_verifies(nested);
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::LoadArg { index: 1 }
+    )));
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, args } if name == "CAR" && args.len() == 1
+    )));
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, args } if name == "CDR" && args.len() == 1
+    )));
 }
 
 #[test]

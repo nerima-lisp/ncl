@@ -275,20 +275,19 @@ fn literal_lowering_covers_scalar_numbers_and_rejects_unrepresentable_data() {
     for literal in [
         Literal::Array {
             dimensions: vec![1],
+            element_type: ncl_object::ArrayElementType::T,
             elements: vec![Literal::fixnum(1)],
         },
         Literal::BitVector(vec![true, false]),
     ] {
-        let error = lower_toplevel(&Expr::Constant(literal)).unwrap_err();
-        assert!(matches!(
-            error,
-            ncl_compiler_front::LowerError::Unsupported {
-                form: "quoted structure"
-            }
-        ));
-        assert_eq!(
-            error.to_string(),
-            "no IR representation for quoted structure"
+        let lowered = lower_toplevel(&Expr::Constant(literal)).expect("literal lowers");
+        assert_verifies(&lowered.entry);
+        assert!(
+            lowered
+                .entry
+                .constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Array { .. }))
         );
     }
 }

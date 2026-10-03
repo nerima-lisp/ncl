@@ -315,19 +315,13 @@ fn lower_literals_cover_structures_numbers_and_explicit_unsupported_error() {
         assert!(!lowered.entry.constants.is_empty());
     }
 
-    let unsupported = Expr::Constant(Literal::Array {
+    let array = Expr::Constant(Literal::Array {
         dimensions: vec![1],
+        element_type: ncl_object::ArrayElementType::T,
         elements: vec![Literal::fixnum(1)],
     });
-    match lower_toplevel(&unsupported) {
-        Err(error) => assert_eq!(
-            error,
-            ncl_compiler_front::LowerError::Unsupported {
-                form: "quoted structure"
-            }
-        ),
-        Ok(_) => panic!("array literal unexpectedly lowered"),
-    }
+    let lowered = lower_toplevel(&array).expect("array literal lowers");
+    assert_verifies(&lowered.entry);
 }
 
 #[test]

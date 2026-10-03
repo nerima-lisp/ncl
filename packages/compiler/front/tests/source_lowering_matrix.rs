@@ -336,15 +336,11 @@ fn typed_lowering_edges_keep_unbound_control_and_destructuring_errors_distinct()
         docstring: None,
         body: vec![Expr::Constant(Literal::Nil)],
     }));
-    let error = lower_toplevel(&expression).unwrap_err();
-    assert_eq!(
-        error,
-        LowerError::UnsupportedLambdaList {
-            feature: "destructuring parameter"
-        }
-    );
-    assert_eq!(
-        error.to_string(),
-        "unsupported lambda list feature: destructuring parameter"
-    );
+    let lowered = lower_toplevel(&expression).expect("destructuring parameter lowers");
+    assert_verifies(&lowered.entry);
+    assert_verifies(&lowered.nested[0]);
+    assert!(any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::LoadArg { index: 1 }
+    )));
 }

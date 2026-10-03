@@ -144,6 +144,7 @@ fn terminated_call_argument_does_not_lower_unreachable_siblings() {
                 },
                 Expr::Constant(Literal::Array {
                     dimensions: vec![1],
+                    element_type: ncl_object::ArrayElementType::T,
                     elements: vec![Literal::fixnum(1)],
                 }),
             ],
@@ -265,12 +266,13 @@ fn unbound_control_and_unsupported_literal_errors_keep_their_types() {
     .unwrap_err();
     assert_eq!(return_error, LowerError::EscapingControl { name });
 
-    let literal_error =
-        lower_toplevel(&Expr::Constant(Literal::BitVector(vec![true, false]))).unwrap_err();
-    assert_eq!(
-        literal_error,
-        LowerError::Unsupported {
-            form: "quoted structure"
+    let literal = lower_toplevel(&Expr::Constant(Literal::BitVector(vec![true, false])))
+        .expect("bit-vector literal lowers");
+    assert!(literal.entry.constants.iter().any(|constant| matches!(
+        constant,
+        ncl_ir::Constant::Array {
+            element_type: ncl_ir::ArrayElementType::Bit,
+            ..
         }
-    );
+    )));
 }

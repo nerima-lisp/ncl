@@ -331,32 +331,46 @@ fn special_form_package_resolution_is_case_and_namespace_sensitive() {
 }
 
 #[test]
-fn unsupported_literal_and_pattern_errors_are_not_erased() {
+fn lowering_materializes_arrays_and_destructures_parameters() {
     let literal = lower_toplevel(&Expr::Constant(Literal::Array {
         dimensions: vec![1],
+        element_type: ncl_object::ArrayElementType::T,
         elements: vec![Literal::fixnum(1)],
     }))
-    .unwrap_err();
-    assert_eq!(
-        literal,
-        ncl_compiler_front::LowerError::Unsupported {
-            form: "quoted structure"
-        }
+    .expect("array literal lowers");
+    assert!(
+        literal
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, ncl_ir::Constant::Array { .. }))
     );
 
     let pattern = Expr::Lambda(Box::new(LambdaExpr {
         lambda_list: LambdaList {
-            required: vec![ParamName::Pattern(Box::new(LambdaList::new()))],
+            required: vec![ParamName::Pattern(Box::new(LambdaList {
+                required: vec![ParamName::Symbol(user("X")), ParamName::Symbol(user("Y"))],
+                ..LambdaList::new()
+            }))],
             ..LambdaList::new()
         },
         declarations: Vec::new(),
         docstring: None,
         body: vec![Expr::Constant(Literal::Nil)],
     }));
-    let error = lower_toplevel(&pattern).unwrap_err();
-    assert!(matches!(
-        error,
-        ncl_compiler_front::LowerError::UnsupportedLambdaList { .. }
-    ));
-    assert!(error.to_string().contains("destructuring"));
+    let lowered = lower_toplevel(&pattern).expect("destructuring parameter lowers");
+    assert_verifies(&lowered.entry);
+    let nested = lowered.nested.first().expect("nested lambda");
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::LoadArg { index: 1 }
+    )));
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, args } if name == "CAR" && args.len() == 1
+    )));
+    assert!(any_op(nested, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, args } if name == "CDR" && args.len() == 1
+    )));
 }

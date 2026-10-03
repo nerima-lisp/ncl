@@ -8,6 +8,7 @@ use ncl_object::{
     structure_layout, structure_ref, symbol_name, symbol_value, with_root,
 };
 
+mod logical;
 mod operations;
 mod registration;
 
@@ -369,6 +370,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         "*DEFAULT-PATHNAME-DEFAULTS*",
         "*LOAD-PATHNAME*",
         "*COMPILE-FILE-PATHNAME*",
+        "*LOGICAL-PATHNAME-TRANSLATIONS*",
     ] {
         let symbol = Package::from_word(package)
             .intern(&mut ctx, runtime, name)?

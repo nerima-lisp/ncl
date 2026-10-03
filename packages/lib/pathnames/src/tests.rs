@@ -90,6 +90,44 @@ fn parse_namestring_preserves_absolute_directory() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn pathname_extended_arguments_and_logical_host_are_observable() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let input = make_string(&mut ctx, &runtime, &['a', 'b', 'c', 'd', 'e'])?;
+    let parsed = call(
+        &runtime,
+        &mut ctx,
+        "PARSE-NAMESTRING",
+        &[
+            input,
+            Word::NIL,
+            Word::NIL,
+            Word::fixnum(1),
+            Word::fixnum(4),
+            Word::TRUE,
+        ],
+    )?;
+    assert_eq!(ctx.values().get(1), Some(&Word::fixnum(4))); // check-added-lines: allow(panic) parse position assertion
+    let parsed_name = call(&runtime, &mut ctx, "PATHNAME-NAME", &[parsed])?;
+    assert_eq!(string_value(&ctx, parsed_name)?, "bcd"); // check-added-lines: allow(panic) bounded parse value assertion
+
+    let logical = make_string(
+        &mut ctx,
+        &runtime,
+        &['S', 'Y', 'S', ':', 'f', 'o', 'o', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let logical = call(&runtime, &mut ctx, "LOGICAL-PATHNAME", &[logical])?;
+    let host = call(&runtime, &mut ctx, "PATHNAME-HOST", &[logical])?;
+    assert_eq!(string_value(&ctx, host)?, "SYS"); // check-added-lines: allow(panic) logical host assertion
+    let output = call(&runtime, &mut ctx, "COMPILE-FILE-PATHNAME", &[logical])?;
+    let output_type = call(&runtime, &mut ctx, "PATHNAME-TYPE", &[output])?;
+    assert_eq!(string_value(&ctx, output_type)?, "fasl"); // check-added-lines: allow(panic) compile pathname type assertion
+    Ok(())
+}
+
+#[test]
 fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

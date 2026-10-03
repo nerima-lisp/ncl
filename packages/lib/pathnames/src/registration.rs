@@ -1,8 +1,8 @@
 use super::operations::{
-    delete_file_builtin, directory_builtin, enough_namestring_builtin,
-    ensure_directories_exist_builtin, file_author_builtin, file_error_pathname_builtin,
-    file_length_builtin, file_write_date_builtin, host_namestring_builtin,
-    load_logical_pathname_translations_builtin, logical_pathname_builtin,
+    compile_file_pathname_builtin, delete_file_builtin, directory_builtin,
+    enough_namestring_builtin, ensure_directories_exist_builtin, file_author_builtin,
+    file_error_pathname_builtin, file_length_builtin, file_write_date_builtin,
+    host_namestring_builtin, load_logical_pathname_translations_builtin, logical_pathname_builtin,
     logical_pathname_translations_builtin, merge_pathnames_builtin, parse_namestring_builtin,
     pathname_match_builtin, probe_file_builtin, rename_file_builtin,
     translate_logical_pathname_builtin, translate_pathname_builtin, truename_builtin,
@@ -13,10 +13,6 @@ use super::{
     file_namestring_builtin, namestring_builtin,
 };
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "operation table is kept in one auditable registration block"
-)]
 pub fn register_operations(
     direct: &mut impl FnMut(
         &'static str,
@@ -76,6 +72,11 @@ pub fn register_operations(
             LambdaList::with_rest(&[PATHNAME], OBJECT),
         ),
         (
+            "COMPILE-FILE-PATHNAME",
+            compile_file_pathname_builtin,
+            LambdaList::with_rest(&[PATHNAME], OBJECT),
+        ),
+        (
             "WILD-PATHNAME-P",
             wild_pathname_p_builtin,
             LambdaList::fixed(&[PATHNAME]),
@@ -90,9 +91,23 @@ pub fn register_operations(
             merge_pathnames_builtin,
             LambdaList::with_optional(&[PATHNAME], &[PATHNAME]),
         ),
+    ] {
+        direct(name, function, lambda_list)?;
+    }
+    register_file_operations(direct)
+}
+
+fn register_file_operations(
+    direct: &mut impl FnMut(
+        &'static str,
+        ncl_object::RustBuiltin,
+        LambdaList,
+    ) -> Result<ncl_object::FunctionObject, ObjectError>,
+) -> Result<(), ObjectError> {
+    for (name, function, lambda_list) in [
         (
             "PROBE-FILE",
-            probe_file_builtin,
+            probe_file_builtin as ncl_object::RustBuiltin,
             LambdaList::fixed(&[PATHNAME]),
         ),
         ("TRUENAME", truename_builtin, LambdaList::fixed(&[PATHNAME])),

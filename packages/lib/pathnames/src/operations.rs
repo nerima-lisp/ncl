@@ -8,6 +8,12 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+pub use super::logical::{
+    compile_file_pathname_builtin, load_logical_pathname_translations_builtin,
+    logical_pathname_builtin, logical_pathname_translations_builtin,
+    translate_logical_pathname_builtin,
+};
+
 #[path = "parse.rs"]
 mod parse;
 pub use parse::{parse_namestring_builtin, parse_namestring_value};
@@ -280,11 +286,18 @@ pub fn enough_namestring_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
-    make_string(
-        ctx,
-        runtime,
-        &namestring_value(ctx, pathname)?.chars().collect::<Vec<_>>(),
-    )
+    let full = namestring_value(ctx, pathname)?;
+    let result = if let Some(defaults) = args.get(1) {
+        let defaults = pathname_designator(ctx, runtime, defaults)?;
+        let base = namestring_value(ctx, defaults)?;
+        full.strip_prefix(&base)
+            .unwrap_or(&full)
+            .trim_start_matches('/')
+            .to_owned()
+    } else {
+        full
+    };
+    make_string(ctx, runtime, &result.chars().collect::<Vec<_>>())
 }
 
 pub fn user_homedir_pathname_builtin(
@@ -328,7 +341,7 @@ pub fn directory_builtin(
     list(ctx, runtime, &matches)
 }
 
-fn replace_wildcard(pattern: &str, value: &str) -> String {
+pub fn replace_wildcard(pattern: &str, value: &str) -> String {
     if let Some(star) = pattern.find('*') {
         let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
         let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
@@ -347,7 +360,7 @@ fn replace_wildcard(pattern: &str, value: &str) -> String {
     value.to_owned()
 }
 
-fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
+pub fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
     let star = pattern.find('*')?;
     let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
     let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
@@ -357,7 +370,7 @@ fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
     .then(|| value[prefix.len()..value.len() - suffix.len()].to_owned()) // check-added-lines: allow(index) validated prefix and suffix lengths
 }
 
-fn substitute_wildcard(pattern: &str, capture: &str) -> String {
+pub fn substitute_wildcard(pattern: &str, capture: &str) -> String {
     pattern.find('*').map_or_else(
         || pattern.to_owned(),
         |index| format!("{}{}{}", &pattern[..index], capture, &pattern[index + 1..]), // check-added-lines: allow(index) index came from find
@@ -385,44 +398,6 @@ pub fn translate_pathname_builtin(
     );
     let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
     parse_namestring_value(ctx, runtime, string)
-}
-
-pub fn logical_pathname_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    parse_namestring_builtin(ctx, runtime, args, values)
-}
-
-pub fn logical_pathname_translations_builtin(
-    _: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _ = args.required(0)?;
-    Ok(Word::NIL)
-}
-
-pub fn load_logical_pathname_translations_builtin(
-    _: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _ = args.required(0)?;
-    Ok(Word::NIL)
-}
-
-pub fn translate_logical_pathname_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    logical_pathname_builtin(ctx, runtime, args, values)
 }
 
 pub fn wild_pathname_p_builtin(

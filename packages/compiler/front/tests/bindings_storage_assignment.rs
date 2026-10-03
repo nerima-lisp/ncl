@@ -2,10 +2,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    lower_toplevel, AuxParam, Expr, LambdaExpr, LambdaList, LetBinding, Literal, OptionalParam,
-    ParamName, SymbolRef,
+    AuxParam, Expr, LambdaExpr, LambdaList, LetBinding, Literal, OptionalParam, ParamName,
+    SymbolRef, lower_toplevel,
 };
-use ncl_ir::{verify, Constant, Function, OpKind};
+use ncl_ir::{Constant, Function, OpKind, verify};
 
 fn symbol(name: &str) -> SymbolRef {
     SymbolRef::interned("COMMON-LISP-USER", name)

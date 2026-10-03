@@ -2,8 +2,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, LocalFunction,
-    Operator, SymbolRef, TagbodyItem, lower_toplevel,
+    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, LocalFunction, Operator,
+    SymbolRef, TagbodyItem, lower_toplevel,
 };
 use ncl_ir::{Function, HandlerKind, Terminator, verify};
 
@@ -36,7 +36,12 @@ fn handler_kinds(function: &Function) -> Vec<HandlerKind> {
 }
 
 fn assert_verifies(function: &Function, label: &str) {
-    assert_eq!(verify(function), Ok(()), "{label} ({}) must verify", function.name);
+    assert_eq!(
+        verify(function),
+        Ok(()),
+        "{label} ({}) must verify",
+        function.name
+    );
 }
 
 #[allow(clippy::too_many_lines)]
@@ -288,7 +293,11 @@ fn contains_go_walks_the_ast_wrapper_matrix() {
         ]))
         .unwrap_or_else(|error| panic!("{label}: {error}"));
         assert_verifies(&lowered.entry, label);
-        assert_eq!(handler_kinds(&lowered.entry), vec![HandlerKind::Catch], "{label}");
+        assert_eq!(
+            handler_kinds(&lowered.entry),
+            vec![HandlerKind::Catch],
+            "{label}"
+        );
     }
 }
 
@@ -305,8 +314,13 @@ fn return_and_unwind_walkers_preserve_their_handler_values() {
         let kinds = handler_kinds(&lowered.entry);
         assert!(kinds.contains(&HandlerKind::UnwindProtect), "{label}");
         assert!(kinds.contains(&HandlerKind::Catch), "{label}");
-        assert!(lowered.entry.blocks.iter().any(|block| {
-            matches!(block.terminator, Terminator::Throw { .. })
-        }), "{label} must throw the escaping return");
+        assert!(
+            lowered
+                .entry
+                .blocks
+                .iter()
+                .any(|block| { matches!(block.terminator, Terminator::Throw { .. }) }),
+            "{label} must throw the escaping return"
+        );
     }
 }

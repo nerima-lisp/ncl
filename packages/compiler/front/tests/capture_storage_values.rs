@@ -47,10 +47,13 @@ fn read_only_capture_uses_the_value_in_closure_and_nested_load() {
             result: ConstantIndex(0)
         }
     );
-    assert_eq!(lowered.entry.blocks[0].ops[1].kind, OpKind::Convert {
-        op: ncl_ir::Convert::I64ToWord,
-        value: ValueId(0),
-    });
+    assert_eq!(
+        lowered.entry.blocks[0].ops[1].kind,
+        OpKind::Convert {
+            op: ncl_ir::Convert::I64ToWord,
+            value: ValueId(0),
+        }
+    );
     assert_eq!(
         lowered.entry.blocks[0].ops[2].kind,
         OpKind::Const {
@@ -75,7 +78,10 @@ fn read_only_capture_uses_the_value_in_closure_and_nested_load() {
     let nested = &lowered.nested[0];
     assert_verifies(nested);
     assert_eq!(nested.blocks[0].ops.len(), 1);
-    assert_eq!(nested.blocks[0].ops[0].kind, OpKind::LoadCapture { index: 0 });
+    assert_eq!(
+        nested.blocks[0].ops[0].kind,
+        OpKind::LoadCapture { index: 0 }
+    );
     assert_eq!(
         nested.blocks[0].terminator,
         ncl_ir::Terminator::Return {
@@ -107,10 +113,13 @@ fn assigned_capture_uses_one_cell_value_for_closure_and_store() {
             result: ConstantIndex(0)
         }
     );
-    assert_eq!(lowered.entry.blocks[0].ops[1].kind, OpKind::Convert {
-        op: ncl_ir::Convert::I64ToWord,
-        value: ValueId(0),
-    });
+    assert_eq!(
+        lowered.entry.blocks[0].ops[1].kind,
+        OpKind::Convert {
+            op: ncl_ir::Convert::I64ToWord,
+            value: ValueId(0),
+        }
+    );
     assert_eq!(
         lowered.entry.blocks[0].ops[2].kind,
         OpKind::MakeValueCell { value: ValueId(1) }
@@ -138,22 +147,31 @@ fn assigned_capture_uses_one_cell_value_for_closure_and_store() {
     assert_eq!(lowered.nested.len(), 1);
     let nested = &lowered.nested[0];
     assert_verifies(nested);
-    assert_eq!(nested.blocks[0].ops[0].kind, OpKind::LoadCapture { index: 0 });
+    assert_eq!(
+        nested.blocks[0].ops[0].kind,
+        OpKind::LoadCapture { index: 0 }
+    );
     assert_eq!(
         nested.blocks[0].ops[1].kind,
         OpKind::Const {
             result: ConstantIndex(0)
         }
     );
-    assert_eq!(nested.blocks[0].ops[2].kind, OpKind::Convert {
-        op: ncl_ir::Convert::I64ToWord,
-        value: ValueId(2),
-    });
-    assert_eq!(nested.blocks[0].ops[3].kind, OpKind::StoreField {
-        object: ValueId(1),
-        field: 0,
-        value: ValueId(3),
-    });
+    assert_eq!(
+        nested.blocks[0].ops[2].kind,
+        OpKind::Convert {
+            op: ncl_ir::Convert::I64ToWord,
+            value: ValueId(2),
+        }
+    );
+    assert_eq!(
+        nested.blocks[0].ops[3].kind,
+        OpKind::StoreField {
+            object: ValueId(1),
+            field: 0,
+            value: ValueId(3),
+        }
+    );
     assert_eq!(
         nested.blocks[0].terminator,
         ncl_ir::Terminator::Return {

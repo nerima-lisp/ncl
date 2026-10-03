@@ -393,15 +393,19 @@ fn rewrites_values_in_every_terminator_shape() {
 
     for (term, expected, ty) in cases {
         let mut function = function_with(term, ty);
-        if matches!(expected, Terminator::Jump { .. } | Terminator::Branch { .. } | Terminator::Switch { .. }) {
-            let has_target_params = matches!(expected, Terminator::Jump { .. } | Terminator::Switch { .. });
+        if matches!(
+            expected,
+            Terminator::Jump { .. } | Terminator::Branch { .. } | Terminator::Switch { .. }
+        ) {
+            let has_target_params = matches!(
+                expected,
+                Terminator::Jump { .. } | Terminator::Switch { .. }
+            );
             let target_params = if has_target_params {
-                vec![
-                    ncl_ir::BlockParam {
-                        value: ValueId(3),
-                        ty,
-                    },
-                ]
+                vec![ncl_ir::BlockParam {
+                    value: ValueId(3),
+                    ty,
+                }]
             } else {
                 Vec::new()
             };

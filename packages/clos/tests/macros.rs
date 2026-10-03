@@ -104,3 +104,77 @@ fn defmethod_rewrites_next_method_forms_and_keeps_specializer_metadata() {
     assert!(contains(&ctx, expansion, next_p_impl));
     assert!(contains(&ctx, expansion, definition_tag));
 }
+
+#[test]
+fn defclass_and_qualified_defmethod_preserve_slot_and_method_contracts() {
+    let (runtime, mut ctx) = setup();
+    let defclass = intern(&runtime, &mut ctx, "COMMON-LISP", "DEFCLASS");
+    let class_name = intern(
+        &runtime,
+        &mut ctx,
+        "COMMON-LISP-USER",
+        "MACRO-COVERAGE-CLASS",
+    );
+    let slot_name = intern(&runtime, &mut ctx, "COMMON-LISP-USER", "VALUE");
+    let initarg = intern(&runtime, &mut ctx, "COMMON-LISP", ":VALUE");
+    let initform = intern(&runtime, &mut ctx, "COMMON-LISP", "T");
+    let accessor = intern(
+        &runtime,
+        &mut ctx,
+        "COMMON-LISP-USER",
+        "MACRO-COVERAGE-VALUE",
+    );
+    let initarg_key = intern(&runtime, &mut ctx, "COMMON-LISP", ":INITARG");
+    let initform_key = intern(&runtime, &mut ctx, "COMMON-LISP", ":INITFORM");
+    let accessor_key = intern(&runtime, &mut ctx, "COMMON-LISP", ":ACCESSOR");
+    let slot = list(
+        &mut ctx,
+        &runtime,
+        &[
+            slot_name,
+            initarg_key,
+            initarg,
+            initform_key,
+            initform,
+            accessor_key,
+            accessor,
+        ],
+    );
+    let slots = list(&mut ctx, &runtime, &[slot]);
+    let empty_supers = Word::NIL;
+    let class_form = list(
+        &mut ctx,
+        &runtime,
+        &[defclass, class_name, empty_supers, slots],
+    );
+
+    let class_expansion = call_macro(&runtime, &mut ctx, "DEFCLASS", class_form);
+    assert!(contains(&ctx, class_expansion, slot_name));
+    assert!(contains(&ctx, class_expansion, accessor));
+
+    let defmethod = intern(&runtime, &mut ctx, "COMMON-LISP", "DEFMETHOD");
+    let around = intern(&runtime, &mut ctx, "COMMON-LISP", ":AROUND");
+    let integer = intern(&runtime, &mut ctx, "COMMON-LISP", "INTEGER");
+    let initialize = intern(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+    let call_next = intern(&runtime, &mut ctx, "COMMON-LISP", "CALL-NEXT-METHOD");
+    let parameter = list(&mut ctx, &runtime, &[slot_name, integer]);
+    let specializer = list(&mut ctx, &runtime, &[parameter]);
+    let explicit_call = list(&mut ctx, &runtime, &[call_next, Word::fixnum(17)]);
+    let method_form = list(
+        &mut ctx,
+        &runtime,
+        &[defmethod, initialize, around, specializer, explicit_call],
+    );
+
+    let method_expansion = call_macro(&runtime, &mut ctx, "DEFMETHOD", method_form);
+    let ensure_base = intern(
+        &runtime,
+        &mut ctx,
+        "COMMON-LISP",
+        "%CLOS-ENSURE-INITIALIZATION-BASE",
+    );
+    let call_next_impl = intern(&runtime, &mut ctx, "COMMON-LISP", "%CLOS-CALL-NEXT-METHOD");
+    assert!(contains(&ctx, method_expansion, ensure_base));
+    assert!(contains(&ctx, method_expansion, call_next_impl));
+    assert!(contains(&ctx, method_expansion, Word::fixnum(17)));
+}

@@ -175,4 +175,13 @@ fn format_writes_to_a_stream_and_rejects_invalid_destinations() {
         runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::TRUE]),
         Err(ncl_object::ObjectError::TypeError)
     );
+    let bad_control = string(&runtime, &mut ctx, "~");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, bad_control]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::character(u32::MAX)],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }

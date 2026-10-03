@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::expect_used)]
 
-use ncl_lib_format::{ControlPart, DirectiveKind, Parameter, UnsupportedDirectiveKind, parse};
+use ncl_lib_format::{ControlPart, DirectiveKind, Parameter, parse};
 
 #[test]
 fn parses_literals_directives_and_parameters() {
@@ -9,11 +9,7 @@ fn parses_literals_directives_and_parameters() {
     assert_eq!(
         control.parts[1],
         ControlPart::Directive(ncl_lib_format::Directive {
-            parameters: vec![
-                Parameter::Integer(10),
-                Parameter::Unsupplied,
-                Parameter::Character('x')
-            ],
+            parameters: vec![Parameter::Integer(10), Parameter::Character('x')],
             colon: false,
             at_sign: false,
             kind: DirectiveKind::D,
@@ -39,7 +35,6 @@ fn parses_modifiers_and_relative_parameters() {
             parameters: vec![
                 Parameter::Relative,
                 Parameter::Unsupplied,
-                Parameter::Unsupplied,
                 Parameter::Character('A')
             ],
             colon: true,
@@ -58,7 +53,6 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
             ControlPart::Directive(ncl_lib_format::Directive {
                 parameters: vec![
                     Parameter::Integer(10),
-                    Parameter::Unsupplied,
                     Parameter::Unsupplied,
                     Parameter::Character('x')
                 ],
@@ -83,55 +77,9 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
 }
 
 #[test]
-fn rejects_unsupported_directives_case_insensitively() {
-    for (character, directive) in [
-        ('t', UnsupportedDirectiveKind::T),
-        ('w', UnsupportedDirectiveKind::W),
-        ('i', UnsupportedDirectiveKind::I),
-    ] {
-        assert_eq!(
-            parse(&format!("~{character}")),
-            Err(ncl_lib_format::ParseError {
-                offset: 1,
-                kind: ncl_lib_format::ParseErrorKind::UnsupportedDirective { directive },
-            })
-        );
-    }
-}
-
-#[test]
-fn rejects_all_other_typed_directives() {
-    let unsupported = [
-        ('R', UnsupportedDirectiveKind::R),
-        ('P', UnsupportedDirectiveKind::P),
-        ('C', UnsupportedDirectiveKind::C),
-        ('F', UnsupportedDirectiveKind::F),
-        ('E', UnsupportedDirectiveKind::E),
-        ('G', UnsupportedDirectiveKind::G),
-        ('$', UnsupportedDirectiveKind::Dollar),
-        ('|', UnsupportedDirectiveKind::Bar),
-        ('<', UnsupportedDirectiveKind::TildeOpen),
-        ('>', UnsupportedDirectiveKind::TildeClose),
-        ('[', UnsupportedDirectiveKind::BracketOpen),
-        (']', UnsupportedDirectiveKind::BracketClose),
-        ('{', UnsupportedDirectiveKind::BraceOpen),
-        ('}', UnsupportedDirectiveKind::BraceClose),
-        ('^', UnsupportedDirectiveKind::UpArrow),
-        ('*', UnsupportedDirectiveKind::Star),
-        ('?', UnsupportedDirectiveKind::Question),
-        ('(', UnsupportedDirectiveKind::ParenOpen),
-        (')', UnsupportedDirectiveKind::ParenClose),
-        (';', UnsupportedDirectiveKind::Semicolon),
-        ('/', UnsupportedDirectiveKind::Slash),
-    ];
-    for (character, directive) in unsupported {
-        assert_eq!(
-            parse(&format!("~{character}")),
-            Err(ncl_lib_format::ParseError {
-                offset: 1,
-                kind: ncl_lib_format::ParseErrorKind::UnsupportedDirective { directive },
-            })
-        );
+fn parses_all_clhs_directives() {
+    for character in "RPCFEG$|<>*?()[]{}^;/_ITW".chars() {
+        assert!(parse(&format!("~{character}")).is_ok(), "~{character}");
     }
 }
 

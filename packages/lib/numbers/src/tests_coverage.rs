@@ -233,14 +233,14 @@ fn byte_fields_cover_boundaries_and_sign_extension() {
         &[Word::fixnum(4), Word::fixnum(3)],
     )
     .unwrap();
-    assert_eq!(call_integer(&runtime, &mut ctx, "BYTE-SIZE", &[spec]), 8);
+    assert_eq!(call_integer(&runtime, &mut ctx, "BYTE-SIZE", &[spec]), 4);
     assert_eq!(
         call_integer(&runtime, &mut ctx, "BYTE-POSITION", &[spec]),
-        6
+        3
     );
     assert_eq!(
         call_integer(&runtime, &mut ctx, "LDB", &[spec, Word::fixnum(0b101101)]),
-        0
+        5
     );
     assert_eq!(
         call(
@@ -262,7 +262,7 @@ fn byte_fields_cover_boundaries_and_sign_extension() {
             "DPB",
             &[Word::fixnum(2), spec, Word::fixnum(127)]
         ),
-        191
+        23
     );
     assert_eq!(
         call_integer(
@@ -271,11 +271,11 @@ fn byte_fields_cover_boundaries_and_sign_extension() {
             "DEPOSIT-FIELD",
             &[Word::fixnum(0), spec, Word::fixnum(127)]
         ),
-        63
+        7
     );
     assert_eq!(
         call_integer(&runtime, &mut ctx, "MASK-FIELD", &[spec, Word::fixnum(-1)]),
-        16320
+        120
     );
     let wide = call(
         &runtime,

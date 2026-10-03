@@ -1251,4 +1251,3 @@ fn malformed_loop_clauses_report_type_errors() -> Result<(), ObjectError> {
     }
     Ok(())
 }
-

@@ -301,7 +301,8 @@ fn gentemp(
             &name.chars().collect::<Vec<_>>(),
         )?];
         if super::with_rooted_words(ctx, &mut roots, |ctx, roots| {
-            Ok::<bool, ObjectError>(package.find_symbol(ctx, roots[0])?.is_some())
+            let root = roots.first().copied().ok_or(ObjectError::Layout)?;
+            Ok::<bool, ObjectError>(package.find_symbol(ctx, root)?.is_some())
         })? {
             continue;
         }

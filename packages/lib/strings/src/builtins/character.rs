@@ -128,7 +128,7 @@ fn simple_char_builtin<F>(args: &BuiltinArgs<'_>, map: F) -> Result<Word, Object
 where
     F: Fn(char) -> char,
 {
-    Ok(Word::character(map(character_arg(args.required(0)?)?) as u32))
+    Ok(Word::character(u32::from(map(character_arg(args.required(0)?)?))))
 }
 
 fn alpha_char_p_builtin(

@@ -39,6 +39,7 @@ struct PackageDesignatorArg(PackageDesignator);
 pub(crate) fn with_rooted_words<T, E>(
     ctx: &mut ThreadContext,
     words: &mut [Word],
+    // check-added-lines: allow(index) the callback receives the rooted slice as its contract.
     f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, E>,
 ) -> Result<T, E>
 where

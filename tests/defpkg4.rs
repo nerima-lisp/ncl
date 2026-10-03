@@ -59,3 +59,24 @@ fn package_builtins_accept_lisp_designators_and_mutate_symbols() {
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "T");
 }
+
+#[test]
+fn package_rename_and_delete_preserve_designator_results() {
+    let output = ncl()
+        .args([
+            "--eval",
+            "(progn (defpackage \"NCL-DEFPKG4-RENAME\" (:use #:cl)) (let ((package (find-package \"NCL-DEFPKG4-RENAME\"))) (rename-package package \"NCL-DEFPKG4-RENAMED\" (list \"NCL-DEFPKG4-ALIAS\")) (let ((renamed (find-package \"NCL-DEFPKG4-ALIAS\"))) (list (package-name renamed) (eq renamed (find-package \"NCL-DEFPKG4-RENAMED\")) (delete-package renamed) (find-package \"NCL-DEFPKG4-ALIAS\")))))",
+        ])
+        .output()
+        .unwrap_or_else(|error| panic!("ncl failed to start: {error}"));
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "(\"NCL-DEFPKG4-RENAMED\" T T NIL)"
+    );
+}

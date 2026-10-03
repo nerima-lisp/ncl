@@ -10,7 +10,7 @@
 
 #![cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 
-use ncl_image::{CodeImage, load, save};
+use ncl_image::{CodeImage, ImageError, load, save};
 use ncl_object::{Runtime, ThreadContext};
 use ncl_sys::{alloc_code, invoke_entry, publish_code, write_code};
 
@@ -53,6 +53,21 @@ fn code_image_exposes_raw_metadata_and_accepts_empty_code() {
     let empty = CodeImage::from_raw(Vec::new(), 0, 0, "empty".to_owned()).unwrap();
     assert!(empty.bytes().is_empty());
     assert_eq!(empty.entry_offset(), 0);
+}
+
+#[test]
+fn code_image_rejects_unpublished_code_and_invalid_offsets() {
+    let code = alloc_code(3).unwrap();
+    assert!(matches!(
+        CodeImage::capture(&code, 0, 0, "unpublished"),
+        Err(ImageError::Code(ncl_sys::CodeError::NotPublished))
+    ));
+    assert_eq!(
+        CodeImage::from_raw(vec![1, 2, 3], 4, 0, "invalid".to_owned()),
+        Err(ImageError::InvalidLayout {
+            field: "code entry offset"
+        })
+    );
 }
 
 /// Machine code that returns [`EXPECTED`] as one value.

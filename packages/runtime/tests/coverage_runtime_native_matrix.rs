@@ -41,6 +41,11 @@ fn native_call_shapes_are_table_driven() {
             "(multiple-value-list (floor 7 2))",
             "(3 1)",
         ),
+        (
+            "compiled macro",
+            "(progn (defmacro runtime-native-duplicate (value) (list 'list value value)) (runtime-native-duplicate 3))",
+            "(3 3)",
+        ),
     ];
     let mut runtime = Runtime::new().unwrap();
 

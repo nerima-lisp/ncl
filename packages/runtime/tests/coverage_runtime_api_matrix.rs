@@ -77,3 +77,13 @@ fn runtime_modes_can_be_toggled_before_a_value_based_probe() {
     let value = runtime.eval("(+ 20 22)").unwrap();
     assert_eq!(runtime.format_result(value), "42");
 }
+
+#[test]
+fn arithmetic_fast_entries_cover_fallbacks_and_comparison() {
+    let mut runtime = Runtime::new().unwrap();
+    let cases = [("(- 9 14)", "-5"), ("(* 6 7)", "42")];
+    for (source, expected) in cases {
+        let value = runtime.eval(source).unwrap();
+        assert_eq!(runtime.format_result(value), expected, "{source}");
+    }
+}

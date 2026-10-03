@@ -244,3 +244,93 @@ fn structure_print_function_property_precedes_print_object_fallback() {
     );
     assert_eq!(rendered, "HOOKED");
 }
+
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "the callback must match the registered builtin hook signature"
+)]
+fn failing_print_object(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    _args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    Err(ncl_object::ObjectError::TypeError)
+}
+
+#[test]
+fn structure_builtin_falls_back_when_print_object_is_unbound() {
+    let (runtime, mut ctx) = context();
+    let (structure, _name) = qualified_structure(&runtime, &mut ctx);
+    let stream_function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .unwrap(),
+    )
+    .unwrap();
+    let stream = runtime
+        .call_builtin(&mut ctx, stream_function, &[])
+        .unwrap();
+    let princ =
+        FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "PRINC").unwrap())
+            .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, princ, &[structure, stream]),
+        Ok(structure)
+    );
+    let get_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GET-OUTPUT-STREAM-STRING")
+            .unwrap(),
+    )
+    .unwrap();
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream])
+        .unwrap();
+    assert_eq!(
+        render(
+            &runtime,
+            &mut ctx,
+            output,
+            PrintOptions::new().with_escape(false),
+        ),
+        "#S(WAVE4:POINT :X 5)"
+    );
+}
+
+#[test]
+fn structure_builtin_propagates_print_object_errors() {
+    let (runtime, mut ctx) = context();
+    let (structure, _name) = qualified_structure(&runtime, &mut ctx);
+    runtime
+        .register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("PRINT-OBJECT")),
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::fixed(&[OBJECT, STREAM]),
+                    convention: BuiltinConvention::Direct(Arity::exact(2)),
+                },
+                failing_print_object,
+            ),
+        )
+        .unwrap();
+    let stream_function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .unwrap(),
+    )
+    .unwrap();
+    let stream = runtime
+        .call_builtin(&mut ctx, stream_function, &[])
+        .unwrap();
+    let princ =
+        FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "PRINC").unwrap())
+            .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, princ, &[structure, stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}

@@ -151,6 +151,33 @@ fn remainder_handles_ratios_floats_and_zero_lcm_inputs() {
 }
 
 #[test]
+fn negative_ratio_remainders_distinguish_mod_from_rem() {
+    let (runtime, mut ctx) = setup();
+    let value = make_ratio(&mut ctx, &runtime, Word::fixnum(-7), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(5))
+        .unwrap()
+        .into();
+
+    for (name, numerator, denominator) in [("MOD", 1, 15), ("REM", -1, 3)] {
+        let result = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        let ObjectRef::Ratio(result) = classify_object(&ctx, result) else {
+            panic!("{name} remainder must remain an exact ratio");
+        };
+        let result = ncl_object::Ratio::from_word(result);
+        assert_eq!(
+            integer(&ctx, ratio_numerator(&ctx, result).unwrap()),
+            numerator
+        );
+        assert_eq!(
+            integer(&ctx, ratio_denominator(&ctx, result).unwrap()),
+            denominator
+        );
+    }
+}
+
+#[test]
 fn remainder_covers_zero_and_i128_division_overflow_cases() {
     let (runtime, mut ctx) = setup();
     let zero_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(0), Word::fixnum(3))

@@ -173,3 +173,55 @@ fn selection_reads_string_and_vector_elements_with_exact_indices() {
         Ok(Word::fixnum(0))
     );
 }
+
+#[test]
+fn search_and_mismatch_return_exact_values_for_empty_and_test_not_cases() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let left = list(&runtime, &mut ctx, &functions, &[one, two]);
+    let right = list(&runtime, &mut ctx, &functions, &[one, two, one]);
+    let empty = ncl_object::make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+    let test_not = keyword(&mut ctx, &runtime, "TEST-NOT");
+    let equal = runtime.function(&mut ctx, "COMMON-LISP", "EQUAL").unwrap();
+    let equal = FunctionObject::try_from(equal).unwrap().as_word();
+
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "SEARCH", &[left, right]),
+        Ok(Word::fixnum(0))
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "MISMATCH", &[left, right]),
+        Ok(Word::fixnum(2))
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SEARCH",
+            &[empty, right, test_not, equal],
+        ),
+        Ok(Word::fixnum(0))
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "MISMATCH",
+            &[empty, right, test_not, equal],
+        ),
+        Ok(Word::fixnum(0))
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SEARCH",
+            &[empty, empty, test_not, equal],
+        ),
+        Ok(Word::fixnum(0))
+    );
+}

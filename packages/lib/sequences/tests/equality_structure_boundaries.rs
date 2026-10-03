@@ -196,3 +196,90 @@ fn equality_returns_exact_values_for_depth_cross_type_and_general_array_edges() 
         Ok(Word::TRUE)
     );
 }
+
+#[test]
+fn equality_returns_exact_values_for_ratio_complex_and_non_array_boundaries() {
+    let (runtime, mut ctx, functions) = setup();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .as_word();
+    let same_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .as_word();
+    let other_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(5))
+        .unwrap()
+        .as_word();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[ratio, same_ratio]
+        ),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[ratio, other_ratio]
+        ),
+        Ok(Word::NIL)
+    );
+
+    let complex = make_complex(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .as_word();
+    let same_complex = make_complex(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap()
+        .as_word();
+    let other_complex = make_complex(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(4))
+        .unwrap()
+        .as_word();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[complex, same_complex]
+        ),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[complex, other_complex]
+        ),
+        Ok(Word::NIL)
+    );
+
+    let cons = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap();
+    let string = ncl_object::make_string(&mut ctx, &runtime, &['1']).unwrap();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUAL",
+            &[Word::fixnum(1), string]
+        ),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "EQUALP",
+            &[cons, Word::fixnum(1)]
+        ),
+        Ok(Word::NIL)
+    );
+}

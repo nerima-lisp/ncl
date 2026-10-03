@@ -7,7 +7,6 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
     ctx.register(&runtime)?;
     Ok((runtime, ctx))
 }
-
 fn contains_word(ctx: &mut ThreadContext, form: Word, needle: Word) -> Result<bool, ObjectError> {
     if form == needle || !form.is_cons() {
         return Ok(form == needle);
@@ -1251,4 +1250,3 @@ fn malformed_loop_clauses_report_type_errors() -> Result<(), ObjectError> {
     }
     Ok(())
 }
-

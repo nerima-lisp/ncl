@@ -76,7 +76,7 @@ fn core_table_asserts_exact_powers_and_float_fallbacks() {
         "EXPT",
         &[Word::fixnum(2), Word::fixnum(127)],
     );
-    assert_eq!(float(&ctx, fallback).to_bits(), 0x47dfffffffffffd4);
+    assert_eq!(float(&ctx, fallback).to_bits(), 0x47df_ffff_ffff_ffd4);
     let one = make_double(&mut ctx, &runtime, 1.0).unwrap().into();
     let scaled = call(&runtime, &mut ctx, "SCALE-FLOAT", &[one, Word::fixnum(3)]);
     assert_eq!(float(&ctx, scaled), 8.0);

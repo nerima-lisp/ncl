@@ -136,12 +136,12 @@ fn expand_defined_setf(
         return Err(ObjectError::UndefinedFunction);
     };
     let definition = elements(ctx, definition)?;
-    let [temporary_variables, store_variables, store_form] = definition.as_slice() else {
-        // check-added-lines: allow(index) exact setf definition shape is validated here
+    if definition.len() != 3 {
         return Err(ObjectError::TypeError);
-    };
-    let temporary_variables = elements(ctx, *temporary_variables)?;
-    let store_variables = elements(ctx, *store_variables)?;
+    }
+    let temporary_variables = elements(ctx, *definition.first().ok_or(ObjectError::TypeError)?)?;
+    let store_variables = elements(ctx, *definition.get(1).ok_or(ObjectError::TypeError)?)?;
+    let store_form = definition.get(2).ok_or(ObjectError::TypeError)?;
     if temporary_variables.len() != arguments.len() || store_variables.len() != 1 {
         return Err(ObjectError::TypeError);
     }

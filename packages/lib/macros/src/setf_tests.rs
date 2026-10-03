@@ -259,7 +259,9 @@ fn modifying_macros_accept_the_wrapped_place() -> Result<(), ObjectError> {
         &mut ctx,
         *binding_parts.get(1).ok_or(ObjectError::TypeError)?,
     )?;
-    assert_eq!(*arithmetic.get(1).ok_or(ObjectError::TypeError)?, x);
+    if *arithmetic.get(1).ok_or(ObjectError::TypeError)? != x {
+        return Err(ObjectError::TypeError);
+    }
     named(
         &mut ctx,
         &runtime,

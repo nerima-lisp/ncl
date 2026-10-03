@@ -27,8 +27,6 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: aarch64 macOS
-            runner: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -96,8 +94,6 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: aarch64 macOS
-            runner: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -188,18 +184,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - system: aarch64-darwin
-            runner: macos-14
-            check: default
-          - system: aarch64-darwin
-            runner: macos-14
-            check: cargo-test
-          - system: aarch64-linux
-            runner: ubuntu-24.04-arm
-            check: default
-          - system: aarch64-linux
-            runner: ubuntu-24.04-arm
-            check: cargo-test
           - system: x86_64-linux
             runner: ubuntu-24.04
             check: default

@@ -11,7 +11,7 @@ use crate::error::ReadError;
 use crate::input::CharSource;
 use crate::reader::{ReadOptions, read_form};
 
-pub(super) fn read_array(
+pub fn read_array(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,

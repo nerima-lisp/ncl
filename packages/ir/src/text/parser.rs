@@ -1,7 +1,7 @@
 //! Text serialization parser.
 use super::ParseError;
 use crate::{
-    ArrayElementType, BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert,
+    BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert,
     DebugLocation, DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind,
     HandlerRegion, HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind,
     Terminator, Ty, ValueId,

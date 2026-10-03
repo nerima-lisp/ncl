@@ -316,6 +316,22 @@ fn make_array_accepts_string_and_simple_vector_initial_contents() -> Result<(), 
 }
 
 #[test]
+fn make_array_rejects_zero_rank_initial_contents_with_type_error() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let initial_contents = keyword(&runtime, &mut ctx, "INITIAL-CONTENTS")?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::NIL, initial_contents, Word::fixnum(42)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn bit_setters_cover_zero_values_and_non_bit_type_errors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
     let bits = ncl_object::make_specialized_array(

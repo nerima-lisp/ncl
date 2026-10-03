@@ -134,6 +134,18 @@ fn rational_covers_integer_ratio_float_and_nonfinite_inputs() {
 }
 
 #[test]
+fn rational_converts_large_finite_float_to_an_exact_integer() {
+    let (runtime, mut ctx) = setup();
+    let value = make_double(&mut ctx, &runtime, 2_f64.powi(60))
+        .unwrap()
+        .into();
+
+    let result = call(&runtime, &mut ctx, "RATIONAL", &[value]).unwrap();
+
+    assert_eq!(integer(&ctx, result), 1_i128 << 60);
+}
+
+#[test]
 fn float_sign_digits_radix_and_precision_return_exact_contract_values() {
     let (runtime, mut ctx) = setup();
     let negative_zero = make_double(&mut ctx, &runtime, -0.0).unwrap().into();

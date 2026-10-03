@@ -284,3 +284,57 @@ fn state_and_registration_values_are_stable() {
         .unwrap_or_else(|error| unreachable!("state: {error:?}"));
     assert_eq!(simple_vector_ref(&ctx, state, 0), Ok(Word::fixnum(0)));
 }
+
+#[test]
+fn character_input_boundaries_return_values_instead_of_errors() {
+    let (runtime, mut ctx) = setup();
+    let make_input = function(&runtime, &mut ctx, "MAKE-STRING-INPUT-STREAM");
+    let read_char = function(&runtime, &mut ctx, "READ-CHAR");
+    let peek_char = function(&runtime, &mut ctx, "PEEK-CHAR");
+    let read_line = function(&runtime, &mut ctx, "READ-LINE");
+    let unread_char = function(&runtime, &mut ctx, "UNREAD-CHAR");
+
+    let newline_source = text(&mut ctx, &runtime, "\n");
+    let newline = runtime
+        .call_builtin(&mut ctx, make_input, &[newline_source])
+        .unwrap_or_else(|error| panic!("input: {error:?}"));
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            peek_char,
+            &[Word::character(u32::from('\n')), newline],
+        ),
+        Ok(Word::character(u32::from('\n')))
+    );
+    let empty_line = runtime
+        .call_builtin(&mut ctx, read_line, &[newline, Word::NIL, Word::NIL])
+        .unwrap_or_else(|error| panic!("read line: {error:?}"));
+    assert_eq!(string(&ctx, empty_line), "");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_char, &[newline, Word::NIL, Word::fixnum(99)]),
+        Ok(Word::fixnum(99))
+    );
+    let empty_source = text(&mut ctx, &runtime, "");
+    let empty_stream = runtime
+        .call_builtin(&mut ctx, make_input, &[empty_source])
+        .unwrap_or_else(|error| panic!("input: {error:?}"));
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            unread_char,
+            &[Word::character(u32::from('x')), empty_stream],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let final_source = text(&mut ctx, &runtime, "last");
+    let final_line = runtime
+        .call_builtin(&mut ctx, make_input, &[final_source])
+        .unwrap_or_else(|error| panic!("input: {error:?}"));
+    let line = runtime
+        .call_builtin(&mut ctx, read_line, &[final_line])
+        .unwrap_or_else(|error| panic!("read line: {error:?}"));
+    assert_eq!(string(&ctx, line), "last");
+    assert_eq!(ctx.values().len(), 2);
+    assert_eq!(ctx.values()[1], Word::TRUE);
+}

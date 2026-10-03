@@ -195,3 +195,72 @@ fn array_setters_displacement_and_bit_operations_have_expected_values() -> Resul
     );
     Ok(())
 }
+
+#[test]
+fn array_shape_and_vector_mutation_edges_are_observable() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let tail = make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::NIL)?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), tail)?;
+    let array = call(&runtime, &mut ctx, "MAKE-ARRAY", &[dimensions])?;
+    let returned_dimensions = call(&runtime, &mut ctx, "ARRAY-DIMENSIONS", &[array])?;
+    assert_eq!(ncl_object::car(&ctx, returned_dimensions)?, Word::fixnum(2));
+    assert_eq!(
+        ncl_object::car(&ctx, ncl_object::cdr(&ctx, returned_dimensions)?)?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ROW-MAJOR-INDEX",
+            &[array, Word::fixnum(1), Word::fixnum(2)],
+        )?,
+        Word::fixnum(5)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(1), Word::fixnum(3)],
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "AREF", &[array, Word::fixnum(2)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let fill_pointer = keyword(&runtime, &mut ctx, "FILL-POINTER")?;
+    let adjustable = keyword(&runtime, &mut ctx, "ADJUSTABLE")?;
+    let vector = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(1),
+            fill_pointer,
+            Word::fixnum(0),
+            adjustable,
+            Word::TRUE,
+        ],
+    )?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "VECTOR-PUSH-EXTEND",
+            &[Word::fixnum(7), vector]
+        )?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "VECTOR-POP", &[vector])?,
+        Word::fixnum(7)
+    );
+    Ok(())
+}

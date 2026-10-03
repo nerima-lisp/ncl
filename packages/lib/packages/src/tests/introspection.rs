@@ -457,3 +457,51 @@ fn package_builtins_cover_designators_and_mutations() -> Result<(), ObjectError>
     );
     Ok(())
 }
+
+#[test]
+fn designator_helpers_cover_symbol_string_and_invalid_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let package = runtime.ensure_package(&mut ctx, "N25-DESIGNATORS")?;
+    let package = Package::from_word(package);
+    let name = ncl_object::make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])?;
+    let package_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            'N', '2', '5', '-', 'D', 'E', 'S', 'I', 'G', 'N', 'A', 'T', 'O', 'R', 'S',
+        ],
+    )?;
+    let symbol = package.intern(&mut ctx, &runtime, "NAME")?.0;
+    assert_eq!(string_designator(&ctx, name)?.as_word(), name);
+    let symbol_name = string_designator(&ctx, symbol)?.as_word();
+    assert_eq!(ncl_object::string_length(&ctx, symbol_name)?, 4);
+    assert_eq!(
+        package_designator(&ctx, &runtime, package.as_word())?,
+        package
+    );
+    assert_eq!(package_designator(&ctx, &runtime, package_name)?, package);
+    assert_eq!(
+        string_designator(&ctx, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        package_designator(&ctx, &runtime, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(list_items(&ctx, Word::NIL)?, Vec::new());
+    let expected_status = Package::from_word(
+        runtime
+            .find_package(&ctx, "KEYWORD")
+            .ok_or(ObjectError::PackageConflict)?,
+    )
+    .intern(&mut ctx, &runtime, "INTERNAL")?
+    .0;
+    assert_eq!(
+        status_word(&mut ctx, &runtime, ncl_object::FindStatus::Internal)?,
+        expected_status
+    );
+    Ok(())
+}

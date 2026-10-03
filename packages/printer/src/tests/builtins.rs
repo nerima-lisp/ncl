@@ -1,5 +1,9 @@
-use super::{default_table, pprint_dispatch, print_error, set_pprint_dispatch};
+use super::{
+    copy_pprint_dispatch, default_table, pprint_dispatch, print_arguments, print_error,
+    set_pprint_dispatch,
+};
 use crate::PrintError;
+use ncl_object::BuiltinArgs;
 use ncl_object::{ObjectError, Runtime, ThreadContext, Word, car, cdr};
 
 #[test]
@@ -33,4 +37,22 @@ fn print_error_maps_only_object_errors() {
     );
     assert_eq!(print_error(&PrintError::NotReadable), ObjectError::Layout);
     assert_eq!(print_error(&PrintError::Circularity), ObjectError::Layout);
+}
+
+#[test]
+fn copied_dispatch_tables_keep_order_and_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let table = default_table(&mut ctx, &runtime)?;
+    let copied = copy_pprint_dispatch(&mut ctx, &runtime, table)?;
+    assert_eq!(
+        pprint_dispatch(&mut ctx, Word::fixnum(3), copied)?,
+        Word::NIL
+    );
+    assert_eq!(
+        print_arguments(&BuiltinArgs::new(&[Word::TRUE, Word::NIL]))?,
+        vec![Word::TRUE, Word::NIL]
+    );
+    Ok(())
 }

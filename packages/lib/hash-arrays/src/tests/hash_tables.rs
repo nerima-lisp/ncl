@@ -1,6 +1,7 @@
 use ncl_object::hash_table::{HashTable, Weakness};
 use ncl_object::{
-    FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,
+    DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, double_value, make_double,
 };
 
 fn call(
@@ -110,5 +111,60 @@ fn hash_mutation_and_maphash_values_are_observable() -> Result<(), ObjectError> 
         Word::NIL
     );
     assert_eq!(HashTable::from_word(table).count(&ctx)?, 0);
+    Ok(())
+}
+
+#[test]
+fn hash_options_and_gethash_defaults_are_reported() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let keyword = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = ncl_object::Package::from_word(keyword);
+    let size = keyword.intern(&mut ctx, &runtime, "SIZE")?.0;
+    let rehash_size = keyword.intern(&mut ctx, &runtime, "REHASH-SIZE")?.0;
+    let rehash_threshold = keyword.intern(&mut ctx, &runtime, "REHASH-THRESHOLD")?.0;
+    let rehash_size_value = make_double(&mut ctx, &runtime, 2.0)?.as_word();
+    let rehash_threshold_value = make_double(&mut ctx, &runtime, 0.5)?.as_word();
+    let table = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-HASH-TABLE",
+        &[
+            size,
+            Word::fixnum(4),
+            rehash_size,
+            rehash_size_value,
+            rehash_threshold,
+            rehash_threshold_value,
+        ],
+    )?;
+    let returned_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
+    assert!(
+        (double_value(&ctx, DoubleFloat::from_word(returned_size))? - 2.0).abs() < f64::EPSILON
+    );
+    let returned_threshold = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-THRESHOLD", &[table])?;
+    assert!(
+        (double_value(&ctx, DoubleFloat::from_word(returned_threshold))? - 0.5).abs()
+            < f64::EPSILON
+    );
+    assert!(
+        call(&runtime, &mut ctx, "HASH-TABLE-SIZE", &[table])?
+            .as_fixnum()
+            .is_some_and(|size| size >= 4)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "GETHASH",
+            &[Word::fixnum(9), table, Word::fixnum(77)],
+        )?,
+        Word::fixnum(77)
+    );
+    assert_eq!(ctx.values()[1], Word::NIL);
     Ok(())
 }

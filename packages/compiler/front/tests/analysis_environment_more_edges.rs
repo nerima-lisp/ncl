@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef,
+    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef, TagbodyItem,
     lower_toplevel,
 };
 use ncl_ir::{Function, HandlerKind, OpKind, Terminator, verify};
@@ -228,4 +228,27 @@ fn return_from_in_labels_definition_marks_the_outer_block_as_escaping() {
             .iter()
             .any(|region| { region.kind == HandlerKind::Catch })
     );
+}
+
+#[test]
+fn go_inside_lambda_and_function_designator_is_seen_by_tagbody_analysis() {
+    let tag = symbol("LAMBDA-GO");
+    let expression = Expr::Tagbody(vec![
+        TagbodyItem::Form(Expr::Lambda(Box::new(lambda(Expr::Go {
+            tag: tag.clone(),
+        })))),
+        TagbodyItem::Form(Expr::Function(FunctionDesignator::Lambda(Box::new(
+            lambda(Expr::Go { tag: tag.clone() }),
+        )))),
+        TagbodyItem::Tag(tag),
+        TagbodyItem::Form(Expr::Constant(Literal::fixnum(3))),
+    ]);
+
+    let lowered = lower_toplevel(&expression).expect("nested go forms lower");
+    assert_verifies(&lowered.entry);
+    assert!(lowered.nested.len() >= 2);
+    assert!(any_terminator(&lowered.entry, |term| matches!(
+        term,
+        Terminator::Jump { .. }
+    )));
 }

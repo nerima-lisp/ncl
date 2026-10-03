@@ -330,3 +330,107 @@ fn parser_round_trips_all_string_dispatch_variants() {
     );
     assert_eq!(parse(&function.to_string()), Ok(function));
 }
+
+#[test]
+fn parser_round_trips_constant_and_terminator_variants() {
+    let constants = vec![
+        Constant::Fixnum(-7),
+        Constant::Character('x' as u32),
+        Constant::SingleFloat(1.5),
+        Constant::DoubleFloat(-2.5),
+        Constant::Symbol {
+            package: "CL".into(),
+            name: "VALUE".into(),
+        },
+        Constant::Object(ConstantIndex(0)),
+        Constant::StringBytes(vec![0, 1, 255]),
+        Constant::Structure {
+            kind: StructureKind::Cons,
+            elements: vec![ConstantIndex(0), ConstantIndex(1)],
+        },
+        Constant::Structure {
+            kind: StructureKind::SimpleVector,
+            elements: vec![ConstantIndex(2)],
+        },
+        Constant::Nil,
+        Constant::T,
+        Constant::Unbound,
+        Constant::FunctionEntry(FunctionId(9)),
+        Constant::Bignum {
+            negative: true,
+            limbs: vec![1, 2, 3],
+        },
+        Constant::Ratio {
+            numerator: ConstantIndex(0),
+            denominator: ConstantIndex(1),
+        },
+        Constant::Complex {
+            real: ConstantIndex(2),
+            imaginary: ConstantIndex(3),
+        },
+    ];
+    let blocks = vec![
+        block(
+            0,
+            Vec::new(),
+            Terminator::Jump {
+                target: BlockId(1),
+                args: vec![ValueId(0)],
+            },
+        ),
+        block(
+            1,
+            Vec::new(),
+            Terminator::Branch {
+                condition: ValueId(0),
+                then_target: BlockId(2),
+                then_args: vec![ValueId(1)],
+                else_target: BlockId(3),
+                else_args: Vec::new(),
+            },
+        ),
+        block(
+            2,
+            Vec::new(),
+            Terminator::Switch {
+                value: ValueId(0),
+                cases: vec![(1, BlockId(3), vec![ValueId(2)])],
+                default: BlockId(4),
+                default_args: Vec::new(),
+            },
+        ),
+        block(
+            3,
+            Vec::new(),
+            Terminator::CallReturn {
+                function: ValueId(0),
+                args: vec![ValueId(1)],
+            },
+        ),
+        block(
+            4,
+            Vec::new(),
+            Terminator::TailCall {
+                function: ValueId(0),
+                args: Vec::new(),
+            },
+        ),
+        block(
+            5,
+            Vec::new(),
+            Terminator::Throw {
+                condition: ValueId(0),
+            },
+        ),
+        block(6, Vec::new(), Terminator::Unreachable),
+    ];
+    let function = finish(
+        "constants-and-terms",
+        Vec::new(),
+        Vec::new(),
+        constants,
+        blocks,
+        vec![],
+    );
+    assert_eq!(parse(&function.to_string()), Ok(function));
+}

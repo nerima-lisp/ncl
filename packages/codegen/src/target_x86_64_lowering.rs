@@ -228,39 +228,6 @@ pub(super) fn emit_call(assembler: &mut Assembler) -> Result<u32, CodegenError> 
     Ok(return_offset)
 }
 
-pub(super) fn lower_runtime_builtin(
-    assembler: &mut Assembler,
-    function: RuntimeFunction,
-    immediate_args: &[i64],
-    value_args: &[ValueId],
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    if immediate_args.len() + value_args.len() > ARGUMENT_REGISTERS.len() {
-        return Err(CodegenError::Unsupported(
-            "x86-64 runtime calls support at most four arguments".into(),
-        ));
-    }
-    let address = abi
-        .runtime_address(function)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?
-        .cast_signed();
-    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-    load_immediate(assembler, ENTRY, address)?;
-    for (index, value) in immediate_args.iter().copied().enumerate() {
-        load_immediate(assembler, ARGUMENT_REGISTERS[index], value)?;
-    }
-    for (index, value) in value_args.iter().copied().enumerate() {
-        load_slot(
-            assembler,
-            slots,
-            value,
-            ARGUMENT_REGISTERS[immediate_args.len() + index],
-        )?;
-    }
-    Ok(())
-}
-
 fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
     let offset = abi
         .field_offset(field)
@@ -394,11 +361,6 @@ fn lower_builtin(
     slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
-    if args.len() > ARGUMENT_REGISTERS.len() {
-        return Err(CodegenError::Unsupported(
-            "x86-64 builtins support at most four arguments".into(),
-        ));
-    }
     if name == "make-rest-list" {
         // check-added-lines: allow(index) intentional
         let [argc_value, start_value] = args else {
@@ -461,15 +423,54 @@ fn lower_builtin(
         .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address.cast_signed())?;
-    for (index, argument) in args.iter().enumerate() {
+    for (index, argument) in args.iter().enumerate().take(ARGUMENT_REGISTERS.len()) {
         load_slot(assembler, slots, *argument, ARGUMENT_REGISTERS[index])?;
+    }
+    let extra_count = args.len().saturating_sub(ARGUMENT_REGISTERS.len());
+    if extra_count > 0 {
+        emit(
+            assembler,
+            Inst::Lea(
+                REST_ARGUMENT,
+                slot_mem_of(
+                    slots
+                        .outgoing_base
+                        .checked_add(
+                            u32::try_from(extra_count - 1)
+                                .map_err(|_| CodegenError::FrameOverflow)?,
+                        )
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )?,
+            ),
+        )?;
+        for (index, argument) in args.iter().enumerate().skip(ARGUMENT_REGISTERS.len()) {
+            load_slot(assembler, slots, *argument, FUNCTION_OBJECT)?;
+            emit(
+                assembler,
+                Inst::MovMR(
+                    slot_mem_of(
+                        slots
+                            .outgoing_base
+                            .checked_add(
+                                u32::try_from(extra_count - 1 - (index - ARGUMENT_REGISTERS.len()))
+                                    .map_err(|_| CodegenError::FrameOverflow)?,
+                            )
+                            .ok_or(CodegenError::FrameOverflow)?,
+                    )?,
+                    FUNCTION_OBJECT,
+                ),
+            )?;
+        }
     }
     Ok(())
 }
 
 #[path = "target_x86_64_lowering/calls.rs"]
 mod calls;
+#[path = "target_x86_64_lowering/runtime_calls.rs"]
+mod runtime_calls;
 pub(super) use calls::{lower_call, lower_closure_call, lower_load_capture};
+pub(super) use runtime_calls::{handler_argument_count, lower_runtime_builtin};
 
 #[path = "target_x86_64_lowering/dispatch.rs"]
 pub(super) mod dispatch;

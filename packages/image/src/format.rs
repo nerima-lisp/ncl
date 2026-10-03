@@ -253,3 +253,184 @@ impl<'a> Reader<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid("string encoding"))
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "format tests assert on round-trip results"
+)]
+mod tests {
+    use super::{ImageFile, MAGIC, Reader};
+    use crate::record::{Record, Ref};
+    use ncl_sys::Word;
+
+    fn architecture() -> ncl_objfile::Architecture {
+        if cfg!(target_arch = "x86_64") {
+            ncl_objfile::Architecture::X86_64
+        } else {
+            ncl_objfile::Architecture::Aarch64
+        }
+    }
+
+    #[test]
+    fn image_file_round_trips_records_roots_and_features() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 17,
+            objects: vec![
+                Record::Cons {
+                    car: Ref::Immediate(Word::fixnum(1).bits()),
+                    cdr: Ref::Object(1),
+                },
+                Record::String("format-test".to_owned()),
+            ],
+            roots: vec![Ref::Object(0), Ref::Immediate(Word::NIL.bits())],
+            code: Vec::new(),
+            features: vec!["FORMAT-TEST".to_owned(), "SECOND-FEATURE".to_owned()],
+        };
+        let bytes = image.to_bytes().unwrap();
+        let decoded = ImageFile::from_bytes(&bytes).unwrap();
+        assert_eq!(decoded, image);
+        assert_eq!(&bytes[..MAGIC.len()], MAGIC);
+    }
+
+    #[test]
+    fn reader_reports_truncation_and_invalid_utf8_without_advancing() {
+        let mut truncated = Reader::new(&[1, 2]);
+        assert_eq!(
+            truncated.u32(),
+            Err(crate::ImageError::Truncated {
+                offset: 0,
+                needed: 4
+            })
+        );
+        assert_eq!(truncated.u8(), Ok(1));
+
+        let mut invalid = Reader::new(&[1, 0, 0, 0, 0xff]);
+        assert_eq!(
+            invalid.string(),
+            Err(crate::ImageError::InvalidLayout {
+                field: "string encoding"
+            })
+        );
+    }
+
+    #[test]
+    fn reader_decodes_little_endian_primitives_and_length_prefixed_strings() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[7]);
+        bytes.extend_from_slice(&0x1203_u16.to_le_bytes());
+        bytes.extend_from_slice(&0x4567_8901_u32.to_le_bytes());
+        bytes.extend_from_slice(&0x2345_6789_abcd_ef01_u64.to_le_bytes());
+        bytes.extend_from_slice(&4_u32.to_le_bytes());
+        bytes.extend_from_slice(b"NCL!");
+        let mut reader = Reader::new(&bytes);
+
+        assert_eq!(reader.u8(), Ok(7));
+        assert_eq!(reader.u16(), Ok(0x1203));
+        assert_eq!(reader.u32(), Ok(0x4567_8901));
+        assert_eq!(reader.u64(), Ok(0x2345_6789_abcd_ef01));
+        assert_eq!(reader.string(), Ok("NCL!".to_owned()));
+        assert_eq!(reader.take(0), Ok(&[][..]));
+    }
+
+    #[test]
+    fn image_file_rejects_payload_offsets_and_trailing_bytes() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 0,
+            objects: Vec::new(),
+            roots: Vec::new(),
+            code: Vec::new(),
+            features: Vec::new(),
+        };
+        let bytes = image.to_bytes().unwrap();
+
+        let mut wrong_offset = bytes;
+        wrong_offset[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            ImageFile::from_bytes(&wrong_offset),
+            Err(crate::ImageError::Truncated {
+                offset: u32::MAX as usize,
+                needed: 0
+            })
+        );
+    }
+
+    #[test]
+    fn image_file_rejects_invalid_header_fields() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 0,
+            objects: Vec::new(),
+            roots: Vec::new(),
+            code: Vec::new(),
+            features: Vec::new(),
+        };
+        let bytes = image.to_bytes().unwrap();
+
+        let mut bad_magic = bytes.clone();
+        bad_magic[0] = b'X';
+        assert_eq!(
+            ImageFile::from_bytes(&bad_magic),
+            Err(crate::ImageError::BadMagic)
+        );
+
+        let mut bad_version = bytes.clone();
+        bad_version[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(
+            ImageFile::from_bytes(&bad_version),
+            Err(crate::ImageError::UnsupportedVersion {
+                found: u16::MAX,
+                supported: super::FORMAT_VERSION,
+            })
+        );
+
+        let mut bad_architecture = bytes.clone();
+        bad_architecture[10] = 0xff;
+        assert_eq!(
+            ImageFile::from_bytes(&bad_architecture),
+            Err(crate::ImageError::UnknownTag {
+                space: "architecture",
+                tag: 0xff,
+            })
+        );
+
+        for (offset, value, field) in [(11, 4, "pointer width"), (12, 2, "endianness")] {
+            let mut invalid = bytes.clone();
+            invalid[offset] = value;
+            assert_eq!(
+                ImageFile::from_bytes(&invalid),
+                Err(crate::ImageError::InvalidLayout { field })
+            );
+        }
+
+        let mut bad_header_size = bytes;
+        bad_header_size[13] = 63;
+        assert_eq!(
+            ImageFile::from_bytes(&bad_header_size),
+            Err(crate::ImageError::InvalidLayout {
+                field: "header size"
+            })
+        );
+    }
+
+    #[test]
+    fn primitive_writers_and_layout_helpers_use_little_endian_contracts() {
+        let mut bytes = Vec::new();
+        super::put_u8(&mut bytes, 1);
+        super::put_u16(&mut bytes, 0x0203);
+        super::put_u32(&mut bytes, 0x0405_0607);
+        super::put_u64(&mut bytes, 0x0809_0a0b_0c0d_0e0f);
+        super::put_string(&mut bytes, "NCL").unwrap();
+        assert_eq!(&bytes[..8], &[1, 3, 2, 7, 6, 5, 4, 15]);
+        assert_eq!(&bytes[8..16], &[14, 13, 12, 11, 10, 9, 8, 3]);
+        assert_eq!(&bytes[16..], &[0, 0, 0, b'N', b'C', b'L']);
+        assert_eq!(super::header_size().unwrap(), 64);
+        assert_eq!(super::narrow(32, "count").unwrap(), 32);
+        assert_eq!(
+            super::invalid("field"),
+            crate::ImageError::InvalidLayout { field: "field" }
+        );
+    }
+}

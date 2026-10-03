@@ -44,6 +44,17 @@ impl FunctionPass for FailingPass {
 }
 
 #[derive(Debug)]
+struct FailingModulePass;
+impl ModulePass for FailingModulePass {
+    fn name(&self) -> &'static str {
+        "failing-module"
+    }
+    fn run(&mut self, _module: &mut Module) -> PassResult {
+        Err(PassError::new("inner-module", "module boom"))
+    }
+}
+
+#[derive(Debug)]
 struct InvalidatingPass;
 impl FunctionPass for InvalidatingPass {
     fn name(&self) -> &'static str {
@@ -84,11 +95,26 @@ fn manager_reports_module_passes_limits_and_errors() {
         std::process::exit(1)
     };
     assert_eq!(error.pass, "failing");
-    assert!(error.to_string().contains("failing"));
+    assert_eq!(error.message, "boom"); // check-added-lines: allow(panic) test assertion
+    assert_eq!(error.to_string(), "pass failing failed: boom"); // check-added-lines: allow(panic) test assertion
 }
 
 #[test]
-fn manager_rejects_an_invalid_function_after_a_pass() {
+fn manager_reports_module_pass_error_with_exact_context() {
+    let mut manager =
+        PassManager::with_options(PassManagerOptions::default().without_verification());
+    manager.add_module_pass(FailingModulePass);
+    let Err(error) = manager.run(&mut Module::default()) else {
+        std::process::exit(1)
+    };
+    let error: PassError = error;
+    assert_eq!(error.pass, "failing-module"); // check-added-lines: allow(panic) test assertion
+    assert_eq!(error.message, "module boom"); // check-added-lines: allow(panic) test assertion
+    assert_eq!(error.to_string(), "pass failing-module failed: module boom"); // check-added-lines: allow(panic) test assertion
+}
+
+#[test]
+fn manager_reports_verification_error_with_exact_context() {
     let mut manager = PassManager::new();
     manager.add_function_pass(InvalidatingPass);
     let Err(error) = manager.run(&mut Module {
@@ -96,8 +122,14 @@ fn manager_rejects_an_invalid_function_after_a_pass() {
     }) else {
         std::process::exit(1)
     };
-    assert_eq!(error.pass, "invalidating");
-    assert!(error.message.contains("DuplicateValue"));
+    let error: PassError = error;
+    assert_eq!(error.pass, "invalidating"); // check-added-lines: allow(panic) test assertion
+    assert_eq!(error.message, "function leaf: [DuplicateValue(ValueId(0))]"); // check-added-lines: allow(panic) test assertion
+    // check-added-lines: allow(panic) test assertion
+    assert_eq!(
+        error.to_string(), // check-added-lines: allow(panic) test assertion
+        "pass invalidating failed: function leaf: [DuplicateValue(ValueId(0))]" // check-added-lines: allow(panic) test assertion
+    ); // check-added-lines: allow(panic) test assertion
 }
 
 #[test]

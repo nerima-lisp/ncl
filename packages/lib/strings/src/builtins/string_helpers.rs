@@ -4,7 +4,7 @@ fn char_equal_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x == y)
+    char_compare_builtin(a, |x, y| x == y)
 }
 fn char_not_equal_builtin(
     _: &mut ThreadContext,
@@ -12,7 +12,7 @@ fn char_not_equal_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x != y)
+    char_compare_builtin(a, |x, y| x != y)
 }
 fn char_less_builtin(
     _: &mut ThreadContext,
@@ -20,7 +20,7 @@ fn char_less_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x < y)
+    char_compare_builtin(a, |x, y| x < y)
 }
 fn char_greater_builtin(
     _: &mut ThreadContext,
@@ -28,7 +28,7 @@ fn char_greater_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x > y)
+    char_compare_builtin(a, |x, y| x > y)
 }
 fn char_not_greater_builtin(
     _: &mut ThreadContext,
@@ -36,7 +36,7 @@ fn char_not_greater_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x <= y)
+    char_compare_builtin(a, |x, y| x <= y)
 }
 fn char_not_less_builtin(
     _: &mut ThreadContext,
@@ -44,7 +44,7 @@ fn char_not_less_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_compare_builtin(&builtin_words(a), |x, y| x >= y)
+    char_compare_builtin(a, |x, y| x >= y)
 }
 fn char_equal_ci_builtin(
     _: &mut ThreadContext,
@@ -52,7 +52,7 @@ fn char_equal_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x == y)
+    char_case_compare(a, |x, y| x == y)
 }
 fn char_not_equal_ci_builtin(
     _: &mut ThreadContext,
@@ -60,7 +60,7 @@ fn char_not_equal_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x != y)
+    char_case_compare(a, |x, y| x != y)
 }
 fn char_less_ci_builtin(
     _: &mut ThreadContext,
@@ -68,7 +68,7 @@ fn char_less_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x < y)
+    char_case_compare(a, |x, y| x < y)
 }
 fn char_greater_ci_builtin(
     _: &mut ThreadContext,
@@ -76,7 +76,7 @@ fn char_greater_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x > y)
+    char_case_compare(a, |x, y| x > y)
 }
 fn char_not_greater_ci_builtin(
     _: &mut ThreadContext,
@@ -84,7 +84,7 @@ fn char_not_greater_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x <= y)
+    char_case_compare(a, |x, y| x <= y)
 }
 fn char_not_less_ci_builtin(
     _: &mut ThreadContext,
@@ -92,7 +92,7 @@ fn char_not_less_ci_builtin(
     a: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_case_compare(&builtin_words(a), |x, y| x >= y)
+    char_case_compare(a, |x, y| x >= y)
 }
 
 fn string_designator(ctx: &ThreadContext, value: Word) -> Result<Word, ObjectError> {

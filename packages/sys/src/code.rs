@@ -226,4 +226,5 @@ pub fn write_code(code: &mut CodePtr, offset: usize, bytes: &[u8]) -> Result<(),
 }
 
 #[cfg(test)]
+#[path = "tests_code.rs"]
 mod tests;

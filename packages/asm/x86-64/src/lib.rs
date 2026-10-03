@@ -5,6 +5,7 @@ mod encode;
 mod model;
 mod sse;
 #[cfg(test)]
+#[path = "tests_x86_64.rs"]
 mod tests;
 
 pub use assembler::{Assembler, CodeBlob, EncodeError, Fixup, FixupKind};

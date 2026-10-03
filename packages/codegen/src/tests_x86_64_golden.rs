@@ -32,7 +32,7 @@ fn x86_64_lowers_non_local_exit_at_codegen_time() -> Result<(), String> {
         .map_err(|error| format!("x86-64 throw lowering decode failed: {error}"))?;
     if !decoded
         .iter()
-        .any(|instruction| instruction.text == "mov 480(%r15), %r8")
+        .any(|instruction| instruction.text == "mov 480(%r15), %r10")
     {
         return Err("throw lowering does not inspect pending".to_owned());
     }
@@ -359,6 +359,11 @@ fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     let end = usize::try_from(map.pc_offset).unwrap_or(0);
     // The map must sit on the callee's return address: the indirect call is the
     // three bytes before it, and the caller releases its header reservation after.
+    let clear_lowtag = [0x49, 0x21, 0xc3];
+    assert_eq!(
+        count_occurrences(&compiled.code[..end - 3], &clear_lowtag),
+        1
+    );
     assert_eq!(compiled.code[end - 3..end], [0x41, 0xFF, 0xD3]);
     assert_eq!(compiled.code[end..end + 4], [0x48, 0x83, 0xC4, 0x10]);
     Ok(())

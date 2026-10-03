@@ -36,3 +36,7 @@ fn tail_handles<'ctx>(
             .collect::<Vec<_>>(),
     )
 }
+
+#[cfg(test)]
+#[path = "../tests/support/lib_dispatch_helpers_tests.rs"]
+mod dispatch_helper_tests;

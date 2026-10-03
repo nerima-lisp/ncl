@@ -26,10 +26,14 @@ fn with_root<T>(
 
 use crate::MOST_POSITIVE_FIXNUM;
 
-fn u64_to_f64(value: u64) -> Result<f64, ObjectError> {
-    let high = u32::try_from(value >> 32).map_err(|_| ObjectError::Layout)?;
-    let low = u32::try_from(value & u64::from(u32::MAX)).map_err(|_| ObjectError::Layout)?;
-    Ok(f64::from(high) * 4_294_967_296.0 + f64::from(low))
+fn u64_to_f64(value: u64) -> f64 {
+    match value.to_be_bytes() {
+        [b0, b1, b2, b3, b4, b5, b6, b7] => {
+            let high = u32::from_be_bytes([b0, b1, b2, b3]);
+            let low = u32::from_be_bytes([b4, b5, b6, b7]);
+            f64::from(high).mul_add(4_294_967_296.0, f64::from(low))
+        }
+    }
 }
 
 const STATE_SLOT: usize = 0;
@@ -145,7 +149,7 @@ fn random_builtin(
     }
     let mut rooted_state = state;
     let token = ncl_object::push_root(ctx, &mut rooted_state);
-    let result = match classify_object(ctx, limit) {
+    let result = (|| match classify_object(ctx, limit) {
         ObjectRef::DoubleFloat(value) => {
             let bound = ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(value))?;
             if !bound.is_finite() || bound <= 0.0 {
@@ -155,7 +159,7 @@ fn random_builtin(
                 .ok()
                 .and_then(|value| value.checked_add(1))
                 .ok_or(ObjectError::TypeError)?;
-            let fraction = u64_to_f64(next_word(ctx, rooted_state)?)? / u64_to_f64(modulus)?;
+            let fraction = u64_to_f64(next_word(ctx, rooted_state)?) / u64_to_f64(modulus);
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
@@ -176,7 +180,7 @@ fn random_builtin(
                 )
         }
         _ => Err(ObjectError::TypeError),
-    };
+    })();
     if !ncl_object::pop_root(ctx, token) {
         return Err(ObjectError::Layout);
     }

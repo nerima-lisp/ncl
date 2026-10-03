@@ -8,10 +8,10 @@
 
 use ncl_image::{CodeImage, ImageError, load, save};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word, make_array, make_readtable,
-    make_stream,
+    ArrayElementType, ArrayOptions, ObjectError, Runtime, ThreadContext, Word, make_array,
+    make_readtable, make_stream, make_string,
 };
-use ncl_sys::{CodeError, alloc_code};
+use ncl_sys::{CodeError, StorageCondition, alloc_code};
 
 fn empty_image() -> Vec<u8> {
     let runtime = Runtime::new().unwrap();
@@ -266,6 +266,11 @@ fn image_errors_preserve_categories_and_display_text() {
     assert!(std::error::Error::source(&ImageError::Object(object)).is_some());
     assert!(std::error::Error::source(&ImageError::BadMagic).is_none());
     assert_eq!(ImageError::from(object), ImageError::Object(object));
+    let code_error = CodeError::NotPublished;
+    assert_eq!(
+        ImageError::from(code_error),
+        ImageError::Code(CodeError::NotPublished)
+    );
 }
 
 #[test]
@@ -315,6 +320,23 @@ fn malformed_records_and_references_report_their_decode_categories() {
 }
 
 #[test]
+fn truncated_feature_payload_reports_the_feature_string_boundary() {
+    let mut image = empty_image();
+    image[28..32].copy_from_slice(&1_u32.to_le_bytes());
+    image[44..48].copy_from_slice(&1_u32.to_le_bytes());
+    image.truncate(64);
+    image.push(0);
+
+    assert_eq!(
+        load_error(&image),
+        ImageError::Truncated {
+            offset: 0,
+            needed: 4,
+        }
+    );
+}
+
+#[test]
 fn malformed_object_payload_references_fail_during_reconstruction() {
     // A one-object image whose cons points at a nonexistent second object.
     let cons = [0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0];
@@ -333,5 +355,22 @@ fn malformed_object_payload_references_fail_during_reconstruction() {
         ImageError::InvalidLayout {
             field: "object reference"
         }
+    );
+}
+
+#[test]
+fn loading_with_an_unregistered_destination_reports_storage_failure() {
+    let source = Runtime::new().unwrap();
+    let mut source_ctx = ThreadContext::new();
+    source_ctx.register(&source).unwrap();
+    let value = make_string(&mut source_ctx, &source, &['u', 'n', 'r', 'e', 'g']).unwrap();
+    let image = save(&source, &mut source_ctx, &[value], &[]).unwrap();
+
+    let destination = Runtime::new().unwrap();
+    let mut destination_ctx = ThreadContext::new();
+    let error = load(&image, &destination, &mut destination_ctx).unwrap_err();
+    assert_eq!(
+        error,
+        ImageError::Object(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
     );
 }

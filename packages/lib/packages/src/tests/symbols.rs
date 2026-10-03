@@ -292,3 +292,99 @@ fn symbol_property_walk_and_name_designators_cover_remaining_paths() -> Result<(
     assert_eq!(read_string(&ctx, symbol_name(&ctx, symbol_temp)?), "B-5");
     Ok(())
 }
+
+#[test]
+fn symbol_text_and_generated_name_edges_are_value_based() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let text_string = make_string(&mut ctx, &runtime, &['T', 'E', 'X', 'T'])?;
+    let text_symbol = make_symbol(&mut ctx, &runtime, text_string)?;
+    let text_cases = [
+        ("string", text_string, Ok(String::from("TEXT"))),
+        ("symbol", text_symbol, Ok(String::from("TEXT"))),
+        (
+            "character",
+            Word::character(u32::from('!')),
+            Ok(String::from("!")),
+        ),
+        ("invalid", Word::fixnum(1), Err(ObjectError::TypeError)),
+    ];
+    for (label, value, expected) in text_cases {
+        assert_eq!(super::text(&ctx, value), expected, "text {label}");
+    }
+
+    let invalid_symbol_argument_builtins = [
+        "BOUNDP",
+        "FBOUNDP",
+        "SYMBOL-FUNCTION",
+        "SYMBOL-NAME",
+        "SYMBOL-PACKAGE",
+        "SYMBOL-PLIST",
+        "SYMBOL-VALUE",
+    ];
+    for name in invalid_symbol_argument_builtins {
+        let builtin = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, "COMMON-LISP", name)
+                .ok_or(ObjectError::Layout)?,
+        )?;
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, builtin, &[Word::fixnum(2)]),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
+
+    let gensym = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GENSYM")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, gensym, &[Word::fixnum(3)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let gentemp = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GENTEMP")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let prefix = make_string(
+        &mut ctx,
+        &runtime,
+        &['C', 'O', 'L', 'L', 'I', 'D', 'E', '-'],
+    )?;
+    let missing_package = make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            'N', 'C', 'L', '-', 'N', 'O', '-', 'P', 'A', 'C', 'K', 'A', 'G', 'E',
+        ],
+    )?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, gentemp, &[prefix, missing_package]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, gentemp, &[prefix, Word::fixnum(4)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let package = runtime.ensure_package(&mut ctx, "N25-GENTEMP-COLLISION")?;
+    Package::from_word(package).intern(&mut ctx, &runtime, "COLLIDE-0")?;
+    let collision_prefix = make_string(
+        &mut ctx,
+        &runtime,
+        &['C', 'O', 'L', 'L', 'I', 'D', 'E', '-'],
+    )?;
+    let generated = runtime.call_builtin(&mut ctx, gentemp, &[collision_prefix, package])?;
+    assert_eq!(
+        read_string(&ctx, symbol_name(&ctx, generated)?),
+        "COLLIDE-1"
+    );
+    Ok(())
+}

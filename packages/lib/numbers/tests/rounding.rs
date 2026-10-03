@@ -394,3 +394,47 @@ fn rounding_rejects_non_numbers_and_exact_cross_product_overflow() {
         );
     }
 }
+
+#[test]
+fn exact_rounding_preserves_signs_for_negative_ratio_divisors() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(1))
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(-3), Word::fixnum(2))
+        .unwrap()
+        .into();
+
+    for (name, quotient, remainder_numerator, remainder_denominator) in [
+        ("FLOOR", -5, -1, 2),
+        ("CEILING", -4, 1, 1),
+        ("TRUNCATE", -4, 1, 1),
+        ("ROUND", -5, -1, 2),
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        assert_eq!(integer(&ctx, result), quotient, "{name} quotient");
+        let remainder = ctx.values()[1];
+        if remainder_denominator == 1 {
+            assert_eq!(
+                integer(&ctx, remainder),
+                remainder_numerator,
+                "{name} remainder"
+            );
+        } else {
+            let ObjectRef::Ratio(remainder) = classify_object(&ctx, remainder) else {
+                panic!("{name}: expected ratio remainder");
+            };
+            let remainder = ncl_object::Ratio::from_word(remainder);
+            assert_eq!(
+                integer(&ctx, ratio_numerator(&ctx, remainder).unwrap()),
+                remainder_numerator,
+                "{name} remainder numerator"
+            );
+            assert_eq!(
+                integer(&ctx, ratio_denominator(&ctx, remainder).unwrap()),
+                remainder_denominator,
+                "{name} remainder denominator"
+            );
+        }
+    }
+}

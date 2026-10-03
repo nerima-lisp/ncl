@@ -313,6 +313,39 @@ mod tests {
     }
 
     #[test]
+    fn symbol_designator_for_a_macro_is_rejected_as_an_undefined_function() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        runtime
+            .eval("(defmacro caller-only-macro (value) value)")
+            .unwrap_or_else(|error| panic!("macro definition: {error:?}"));
+        let package = runtime
+            .object
+            .find_package(&runtime.context, "COMMON-LISP-USER")
+            .and_then(|word| {
+                Package::from_word(word)
+                    .intern(&mut runtime.context, &runtime.object, "CALLER-ONLY-MACRO")
+                    .ok()
+            })
+            .map_or_else(
+                || panic!("macro symbol was not interned"),
+                |(symbol, _)| ncl_object::typed::Symbol::from_word(symbol),
+            );
+        let mut caller = RuntimeFunctionCaller;
+        let mut values = MultipleValues::new();
+
+        assert_eq!(
+            caller.call_function(
+                &mut runtime.context,
+                &runtime.object,
+                FunctionDesignator::Symbol(package),
+                FunctionArguments::new(&[Word::fixnum(7)]),
+                &mut values,
+            ),
+            Err(ncl_object::ObjectError::UndefinedFunction)
+        );
+    }
+
+    #[test]
     fn native_callback_throw_preserves_fresh_value_through_unwind_protect() {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
         runtime

@@ -414,4 +414,23 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn primitive_writers_and_layout_helpers_use_little_endian_contracts() {
+        let mut bytes = Vec::new();
+        super::put_u8(&mut bytes, 1);
+        super::put_u16(&mut bytes, 0x0203);
+        super::put_u32(&mut bytes, 0x0405_0607);
+        super::put_u64(&mut bytes, 0x0809_0a0b_0c0d_0e0f);
+        super::put_string(&mut bytes, "NCL").unwrap();
+        assert_eq!(&bytes[..8], &[1, 3, 2, 7, 6, 5, 4, 15]);
+        assert_eq!(&bytes[8..16], &[14, 13, 12, 11, 10, 9, 8, 3]);
+        assert_eq!(&bytes[16..], &[0, 0, 0, b'N', b'C', b'L']);
+        assert_eq!(super::header_size().unwrap(), 64);
+        assert_eq!(super::narrow(32, "count").unwrap(), 32);
+        assert_eq!(
+            super::invalid("field"),
+            crate::ImageError::InvalidLayout { field: "field" }
+        );
+    }
 }

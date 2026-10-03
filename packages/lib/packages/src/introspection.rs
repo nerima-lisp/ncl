@@ -89,16 +89,14 @@ pub fn package_arg(
     args: &BuiltinArgs<'_>,
     index: usize,
 ) -> Result<Package, ObjectError> {
-    let package = match args.get(index) {
-        Some(package) => package,
-        None => {
-            let common = runtime
-                .find_package(ctx, "COMMON-LISP")
-                .ok_or(ObjectError::Layout)?;
-            let (current_package, _) =
-                Package::from_word(common).intern(ctx, runtime, "*PACKAGE*")?;
-            symbol_value(ctx, current_package)?
-        }
+    let package = if let Some(package) = args.get(index) {
+        package
+    } else {
+        let common = runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?;
+        let (current_package, _) = Package::from_word(common).intern(ctx, runtime, "*PACKAGE*")?;
+        symbol_value(ctx, current_package)?
     };
     package_designator(ctx, runtime, package)
 }

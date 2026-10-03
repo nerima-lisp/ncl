@@ -1,9 +1,8 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, NAME, NAME_OPTIONAL_PACKAGE, ONE_OBJECT, ONE_PACKAGE, ObjectError,
-    PACKAGE, PACKAGE_OPTIONAL_PACKAGE, Parameter, Runtime, SYMBOLS_OPTIONAL_PACKAGE,
-    ThreadContext, export,
-    find_all_symbols, find_package, find_symbol, import, intern, list_all_packages,
+    PACKAGE, PACKAGE_OPTIONAL_PACKAGE, Parameter, Runtime, SYMBOLS_OPTIONAL_PACKAGE, ThreadContext,
+    export, find_all_symbols, find_package, find_symbol, import, intern, list_all_packages,
     package_error_package, package_management, package_name, package_nicknames,
     package_shadowing_symbols, package_use_list, package_used_by_list, packagep, shadow, unexport,
     unintern, unuse_package, use_package,
@@ -17,6 +16,7 @@ const fn descriptor(required: &'static [Parameter]) -> Builtin {
 }
 
 /// Register package introspection and mutation operations backed by the object API.
+#[allow(clippy::too_many_lines)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
@@ -52,10 +52,26 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         )?;
     }
     for (name, required, function) in [
-        ("EXPORT", SYMBOLS_OPTIONAL_PACKAGE, export as ncl_object::RustBuiltin),
-        ("UNEXPORT", SYMBOLS_OPTIONAL_PACKAGE, unexport as ncl_object::RustBuiltin),
-        ("IMPORT", SYMBOLS_OPTIONAL_PACKAGE, import as ncl_object::RustBuiltin),
-        ("SHADOW", SYMBOLS_OPTIONAL_PACKAGE, shadow as ncl_object::RustBuiltin),
+        (
+            "EXPORT",
+            SYMBOLS_OPTIONAL_PACKAGE,
+            export as ncl_object::RustBuiltin,
+        ),
+        (
+            "UNEXPORT",
+            SYMBOLS_OPTIONAL_PACKAGE,
+            unexport as ncl_object::RustBuiltin,
+        ),
+        (
+            "IMPORT",
+            SYMBOLS_OPTIONAL_PACKAGE,
+            import as ncl_object::RustBuiltin,
+        ),
+        (
+            "SHADOW",
+            SYMBOLS_OPTIONAL_PACKAGE,
+            shadow as ncl_object::RustBuiltin,
+        ),
         (
             "SHADOWING-IMPORT",
             SYMBOLS_OPTIONAL_PACKAGE,

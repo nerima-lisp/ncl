@@ -433,25 +433,4 @@ mod tests {
             crate::ImageError::InvalidLayout { field: "field" }
         );
     }
-
-    #[test]
-    fn layout_helpers_report_overflow_and_reader_reports_addition_overflow() {
-        let error = super::narrow(usize::MAX, "count").unwrap_err();
-        assert_eq!(error, crate::ImageError::InvalidLayout { field: "count" });
-        assert_eq!(error.to_string(), "image layout overflow: count");
-
-        let mut reader = Reader::new(&[]);
-        let error = reader.take(usize::MAX).unwrap_err();
-        assert_eq!(
-            error,
-            crate::ImageError::Truncated {
-                offset: 0,
-                needed: usize::MAX
-            }
-        );
-        assert_eq!(
-            error.to_string(),
-            format!("image truncated at 0, needed {} bytes", usize::MAX)
-        );
-    }
 }

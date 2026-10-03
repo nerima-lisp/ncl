@@ -494,3 +494,81 @@ pub fn move_args(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{compare_condition, constant_word};
+    use crate::tests_x86_64_fixture::X86_64FixtureAbi;
+    use ncl_asm_x86_64::Cond;
+    use ncl_ir::{Compare, Constant, ConstantIndex, FunctionId, StructureKind};
+
+    #[test]
+    fn x86_64_constant_words_cover_immediate_and_runtime_table_cases() {
+        let abi = X86_64FixtureAbi;
+        let fixnum = ncl_sys::Word::fixnum(7).bits();
+        assert_eq!(constant_word(&Constant::Fixnum(7), &abi), Ok(fixnum as i64));
+        assert_eq!(
+            constant_word(&Constant::Character(65), &abi),
+            Ok(ncl_sys::Word::character(65).bits() as i64)
+        );
+        assert_eq!(
+            constant_word(&Constant::Nil, &abi),
+            Ok(ncl_sys::Word::NIL.bits() as i64)
+        );
+        assert_eq!(
+            constant_word(&Constant::Unbound, &abi),
+            Ok(ncl_sys::Word::UNBOUND.bits() as i64)
+        );
+        assert_eq!(
+            constant_word(&Constant::T, &abi),
+            Ok(ncl_sys::Word::TRUE.bits() as i64)
+        );
+        assert_eq!(
+            constant_word(&Constant::FunctionEntry(FunctionId(7)), &abi),
+            Ok(0x2000)
+        );
+        assert!(constant_word(&Constant::FunctionEntry(FunctionId(8)), &abi).is_err());
+
+        let unsupported = [
+            Constant::SingleFloat(1.0),
+            Constant::DoubleFloat(1.0),
+            Constant::Symbol {
+                package: "COMMON-LISP".into(),
+                name: "X".into(),
+            },
+            Constant::Object(ConstantIndex(0)),
+            Constant::StringBytes(vec![1]),
+            Constant::Structure {
+                kind: StructureKind::Cons,
+                elements: Vec::new(),
+            },
+            Constant::Bignum {
+                negative: false,
+                limbs: vec![1],
+            },
+            Constant::Ratio {
+                numerator: ConstantIndex(0),
+                denominator: ConstantIndex(1),
+            },
+            Constant::Complex {
+                real: ConstantIndex(0),
+                imaginary: ConstantIndex(1),
+            },
+        ];
+        assert!(
+            unsupported
+                .iter()
+                .all(|constant| constant_word(constant, &abi).is_err())
+        );
+    }
+
+    #[test]
+    fn x86_64_compare_conditions_match_ir_ordering() {
+        assert_eq!(compare_condition(Compare::Eq), Cond::E);
+        assert_eq!(compare_condition(Compare::Ne), Cond::Ne);
+        assert_eq!(compare_condition(Compare::Lt), Cond::L);
+        assert_eq!(compare_condition(Compare::Le), Cond::Le);
+        assert_eq!(compare_condition(Compare::Gt), Cond::G);
+        assert_eq!(compare_condition(Compare::Ge), Cond::Ge);
+    }
+}

@@ -250,10 +250,22 @@ fn modifying_macros_accept_the_wrapped_place() -> Result<(), ObjectError> {
 
     let expansion = expand_incf(&mut ctx, &runtime, &registry, &[typed_place])?;
     let parts = elements(&mut ctx, expansion)?;
-    let binding = elements(&mut ctx, parts[1])?[0];
+    let binding = elements(&mut ctx, *parts.get(1).ok_or(ObjectError::TypeError)?)?
+        .first()
+        .copied()
+        .ok_or(ObjectError::TypeError)?;
     let binding_parts = elements(&mut ctx, binding)?;
-    assert_eq!(elements(&mut ctx, binding_parts[1])?[1], x);
-    named(&mut ctx, &runtime, parts[2], "SETQ")?;
+    let arithmetic = elements(
+        &mut ctx,
+        *binding_parts.get(1).ok_or(ObjectError::TypeError)?,
+    )?;
+    assert_eq!(*arithmetic.get(1).ok_or(ObjectError::TypeError)?, x);
+    named(
+        &mut ctx,
+        &runtime,
+        *parts.get(2).ok_or(ObjectError::TypeError)?,
+        "SETQ",
+    )?;
     Ok(())
 }
 

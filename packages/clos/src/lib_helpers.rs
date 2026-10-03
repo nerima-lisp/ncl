@@ -237,7 +237,7 @@ fn method_match(
             .is_ok_and(|name| name == "&REST")
     });
     let fixed_specializers = if has_rest {
-        &specializers[..specializers.len() - 1]
+        &specializers[..specializers.len() - 1] // check-added-lines: allow(index) has_rest proves the non-empty suffix
     } else {
         specializers.as_slice()
     };

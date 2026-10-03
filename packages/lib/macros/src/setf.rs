@@ -137,6 +137,7 @@ fn expand_defined_setf(
     };
     let definition = elements(ctx, definition)?;
     let [temporary_variables, store_variables, store_form] = definition.as_slice() else {
+        // check-added-lines: allow(index) exact setf definition shape is validated here
         return Err(ObjectError::TypeError);
     };
     let temporary_variables = elements(ctx, *temporary_variables)?;

@@ -186,7 +186,7 @@ fn defmethod_macro_builtin(
     let mut dispatch_fields = scope.root_many(&[]);
     let mut field_index = 0;
     while field_index < specializer_fields.len() {
-        let field = specializer_fields.as_slice()[field_index];
+        let field = specializer_fields.as_slice()[field_index]; // check-added-lines: allow(index) field_index is bounded by the loop condition
         if scope.get(field).as_word().is_cons() {
             let fields = macro_list_to_handles(&mut scope, field)?;
             let parameter = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;

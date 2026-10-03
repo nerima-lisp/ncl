@@ -1,3 +1,11 @@
+#![allow(
+    missing_docs,
+    clippy::approx_constant,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::unwrap_used
+)]
+
 use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_string};
 use ncl_printer::StringSink;
 
@@ -341,12 +349,12 @@ fn covers_internal_state_fallbacks() {
         .expect("execute");
     assert_eq!(sink.into_string(), "literal");
     let mut words = String::new();
-    super::value::append_words(&mut words, "one".to_owned());
-    super::value::append_words(&mut words, "two".to_owned());
+    super::value::append_words(&mut words, "one");
+    super::value::append_words(&mut words, "two");
     assert_eq!(words, "one two");
     let nested = parse("~<~[a~;b~]~;c~>").expect("nested control");
     assert_eq!(
-        super::split_justification(&nested.parts, 1, nested.parts.len() - 1).len(),
+        super::compound::split_justification(&nested.parts, 1, nested.parts.len() - 1).len(),
         2
     );
 }

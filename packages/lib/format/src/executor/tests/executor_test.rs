@@ -72,6 +72,17 @@ fn covers_control_parameter_edges() {
         "1"
     );
     assert_eq!(run("~^tail", &[], &mut ctx, &runtime), "");
+    assert_eq!(run("~1^tail", &[], &mut ctx, &runtime), "");
+    assert!(
+        execute(
+            &crate::parse("~:P").unwrap(),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
     assert_eq!(
         run("~C", &[Word::character(u32::from('x'))], &mut ctx, &runtime),
         "x"
@@ -246,7 +257,10 @@ fn covers_parameter_and_printer_helpers() {
     let value = string(&runtime, &mut ctx, "x");
     assert_eq!(object_string(&ctx, value).as_deref(), Some("x"));
     assert_eq!(object_string(&ctx, Word::fixnum(1)), None);
-    assert!(parameter_width(Some(&crate::Parameter::Integer(-1)), DirectiveKind::A).is_err());
+    assert!(
+        super::parameters::parameter_width(Some(&crate::Parameter::Integer(-1)), DirectiveKind::A)
+            .is_err()
+    );
     assert!(
         parameters::parameter_usize(Some(&crate::Parameter::Integer(-1)), DirectiveKind::F)
             .is_err()
@@ -395,7 +409,13 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
         )
         .is_ok()
     );
-    assert!(parameter_width(Some(&crate::Parameter::Character('x')), DirectiveKind::A).is_err());
+    assert!(
+        super::parameters::parameter_width(
+            Some(&crate::Parameter::Character('x')),
+            DirectiveKind::A
+        )
+        .is_err()
+    );
     assert!(
         parameters::parameter_usize(Some(&crate::Parameter::Relative), DirectiveKind::F).is_err()
     );

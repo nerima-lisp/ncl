@@ -35,19 +35,7 @@ pub(super) fn execute_control_kind(
 ) -> Result<(), FormatError> {
     match directive.kind {
         DirectiveKind::Percent | DirectiveKind::Tilde => {
-            let count = repeat_count_for(directive, state)?;
-            let character = if directive.kind == DirectiveKind::Percent {
-                '\n'
-            } else {
-                '~'
-            };
-            for _ in 0..count {
-                state
-                    .sink
-                    .write_char(character)
-                    .map_err(FormatError::from)?;
-            }
-            *state.line_start = directive.kind == DirectiveKind::Percent && count > 0;
+            execute_repeated_control(directive, state)?;
         }
         DirectiveKind::Ampersand => {
             if !*state.line_start {
@@ -73,59 +61,13 @@ pub(super) fn execute_control_kind(
             *state.line_start = false;
         }
         DirectiveKind::P => {
-            let value = if directive.colon {
-                state
-                    .argument_index
-                    .checked_sub(1)
-                    .and_then(|index| state.arguments.get(index).copied())
-                    .ok_or(FormatError::MissingArgument {
-                        directive: directive.kind,
-                    })?
-            } else {
-                next_argument(directive, state)?
-            };
-            if directive.at_sign {
-                state
-                    .sink
-                    .write_str(if value == Word::fixnum(1) { "y" } else { "ies" })
-                    .map_err(FormatError::from)?;
-            } else if value != Word::fixnum(1) {
-                state.sink.write_char('s').map_err(FormatError::from)?;
-            }
+            execute_plural_control(directive, state)?;
         }
         DirectiveKind::Star => {
-            let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
-            let current = i128::try_from(*state.argument_index).map_err(|_| {
-                FormatError::InvalidParameter {
-                    directive: directive.kind,
-                }
-            })?;
-            let target_value = current + i128::from(offset);
-            let target_value = if target_value < 0 { 0 } else { target_value };
-            let target = match usize::try_from(target_value) {
-                Ok(target) => target,
-                Err(_) => usize::MAX,
-            };
-            *state.argument_index = target.min(state.arguments.len());
+            execute_argument_skip(directive, state)?;
         }
         DirectiveKind::UpArrow => {
-            let exhausted = state.arguments.len() == *state.argument_index;
-            let terminate = if directive.parameters.is_empty() {
-                exhausted
-            } else {
-                directive
-                    .parameters
-                    .first()
-                    .and_then(|parameter| parameter_i64(Some(parameter)))
-                    .is_some_and(|limit| {
-                        i64::try_from(state.arguments.len()).is_ok_and(|len| {
-                            len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit
-                        })
-                    })
-            };
-            if terminate {
-                *state.argument_index = state.arguments.len();
-            }
+            execute_up_arrow(directive, state);
         }
         // check-added-lines: allow(wildcard) non-control directives
         _ => {
@@ -135,6 +77,84 @@ pub(super) fn execute_control_kind(
         }
     }
     Ok(())
+}
+
+fn execute_repeated_control(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<(), FormatError> {
+    let count = repeat_count_for(directive, state)?;
+    let character = if directive.kind == DirectiveKind::Percent {
+        '\n'
+    } else {
+        '~'
+    };
+    for _ in 0..count {
+        state
+            .sink
+            .write_char(character)
+            .map_err(FormatError::from)?;
+    }
+    *state.line_start = directive.kind == DirectiveKind::Percent && count > 0;
+    Ok(())
+}
+
+fn execute_plural_control(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<(), FormatError> {
+    let value = if directive.colon {
+        state
+            .argument_index
+            .checked_sub(1)
+            .and_then(|index| state.arguments.get(index).copied())
+            .ok_or(FormatError::MissingArgument {
+                directive: directive.kind,
+            })?
+    } else {
+        next_argument(directive, state)?
+    };
+    if directive.at_sign {
+        state
+            .sink
+            .write_str(if value == Word::fixnum(1) { "y" } else { "ies" })
+            .map_err(FormatError::from)?;
+    } else if value != Word::fixnum(1) {
+        state.sink.write_char('s').map_err(FormatError::from)?;
+    }
+    Ok(())
+}
+
+fn execute_argument_skip(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<(), FormatError> {
+    let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
+    let current =
+        i128::try_from(*state.argument_index).map_err(|_| FormatError::InvalidParameter {
+            directive: directive.kind,
+        })?;
+    let target_value = (current + i128::from(offset)).max(0);
+    let target = usize::try_from(target_value).unwrap_or(usize::MAX);
+    *state.argument_index = target.min(state.arguments.len());
+    Ok(())
+}
+
+fn execute_up_arrow(directive: &Directive, state: &mut ExecutionState<'_>) {
+    let exhausted = state.arguments.len() == *state.argument_index;
+    let terminate = directive.parameters.is_empty() && exhausted
+        || directive
+            .parameters
+            .first()
+            .and_then(|parameter| parameter_i64(Some(parameter)))
+            .is_some_and(|limit| {
+                i64::try_from(state.arguments.len()).is_ok_and(|len| {
+                    len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit
+                })
+            });
+    if terminate {
+        *state.argument_index = state.arguments.len();
+    }
 }
 
 pub(super) fn execute_character(
@@ -191,7 +211,7 @@ mod tests {
                 at_sign: false,
                 kind: DirectiveKind::T,
             };
-            assert!(tab_count(&directive).is_err());
+            assert!(tab_count(&directive).is_err()); // check-added-lines: allow(panic)
         }
     }
 }

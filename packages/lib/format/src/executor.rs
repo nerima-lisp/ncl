@@ -16,10 +16,9 @@ mod parameters;
 mod tests;
 mod value;
 
-pub(super) use compound::split_justification;
 use compound::{execute_justification, split_branches};
 use control::{execute_character, execute_control_kind, next_argument, next_argument_kind};
-use parameters::{object_string, parameter_i64, parameter_usize, parameter_width};
+use parameters::{object_string, parameter_i64, parameter_usize};
 use value::execute_value_kind;
 
 /// A failure while executing a FORMAT control.

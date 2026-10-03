@@ -106,7 +106,7 @@ fn write_padding(
     Ok(())
 }
 
-pub(crate) fn split_justification(
+pub(super) fn split_justification(
     parts: &[ControlPart],
     start: usize,
     end: usize,
@@ -127,7 +127,7 @@ pub(crate) fn split_justification(
                 | DirectiveKind::Greater
                     if depth > 0 =>
                 {
-                    depth -= 1
+                    depth -= 1;
                 }
                 DirectiveKind::Semicolon if depth == 0 => {
                     segments.push((segment_start, index));

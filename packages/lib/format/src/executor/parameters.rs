@@ -94,3 +94,30 @@ pub(super) fn is_integer(ctx: &ThreadContext, value: Word) -> bool {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parameter_helpers_distinguish_supported_and_invalid_values() {
+        assert_eq!(parameter_i64(Some(&Parameter::Integer(-2))), Some(-2));
+        assert_eq!(parameter_i64(Some(&Parameter::Character('x'))), None);
+        assert_eq!(parameter_usize(None, DirectiveKind::A).ok(), Some(None));
+        assert_eq!(
+            parameter_usize(Some(&Parameter::Integer(2)), DirectiveKind::A).ok(),
+            Some(Some(2))
+        );
+        assert!(parameter_usize(Some(&Parameter::Integer(-1)), DirectiveKind::A).is_err());
+        assert!(parameter_width(Some(&Parameter::Character('x')), DirectiveKind::A).is_err());
+        assert!(
+            repeat_count(&Directive {
+                parameters: vec![Parameter::Character('x')],
+                colon: false,
+                at_sign: false,
+                kind: DirectiveKind::T
+            })
+            .is_err()
+        );
+    }
+}

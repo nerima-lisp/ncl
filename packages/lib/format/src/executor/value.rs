@@ -86,7 +86,7 @@ fn cardinal(value: i128) -> String {
         (1_000_i128, "thousand"),
     ] {
         if remaining >= scale {
-            append_words(&mut result, under_thousand(remaining / scale));
+            append_words(&mut result, &under_thousand(remaining / scale));
             result.push(' ');
             result.push_str(name);
             remaining %= scale;
@@ -96,16 +96,16 @@ fn cardinal(value: i128) -> String {
         }
     }
     if remaining != 0 {
-        append_words(&mut result, under_thousand(remaining));
+        append_words(&mut result, &under_thousand(remaining));
     }
     result
 }
 
-pub(super) fn append_words(result: &mut String, words: String) {
+pub(super) fn append_words(result: &mut String, words: &str) {
     if !result.is_empty() && !result.ends_with(' ') {
         result.push(' ');
     }
-    result.push_str(&words);
+    result.push_str(words);
 }
 
 fn under_thousand(value: i128) -> String {
@@ -156,11 +156,10 @@ fn under_thousand(value: i128) -> String {
     }
     let hundreds = value / 100;
     let rest = value % 100;
+    let index = usize::try_from(hundreds).unwrap_or(0);
     if rest == 0 {
-        let index = usize::try_from(hundreds).unwrap_or(0);
         format!("{} hundred", ONES.get(index).copied().unwrap_or("zero"))
     } else {
-        let index = usize::try_from(hundreds).unwrap_or(0);
         format!(
             "{} hundred {}",
             ONES.get(index).copied().unwrap_or("zero"),
@@ -175,30 +174,30 @@ fn ordinal(value: i128) -> String {
     }
     let cardinal = cardinal(value);
     if let Some(prefix) = cardinal.strip_suffix("one") {
-        return format!("{}first", prefix);
+        return format!("{prefix}first");
     }
     if let Some(prefix) = cardinal.strip_suffix("two") {
-        return format!("{}second", prefix);
+        return format!("{prefix}second");
     }
     if let Some(prefix) = cardinal.strip_suffix("three") {
-        return format!("{}third", prefix);
+        return format!("{prefix}third");
     }
     if let Some(prefix) = cardinal.strip_suffix("five") {
-        return format!("{}fifth", prefix);
+        return format!("{prefix}fifth");
     }
     if let Some(prefix) = cardinal.strip_suffix("eight") {
-        return format!("{}eighth", prefix);
+        return format!("{prefix}eighth");
     }
     if let Some(prefix) = cardinal.strip_suffix("nine") {
-        return format!("{}ninth", prefix);
+        return format!("{prefix}ninth");
     }
     if let Some(prefix) = cardinal.strip_suffix("twelve") {
-        return format!("{}twelfth", prefix);
+        return format!("{prefix}twelfth");
     }
     if let Some(prefix) = cardinal.strip_suffix("y") {
-        return format!("{}ieth", prefix);
+        return format!("{prefix}ieth");
     }
-    format!("{}th", cardinal)
+    format!("{cardinal}th")
 }
 
 fn roman(value: i128, old: bool) -> String {

@@ -278,14 +278,8 @@ fn validate_parameters(
                 nonnegative(parameters.get(1))?;
             }
         }
-        DirectiveKind::D => {}
-        DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Tilde
-        | DirectiveKind::Bar
-        | DirectiveKind::Underscore
-        | DirectiveKind::I => nonnegative(parameters.first())?,
-        DirectiveKind::C
+        DirectiveKind::D
+        | DirectiveKind::C
         | DirectiveKind::Slash
         | DirectiveKind::Star
         | DirectiveKind::BracketOpen
@@ -302,6 +296,12 @@ fn validate_parameters(
         | DirectiveKind::Less
         | DirectiveKind::Greater
         | DirectiveKind::ColonGreater => {}
+        DirectiveKind::Percent
+        | DirectiveKind::Ampersand
+        | DirectiveKind::Tilde
+        | DirectiveKind::Bar
+        | DirectiveKind::Underscore
+        | DirectiveKind::I => nonnegative(parameters.first())?,
     }
     Ok(())
 }

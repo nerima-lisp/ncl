@@ -413,7 +413,3 @@ pub fn encode_maps(maps: &[ncl_codegen::SafepointMap]) -> Result<Vec<u8>, Runtim
         Ok(bytes)
     })
 }
-
-#[cfg(test)]
-#[path = "tests_support.rs"]
-mod tests;

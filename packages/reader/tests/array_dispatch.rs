@@ -55,7 +55,7 @@ fn preserves_arbitrary_array_elements() {
     assert_eq!(text, "FOO");
     assert_eq!(
         array_row_major_ref(&ctx, array, 3).unwrap(),
-        Word::character(' ' as u32)
+        Word::character(u32::from(' '))
     );
 }
 

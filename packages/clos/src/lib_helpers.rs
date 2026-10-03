@@ -9,7 +9,6 @@ fn form_elements(ctx: &ThreadContext, mut form: Word) -> Result<Vec<Word>, Objec
     }
     Ok(result)
 }
-
 fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
     let name = ncl_object::symbol_name(ctx, symbol)?;
     let length = ncl_object::string_length(ctx, name)?;

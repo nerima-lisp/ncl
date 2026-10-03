@@ -38,3 +38,35 @@ impl From<ObjectError> for ConditionError {
         Self::Object(error)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConditionError;
+    use ncl_object::ObjectError;
+
+    #[test]
+    fn displays_each_condition_error_variant() {
+        let cases = [
+            (ConditionError::Unhandled, "unhandled condition"),
+            (ConditionError::NotACondition, "not a condition"),
+            (ConditionError::RestartNotFound, "restart not found"),
+            (ConditionError::ChainCorrupt, "corrupt record chain"),
+            (
+                ConditionError::Object(ObjectError::TypeError),
+                "object error: TypeError",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn converts_object_errors_without_losing_the_variant() {
+        assert_eq!(
+            ConditionError::from(ObjectError::Layout),
+            ConditionError::Object(ObjectError::Layout)
+        );
+    }
+}

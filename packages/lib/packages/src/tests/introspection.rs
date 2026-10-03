@@ -467,8 +467,13 @@ fn designator_helpers_cover_symbol_string_and_invalid_values() -> Result<(), Obj
     let package = runtime.ensure_package(&mut ctx, "N25-DESIGNATORS")?;
     let package = Package::from_word(package);
     let name = ncl_object::make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])?;
-    let package_name =
-        ncl_object::make_string(&mut ctx, &runtime, &['N', '2', '5', '-', 'D', 'E', 'S', 'I', 'G', 'N', 'A', 'T', 'O', 'R', 'S'])?;
+    let package_name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            'N', '2', '5', '-', 'D', 'E', 'S', 'I', 'G', 'N', 'A', 'T', 'O', 'R', 'S',
+        ],
+    )?;
     let symbol = package.intern(&mut ctx, &runtime, "NAME")?.0;
     assert_eq!(string_designator(&ctx, name)?.as_word(), name);
     let symbol_name = string_designator(&ctx, symbol)?.as_word();

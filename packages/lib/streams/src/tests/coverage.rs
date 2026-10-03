@@ -1,6 +1,6 @@
 use ncl_object::{
-    make_simple_vector, make_stream, make_string, simple_vector_ref, stream_state, string_length,
-    string_ref, FunctionObject, Package, Runtime, ThreadContext, Word,
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
+    make_string, simple_vector_ref, stream_state, string_length, string_ref,
 };
 
 fn setup() -> (Runtime, ThreadContext) {

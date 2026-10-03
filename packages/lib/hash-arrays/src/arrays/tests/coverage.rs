@@ -3,8 +3,8 @@
 use super::helpers::{array_shape, dimension_values, flatten_initial_contents, sequence_elements};
 use ncl_object::array::array_element_type;
 use ncl_object::{
-    array_row_major_set, make_cons, make_simple_vector, make_string, ArrayElementType,
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word,
+    ArrayElementType, FunctionObject, ObjectError, Runtime, ThreadContext, Word,
+    array_row_major_set, make_cons, make_simple_vector, make_string,
 };
 
 fn call(

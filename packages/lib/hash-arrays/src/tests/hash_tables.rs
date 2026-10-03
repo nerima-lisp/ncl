@@ -1,7 +1,7 @@
 use ncl_object::hash_table::{HashTable, Weakness};
 use ncl_object::{
-    classify_object, double_value, make_double, DoubleFloat, FunctionObject, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, double_value, make_double,
 };
 
 fn call(
@@ -69,9 +69,11 @@ fn hash_decoders_and_predicates_cover_each_supported_option() -> Result<(), Obje
         call(&runtime, &mut ctx, "HASH-TABLE-P", &[Word::NIL])?,
         Word::NIL
     );
-    assert!(call(&runtime, &mut ctx, "SXHASH", &[Word::fixnum(12)])?
-        .as_fixnum()
-        .is_some());
+    assert!(
+        call(&runtime, &mut ctx, "SXHASH", &[Word::fixnum(12)])?
+            .as_fixnum()
+            .is_some()
+    );
     Ok(())
 }
 
@@ -141,16 +143,19 @@ fn hash_options_and_gethash_defaults_are_reported() -> Result<(), ObjectError> {
         ],
     )?;
     let returned_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
-    assert!((double_value(&ctx, DoubleFloat::from_word(returned_size))? - 2.0).abs() < f64::EPSILON);
-    let returned_threshold =
-        call(&runtime, &mut ctx, "HASH-TABLE-REHASH-THRESHOLD", &[table])?;
+    assert!(
+        (double_value(&ctx, DoubleFloat::from_word(returned_size))? - 2.0).abs() < f64::EPSILON
+    );
+    let returned_threshold = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-THRESHOLD", &[table])?;
     assert!(
         (double_value(&ctx, DoubleFloat::from_word(returned_threshold))? - 0.5).abs()
             < f64::EPSILON
     );
-    assert!(call(&runtime, &mut ctx, "HASH-TABLE-SIZE", &[table])?
-        .as_fixnum()
-        .is_some_and(|size| size >= 4));
+    assert!(
+        call(&runtime, &mut ctx, "HASH-TABLE-SIZE", &[table])?
+            .as_fixnum()
+            .is_some_and(|size| size >= 4)
+    );
     assert_eq!(
         call(
             &runtime,

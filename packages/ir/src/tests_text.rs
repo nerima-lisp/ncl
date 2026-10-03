@@ -535,6 +535,51 @@ fn text_round_trips_all_serialized_forms() {
                 real: ConstantIndex(0),
                 imaginary: ConstantIndex(1),
             },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::T,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Bit,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Character,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::BaseChar,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Fixnum,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Signed,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Unsigned,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::SingleFloat,
+                elements: Vec::new(),
+            },
+            Constant::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::DoubleFloat,
+                elements: Vec::new(),
+            },
         ],
         blocks: vec![
             BasicBlock {

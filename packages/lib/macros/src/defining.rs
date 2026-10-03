@@ -107,8 +107,15 @@ fn function_definition(
         ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
             let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list])?;
             ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                let lambda = append(ctx, runtime, *lambda, body)?;
-                finish_function_definition(ctx, runtime, name, accessor, lambda)
+                let block_symbol = symbol(ctx, runtime, "BLOCK")?;
+                ncl_object::with_root(ctx, &mut block_symbol.clone(), |ctx, block_symbol| {
+                    let mut block = list(ctx, runtime, &[*block_symbol, name])?;
+                    ncl_object::with_root(ctx, &mut block, |ctx, block| {
+                        let block = append(ctx, runtime, *block, body)?;
+                        let lambda = append(ctx, runtime, *lambda, &[block])?;
+                        finish_function_definition(ctx, runtime, name, accessor, lambda)
+                    })
+                })
             })
         })
     })

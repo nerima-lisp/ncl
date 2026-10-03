@@ -419,15 +419,16 @@ fn setf_arity_and_registry_boundaries_return_the_exact_error() -> Result<(), Obj
             "ROTATEF" => expand_rotatef(&mut ctx, &runtime, &registry, &arguments),
             _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) exhaustive table uses only named operators.
         };
-        assert_eq!(result, Err(ObjectError::TypeError)); // check-added-lines: allow(panic) exact error assertion.
+        // check-added-lines: allow(panic) exact error assertion.
+        assert_eq!(result, Err(ObjectError::TypeError));
     }
 
     let other_runtime = Runtime::new()?;
     let mut other_ctx = ThreadContext::new();
     other_ctx.register(&other_runtime)?;
     let other_place = symbol(&mut other_ctx, &other_runtime, "PLACE")?;
+    // check-added-lines: allow(panic) exact registry error assertion.
     assert_eq!(
-        // check-added-lines: allow(panic) exact registry error assertion.
         expand_setf(
             &mut other_ctx,
             &other_runtime,
@@ -512,12 +513,13 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
     for (expand, operator) in default_cases {
         let expanded = expand(&mut ctx, &runtime, &registry, &[place])?;
         let outer = elements(&mut ctx, expanded)?;
-        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+        // check-added-lines: allow(panic,index) exact expansion assertion.
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET")?);
         let bindings = elements(&mut ctx, outer[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
         let binding = elements(&mut ctx, bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
         let arithmetic = elements(&mut ctx, binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        // check-added-lines: allow(panic) exact arithmetic expansion assertion.
         assert_eq!(
-            // check-added-lines: allow(panic) exact arithmetic expansion assertion.
             arithmetic,
             vec![
                 symbol(&mut ctx, &runtime, operator)?,
@@ -539,8 +541,8 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
         ("REMF", expand_remf, vec![place]),
     ];
     for (name, expand, arguments) in error_cases {
+        // check-added-lines: allow(panic) exact malformed argument assertion.
         assert_eq!(
-            // check-added-lines: allow(panic) exact malformed argument assertion.
             expand(&mut ctx, &runtime, &registry, &arguments),
             Err(ObjectError::TypeError),
             "{name} malformed arguments"
@@ -549,16 +551,16 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
 
     let unknown_operator = symbol(&mut ctx, &runtime, "UNKNOWN-PLACE")?;
     let unknown = list(&mut ctx, &runtime, &[unknown_operator, place])?;
+    // check-added-lines: allow(panic) exact unknown place assertion.
     assert_eq!(
-        // check-added-lines: allow(panic) exact unknown place assertion.
         expand_setf(&mut ctx, &runtime, &registry, &[unknown, place]),
         Err(ObjectError::UndefinedFunction)
     );
 
     let other_runtime = Runtime::new()?;
     let other_registry = PlaceRegistry::new(&other_runtime);
+    // check-added-lines: allow(panic) exact registry ownership assertion.
     assert_eq!(
-        // check-added-lines: allow(panic) exact registry ownership assertion.
         expand_setf(
             &mut ctx,
             &runtime,
@@ -592,8 +594,8 @@ fn pushnew_and_rotate_expansions_preserve_their_complete_forms() -> Result<(), O
     let pushnew_bindings = elements(&mut ctx, pushnew_parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
     let pushnew_binding = elements(&mut ctx, pushnew_bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
     let adjoin = elements(&mut ctx, pushnew_binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    // check-added-lines: allow(panic) exact expansion assertion.
     assert_eq!(
-        // check-added-lines: allow(panic) exact expansion assertion.
         adjoin,
         vec![
             symbol(&mut ctx, &runtime, "ADJOIN")?,

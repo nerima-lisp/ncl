@@ -122,15 +122,15 @@ fn registered_place_expanders_emit_their_concrete_access_and_store_operators()
 
     for (name, expand, args, access_name, store_name) in cases {
         let expansion = expand(&mut ctx, &runtime, &args)?;
+        // check-added-lines: allow(panic,index) exact access operator assertion.
         assert_eq!(
-            // check-added-lines: allow(panic,index) exact access operator assertion.
             elements(&mut ctx, expansion.access_form)?[0],
             symbol(&mut ctx, &runtime, access_name)?,
             "{name} access"
         );
         let store = elements(&mut ctx, expansion.store_form)?;
+        // check-added-lines: allow(panic,index) exact store operator assertion.
         assert_eq!(
-            // check-added-lines: allow(panic,index) exact store operator assertion.
             store[0],
             symbol(&mut ctx, &runtime, store_name)?,
             "{name} store"

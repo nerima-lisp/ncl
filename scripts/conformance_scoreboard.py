@@ -297,11 +297,16 @@ def make_scoreboard(
     ansi_counts: Mapping[str, int] | None,
     bench: ProcessResult,
     bench_times: Sequence[float] | None,
+    ansi_details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-serializable scoreboard from two process results."""
     ansi_data: dict[str, Any] = {"status": ansi.status}
     if ansi_counts is not None:
         ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
+    if ansi_details is not None:
+        for key in ("categories", "failure_clusters", "unexecuted_reasons", "execution", "results", "unit", "commit", "total"):
+            if key in ansi_details:
+                ansi_data[key] = ansi_details[key]
     bench_data: dict[str, Any] = {"status": bench.status}
     if bench_times is not None:
         bench_data["samples"] = len(bench_times)
@@ -324,6 +329,14 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     if "passed" in ansi:
         counts = f"{ansi['passed']} passed, {ansi['failed']} failed, {ansi['unexecuted']} unexecuted"
     lines.append(f"| ansi-test | {ansi['status']} | {counts} |")
+    categories = ansi.get("categories")
+    if categories:
+        lines.extend(["", "## ansi-test chapters", "", "| lane | passed | failed | timeout | crash | unexecuted |", "| --- | ---: | ---: | ---: | ---: | ---: |"])
+        for lane, values in sorted(categories.items()):
+            lines.append(
+                f"| {lane} | {values.get('passed', 0)} | {values.get('failed', 0)} | "
+                f"{values.get('timeout', 0)} | {values.get('crash', 0)} | {values.get('unexecuted', 0)} |"
+            )
     mean = str(bench.get("geometric_mean", ""))
     lines.append(f"| cl-bench | {bench['status']} | geometric mean: {mean} |")
     lines.extend(["", "| suite | commit |", "| --- | --- |"])
@@ -372,14 +385,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
     bench = run_command(bench_command, cwd=bench_source, timeout=args.timeout)
     ansi_counts = None
+    ansi_details = None
     bench_times = None
     if ansi.stdout:
         data = _json_output(ansi)
+        ansi_details = data
         ansi_counts = {key: int(data[key]) for key in ("passed", "failed", "unexecuted")}
     if bench.stdout:
         data = _json_output(bench)
         bench_times = [float(value) for value in data["times"]]
-    scoreboard = make_scoreboard(ansi, ansi_counts, bench, bench_times)
+    scoreboard = make_scoreboard(ansi, ansi_counts, bench, bench_times, ansi_details)
     output = render_markdown(scoreboard) if args.format == "markdown" else json.dumps(scoreboard, indent=2, sort_keys=True)
     output = output if output.endswith("\n") else output + "\n"
     if args.output:

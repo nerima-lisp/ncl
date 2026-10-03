@@ -1,5 +1,5 @@
 use crate::CodegenError;
-use ncl_ir::{Function, OpKind, Terminator};
+use ncl_ir::{Function, HandlerKind, OpKind, Terminator};
 
 pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     let mut maximum = 0_usize;
@@ -10,6 +10,10 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                     args.len().saturating_sub(1)
                 }
                 OpKind::CallClosure { args, .. } => args.len().saturating_sub(1),
+                OpKind::MakeClosure { .. } => 2,
+                OpKind::MakeValueCell { .. } | OpKind::LeaveHandler { .. } => 1,
+                OpKind::Builtin { args, .. } => args.len(),
+                OpKind::EnterHandler { region } => handler_argument_count(function, *region),
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
                 | OpKind::Load { .. }
@@ -20,16 +24,11 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::LoadArg { .. }
                 | OpKind::LoadCapture { .. }
                 | OpKind::LoadFunctionObject
-                | OpKind::MakeClosure { .. }
-                | OpKind::MakeValueCell { .. }
-                | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }
                 | OpKind::Compare { .. }
                 | OpKind::Convert { .. }
                 | OpKind::SetMultipleValues { .. }
-                | OpKind::Safepoint
-                | OpKind::EnterHandler { .. }
-                | OpKind::LeaveHandler { .. } => 0,
+                | OpKind::Safepoint => 0,
             };
             maximum = maximum.max(extra_words(count));
         }
@@ -52,4 +51,19 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
 fn extra_words(argument_count: usize) -> usize {
     let extras = argument_count.saturating_sub(4);
     extras.saturating_add(usize::from(extras > 0))
+}
+
+fn handler_argument_count(function: &Function, region: ncl_ir::HandlerRegionId) -> usize {
+    let Some(region) = function
+        .handler_regions
+        .iter()
+        .find(|candidate| candidate.id == region)
+    else {
+        return 0;
+    };
+    match region.kind {
+        HandlerKind::Catch => 2 + usize::from(region.catch_tag.is_some()),
+        HandlerKind::UnwindProtect => 2,
+        HandlerKind::Progv => 1 + region.binding_targets.len(),
+    }
 }

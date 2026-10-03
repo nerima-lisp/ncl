@@ -19,6 +19,10 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                         .unwrap_or(0)
                         .saturating_add(args.len().saturating_sub(1))
                 }
+                OpKind::MakeClosure { .. } => 2,
+                OpKind::MakeValueCell { .. } | OpKind::LeaveHandler { .. } => 1,
+                OpKind::Builtin { args, .. } => args.len(),
+                OpKind::EnterHandler { region } => handler_argument_count(function, *region),
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
                 | OpKind::Load { .. }
@@ -29,16 +33,11 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::LoadArg { .. }
                 | OpKind::LoadCapture { .. }
                 | OpKind::LoadFunctionObject
-                | OpKind::MakeClosure { .. }
-                | OpKind::MakeValueCell { .. }
-                | OpKind::Builtin { .. }
                 | OpKind::Prim { .. }
                 | OpKind::Compare { .. }
                 | OpKind::Convert { .. }
                 | OpKind::SetMultipleValues { .. }
-                | OpKind::Safepoint
-                | OpKind::EnterHandler { .. }
-                | OpKind::LeaveHandler { .. } => 0,
+                | OpKind::Safepoint => 0,
             };
             maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
         }
@@ -62,8 +61,9 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
-    lower_op, lower_pending_check, lower_return_or_throw, move_args, slots, value_is_raw_entry,
+    RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, handler_argument_count,
+    load_slot, lower_call, lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
+    value_is_raw_entry,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.

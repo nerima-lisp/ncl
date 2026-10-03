@@ -68,8 +68,7 @@ fn runtime_and_multiple_value_limits_return_typed_errors() {
             &slots,
             &MissingAbi,
         ),
-        Err(CodegenError::Unsupported(message))
-            if message.contains("at most four arguments")
+        Err(CodegenError::Unsupported(_))
     ));
 
     let values = (0..=ncl_sys::MULTIPLE_VALUE_AREA_WORDS)

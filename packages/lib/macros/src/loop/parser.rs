@@ -91,6 +91,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
     symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
     let mut has_init = false;
+    let mut has_equals = false;
     let mut step = None;
     let mut then = None;
     let mut direction = None;
@@ -104,6 +105,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             "=" => {
                 init = next;
                 has_init = true;
+                has_equals = true;
                 *cursor += 2;
             }
             "FROM" | "UPFROM" | "DOWNFROM" => {
@@ -182,6 +184,8 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             init,
             then,
         })
+    } else if has_equals && step.is_none() && direction.is_none() && limit.is_none() {
+        Ok(LoopClause::Equals { variable, init })
     } else {
         // ANSI CL: when no from-type preposition (`=`/`from`/`upfrom`/`downfrom`)
         // is present, the index starts at 0.
@@ -197,7 +201,6 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
         }))
     }
 }
-
 fn parse_sequence_for(
     ctx: &ThreadContext,
     input: &[Word],

@@ -78,6 +78,10 @@ pub enum LoopClause {
     },
     For(ForClause),
     Hash(HashClause),
+    Equals {
+        variable: Word,
+        init: Word,
+    },
     EqualsThen {
         variable: Word,
         init: Word,

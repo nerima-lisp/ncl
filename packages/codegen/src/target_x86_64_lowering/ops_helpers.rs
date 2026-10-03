@@ -31,7 +31,7 @@ pub(super) fn constant_word(
         | ncl_ir::Constant::Ratio { .. }
         | ncl_ir::Constant::Complex { .. } // check-added-lines: allow(unsupported) runtime-table constant
         | ncl_ir::Constant::Array { .. }
-        | ncl_ir::Constant::Structure { .. } => Err(CodegenError::Unsupported(
+        | ncl_ir::Constant::Structure { .. } => Err(CodegenError::Unsupported( // check-added-lines: allow(unsupported) runtime-table fallback
             // check-added-lines: allow(unsupported) runtime-table constant
             // check-added-lines: allow(unsupported) runtime-table constant
             "constant requires a runtime table".into(), // check-added-lines: allow(unsupported) runtime-table constant

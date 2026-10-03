@@ -529,3 +529,63 @@ fn folds_constant_switch_to_default_and_removes_other_cases() {
     assert_eq!(function.blocks.len(), 2);
     ncl_ir::verify(&function).fixture();
 }
+
+#[test]
+fn folds_constant_switch_to_matching_case_and_removes_default() {
+    let mut builder = FunctionBuilder::new(FunctionId(6), "switch-match", vec![], vec![Ty::I64]);
+    let selector = builder.add_constant(Constant::Fixnum(4));
+    let case_value = builder.add_constant(Constant::Fixnum(10));
+    let default_value = builder.add_constant(Constant::Fixnum(20));
+    let selector_value = builder
+        .push_op(OpKind::Const { result: selector }, &[Ty::I64])
+        .fixture()[0];
+    let case_block = builder.create_block(Vec::new());
+    let case_result = builder
+        .push_op(OpKind::Const { result: case_value }, &[Ty::I64])
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![case_result],
+        })
+        .fixture();
+    let default_block = builder.create_block(Vec::new());
+    let default_result = builder
+        .push_op(
+            OpKind::Const {
+                result: default_value,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![default_result],
+        })
+        .fixture();
+    builder.position_at(BlockId(0)).fixture();
+    builder
+        .terminate(Terminator::Switch {
+            value: selector_value,
+            cases: vec![(4, case_block, vec![])],
+            default: default_block,
+            default_args: vec![],
+        })
+        .fixture();
+    let mut function = builder.finish();
+
+    let result = Sccp.run(&mut function, &Module::default());
+    assert!(
+        result.is_ok(),
+        "SCCP failed: {result:?}; function: {function:?}"
+    );
+    assert!(result.unwrap_or(false));
+    assert_eq!(
+        function.blocks[0].terminator,
+        Terminator::Jump {
+            target: case_block,
+            args: vec![]
+        }
+    );
+    assert_eq!(function.blocks.len(), 2);
+    ncl_ir::verify(&function).fixture();
+}

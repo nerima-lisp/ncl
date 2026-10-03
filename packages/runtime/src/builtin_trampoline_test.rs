@@ -7,19 +7,20 @@ use crate::{NativeCondition, Runtime, RuntimeError};
 use ncl_object::{ObjectError, ThreadContext, Word};
 
 fn eval(runtime: &mut Runtime, source: &str) -> String {
-    let value = runtime
-        .eval(source)
-        .unwrap_or_else(|error| panic!("evaluating {source:?}: {error:?}"));
-    runtime.format_result(value)
+    match runtime.eval(source) {
+        Ok(value) => runtime.format_result(value),
+        Err(error) => format!("ERROR: {error}"),
+    }
 }
 
-fn eval_error(runtime: &mut Runtime, source: &str) -> RuntimeError {
-    match runtime.eval(source) {
-        Ok(value) => panic!(
-            "evaluation unexpectedly succeeded with {}",
-            runtime.format_result(value)
-        ),
-        Err(error) => error,
+fn eval_error(runtime: &mut Runtime, source: &str) -> Option<RuntimeError> {
+    runtime.eval(source).err()
+}
+
+fn runtime() -> Runtime {
+    match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => std::panic::panic_any(error),
     }
 }
 
@@ -71,19 +72,19 @@ fn boundary_regular_error_is_recorded() {
 
 #[test]
 fn generic_dispatch_converts_builtin_type_errors_into_conditions() {
-    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut runtime = runtime();
     assert!(matches!(
         eval_error(&mut runtime, "(car 7)"),
-        RuntimeError::NativeFailure {
+        Some(RuntimeError::NativeFailure {
             condition: NativeCondition::Lisp(ncl_object::LispError::TypeError { .. }),
             ..
-        }
+        })
     ));
 }
 
 #[test]
 fn generic_dispatch_reports_wrong_arity_without_calling_the_builtin() {
-    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut runtime = runtime();
     assert_eq!(
         eval(
             &mut runtime,
@@ -95,7 +96,7 @@ fn generic_dispatch_reports_wrong_arity_without_calling_the_builtin() {
 
 #[test]
 fn generic_dispatch_forwards_rest_arguments_beyond_registers() {
-    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut runtime = runtime();
     assert_eq!(
         eval(
             &mut runtime,
@@ -107,7 +108,7 @@ fn generic_dispatch_forwards_rest_arguments_beyond_registers() {
 
 #[test]
 fn generic_dispatch_adapts_keyword_arguments() {
-    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut runtime = runtime();
     assert_eq!(
         eval(
             &mut runtime,
@@ -119,10 +120,11 @@ fn generic_dispatch_adapts_keyword_arguments() {
 
 #[test]
 fn undefined_function_dispatch_reports_the_called_symbol() {
-    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut runtime = runtime();
     assert!(matches!(
         eval_error(&mut runtime, "(missing-trampoline-function)"),
-        RuntimeError::UndefinedFunction { name } if name == "MISSING-TRAMPOLINE-FUNCTION"
+        Some(RuntimeError::UndefinedFunction { name })
+            if name == "MISSING-TRAMPOLINE-FUNCTION"
     ));
 }
 

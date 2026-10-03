@@ -232,4 +232,52 @@ mod runtime_tests {
             panic!("source cleanup failed: {error}");
         }
     }
+
+    #[test]
+    fn evaluates_numeric_fallbacks_and_multiple_value_results() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        for (source, expected) in [
+            ("(+ 1.5 2.5)", "4.0"),
+            ("(- 10 3/2)", "17/2"),
+            ("(* 2 3/2)", "3"),
+            ("(< 1.5 2.5)", "T"),
+            ("(multiple-value-list (floor 7 2))", "(3 1)"),
+        ] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+    }
+
+    #[test]
+    fn load_options_and_undefined_function_report_values() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let missing = runtime.eval("(load \"missing-runtime-test-file\" :if-does-not-exist nil)");
+        assert_eq!(
+            missing.map_or_else(
+                |error| panic!("missing load failed: {error}"),
+                |value| runtime.format_result(value),
+            ),
+            "NIL"
+        );
+        let undefined = runtime.eval("(no-such-runtime-function)");
+        assert!(matches!(
+            undefined,
+            Err(RuntimeError::UndefinedFunction { .. })
+        ));
+    }
+
+    #[test]
+    fn format_result_handles_true_and_readable_objects() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let true_value = runtime
+            .eval("t")
+            .unwrap_or_else(|error| panic!("t: {error}"));
+        assert_eq!(runtime.format_result(true_value), "T");
+        let list = runtime
+            .eval("(list 1 2)")
+            .unwrap_or_else(|error| panic!("list: {error}"));
+        assert_eq!(runtime.format_result(list), "(1 2)");
+    }
 }

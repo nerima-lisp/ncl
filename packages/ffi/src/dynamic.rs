@@ -194,3 +194,42 @@ pub const fn dlerror_message() -> Result<Option<String>, FfiError> {
 pub fn extern_alien_name(name: &str) -> String {
     name.to_owned()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sys_requirements::{
+        DLCLOSE_SHARED_OBJECT, DLOPEN_SHARED_OBJECT, DLSYM_FOREIGN_SYMBOL,
+    };
+
+    #[test]
+    fn value_objects_preserve_names_and_loader_modes() {
+        assert_eq!(SharedObjectPath::new("libncl.so").as_str(), "libncl.so");
+        assert_eq!(ForeignSymbolName::new("entry").as_str(), "entry");
+        assert_eq!(LoaderMode::from(true), LoaderMode::Lazy);
+        assert_eq!(LoaderMode::from(false), LoaderMode::Now);
+        assert_eq!(extern_alien_name("foo:bar"), "foo:bar");
+    }
+
+    #[test]
+    fn unavailable_loader_operations_report_required_primitives() {
+        assert_eq!(
+            load_shared_object("missing.so", true),
+            Err(FfiError::MissingSysPrimitive(DLOPEN_SHARED_OBJECT))
+        );
+        assert_eq!(
+            unload_shared_object(SharedObject(1)),
+            Err(FfiError::MissingSysPrimitive(DLCLOSE_SHARED_OBJECT))
+        );
+        assert_eq!(
+            find_foreign_symbol_address("missing"),
+            Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
+        );
+        assert_eq!(
+            dlerror_message(),
+            Err(FfiError::MissingSysPrimitive(
+                crate::sys_requirements::DLERROR_MESSAGE
+            ))
+        );
+    }
+}

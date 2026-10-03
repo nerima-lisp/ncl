@@ -231,3 +231,130 @@ pub unsafe extern "C" fn native_safepoint(mut thread: NonNull<Thread>, frame: *m
     thread.leave_native();
     thread.clear_safepoint_request();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{HeapConfig, LowTag, register_thread, unregister_thread};
+
+    #[test]
+    fn arithmetic_and_car_report_values_and_typed_errors() {
+        let mut unregistered = Thread::new();
+        let pointer = NonNull::from(&mut unregistered);
+        assert_eq!(
+            native_add(pointer, Word::fixnum(1), Word::fixnum(2)),
+            Word::NIL
+        );
+        assert_eq!(
+            unregistered.take_native_error(),
+            Some(NativeError::ThreadNotRegistered {
+                operation: NativeOperation::Add
+            })
+        );
+
+        let heap = Heap::new(HeapConfig::default());
+        let mut thread = Thread::new();
+        assert_eq!(register_thread(&heap, &mut thread), Ok(()));
+        let pointer = NonNull::from(&mut thread);
+        assert_eq!(
+            native_add(pointer, Word::fixnum(2), Word::fixnum(3)),
+            Word::fixnum(5)
+        );
+        assert_eq!(
+            native_sub(pointer, Word::fixnum(2), Word::fixnum(3)),
+            Word::fixnum(-1)
+        );
+        assert_eq!(
+            native_less(pointer, Word::fixnum(2), Word::fixnum(3)),
+            Word::TRUE
+        );
+        assert_eq!(
+            native_mul(pointer, Word::fixnum(2), Word::fixnum(3)),
+            Word::fixnum(6)
+        );
+        assert_eq!(native_add(pointer, Word::NIL, Word::fixnum(3)), Word::NIL);
+        assert_eq!(
+            thread.take_native_error(),
+            Some(NativeError::TypeMismatch {
+                operation: NativeOperation::Add,
+                operand: 0,
+                value: Word::NIL,
+            })
+        );
+        assert_eq!(
+            native_mul(pointer, Word::fixnum(i64::MAX / 2), Word::fixnum(3)),
+            Word::NIL
+        );
+        assert!(matches!(
+            thread.take_native_error(),
+            Some(NativeError::Overflow {
+                operation: NativeOperation::Mul,
+                ..
+            })
+        ));
+        // SAFETY: the pointer refers to the registered thread above.
+        assert_eq!(unsafe { native_car(pointer, Word::fixnum(3)) }, Word::NIL);
+        assert!(matches!(
+            thread.take_native_error(),
+            Some(NativeError::TypeMismatch {
+                operation: NativeOperation::Car,
+                ..
+            })
+        ));
+        let pair = heap
+            .alloc_cons(&mut thread, Word::fixnum(9), Word::NIL)
+            .unwrap_or(Word::NIL);
+        // SAFETY: the pointer refers to the registered thread and pair is a live cons.
+        assert_eq!(unsafe { native_car(pointer, pair) }, Word::fixnum(9));
+        unregister_thread(&thread);
+    }
+
+    #[test]
+    fn native_cons_reports_allocation_failure() {
+        let heap = Heap::new(HeapConfig {
+            dynamic_space_size: 8,
+            ..HeapConfig::default()
+        });
+        let mut thread = Thread::new();
+        assert_eq!(register_thread(&heap, &mut thread), Ok(()));
+        let pointer = NonNull::from(&mut thread);
+        assert_eq!(
+            unsafe {
+                // SAFETY: the pointer refers to the registered thread.
+                native_cons(pointer, Word::NIL, Word::NIL)
+            },
+            Word::NIL
+        );
+        assert!(matches!(
+            thread.take_native_error(),
+            Some(NativeError::Allocation {
+                operation: NativeOperation::Cons,
+                ..
+            })
+        ));
+        unregister_thread(&thread);
+    }
+
+    #[test]
+    fn native_car_reports_invalid_cons_address() {
+        let heap = Heap::new(HeapConfig::default());
+        let mut thread = Thread::new();
+        assert_eq!(register_thread(&heap, &mut thread), Ok(()));
+        let pointer = NonNull::from(&mut thread);
+        assert_eq!(
+            unsafe {
+                // SAFETY: the pointer refers to the registered thread.
+                native_car(pointer, Word::pointer(8, LowTag::List))
+            },
+            Word::NIL
+        );
+        assert!(matches!(
+            thread.take_native_error(),
+            Some(NativeError::Invalid {
+                operation: NativeOperation::Car,
+                ..
+            })
+        ));
+        unregister_thread(&thread);
+    }
+}

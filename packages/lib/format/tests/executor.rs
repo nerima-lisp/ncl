@@ -303,19 +303,18 @@ fn exercises_early_termination_case_variants_and_parameter_errors() {
     .expect("execute");
     assert_eq!(sink.into_string(), "");
     let mut sink = StringSink::new();
-    execute(
+    let result = execute(
         &parse("~[zero~;one~]").expect("control"),
-        &[Word::fixnum(9)],
+        &[Word::TRUE],
         &mut ctx,
         &runtime,
         &mut sink,
-    )
-    .expect("execute");
-    assert_eq!(sink.into_string(), "");
+    );
+    assert!(result.is_err());
     let mut sink = StringSink::new();
     execute(
         &parse("~[zero~;one~]").expect("control"),
-        &[Word::TRUE],
+        &[Word::fixnum(0)],
         &mut ctx,
         &runtime,
         &mut sink,

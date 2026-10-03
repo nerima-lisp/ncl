@@ -371,7 +371,22 @@ fn execute_value_with_argument(
     }
     let mut rendered = StringSink::new();
     write(state.ctx, state.runtime, value, &mut rendered, &options)?;
-    let rendered = rendered.into_string();
+    let mut rendered = rendered.into_string();
+    if matches!(
+        directive.kind,
+        DirectiveKind::D
+            | DirectiveKind::B
+            | DirectiveKind::O
+            | DirectiveKind::X
+            | DirectiveKind::R
+    ) {
+        if directive.colon {
+            rendered = group_integer(directive, &rendered)?;
+        }
+        if directive.at_sign && !rendered.starts_with('-') {
+            rendered.insert(0, '+');
+        }
+    }
     let width = if directive.kind == DirectiveKind::R {
         0
     } else {
@@ -406,6 +421,43 @@ fn execute_value_with_argument(
     }
     *state.line_start = false;
     Ok(())
+}
+
+fn group_integer(directive: &Directive, rendered: &str) -> Result<String, FormatError> {
+    let comma = directive
+        .parameters
+        .get(2)
+        .and_then(|parameter| match parameter {
+            Parameter::Character(value) => Some(*value),
+            Parameter::Integer(_)
+            | Parameter::Relative
+            | Parameter::ArgumentCount
+            | Parameter::Unsupplied => None,
+        })
+        .unwrap_or(',');
+    let interval = parameter_usize(directive.parameters.get(3), directive.kind)?.unwrap_or(3);
+    if interval == 0 {
+        return Err(FormatError::InvalidParameter {
+            directive: directive.kind,
+        });
+    }
+    let (sign, digits) = rendered
+        .strip_prefix('-')
+        .map_or(("", rendered), |digits| ("-", digits));
+    let digit_chars: Vec<char> = digits.chars().collect();
+    let mut grouped = String::with_capacity(rendered.len() + digit_chars.len() / interval);
+    grouped.push_str(sign);
+    let first = digit_chars.len() % interval;
+    if first != 0 {
+        grouped.extend(digit_chars[..first].iter());
+    }
+    for (index, chunk) in digit_chars[first..].chunks(interval).enumerate() {
+        if first != 0 || index != 0 {
+            grouped.push(comma);
+        }
+        grouped.extend(chunk.iter());
+    }
+    Ok(grouped)
 }
 
 fn radix_parameter(directive: &Directive) -> Result<u32, FormatError> {

@@ -187,7 +187,9 @@ fn execute_bracket(
         selector
             .as_fixnum()
             .and_then(|value| usize::try_from(value).ok())
-            .unwrap_or(0)
+            .ok_or(FormatError::InvalidParameter {
+                directive: DirectiveKind::BracketOpen,
+            })?
     };
     let selected_branch = branches
         .get(selected)

@@ -104,6 +104,16 @@ fn covers_compound_edges_and_argument_errors() {
         run("~[zero~;one~]", &[Word::fixnum(9)], &mut ctx, &runtime),
         ""
     );
+    assert!(
+        execute(
+            &crate::parse("~[zero~;one~]").unwrap(),
+            &[one],
+            &mut ctx,
+            &runtime,
+            &mut StringSink::new(),
+        )
+        .is_err()
+    );
     assert_eq!(run("~{~A,~}", &[list], &mut ctx, &runtime), "one,two,");
     assert_eq!(run("~{~A~}", &[Word::NIL], &mut ctx, &runtime), "");
     assert_eq!(run("~:(Hi~)", &[], &mut ctx, &runtime), "Hi");
@@ -191,6 +201,24 @@ fn covers_value_formats_and_invalid_inputs() {
             &runtime
         ),
         "255/11111111/377/FF/FF"
+    );
+    assert_eq!(
+        run(
+            "~:D/~@D/~:B/~@X",
+            [123_456, 12, 0b10_1101, 255].map(Word::fixnum).as_slice(),
+            &mut ctx,
+            &runtime
+        ),
+        "123,456/+12/101,101/+FF"
+    );
+    assert_eq!(
+        run(
+            "~2,,'_,2:D",
+            [123_456].map(Word::fixnum).as_slice(),
+            &mut ctx,
+            &runtime
+        ),
+        "12_34_56"
     );
     let float = make_double(&mut ctx, &runtime, 12.345)
         .expect("float")

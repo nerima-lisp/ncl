@@ -1001,7 +1001,12 @@ fn array_properties_and_dimensions_cover_simple_vector_and_fill_pointer_paths()
         call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[array])?,
         Word::TRUE
     );
-    let adjusted = call(&runtime, &mut ctx, "ADJUST-ARRAY", &[array, Word::fixnum(4)])?;
+    let adjusted = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[array, Word::fixnum(4)],
+    )?;
     assert_eq!(
         call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[adjusted])?,
         Word::fixnum(4)
@@ -1033,12 +1038,7 @@ fn sbit_setter_covers_successful_mutation_path() -> Result<(), ObjectError> {
         Word::fixnum(1)
     );
     assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SBIT",
-            &[source, Word::fixnum(1)]
-        )?,
+        call(&runtime, &mut ctx, "SBIT", &[source, Word::fixnum(1)])?,
         Word::fixnum(1)
     );
     Ok(())

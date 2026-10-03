@@ -68,7 +68,9 @@ fn malformed_expander(
         })
 }
 
-fn expect_type_error<T: std::fmt::Debug>(result: &Result<T, ObjectError>) -> Result<(), ObjectError> {
+fn expect_type_error<T: std::fmt::Debug>(
+    result: &Result<T, ObjectError>,
+) -> Result<(), ObjectError> {
     if matches!(result, Err(ObjectError::TypeError)) {
         Ok(())
     } else {
@@ -370,18 +372,9 @@ fn setf_expansion_support_rejects_invalid_shapes_and_arguments() -> Result<(), O
         &registry,
         &[malformed_place, Word::fixnum(1)],
     ))?;
-    let symbol_place_expansion = expand_setf(
-        &mut ctx,
-        &runtime,
-        &registry,
-        &[place, Word::fixnum(1)],
-    )?;
-    named(
-        &mut ctx,
-        &runtime,
-        symbol_place_expansion,
-        "PROGN",
-    )?;
+    let symbol_place_expansion =
+        expand_setf(&mut ctx, &runtime, &registry, &[place, Word::fixnum(1)])?;
+    named(&mut ctx, &runtime, symbol_place_expansion, "PROGN")?;
 
     let invalid_store_count = SetfExpansion {
         temporary_variables: Vec::new(),
@@ -433,8 +426,14 @@ fn setf_arity_and_registry_boundaries_return_the_exact_error() -> Result<(), Obj
     let mut other_ctx = ThreadContext::new();
     other_ctx.register(&other_runtime)?;
     let other_place = symbol(&mut other_ctx, &other_runtime, "PLACE")?;
-    assert_eq!( // check-added-lines: allow(panic) exact registry error assertion.
-        expand_setf(&mut other_ctx, &other_runtime, &registry, &[other_place, other_place]),
+    assert_eq!(
+        // check-added-lines: allow(panic) exact registry error assertion.
+        expand_setf(
+            &mut other_ctx,
+            &other_runtime,
+            &registry,
+            &[other_place, other_place]
+        ),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -451,8 +450,26 @@ fn setf_rotation_matrix_preserves_sources_and_emits_complete_shapes() -> Result<
     let second = symbol(&mut ctx, &runtime, "SECOND")?;
     let replacement = symbol(&mut ctx, &runtime, "REPLACEMENT")?;
     let cases = vec![
-        (expand_shiftf as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, vec![first, second, replacement]),
-        (expand_rotatef as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, vec![first, second]),
+        (
+            expand_shiftf
+                as fn(
+                    &mut ThreadContext,
+                    &Runtime,
+                    &PlaceRegistry,
+                    &[Word],
+                ) -> Result<Word, ObjectError>,
+            vec![first, second, replacement],
+        ),
+        (
+            expand_rotatef
+                as fn(
+                    &mut ThreadContext,
+                    &Runtime,
+                    &PlaceRegistry,
+                    &[Word],
+                ) -> Result<Word, ObjectError>,
+            vec![first, second],
+        ),
     ];
     for (expand, arguments) in cases {
         let expanded = expand(&mut ctx, &runtime, &registry, &arguments)?;
@@ -470,7 +487,8 @@ fn setf_rotation_matrix_preserves_sources_and_emits_complete_shapes() -> Result<
 }
 
 #[test]
-fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Result<(), ObjectError> {
+fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Result<(), ObjectError>
+{
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
@@ -479,7 +497,16 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
     let place = symbol(&mut ctx, &runtime, "PLACE")?;
 
     let default_cases = [
-        (expand_incf as fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>, "+"),
+        (
+            expand_incf
+                as fn(
+                    &mut ThreadContext,
+                    &Runtime,
+                    &PlaceRegistry,
+                    &[Word],
+                ) -> Result<Word, ObjectError>,
+            "+",
+        ),
         (expand_decf, "-"),
     ];
     for (expand, operator) in default_cases {
@@ -489,18 +516,19 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
         let bindings = elements(&mut ctx, outer[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
         let binding = elements(&mut ctx, bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
         let arithmetic = elements(&mut ctx, binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
-        assert_eq!( // check-added-lines: allow(panic) exact arithmetic expansion assertion.
+        assert_eq!(
+            // check-added-lines: allow(panic) exact arithmetic expansion assertion.
             arithmetic,
-            vec![symbol(&mut ctx, &runtime, operator)?, place, Word::fixnum(1)]
+            vec![
+                symbol(&mut ctx, &runtime, operator)?,
+                place,
+                Word::fixnum(1)
+            ]
         );
     }
 
-    type Expander = fn(
-        &mut ThreadContext,
-        &Runtime,
-        &PlaceRegistry,
-        &[Word],
-    ) -> Result<Word, ObjectError>;
+    type Expander =
+        fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>;
     let error_cases: [(&str, Expander, Vec<Word>); 7] = [
         ("SETF", expand_setf, vec![place]),
         ("PSETF", expand_psetf, vec![place]),
@@ -511,7 +539,8 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
         ("REMF", expand_remf, vec![place]),
     ];
     for (name, expand, arguments) in error_cases {
-        assert_eq!( // check-added-lines: allow(panic) exact malformed argument assertion.
+        assert_eq!(
+            // check-added-lines: allow(panic) exact malformed argument assertion.
             expand(&mut ctx, &runtime, &registry, &arguments),
             Err(ObjectError::TypeError),
             "{name} malformed arguments"
@@ -520,15 +549,22 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
 
     let unknown_operator = symbol(&mut ctx, &runtime, "UNKNOWN-PLACE")?;
     let unknown = list(&mut ctx, &runtime, &[unknown_operator, place])?;
-    assert_eq!( // check-added-lines: allow(panic) exact unknown place assertion.
+    assert_eq!(
+        // check-added-lines: allow(panic) exact unknown place assertion.
         expand_setf(&mut ctx, &runtime, &registry, &[unknown, place]),
         Err(ObjectError::UndefinedFunction)
     );
 
     let other_runtime = Runtime::new()?;
     let other_registry = PlaceRegistry::new(&other_runtime);
-    assert_eq!( // check-added-lines: allow(panic) exact registry ownership assertion.
-        expand_setf(&mut ctx, &runtime, &other_registry, &[place, Word::fixnum(1)]),
+    assert_eq!(
+        // check-added-lines: allow(panic) exact registry ownership assertion.
+        expand_setf(
+            &mut ctx,
+            &runtime,
+            &other_registry,
+            &[place, Word::fixnum(1)]
+        ),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -556,7 +592,8 @@ fn pushnew_and_rotate_expansions_preserve_their_complete_forms() -> Result<(), O
     let pushnew_bindings = elements(&mut ctx, pushnew_parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
     let pushnew_binding = elements(&mut ctx, pushnew_bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
     let adjoin = elements(&mut ctx, pushnew_binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
-    assert_eq!( // check-added-lines: allow(panic) exact expansion assertion.
+    assert_eq!(
+        // check-added-lines: allow(panic) exact expansion assertion.
         adjoin,
         vec![
             symbol(&mut ctx, &runtime, "ADJOIN")?,

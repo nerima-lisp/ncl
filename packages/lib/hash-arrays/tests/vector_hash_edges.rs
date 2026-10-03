@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use ncl_object::{make_cons, FunctionObject, ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{FunctionObject, ObjectError, Runtime, ThreadContext, Word, make_cons};
 
 fn call(
     runtime: &Runtime,

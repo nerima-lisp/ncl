@@ -75,8 +75,8 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
 }
 
 #[test]
-fn registered_place_expanders_emit_their_concrete_access_and_store_operators(
-) -> Result<(), ObjectError> {
+fn registered_place_expanders_emit_their_concrete_access_and_store_operators()
+-> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     registry_with_builtins(&runtime, &mut ctx)?;
@@ -122,13 +122,15 @@ fn registered_place_expanders_emit_their_concrete_access_and_store_operators(
 
     for (name, expand, args, access_name, store_name) in cases {
         let expansion = expand(&mut ctx, &runtime, &args)?;
-        assert_eq!( // check-added-lines: allow(panic,index) exact access operator assertion.
+        assert_eq!(
+            // check-added-lines: allow(panic,index) exact access operator assertion.
             elements(&mut ctx, expansion.access_form)?[0],
             symbol(&mut ctx, &runtime, access_name)?,
             "{name} access"
         );
         let store = elements(&mut ctx, expansion.store_form)?;
-        assert_eq!( // check-added-lines: allow(panic,index) exact store operator assertion.
+        assert_eq!(
+            // check-added-lines: allow(panic,index) exact store operator assertion.
             store[0],
             symbol(&mut ctx, &runtime, store_name)?,
             "{name} store"

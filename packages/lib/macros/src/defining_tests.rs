@@ -58,7 +58,8 @@ fn malformed_definition_is_rejected() -> Result<(), ObjectError> {
     let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
     let form = list(&mut ctx, &runtime, &[operator])?;
     let mut values = ncl_object::MultipleValues::new();
-    assert_eq!( // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        // check-added-lines: allow(panic) test asserts the exact rejection.
         defun(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );
@@ -73,7 +74,8 @@ fn malformed_lambda_list_is_rejected() -> Result<(), ObjectError> {
     let bad_lambda_list = symbol(&mut ctx, &runtime, "ARGS")?;
     let form = list(&mut ctx, &runtime, &[operator, name, bad_lambda_list])?;
     let mut values = ncl_object::MultipleValues::new();
-    assert_eq!( // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        // check-added-lines: allow(panic) test asserts the exact rejection.
         defun(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );
@@ -86,7 +88,8 @@ fn malformed_function_definition_name_is_rejected() -> Result<(), ObjectError> {
     let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
     let form = list(&mut ctx, &runtime, &[operator, Word::TRUE, Word::NIL])?;
     let mut values = ncl_object::MultipleValues::new();
-    assert_eq!( // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        // check-added-lines: allow(panic) test asserts the exact rejection.
         defun(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );
@@ -100,7 +103,8 @@ fn malformed_macro_definition_is_rejected() -> Result<(), ObjectError> {
     let name = symbol(&mut ctx, &runtime, "M")?;
     let form = list(&mut ctx, &runtime, &[operator, name])?;
     let mut values = ncl_object::MultipleValues::new();
-    assert_eq!( // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        // check-added-lines: allow(panic) test asserts the exact rejection.
         defmacro(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );
@@ -116,7 +120,8 @@ fn malformed_whole_lambda_list_is_rejected() -> Result<(), ObjectError> {
     let lambda_list = list(&mut ctx, &runtime, &[whole])?;
     let form = list(&mut ctx, &runtime, &[operator, name, lambda_list])?;
     let mut values = ncl_object::MultipleValues::new();
-    assert_eq!( // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        // check-added-lines: allow(panic) test asserts the exact rejection.
         defmacro(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );

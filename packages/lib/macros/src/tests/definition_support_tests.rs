@@ -10,8 +10,8 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
 }
 
 #[test]
-fn function_definition_builtins_return_functions_and_reject_bad_designators(
-) -> Result<(), ObjectError> {
+fn function_definition_builtins_return_functions_and_reject_bad_designators()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let car = crate::symbol(&mut ctx, &runtime, "FDEFINITION")?;
     let not_symbol = Word::fixnum(1);
@@ -105,8 +105,8 @@ fn set_definition_and_macro_function_update_symbol_cells() -> Result<(), ObjectE
 }
 
 #[test]
-fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties(
-) -> Result<(), ObjectError> {
+fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = crate::symbol(&mut ctx, &runtime, "PROPERTY-HOLDER")?;
     let key = crate::symbol(&mut ctx, &runtime, "KEY")?;

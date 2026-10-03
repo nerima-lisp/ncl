@@ -676,12 +676,7 @@ fn hash_table_options_and_accessors_reject_invalid_arguments() -> Result<(), Obj
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[test, invalid_test],
-        ),
+        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test, invalid_test],),
         Err(ObjectError::TypeError)
     );
     assert_eq!(

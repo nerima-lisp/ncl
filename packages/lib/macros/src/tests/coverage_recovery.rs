@@ -54,8 +54,8 @@ fn assert_same_form(
 }
 
 #[test]
-fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms(
-) -> Result<(), ObjectError> {
+fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let body = named(&mut ctx, &runtime, "BODY")?;
     let handler = named(&mut ctx, &runtime, "HANDLER")?;
@@ -159,8 +159,8 @@ fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms(
 }
 
 #[test]
-fn restart_expanders_preserve_all_option_aliases_and_reject_incomplete_clauses(
-) -> Result<(), ObjectError> {
+fn restart_expanders_preserve_all_option_aliases_and_reject_incomplete_clauses()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let restart = named(&mut ctx, &runtime, "RESTART")?;
     let function = named(&mut ctx, &runtime, "FUNCTION")?;
@@ -338,12 +338,14 @@ fn define_condition_expands_slots_accessors_and_report_option() -> Result<(), Ob
         symbol(&mut ctx, &runtime, "NCL-EXT::DEFINE-CONDITION-CLASS")?
     );
     let defun = symbol(&mut ctx, &runtime, "DEFUN")?;
-    assert!(parts[2..]
-        .iter()
-        .map(|part| elements(&mut ctx, *part))
-        .collect::<Result<Vec<_>, _>>()?
-        .iter()
-        .any(|part| part.first() == Some(&defun)));
+    assert!(
+        parts[2..]
+            .iter()
+            .map(|part| elements(&mut ctx, *part))
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .any(|part| part.first() == Some(&defun))
+    );
     Ok(())
 }
 
@@ -374,8 +376,8 @@ fn define_condition_rejects_missing_arguments_and_malformed_slot_lists() -> Resu
 }
 
 #[test]
-fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords(
-) -> Result<(), ObjectError> {
+fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -429,8 +431,8 @@ fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords(
 }
 
 #[test]
-fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings(
-) -> Result<(), ObjectError> {
+fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
@@ -554,8 +556,8 @@ fn destructuring_key_and_marker_errors_are_reported() -> Result<(), ObjectError>
 }
 
 #[test]
-fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly(
-) -> Result<(), ObjectError> {
+fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -612,8 +614,8 @@ fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly(
 }
 
 #[test]
-fn destructuring_key_supplied_p_and_custom_keyword_expand_to_lookup_guards(
-) -> Result<(), ObjectError> {
+fn destructuring_key_supplied_p_and_custom_keyword_expand_to_lookup_guards()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -754,8 +756,8 @@ fn multiple_value_helpers_capture_and_flatten_list_arguments() -> Result<(), Obj
 }
 
 #[test]
-fn quasiquote_expansion_handles_direct_splicing_nested_markers_and_bad_arity(
-) -> Result<(), ObjectError> {
+fn quasiquote_expansion_handles_direct_splicing_nested_markers_and_bad_arity()
+-> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
     let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;

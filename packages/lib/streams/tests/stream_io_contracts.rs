@@ -142,8 +142,8 @@ fn file_policies_io_and_metadata_match_observable_contents() {
     let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
     let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
     let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
-    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
     let file_length = builtin(&runtime, &mut ctx, "FILE-LENGTH");
+    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
     let file_string_length = builtin(&runtime, &mut ctx, "FILE-STRING-LENGTH");
     let stream_p = builtin(&runtime, &mut ctx, "STREAMP");
     let input_p = builtin(&runtime, &mut ctx, "INPUT-STREAM-P");

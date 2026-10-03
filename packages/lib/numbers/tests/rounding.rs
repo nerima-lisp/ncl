@@ -336,6 +336,40 @@ fn rounding_ties_negative_divisors_and_bignum_ratios_have_exact_results() {
 }
 
 #[test]
+fn rounding_ratio_divisors_preserve_signed_exact_remainders() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(-7), Word::fixnum(3))
+        .unwrap()
+        .into();
+    let divisor = ncl_object::make_ratio(&mut ctx, &runtime, Word::fixnum(-2), Word::fixnum(5))
+        .unwrap()
+        .into();
+
+    for (name, quotient, numerator, denominator) in [
+        ("FLOOR", 5, -1, 3),
+        ("CEILING", 6, 1, 15),
+        ("TRUNCATE", 5, -1, 3),
+        ("ROUND", 6, 1, 15),
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[value, divisor]).unwrap();
+        assert_eq!(integer(&ctx, result), quotient, "{name} quotient");
+        let remainder = ctx.values()[1];
+        let ObjectRef::Ratio(remainder) = classify_object(&ctx, remainder) else {
+            panic!("{name} remainder must remain an exact ratio");
+        };
+        let remainder = ncl_object::Ratio::from_word(remainder);
+        assert_eq!(
+            integer(&ctx, ratio_numerator(&ctx, remainder).unwrap()),
+            numerator
+        );
+        assert_eq!(
+            integer(&ctx, ratio_denominator(&ctx, remainder).unwrap()),
+            denominator
+        );
+    }
+}
+
+#[test]
 fn float_rounding_returns_ansi_quotients_and_remainders() {
     let (runtime, mut ctx) = setup();
     let value = ncl_object::make_double(&mut ctx, &runtime, 7.0)

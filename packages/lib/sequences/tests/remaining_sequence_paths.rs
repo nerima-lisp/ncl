@@ -5,7 +5,9 @@
     clippy::unwrap_used
 )]
 
-use ncl_object::{FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word};
+use ncl_object::{
+    FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word, make_simple_vector,
+};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -732,6 +734,15 @@ fn destructive_filters_and_predicate_selection_honor_ranges_and_types() {
     );
     assert_eq!(
         call(&runtime, &mut ctx, "REPLACE", &[vector, Word::fixnum(9),]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL", &[text, Word::fixnum(9)],),
+        Err(ObjectError::TypeError)
+    );
+    let integer_source = make_simple_vector(&mut ctx, &runtime, &[one, two]).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, "REPLACE", &[text, integer_source]),
         Err(ObjectError::TypeError)
     );
 }

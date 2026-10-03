@@ -263,6 +263,20 @@ fn ratio_multiplication_and_division_combine_numerators_and_denominators() {
 }
 
 #[test]
+fn signed_ratio_arithmetic_reduces_exact_cross_products() {
+    let (runtime, mut ctx) = setup();
+    let left = make_ratio(&mut ctx, &runtime, Word::fixnum(-3), Word::fixnum(10))
+        .unwrap()
+        .into();
+    let right = make_ratio(&mut ctx, &runtime, Word::fixnum(25), Word::fixnum(-9))
+        .unwrap()
+        .into();
+
+    assert_ratio(&runtime, &mut ctx, "*", &[left, right], 5, 6);
+    assert_ratio(&runtime, &mut ctx, "/", &[left, right], 27, 250);
+}
+
+#[test]
 fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     let (runtime, mut ctx) = setup();
     let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))

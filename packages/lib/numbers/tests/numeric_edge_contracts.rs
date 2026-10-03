@@ -2,8 +2,8 @@
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
-    make_ratio,
+    classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128, make_complex,
+    make_double, make_ratio,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -537,5 +537,180 @@ fn predicates_and_comparisons_cover_numeric_kinds_and_chain_failures() {
         )
         .unwrap(),
         Word::fixnum(2)
+    );
+}
+
+#[test]
+fn random_contracts_cover_zero_wide_and_default_state_paths() {
+    let (runtime, mut ctx) = setup();
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(1)]),
+        Ok(Word::fixnum(0))
+    );
+    let wide_limit = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 62)
+        .unwrap()
+        .into();
+    let wide_result = call(&runtime, &mut ctx, "RANDOM", &[wide_limit]).unwrap();
+    assert!((0..(1_i128 << 62)).contains(&integer(&ctx, wide_result)));
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[]).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(10), state]),
+        Ok(Word::fixnum(2))
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM-STATE-P", &[Word::TRUE]),
+        Ok(Word::NIL)
+    );
+}
+
+#[test]
+fn byte_contracts_reject_bad_spec_types_arities_and_layout_boundaries() {
+    let (runtime, mut ctx) = setup();
+    let empty = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(0), Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(empty, Word::fixnum(0));
+    assert_integer_call(&runtime, &mut ctx, "LDB", &[empty, Word::fixnum(-1)], 0);
+    assert_eq!(
+        call(&runtime, &mut ctx, "LDB-TEST", &[empty, Word::fixnum(-1)]),
+        Ok(Word::NIL)
+    );
+
+    for args in [
+        vec![],
+        vec![Word::fixnum(1)],
+        vec![Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        vec![Word::TRUE, Word::fixnum(0)],
+        vec![Word::fixnum(1), Word::TRUE],
+        vec![Word::fixnum(-1), Word::fixnum(0)],
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, "BYTE", &args),
+            Err(ObjectError::TypeError),
+            "BYTE args: {args:?}"
+        );
+    }
+    let oversized = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(128), Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, "LDB", &[oversized, Word::fixnum(1)]),
+        Err(ObjectError::Layout)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "BYTE",
+            &[Word::fixnum(i64::MAX), Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "DPB", &[Word::fixnum(1), empty]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn bit_logic_contracts_report_invalid_opcodes_and_shift_failures() {
+    let (runtime, mut ctx) = setup();
+    let a = Word::fixnum(0b1100);
+    let b = Word::fixnum(0b1010);
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(16), a, b]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::TRUE, a, b]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(6), a]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(126)],
+        )
+        .map(|value| integer(&ctx, value)),
+        Ok(1_i128 << 126)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(127)],
+        )
+        .map(|value| integer(&ctx, value)),
+        Ok(1_i128 << 127)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(128)],
+        ),
+        Err(ObjectError::Layout)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(-129)],
+        ),
+        Err(ObjectError::Layout)
+    );
+}
+
+#[test]
+fn eql_contracts_reject_numeric_type_mismatches_without_coercion() {
+    let (runtime, mut ctx) = setup();
+    let ratio_value = ratio(&mut ctx, &runtime, 1, 1);
+    let float_value = make_double(&mut ctx, &runtime, 1.0).unwrap().into();
+    let complex_value = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(0))
+        .unwrap()
+        .into();
+
+    for (left, right) in [
+        (Word::fixnum(1), ratio_value),
+        (Word::fixnum(1), float_value),
+        (ratio_value, float_value),
+        (float_value, complex_value),
+        (Word::fixnum(1), Word::TRUE),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, "EQL", &[left, right]),
+            Ok(Word::NIL),
+            "EQL must preserve type identity for {left:?} and {right:?}"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQL", &[ratio_value, ratio_value]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQL", &[complex_value, complex_value]),
+        Ok(Word::TRUE)
     );
 }

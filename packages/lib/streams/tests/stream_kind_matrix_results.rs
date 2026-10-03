@@ -148,6 +148,65 @@ fn data_stream_operations_return_bytes_positions_and_eof_values() {
 }
 
 #[test]
+fn data_stream_position_setter_rejects_out_of_range_negative_and_non_integer_values() {
+    let (runtime, mut ctx) = setup();
+    let file_position = builtin(&runtime, &mut ctx, "FILE-POSITION");
+    let stream = data_stream(&runtime, &mut ctx, b"AB");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream, Word::fixnum(3)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream, Word::fixnum(-1)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, file_position, &[stream, Word::TRUE]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn file_byte_operations_report_type_errors_for_wrong_stream_kinds() {
+    let (runtime, mut ctx) = setup();
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let read_byte = builtin(&runtime, &mut ctx, "READ-BYTE");
+    let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
+    let direction = symbol(&runtime, &mut ctx, "DIRECTION");
+    let input = symbol(&runtime, &mut ctx, "INPUT");
+    let output = symbol(&runtime, &mut ctx, "OUTPUT");
+    let path = std::env::temp_dir().join(format!(
+        "ncl-streams-file-byte-type-errors-{}",
+        std::process::id()
+    ));
+    std::fs::write(&path, b"A").unwrap();
+    let path_word = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &path.to_string_lossy().chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+
+    let input_stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, input])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, write_byte, &[Word::fixnum(1), input_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let output_stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, output])
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, read_byte, &[output_stream]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn standard_stream_operations_report_directions_metadata_and_wrong_kinds() {
     let (runtime, mut ctx) = setup();
     let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");

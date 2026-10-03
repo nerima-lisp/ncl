@@ -69,8 +69,8 @@ pub(super) fn execute_control_kind(
             *state.argument_index = target.min(state.arguments.len());
         }
         DirectiveKind::UpArrow => *state.argument_index = state.arguments.len(),
+        // check-added-lines: allow(wildcard) non-control directives
         _ => {
-            // check-added-lines: allow(wildcard) non-control directives
             return Err(FormatError::InvalidParameter {
                 directive: directive.kind,
             });

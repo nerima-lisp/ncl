@@ -22,8 +22,8 @@ pub(super) fn execute_value_kind(
             return execute_float_directive(directive, state);
         }
         DirectiveKind::Dollar => return execute_currency_directive(directive, state),
+        // check-added-lines: allow(wildcard) non-value directives
         _ => {
-            // check-added-lines: allow(wildcard) non-value directives
             return Err(FormatError::InvalidParameter {
                 directive: directive.kind,
             });

@@ -140,10 +140,7 @@ fn expand_defined_setf(
     if temporary_variables.len() != arguments.len() || store_variables.len() != 1 {
         return Err(ObjectError::TypeError);
     }
-    for variable in temporary_variables
-        .iter()
-        .chain(store_variables.iter())
-    {
+    for variable in temporary_variables.iter().chain(store_variables.iter()) {
         symbol_name(ctx, *variable)?;
     }
     let access_form = ncl_object::with_roots(ctx, &temporary_variables, |ctx, roots| {

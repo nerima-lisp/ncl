@@ -65,7 +65,8 @@
                          (setf *load-failed* t)
                          (push (list file :failed) *load-results*)
                          (return-from load-file :failed))))
-        (load (merge-pathnames file *misc-dir*)))
+        ;; The fixed cl-bench layout is a relative namestring accepted by LOAD.
+        (load (concatenate 'string *misc-dir* file)))
       (push (list file :loaded
                   (elapsed-seconds start (get-internal-real-time)))
             *load-results*)

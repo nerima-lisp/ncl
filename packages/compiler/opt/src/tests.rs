@@ -103,7 +103,7 @@ fn generated_lambda_with_load_arg_is_not_inlined() -> Result<(), String> {
     let callee = callee_builder.finish();
 
     // check-added-lines: allow(panic) this regression test asserts the prohibition contract
-    assert_eq!(InlineDirectCalls::prohibited(&callee), true);
+    assert!(InlineDirectCalls::prohibited(&callee));
     Ok(())
 }
 

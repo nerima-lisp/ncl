@@ -129,7 +129,7 @@ fn defgeneric_expansion_has_exact_progn_shape_and_quoted_result() {
 }
 
 #[test]
-fn defmethod_rejects_rest_next_forms_with_a_type_error() {
+fn defmethod_accepts_rest_next_forms_and_returns_expansion() {
     let (runtime, mut context) = setup();
     let defmethod = intern(&mut context, &runtime, COMMON_LISP, "DEFMETHOD");
     let name = intern(
@@ -154,10 +154,15 @@ fn defmethod_rejects_rest_next_forms_with_a_type_error() {
         &[defmethod, name, specializer, quoted_value, call_next_form],
     );
 
-    let error = call_macro(&mut context, &runtime, "DEFMETHOD", form)
-        .expect_err("rest specializer must be rejected");
-    assert_eq!(error, ObjectError::TypeError);
-    assert_eq!(error.to_string(), "TypeError");
+    let expansion =
+        call_macro(&mut context, &runtime, "DEFMETHOD", form).expect("rest method expansion");
+    let values = elements(&context, expansion).expect("defmethod progn expansion");
+    assert_eq!(values.len(), 5);
+    assert_eq!(values[0], intern(&mut context, &runtime, COMMON_LISP, "PROGN"));
+    assert_eq!(
+        elements(&context, values[4]).expect("quoted method name"),
+        vec![intern(&mut context, &runtime, COMMON_LISP, "QUOTE"), name]
+    );
 }
 
 #[test]

@@ -201,7 +201,6 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
         }))
     }
 }
-
 fn parse_sequence_for(
     ctx: &ThreadContext,
     input: &[Word],

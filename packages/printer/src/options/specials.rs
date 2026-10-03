@@ -124,3 +124,69 @@ pub(super) fn case_special(
         _ => fallback,
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::{
+        NonNegative, SpecialValue, base_special, bool_special, case_special, length_special,
+        special_value,
+    };
+    use crate::{PrintBase, PrintCase};
+    use ncl_object::{Package, Runtime, ThreadContext, Word, set_symbol_special, set_symbol_value};
+
+    fn set(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, value: Word) {
+        let package = runtime.find_package(ctx, "COMMON-LISP").unwrap();
+        let symbol = Package::from_word(package)
+            .intern(ctx, runtime, name)
+            .unwrap()
+            .0;
+        set_symbol_special(ctx, symbol, true).unwrap();
+        set_symbol_value(ctx, symbol, value).unwrap();
+    }
+
+    #[test]
+    fn special_values_cover_fallback_and_typed_paths() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        set(&runtime, &mut ctx, "*PRINT-BASE*", Word::fixnum(16));
+        assert_eq!(
+            special_value(&mut ctx, &runtime, "*PRINT-BASE*"),
+            Some(SpecialValue::Fixnum(16))
+        );
+        assert_eq!(
+            base_special(&mut ctx, &runtime, PrintBase::new(10).unwrap()).get(),
+            16
+        );
+        set(&runtime, &mut ctx, "*PRINT-LENGTH*", Word::fixnum(3));
+        assert_eq!(
+            length_special(&mut ctx, &runtime, "*PRINT-LENGTH*").map(NonNegative::get),
+            Some(3)
+        );
+        set(&runtime, &mut ctx, "*PRINT-ESCAPE*", Word::NIL);
+        assert!(!bool_special(&mut ctx, &runtime, "*PRINT-ESCAPE*", true));
+        set(&runtime, &mut ctx, "*PRINT-ESCAPE*", Word::TRUE);
+        assert!(bool_special(&mut ctx, &runtime, "*PRINT-ESCAPE*", false));
+    }
+
+    #[test]
+    fn special_case_accepts_named_symbols_and_rejects_invalid_values() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        set(&runtime, &mut ctx, "*PRINT-CASE*", Word::fixnum(1));
+        assert_eq!(
+            case_special(&mut ctx, &runtime, PrintCase::Upcase),
+            PrintCase::Upcase
+        );
+        set(&runtime, &mut ctx, "*PRINT-CASE*", Word::fixnum(1));
+        assert_eq!(
+            case_special(&mut ctx, &runtime, PrintCase::Capitalize),
+            PrintCase::Capitalize
+        );
+    }
+}

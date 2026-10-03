@@ -1,5 +1,9 @@
 use std::fmt;
 
+#[cfg(test)]
+#[path = "error_coverage_tests.rs"]
+mod coverage_tests;
+
 /// Errors produced while encoding or validating an object artifact.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ObjectError {

@@ -19,3 +19,6 @@ impl Display for ParseError {
 impl Error for ParseError {}
 
 pub use parser::parse;
+
+#[cfg(test)]
+mod tests;

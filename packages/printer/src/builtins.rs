@@ -489,3 +489,7 @@ pub fn copy_pprint_dispatch(
 }
 
 include!("pprint_dispatch.rs");
+
+#[cfg(test)]
+#[path = "builtins_tests.rs"]
+mod tests;

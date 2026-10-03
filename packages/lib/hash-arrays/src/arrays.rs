@@ -424,3 +424,7 @@ use bit::{
 mod register;
 mod vector;
 pub use register::register;
+
+#[cfg(test)]
+#[path = "arrays/tests.rs"]
+mod tests;

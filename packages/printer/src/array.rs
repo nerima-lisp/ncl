@@ -94,3 +94,45 @@ impl Printer<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::super::{PrintOptions, StringSink, write};
+    use ncl_object::{
+        ArrayElementType, ArrayOptions, Runtime, ThreadContext, Word, make_array,
+        make_simple_vector,
+    };
+
+    #[test]
+    fn empty_arrays_and_vector_limits_have_asserted_output() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let vector = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+        let mut sink = StringSink::new();
+        write(&mut ctx, &runtime, vector, &mut sink, &PrintOptions::new()).unwrap();
+        assert_eq!(sink.into_string(), "#()");
+
+        let array = make_array(
+            &mut ctx,
+            &runtime,
+            &[0],
+            ArrayOptions {
+                element_type: ArrayElementType::T,
+                initial_element: Word::NIL,
+                adjustable: false,
+                fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )
+        .unwrap();
+        let mut sink = StringSink::new();
+        write(&mut ctx, &runtime, array, &mut sink, &PrintOptions::new()).unwrap();
+        assert_eq!(sink.into_string(), "#()");
+    }
+}

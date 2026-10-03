@@ -35,7 +35,11 @@ fn call_macro(
     )
 }
 
-fn assert_same_form(ctx: &mut ThreadContext, actual: Word, expected: Word) -> Result<(), ObjectError> {
+fn assert_same_form(
+    ctx: &mut ThreadContext,
+    actual: Word,
+    expected: Word,
+) -> Result<(), ObjectError> {
     let actual_parts = elements(ctx, actual)?;
     let expected_parts = elements(ctx, expected)?;
     assert_eq!(actual_parts.len(), expected_parts.len());
@@ -150,6 +154,69 @@ fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
     assert_eq!(
         elements(&mut ctx, expanded)?[0],
         named(&mut ctx, &runtime, "MULTIPLE-VALUE-CALL")?
+    );
+    Ok(())
+}
+
+#[test]
+fn restart_expanders_preserve_all_option_aliases_and_reject_incomplete_clauses()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let restart = named(&mut ctx, &runtime, "RESTART")?;
+    let function = named(&mut ctx, &runtime, "FUNCTION")?;
+    let report = named(&mut ctx, &runtime, "REPORT")?;
+    let interactive = named(&mut ctx, &runtime, "INTERACTIVE")?;
+    let test = named(&mut ctx, &runtime, "TEST")?;
+    let report_value = named(&mut ctx, &runtime, "REPORT-VALUE")?;
+    let interactive_value = named(&mut ctx, &runtime, "INTERACTIVE-VALUE")?;
+    let test_value = named(&mut ctx, &runtime, "TEST-VALUE")?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let clause = list_of(
+        &mut ctx,
+        &runtime,
+        &[
+            restart,
+            function,
+            report,
+            report_value,
+            interactive,
+            interactive_value,
+            test,
+            test_value,
+            body,
+        ],
+    )?;
+    let clauses = list_of(&mut ctx, &runtime, &[clause])?;
+    let restart_bind_name = named(&mut ctx, &runtime, "RESTART-BIND")?;
+    let bind = list_of(&mut ctx, &runtime, &[restart_bind_name, clauses, body])?;
+    let expanded = call_macro(&runtime, &mut ctx, "RESTART-BIND", bind)?;
+    let outer = elements(&mut ctx, expanded)?;
+    assert_eq!(outer[0], named(&mut ctx, &runtime, "LET")?);
+    let binding_list = elements(&mut ctx, outer[1])?;
+    let binding = elements(&mut ctx, binding_list[0])?;
+    let push = elements(&mut ctx, binding[1])?;
+    assert_eq!(push[0], named(&mut ctx, &runtime, "NCL-EXT::PUSH-RESTART")?);
+    assert_eq!(push[3], report_value);
+    assert_eq!(push[4], interactive_value);
+    assert_eq!(push[5], test_value);
+
+    let missing_clause = list_of(&mut ctx, &runtime, &[restart_bind_name])?;
+    let incomplete_restart = list_of(&mut ctx, &runtime, &[restart])?;
+    let incomplete_clauses = list_of(&mut ctx, &runtime, &[incomplete_restart])?;
+    let incomplete_bind = list_of(&mut ctx, &runtime, &[restart_bind_name, incomplete_clauses])?;
+    for malformed in [missing_clause, incomplete_bind] {
+        assert_eq!(
+            call_macro(&runtime, &mut ctx, "RESTART-BIND", malformed),
+            Err(ObjectError::TypeError)
+        );
+    }
+
+    let restart_case_name = named(&mut ctx, &runtime, "RESTART-CASE")?;
+    let empty_case = list_of(&mut ctx, &runtime, &[restart_case_name, body])?;
+    let empty_expansion = call_macro(&runtime, &mut ctx, "RESTART-CASE", empty_case)?;
+    assert_eq!(
+        elements(&mut ctx, empty_expansion)?[0],
+        named(&mut ctx, &runtime, "BLOCK")?
     );
     Ok(())
 }
@@ -780,8 +847,7 @@ fn control_short_expansions_match_the_complete_constructor_shape() -> Result<(),
     for (name, expected_head, expected_tail) in cases {
         let operator = named(&mut ctx, &runtime, name)?;
         let form = match name {
-            "WHEN" | "UNLESS" => list_of(&mut ctx, &runtime, &[operator, test, body])?,
-            "AND" => list_of(&mut ctx, &runtime, &[operator, test, body])?,
+            "WHEN" | "UNLESS" | "AND" => list_of(&mut ctx, &runtime, &[operator, test, body])?,
             "COND" => {
                 let clause = list_of(&mut ctx, &runtime, &[test])?;
                 list_of(&mut ctx, &runtime, &[operator, clause])?
@@ -803,7 +869,8 @@ fn control_short_expansions_match_the_complete_constructor_shape() -> Result<(),
 }
 
 #[test]
-fn quasiquote_constructor_shapes_are_exact_for_atoms_lists_and_vectors() -> Result<(), ObjectError> {
+fn quasiquote_constructor_shapes_are_exact_for_atoms_lists_and_vectors() -> Result<(), ObjectError>
+{
     let (runtime, mut ctx) = fixture()?;
     let op = named(&mut ctx, &runtime, "QUASIQUOTE")?;
     let value = named(&mut ctx, &runtime, "VALUE")?;
@@ -818,10 +885,7 @@ fn quasiquote_constructor_shapes_are_exact_for_atoms_lists_and_vectors() -> Resu
     let expected_list = list_of(&mut ctx, &runtime, &[cons, quote_a, cons_b])?;
     let list_datum = list_of(&mut ctx, &runtime, &[a, b])?;
     let quote_value = list_of(&mut ctx, &runtime, &[quote, value])?;
-    let cases = [
-        (value, quote_value),
-        (list_datum, expected_list),
-    ];
+    let cases = [(value, quote_value), (list_datum, expected_list)];
     for (datum, expected) in cases {
         let form = list_of(&mut ctx, &runtime, &[op, datum])?;
         let expanded = call_macro(&runtime, &mut ctx, "QUASIQUOTE", form)?;
@@ -871,19 +935,11 @@ fn control_expanders_cover_remaining_structural_forms_table_driven() -> Result<(
     let when_form = list_of(&mut ctx, &runtime, &[when, test, body, init])?;
     let unless_form = list_of(&mut ctx, &runtime, &[unless, test, body])?;
     let prog_variable = list_of(&mut ctx, &runtime, &[x, init])?;
-    let prog_variables = list_of(
-        &mut ctx,
-        &runtime,
-        &[prog_variable],
-    )?;
+    let prog_variables = list_of(&mut ctx, &runtime, &[prog_variable])?;
     let prog = named(&mut ctx, &runtime, "PROG")?;
     let prog_form = list_of(&mut ctx, &runtime, &[prog, prog_variables, tag])?;
     let do_variable = list_of(&mut ctx, &runtime, &[x, init, step])?;
-    let do_variables = list_of(
-        &mut ctx,
-        &runtime,
-        &[do_variable],
-    )?;
+    let do_variables = list_of(&mut ctx, &runtime, &[do_variable])?;
     let end_clause = list_of(&mut ctx, &runtime, &[test, body])?;
     let nth_value = named(&mut ctx, &runtime, "NTH-VALUE")?;
     let nth_value_form = list_of(&mut ctx, &runtime, &[nth_value, Word::fixnum(1), body])?;
@@ -905,7 +961,11 @@ fn control_expanders_cover_remaining_structural_forms_table_driven() -> Result<(
 
     let do_star = named(&mut ctx, &runtime, "DO*")?;
     let let_star = named(&mut ctx, &runtime, "LET*")?;
-    let do_star_form = list_of(&mut ctx, &runtime, &[do_star, do_variables, end_clause, tag])?;
+    let do_star_form = list_of(
+        &mut ctx,
+        &runtime,
+        &[do_star, do_variables, end_clause, tag],
+    )?;
     let do_star_expansion = call_macro(&runtime, &mut ctx, "DO*", do_star_form)?;
     let do_star = elements(&mut ctx, do_star_expansion)?;
     let do_star_body = elements(&mut ctx, do_star[2])?;

@@ -164,6 +164,111 @@ fn array_predicates_cover_strings_and_multidimensional_bounds() -> Result<(), Ob
 }
 
 #[test]
+fn array_metadata_and_vector_accessors_return_exact_boundary_values() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let array = make_array(
+        &mut ctx,
+        &runtime,
+        &[2, 3],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(9),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-RANK", &[array])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(0)]
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(1)]
+        )?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[array])?,
+        Word::fixnum(6)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-IN-BOUNDS-P",
+            &[array, Word::fixnum(0)],
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(-1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(2)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let vector = call(&runtime, &mut ctx, "VECTOR", &[Word::fixnum(4)])?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "SVREF", &[vector, Word::fixnum(0)])?,
+        Word::fixnum(4)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "SVREF",
+            &[Word::fixnum(4), Word::fixnum(0)]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ROW-MAJOR-AREF",
+            &[array, Word::fixnum(5)]
+        )?,
+        Word::fixnum(9)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ROW-MAJOR-AREF",
+            &[array, Word::fixnum(6)]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn make_array_accepts_string_and_simple_vector_initial_contents() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
     let initial_contents = keyword(&runtime, &mut ctx, "INITIAL-CONTENTS")?;

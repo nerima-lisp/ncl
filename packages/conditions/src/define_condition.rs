@@ -144,6 +144,7 @@ mod tests {
     #![allow(
         clippy::indexing_slicing,
         clippy::panic,
+        clippy::unwrap_used,
         reason = "coverage tests assert on internal helper results"
     )]
 
@@ -341,12 +342,14 @@ mod tests {
 
         let class = runtime.class(&mut ctx, "CONDITION").unwrap();
         let instance = make_instance(&mut ctx, &runtime, class, &[]).unwrap();
-        assert!(condition_slot_ref_builtin(
-            &mut ctx,
-            &runtime,
-            &BuiltinArgs::new(&[instance.as_word(), Word::fixnum(99)]),
-            &mut values,
-        )
-        .is_err());
+        assert!(
+            condition_slot_ref_builtin(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[instance.as_word(), Word::fixnum(99)]),
+                &mut values,
+            )
+            .is_err()
+        );
     }
 }

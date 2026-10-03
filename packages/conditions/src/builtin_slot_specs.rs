@@ -92,7 +92,10 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "coverage tests assert on installed metadata")]
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on installed metadata"
+    )]
 
     use super::*;
     use crate::class::condition_class;
@@ -112,7 +115,11 @@ mod tests {
             ("UNBOUND-VARIABLE", 1),
         ] {
             let class = condition_class(&mut ctx, &runtime, name).unwrap();
-            assert_eq!(slot_specs(&ctx, class.as_word()).unwrap().len(), length, "{name}");
+            assert_eq!(
+                slot_specs(&ctx, class.as_word()).unwrap().len(),
+                length,
+                "{name}"
+            );
         }
     }
 }

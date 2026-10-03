@@ -268,6 +268,7 @@ fn method_match(
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod helper_tests {
+    #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use ncl_object::{make_cons, make_double, Package};
 

@@ -213,7 +213,10 @@ pub fn cleanup_next_depth(ctx: &ThreadContext, previous: Word) -> Result<Word, O
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "coverage tests assert on record helpers")]
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on record helpers"
+    )]
 
     use super::*;
     use ncl_object::{Runtime, make_simple_vector};
@@ -226,21 +229,33 @@ mod tests {
         let handler = make_simple_vector(
             &mut ctx,
             &runtime,
-            &[HANDLER_TAG, Word::NIL, Word::NIL, Word::NIL, Word::fixnum(4)],
+            &[
+                HANDLER_TAG,
+                Word::NIL,
+                Word::NIL,
+                Word::NIL,
+                Word::fixnum(4),
+            ],
         )
         .unwrap();
         let restart = make_simple_vector(
             &mut ctx,
             &runtime,
-            &[RESTART_TAG, Word::NIL, Word::fixnum(8), Word::NIL, Word::NIL, Word::NIL, handler, Word::fixnum(5)],
+            &[
+                RESTART_TAG,
+                Word::NIL,
+                Word::fixnum(8),
+                Word::NIL,
+                Word::NIL,
+                Word::NIL,
+                handler,
+                Word::fixnum(5),
+            ],
         )
         .unwrap();
-        let cleanup = make_simple_vector(
-            &mut ctx,
-            &runtime,
-            &[Word::NIL, Word::NIL, Word::fixnum(6)],
-        )
-        .unwrap();
+        let cleanup =
+            make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::fixnum(6)])
+                .unwrap();
 
         assert_eq!(cluster_next_depth(&ctx, Word::NIL), Ok(Word::fixnum(1)));
         assert_eq!(cluster_record_depth(&ctx, handler), Ok(4));

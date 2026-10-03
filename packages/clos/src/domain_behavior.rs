@@ -215,6 +215,7 @@ impl GenericFunction {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]

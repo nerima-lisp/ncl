@@ -213,7 +213,10 @@ pub fn unwind(ctx: &mut ThreadContext) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "coverage tests assert on restart helpers")]
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on restart helpers"
+    )]
 
     use super::*;
     use ncl_object::make_string;
@@ -243,10 +246,16 @@ mod tests {
 
         assert_eq!(token.as_word(), restart.as_word());
         assert_eq!(restart_name(&ctx, token.as_word()), Ok(name));
-        assert_eq!(invoke_restart_by_name(&mut ctx, name, &[]), Ok(Word::fixnum(7)));
+        assert_eq!(
+            invoke_restart_by_name(&mut ctx, name, &[]),
+            Ok(Word::fixnum(7))
+        );
         assert!(ctx.take_non_local_exit());
         let missing = make_string(&mut ctx, &runtime, &['M']).unwrap();
-        assert_eq!(invoke_restart_by_name(&mut ctx, missing, &[]), Err(ConditionError::RestartNotFound));
+        assert_eq!(
+            invoke_restart_by_name(&mut ctx, missing, &[]),
+            Err(ConditionError::RestartNotFound)
+        );
         pop_restart(&mut ctx, restart);
     }
 

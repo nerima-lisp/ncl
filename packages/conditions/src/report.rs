@@ -95,7 +95,10 @@ pub fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> 
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "coverage tests assert on report formatting")]
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on report formatting"
+    )]
 
     use super::*;
     use ncl_object::{Runtime, make_cons, make_string};

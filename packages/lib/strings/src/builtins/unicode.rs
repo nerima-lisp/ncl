@@ -30,7 +30,25 @@ fn make_vector(
     Ok(scope.get(result).as_word())
 }
 
-fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
+#[derive(Clone, Copy)]
+enum Normalization {
+    Canonical,
+    Compatibility,
+}
+
+#[derive(Clone, Copy)]
+enum Composition {
+    Compose,
+    Decompose,
+}
+
+impl Normalization {
+    const fn accepts_compatibility(self, entry: bool) -> bool {
+        matches!(self, Self::Compatibility) || !entry
+    }
+}
+
+fn decompose_char(value: char, normalization: Normalization, output: &mut Vec<char>) {
     let codepoint = value as u32;
     if (0xAC00..0xD7A4).contains(&codepoint) {
         let index = codepoint - 0xAC00;
@@ -45,11 +63,11 @@ fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
         .iter()
         .flat_map(|entries| entries.iter())
         .find(|entry| entry.0 == codepoint)
-        && (compatibility || !is_compatibility)
+        && normalization.accepts_compatibility(*is_compatibility)
     {
         for &part in *values {
             if let Some(part) = char::from_u32(part) {
-                decompose_char(part, compatibility, output);
+                decompose_char(part, normalization, output);
             }
         }
         return;
@@ -65,10 +83,14 @@ fn combining_class(value: char) -> u8 {
         .map_or(0, |entry| entry.1)
 }
 
-fn normalize(chars: &[char], compatibility: bool, compose: bool) -> Vec<char> {
+fn normalize(
+    chars: &[char],
+    normalization: Normalization,
+    composition: Composition,
+) -> Vec<char> {
     let mut decomposed = Vec::new();
     for &value in chars {
-        decompose_char(value, compatibility, &mut decomposed);
+        decompose_char(value, normalization, &mut decomposed);
     }
     let mut reordered = Vec::with_capacity(decomposed.len());
     for value in decomposed {
@@ -83,7 +105,7 @@ fn normalize(chars: &[char], compatibility: bool, compose: bool) -> Vec<char> {
             reordered.insert(position, value);
         }
     }
-    if !compose {
+    if matches!(composition, Composition::Decompose) {
         return reordered;
     }
     let mut result = Vec::with_capacity(reordered.len());
@@ -126,7 +148,13 @@ fn normalize_nfc_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    transform_string(ctx, runtime, args, |s| normalize(s, false, true))
+    transform_string(ctx, runtime, args, |s| {
+        normalize(
+            s,
+            Normalization::Canonical,
+            Composition::Compose,
+        )
+    })
 }
 fn normalize_nfd_builtin(
     ctx: &mut ThreadContext,
@@ -134,7 +162,13 @@ fn normalize_nfd_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    transform_string(ctx, runtime, args, |s| normalize(s, false, false))
+    transform_string(ctx, runtime, args, |s| {
+        normalize(
+            s,
+            Normalization::Canonical,
+            Composition::Decompose,
+        )
+    })
 }
 fn normalize_nfkc_builtin(
     ctx: &mut ThreadContext,
@@ -142,7 +176,13 @@ fn normalize_nfkc_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    transform_string(ctx, runtime, args, |s| normalize(s, true, true))
+    transform_string(ctx, runtime, args, |s| {
+        normalize(
+            s,
+            Normalization::Compatibility,
+            Composition::Compose,
+        )
+    })
 }
 fn normalize_nfkd_builtin(
     ctx: &mut ThreadContext,
@@ -150,7 +190,13 @@ fn normalize_nfkd_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    transform_string(ctx, runtime, args, |s| normalize(s, true, false))
+    transform_string(ctx, runtime, args, |s| {
+        normalize(
+            s,
+            Normalization::Compatibility,
+            Composition::Decompose,
+        )
+    })
 }
 fn full_upcase_builtin(
     ctx: &mut ThreadContext,

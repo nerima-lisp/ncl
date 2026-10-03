@@ -405,7 +405,7 @@ fn lower_make_rest_list(
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let [argc_value, start_value] = args else { // check-added-lines: allow(index) exact ABI operand shape
-        return Err(CodegenError::Unsupported(
+        return Err(CodegenError::Unsupported( // check-added-lines: allow(unsupported) malformed ABI shape is rejected
             "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) malformed ABI shape is rejected
         ));
     };

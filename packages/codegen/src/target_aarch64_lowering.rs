@@ -480,3 +480,8 @@ pub(super) mod primitives;
 pub(super) use calls::{lower_call, lower_closure_call};
 pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 pub(super) use ops::lower_op;
+
+#[cfg(test)]
+#[allow(clippy::too_many_lines, missing_docs)]
+#[path = "tests_target_aarch64_lowering.rs"]
+mod tests;

@@ -469,5 +469,7 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
 }
 
 #[cfg(test)]
-#[path = "tests_record.rs"]
-mod tests;
+#[allow(clippy::unwrap_used, reason = "record tests assert on codec values")]
+mod tests {
+    include!("../tests/support/record_codec.rs");
+}

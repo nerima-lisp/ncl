@@ -44,12 +44,12 @@ fn emit_epilogue(
             i64::from_ne_bytes(ncl_sys::Word::ZERO.bits().to_ne_bytes()),
         )?;
     }
+    load_immediate(
+        assembler,
+        super::VALUE_COUNT,
+        i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+    )?;
     if !preserve_mv_count {
-        load_immediate(
-            assembler,
-            super::VALUE_COUNT,
-            i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
-        )?;
         emit(
             assembler,
             Inst::MovMR(
@@ -200,4 +200,91 @@ pub fn lower_pending_check(
     emit_epilogue(assembler, slots, abi, &[], true)?;
     assembler.bind(normal);
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+mod tests {
+    use super::{context_mem, lower_return_or_throw, mv_area_mem};
+    use crate::{AllocationTarget, CodegenError, RuntimeAbi, RuntimeFunction, X86_64Abi, allocate};
+    use ncl_asm_x86_64::Assembler;
+    use ncl_ir::{FunctionBuilder, HandlerKind, HandlerRegion, HandlerRegionId, Terminator};
+    use std::collections::HashMap;
+
+    struct MissingAbi;
+
+    impl RuntimeAbi for MissingAbi {
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, crate::AbiError> {
+            Err(crate::AbiError::MissingBuiltin(identifier))
+        }
+
+        fn field_offset(&self, field: crate::ContextField) -> Result<i32, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedContextField(field))
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedRuntimeFunction(function))
+        }
+    }
+
+    #[test]
+    fn dispatch_mem_helpers_preserve_abi_and_offset_errors() {
+        assert!(matches!(
+            context_mem(&MissingAbi, crate::ContextField::Pending),
+            Err(CodegenError::Abi(message))
+                if message.contains("context offset is unavailable")
+        ));
+        assert_eq!(
+            mv_area_mem(&X86_64Abi, i32::MAX),
+            Err(CodegenError::FrameOverflow)
+        );
+    }
+
+    #[test]
+    fn reports_a_handler_target_that_has_no_emitted_label() {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(212),
+            "unknown-handler-target",
+            Vec::new(),
+            Vec::new(),
+        );
+        builder.add_handler_region(HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::UnwindProtect,
+            protected: vec![ncl_ir::BlockId(0)],
+            handler: ncl_ir::BlockId(99),
+            cleanup: Some(ncl_ir::BlockId(99)),
+            catch_tag: None,
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        });
+        builder
+            .terminate(Terminator::Unreachable)
+            .expect("unreachable terminator");
+        let function = builder.finish();
+        let slots = super::super::slots(
+            &function,
+            0,
+            allocate(&function, AllocationTarget::X86_64),
+            0,
+        )
+        .0;
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            lower_return_or_throw(
+                &mut assembler,
+                &function,
+                ncl_ir::BlockId(0),
+                Some(&[]),
+                &slots,
+                &X86_64Abi,
+                &HashMap::new(),
+            ),
+            Err(CodegenError::UnknownBlock(ncl_ir::BlockId(99)))
+        );
+    }
 }

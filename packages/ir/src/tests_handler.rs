@@ -221,3 +221,115 @@ fn verifier_rejects_kind_without_required_payload() {
     );
     verify_has(&function, &VerifyError::HandlerMismatch(BlockId(0)));
 }
+
+#[test]
+fn verifier_accepts_unwind_protect_handler_restore() {
+    let function = finish(
+        "unwind-restore",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[],
+                    OpKind::EnterHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                vec![
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Return { values: Vec::new() },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::UnwindProtect,
+            protected: vec![BlockId(0)],
+            handler: BlockId(1),
+            cleanup: Some(BlockId(1)),
+            catch_tag: None,
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_accepts_progv_handler_with_binding_targets() {
+    let function = finish(
+        "progv-handler",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Nil],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::EnterHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                vec![op(
+                    &[],
+                    OpKind::LeaveHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                Terminator::Return { values: Vec::new() },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Progv,
+            protected: vec![BlockId(0)],
+            handler: BlockId(1),
+            cleanup: None,
+            catch_tag: None,
+            binding_targets: vec![ValueId(0)],
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    assert!(verify(&function).is_ok());
+}

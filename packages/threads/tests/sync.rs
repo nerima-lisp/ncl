@@ -202,6 +202,45 @@ fn a_semaphore_hands_out_and_returns_permits() {
 }
 
 #[test]
+fn a_semaphore_keeps_its_count_within_its_capacity() {
+    let mut fixture = fixture();
+    let Fixture { runtime, ctx } = &mut fixture;
+    let semaphore = ncl_threads::make_semaphore(ctx, runtime, "bounded", 2).unwrap();
+
+    assert_eq!(
+        ncl_threads::semaphore_count(ctx, semaphore)
+            .unwrap()
+            .as_fixnum(),
+        Some(2)
+    );
+    ncl_threads::signal_semaphore(ctx, semaphore).unwrap();
+    assert_eq!(
+        ncl_threads::semaphore_count(ctx, semaphore)
+            .unwrap()
+            .as_fixnum(),
+        Some(2)
+    );
+    assert_eq!(
+        ncl_threads::try_semaphore(ctx, semaphore).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        ncl_threads::try_semaphore(ctx, semaphore).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        ncl_threads::try_semaphore(ctx, semaphore).unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        ncl_threads::semaphore_count(ctx, semaphore)
+            .unwrap()
+            .as_fixnum(),
+        Some(0)
+    );
+}
+
+#[test]
 fn a_wait_queue_delivers_notifications() {
     let mut fixture = fixture();
     let Fixture { runtime, ctx } = &mut fixture;
@@ -227,6 +266,11 @@ fn a_wait_queue_delivers_notifications() {
         Word::TRUE
     );
     ncl_threads::condition_broadcast(ctx, queue).unwrap();
+    assert_eq!(
+        ncl_threads::condition_wait(ctx, queue, mutex, Some(SHORT)).unwrap(),
+        Word::TRUE
+    );
+    ncl_threads::condition_notify(ctx, queue).unwrap();
     assert_eq!(
         ncl_threads::condition_wait(ctx, queue, mutex, Some(SHORT)).unwrap(),
         Word::TRUE

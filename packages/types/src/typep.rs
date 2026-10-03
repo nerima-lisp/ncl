@@ -2,8 +2,8 @@
 
 use ncl_object::{
     ArrayElementType, ObjectRef, Package, ThreadContext, Word, array_dimensions, car, cdr,
-    classify_object, simple_vector_length, specialized_array_element_type, string_length,
-    symbol_package,
+    classify_object, simple_vector_length, specialized_array_element_type, specialized_array_ref,
+    string_length, symbol_package,
 };
 
 use crate::adapter::from_word;
@@ -420,6 +420,13 @@ fn vector_length(ctx: &ThreadContext, object: Word) -> Result<Option<usize>, Typ
     match classify_object(ctx, object) {
         ObjectRef::SimpleVector(word) => Ok(Some(simple_vector_length(ctx, word)?)),
         ObjectRef::String(word) => Ok(Some(string_length(ctx, word)?)),
+        ObjectRef::SpecializedArray(word) => {
+            let mut length = 0;
+            while specialized_array_ref(ctx, word, length).is_ok() {
+                length += 1;
+            }
+            Ok(Some(length))
+        }
         ObjectRef::Array(word) => {
             let dimensions = array_dimensions(ctx, word)?;
             Ok((dimensions.len() == 1)

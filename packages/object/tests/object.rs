@@ -1,4 +1,8 @@
 #![allow(missing_docs)]
+use ncl_object::array::{
+    adjust_array, adjustable_array_p, array_displacement, array_has_fill_pointer_p, fill_pointer,
+    set_fill_pointer, vector_pop, vector_push, vector_push_extend,
+};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
@@ -216,7 +220,34 @@ fn specialized_arrays_validate_element_type() {
         ncl_object::specialized_array_ref(&ctx, array, 0),
         Ok(Word::fixnum(1))
     );
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, array, 0, Word::fixnum(0)),
+        Ok(())
+    );
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, array, 0),
+        Ok(Word::fixnum(0))
+    );
     assert!(ncl_object::specialized_array_set(&mut ctx, array, 0, Word::fixnum(2)).is_err());
+    let characters = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Character,
+        &[Word::character(65)],
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, characters, 0, Word::character(66)),
+        Ok(())
+    );
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, characters, 0),
+        Ok(Word::character(66))
+    );
+    assert_eq!(
+        ncl_object::specialized_array_set(&mut ctx, characters, 0, Word::fixnum(2)),
+        Err(ncl_object::ObjectError::TypeError)
+    );
     assert_eq!(
         classify_object(&ctx, array),
         ObjectRef::SpecializedArray(array)
@@ -295,6 +326,124 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
     let value = array_row_major_ref(&ctx, rank_three_root, 0).unwrap_or(Word::NIL);
     assert_eq!(string_ref(&ctx, value, 0), Ok('x'));
 }
+
+#[test]
+fn array_boundaries_cover_rank_displacement_fill_pointer_and_vector_lifecycle() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+
+    assert_eq!(
+        make_array(
+            &mut ctx,
+            &runtime,
+            &[2, 2],
+            ArrayOptions {
+                element_type: ArrayElementType::T,
+                initial_element: Word::NIL,
+                adjustable: false,
+                fill_pointer: Some(1),
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let target = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[
+            Word::fixnum(30),
+            Word::fixnum(31),
+            Word::fixnum(32),
+            Word::fixnum(33),
+            Word::fixnum(34),
+        ],
+    )
+    .unwrap_or(Word::NIL);
+    let displaced = make_array(
+        &mut ctx,
+        &runtime,
+        &[2, 2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: Some(target),
+            displaced_index_offset: 1,
+        },
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(array_displacement(&ctx, displaced), Ok((target, 1)));
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 0),
+        Ok(Word::fixnum(31))
+    );
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 3),
+        Ok(Word::fixnum(34))
+    );
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 4),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert!(array_row_major_set(&mut ctx, displaced, 2, Word::fixnum(88)).is_ok());
+    assert_eq!(simple_vector_ref(&ctx, target, 3), Ok(Word::fixnum(88)));
+}
+
+#[test]
+fn adjustable_vector_boundaries_preserve_fill_pointer_and_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+
+    let vector = make_array(
+        &mut ctx,
+        &runtime,
+        &[3],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(12),
+            adjustable: true,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or(Word::NIL);
+    assert!(adjustable_array_p(&ctx, vector).unwrap_or(false));
+    assert!(array_has_fill_pointer_p(&ctx, vector).unwrap_or(false));
+    assert_eq!(fill_pointer(&ctx, vector), Ok(1));
+    assert_eq!(vector_push(&mut ctx, vector, Word::fixnum(13)), Ok(Some(1)));
+    assert_eq!(vector_pop(&mut ctx, vector), Ok(Word::fixnum(13)));
+    assert_eq!(set_fill_pointer(&mut ctx, vector, 0), Ok(()));
+    assert_eq!(set_fill_pointer(&mut ctx, vector, 6), Ok(()));
+    assert_eq!(
+        set_fill_pointer(&mut ctx, vector, 7),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(set_fill_pointer(&mut ctx, vector, 0), Ok(()));
+    assert_eq!(
+        vector_pop(&mut ctx, vector),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let (index, extended) = vector_push_extend(&mut ctx, &runtime, vector, Word::fixnum(14), 2)
+        .unwrap_or((0, Word::NIL));
+    assert_eq!(index, 0);
+    assert_eq!(fill_pointer(&ctx, extended), Ok(1));
+    assert_eq!(array_row_major_ref(&ctx, extended, 0), Ok(Word::fixnum(14)));
+
+    let adjusted =
+        adjust_array(&mut ctx, &runtime, extended, &[2], Word::fixnum(99)).unwrap_or(Word::NIL);
+    assert_eq!(array_dimensions(&ctx, adjusted), Ok(vec![2]));
+    assert_eq!(fill_pointer(&ctx, adjusted), Ok(1));
+    assert_eq!(array_row_major_ref(&ctx, adjusted, 0), Ok(Word::fixnum(14)));
+    assert_eq!(array_row_major_ref(&ctx, adjusted, 1), Ok(Word::fixnum(13)));
+}
+
 #[test]
 #[allow(clippy::too_many_lines)]
 fn remaining_object_kinds_round_trip() {

@@ -349,16 +349,6 @@ pub fn sort(
         Ok(word(scope, sequence_handle))
     })
 }
-#[allow(dead_code)]
-pub fn stable_sort(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    sequence: Word,
-    predicate: Word,
-    key_fn: Word,
-) -> Result<Word, ObjectError> {
-    sort(ctx, runtime, sequence, predicate, key_fn, true)
-}
 pub(super) fn set_operation(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

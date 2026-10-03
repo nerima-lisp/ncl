@@ -402,3 +402,7 @@ pub fn register_initialization_builtins(runtime: &Runtime) -> Result<(), ObjectE
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     register_initialization_builtins(runtime)
 }
+
+#[cfg(test)]
+#[path = "../tests/support/initialization_tests.rs"]
+mod tests;

@@ -1,0 +1,716 @@
+#![allow(clippy::float_cmp, clippy::unwrap_used, missing_docs)]
+
+use ncl_object::{
+    DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128, make_complex,
+    make_double, make_ratio,
+};
+
+fn setup() -> (Runtime, ThreadContext) {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_lib_numbers::register(&runtime).unwrap();
+    (runtime, ctx)
+}
+
+fn call(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = FunctionObject::try_from(
+        runtime
+            .function(ctx, "COMMON-LISP", name)
+            .unwrap_or_else(|| panic!("missing builtin {name}")),
+    )
+    .unwrap_or_else(|error| panic!("invalid builtin {name}: {error:?}"));
+    runtime.call_builtin(ctx, function, args)
+}
+
+fn integer(ctx: &ThreadContext, value: Word) -> i128 {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(value) => i128::from(value),
+        ObjectRef::Bignum(value) => {
+            let limbs =
+                ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(value)).unwrap();
+            let magnitude = limbs
+                .into_iter()
+                .enumerate()
+                .fold(0_u128, |value, (index, limb)| {
+                    value | (u128::from(limb) << (index * 32))
+                });
+            if ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(value)).unwrap() {
+                if magnitude == 1_u128 << 127 {
+                    i128::MIN
+                } else {
+                    -i128::try_from(magnitude).unwrap()
+                }
+            } else {
+                i128::try_from(magnitude).unwrap()
+            }
+        }
+        other => panic!("expected integer, got {other:?}"),
+    }
+}
+
+fn float(ctx: &ThreadContext, value: Word) -> f64 {
+    match classify_object(ctx, value) {
+        ObjectRef::DoubleFloat(value) => double_value(ctx, DoubleFloat::from_word(value)).unwrap(),
+        other => panic!("expected float, got {other:?}"),
+    }
+}
+
+fn ratio(ctx: &mut ThreadContext, runtime: &Runtime, numerator: i64, denominator: i64) -> Word {
+    make_ratio(
+        ctx,
+        runtime,
+        Word::fixnum(numerator),
+        Word::fixnum(denominator),
+    )
+    .unwrap()
+    .into()
+}
+
+fn assert_integer_call(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+    expected: i128,
+) {
+    let result = call(runtime, ctx, name, args).unwrap();
+    assert_eq!(integer(ctx, result), expected, "{name}");
+}
+
+fn assert_float_call(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+    expected: f64,
+) {
+    let result = call(runtime, ctx, name, args).unwrap();
+    assert!((float(ctx, result) - expected).abs() < 1e-12, "{name}");
+}
+
+#[test]
+fn integer_bit_operations_cover_signed_and_empty_fold_cases() {
+    let (runtime, mut ctx) = setup();
+    let a = Word::fixnum(0b1100);
+    let b = Word::fixnum(0b1010);
+    assert_integer_call(&runtime, &mut ctx, "LOGAND", &[], -1);
+    assert_integer_call(&runtime, &mut ctx, "LOGIOR", &[], 0);
+    assert_integer_call(&runtime, &mut ctx, "LOGXOR", &[a, b], 6);
+    assert_integer_call(&runtime, &mut ctx, "LOGNOT", &[a], -13);
+    assert_integer_call(&runtime, &mut ctx, "LOGEQV", &[a, b], -7);
+    assert_integer_call(&runtime, &mut ctx, "LOGNAND", &[a, b], -9);
+    assert_integer_call(&runtime, &mut ctx, "LOGNOR", &[a, b], -15);
+    assert_integer_call(&runtime, &mut ctx, "LOGANDC1", &[a, b], 2);
+    assert_integer_call(&runtime, &mut ctx, "LOGANDC2", &[a, b], 4);
+    assert_integer_call(&runtime, &mut ctx, "LOGORC1", &[a, b], -5);
+    assert_integer_call(&runtime, &mut ctx, "LOGORC2", &[a, b], -3);
+    assert_eq!(
+        call(&runtime, &mut ctx, "LOGTEST", &[a, b]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "LOGBITP", &[Word::fixnum(2), a]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "LOGBITP",
+            &[Word::fixnum(127), Word::fixnum(-1)]
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_integer_call(&runtime, &mut ctx, "LOGCOUNT", &[Word::fixnum(-9)], 1);
+    assert_integer_call(&runtime, &mut ctx, "INTEGER-LENGTH", &[Word::fixnum(-9)], 4);
+    assert_integer_call(&runtime, &mut ctx, "ASH", &[a, Word::fixnum(2)], 48);
+    assert_integer_call(&runtime, &mut ctx, "ASH", &[a, Word::fixnum(-2)], 3);
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(6), a, b])
+            .unwrap()
+            .as_fixnum(),
+        Some(6)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(99), a, b]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn byte_field_operations_return_encoded_spec_and_updated_values() {
+    let (runtime, mut ctx) = setup();
+    let spec = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(4), Word::fixnum(3)],
+    )
+    .unwrap();
+    assert_integer_call(&runtime, &mut ctx, "BYTE-SIZE", &[spec], 4);
+    assert_integer_call(&runtime, &mut ctx, "BYTE-POSITION", &[spec], 3);
+    assert_integer_call(
+        &runtime,
+        &mut ctx,
+        "LDB",
+        &[spec, Word::fixnum(0b10_1101)],
+        5,
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "LDB-TEST",
+            &[spec, Word::fixnum(0b10_1101)]
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_integer_call(
+        &runtime,
+        &mut ctx,
+        "MASK-FIELD",
+        &[spec, Word::fixnum(-1)],
+        0b111_1000,
+    );
+    assert_integer_call(
+        &runtime,
+        &mut ctx,
+        "DPB",
+        &[Word::fixnum(2), spec, Word::fixnum(0)],
+        16,
+    );
+    assert_integer_call(
+        &runtime,
+        &mut ctx,
+        "DEPOSIT-FIELD",
+        &[Word::fixnum(0b1010), spec, Word::fixnum(0)],
+        8,
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "BYTE",
+            &[Word::fixnum(-1), Word::fixnum(0)]
+        ),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn rational_float_builtins_assert_multiple_values_and_boundaries() {
+    let (runtime, mut ctx) = setup();
+    let r = ratio(&mut ctx, &runtime, 6, 4);
+    assert_integer_call(&runtime, &mut ctx, "NUMERATOR", &[r], 6);
+    assert_integer_call(&runtime, &mut ctx, "DENOMINATOR", &[r], 4);
+    assert_integer_call(&runtime, &mut ctx, "NUMERATOR", &[Word::fixnum(7)], 7);
+    assert_integer_call(&runtime, &mut ctx, "DENOMINATOR", &[Word::fixnum(7)], 1);
+
+    let value = make_double(&mut ctx, &runtime, -1.5).unwrap().into();
+    let rational = call(&runtime, &mut ctx, "RATIONAL", &[value]).unwrap();
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(rational)).unwrap()
+        ),
+        -3
+    );
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_denominator(&ctx, ncl_object::Ratio::from_word(rational)).unwrap()
+        ),
+        2
+    );
+    assert_float_call(&runtime, &mut ctx, "FLOAT", &[r], 1.5);
+    let sign = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    assert_float_call(&runtime, &mut ctx, "FLOAT-SIGN", &[value, sign], -2.0);
+    assert_eq!(
+        call(&runtime, &mut ctx, "RATIONAL", &[Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+
+    let decoded = call(&runtime, &mut ctx, "DECODE-FLOAT", &[value]).unwrap();
+    assert!((float(&ctx, decoded) - 0.75).abs() < 1e-12);
+    assert_eq!(integer(&ctx, ctx.values()[1]), 1);
+    assert!((float(&ctx, ctx.values()[2]) + 1.0).abs() < f64::EPSILON);
+    let integer_decoded = call(&runtime, &mut ctx, "INTEGER-DECODE-FLOAT", &[value]).unwrap();
+    assert_eq!(integer(&ctx, integer_decoded), 6_755_399_441_055_744);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -52);
+    assert_eq!(integer(&ctx, ctx.values()[2]), -1);
+    let zero_float = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    assert_integer_call(&runtime, &mut ctx, "FLOAT-PRECISION", &[zero_float], 0);
+    assert_integer_call(&runtime, &mut ctx, "FLOAT-DIGITS", &[value], 53);
+    assert_integer_call(&runtime, &mut ctx, "FLOAT-RADIX", &[value], 2);
+    assert_float_call(
+        &runtime,
+        &mut ctx,
+        "SCALE-FLOAT",
+        &[value, Word::fixnum(2)],
+        -6.0,
+    );
+}
+
+#[test]
+fn rationalize_negative_float_and_decode_zero_values() {
+    let (runtime, mut ctx) = setup();
+    let negative = make_double(&mut ctx, &runtime, -1.5).unwrap().into();
+    let rationalized = call(&runtime, &mut ctx, "RATIONALIZE", &[negative]).unwrap();
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(rationalized),).unwrap(),
+        ),
+        -3
+    );
+    assert_eq!(
+        integer(
+            &ctx,
+            ncl_object::ratio_denominator(&ctx, ncl_object::Ratio::from_word(rationalized),)
+                .unwrap(),
+        ),
+        2
+    );
+    assert_float_call(&runtime, &mut ctx, "FLOAT", &[negative], -1.5);
+
+    let zero = make_double(&mut ctx, &runtime, 0.0).unwrap().into();
+    let decoded = call(&runtime, &mut ctx, "DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(float(&ctx, decoded).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1022);
+    assert_eq!(float(&ctx, ctx.values()[2]).to_bits(), 1.0_f64.to_bits());
+    let integer_decoded = call(&runtime, &mut ctx, "INTEGER-DECODE-FLOAT", &[zero]).unwrap();
+    assert_eq!(integer(&ctx, integer_decoded), 0);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1074);
+    assert_eq!(integer(&ctx, ctx.values()[2]), 1);
+}
+
+#[test]
+fn complex_accessors_construct_conjugate_and_phase_values() {
+    let (runtime, mut ctx) = setup();
+    let real = make_double(&mut ctx, &runtime, 3.0).unwrap().into();
+    let imag = make_double(&mut ctx, &runtime, 4.0).unwrap().into();
+    let z = make_complex(&mut ctx, &runtime, real, imag).unwrap().into();
+    let conjugate = call(&runtime, &mut ctx, "CONJUGATE", &[z]).unwrap();
+    assert_float_call(&runtime, &mut ctx, "REALPART", &[conjugate], 3.0);
+    assert_float_call(&runtime, &mut ctx, "IMAGPART", &[conjugate], -4.0);
+    assert_float_call(&runtime, &mut ctx, "PHASE", &[z], 4.0_f64.atan2(3.0));
+    let real_result = call(
+        &runtime,
+        &mut ctx,
+        "COMPLEX",
+        &[Word::fixnum(7), Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(real_result, Word::fixnum(7));
+    let cis = call(&runtime, &mut ctx, "CIS", &[Word::fixnum(0)]).unwrap();
+    assert_float_call(&runtime, &mut ctx, "REALPART", &[cis], 1.0);
+    assert_float_call(&runtime, &mut ctx, "IMAGPART", &[cis], 0.0);
+    assert_eq!(
+        call(&runtime, &mut ctx, "REALPART", &[Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn complex_real_and_complex_boundaries_return_ansi_components() {
+    let (runtime, mut ctx) = setup();
+    let real = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+
+    let realpart = call(&runtime, &mut ctx, "REALPART", &[real]).unwrap();
+    assert_eq!(float(&ctx, realpart), -2.5);
+    let imagpart = call(&runtime, &mut ctx, "IMAGPART", &[real]).unwrap();
+    assert_eq!(float(&ctx, imagpart), 0.0);
+    assert_eq!(call(&runtime, &mut ctx, "CONJUGATE", &[real]), Ok(real));
+    let phase = call(&runtime, &mut ctx, "PHASE", &[Word::fixnum(-1)]).unwrap();
+    assert_eq!(float(&ctx, phase), std::f64::consts::PI);
+
+    let complex = call(&runtime, &mut ctx, "COMPLEX", &[real, Word::fixnum(3)]).unwrap();
+    let ObjectRef::Complex(complex) = classify_object(&ctx, complex) else {
+        panic!("COMPLEX with a non-zero imaginary part must return a complex number");
+    };
+    assert_eq!(
+        float(
+            &ctx,
+            complex_real(&ctx, ncl_object::Complex::from_word(complex)).unwrap()
+        ),
+        -2.5
+    );
+    assert_eq!(
+        float(
+            &ctx,
+            complex_imag(&ctx, ncl_object::Complex::from_word(complex)).unwrap()
+        ),
+        3.0
+    );
+
+    let cis = call(&runtime, &mut ctx, "CIS", &[Word::fixnum(0)]).unwrap();
+    let ObjectRef::Complex(cis) = classify_object(&ctx, cis) else {
+        panic!("CIS always returns a complex number");
+    };
+    assert_eq!(
+        float(
+            &ctx,
+            complex_real(&ctx, ncl_object::Complex::from_word(cis)).unwrap()
+        ),
+        1.0
+    );
+    assert_eq!(
+        float(
+            &ctx,
+            complex_imag(&ctx, ncl_object::Complex::from_word(cis)).unwrap()
+        ),
+        0.0
+    );
+}
+
+#[test]
+fn arithmetic_callbacks_reject_wrong_argument_counts_and_types() {
+    let (runtime, mut ctx) = setup();
+
+    for (name, args) in [
+        ("EQ", vec![]),
+        ("EQ", vec![Word::fixnum(1)]),
+        (
+            "EQ",
+            vec![Word::fixnum(1), Word::fixnum(1), Word::fixnum(1)],
+        ),
+        ("EQL", vec![Word::fixnum(1)]),
+        ("1+", vec![]),
+        ("1+", vec![Word::fixnum(1), Word::fixnum(2)]),
+        ("ABS", vec![]),
+        ("SIGNUM", vec![]),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &args),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
+
+    for name in ["+", "-", "*", "/", "=", "<", "MAX", "MIN"] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[Word::TRUE]),
+            Err(ObjectError::TypeError),
+            "{name} must reject a non-number"
+        );
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the test covers the numeric predicate and comparison matrix"
+)]
+fn predicates_and_comparisons_cover_numeric_kinds_and_chain_failures() {
+    let (runtime, mut ctx) = setup();
+    let integer_value = Word::fixnum(-3);
+    let ratio_value = ratio(&mut ctx, &runtime, 3, 2);
+    let float_value = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    let complex_value = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .unwrap()
+        .into();
+
+    for (name, value) in [
+        ("NUMBERP", integer_value),
+        ("INTEGERP", integer_value),
+        ("RATIONALP", ratio_value),
+        ("FLOATP", float_value),
+        ("REALP", float_value),
+        ("COMPLEXP", complex_value),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &[value]).unwrap(),
+            Word::TRUE,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "ZEROP", &[Word::fixnum(0)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[Word::fixnum(2)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MINUSP", &[integer_value]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EVENP", &[Word::fixnum(4)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ODDP", &[Word::fixnum(5)]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PLUSP", &[complex_value]),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "=",
+            &[Word::fixnum(1), ratio_value, float_value],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">",
+            &[Word::fixnum(3), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "<=",
+            &[Word::fixnum(1), Word::fixnum(1), Word::fixnum(2)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            ">=",
+            &[Word::fixnum(2), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "/=",
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(1)],
+        )
+        .unwrap(),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAX",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(9)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MIN",
+            &[Word::fixnum(2), Word::fixnum(9)]
+        )
+        .unwrap(),
+        Word::fixnum(2)
+    );
+}
+
+#[test]
+fn random_contracts_cover_zero_wide_and_default_state_paths() {
+    let (runtime, mut ctx) = setup();
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(1)]),
+        Ok(Word::fixnum(0))
+    );
+    let wide_limit = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 62)
+        .unwrap()
+        .into();
+    let wide_result = call(&runtime, &mut ctx, "RANDOM", &[wide_limit]).unwrap();
+    assert!((0..(1_i128 << 62)).contains(&integer(&ctx, wide_result)));
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[]).unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(10), state]),
+        Ok(Word::fixnum(2))
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM-STATE-P", &[Word::TRUE]),
+        Ok(Word::NIL)
+    );
+}
+
+#[test]
+fn byte_contracts_reject_bad_spec_types_arities_and_layout_boundaries() {
+    let (runtime, mut ctx) = setup();
+    let empty = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(0), Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(empty, Word::fixnum(0));
+    assert_integer_call(&runtime, &mut ctx, "LDB", &[empty, Word::fixnum(-1)], 0);
+    assert_eq!(
+        call(&runtime, &mut ctx, "LDB-TEST", &[empty, Word::fixnum(-1)]),
+        Ok(Word::NIL)
+    );
+
+    for args in [
+        vec![],
+        vec![Word::fixnum(1)],
+        vec![Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        vec![Word::TRUE, Word::fixnum(0)],
+        vec![Word::fixnum(1), Word::TRUE],
+        vec![Word::fixnum(-1), Word::fixnum(0)],
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, "BYTE", &args),
+            Err(ObjectError::TypeError),
+            "BYTE args: {args:?}"
+        );
+    }
+    let oversized = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(128), Word::fixnum(0)],
+    )
+    .unwrap();
+    assert_eq!(
+        call(&runtime, &mut ctx, "LDB", &[oversized, Word::fixnum(1)]),
+        Err(ObjectError::Layout)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "BYTE",
+            &[Word::fixnum(i64::MAX), Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "DPB", &[Word::fixnum(1), empty]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn bit_logic_contracts_report_invalid_opcodes_and_shift_failures() {
+    let (runtime, mut ctx) = setup();
+    let a = Word::fixnum(0b1100);
+    let b = Word::fixnum(0b1010);
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(16), a, b]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::TRUE, a, b]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BOOLE", &[Word::fixnum(6), a]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(126)],
+        )
+        .map(|value| integer(&ctx, value)),
+        Ok(1_i128 << 126)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(127)],
+        )
+        .map(|value| integer(&ctx, value)),
+        Ok(1_i128 << 127)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(128)],
+        ),
+        Err(ObjectError::Layout)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(-129)],
+        ),
+        Err(ObjectError::Layout)
+    );
+}
+
+#[test]
+fn eql_contracts_reject_numeric_type_mismatches_without_coercion() {
+    let (runtime, mut ctx) = setup();
+    let ratio_value = ratio(&mut ctx, &runtime, 1, 1);
+    let float_value = make_double(&mut ctx, &runtime, 1.0).unwrap().into();
+    let complex_value = make_complex(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(0))
+        .unwrap()
+        .into();
+
+    for (left, right) in [
+        (Word::fixnum(1), ratio_value),
+        (Word::fixnum(1), float_value),
+        (ratio_value, float_value),
+        (float_value, complex_value),
+        (Word::fixnum(1), Word::TRUE),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, "EQL", &[left, right]),
+            Ok(Word::NIL),
+            "EQL must preserve type identity for {left:?} and {right:?}"
+        );
+    }
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQL", &[ratio_value, ratio_value]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "EQL", &[complex_value, complex_value]),
+        Ok(Word::TRUE)
+    );
+}

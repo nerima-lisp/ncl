@@ -387,6 +387,86 @@ fn string_comparisons_ranges_and_trimming_return_values() {
 }
 
 #[test]
+fn character_and_string_boundary_contracts_are_explicit() {
+    let (runtime, mut ctx) = runtime();
+    let nul = Word::character(0);
+    let max = Word::character(0x10ffff);
+    assert_eq!(
+        call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-CODE", &[nul]),
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-CODE", &[max]),
+        Word::fixnum(0x10ffff)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-UPCASE", &[nul]),
+        nul
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "COMMON-LISP", "CHAR-DOWNCASE", &[max]),
+        max
+    );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            "COMMON-LISP",
+            "CODE-CHAR",
+            &[Word::fixnum(-1)]
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    let digit = Word::character('f' as u32);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "COMMON-LISP",
+            "DIGIT-CHAR-P",
+            &[digit, Word::fixnum(16)]
+        ),
+        Word::fixnum(15)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "COMMON-LISP",
+            "DIGIT-CHAR-P",
+            &[digit, Word::fixnum(10)]
+        ),
+        Word::NIL
+    );
+    let empty = string(&mut ctx, &runtime, "");
+    let text_value = string(&mut ctx, &runtime, "abc");
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "COMMON-LISP",
+            "STRING=",
+            &[empty, empty]
+        ),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "COMMON-LISP",
+            "STRING<",
+            &[empty, text_value]
+        ),
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call_text(&runtime, &mut ctx, "COMMON-LISP", "STRING-UPCASE", &[empty]),
+        ""
+    );
+}
+
+#[test]
 #[allow(clippy::too_many_lines)]
 fn unicode_builtins_cover_normalization_case_utf8_and_graphemes() {
     let (runtime, mut ctx) = runtime();

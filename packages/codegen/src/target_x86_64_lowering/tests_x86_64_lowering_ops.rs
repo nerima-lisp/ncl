@@ -511,7 +511,7 @@ fn builtin_lowering_reports_arity_and_stages_generated_lambda_arguments() {
         &slots,
         &X86_64FixtureAbi,
     )
-        .expect("generated lambda rest arguments lower");
+    .expect("generated lambda rest arguments lower");
     assert!(!staged.bytes().is_empty());
 }
 

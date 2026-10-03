@@ -426,7 +426,7 @@ mod tests {
         assert_eq!(&bytes[..8], &[1, 3, 2, 7, 6, 5, 4, 15]);
         assert_eq!(&bytes[8..16], &[14, 13, 12, 11, 10, 9, 8, 3]);
         assert_eq!(&bytes[16..], &[0, 0, 0, b'N', b'C', b'L']);
-        assert_eq!(super::header_size().unwrap(), super::HEADER_SIZE as u8);
+        assert_eq!(super::header_size().unwrap(), 64);
         assert_eq!(super::narrow(32, "count").unwrap(), 32);
         assert_eq!(
             super::invalid("field"),

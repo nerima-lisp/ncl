@@ -1,3 +1,5 @@
+//! Value-based checks for runtime load paths.
+
 #![allow(clippy::unwrap_used, reason = "tests use fixed temporary inputs")]
 
 use std::fs;

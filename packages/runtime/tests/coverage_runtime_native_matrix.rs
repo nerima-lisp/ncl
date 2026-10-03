@@ -1,3 +1,5 @@
+//! Value-based checks for native runtime call paths.
+
 #![allow(clippy::unwrap_used, reason = "tests use fixed runtime inputs")]
 
 use ncl_runtime::{Runtime, RuntimeError};

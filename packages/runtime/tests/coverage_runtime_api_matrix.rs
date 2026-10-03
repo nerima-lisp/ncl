@@ -1,3 +1,5 @@
+//! Value-based checks for the public runtime API.
+
 #![allow(clippy::unwrap_used, reason = "tests use fixed runtime inputs")]
 
 use ncl_runtime::{Runtime, RuntimeError};
@@ -46,7 +48,10 @@ fn public_runtime_errors_preserve_their_value_categories() {
     ];
 
     for (label, source, kind) in cases {
-        let error = runtime.eval(source).expect_err(label);
+        let error = match runtime.eval(source) {
+            Err(error) => error,
+            Ok(value) => panic!("{label}: unexpectedly evaluated to {value:?}"),
+        };
         match kind {
             "reader" => assert!(
                 matches!(&error, RuntimeError::Read(_)),

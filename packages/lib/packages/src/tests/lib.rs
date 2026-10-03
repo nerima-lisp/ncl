@@ -162,6 +162,25 @@ fn package_local_nickname_builtins_reject_locked_package() {
     );
 }
 
+fn make_string(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: &str,
+) -> Result<Word, ObjectError> {
+    ncl_object::make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
+}
+
+fn package_function(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+) -> Result<FunctionObject, ObjectError> {
+    runtime
+        .function(ctx, "NCL-EXT", name)
+        .ok_or(ObjectError::Layout)
+        .and_then(FunctionObject::try_from)
+}
+
 #[test]
 fn package_local_nickname_designators_and_removal_edges_are_value_based() -> Result<(), ObjectError>
 {
@@ -174,48 +193,20 @@ fn package_local_nickname_designators_and_removal_edges_are_value_based() -> Res
     let first_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-FIRST")?;
     let _second_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-SECOND")?;
     let _third_target = runtime.ensure_package(&mut ctx, "N25-DESIGNATOR-THIRD")?;
-    let owner_name = ncl_object::make_string(
-        &mut ctx,
-        &runtime,
-        &"N25-DESIGNATOR-OWNER".chars().collect::<Vec<_>>(),
-    )?;
-    let first_target_name = ncl_object::make_string(
-        &mut ctx,
-        &runtime,
-        &"N25-DESIGNATOR-FIRST".chars().collect::<Vec<_>>(),
-    )?;
-    let second_target_name = ncl_object::make_string(
-        &mut ctx,
-        &runtime,
-        &"N25-DESIGNATOR-SECOND".chars().collect::<Vec<_>>(),
-    )?;
-    let third_target_name = ncl_object::make_string(
-        &mut ctx,
-        &runtime,
-        &"N25-DESIGNATOR-THIRD".chars().collect::<Vec<_>>(),
-    )?;
-    let first_name = ncl_object::make_string(&mut ctx, &runtime, &['F', 'I', 'R', 'S', 'T'])?;
-    let second_name = ncl_object::make_string(&mut ctx, &runtime, &['S', 'E', 'C', 'O', 'N', 'D'])?;
-    let third_name = ncl_object::make_string(&mut ctx, &runtime, &['T', 'H', 'I', 'R', 'D'])?;
+    let owner_name = make_string(&mut ctx, &runtime, "N25-DESIGNATOR-OWNER")?;
+    let first_target_name = make_string(&mut ctx, &runtime, "N25-DESIGNATOR-FIRST")?;
+    let second_target_name = make_string(&mut ctx, &runtime, "N25-DESIGNATOR-SECOND")?;
+    let third_target_name = make_string(&mut ctx, &runtime, "N25-DESIGNATOR-THIRD")?;
+    let first_name = make_string(&mut ctx, &runtime, "FIRST")?;
+    let second_name = make_string(&mut ctx, &runtime, "SECOND")?;
+    let third_name = make_string(&mut ctx, &runtime, "THIRD")?;
     let owner_symbol = ncl_object::make_symbol(&mut ctx, &runtime, owner_name)?;
     let second_target_symbol = ncl_object::make_symbol(&mut ctx, &runtime, second_target_name)?;
     let second_nickname_symbol = ncl_object::make_symbol(&mut ctx, &runtime, second_name)?;
 
-    let add = FunctionObject::try_from(
-        runtime
-            .function(&mut ctx, "NCL-EXT", "ADD-PACKAGE-LOCAL-NICKNAME")
-            .ok_or(ObjectError::Layout)?,
-    )?;
-    let remove = FunctionObject::try_from(
-        runtime
-            .function(&mut ctx, "NCL-EXT", "REMOVE-PACKAGE-LOCAL-NICKNAME")
-            .ok_or(ObjectError::Layout)?,
-    )?;
-    let list = FunctionObject::try_from(
-        runtime
-            .function(&mut ctx, "NCL-EXT", "PACKAGE-LOCAL-NICKNAMES")
-            .ok_or(ObjectError::Layout)?,
-    )?;
+    let add = package_function(&runtime, &mut ctx, "ADD-PACKAGE-LOCAL-NICKNAME")?;
+    let remove = package_function(&runtime, &mut ctx, "REMOVE-PACKAGE-LOCAL-NICKNAME")?;
+    let list = package_function(&runtime, &mut ctx, "PACKAGE-LOCAL-NICKNAMES")?;
 
     let cases = [
         (
@@ -264,8 +255,7 @@ fn package_local_nickname_designators_and_removal_edges_are_value_based() -> Res
         .map(|entry| ncl_object::car(&ctx, *entry))
         .collect::<Result<Vec<_>, _>>()?;
     assert_eq!(entry_names, vec![third_name, first_name]);
-    let missing_name =
-        ncl_object::make_string(&mut ctx, &runtime, &['M', 'I', 'S', 'S', 'I', 'N', 'G'])?;
+    let missing_name = make_string(&mut ctx, &runtime, "MISSING")?;
     assert_eq!(
         runtime.call_builtin(&mut ctx, remove, &[missing_name, owner]),
         Ok(Word::NIL)
@@ -279,11 +269,7 @@ fn package_local_nickname_designators_and_removal_edges_are_value_based() -> Res
             "unknown target",
             [
                 first_name,
-                ncl_object::make_string(
-                    &mut ctx,
-                    &runtime,
-                    &['N', '2', '5', '-', 'M', 'I', 'S', 'S', 'I', 'N', 'G'],
-                )?,
+                make_string(&mut ctx, &runtime, "N25-MISSING")?,
                 owner,
             ],
         ),

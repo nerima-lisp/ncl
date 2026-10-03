@@ -86,10 +86,11 @@ pub fn execute(
     runtime: &Runtime,
     sink: &mut dyn CharSink,
 ) -> Result<usize, FormatError> {
+    let arguments = arguments.to_vec();
     let mut argument_index = 0;
     let mut line_start = true;
     let mut state = ExecutionState {
-        arguments,
+        arguments: &arguments,
         argument_index: &mut argument_index,
         ctx,
         runtime,
@@ -474,7 +475,7 @@ fn execute_directive(
 }
 
 struct ExecutionState<'a> {
-    arguments: &'a [Word],
+    arguments: &'a Vec<Word>,
     argument_index: &'a mut usize,
     ctx: &'a mut ThreadContext,
     runtime: &'a Runtime,

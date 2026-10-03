@@ -328,8 +328,9 @@ fn covers_internal_state_fallbacks() {
     let mut index = 0;
     let mut line_start = true;
     let mut sink = StringSink::new();
+    let empty_arguments = Vec::new();
     let mut state = ExecutionState {
-        arguments: &[],
+        arguments: &empty_arguments,
         argument_index: &mut index,
         ctx: &mut ctx,
         runtime: &runtime,

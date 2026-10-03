@@ -269,6 +269,7 @@ fn covers_parameter_and_printer_helpers() {
         })
         .is_err()
     );
+    let empty_arguments = Vec::new();
     assert!(
         parameters::repeat_count_for(
             &crate::Directive {
@@ -278,7 +279,7 @@ fn covers_parameter_and_printer_helpers() {
                 kind: DirectiveKind::Percent
             },
             &ExecutionState {
-                arguments: &[],
+                arguments: &empty_arguments,
                 argument_index: &mut 0,
                 ctx: &mut ctx,
                 runtime: &runtime,
@@ -423,8 +424,9 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     let mut argument_index = 0;
     let mut line_start = true;
     let float_word: Word = float.into();
+    let float_arguments = vec![float_word];
     let mut state = ExecutionState {
-        arguments: &[float_word],
+        arguments: &float_arguments,
         argument_index: &mut argument_index,
         ctx: &mut ctx,
         runtime: &runtime,

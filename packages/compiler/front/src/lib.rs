@@ -36,6 +36,9 @@ pub mod types;
 
 pub mod owned_symbols;
 
+#[cfg(test)]
+mod tests;
+
 pub use ast::{
     EvalSituation, Expr, FunctionDesignator, LambdaExpr, LetBinding, LocalFunction, LocalMacro,
     Operator, SymbolMacro, TagbodyItem,

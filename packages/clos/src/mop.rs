@@ -419,4 +419,30 @@ mod tests {
         );
         assert_eq!(instance_arg(&ctx, Word::NIL), Err(ObjectError::TypeError));
     }
+
+    #[test]
+    fn every_mop_callback_rejects_missing_required_arguments() {
+        let (runtime, mut ctx) = setup();
+        let args = BuiltinArgs::new(&[]);
+        let mut values = MultipleValues::new();
+
+        for descriptor in builtin_descriptors() {
+            assert_eq!(
+                (descriptor.callback)(&mut ctx, &runtime, &args, &mut values),
+                Err(ObjectError::TypeError),
+                "{} requires its declared arguments",
+                descriptor.name.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn class_precedence_list_rejects_a_non_vector_descriptor() {
+        let (runtime, mut ctx) = setup();
+
+        assert_eq!(
+            class_precedence_list(&mut ctx, &runtime, Word::NIL),
+            Err(ObjectError::TypeError)
+        );
+    }
 }

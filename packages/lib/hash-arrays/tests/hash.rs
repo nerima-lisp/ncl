@@ -498,6 +498,18 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
         call(&runtime, &mut ctx, "MAPHASH", &[Word::NIL, table],),
         Ok(Word::NIL)
     );
+
+    let callback = common_lisp_symbol(&runtime, &mut ctx, "REMHASH")?;
+    call_ncl_ext(
+        &runtime,
+        &mut ctx,
+        "GETHASH-SET",
+        &[Word::fixnum(1), table, Word::fixnum(2)],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAPHASH", &[callback, table]),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 
@@ -656,6 +668,8 @@ fn hash_table_options_and_accessors_reject_invalid_arguments() -> Result<(), Obj
     let test = keyword(&runtime, &mut ctx, "TEST")?;
     let weakness = keyword(&runtime, &mut ctx, "WEAKNESS")?;
     let unknown = keyword(&runtime, &mut ctx, "UNKNOWN")?;
+    let invalid_test = common_lisp_symbol(&runtime, &mut ctx, "NOT-A-HASH-TEST")?;
+    let invalid_weakness = common_lisp_symbol(&runtime, &mut ctx, "NOT-A-WEAKNESS")?;
 
     assert_eq!(
         call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test, Word::NIL]),
@@ -666,7 +680,25 @@ fn hash_table_options_and_accessors_reject_invalid_arguments() -> Result<(), Obj
             &runtime,
             &mut ctx,
             "MAKE-HASH-TABLE",
+            &[test, invalid_test],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
             &[weakness, Word::TRUE],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[weakness, invalid_weakness],
         ),
         Err(ObjectError::TypeError)
     );

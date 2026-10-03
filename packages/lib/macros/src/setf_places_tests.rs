@@ -73,3 +73,68 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
         Ok(())
     })
 }
+
+#[test]
+fn registered_place_expanders_emit_their_concrete_access_and_store_operators(
+) -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx)?;
+    let target = symbol(&mut ctx, &runtime, "TARGET")?;
+    let index = Word::fixnum(1);
+    type Expander = fn(&mut ThreadContext, &Runtime, &[Word]) -> Result<SetfExpansion, ObjectError>;
+
+    let cases: [(&str, Expander, Vec<Word>, &str, &str); 9] = [
+        ("CAR", car_place, vec![target], "CAR", "PROGN"),
+        ("CDR", cdr_place, vec![target], "CDR", "PROGN"),
+        ("FIRST", first_place, vec![target], "FIRST", "PROGN"),
+        ("REST", rest_place, vec![target], "REST", "PROGN"),
+        ("NTH", nth_place, vec![index, target], "NTH", "PROGN"),
+        (
+            "SYMBOL-VALUE",
+            symbol_value_place,
+            vec![target],
+            "SYMBOL-VALUE",
+            "SET",
+        ),
+        (
+            "AREF",
+            aref_place,
+            vec![target, index],
+            "AREF",
+            "NCL-EXT::AREF-SET",
+        ),
+        (
+            "SVREF",
+            svref_place,
+            vec![target, index],
+            "SVREF",
+            "NCL-EXT::SVREF-SET",
+        ),
+        (
+            "GETHASH",
+            gethash_place,
+            vec![target, index],
+            "GETHASH",
+            "NCL-EXT::GETHASH-SET",
+        ),
+    ];
+
+    for (name, expand, args, access_name, store_name) in cases {
+        let expansion = expand(&mut ctx, &runtime, &args)?;
+        assert_eq!( // check-added-lines: allow(panic,index) exact access operator assertion.
+            elements(&mut ctx, expansion.access_form)?[0],
+            symbol(&mut ctx, &runtime, access_name)?,
+            "{name} access"
+        );
+        let store = elements(&mut ctx, expansion.store_form)?;
+        assert_eq!( // check-added-lines: allow(panic,index) exact store operator assertion.
+            store[0],
+            symbol(&mut ctx, &runtime, store_name)?,
+            "{name} store"
+        );
+        assert_eq!(expansion.store_variables.len(), 1, "{name} store variable"); // check-added-lines: allow(panic) exact expansion count assertion.
+        assert_eq!(expansion.value_forms, args, "{name} value forms"); // check-added-lines: allow(panic) exact expansion assertion.
+    }
+    Ok(())
+}

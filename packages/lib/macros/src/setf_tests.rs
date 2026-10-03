@@ -289,18 +289,18 @@ fn get_setf_expansion_returns_all_five_expansion_values() -> Result<(), ObjectEr
 
     let result = crate::get_setf_expansion_callback(&runtime, &mut ctx, &[place], &mut values)?;
 
-    assert_eq!(result, place);
-    assert_eq!(values.len(), 5);
+    assert_eq!(result, place); // check-added-lines: allow(panic) exact callback result assertion.
+    assert_eq!(values.len(), 5); // check-added-lines: allow(panic) exact expansion count assertion.
     let returned = values.as_slice();
-    assert_eq!(returned[0], Word::NIL);
-    assert_eq!(returned[1], Word::NIL);
-    let store_variables = elements(&mut ctx, returned[2])?;
-    assert_eq!(store_variables.len(), 1);
-    let store_form = elements(&mut ctx, returned[3])?;
-    assert_eq!(store_form[0], symbol(&mut ctx, &runtime, "SETQ")?);
-    assert_eq!(store_form[1], place);
-    assert_eq!(store_form[2], store_variables[0]);
-    assert_eq!(returned[4], place);
+    assert_eq!(returned[0], Word::NIL); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(returned[1], Word::NIL); // check-added-lines: allow(panic,index) exact expansion assertion.
+    let store_variables = elements(&mut ctx, returned[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(store_variables.len(), 1); // check-added-lines: allow(panic) exact expansion count assertion.
+    let store_form = elements(&mut ctx, returned[3])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(store_form[0], symbol(&mut ctx, &runtime, "SETQ")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(store_form[1], place); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(store_form[2], store_variables[0]); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(returned[4], place); // check-added-lines: allow(panic,index) exact expansion assertion.
     Ok(())
 }
 
@@ -327,25 +327,25 @@ fn expansion_support_roots_values_and_propagates_callback_errors() -> Result<(),
         &mut ctx,
         &expansion,
         |_ctx, temporaries, values, stores, actual_store_form, actual_access| {
-            assert_eq!(temporaries, &[temporary]);
-            assert_eq!(values, &[value]);
-            assert_eq!(stores, &[store]);
-            assert_eq!(actual_store_form, store_form);
-            assert_eq!(actual_access, access);
+            assert_eq!(temporaries, &[temporary]); // check-added-lines: allow(panic) callback contract assertion.
+            assert_eq!(values, &[value]); // check-added-lines: allow(panic) callback contract assertion.
+            assert_eq!(stores, &[store]); // check-added-lines: allow(panic) callback contract assertion.
+            assert_eq!(actual_store_form, store_form); // check-added-lines: allow(panic) callback contract assertion.
+            assert_eq!(actual_access, access); // check-added-lines: allow(panic) callback contract assertion.
             Err(ObjectError::UndefinedFunction)
         },
     );
-    assert_eq!(observed, Err(ObjectError::UndefinedFunction));
+    assert_eq!(observed, Err(ObjectError::UndefinedFunction)); // check-added-lines: allow(panic) exact error propagation assertion.
 
     let expansion_values = crate::setf_support::expansion_values(&mut ctx, &runtime, &expansion)?;
-    let temporary_values = elements(&mut ctx, expansion_values[0])?;
-    let value_forms = elements(&mut ctx, expansion_values[1])?;
-    let store_values = elements(&mut ctx, expansion_values[2])?;
-    assert_eq!(temporary_values, vec![temporary]);
-    assert_eq!(value_forms, vec![value]);
-    assert_eq!(store_values, vec![store]);
-    assert_eq!(expansion_values[3], store_form);
-    assert_eq!(expansion_values[4], access);
+    let temporary_values = elements(&mut ctx, expansion_values[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let value_forms = elements(&mut ctx, expansion_values[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let store_values = elements(&mut ctx, expansion_values[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(temporary_values, vec![temporary]); // check-added-lines: allow(panic) exact expansion assertion.
+    assert_eq!(value_forms, vec![value]); // check-added-lines: allow(panic) exact expansion assertion.
+    assert_eq!(store_values, vec![store]); // check-added-lines: allow(panic) exact expansion assertion.
+    assert_eq!(expansion_values[3], store_form); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(expansion_values[4], access); // check-added-lines: allow(panic,index) exact expansion assertion.
     Ok(())
 }
 
@@ -424,16 +424,16 @@ fn setf_arity_and_registry_boundaries_return_the_exact_error() -> Result<(), Obj
             "REMF" => expand_remf(&mut ctx, &runtime, &registry, &arguments),
             "SHIFTF" => expand_shiftf(&mut ctx, &runtime, &registry, &arguments),
             "ROTATEF" => expand_rotatef(&mut ctx, &runtime, &registry, &arguments),
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) exhaustive table uses only named operators.
         };
-        assert_eq!(result, Err(ObjectError::TypeError));
+        assert_eq!(result, Err(ObjectError::TypeError)); // check-added-lines: allow(panic) exact error assertion.
     }
 
     let other_runtime = Runtime::new()?;
     let mut other_ctx = ThreadContext::new();
     other_ctx.register(&other_runtime)?;
     let other_place = symbol(&mut other_ctx, &other_runtime, "PLACE")?;
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic) exact registry error assertion.
         expand_setf(&mut other_ctx, &other_runtime, &registry, &[other_place, other_place]),
         Err(ObjectError::TypeError)
     );
@@ -457,14 +457,14 @@ fn setf_rotation_matrix_preserves_sources_and_emits_complete_shapes() -> Result<
     for (expand, arguments) in cases {
         let expanded = expand(&mut ctx, &runtime, &registry, &arguments)?;
         let outer = elements(&mut ctx, expanded)?;
-        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET*")?);
-        let bindings = elements(&mut ctx, outer[1])?;
-        assert_eq!(bindings.len(), 2);
-        let body = elements(&mut ctx, outer[2])?;
-        assert_eq!(body[0], symbol(&mut ctx, &runtime, "PROGN")?);
-        assert_eq!(body.len(), 4);
-        let first_binding = elements(&mut ctx, bindings[0])?;
-        assert_eq!(body.last().copied(), first_binding.first().copied());
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET*")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+        let bindings = elements(&mut ctx, outer[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        assert_eq!(bindings.len(), 2); // check-added-lines: allow(panic) exact expansion count assertion.
+        let body = elements(&mut ctx, outer[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        assert_eq!(body[0], symbol(&mut ctx, &runtime, "PROGN")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+        assert_eq!(body.len(), 4); // check-added-lines: allow(panic) exact expansion count assertion.
+        let first_binding = elements(&mut ctx, bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        assert_eq!(body.last().copied(), first_binding.first().copied()); // check-added-lines: allow(panic) exact expansion assertion.
     }
     Ok(())
 }
@@ -485,11 +485,11 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
     for (expand, operator) in default_cases {
         let expanded = expand(&mut ctx, &runtime, &registry, &[place])?;
         let outer = elements(&mut ctx, expanded)?;
-        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET")?);
-        let bindings = elements(&mut ctx, outer[1])?;
-        let binding = elements(&mut ctx, bindings[0])?;
-        let arithmetic = elements(&mut ctx, binding[1])?;
-        assert_eq!(
+        assert_eq!(outer[0], symbol(&mut ctx, &runtime, "LET")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+        let bindings = elements(&mut ctx, outer[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        let binding = elements(&mut ctx, bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        let arithmetic = elements(&mut ctx, binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        assert_eq!( // check-added-lines: allow(panic) exact arithmetic expansion assertion.
             arithmetic,
             vec![symbol(&mut ctx, &runtime, operator)?, place, Word::fixnum(1)]
         );
@@ -511,7 +511,7 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
         ("REMF", expand_remf, vec![place]),
     ];
     for (name, expand, arguments) in error_cases {
-        assert_eq!(
+        assert_eq!( // check-added-lines: allow(panic) exact malformed argument assertion.
             expand(&mut ctx, &runtime, &registry, &arguments),
             Err(ObjectError::TypeError),
             "{name} malformed arguments"
@@ -520,14 +520,14 @@ fn setf_expanders_cover_default_arguments_and_complete_error_contracts() -> Resu
 
     let unknown_operator = symbol(&mut ctx, &runtime, "UNKNOWN-PLACE")?;
     let unknown = list(&mut ctx, &runtime, &[unknown_operator, place])?;
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic) exact unknown place assertion.
         expand_setf(&mut ctx, &runtime, &registry, &[unknown, place]),
         Err(ObjectError::UndefinedFunction)
     );
 
     let other_runtime = Runtime::new()?;
     let other_registry = PlaceRegistry::new(&other_runtime);
-    assert_eq!(
+    assert_eq!( // check-added-lines: allow(panic) exact registry ownership assertion.
         expand_setf(&mut ctx, &runtime, &other_registry, &[place, Word::fixnum(1)]),
         Err(ObjectError::TypeError)
     );
@@ -553,10 +553,10 @@ fn pushnew_and_rotate_expansions_preserve_their_complete_forms() -> Result<(), O
         true,
     )?;
     let pushnew_parts = elements(&mut ctx, pushnew)?;
-    let pushnew_bindings = elements(&mut ctx, pushnew_parts[1])?;
-    let pushnew_binding = elements(&mut ctx, pushnew_bindings[0])?;
-    let adjoin = elements(&mut ctx, pushnew_binding[1])?;
-    assert_eq!(
+    let pushnew_bindings = elements(&mut ctx, pushnew_parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let pushnew_binding = elements(&mut ctx, pushnew_bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let adjoin = elements(&mut ctx, pushnew_binding[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!( // check-added-lines: allow(panic) exact expansion assertion.
         adjoin,
         vec![
             symbol(&mut ctx, &runtime, "ADJOIN")?,
@@ -576,16 +576,16 @@ fn pushnew_and_rotate_expansions_preserve_their_complete_forms() -> Result<(), O
         &[left, right, Word::fixnum(9)],
     )?;
     let shifted_parts = elements(&mut ctx, shifted)?;
-    assert_eq!(shifted_parts[0], symbol(&mut ctx, &runtime, "LET*")?);
-    let shifted_body = elements(&mut ctx, shifted_parts[2])?;
-    assert_eq!(shifted_body[0], symbol(&mut ctx, &runtime, "PROGN")?);
-    assert_eq!(shifted_body.len(), 4);
+    assert_eq!(shifted_parts[0], symbol(&mut ctx, &runtime, "LET*")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    let shifted_body = elements(&mut ctx, shifted_parts[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(shifted_body[0], symbol(&mut ctx, &runtime, "PROGN")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(shifted_body.len(), 4); // check-added-lines: allow(panic) exact expansion count assertion.
 
     let rotated = expand_rotatef(&mut ctx, &runtime, &registry, &[left, right])?;
     let rotated_parts = elements(&mut ctx, rotated)?;
-    assert_eq!(rotated_parts[0], symbol(&mut ctx, &runtime, "LET*")?);
-    let rotated_body = elements(&mut ctx, rotated_parts[2])?;
-    assert_eq!(rotated_body[0], symbol(&mut ctx, &runtime, "PROGN")?);
-    assert_eq!(rotated_body.len(), 4);
+    assert_eq!(rotated_parts[0], symbol(&mut ctx, &runtime, "LET*")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    let rotated_body = elements(&mut ctx, rotated_parts[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(rotated_body[0], symbol(&mut ctx, &runtime, "PROGN")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    assert_eq!(rotated_body.len(), 4); // check-added-lines: allow(panic) exact expansion count assertion.
     Ok(())
 }

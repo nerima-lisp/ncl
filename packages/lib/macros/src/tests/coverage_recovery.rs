@@ -54,8 +54,8 @@ fn assert_same_form(
 }
 
 #[test]
-fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
--> Result<(), ObjectError> {
+fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let body = named(&mut ctx, &runtime, "BODY")?;
     let handler = named(&mut ctx, &runtime, "HANDLER")?;
@@ -159,8 +159,8 @@ fn control_macro_expanders_cover_handler_restart_and_multiple_value_forms()
 }
 
 #[test]
-fn restart_expanders_preserve_all_option_aliases_and_reject_incomplete_clauses()
--> Result<(), ObjectError> {
+fn restart_expanders_preserve_all_option_aliases_and_reject_incomplete_clauses(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let restart = named(&mut ctx, &runtime, "RESTART")?;
     let function = named(&mut ctx, &runtime, "FUNCTION")?;
@@ -338,14 +338,12 @@ fn define_condition_expands_slots_accessors_and_report_option() -> Result<(), Ob
         symbol(&mut ctx, &runtime, "NCL-EXT::DEFINE-CONDITION-CLASS")?
     );
     let defun = symbol(&mut ctx, &runtime, "DEFUN")?;
-    assert!(
-        parts[2..]
-            .iter()
-            .map(|part| elements(&mut ctx, *part))
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .any(|part| part.first() == Some(&defun))
-    );
+    assert!(parts[2..]
+        .iter()
+        .map(|part| elements(&mut ctx, *part))
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .any(|part| part.first() == Some(&defun)));
     Ok(())
 }
 
@@ -376,8 +374,8 @@ fn define_condition_rejects_missing_arguments_and_malformed_slot_lists() -> Resu
 }
 
 #[test]
-fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords()
--> Result<(), ObjectError> {
+fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -431,8 +429,8 @@ fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords()
 }
 
 #[test]
-fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings()
--> Result<(), ObjectError> {
+fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
@@ -556,8 +554,8 @@ fn destructuring_key_and_marker_errors_are_reported() -> Result<(), ObjectError>
 }
 
 #[test]
-fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly()
--> Result<(), ObjectError> {
+fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -614,8 +612,8 @@ fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly(
 }
 
 #[test]
-fn destructuring_key_supplied_p_and_custom_keyword_expand_to_lookup_guards()
--> Result<(), ObjectError> {
+fn destructuring_key_supplied_p_and_custom_keyword_expand_to_lookup_guards(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
@@ -756,8 +754,8 @@ fn multiple_value_helpers_capture_and_flatten_list_arguments() -> Result<(), Obj
 }
 
 #[test]
-fn quasiquote_expansion_handles_direct_splicing_nested_markers_and_bad_arity()
--> Result<(), ObjectError> {
+fn quasiquote_expansion_handles_direct_splicing_nested_markers_and_bad_arity(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let op = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
     let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;
@@ -1005,5 +1003,90 @@ fn quasiquote_vectors_and_nested_splicing_preserve_constructor_shapes() -> Resul
     assert_eq!(nested_parts[0], list);
     assert_eq!(elements(&mut ctx, nested_parts[1])?, vec![quote, nested]);
     assert_eq!(nested_parts.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn destructuring_body_marker_binds_the_remaining_arguments() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let body_marker = symbol(&mut ctx, &runtime, "&BODY")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let pattern = list(&mut ctx, &runtime, &[body_marker, body])?;
+    let form = list(&mut ctx, &runtime, &[op, pattern, value, body])?;
+
+    let expanded = call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form)?;
+    let parts = elements(&mut ctx, expanded)?;
+    let bindings = elements(&mut ctx, parts[1])?;
+    let source_binding = elements(&mut ctx, bindings[0])?;
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    assert_eq!(source_binding[1], value);
+    assert_eq!(
+        elements(&mut ctx, bindings[1])?,
+        vec![body, source_binding[0]]
+    );
+    assert_eq!(parts[2], body);
+    Ok(())
+}
+
+#[test]
+fn quasiquote_treats_noncanonical_marker_lists_as_data() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
+    let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let extra = symbol(&mut ctx, &runtime, "EXTRA")?;
+    let malformed = list(&mut ctx, &runtime, &[unquote, value, extra])?;
+    let form = list(&mut ctx, &runtime, &[op, malformed])?;
+
+    let expanded = call_macro(&runtime, &mut ctx, "QUASIQUOTE", form)?;
+    let parts = elements(&mut ctx, expanded)?;
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "CONS")?);
+    let quoted_marker = elements(&mut ctx, parts[1])?;
+    assert_eq!(quoted_marker[0], symbol(&mut ctx, &runtime, "QUOTE")?);
+    assert_eq!(quoted_marker[1], unquote);
+    let tail = elements(&mut ctx, parts[2])?;
+    assert_eq!(tail[0], symbol(&mut ctx, &runtime, "CONS")?);
+    assert_eq!(elements(&mut ctx, tail[1])?[1], value);
+    let final_tail = elements(&mut ctx, tail[2])?;
+    assert_eq!(final_tail[0], symbol(&mut ctx, &runtime, "CONS")?);
+    assert_eq!(elements(&mut ctx, final_tail[1])?[1], extra);
+    Ok(())
+}
+
+#[test]
+fn do_and_prog_star_expansions_use_their_sequential_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = named(&mut ctx, &runtime, "X")?;
+    let init = named(&mut ctx, &runtime, "INIT")?;
+    let step = named(&mut ctx, &runtime, "STEP")?;
+    let test = named(&mut ctx, &runtime, "TEST")?;
+    let result = named(&mut ctx, &runtime, "RESULT")?;
+    let body = named(&mut ctx, &runtime, "BODY")?;
+    let variable = list_of(&mut ctx, &runtime, &[x, init, step])?;
+    let variables = list_of(&mut ctx, &runtime, &[variable])?;
+    let end = list_of(&mut ctx, &runtime, &[test, result])?;
+
+    let do_star = named(&mut ctx, &runtime, "DO*")?;
+    let do_star_form = list_of(&mut ctx, &runtime, &[do_star, variables, end, body])?;
+    let do_star_expansion = call_macro(&runtime, &mut ctx, "DO*", do_star_form)?;
+    let do_star_parts = elements(&mut ctx, do_star_expansion)?;
+    let do_star_let = elements(&mut ctx, do_star_parts[2])?;
+    let do_star_tagbody = elements(&mut ctx, do_star_let[2])?;
+    assert_eq!(do_star_let[0], named(&mut ctx, &runtime, "LET*")?);
+    assert_eq!(
+        elements(&mut ctx, do_star_tagbody[4])?[0],
+        named(&mut ctx, &runtime, "SETQ")?
+    );
+
+    let prog_star = named(&mut ctx, &runtime, "PROG*")?;
+    let prog_variable = list_of(&mut ctx, &runtime, &[x, init])?;
+    let prog_variables = list_of(&mut ctx, &runtime, &[prog_variable])?;
+    let prog_star_form = list_of(&mut ctx, &runtime, &[prog_star, prog_variables, body])?;
+    let prog_star_expansion = call_macro(&runtime, &mut ctx, "PROG*", prog_star_form)?;
+    let prog_star_parts = elements(&mut ctx, prog_star_expansion)?;
+    let prog_star_body = elements(&mut ctx, prog_star_parts[2])?;
+    assert_eq!(prog_star_body[0], named(&mut ctx, &runtime, "LET*")?);
     Ok(())
 }

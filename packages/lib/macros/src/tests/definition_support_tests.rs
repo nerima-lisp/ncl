@@ -10,8 +10,8 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
 }
 
 #[test]
-fn function_definition_builtins_return_functions_and_reject_bad_designators()
--> Result<(), ObjectError> {
+fn function_definition_builtins_return_functions_and_reject_bad_designators(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let car = crate::symbol(&mut ctx, &runtime, "FDEFINITION")?;
     let not_symbol = Word::fixnum(1);
@@ -105,8 +105,8 @@ fn set_definition_and_macro_function_update_symbol_cells() -> Result<(), ObjectE
 }
 
 #[test]
-fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties()
--> Result<(), ObjectError> {
+fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties(
+) -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = crate::symbol(&mut ctx, &runtime, "PROPERTY-HOLDER")?;
     let key = crate::symbol(&mut ctx, &runtime, "KEY")?;
@@ -155,6 +155,64 @@ fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties()
     assert_eq!(
         get_property(&ctx, malformed_name, key),
         Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn property_access_skips_nonmatching_entries_before_finding_or_appending() -> Result<(), ObjectError>
+{
+    let (runtime, mut ctx) = fixture()?;
+    let name = crate::symbol(&mut ctx, &runtime, "PROPERTY-MULTI")?;
+    let first = crate::symbol(&mut ctx, &runtime, "FIRST-KEY")?;
+    let second = crate::symbol(&mut ctx, &runtime, "SECOND-KEY")?;
+    let missing = crate::symbol(&mut ctx, &runtime, "MISSING-KEY")?;
+    let mut values = ncl_object::MultipleValues::new();
+
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first, Word::fixnum(1)]),
+            &mut values,
+        )?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, second, Word::fixnum(2)]),
+            &mut values,
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, missing]),
+            &mut values,
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first, Word::fixnum(3)]),
+            &mut values,
+        )?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first]),
+            &mut values,
+        )?,
+        Word::fixnum(3)
     );
     Ok(())
 }

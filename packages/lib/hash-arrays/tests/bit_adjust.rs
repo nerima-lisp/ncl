@@ -2,7 +2,8 @@
 
 use ncl_object::{
     ArrayElementType, FunctionObject, ObjectError, Runtime, ThreadContext, Word,
-    array_row_major_ref, array_row_major_set, make_cons, make_string, pop_root, push_root,
+    array_row_major_ref, array_row_major_set, car, cdr, make_cons, make_string, pop_root,
+    push_root,
 };
 
 fn call(
@@ -156,6 +157,26 @@ fn bit_and_sbit_return_expected_values_and_reject_invalid_indices_and_values()
 }
 
 #[test]
+fn sbit_rejects_multidimensional_bit_arrays() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), tail)?;
+    let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
+    let bit = keyword(&runtime, &mut ctx, "BIT")?;
+    let matrix = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[dimensions, element_type, bit],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "SBIT", &[matrix, Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn adjust_array_covers_fill_pointer_copy_and_option_validation() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
     let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
@@ -280,6 +301,50 @@ fn adjust_array_covers_fill_pointer_copy_and_option_validation() -> Result<(), O
         Err(ObjectError::TypeError)
     );
     assert!(pop_root(&mut ctx, base_token));
+    Ok(())
+}
+
+#[test]
+fn adjust_array_rejects_options_on_fixed_arrays_and_preserves_displaced_fill_pointer()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let adjustable = keyword(&runtime, &mut ctx, "ADJUSTABLE")?;
+    let fill_pointer = keyword(&runtime, &mut ctx, "FILL-POINTER")?;
+    let displaced_to = keyword(&runtime, &mut ctx, "DISPLACED-TO")?;
+    let target = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(3),
+            adjustable,
+            Word::TRUE,
+            fill_pointer,
+            Word::fixnum(1),
+        ],
+    )?;
+    let fixed = call(&runtime, &mut ctx, "MAKE-ARRAY", &[Word::fixnum(2)])?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ADJUST-ARRAY",
+            &[fixed, Word::fixnum(2), fill_pointer, Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let displaced = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[target, dimensions, displaced_to, target],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[displaced])?,
+        Word::fixnum(1)
+    );
     Ok(())
 }
 
@@ -791,6 +856,190 @@ fn array_helpers_cover_shape_bounds_and_initial_contents_sequences() -> Result<(
     assert_eq!(
         call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[empty])?,
         Word::fixnum(0)
+    );
+    Ok(())
+}
+
+#[test]
+fn array_metadata_and_row_major_index_validate_multidimensional_access() -> Result<(), ObjectError>
+{
+    let (runtime, mut ctx) = setup()?;
+    let tail = make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::NIL)?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), tail)?;
+    let array = call(&runtime, &mut ctx, "MAKE-ARRAY", &[dimensions])?;
+    assert_eq!(call(&runtime, &mut ctx, "ARRAYP", &[array])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-RANK", &[array])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[array, Word::fixnum(1)],
+        )?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[array])?,
+        Word::fixnum(6)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ROW-MAJOR-INDEX",
+            &[array, Word::fixnum(1), Word::fixnum(2)],
+        )?,
+        Word::fixnum(5)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ROW-MAJOR-INDEX",
+            &[array, Word::fixnum(1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ROW-MAJOR-INDEX",
+            &[array, Word::TRUE, Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ROW-MAJOR-AREF",
+            &[array, Word::fixnum(6)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_initial_contents_rejects_a_sequence_with_the_wrong_inner_shape() -> Result<(), ObjectError>
+{
+    let (runtime, mut ctx) = setup()?;
+    let initial_contents = keyword(&runtime, &mut ctx, "INITIAL-CONTENTS")?;
+    let dimensions_tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), dimensions_tail)?;
+    let short_row = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL)?;
+    let first_row = make_cons(&mut ctx, &runtime, short_row, Word::NIL)?;
+    let contents = make_cons(&mut ctx, &runtime, first_row, Word::NIL)?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[dimensions, initial_contents, contents],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn array_properties_and_dimensions_cover_simple_vector_and_fill_pointer_paths()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let vector = call(
+        &runtime,
+        &mut ctx,
+        "VECTOR",
+        &[Word::fixnum(3), Word::fixnum(4)],
+    )?;
+    assert_eq!(call(&runtime, &mut ctx, "ARRAYP", &[vector])?, Word::TRUE);
+    assert_eq!(call(&runtime, &mut ctx, "VECTORP", &[vector])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-VECTOR-P", &[vector])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-DIMENSION",
+            &[vector, Word::fixnum(0)]
+        )?,
+        Word::fixnum(2)
+    );
+    let dimensions = call(&runtime, &mut ctx, "ARRAY-DIMENSIONS", &[vector])?;
+    assert_eq!(car(&ctx, dimensions)?, Word::fixnum(2));
+    assert_eq!(cdr(&ctx, dimensions)?, Word::NIL);
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[vector])?,
+        Word::fixnum(2)
+    );
+
+    let adjustable = keyword(&runtime, &mut ctx, "ADJUSTABLE")?;
+    let fill_pointer = keyword(&runtime, &mut ctx, "FILL-POINTER")?;
+    let array = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(3),
+            adjustable,
+            Word::TRUE,
+            fill_pointer,
+            Word::fixnum(1),
+        ],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ADJUSTABLE-ARRAY-P", &[array])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[array])?,
+        Word::TRUE
+    );
+    let adjusted = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[array, Word::fixnum(4)],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[adjusted])?,
+        Word::fixnum(4)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[adjusted])?,
+        Word::fixnum(1)
+    );
+    Ok(())
+}
+
+#[test]
+fn sbit_setter_covers_successful_mutation_path() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    let source = ncl_object::make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(0)],
+    )?;
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "SBIT",
+            &[source, Word::fixnum(1), Word::fixnum(1)],
+        )?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SBIT", &[source, Word::fixnum(1)])?,
+        Word::fixnum(1)
     );
     Ok(())
 }

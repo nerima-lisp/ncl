@@ -160,6 +160,64 @@ fn get_and_set_get_builtins_handle_missing_existing_and_malformed_properties()
 }
 
 #[test]
+fn property_access_skips_nonmatching_entries_before_finding_or_appending() -> Result<(), ObjectError>
+{
+    let (runtime, mut ctx) = fixture()?;
+    let name = crate::symbol(&mut ctx, &runtime, "PROPERTY-MULTI")?;
+    let first = crate::symbol(&mut ctx, &runtime, "FIRST-KEY")?;
+    let second = crate::symbol(&mut ctx, &runtime, "SECOND-KEY")?;
+    let missing = crate::symbol(&mut ctx, &runtime, "MISSING-KEY")?;
+    let mut values = ncl_object::MultipleValues::new();
+
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first, Word::fixnum(1)]),
+            &mut values,
+        )?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, second, Word::fixnum(2)]),
+            &mut values,
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, missing]),
+            &mut values,
+        )?,
+        Word::NIL
+    );
+    assert_eq!(
+        set_get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first, Word::fixnum(3)]),
+            &mut values,
+        )?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        get_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[name, first]),
+            &mut values,
+        )?,
+        Word::fixnum(3)
+    );
+    Ok(())
+}
+
+#[test]
 fn place_expanders_produce_access_and_store_forms() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = crate::symbol(&mut ctx, &runtime, "F")?;

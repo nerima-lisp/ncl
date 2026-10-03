@@ -1,8 +1,8 @@
 //! Conversion of object-layer typed builtin failures into CL conditions.
 
 use ncl_object::{
-    ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, ProgramError, Runtime,
-    ThreadContext, Word, pop_root, push_root,
+    ArithmeticError, CellError, FileError, LispError, ObjectError, ObjectType, Package,
+    ProgramError, Runtime, ThreadContext, Word, pop_root, push_root,
 };
 
 use crate::{
@@ -139,7 +139,15 @@ pub fn condition_from_lisp_error(
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),
         LispError::StreamError(_) => (ConditionIdentifier::StreamError, Vec::new()),
         LispError::EndOfFile => (ConditionIdentifier::EndOfFile, Vec::new()),
-        LispError::FileError(_) => (ConditionIdentifier::FileError, Vec::new()),
+        LispError::FileError(error) => (
+            ConditionIdentifier::FileError,
+            match error {
+                FileError::NotFound { pathname }
+                | FileError::PermissionDenied { pathname }
+                | FileError::InvalidPath { pathname } => words(&[pathname]),
+                _ => Vec::new(), // check-added-lines: allow(wildcard) preserve forward compatibility
+            },
+        ),
         LispError::Object(ObjectError::TypeError) => (
             ConditionIdentifier::TypeError,
             words(&[Word::NIL, Word::NIL]),

@@ -53,12 +53,13 @@ fn execute_unparameterized_radix(
         &mut rendered,
         &PrintOptions::new().with_base(10),
     )?;
-    let number = rendered
-        .into_string()
-        .parse::<i128>()
-        .map_err(|_| FormatError::InvalidParameter {
-            directive: directive.kind,
-        })?;
+    let number =
+        rendered
+            .into_string()
+            .parse::<i128>()
+            .map_err(|_| FormatError::InvalidParameter {
+                directive: directive.kind,
+            })?;
     let rendered = if directive.at_sign {
         roman(number, directive.colon)
     } else if directive.colon {
@@ -78,11 +79,12 @@ fn cardinal(value: i128) -> String {
     }
     let mut result = String::new();
     let mut remaining = value;
-    for (scale, name) in [(1_000_000_000_000_i128, "trillion"),
+    for (scale, name) in [
+        (1_000_000_000_000_i128, "trillion"),
         (1_000_000_000_i128, "billion"),
         (1_000_000_i128, "million"),
-        (1_000_i128, "thousand")]
-    {
+        (1_000_i128, "thousand"),
+    ] {
         if remaining >= scale {
             append_words(&mut result, under_thousand(remaining / scale));
             result.push(' ');
@@ -108,32 +110,62 @@ pub(super) fn append_words(result: &mut String, words: String) {
 
 fn under_thousand(value: i128) -> String {
     const ONES: [&str; 20] = [
-        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-        "seventeen", "eighteen", "nineteen",
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
     ];
     const TENS: [&str; 10] = [
-        "zero", "ten", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
-        "ninety",
+        "zero", "ten", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
     ];
     if value < 20 {
-        return ONES[value as usize].to_owned();
+        let index = usize::try_from(value).unwrap_or(0);
+        return ONES.get(index).copied().unwrap_or("zero").to_owned();
     }
     if value < 100 {
         let tens = value / 10;
         let ones = value % 10;
         return if ones == 0 {
-            TENS[tens as usize].to_owned()
+            let index = usize::try_from(tens).unwrap_or(0);
+            TENS.get(index).copied().unwrap_or("zero").to_owned()
         } else {
-            format!("{}-{}", TENS[tens as usize], ONES[ones as usize])
+            let tens_index = usize::try_from(tens).unwrap_or(0);
+            let ones_index = usize::try_from(ones).unwrap_or(0);
+            format!(
+                "{}-{}",
+                TENS.get(tens_index).copied().unwrap_or("zero"),
+                ONES.get(ones_index).copied().unwrap_or("zero")
+            )
         };
     }
     let hundreds = value / 100;
     let rest = value % 100;
     if rest == 0 {
-        format!("{} hundred", ONES[hundreds as usize])
+        let index = usize::try_from(hundreds).unwrap_or(0);
+        format!("{} hundred", ONES.get(index).copied().unwrap_or("zero"))
     } else {
-        format!("{} hundred {}", ONES[hundreds as usize], under_thousand(rest))
+        let index = usize::try_from(hundreds).unwrap_or(0);
+        format!(
+            "{} hundred {}",
+            ONES.get(index).copied().unwrap_or("zero"),
+            under_thousand(rest)
+        )
     }
 }
 
@@ -177,10 +209,31 @@ fn roman(value: i128, old: bool) -> String {
         return format!("-{}", roman(-value, old));
     }
     let symbols: &[(i128, &str)] = if old {
-        &[(1000, "M"), (500, "D"), (100, "C"), (50, "L"), (10, "X"), (5, "V"), (1, "I")]
+        &[
+            (1000, "M"),
+            (500, "D"),
+            (100, "C"),
+            (50, "L"),
+            (10, "X"),
+            (5, "V"),
+            (1, "I"),
+        ]
     } else {
-        &[(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
-            (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+        &[
+            (1000, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
+        ]
     };
     let mut remaining = value;
     let mut result = String::new();
@@ -331,7 +384,10 @@ fn execute_value_with_argument(
         .get(1)
         .and_then(|parameter| match parameter {
             Parameter::Character(value) => Some(*value),
-            _ => None,
+            Parameter::Integer(_)
+            | Parameter::Relative
+            | Parameter::ArgumentCount
+            | Parameter::Unsupplied => None,
         })
         .unwrap_or(' ');
     let right_pad = matches!(
@@ -360,5 +416,7 @@ fn radix_parameter(directive: &Directive) -> Result<u32, FormatError> {
             directive: directive.kind,
         });
     }
-    Ok(value as u32)
+    u32::try_from(value).map_err(|_| FormatError::InvalidParameter {
+        directive: directive.kind,
+    })
 }

@@ -70,10 +70,17 @@ pub(super) fn execute_control_kind(
         }
         DirectiveKind::Star => {
             let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
-            let current = *state.argument_index as i128;
+            let current = i128::try_from(*state.argument_index).map_err(|_| {
+                FormatError::InvalidParameter {
+                    directive: directive.kind,
+                }
+            })?;
             let target_value = current + i128::from(offset);
             let target_value = if target_value < 0 { 0 } else { target_value };
-            let target = target_value.min(usize::MAX as i128) as usize;
+            let target = match usize::try_from(target_value) {
+                Ok(target) => target,
+                Err(_) => usize::MAX,
+            };
             *state.argument_index = target.min(state.arguments.len());
         }
         DirectiveKind::UpArrow => {
@@ -85,7 +92,11 @@ pub(super) fn execute_control_kind(
                     .parameters
                     .first()
                     .and_then(|parameter| parameter_i64(Some(parameter)))
-                    .is_some_and(|limit| i64::try_from(state.arguments.len()).is_ok_and(|len| len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit))
+                    .is_some_and(|limit| {
+                        i64::try_from(state.arguments.len()).is_ok_and(|len| {
+                            len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit
+                        })
+                    })
             };
             if terminate {
                 *state.argument_index = state.arguments.len();
@@ -130,8 +141,12 @@ fn tab_count(directive: &Directive) -> Result<usize, FormatError> {
             directive: directive.kind,
         });
     }
-    let column = column as usize;
-    let increment = increment as usize;
+    let column = usize::try_from(column).map_err(|_| FormatError::InvalidParameter {
+        directive: directive.kind,
+    })?;
+    let increment = usize::try_from(increment).map_err(|_| FormatError::InvalidParameter {
+        directive: directive.kind,
+    })?;
     Ok(column.div_ceil(increment))
 }
 

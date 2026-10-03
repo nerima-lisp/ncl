@@ -53,8 +53,7 @@ pub(crate) const KV: usize = 11;
 pub(crate) const INDEX: usize = 12;
 const EMPTY: i64 = -1;
 const TOMBSTONE: i64 = -2;
-// Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs.
-// Removed key slots use a reserved tagged word and their value slots form a free-position list.
+// Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs; removed key slots use a reserved tagged word and their value slots form a free-position list.
 impl HashTable {
     fn allocate(
         ctx: &mut ThreadContext,
@@ -491,6 +490,10 @@ impl HashTable {
         usize::try_from(self.read_i64(ctx, slot)?).map_err(|_| ObjectError::Layout)
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/support/hash_table_coverage_tests.rs"]
+mod coverage_tests;
 
 #[cfg(test)]
 #[path = "hash_table_tests.rs"]

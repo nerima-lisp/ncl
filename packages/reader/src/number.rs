@@ -299,6 +299,7 @@ pub fn parse_integer(
     while chars.get(index).is_some_and(|ch| ch.is_whitespace()) {
         index += 1;
     }
+    let number_start = index;
     if matches!(chars.get(index), Some('+' | '-')) {
         index += 1;
     }
@@ -318,7 +319,7 @@ pub fn parse_integer(
         ctx,
         runtime,
         chars
-            .get(..index)
+            .get(number_start..index)
             .ok_or_else(|| ReadError::InvalidNumber(string.to_owned()))?,
         radix,
     )?;

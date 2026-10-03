@@ -310,6 +310,72 @@ mod builtin_address_tests {
             "context offset is unavailable: Catch"
         );
     }
+
+    #[test]
+    fn covers_all_typed_abi_selectors_and_empty_address_lookup() {
+        for name in ["check-keywords", "keyword-value", "keyword-supplied-p"] {
+            assert_eq!(common_lisp_builtin(name).package.as_str(), "NCL-EXT");
+        }
+        assert_eq!(common_lisp_builtin("car").name.as_str(), "car");
+
+        let abi = X86_64Abi;
+        for field in [
+            ContextField::TlabBump,
+            ContextField::TlabLimit,
+            ContextField::SafepointRequest,
+            ContextField::Pending,
+            ContextField::MultipleValueCount,
+            ContextField::MultipleValueArea,
+            ContextField::Handler,
+            ContextField::Cleanup,
+            ContextField::Catch,
+        ] {
+            assert!(abi.field_offset(field).is_ok(), "{field:?}");
+        }
+        for function in [
+            RuntimeFunction::AllocateSlow,
+            RuntimeFunction::SafepointSlow,
+            RuntimeFunction::Unwind,
+            RuntimeFunction::Builtin,
+            RuntimeFunction::UndefinedFunction,
+            RuntimeFunction::ConstantTable,
+            RuntimeFunction::MakeClosure,
+            RuntimeFunction::MakeValueCell,
+            RuntimeFunction::EnterCatch,
+            RuntimeFunction::EnterUnwindProtect,
+            RuntimeFunction::EnterProgv,
+            RuntimeFunction::LeaveCatch,
+            RuntimeFunction::LeaveUnwindProtect,
+            RuntimeFunction::LeaveProgv,
+        ] {
+            assert!(matches!(
+                abi.runtime_address(function),
+                Err(AbiError::UnsupportedRuntimeFunction(found)) if found == function
+            ));
+        }
+        assert_eq!(abi.constant_word("missing"), None);
+        assert_eq!(abi.constant_word_named(ConstantName::new("missing")), None);
+
+        let table = BuiltinAddressTable::new();
+        assert_eq!(
+            table.builtin_address(common_lisp_builtin("not-registered")),
+            None
+        );
+    }
+
+    #[test]
+    fn formats_each_abi_error_variant() {
+        let identifier = common_lisp_builtin("identity");
+        assert_eq!(
+            AbiError::MissingBuiltin(identifier).to_string(),
+            "builtin address is unavailable: COMMON-LISP::identity"
+        );
+        assert!(
+            AbiError::UnsupportedRuntimeFunction(RuntimeFunction::LeaveProgv)
+                .to_string()
+                .contains("LeaveProgv")
+        );
+    }
 }
 
 /// Default x86-64 ABI policy used by tests and embedders.

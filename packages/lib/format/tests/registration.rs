@@ -44,6 +44,39 @@ fn format_is_callable_and_executes_value_and_line_directives() {
 }
 
 #[test]
+fn format_returns_expected_radix_and_repeat_output() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+    let control = string(&runtime, &mut ctx, "~B/~O/~X/~3~");
+
+    let result = runtime
+        .call_builtin(
+            &mut ctx,
+            function,
+            &[
+                Word::NIL,
+                control,
+                Word::fixnum(5),
+                Word::fixnum(8),
+                Word::fixnum(15),
+            ],
+        )
+        .expect("format result");
+
+    assert_eq!(read_string(&ctx, result), "101/10/F/~~~");
+}
+
+#[test]
 fn format_accepts_symbol_and_character_controls() {
     let runtime = Runtime::new().expect("runtime");
     let mut ctx = ThreadContext::new();

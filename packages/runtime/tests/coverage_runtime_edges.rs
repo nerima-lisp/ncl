@@ -86,6 +86,56 @@ fn evaluation_reports_undefined_functions_and_reader_errors() {
 }
 
 #[test]
+fn non_local_control_restores_bindings_and_runs_cleanup() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(catch 'cleanup\
+                (catch 'tag\
+                  (unwind-protect (throw 'tag 42) (throw 'cleanup 99))))",
+        ),
+        "99"
+    );
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(progv '(runtime-special) '(17) runtime-special)",
+        ),
+        "17"
+    );
+}
+
+#[test]
+fn multiple_values_are_forwarded_to_a_consumer() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert_eq!(
+        eval(&mut runtime, "(multiple-value-call #'list (values 1 2 3))",),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(multiple-value-call #'list\
+                (multiple-value-prog1 (values 4 5) 6))",
+        ),
+        "(4 5)"
+    );
+}
+
+#[test]
+fn arithmetic_overflow_uses_the_numeric_tower_fallback() {
+    let mut runtime = Runtime::new().unwrap();
+
+    assert_eq!(
+        eval(&mut runtime, "(+ 4611686018427387903 1)"),
+        "4611686018427387904"
+    );
+}
+
+#[test]
 fn load_builtin_executes_file_and_honors_if_does_not_exist() {
     let path =
         std::env::temp_dir().join(format!("ncl-runtime-load-edge-{}.lisp", std::process::id()));

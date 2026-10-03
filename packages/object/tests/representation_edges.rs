@@ -3,10 +3,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, Character, CodeObject, ObjectRef, ObjectType, Package, Runtime,
-    ThreadContext, Word, WordView, classify, classify_object, make_array, make_bignum_from_i128,
-    make_closure, make_code_object, make_complex, make_cons, make_double, make_instance,
-    make_ratio, make_readtable, make_simple_fun, make_simple_vector, make_specialized_array,
-    make_stream, make_string, make_structure,
+    ThreadContext, Word, WordView, allocate, classify, classify_object, make_array,
+    make_bignum_from_i128, make_closure, make_code_object, make_complex, make_cons, make_double,
+    make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
+    make_specialized_array, make_stream, make_string, make_structure,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -64,6 +64,56 @@ fn immediate_views_keep_the_tagged_word_contract() {
         <ncl_object::List as ncl_object::FromLispArg>::from_lisp_arg(&ctx, Word::NIL),
         Ok(ncl_object::List::Nil)
     );
+}
+
+#[test]
+fn immediate_views_preserve_signed_and_unicode_boundary_values() {
+    for value in [-(1_i64 << 62), -1, 0, 1, (1_i64 << 62) - 1] {
+        let word = Word::fixnum(value);
+        assert_eq!(classify(word), ObjectRef::Fixnum(value));
+        assert_eq!(WordView::from(classify(word)), WordView::Fixnum(value));
+        assert_eq!(WordView::from(classify(word)).as_word(), word);
+    }
+    for value in [0, 0x10_FFFF] {
+        let word = Word::character(value);
+        assert_eq!(classify(word), ObjectRef::Character(value));
+        assert_eq!(WordView::from(classify(word)), WordView::Character(value));
+        assert_eq!(WordView::from(classify(word)).as_word(), word);
+    }
+    let invalid_character = Word::character(0x10_FFFF + 1);
+    assert_eq!(
+        classify(invalid_character),
+        ObjectRef::Cons(invalid_character)
+    );
+}
+
+#[test]
+fn object_type_names_match_their_public_type_categories() {
+    for (object_type, name) in [
+        (ObjectType::Fixnum, "fixnum"),
+        (ObjectType::Character, "character"),
+        (ObjectType::Cons, "cons"),
+        (ObjectType::Symbol, "symbol"),
+        (ObjectType::String, "string"),
+        (ObjectType::SimpleVector, "simple-vector"),
+        (ObjectType::SpecializedArray, "specialized-array"),
+        (ObjectType::Array, "array"),
+        (ObjectType::HashTable, "hash-table"),
+        (ObjectType::Function, "function"),
+        (ObjectType::Closure, "closure"),
+        (ObjectType::Instance, "instance"),
+        (ObjectType::Structure, "structure-object"),
+        (ObjectType::Bignum, "bignum"),
+        (ObjectType::Ratio, "ratio"),
+        (ObjectType::DoubleFloat, "double-float"),
+        (ObjectType::Complex, "complex"),
+        (ObjectType::Package, "package"),
+        (ObjectType::Readtable, "readtable"),
+        (ObjectType::Stream, "stream"),
+        (ObjectType::Code, "code"),
+    ] {
+        assert_eq!(object_type.name(), name);
+    }
 }
 
 #[test]
@@ -308,5 +358,31 @@ fn heap_classification_round_trips_each_supported_representation() {
     assert_eq!(
         WordView::from(classify_object(&ctx, stream)).as_word(),
         stream
+    );
+}
+
+#[test]
+fn unknown_heap_widetag_preserves_other_representation() {
+    let (runtime, mut ctx) = setup();
+    let object = allocate(&mut ctx, &runtime, 0x7f, 1).unwrap();
+
+    assert_eq!(runtime.widetag(object), Some(0x7f));
+    assert_eq!(
+        classify_object(&ctx, object),
+        ObjectRef::Other {
+            word: object,
+            widetag: 0x7f,
+        }
+    );
+    assert_eq!(
+        WordView::from(classify_object(&ctx, object)),
+        WordView::Other {
+            word: object,
+            widetag: 0x7f,
+        }
+    );
+    assert_eq!(
+        WordView::from(classify_object(&ctx, object)).as_word(),
+        object
     );
 }

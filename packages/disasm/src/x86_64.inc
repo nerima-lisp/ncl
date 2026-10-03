@@ -77,9 +77,9 @@ impl<'a> Reader<'a> {
         let v = self.byte()?;
         Ok((v >> 6, (v >> 3) & 7, v & 7))
     }
-    fn operand(&mut self, reg_field: u8, memory_only: bool) -> Result<(u8, Operand), DecodeError> {
-        let (mode, _r, rm) = self.modrm()?;
-        let reg = self.reg(reg_field, self.rex.r);
+    fn operand(&mut self, memory_only: bool) -> Result<(u8, Operand), DecodeError> {
+        let (mode, modrm_reg, rm) = self.modrm()?;
+        let reg = self.reg(modrm_reg, self.rex.r);
         if mode == 3 {
             if memory_only {
                 return Err(DecodeError::Invalid {
@@ -268,9 +268,10 @@ fn decode_one(bytes: &[u8], address: u64) -> Result<(u8, String, Option<i64>), D
     }
     if prefix == 0 && (0xb8..=0xbf).contains(&op) && r.rex.w {
         let rr = (op & 7) | (r.rex.b << 3);
+        let value = r.imm_i64()?;
         return Ok((
             r.pos as u8,
-            format!("mov ${}, %{}", r.imm_i64()?, reg_name(rr)),
+            format!("mov ${value}, %{}", reg_name(rr)),
             None,
         ));
     }
@@ -293,7 +294,7 @@ fn decode_0f(
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
     if op == 0x1f {
-        let (_, o) = r.operand(0, true)?;
+        let (_, o) = r.operand(true)?;
         return Ok((r.pos as u8, format!("nop {}", operand_name(o)), None));
     }
     if (0x80..=0x8f).contains(&op) {
@@ -308,7 +309,7 @@ fn decode_0f_modrm(
     op: u8,
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
-    let (reg, o) = r.operand(0, false)?;
+    let (reg, o) = r.operand(false)?;
     let name = operand_name(o);
     let text = match op {
         0x10 if r.rex.w => format!("movsd {name}, %{}", xmm_name(reg)),
@@ -367,7 +368,7 @@ fn decode_primary(
         || op == 0x85
         || op == 0x87
     {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o) = r.operand(false)?;
         let n = operand_name(o);
         let rr = format!("%{}", reg_name(reg));
         let text = match op {
@@ -383,7 +384,7 @@ fn decode_primary(
         return Ok((r.pos as u8, text, None));
     }
     if let Some(name) = bin_name(op) {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o) = r.operand(false)?;
         let n = operand_name(o);
         let rr = format!("%{}", reg_name(reg));
         let text = if op & 2 != 0 {
@@ -394,7 +395,7 @@ fn decode_primary(
         return Ok((r.pos as u8, text, None));
     }
     if matches!(op, 0x81 | 0x83) {
-        let (ext, o) = r.operand(0, false)?;
+        let (ext, o) = r.operand(false)?;
         let amount = if op == 0x83 {
             r.imm_i8()? as i32
         } else {
@@ -419,7 +420,7 @@ fn decode_primary(
         return decode_group(r, op, address);
     }
     if op == 0xff {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o) = r.operand(false)?;
         let n = operand_name(o);
         return match reg & 7 {
             2 => Ok((r.pos as u8, format!("call *{n}"), None)),
@@ -428,7 +429,7 @@ fn decode_primary(
         };
     }
     if op == 0x69 {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o) = r.operand(false)?;
         return Ok((
             r.pos as u8 + 4,
             format!(
@@ -441,7 +442,7 @@ fn decode_primary(
         ));
     }
     if op == 0xc7 {
-        let (_, o) = r.operand(0, false)?;
+        let (_, o) = r.operand(false)?;
         let value = r.imm_i32()?;
         return Ok((
             r.pos as u8,
@@ -518,7 +519,7 @@ fn decode_sse(
     op: u8,
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
-    let (reg, o) = r.operand(0, false)?;
+    let (reg, o) = r.operand(false)?;
     let n = operand_name(o);
     let x = format!("%{}", xmm_name(reg));
     let n = match o {
@@ -594,6 +595,335 @@ pub fn decode(bytes: &[u8], base: u64) -> Result<Vec<DecodedInstruction>, Decode
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decoded(bytes: &[u8], address: u64) -> Vec<(u8, String, Option<u64>)> {
+        decode(bytes, address)
+            .unwrap()
+            .into_iter()
+            .map(|instruction| (instruction.size, instruction.text, instruction.branch_target))
+            .collect()
+    }
+
+    #[test]
+    fn decodes_modrm_sib_and_rip_relative_operands() {
+        let bytes = [
+            0x48, 0x8b, 0x44, 0x8d, 0xf0, // mov -16(%rbp,%rcx,4), %rax
+            0x4d, 0x89, 0x7c, 0x24, 0x08, // mov %r15, 8(%r12)
+            0x48, 0x8d, 0x05, 0x78, 0x56, 0x34, 0x12, // lea 305419896(%rip), %rax
+            0x48, 0x8b, 0x04, 0x25, 0x78, 0x56, 0x34, 0x12, // absolute SIB address
+            0x48, 0x8b, 0x84, 0x88, 0x78, 0x56, 0x34, 0x12, // 32-bit SIB displacement
+        ];
+        assert_eq!(
+            decoded(&bytes, 0x4000),
+            vec![
+                (5, "mov -16(%rbp,%rcx,4), %rax".into(), None),
+                (5, "mov %r15, 8(%r12)".into(), None),
+                (7, "lea 305419896(%rip), %rax".into(), None),
+                (8, "mov 305419896(), %rax".into(), None),
+                (8, "mov 305419896(%rax,%rcx,4), %rax".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn decodes_modrm_reg_field_for_memory_store() {
+        assert_eq!(
+            decoded(&[0x48, 0x89, 0x0a], 0),
+            vec![(3, "mov %rcx, (%rdx)".into(), None)]
+        );
+    }
+
+    #[test]
+    fn decodes_integer_groups_and_two_byte_register_forms() {
+        let bytes = [
+            0x4c, 0x01, 0xc0, // add %r8, %rax
+            0x48, 0x83, 0xec, 0x20, // sub $32, %rsp
+            0x48, 0x81, 0xf8, 0x80, 0, 0, 0, // cmp $128, %rax
+            0x49, 0xc1, 0xff, 0x08, // sar $8, %r15
+            0x49, 0xd3, 0xe8, // shr %cl, %r8
+            0x49, 0xf7, 0xdc, // neg %r12
+            0x4d, 0xff, 0xe0, // jmp *%r8
+            0x41, 0xff, 0xd0, // call *%r8
+            0x4d, 0x69, 0xf8, 0xf9, 0xff, 0xff, 0xff, // imul %r8, r15, $-7
+            0x48, 0xc7, 0x44, 0x24, 0x08, 0x78, 0x56, 0x34, 0x12, // mov $..., 8(%rsp)
+            0x4d, 0x0f, 0xaf, 0xf8, // imul %r8, %r15
+            0x4c, 0x0f, 0x44, 0xc7, // cmove %rdi, %r8
+            0x4c, 0x0f, 0xb7, 0x38, // movzw (%rax), %r15
+            0x4d, 0x0f, 0xbe, 0xf8, // movsb %r8, %r15
+            0x49, 0x0f, 0xba, 0xe7, 0x3f, // bt $63, %r15
+            0x4d, 0x87, 0xe5, // xchg %r12, %r13
+        ];
+        assert_eq!(
+            decoded(&bytes, 0),
+            vec![
+                (3, "add %r8, %rax".into(), None),
+                (4, "sub $32, %rsp".into(), None),
+                (7, "cmp $128, %rax".into(), None),
+                (4, "sar $8, %r15".into(), None),
+                (3, "shr %cl, %r8".into(), None),
+                (3, "neg %r12".into(), None),
+                (3, "jmp *%r8".into(), None),
+                (3, "call *%r8".into(), None),
+                (7, "imul %r8, r15, $-7".into(), None),
+                (9, "mov $305419896, 8(%rsp)".into(), None),
+                (4, "imul %r8, %r15".into(), None),
+                (4, "cmove %rdi, %r8".into(), None),
+                (4, "movzw (%rax), %r15".into(), None),
+                (4, "movsb %r8, %r15".into(), None),
+                (5, "bt $63, %r15".into(), None),
+                (3, "xchg %r12, %r13".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn decodes_prefixes_and_direct_branch_targets() {
+        assert_eq!(
+            decoded(
+                &[
+                    0x66, 0x90,
+                    0x48, 0x99,
+                    0x49, 0xb8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                    0x41, 0x57,
+                    0x41, 0x5f,
+                    0x0f, 0x1f, 0x00,
+                ],
+                0x1000,
+            ),
+            vec![
+                (2, "nop".into(), None),
+                (2, "cqo".into(), None),
+                (10, "mov $-1, %r8".into(), None),
+                (2, "push %r15".into(), None),
+                (2, "pop %r15".into(), None),
+                (3, "nop (%rax)".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x75, 0x02], 0x2000),
+            vec![(2, "jne".into(), Some(0x2004))]
+        );
+        assert_eq!(
+            decoded(&[0x0f, 0x84, 0x02, 0, 0, 0], 0x2000),
+            vec![(6, "je".into(), Some(0x2008))]
+        );
+        assert_eq!(
+            decoded(&[0xe9, 0xfc, 0xff, 0xff, 0xff], 0x3000),
+            vec![(5, "jmp".into(), Some(0x3001))]
+        );
+        assert_eq!(
+            decoded(&[0xe8, 0xfb, 0xff, 0xff, 0xff], 0x4000),
+            vec![(5, "call".into(), Some(0x4000))]
+        );
+    }
+
+    #[test]
+    fn decodes_sse_register_and_memory_directions() {
+        let bytes = [
+            0xf2, 0x0f, 0x51, 0xc1, // sqrtsd %xmm1, %xmm0
+            0xf2, 0x0f, 0x58, 0xc1, // addsd %xmm1, %xmm0
+            0xf2, 0x0f, 0x59, 0xc1, // mulsd %xmm1, %xmm0
+            0xf2, 0x0f, 0x5c, 0xc1, // subsd %xmm1, %xmm0
+            0xf2, 0x0f, 0x5e, 0xc1, // divsd %xmm1, %xmm0
+            0x66, 0x0f, 0x2e, 0xc1, // ucomisd %xmm1, %xmm0
+            0x66, 0x45, 0x0f, 0x57, 0xf8, // xorpd %xmm8, %xmm15
+            0xf2, 0x45, 0x0f, 0x11, 0x7d, 0x7f, // movsd %xmm15, 127(%r13)
+            0xf2, 0x47, 0x0f, 0x10, 0x44, 0x84, 0x10, // indexed movsd
+            0x66, 0x45, 0x0f, 0x6e, 0xc7, // movq %r15, %xmm8
+            0x66, 0x45, 0x0f, 0x7e, 0xc7, // movq %xmm8, %r15
+            0xf2, 0x48, 0x0f, 0x2a, 0x0d, 0x08, 0, 0, 0, // cvtsi2sd rip-relative
+            0xf2, 0x48, 0x0f, 0x2c, 0x05, 0x08, 0, 0, 0, // cvttsd2si rip-relative
+        ];
+        assert_eq!(
+            decoded(&bytes, 0),
+            vec![
+                (4, "sqrtsd %xmm1, %xmm0".into(), None),
+                (4, "addsd %xmm1, %xmm0".into(), None),
+                (4, "mulsd %xmm1, %xmm0".into(), None),
+                (4, "subsd %xmm1, %xmm0".into(), None),
+                (4, "divsd %xmm1, %xmm0".into(), None),
+                (4, "ucomisd %xmm1, %xmm0".into(), None),
+                (5, "xorpd %xmm8, %xmm15".into(), None),
+                (6, "movsd %xmm15, 127(%r13)".into(), None),
+                (7, "movsd 16(%r12,%r8,4), %xmm8".into(), None),
+                (5, "movq %r15, %xmm8".into(), None),
+                (5, "movq %xmm8, %r15".into(), None),
+                (9, "cvtsi2sd 8(%rip), %xmm1".into(), None),
+                (9, "cvttsd2si %xmm0, 8(%rip)".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_or_unsupported_encodings_with_specific_errors() {
+        assert!(matches!(
+            decode(&[0x0f, 0x1f, 0xc0], 0),
+            Err(DecodeError::Invalid { reason, .. }) if reason == "register used where memory was required"
+        ));
+        assert!(matches!(
+            decode(&[0x0f, 0x95, 0x00], 0),
+            Err(DecodeError::Invalid { reason, .. }) if reason == "setcc destination is not a register"
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0xc1, 0xc0, 1], 0),
+            Err(DecodeError::Unsupported { bytes, .. }) if bytes == [0x48, 0xc1, 0xc0, 1]
+        ));
+        assert!(matches!(
+            decode(&[0x90, 0x90], u64::MAX),
+            Err(DecodeError::Invalid { reason, .. }) if reason == "instruction address overflow"
+        ));
+    }
+
+    #[test]
+    fn decodes_remaining_integer_and_two_byte_register_forms() {
+        let bytes = [
+            0x48, 0x09, 0xc8, // or %rcx, %rax
+            0x48, 0x0b, 0xc8, // or %rax, %rcx
+            0x48, 0x21, 0xc8, // and %rcx, %rax
+            0x48, 0x23, 0xc8, // and %rax, %rcx
+            0x48, 0x29, 0xc8, // sub %rcx, %rax
+            0x48, 0x2b, 0xc8, // sub %rax, %rcx
+            0x48, 0x31, 0xc8, // xor %rcx, %rax
+            0x48, 0x33, 0xc8, // xor %rax, %rcx
+            0x48, 0xc1, 0xe0, 1, // shl $1, %rax
+            0x48, 0xc1, 0xe8, 1, // shr $1, %rax
+            0x48, 0xd3, 0xf8, // sar %cl, %rax
+            0x48, 0xf7, 0xc0, // inc %rax
+            0x48, 0xf7, 0xc8, // dec %rax
+            0x48, 0xf7, 0xd0, // not %rax
+            0x48, 0xf7, 0xf8, // idiv %rax
+            0x0f, 0x95, 0xc0, // setne %ax
+            0x0f, 0xb6, 0xc0, // movzb %rax, %rax
+            0x0f, 0xbf, 0xc0, // movsw %rax, %rax
+        ];
+        assert_eq!(
+            decoded(&bytes, 0),
+            vec![
+                (3, "or %rcx, %rax".into(), None),
+                (3, "or %rax, %rcx".into(), None),
+                (3, "and %rcx, %rax".into(), None),
+                (3, "and %rax, %rcx".into(), None),
+                (3, "sub %rcx, %rax".into(), None),
+                (3, "sub %rax, %rcx".into(), None),
+                (3, "xor %rcx, %rax".into(), None),
+                (3, "xor %rax, %rcx".into(), None),
+                (4, "shl $1, %rax".into(), None),
+                (4, "shr $1, %rax".into(), None),
+                (3, "sar %cl, %rax".into(), None),
+                (3, "inc %rax".into(), None),
+                (3, "dec %rax".into(), None),
+                (3, "not %rax".into(), None),
+                (3, "idiv %rax".into(), None),
+                (3, "setne %ax".into(), None),
+                (3, "movzb %rax, %rax".into(), None),
+                (3, "movsw %rax, %rax".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_x86_branch_and_group_overflow_errors() {
+        assert!(matches!(
+            decode(&[0xe9, 0, 0, 0, 0], u64::MAX - 4),
+            Err(DecodeError::Invalid { reason, .. }) if reason == "branch target overflow"
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0xf7, 0xe0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0xc1, 0x00, 1], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+    }
+
+    #[test]
+    fn covers_remaining_operand_and_dispatch_paths() {
+        assert!(matches!(
+            decode(&[0x48, 0xb8, 0, 0], 0),
+            Err(DecodeError::Truncated { .. })
+        ));
+        assert_eq!(
+            decoded(&[0x48, 0x8b, 0x80, 1, 0, 0, 0], 0),
+            vec![(7, "mov 1(%rax), %rax".into(), None)]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x8b, 0x04, 0x08], 0),
+            vec![(4, "mov (%rax,%rcx), %rax".into(), None)]
+        );
+        assert_eq!(
+            decoded(&[0x52, 0x53, 0x55, 0x56], 0),
+            vec![
+                (1, "push %rdx".into(), None),
+                (1, "push %rbx".into(), None),
+                (1, "push %rbp".into(), None),
+                (1, "push %rsi".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x0f, 0x10, 0xc1, 0x48, 0x0f, 0x11, 0xc1], 0),
+            vec![
+                (4, "movsd %rcx, %xmm0".into(), None),
+                (4, "movsd %xmm0, %rcx".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x0f, 0x69, 0xc1], 0),
+            vec![(3, "imul %rax, %rcx".into(), None)]
+        );
+        for bytes in [[0x0f, 0x10, 0xc1], [0x0f, 0x01, 0xc0], [0xf2, 0x90, 0xc0]] {
+            assert!(matches!(decode(&bytes, 0), Err(DecodeError::Unsupported { .. })));
+        }
+        assert_eq!(
+            decoded(&[0x48, 0x3b, 0xc1, 0x48, 0x39, 0xc1], 0),
+            vec![
+                (3, "cmp %rcx, %rax".into(), None),
+                (3, "cmp %rax, %rcx".into(), None),
+            ]
+        );
+        assert_eq!(
+            decoded(&[0x48, 0x85, 0xc1], 0),
+            vec![(3, "test %rax, %rcx".into(), None)]
+        );
+        let mut immediate_groups = Vec::new();
+        for ext in [0u8, 1, 4, 5, 6] {
+            immediate_groups.extend([0x48, 0x81, 0xc0 | (ext << 3), 1, 0, 0, 0]);
+        }
+        assert_eq!(
+            decoded(&immediate_groups, 0)
+                .into_iter()
+                .map(|(_, text, _)| text)
+                .collect::<Vec<_>>(),
+            [
+                "add $1, %rax",
+                "or $1, %rax",
+                "and $1, %rax",
+                "sub $1, %rax",
+                "xor $1, %rax",
+            ]
+        );
+        assert!(matches!(
+            decode(&[0x48, 0xff, 0xc0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x62], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert_eq!(
+            decoded(&[0x48, 0xd3, 0xe0], 0),
+            vec![(3, "shl %cl, %rax".into(), None)]
+        );
+        assert!(matches!(
+            decode(&[0x48, 0xd3, 0xc0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            decode(&[0x48, 0x81, 0xd0, 1, 0, 0, 0], 0),
+            Err(DecodeError::Unsupported { .. })
+        ));
+    }
+
     #[test]
     fn branches_are_absolute() {
         let x = decode(&[0xe9, 1, 0, 0, 0, 0xc3], 0x1000).unwrap();

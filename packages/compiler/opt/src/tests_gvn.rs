@@ -191,3 +191,71 @@ fn removes_duplicate_expression_in_a_dominated_branch_and_rewrites_return() {
     );
     ncl_ir::verify(&function).fixture();
 }
+
+#[test]
+fn merges_duplicate_comparisons_and_preserves_boolean_result() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(4),
+        "duplicate-compare",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::I64,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::I64,
+            },
+        ],
+        vec![Ty::Bool],
+    );
+    builder
+        .push_op(
+            OpKind::Compare {
+                op: ncl_ir::Compare::Eq,
+                left: ValueId(0),
+                right: ValueId(1),
+            },
+            &[Ty::Bool],
+        )
+        .fixture();
+    let second = builder
+        .push_op(
+            OpKind::Compare {
+                op: ncl_ir::Compare::Eq,
+                left: ValueId(0),
+                right: ValueId(1),
+            },
+            &[Ty::Bool],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![second],
+        })
+        .fixture();
+    let mut function = builder.finish();
+    let expected_result = function.blocks[0].ops[0].results[0].0;
+    assert_eq!(function.blocks[0].ops.len(), 2);
+
+    let mut pass = GlobalValueNumbering;
+    assert!(pass.run(&mut function, &Module::default()).fixture());
+
+    assert_eq!(function.blocks[0].ops.len(), 1);
+    assert!(matches!(
+        function.blocks[0].ops[0].kind,
+        OpKind::Compare {
+            op: ncl_ir::Compare::Eq,
+            left: ValueId(0),
+            right: ValueId(1)
+        }
+    ));
+    assert_eq!(function.blocks[0].ops[0].results[0].0, expected_result);
+    assert_eq!(
+        function.blocks[0].terminator,
+        Terminator::Return {
+            values: vec![expected_result]
+        }
+    );
+    ncl_ir::verify(&function).fixture();
+}

@@ -6,9 +6,10 @@
 )]
 
 use ncl_object::{
-    Bignum, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs,
-    bignum_sign, classify_object, make_bignum_from_i128, make_complex, make_double, make_ratio,
-    ratio_denominator, ratio_numerator,
+    Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
+    ratio_numerator,
 };
 
 const MAX_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
@@ -83,6 +84,27 @@ fn assert_boolean(
     assert_eq!(
         call(runtime, ctx, name, args).unwrap(),
         if expected { Word::TRUE } else { Word::NIL },
+        "{name}"
+    );
+}
+
+fn assert_float(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    name: &str,
+    args: &[Word],
+    expected: f64,
+) {
+    let result = call(runtime, ctx, name, args).unwrap();
+    let ObjectRef::DoubleFloat(value) = classify_object(ctx, result) else {
+        panic!(
+            "{name}: expected double float, got {:?}",
+            classify_object(ctx, result)
+        );
+    };
+    assert_eq!(
+        double_value(ctx, DoubleFloat::from_word(value)).unwrap(),
+        expected,
         "{name}"
     );
 }
@@ -278,10 +300,26 @@ fn ratio_and_complex_results_survive_gc_stress_and_strict_forwarding() {
     let complex_result = runtime
         .call_builtin(&mut ctx, function, &[complex, Word::fixnum(1)])
         .unwrap();
-    assert!(matches!(
-        classify_object(&ctx, complex_result),
-        ObjectRef::Complex(_)
-    ));
+    let ObjectRef::Complex(complex_result) = classify_object(&ctx, complex_result) else {
+        panic!("expected complex result after addition");
+    };
+    let complex_result = ncl_object::Complex::from_word(complex_result);
+    let real = complex_real(&ctx, complex_result).unwrap();
+    let imag = complex_imag(&ctx, complex_result).unwrap();
+    let ObjectRef::DoubleFloat(real) = classify_object(&ctx, real) else {
+        panic!("expected double-float real component");
+    };
+    let ObjectRef::DoubleFloat(imag) = classify_object(&ctx, imag) else {
+        panic!("expected double-float imaginary component");
+    };
+    assert_eq!(
+        double_value(&ctx, DoubleFloat::from_word(real)).unwrap(),
+        3.0
+    );
+    assert_eq!(
+        double_value(&ctx, DoubleFloat::from_word(imag)).unwrap(),
+        3.0
+    );
     assert!(ncl_object::pop_root(&mut ctx, complex_token));
     assert!(ncl_object::pop_root(&mut ctx, token));
 }
@@ -311,5 +349,164 @@ fn unary_arithmetic_handles_zero_division_absolute_and_sign_values() {
     assert_eq!(
         ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(value)).unwrap(),
         5.0
+    );
+}
+
+#[test]
+fn arithmetic_reports_i128_boundary_overflow_without_wrapping() {
+    let (runtime, mut ctx) = setup();
+    let min = make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    let max = make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    let one = Word::fixnum(1);
+    let minus_one = Word::fixnum(-1);
+
+    for (name, args) in [
+        ("+", vec![max, one]),
+        ("-", vec![min, one]),
+        ("*", vec![max, Word::fixnum(2)]),
+        ("/", vec![min, minus_one]),
+        ("ABS", vec![min]),
+    ] {
+        assert_eq!(
+            call(&runtime, &mut ctx, name, &args),
+            Err(ObjectError::TypeError),
+            "{name} must reject an unrepresentable i128 result",
+        );
+    }
+}
+
+#[test]
+fn signum_and_abs_preserve_zero_contracts() {
+    let (runtime, mut ctx) = setup();
+    assert_integer(&runtime, &mut ctx, "SIGNUM", &[Word::fixnum(0)], 0);
+    assert_integer(&runtime, &mut ctx, "ABS", &[Word::fixnum(0)], 0);
+
+    let negative = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+    let signum = call(&runtime, &mut ctx, "SIGNUM", &[negative]).unwrap();
+    let ObjectRef::DoubleFloat(signum) = classify_object(&ctx, signum) else {
+        panic!("SIGNUM of a float must remain a float");
+    };
+    assert_eq!(
+        ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(signum))
+            .unwrap()
+            .to_bits(),
+        (-1.0_f64).to_bits()
+    );
+}
+
+#[test]
+fn mixed_numeric_comparisons_and_extrema_return_exact_values() {
+    let (runtime, mut ctx) = setup();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    let same_ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    let float = make_double(&mut ctx, &runtime, 1.5).unwrap().into();
+    let same_float = make_double(&mut ctx, &runtime, 1.5).unwrap().into();
+    let real = make_double(&mut ctx, &runtime, 2.0).unwrap().into();
+    let imag = make_double(&mut ctx, &runtime, -3.0).unwrap().into();
+    let complex = make_complex(&mut ctx, &runtime, real, imag).unwrap().into();
+    let same_complex = make_complex(&mut ctx, &runtime, real, imag).unwrap().into();
+    let bignum = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 70)
+        .unwrap()
+        .into();
+    let same_bignum = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 70)
+        .unwrap()
+        .into();
+
+    assert_boolean(&runtime, &mut ctx, "=", &[ratio, float], true);
+    assert_boolean(&runtime, &mut ctx, "=", &[float, Word::fixnum(2)], false);
+    assert_boolean(&runtime, &mut ctx, "/=", &[ratio, float], false);
+    assert_boolean(
+        &runtime,
+        &mut ctx,
+        "EQ",
+        &[Word::fixnum(7), Word::fixnum(7)],
+        true,
+    );
+    assert_boolean(
+        &runtime,
+        &mut ctx,
+        "EQ",
+        &[Word::fixnum(7), Word::fixnum(8)],
+        false,
+    );
+    assert_boolean(&runtime, &mut ctx, "EQL", &[same_bignum, bignum], true);
+    assert_boolean(&runtime, &mut ctx, "EQL", &[same_ratio, ratio], true);
+    assert_boolean(&runtime, &mut ctx, "EQL", &[same_float, float], true);
+    assert_boolean(&runtime, &mut ctx, "EQL", &[same_complex, complex], true);
+    assert_boolean(&runtime, &mut ctx, "EQL", &[ratio, float], false);
+
+    assert_integer(&runtime, &mut ctx, "MAX", &[ratio, Word::fixnum(2)], 2);
+    assert_ratio(&runtime, &mut ctx, "MIN", &[ratio, Word::fixnum(2)], 3, 2);
+    assert_float(&runtime, &mut ctx, "MAX", &[float, ratio], 1.5);
+    assert_float(&runtime, &mut ctx, "MIN", &[float, Word::fixnum(2)], 1.5);
+
+    assert_boolean(&runtime, &mut ctx, "ZEROP", &[complex], false);
+    assert_boolean(&runtime, &mut ctx, "PLUSP", &[float], true);
+    assert_boolean(&runtime, &mut ctx, "MINUSP", &[float], false);
+    assert_boolean(&runtime, &mut ctx, "EVENP", &[bignum], true);
+    assert_boolean(&runtime, &mut ctx, "ODDP", &[bignum], false);
+}
+
+#[test]
+fn bignum_and_ratio_arithmetic_preserves_exact_boundary_values() {
+    let (runtime, mut ctx) = setup();
+    let minimum = make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
+        .unwrap()
+        .into();
+    let maximum = make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    assert_integer(
+        &runtime,
+        &mut ctx,
+        "+",
+        &[minimum, Word::fixnum(1)],
+        -170_141_183_460_469_231_731_687_303_715_884_105_727,
+    );
+    assert_integer(
+        &runtime,
+        &mut ctx,
+        "-",
+        &[maximum, Word::fixnum(1)],
+        170_141_183_460_469_231_731_687_303_715_884_105_726,
+    );
+
+    let bignum = make_bignum_from_i128(&mut ctx, &runtime, 1_180_591_620_717_411_303_425)
+        .unwrap()
+        .into();
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(3), Word::fixnum(2))
+        .unwrap()
+        .into();
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "+",
+        &[bignum, ratio],
+        2_361_183_241_434_822_606_853,
+        2,
+    );
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "*",
+        &[bignum, ratio],
+        3_541_774_862_152_233_910_275,
+        2,
+    );
+    assert_ratio(
+        &runtime,
+        &mut ctx,
+        "/",
+        &[bignum, ratio],
+        2_361_183_241_434_822_606_850,
+        3,
     );
 }

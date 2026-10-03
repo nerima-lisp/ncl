@@ -83,6 +83,54 @@ fn descriptors_expose_typed_class_and_slot_metadata() {
 }
 
 #[test]
+fn registered_mop_class_queries_return_direct_and_effective_metadata() {
+    let (runtime, mut ctx) = setup();
+    let parent = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let name = Word::fixnum(901);
+    let slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(902),
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+    let direct_slots = make_simple_vector(&mut ctx, &runtime, &[slot]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        name,
+        parent,
+        direct_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-NAME", &[class]),
+        Ok(name)
+    );
+    assert_eq!(
+        registered_call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[class]),
+        Ok(direct_slots)
+    );
+    let effective_slots = registered_call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_length(&ctx, effective_slots),
+        Ok(1)
+    );
+    let precedence =
+        registered_call(&mut ctx, &runtime, "CLASS-PRECEDENCE-LIST", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, precedence, 0),
+        Ok(class)
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, precedence, 1),
+        Ok(parent)
+    );
+}
+
+#[test]
 fn registered_mop_callbacks_cover_metadata_and_slot_lifecycle() {
     let (runtime, mut ctx) = setup();
     let superclass = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
@@ -425,6 +473,61 @@ fn slot_accessors_reject_non_fixnum_locations() {
             call(&mut ctx, &runtime, name, &[class, instance, malformed]),
             Err(ncl_object::ObjectError::TypeError),
             "non-fixnum slot locations must be rejected by {name}"
+        );
+    }
+}
+
+#[test]
+fn slot_location_nil_and_out_of_range_have_explicit_results() {
+    let (runtime, mut ctx) = setup();
+    let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::TRUE]).unwrap();
+    let no_location =
+        mop::make_slot_descriptor(&mut ctx, &runtime, Word::fixnum(91), None).unwrap();
+    let out_of_range = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(92),
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(1)).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-DEFINITION-LOCATION",
+            &[no_location]
+        ),
+        Ok(Word::NIL)
+    );
+    for slot in [no_location, out_of_range] {
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-VALUE-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-BOUNDP-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-MAKUNBOUND-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
         );
     }
 }

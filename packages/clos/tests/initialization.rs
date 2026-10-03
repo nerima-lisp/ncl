@@ -198,6 +198,95 @@ fn shared_initialize_rejects_odd_initargs_and_non_instance() {
 }
 
 #[test]
+fn make_instance_reports_undefined_initialize_instance_function_cell() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (initialize_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "INITIALIZE-INSTANCE")
+        .unwrap();
+    ctx.write_object_slot(
+        initialize_name,
+        ncl_object::symbol_offset::FUNCTION,
+        Word::UNBOUND,
+    )
+    .unwrap();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(111)]);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class]),
+        Err(ncl_object::ObjectError::UndefinedFunction)
+    );
+}
+
+#[test]
+fn initialize_instance_reports_undefined_shared_initialize_function_cell() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (shared_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "SHARED-INITIALIZE")
+        .unwrap();
+    ctx.write_object_slot(
+        shared_name,
+        ncl_object::symbol_offset::FUNCTION,
+        Word::UNBOUND,
+    )
+    .unwrap();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(112)]);
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+    let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, initialize, &[instance]),
+        Err(ncl_object::ObjectError::UndefinedFunction)
+    );
+}
+
+#[test]
+fn initialize_slots_prefers_initarg_over_default_and_preserves_unbound_default() {
+    let (runtime, mut ctx) = setup();
+    let first_name = Word::fixnum(121);
+    let first_initarg = Word::fixnum(122);
+    let second_name = Word::fixnum(123);
+    let second_initarg = Word::fixnum(124);
+    let first = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[first_name, first_initarg, Word::fixnum(900)],
+    )
+    .unwrap();
+    let second = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[second_name, second_initarg, Word::UNBOUND],
+    )
+    .unwrap();
+    let slots = make_simple_vector(&mut ctx, &runtime, &[first, second]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(125),
+        Word::NIL,
+        slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let instance = runtime
+        .call_builtin(&mut ctx, make, &[class, first_initarg, Word::fixnum(901)])
+        .unwrap();
+
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::fixnum(901))
+    );
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 1),
+        Ok(Word::UNBOUND)
+    );
+}
+
+#[test]
 fn make_instance_initializes_slots_inherited_through_three_generations() {
     let (runtime, mut ctx) = setup();
     let root_slot = Word::fixnum(101);
@@ -258,5 +347,140 @@ fn make_instance_initializes_slots_inherited_through_three_generations() {
             .call_builtin(&mut ctx, slot_value, &[instance, Word::fixnum(2)])
             .unwrap(),
         Word::fixnum(33)
+    );
+}
+
+#[test]
+fn make_instance_resolves_symbol_classes_and_applies_slot_defaults() {
+    let (runtime, mut ctx) = setup();
+    let slot_name = Word::fixnum(301);
+    let initarg = Word::fixnum(302);
+    let slot =
+        make_simple_vector(&mut ctx, &runtime, &[slot_name, initarg, Word::fixnum(303)]).unwrap();
+    let slots = make_simple_vector(&mut ctx, &runtime, &[slot]).unwrap();
+    let class = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(304),
+        Word::NIL,
+        slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    runtime
+        .define_class(&mut ctx, "N26-DEFAULT-CLASS", class)
+        .unwrap();
+    let package = runtime.find_package(&ctx, "COMMON-LISP-USER").unwrap();
+    let class_symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "N26-DEFAULT-CLASS")
+        .unwrap()
+        .0;
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let slot_value = function(&runtime, &mut ctx, "COMMON-LISP", "SLOT-VALUE");
+
+    let default_instance = runtime
+        .call_builtin(&mut ctx, make, &[class_symbol])
+        .unwrap();
+    assert_eq!(
+        runtime
+            .call_builtin(&mut ctx, slot_value, &[default_instance, Word::fixnum(0)])
+            .unwrap(),
+        Word::fixnum(303)
+    );
+
+    let explicit_instance = runtime
+        .call_builtin(&mut ctx, make, &[class_symbol, initarg, Word::fixnum(305)])
+        .unwrap();
+    assert_eq!(
+        runtime
+            .call_builtin(&mut ctx, slot_value, &[explicit_instance, Word::fixnum(0)])
+            .unwrap(),
+        Word::fixnum(305)
+    );
+}
+
+#[test]
+fn make_instance_accepts_registered_class_vector_designator() {
+    let (runtime, mut ctx) = setup();
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (class_name, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "STANDARD-OBJECT")
+        .unwrap();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    let symbol_instance = runtime.call_builtin(&mut ctx, make, &[class_name]).unwrap();
+    assert!(matches!(
+        ncl_object::classify_object(&ctx, symbol_instance),
+        ncl_object::ObjectRef::Instance(_)
+    ));
+
+    let key = Word::fixnum(131);
+    let class = class_with_slots(&mut ctx, &runtime, &[key]);
+    let vector_instance = runtime
+        .call_builtin(&mut ctx, make, &[class, key, Word::TRUE])
+        .unwrap();
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(vector_instance), 0),
+        Ok(Word::TRUE)
+    );
+}
+
+#[test]
+fn make_instance_rejects_invalid_class_designators() {
+    let (runtime, mut ctx) = setup();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[Word::fixnum(132)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (unknown, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "NCL-UNKNOWN-CLASS-DESIGNATOR")
+        .unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[unknown]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_instance_rejects_malformed_effective_slot_descriptors() {
+    let (runtime, mut ctx) = setup();
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let class = make_simple_vector(
+        &mut ctx,
+        &runtime,
+        &[
+            Word::fixnum(134),
+            Word::NIL,
+            Word::NIL,
+            Word::fixnum(0),
+            Word::fixnum(133),
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_instance_and_initialize_instance_reject_odd_initargs() {
+    let (runtime, mut ctx) = setup();
+    let class = class_with_slots(&mut ctx, &runtime, &[Word::fixnum(135)]);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, make, &[class, Word::fixnum(136)]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::UNBOUND]).unwrap();
+    let initialize = function(&runtime, &mut ctx, "COMMON-LISP", "INITIALIZE-INSTANCE");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, initialize, &[instance, Word::fixnum(137)]),
+        Err(ncl_object::ObjectError::TypeError)
     );
 }

@@ -32,7 +32,7 @@ fn x86_64_lowers_non_local_exit_at_codegen_time() -> Result<(), String> {
         .map_err(|error| format!("x86-64 throw lowering decode failed: {error}"))?;
     if !decoded
         .iter()
-        .any(|instruction| instruction.text == "mov 480(%r15), %r8")
+        .any(|instruction| instruction.text == "mov 480(%r15), %r10")
     {
         return Err("throw lowering does not inspect pending".to_owned());
     }

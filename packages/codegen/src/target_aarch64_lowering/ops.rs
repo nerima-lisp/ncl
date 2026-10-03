@@ -456,3 +456,7 @@ pub fn lower_op(
     }
     Ok(call_pc)
 }
+
+#[cfg(test)]
+#[path = "tests_aarch64_lowering_ops.rs"]
+mod tests;

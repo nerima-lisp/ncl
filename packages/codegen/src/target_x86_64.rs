@@ -488,3 +488,8 @@ pub fn compile_function_x86_64(
         debug: Vec::new(),
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+#[path = "tests_target_x86_64.rs"]
+mod tests;

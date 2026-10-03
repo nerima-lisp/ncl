@@ -141,9 +141,10 @@ fn variable_definers_select_their_expected_operations() -> Result<(), ObjectErro
         let form = list(&mut ctx, &runtime, &[operator, name, value])?;
         let expansion = call(&runtime, &mut ctx, operator_text, form)?;
         let parts = elements(&mut ctx, expansion)?;
-        let operation = elements(&mut ctx, parts[1])?;
+        let operation = elements(&mut ctx, parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+        // check-added-lines: allow(panic) test assertion
         assert_eq!(
-            operation[0],
+            operation[0], // check-added-lines: allow(index) expansion shape is asserted below.
             symbol(&mut ctx, &runtime, expected_operation)?
         );
     }
@@ -154,14 +155,16 @@ fn variable_definers_select_their_expected_operations() -> Result<(), ObjectErro
 #[test]
 fn symbol_and_compiler_macro_definitions_preserve_values() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
-    assert!(callback_for("DEFINE-SYMBOL-MACRO").is_some());
-    assert!(callback_for("DEFINE-COMPILER-MACRO").is_some());
+    assert!(callback_for("DEFINE-SYMBOL-MACRO").is_some()); // check-added-lines: allow(panic) test assertion
+    assert!(callback_for("DEFINE-COMPILER-MACRO").is_some()); // check-added-lines: allow(panic) test assertion
     let malformed = [Word::NIL];
     let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test assertion
     assert_eq!(
         define_symbol_macro(&runtime, &mut ctx, &malformed, &mut values),
         Err(ObjectError::TypeError)
     );
+    // check-added-lines: allow(panic) test assertion
     assert_eq!(
         define_compiler_macro(&runtime, &mut ctx, &malformed, &mut values),
         Err(ObjectError::TypeError)
@@ -174,10 +177,12 @@ fn setf_definition_alias_and_invalid_forms_are_checked() -> Result<(), ObjectErr
     let (runtime, mut ctx) = fixture()?;
     let mut values = ncl_object::MultipleValues::new();
     let malformed = [Word::NIL];
+    // check-added-lines: allow(panic) test assertion
     assert_eq!(
         defsetf(&runtime, &mut ctx, &malformed, &mut values),
         Err(ObjectError::TypeError)
     );
+    // check-added-lines: allow(panic) test assertion
     assert_eq!(
         define_setf_expander(&runtime, &mut ctx, &malformed, &mut values),
         Err(ObjectError::TypeError)

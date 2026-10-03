@@ -1,4 +1,9 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![allow(
+    missing_docs,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::unwrap_used
+)]
 
 use crate::{
     AllocationTarget, CodegenError, ContextField, RuntimeAbi, RuntimeFunction, allocate,
@@ -477,4 +482,170 @@ fn aarch64_rejects_constant_index_out_of_range() {
             length: 0
         })
     ));
+}
+
+#[test]
+fn probe_aarch64_lowering_words() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(90),
+        "aarch64-lowering-words",
+        vec![
+            ncl_ir::Param {
+                name: "address".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word; 20],
+    );
+    let mut results = Vec::new();
+    for op in [
+        OpKind::Load {
+            address: ncl_ir::ValueId(0),
+        },
+        OpKind::LoadField {
+            object: ncl_ir::ValueId(0),
+            field: 1,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Car,
+            args: vec![ncl_ir::ValueId(0)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Cdr,
+            args: vec![ncl_ir::ValueId(0)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Svref,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Aref,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Rplaca,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Rplacd,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::Aset,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumAdd,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumSub,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumMul,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumEq,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumLt,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Prim {
+            op: ncl_ir::Prim::FixnumLe,
+            args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1)],
+            condition: None,
+        },
+        OpKind::Compare {
+            op: ncl_ir::Compare::Ge,
+            left: ncl_ir::ValueId(0),
+            right: ncl_ir::ValueId(1),
+        },
+    ] {
+        results.push(builder.push_op(op, &[Ty::Word]).expect("lowering probe")[0]);
+    }
+    builder
+        .push_op(
+            OpKind::Store {
+                address: ncl_ir::ValueId(0),
+                value: ncl_ir::ValueId(1),
+            },
+            &[],
+        )
+        .expect("store");
+    builder
+        .push_op(
+            OpKind::StoreField {
+                object: ncl_ir::ValueId(0),
+                field: 1,
+                value: ncl_ir::ValueId(1),
+            },
+            &[],
+        )
+        .expect("store field");
+    builder
+        .push_op(OpKind::LoadCapture { index: 0 }, &[Ty::Word])
+        .expect("capture");
+    builder
+        .push_op(OpKind::LoadFunctionObject, &[Ty::Word])
+        .expect("function object");
+    builder
+        .terminate(Terminator::Return {
+            values: results[..4].to_vec(),
+        })
+        .expect("return");
+    let compiled =
+        compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi).expect("compile");
+    let (word_bytes, remainder) = compiled.code.as_chunks::<4>();
+    assert!(
+        remainder.is_empty(),
+        "code has trailing bytes: {remainder:02x?}"
+    );
+    let words = word_bytes
+        .iter()
+        .map(|bytes| u32::from_le_bytes(*bytes))
+        .collect::<Vec<_>>();
+    assert!(
+        words.contains(&0xf840_0210),
+        "load word missing: {words:08x?}"
+    );
+    assert!(
+        words.contains(&0xf800_0211),
+        "store word missing: {words:08x?}"
+    );
+    assert!(
+        words.contains(&0x8b11_0210),
+        "add word missing: {words:08x?}"
+    );
+    assert!(
+        words.contains(&0xcb11_0210),
+        "sub word missing: {words:08x?}"
+    );
+    assert!(
+        words.contains(&0x9b11_7e10),
+        "mul word missing: {words:08x?}"
+    );
+    assert!(
+        words.contains(&0x9a91_0210),
+        "csel word missing: {words:08x?}"
+    );
 }

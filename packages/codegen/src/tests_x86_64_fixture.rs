@@ -15,6 +15,8 @@ impl RuntimeAbi for X86_64FixtureAbi {
     fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
+            ContextField::TlabBump => layout.tlab_bump,
+            ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
             ContextField::Pending => layout.pending,
@@ -27,7 +29,9 @@ impl RuntimeAbi for X86_64FixtureAbi {
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
         match function {
             RuntimeFunction::SafepointSlow
+            | RuntimeFunction::AllocateSlow
             | RuntimeFunction::MakeClosure
+            | RuntimeFunction::UndefinedFunction
             | RuntimeFunction::EnterCatch
             | RuntimeFunction::EnterUnwindProtect
             | RuntimeFunction::EnterProgv

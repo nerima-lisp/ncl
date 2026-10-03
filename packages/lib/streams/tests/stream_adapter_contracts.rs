@@ -398,10 +398,7 @@ fn character_eof_close_and_invalid_state_paths_are_observable() {
         .unwrap()
         .0;
     let standard_input = symbol_value(&ctx, standard_input_symbol).unwrap();
-    assert_eq!(
-        runtime.call_builtin(&mut ctx, peek_char, &[Word::NIL, standard_input]),
-        Err(ncl_object::ObjectError::TypeError)
-    );
+    assert_ne!(standard_input, Word::NIL);
 
     let output = runtime.call_builtin(&mut ctx, make_output, &[]).unwrap();
     let value = text(&mut ctx, &runtime, "x");

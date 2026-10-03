@@ -670,15 +670,17 @@ fn remaining_file_io_data_standard_and_layout_results() {
     );
 
     let standard_input = standard_stream(&runtime, &mut ctx, "*STANDARD-INPUT*");
+    assert_ne!(standard_input, Word::NIL);
+    let empty_data = data_stream(&runtime, &mut ctx, &[]);
     assert_eq!(
-        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, standard_input]),
+        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, empty_data]),
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
         runtime.call_builtin(
             &mut ctx,
             read_byte,
-            &[standard_input, Word::NIL, Word::fixnum(85)],
+            &[empty_data, Word::NIL, Word::fixnum(85)],
         ),
         Ok(Word::fixnum(85))
     );

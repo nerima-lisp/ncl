@@ -82,11 +82,7 @@ pub fn next_character(
         }
         return Ok(None);
     }
-    let data_offset = if kind == StreamKind::FileIo {
-        DATA + 1
-    } else {
-        DATA
-    };
+    let data_offset = DATA;
     let pos = position(ctx, state, POSITION)?;
     let length = simple_vector_length(ctx, state)?.saturating_sub(data_offset);
     if pos >= length {

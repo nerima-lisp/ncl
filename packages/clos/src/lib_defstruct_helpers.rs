@@ -120,3 +120,149 @@ fn defstruct_boa_slot_parameters<'a>(
     }
     Ok(parameters)
 }
+
+#[cfg(test)]
+mod defstruct_helper_tests {
+    use super::*;
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("context registration: {error:?}"));
+        (runtime, ctx)
+    }
+
+    fn intern(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Word {
+        let package = runtime
+            .find_package(ctx, "COMMON-LISP-USER")
+            .unwrap_or_else(|| panic!("COMMON-LISP-USER package"));
+        Package::from_word(package)
+            .intern(ctx, runtime, name)
+            .unwrap_or_else(|error| panic!("intern: {error:?}"))
+            .0
+    }
+
+    fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
+        let mut scope = ncl_object::Scope::new(ctx);
+        let roots = scope.root_many(
+            &values
+                .iter()
+                .copied()
+                .map(ncl_object::Local::from_word)
+                .collect::<Vec<_>>(),
+        );
+        let result = scope
+            .make_list(runtime, &roots)
+            .unwrap_or_else(|error| panic!("proper list: {error:?}"));
+        scope.get(result).as_word()
+    }
+
+    #[test]
+    fn slot_specs_and_nil_names_return_exact_values() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup();
+        let slot = intern(&runtime, &mut ctx, "VALUE");
+        let read_only = intern(&runtime, &mut ctx, ":READ-ONLY");
+
+        let mut scope = ncl_object::Scope::new(&mut ctx);
+        let fields_word = list(
+            scope.context_mut(),
+            &runtime,
+            &[slot, Word::fixnum(42), read_only, Word::TRUE],
+        );
+        let fields = scope.list_to_handle_vec(ncl_object::Local::from_word(fields_word))?;
+        let (actual_slot, initform, is_read_only) = defstruct_slot_spec(&mut scope, &fields)?;
+        assert_eq!(scope.get(actual_slot).as_word(), slot);
+        assert_eq!(scope.get(initform).as_word(), Word::fixnum(42));
+        assert!(is_read_only);
+
+        let no_initform = list(scope.context_mut(), &runtime, &[slot]);
+        let no_initform_fields =
+            scope.list_to_handle_vec(ncl_object::Local::from_word(no_initform))?;
+        let (_, initform, is_read_only) = defstruct_slot_spec(&mut scope, &no_initform_fields)?;
+        assert_eq!(scope.get(initform).as_word(), Word::NIL);
+        assert!(!is_read_only);
+
+        let nil_read_only = list(
+            scope.context_mut(),
+            &runtime,
+            &[slot, Word::NIL, read_only, Word::NIL],
+        );
+        let nil_read_only_fields =
+            scope.list_to_handle_vec(ncl_object::Local::from_word(nil_read_only))?;
+        let (_, _, is_read_only) = defstruct_slot_spec(&mut scope, &nil_read_only_fields)?;
+        assert!(!is_read_only);
+
+        let empty_fields = scope.list_to_handle_vec(ncl_object::Local::from_word(Word::NIL))?;
+        assert_eq!(
+            defstruct_slot_spec(&mut scope, &empty_fields),
+            Err(ObjectError::TypeError)
+        );
+        assert!(defstruct_is_nil(scope.context(), Word::NIL)?);
+        assert!(!defstruct_is_nil(scope.context(), Word::fixnum(7))?);
+        assert!(!defstruct_is_nil(scope.context(), slot)?);
+        assert_eq!(defstruct_name_or_nil(&scope, Word::NIL)?, None);
+        assert_eq!(
+            defstruct_name_or_nil(&scope, slot)?,
+            Some(String::from("VALUE"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn boa_parameters_cover_plain_key_nested_and_malformed_values() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup();
+        let value = intern(&runtime, &mut ctx, "VALUE");
+        let key = intern(&runtime, &mut ctx, ":VALUE");
+        let mut scope = ncl_object::Scope::new(&mut ctx);
+
+        assert_eq!(defstruct_boa_parameter(&mut scope, value)?, Some(value));
+
+        let plain = list(scope.context_mut(), &runtime, &[value]);
+        assert_eq!(defstruct_boa_parameter(&mut scope, plain)?, Some(value));
+
+        let key_form = list(scope.context_mut(), &runtime, &[key, value]);
+        let nested = list(scope.context_mut(), &runtime, &[key_form]);
+        assert_eq!(defstruct_boa_parameter(&mut scope, nested)?, Some(value));
+
+        let short_key_form = list(scope.context_mut(), &runtime, &[key]);
+        let short_nested = list(scope.context_mut(), &runtime, &[short_key_form]);
+        assert_eq!(defstruct_boa_parameter(&mut scope, short_nested)?, None);
+
+        let dotted = ncl_object::make_cons(scope.context_mut(), &runtime, value, Word::fixnum(1))?;
+        assert_eq!(
+            defstruct_boa_parameter(&mut scope, dotted),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn boa_slot_parameters_skip_non_symbols_and_aux_fields() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup();
+        let first = intern(&runtime, &mut ctx, "FIRST");
+        let optional = intern(&runtime, &mut ctx, "&OPTIONAL");
+        let aux = intern(&runtime, &mut ctx, "&AUX");
+        let ignored = intern(&runtime, &mut ctx, "IGNORED");
+        let second = intern(&runtime, &mut ctx, "SECOND");
+        let mut scope = ncl_object::Scope::new(&mut ctx);
+        let malformed = list(scope.context_mut(), &runtime, &[Word::fixnum(1)]);
+        assert_eq!(
+            defstruct_boa_slot_parameters(&mut scope, malformed),
+            Err(ObjectError::TypeError)
+        );
+        let lambda = list(
+            scope.context_mut(),
+            &runtime,
+            &[first, optional, second, aux, ignored],
+        );
+
+        let parameters = defstruct_boa_slot_parameters(&mut scope, lambda)?;
+        assert_eq!(parameters.len(), 2);
+        assert_eq!(parameters[0].0, "FIRST");
+        assert_eq!(parameters[1].0, "SECOND");
+        assert_eq!(scope.get(parameters[0].1).as_word(), first);
+        assert_eq!(scope.get(parameters[1].1).as_word(), second);
+        Ok(())
+    }
+}

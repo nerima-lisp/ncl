@@ -2,7 +2,8 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    Runtime, ThreadContext, Word, cdr, make_string, string_ref, symbol_name, symbol_package,
+    LispError, ObjectError, PackageError, Runtime, ThreadContext, Word, car, cdr, make_string,
+    string_ref, symbol_name, symbol_package,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -239,6 +240,66 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(runtime.find_package(&ctx, "B"), Some(registered));
     assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
+fn package_metadata_nicknames_and_lock_state_have_exact_boundaries() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let package = Package::new(&mut ctx, &runtime, "METADATA")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+    let first = string(&mut ctx, &runtime, "FIRST");
+    let second = string(&mut ctx, &runtime, "SECOND");
+
+    let package_name = package
+        .name(&ctx)
+        .unwrap_or_else(|error| panic!("package name: {error:?}"));
+    assert_eq!(ncl_object::string_length(&ctx, package_name), Ok(8));
+    for (index, expected) in "METADATA".chars().enumerate() {
+        assert_eq!(string_ref(&ctx, package_name, index), Ok(expected));
+    }
+    assert_eq!(package.nicknames(&ctx), Ok(Word::NIL));
+    assert_eq!(package.is_locked(&ctx), Ok(false));
+
+    assert_eq!(package.add_nickname(&mut ctx, &runtime, first), Ok(true));
+    assert_eq!(package.add_nickname(&mut ctx, &runtime, second), Ok(true));
+    assert_eq!(package.add_nickname(&mut ctx, &runtime, first), Ok(false));
+    let nicknames = package
+        .nicknames(&ctx)
+        .unwrap_or_else(|error| panic!("nicknames: {error:?}"));
+    assert_eq!(car(&ctx, nicknames), Ok(second));
+    let tail = cdr(&ctx, nicknames).unwrap_or_else(|error| panic!("nickname tail: {error:?}"));
+    assert_eq!(car(&ctx, tail), Ok(first));
+    assert_eq!(cdr(&ctx, tail), Ok(Word::NIL));
+
+    let missing = string(&mut ctx, &runtime, "MISSING");
+    assert_eq!(package.remove_nickname(&mut ctx, missing), Ok(false));
+    assert_eq!(package.remove_nickname(&mut ctx, second), Ok(true));
+    assert_eq!(package.nicknames(&ctx), Ok(tail));
+
+    package
+        .set_locked(&mut ctx, true)
+        .unwrap_or_else(|error| panic!("lock: {error:?}"));
+    assert_eq!(package.is_locked(&ctx), Ok(true));
+    let blocked = string(&mut ctx, &runtime, "BLOCKED");
+    assert_eq!(
+        package.add_nickname(&mut ctx, &runtime, blocked),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ctx.take_pending_lisp_error(),
+        Some(LispError::PackageError(PackageError::Locked))
+    );
+    assert_eq!(package.nicknames(&ctx), Ok(tail));
+
+    package
+        .set_locked(&mut ctx, false)
+        .unwrap_or_else(|error| panic!("unlock: {error:?}"));
+    assert_eq!(package.is_locked(&ctx), Ok(false));
+    assert_eq!(package.remove_nickname(&mut ctx, first), Ok(true));
+    assert_eq!(package.nicknames(&ctx), Ok(Word::NIL));
 }
 
 #[test]

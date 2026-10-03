@@ -57,6 +57,7 @@ const REST_CHARACTER: Parameter = Parameter {
     name: BuiltinName::new("CHARACTERS"),
     ty: ParameterType::Any,
 };
+const CHARACTER_COMPARISON: &[Parameter] = &[CHARACTER, CHARACTER];
 const STRING_ARGS: &[Parameter] = &[STRING];
 const TRIM_ARGS: &[Parameter] = &[
     Parameter {
@@ -217,62 +218,62 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     register!(
         "CHAR=",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_equal_builtin
     );
     register!(
         "CHAR/=",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_equal_builtin
     );
     register!(
         "CHAR<",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_less_builtin
     );
     register!(
         "CHAR>",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_greater_builtin
     );
     register!(
         "CHAR<=",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_greater_builtin
     );
     register!(
         "CHAR>=",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_less_builtin
     );
     register!(
         "CHAR-EQUAL",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_equal_ci_builtin
     );
     register!(
         "CHAR-NOT-EQUAL",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_equal_ci_builtin
     );
     register!(
         "CHAR-LESSP",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_less_ci_builtin
     );
     register!(
         "CHAR-GREATERP",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_greater_ci_builtin
     );
     register!(
         "CHAR-NOT-GREATERP",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_greater_ci_builtin
     );
     register!(
         "CHAR-NOT-LESSP",
-        LambdaList::with_rest(&[CHARACTER], REST_CHARACTER),
+        LambdaList::with_rest(CHARACTER_COMPARISON, REST_CHARACTER),
         char_not_less_ci_builtin
     );
     register!("STRINGP", LambdaList::fixed(&[OBJECT]), stringp_builtin);

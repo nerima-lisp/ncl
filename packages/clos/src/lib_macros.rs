@@ -88,13 +88,14 @@ fn defclass_macro_builtin(
         slots_word,
         Word::NIL,
     )?;
-    let class: ncl_object::Handle<'_, Word> =
-        scope.root(ncl_object::Local::from_word(class));
+    let class: ncl_object::Handle<'_, Word> = scope.root(ncl_object::Local::from_word(class));
     let class_word = scope.get(class).as_word();
     runtime.define_class(scope.context_mut(), class_name, class_word)?;
     let mut definitions = Vec::new();
     for (accessor, slot) in accessors {
-        definitions.push(make_accessor_definition(&mut scope, runtime, accessor, slot)?);
+        definitions.push(make_accessor_definition(
+            &mut scope, runtime, accessor, slot,
+        )?);
     }
     if definitions.is_empty() {
         return Ok(Word::NIL);
@@ -134,7 +135,11 @@ fn defgeneric_macro_builtin(
     let clear = make_form(&mut scope, runtime, &[define, quoted_name])?;
     let dispatch_call = make_form(&mut scope, runtime, &[dispatch, quoted_name, args_symbol])?;
     let lambda_list = make_form(&mut scope, runtime, &[rest, args_symbol])?;
-    let function = make_form(&mut scope, runtime, &[defun, name, lambda_list, dispatch_call])?;
+    let function = make_form(
+        &mut scope,
+        runtime,
+        &[defun, name, lambda_list, dispatch_call],
+    )?;
     let mut result = scope.root_many(&[]);
     macro_push_handle(&mut scope, &mut result, progn);
     // The trailing element is this `progn`'s (and so `defgeneric`'s own)
@@ -164,10 +169,10 @@ fn defmethod_macro_builtin(
     let parts = macro_list_to_handles(&mut scope, form)?;
     let name = *parts.as_slice().get(1).ok_or(ObjectError::TypeError)?;
     let (qualifier_word, specializer_index) = match parts.as_slice().get(2).copied() {
-        Some(value) => method_qualifier(scope.context(), scope.get(value).as_word())?.map_or(
-            (Word::fixnum(METHOD_QUALIFIER_PRIMARY), 2),
-            |qualifier| (qualifier, 3),
-        ),
+        Some(value) => method_qualifier(scope.context(), scope.get(value).as_word())?
+            .map_or((Word::fixnum(METHOD_QUALIFIER_PRIMARY), 2), |qualifier| {
+                (qualifier, 3)
+            }),
         None => return Err(ObjectError::TypeError),
     };
     let qualifier = scope.root(ncl_object::Local::from_word(qualifier_word));
@@ -229,7 +234,12 @@ fn defmethod_macro_builtin(
     let registration = make_form(
         &mut scope,
         runtime,
-        &[add_method, quoted_name, quoted_specializers, method_function],
+        &[
+            add_method,
+            quoted_name,
+            quoted_specializers,
+            method_function,
+        ],
     )?;
     let next_methods = gensym(&mut scope, runtime)?;
     let method_body = rewrite_method_body(
@@ -247,12 +257,17 @@ fn defmethod_macro_builtin(
     )?;
     let dispatch_call = make_form(&mut scope, runtime, &[dispatch, quoted_name, args_symbol])?;
     let wrapper_lambda = make_form(&mut scope, runtime, &[rest, args_symbol])?;
-    let wrapper = make_form(&mut scope, runtime, &[defun, name, wrapper_lambda, dispatch_call])?;
+    let wrapper = make_form(
+        &mut scope,
+        runtime,
+        &[defun, name, wrapper_lambda, dispatch_call],
+    )?;
     let initialization_base = initialization_base(&mut scope, runtime, name, quoted_name)?;
     let progn = scope.intern(runtime, COMMON_LISP, "PROGN")?;
     let mut result = scope.root_many(&[]);
     macro_push_handle(&mut scope, &mut result, progn);
-    if let Some(base) = initialization_base { // check-added-lines: allow(index)
+    if let Some(base) = initialization_base {
+        // check-added-lines: allow(index)
         macro_push_handle(&mut scope, &mut result, base);
     }
     // The trailing element is this `progn`'s (and so `defmethod`'s own)
@@ -414,12 +429,20 @@ fn rewrite_method_form<'ctx>(
             macro_push_handle(scope, &mut supplied_form, value);
         }
         let supplied = scope.make_list(runtime, &supplied_form)?;
-        return make_form(scope, runtime, &[rewrite.call_next, rewrite.next_methods, supplied]);
+        return make_form(
+            scope,
+            runtime,
+            &[rewrite.call_next, rewrite.next_methods, supplied],
+        );
     }
     if operator_word == scope.get(rewrite.next_method_p_name).as_word()
         || operator_word == scope.get(rewrite.next_method_p_user_name).as_word()
     {
-        return make_form(scope, runtime, &[rewrite.next_method_p, rewrite.next_methods]);
+        return make_form(
+            scope,
+            runtime,
+            &[rewrite.next_method_p, rewrite.next_methods],
+        );
     }
     let mut rewritten = scope.root_many(&[]);
     for field in fields.iter().copied() {
@@ -428,3 +451,8 @@ fn rewrite_method_form<'ctx>(
     }
     scope.make_list(runtime, &rewritten)
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[path = "../tests/support/lib_macros_tests.rs"]
+mod macro_tests;

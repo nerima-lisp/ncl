@@ -125,3 +125,24 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         assert_eq!(actual, expected, "{source}");
     }
 }
+
+#[test]
+fn sequence_option_and_content_edges_run_through_compiled_code() {
+    let cases = [
+        ("(find 2 '((1) (2) (3)) :key #'car)", "(2)"),
+        ("(position 2 '(1 2 2 3) :from-end t :count 1)", "2"),
+        ("(search '(2 3) '(1 2 3 2 3) :from-end t)", "3"),
+        ("(mapcar #'+ '(1 2) '(10 20 30))", "(11 22)"),
+        ("(map-into (list 0 0 0) #'+ '(1 2))", "(1 2 0)"),
+        ("(every #'< '(1 2) '(2 3))", "T"),
+        ("(notany #'< '(1 2) '(2 3))", "NIL"),
+        ("(equalp #C(1 0) 1)", "T"),
+        ("(equalp #(1 2) #(1 2))", "T"),
+        ("(fill \"abc\" #\\x :start 1 :end 3)", "\"axx\""),
+    ];
+    for (source, expected) in cases {
+        let (success, actual) = eval(source);
+        assert!(success, "{source} failed");
+        assert_eq!(actual, expected, "{source}");
+    }
+}

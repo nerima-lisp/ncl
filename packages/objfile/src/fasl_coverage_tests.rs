@@ -143,3 +143,38 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
         Ok(())
     );
 }
+
+#[test]
+fn private_fasl_writer_rejects_non_i32_addends() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: vec![1],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 0,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(0),
+                addend: i64::MAX,
+            }],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+    assert_eq!(
+        // check-added-lines: allow(panic,index,as-cast) test
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        FaslWriter::write(&value),
+        Err(ObjectError::InvalidField {
+            field: "relocation addend",
+            value: i64::MAX as u64, // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        })
+    );
+}

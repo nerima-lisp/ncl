@@ -261,3 +261,8 @@ pub(super) fn emit_return(
     )?;
     emit(assembler, &Inst::Ret)
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+#[path = "tests_lowering_ops.rs"]
+mod tests;

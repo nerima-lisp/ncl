@@ -12,6 +12,97 @@ fn expand(
     callback(ctx, runtime, &args, &mut ncl_object::MultipleValues::new())
 }
 
+fn assert_symbol_name(ctx: &ThreadContext, word: Word, expected: &str) -> Result<(), ObjectError> {
+    let name = ncl_object::symbol_name(ctx, word)?;
+    let length = ncl_object::string_length(ctx, name)?;
+    let actual = (0..length)
+        .map(|index| ncl_object::string_ref(ctx, name, index))
+        .collect::<Result<String, _>>()?;
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+fn conditional_body(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    form: Word,
+) -> Result<Vec<Word>, ObjectError> {
+    let parts = elements(ctx, form)?;
+    if parts.first() == Some(&symbol(ctx, runtime, "WHEN")?) {
+        elements(ctx, parts[2])
+    } else {
+        Ok(parts)
+    }
+}
+
+fn expand_destructuring(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    pattern: Word,
+    body: &[Word],
+) -> Result<Word, ObjectError> {
+    crate::destructuring::expand_destructuring_bind(ctx, runtime, pattern, Word::NIL, body)
+}
+
+fn bindings(ctx: &mut ThreadContext, expansion: Word) -> Result<Vec<Word>, ObjectError> {
+    let parts = elements(ctx, expansion)?;
+    elements(ctx, parts[1])
+}
+
+fn binding_value(
+    ctx: &mut ThreadContext,
+    expansion: Word,
+    name: Word,
+) -> Result<Word, ObjectError> {
+    let pair = bindings(ctx, expansion)?
+        .into_iter()
+        .map(|pair| elements(ctx, pair))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|pair| pair.first() == Some(&name))
+        .ok_or(ObjectError::TypeError)?;
+    pair.get(1).copied().ok_or(ObjectError::TypeError)
+}
+
+fn contains_word(ctx: &mut ThreadContext, form: Word, needle: Word) -> bool {
+    if form == needle {
+        return true;
+    }
+    if !form.is_cons() {
+        return false;
+    }
+    ncl_object::car(ctx, form)
+        .map(|head| contains_word(ctx, head, needle))
+        .is_ok_and(|contains| contains)
+        || ncl_object::cdr(ctx, form)
+            .map(|tail| contains_word(ctx, tail, needle))
+            .is_ok_and(|contains| contains)
+}
+
+fn contains_text(ctx: &mut ThreadContext, form: Word, expected: &str) -> bool {
+    if matches!(
+        ncl_object::classify_object(ctx, form),
+        ncl_object::ObjectRef::String(_)
+    ) {
+        let Ok(length) = ncl_object::string_length(ctx, form) else {
+            return false;
+        };
+        return (0..length)
+            .map(|index| ncl_object::string_ref(ctx, form, index))
+            .collect::<Result<String, _>>()
+            .is_ok_and(|text| text == expected);
+    }
+    if !form.is_cons() {
+        return false;
+    }
+    ncl_object::car(ctx, form)
+        .map(|head| contains_text(ctx, head, expected))
+        .is_ok_and(|contains| contains)
+        || ncl_object::cdr(ctx, form)
+            .map(|tail| contains_text(ctx, tail, expected))
+            .is_ok_and(|contains| contains)
+}
+
 /// `destructuring-bind` expands to a `let*` of `consp`/`car`/`cdr` accesses
 /// (see `crate::destructuring`), not a `funcall` of an ordinary lambda: an
 /// ordinary lambda list cannot express nested patterns, `&whole`, or a
@@ -35,6 +126,239 @@ fn destructuring_bind_expands_to_a_let_star_of_checked_accesses() -> Result<(), 
     // One binding for the source, one for `x`'s extraction, one to advance
     // past it, and one to check nothing is left over.
     assert_eq!(bindings.len(), 4);
+    assert!(contains_text(
+        &mut ctx,
+        expansion,
+        "destructuring-bind: too few elements"
+    ));
+    assert!(contains_text(
+        &mut ctx,
+        expansion,
+        "destructuring-bind: too many elements"
+    ));
+    Ok(())
+}
+
+#[test]
+fn destructuring_bind_expands_whole_environment_optional_and_body() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
+    let environment = symbol(&mut ctx, &runtime, "ENVIRONMENT")?;
+    let a = symbol(&mut ctx, &runtime, "A")?;
+    let b = symbol(&mut ctx, &runtime, "B")?;
+    let supplied = symbol(&mut ctx, &runtime, "B-SUPPLIED")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let environment_marker = symbol(&mut ctx, &runtime, "&ENVIRONMENT")?;
+    let optional_marker = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+    let body_marker = symbol(&mut ctx, &runtime, "&BODY")?;
+    let optional = list(&mut ctx, &runtime, &[b, Word::fixnum(10), supplied])?;
+    let pattern = list(
+        &mut ctx,
+        &runtime,
+        &[
+            whole_marker,
+            whole,
+            environment_marker,
+            environment,
+            a,
+            optional_marker,
+            optional,
+            body_marker,
+            rest,
+        ],
+    )?;
+    let expansion = expand_destructuring(&mut ctx, &runtime, pattern, &[a])?;
+    let environment_value = binding_value(&mut ctx, expansion, environment)?;
+    assert_eq!(environment_value, Word::NIL);
+    let b_value = binding_value(&mut ctx, expansion, b)?;
+    assert!(contains_word(&mut ctx, b_value, Word::fixnum(10)));
+    let supplied_value = binding_value(&mut ctx, expansion, supplied)?;
+    let true_symbol = symbol(&mut ctx, &runtime, "T")?;
+    assert!(contains_word(&mut ctx, supplied_value, true_symbol));
+    assert_ne!(binding_value(&mut ctx, expansion, whole)?, Word::NIL);
+    assert_ne!(binding_value(&mut ctx, expansion, rest)?, Word::NIL);
+    Ok(())
+}
+
+#[test]
+fn destructuring_bind_expands_dotted_tail_and_allows_key_tail() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let a = symbol(&mut ctx, &runtime, "A")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let dotted = ncl_object::make_cons(&mut ctx, &runtime, a, rest)?;
+    let expansion = expand_destructuring(&mut ctx, &runtime, dotted, &[a])?;
+    assert_ne!(binding_value(&mut ctx, expansion, rest)?, Word::NIL);
+
+    let key = symbol(&mut ctx, &runtime, "KEY")?;
+    let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
+    let allow_other_keys = symbol(&mut ctx, &runtime, "&ALLOW-OTHER-KEYS")?;
+    let key_pattern = list(&mut ctx, &runtime, &[key_marker, key, allow_other_keys])?;
+    let key_expansion = expand_destructuring(&mut ctx, &runtime, key_pattern, &[key])?;
+    assert_ne!(binding_value(&mut ctx, key_expansion, key)?, Word::NIL);
+    Ok(())
+}
+
+#[test]
+fn destructuring_bind_rejects_malformed_marker_shapes() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    for marker in ["&AUX", "&ALLOW-OTHER-KEYS"] {
+        let marker_symbol = symbol(&mut ctx, &runtime, marker)?;
+        let pattern = list(&mut ctx, &runtime, &[marker_symbol])?;
+        assert_eq!(
+            expand_destructuring(&mut ctx, &runtime, pattern, &[x]),
+            Err(ObjectError::TypeError),
+            "{marker} must be rejected in the ordinary pattern"
+        );
+    }
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let missing_rest = list(&mut ctx, &runtime, &[rest_marker])?;
+    assert_eq!(
+        expand_destructuring(&mut ctx, &runtime, missing_rest, &[x]),
+        Err(ObjectError::TypeError)
+    );
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let optional_marker = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+    let invalid_after_rest = list(&mut ctx, &runtime, &[rest_marker, x, optional_marker])?;
+    assert_eq!(
+        expand_destructuring(&mut ctx, &runtime, invalid_after_rest, &[x]),
+        Err(ObjectError::TypeError)
+    );
+    let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
+    let invalid_key_tail = ncl_object::make_cons(&mut ctx, &runtime, key_marker, x)?;
+    assert_eq!(
+        expand_destructuring(&mut ctx, &runtime, invalid_key_tail, &[x]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn destructuring_bind_binds_a_dotted_tail_to_the_remaining_cdr() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let operator = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let a = symbol(&mut ctx, &runtime, "A")?;
+    let b = symbol(&mut ctx, &runtime, "B")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let result = symbol(&mut ctx, &runtime, "RESULT")?;
+    let pattern = ncl_object::make_cons(&mut ctx, &runtime, a, b)?;
+    let input = list(&mut ctx, &runtime, &[operator, pattern, value, result])?;
+    let expansion = expand(&mut ctx, &runtime, "DESTRUCTURING-BIND", input)?;
+    let let_form = elements(&mut ctx, expansion)?;
+    let bindings = elements(&mut ctx, let_form[1])?;
+    assert_eq!(bindings.len(), 4);
+    let source_binding = elements(&mut ctx, bindings[0])?;
+    let source = source_binding[0];
+    assert_eq!(source_binding[1], value);
+    let a_binding = elements(&mut ctx, bindings[1])?;
+    let a_value = elements(&mut ctx, a_binding[1])?;
+    assert_eq!(a_binding[0], a);
+    assert_eq!(a_value[0], symbol(&mut ctx, &runtime, "IF")?);
+    assert_eq!(
+        elements(&mut ctx, a_value[1])?,
+        vec![symbol(&mut ctx, &runtime, "CONSP")?, source,]
+    );
+    assert_eq!(
+        elements(&mut ctx, a_value[2])?,
+        vec![symbol(&mut ctx, &runtime, "CAR")?, source,]
+    );
+    let cursor_binding = elements(&mut ctx, bindings[2])?;
+    assert_eq!(cursor_binding[0], source);
+    let cursor_value = elements(&mut ctx, cursor_binding[1])?;
+    assert_eq!(cursor_value[0], symbol(&mut ctx, &runtime, "IF")?);
+    assert_eq!(
+        elements(&mut ctx, cursor_value[1])?,
+        vec![symbol(&mut ctx, &runtime, "CONSP")?, source,]
+    );
+    assert_eq!(
+        elements(&mut ctx, cursor_value[2])?,
+        vec![symbol(&mut ctx, &runtime, "CDR")?, source,]
+    );
+    let b_binding = elements(&mut ctx, bindings[3])?;
+    assert_eq!(b_binding, vec![b, source]);
+    assert_eq!(let_form[2], result);
+    Ok(())
+}
+
+#[test]
+fn loop_in_destructures_nested_elements_with_car_and_cdr_assignments() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let a = symbol(&mut ctx, &runtime, "A")?;
+    let b = symbol(&mut ctx, &runtime, "B")?;
+    let c = symbol(&mut ctx, &runtime, "C")?;
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let list_operator = symbol(&mut ctx, &runtime, "LIST")?;
+    let body_form = list(&mut ctx, &runtime, &[list_operator, a, b, c])?;
+    let nested_pattern = list(&mut ctx, &runtime, &[b, c])?;
+    let pattern = list(&mut ctx, &runtime, &[a, nested_pattern])?;
+    let expansion = super::r#loop::expand_loop_ast(
+        &mut ctx,
+        &runtime,
+        &super::r#loop::LoopAst {
+            name: None,
+            clauses: vec![
+                super::r#loop::LoopClause::In {
+                    variable: pattern,
+                    sequence,
+                    on: false,
+                    by: None,
+                },
+                super::r#loop::LoopClause::Do(vec![body_form]),
+            ],
+        },
+    )?;
+    let outer = elements(&mut ctx, expansion)?;
+    let bindings = elements(&mut ctx, outer[1])?;
+    assert_eq!(bindings.len(), 4);
+    let cursor = elements(&mut ctx, bindings[0])?[0];
+    assert_eq!(elements(&mut ctx, bindings[0])?, vec![cursor, sequence]);
+    assert_eq!(elements(&mut ctx, bindings[1])?, vec![a, Word::NIL]);
+    assert_eq!(elements(&mut ctx, bindings[2])?, vec![b, Word::NIL]);
+    assert_eq!(elements(&mut ctx, bindings[3])?, vec![c, Word::NIL]);
+
+    let block = elements(&mut ctx, outer[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let tagbody = elements(&mut ctx, progn[1])?;
+    let set_a = conditional_body(&mut ctx, &runtime, tagbody[3])?;
+    assert_symbol_name(&ctx, set_a[0], "SETQ")?;
+    assert_eq!(set_a[1], a);
+    let car_cursor = elements(&mut ctx, set_a[2])?;
+    assert_symbol_name(&ctx, car_cursor[0], "CAR")?;
+    let set_b = conditional_body(&mut ctx, &runtime, tagbody[4])?;
+    assert_symbol_name(&ctx, set_b[0], "SETQ")?;
+    assert_eq!(set_b[1], b);
+    let b_value = elements(&mut ctx, set_b[2])?;
+    assert_symbol_name(&ctx, b_value[0], "CAR")?;
+    let set_c = conditional_body(&mut ctx, &runtime, tagbody[5])?;
+    assert_symbol_name(&ctx, set_c[0], "SETQ")?;
+    assert_eq!(set_c[1], c);
+    let c_value = elements(&mut ctx, set_c[2])?;
+    assert_symbol_name(&ctx, c_value[0], "CAR")?;
+    assert_eq!(tagbody[6], body_form);
+    let update_cursor = elements(&mut ctx, tagbody[7])?;
+    assert_symbol_name(&ctx, update_cursor[0], "SETQ")?;
+    assert_eq!(update_cursor[1], cursor);
+    let next_cursor = elements(&mut ctx, update_cursor[2])?;
+    assert_symbol_name(&ctx, next_cursor[0], "CDR")?;
+    assert_eq!(next_cursor[1], cursor);
+    let go_form = elements(&mut ctx, tagbody[8])?;
+    assert_symbol_name(&ctx, go_form[0], "GO")?;
     Ok(())
 }
 

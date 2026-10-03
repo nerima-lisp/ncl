@@ -19,7 +19,7 @@ pub fn make_cons(
         let mut cdr = cdr;
         crate::with_root(ctx, &mut cdr, |ctx, cdr| {
             if ctx.gc_stress {
-                ctx.collect(true)?;
+                ctx.collect_for_allocation(true)?;
             }
             ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, *car, *cdr).map_err(Into::into)
         })
@@ -36,7 +36,7 @@ pub fn allocate(
 ) -> Result<Word, ObjectError> {
     ctx.require_registered()?;
     if ctx.gc_stress {
-        ctx.collect(true)?;
+        ctx.collect_for_allocation(true)?;
     }
     ncl_sys::alloc(
         &mut ctx.thread,

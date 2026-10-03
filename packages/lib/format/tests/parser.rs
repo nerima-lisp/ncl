@@ -161,3 +161,116 @@ fn rejects_truncated_parameters_without_panicking() {
         assert!(result.is_err(), "{input:?} should be rejected");
     }
 }
+
+#[test]
+fn parses_all_supported_directives_case_insensitively() {
+    assert_eq!(
+        parse("~a~s~d~b~o~x~%~&~~"),
+        Ok(ncl_lib_format::FormatControl {
+            parts: vec![
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::A,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::S,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::D,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::B,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::O,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::X,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::Percent,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::Ampersand,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::Tilde,
+                }),
+            ],
+        })
+    );
+}
+
+#[test]
+fn parses_signed_parameters_and_rejects_integer_overflow() {
+    assert_eq!(
+        parse("~+7D~-8D"),
+        Ok(ncl_lib_format::FormatControl {
+            parts: vec![
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: vec![Parameter::Integer(7)],
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::D,
+                }),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: vec![Parameter::Integer(-8)],
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::D,
+                }),
+            ],
+        })
+    );
+    assert_eq!(
+        parse("~9223372036854775808D"),
+        Err(ncl_lib_format::ParseError {
+            offset: 1,
+            kind: ncl_lib_format::ParseErrorKind::InvalidParameter,
+        })
+    );
+}
+
+#[test]
+fn preserves_unicode_literal_before_a_directive() {
+    assert_eq!(
+        parse("é~A"),
+        Ok(ncl_lib_format::FormatControl {
+            parts: vec![
+                ControlPart::Literal("é".to_owned()),
+                ControlPart::Directive(ncl_lib_format::Directive {
+                    parameters: Vec::new(),
+                    colon: false,
+                    at_sign: false,
+                    kind: DirectiveKind::A,
+                }),
+            ],
+        })
+    );
+}

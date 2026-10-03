@@ -15,28 +15,6 @@ use ncl_object::{
     symbol_plist, symbol_value,
 };
 
-fn with_rooted_words<T>(
-    ctx: &mut ThreadContext,
-    words: &mut [Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
-) -> Result<T, ObjectError> {
-    let tokens = words
-        .iter_mut()
-        .map(|word| ncl_object::push_root(ctx, word))
-        .collect::<Vec<_>>();
-    let result = f(ctx, words);
-    let mut cleanup_error = None;
-    for token in tokens.into_iter().rev() {
-        if !ncl_object::pop_root(ctx, token) {
-            cleanup_error = Some(ObjectError::Layout);
-        }
-    }
-    match (result, cleanup_error) {
-        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
-        (Ok(value), None) => Ok(value),
-    }
-}
-
 fn symbol(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if matches!(ncl_object::classify_object(ctx, word), ObjectRef::Symbol(_)) {
         Ok(word)
@@ -277,7 +255,7 @@ fn gensym(
         &format!("{prefix}{counter}").chars().collect::<Vec<_>>(),
     )?;
     let mut roots = [name];
-    with_rooted_words(ctx, &mut roots, |ctx, roots| {
+    super::with_rooted_words(ctx, &mut roots, |ctx, roots| {
         make_symbol(ctx, runtime, roots[0])
     })
 }
@@ -297,20 +275,6 @@ fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<i64
     Ok(counter)
 }
 
-fn package_arg(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<Package, ObjectError> {
-    match ncl_object::classify_object(ctx, word) {
-        ObjectRef::Package(_) => Ok(Package::from_word(word)),
-        ObjectRef::String(_) | ObjectRef::Symbol(_) => {
-            let name = text(ctx, word)?;
-            runtime
-                .find_package(ctx, &name)
-                .map(Package::from_word)
-                .ok_or(ObjectError::TypeError)
-        }
-        _ => Err(ObjectError::TypeError),
-    }
-}
-
 fn gentemp(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -327,7 +291,7 @@ fn gentemp(
     } else {
         runtime.ensure_package(ctx, "COMMON-LISP-USER")?
     };
-    let package = package_arg(ctx, runtime, package_word)?;
+    let package = super::introspection::package_designator(ctx, runtime, package_word)?;
     loop {
         let counter = next_gensym_counter(ctx, runtime)?;
         let name = format!("{prefix}{counter}");
@@ -336,8 +300,9 @@ fn gentemp(
             runtime,
             &name.chars().collect::<Vec<_>>(),
         )?];
-        if with_rooted_words(ctx, &mut roots, |ctx, roots| {
-            Ok(package.find_symbol(ctx, roots[0])?.is_some())
+        if super::with_rooted_words(ctx, &mut roots, |ctx, roots| {
+            let root = roots.first().copied().ok_or(ObjectError::Layout)?;
+            Ok::<bool, ObjectError>(package.find_symbol(ctx, root)?.is_some())
         })? {
             continue;
         }

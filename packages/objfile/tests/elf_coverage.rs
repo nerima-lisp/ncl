@@ -144,3 +144,51 @@ fn elf_validator_checks_architecture_and_reader_alias() {
         })
     ));
 }
+
+#[test]
+fn elf_writer_serializes_relocation_target_and_addend() {
+    let mut value = object();
+    value.relocations = vec![Relocation {
+        section: SectionId(1),
+        offset: 3,
+        kind: RelocKind::PcRel32,
+        symbol: SymbolRef::Local(0),
+        addend: -4,
+    }];
+    let bytes = value.write().expect("valid ELF relocation");
+    let section_table = usize::try_from(u64::from_le_bytes(
+        bytes[40..48].try_into().expect("ELF section table offset"),
+    ))
+    .expect("section table fits");
+    let rela_text = section_table + 4 * 64;
+    let rela_offset = usize::try_from(u64::from_le_bytes(
+        bytes[rela_text + 24..rela_text + 32]
+            .try_into()
+            .expect("relocation section offset"),
+    ))
+    .expect("relocation offset fits");
+    assert_eq!(
+        u64::from_le_bytes(
+            bytes[rela_offset..rela_offset + 8]
+                .try_into()
+                .expect("relocation target offset"),
+        ),
+        3
+    );
+    assert_eq!(
+        u64::from_le_bytes(
+            bytes[rela_offset + 8..rela_offset + 16]
+                .try_into()
+                .expect("relocation info"),
+        ),
+        (1_u64 << 32) | 2,
+    );
+    assert_eq!(
+        i64::from_le_bytes(
+            bytes[rela_offset + 16..rela_offset + 24]
+                .try_into()
+                .expect("relocation addend"),
+        ),
+        -4,
+    );
+}

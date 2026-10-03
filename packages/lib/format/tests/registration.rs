@@ -2,7 +2,8 @@
 
 use ncl_lib_format::register;
 use ncl_object::{
-    FunctionObject, Runtime, ThreadContext, Word, make_string, make_symbol, string_ref,
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_string, make_symbol,
+    set_symbol_value, string_ref,
 };
 
 fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
@@ -43,6 +44,39 @@ fn format_is_callable_and_executes_value_and_line_directives() {
 }
 
 #[test]
+fn format_returns_expected_radix_and_repeat_output() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+    let control = string(&runtime, &mut ctx, "~B/~O/~X/~3~");
+
+    let result = runtime
+        .call_builtin(
+            &mut ctx,
+            function,
+            &[
+                Word::NIL,
+                control,
+                Word::fixnum(5),
+                Word::fixnum(8),
+                Word::fixnum(15),
+            ],
+        )
+        .expect("format result");
+
+    assert_eq!(read_string(&ctx, result), "101/10/F/~~~");
+}
+
+#[test]
 fn format_accepts_symbol_and_character_controls() {
     let runtime = Runtime::new().expect("runtime");
     let mut ctx = ThreadContext::new();
@@ -71,4 +105,167 @@ fn format_accepts_symbol_and_character_controls() {
         )
         .expect("character control");
     assert_eq!(read_string(&ctx, character_result), "x");
+}
+
+#[test]
+fn format_writes_to_a_stream_and_rejects_invalid_destinations() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+
+    let format = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+    let make_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .expect("MAKE-STRING-OUTPUT-STREAM"),
+    )
+    .expect("output function");
+    let get_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GET-OUTPUT-STREAM-STRING")
+            .expect("GET-OUTPUT-STREAM-STRING"),
+    )
+    .expect("get output function");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_output, &[])
+        .expect("stream");
+    let control = string(&runtime, &mut ctx, "~A~%");
+    let value = string(&runtime, &mut ctx, "streamed");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[stream, control, value]),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream])
+        .expect("output");
+    assert_eq!(read_string(&ctx, output), "streamed\n");
+
+    let default_stream = runtime
+        .call_builtin(&mut ctx, make_output, &[])
+        .expect("default stream");
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .expect("COMMON-LISP");
+    let standard_output = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "*STANDARD-OUTPUT*")
+        .expect("standard output")
+        .0;
+    set_symbol_value(&mut ctx, standard_output, default_stream).expect("bind standard output");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::TRUE, control, value]),
+        Ok(Word::NIL)
+    );
+    let default_output = runtime
+        .call_builtin(&mut ctx, get_output, &[default_stream])
+        .expect("default output");
+    assert_eq!(read_string(&ctx, default_output), "streamed\n");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::fixnum(1), control]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::TRUE]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn format_reports_public_type_errors_for_invalid_controls_and_arguments() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+    let format = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+
+    let missing_argument = string(&runtime, &mut ctx, "~A");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, missing_argument]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let non_integer = string(&runtime, &mut ctx, "~D");
+    let text = string(&runtime, &mut ctx, "not an integer");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, non_integer, text]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let invalid_parameter = string(&runtime, &mut ctx, "~-1%");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, invalid_parameter]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+
+    let unknown_directive = string(&runtime, &mut ctx, "~?");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, unknown_directive]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn format_reports_missing_write_char_without_stream_registration() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    register(&runtime).expect("format");
+    let format = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+    let control = string(&runtime, &mut ctx, "~A");
+    let value = string(&runtime, &mut ctx, "value");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::TRUE, control, value]),
+        Err(ncl_object::ObjectError::UndefinedFunction)
+    );
+}
+
+#[test]
+fn format_rejects_writing_to_an_input_stream() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+    let format = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FORMAT")
+            .expect("FORMAT"),
+    )
+    .expect("FORMAT function");
+    let make_input = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-INPUT-STREAM")
+            .expect("MAKE-STRING-INPUT-STREAM"),
+    )
+    .expect("input stream function");
+    let source = string(&runtime, &mut ctx, "input");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_input, &[source])
+        .expect("input stream");
+    let control = string(&runtime, &mut ctx, "~A");
+    let value = string(&runtime, &mut ctx, "value");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[stream, control, value]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }

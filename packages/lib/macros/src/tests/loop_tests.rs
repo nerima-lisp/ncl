@@ -256,3 +256,136 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     );
     Ok(())
 }
+
+#[test]
+fn parses_all_accumulators_and_named_control_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let into = symbol(&mut ctx, &runtime, "INTO")?;
+    let named = symbol(&mut ctx, &runtime, "NAMED")?;
+    let name = symbol(&mut ctx, &runtime, "COLLECTOR")?;
+    let with = symbol(&mut ctx, &runtime, "WITH")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let repeat = symbol(&mut ctx, &runtime, "REPEAT")?;
+    let while_word = symbol(&mut ctx, &runtime, "WHILE")?;
+    let until = symbol(&mut ctx, &runtime, "UNTIL")?;
+    let initially = symbol(&mut ctx, &runtime, "INITIALLY")?;
+    let finally = symbol(&mut ctx, &runtime, "FINALLY")?;
+    let collect = symbol(&mut ctx, &runtime, "COLLECT")?;
+    let append = symbol(&mut ctx, &runtime, "APPEND")?;
+    let nconc = symbol(&mut ctx, &runtime, "NCONC")?;
+    let count = symbol(&mut ctx, &runtime, "COUNT")?;
+    let sum = symbol(&mut ctx, &runtime, "SUM")?;
+    let maximize = symbol(&mut ctx, &runtime, "MAXIMIZE")?;
+    let minimize = symbol(&mut ctx, &runtime, "MINIMIZE")?;
+    let collected = symbol(&mut ctx, &runtime, "COLLECTED")?;
+    let input = [
+        named,
+        name,
+        with,
+        x,
+        equals,
+        Word::fixnum(4),
+        repeat,
+        Word::fixnum(2),
+        while_word,
+        Word::TRUE,
+        until,
+        Word::NIL,
+        initially,
+        x,
+        finally,
+        x,
+        collect,
+        x,
+        into,
+        collected,
+        append,
+        x,
+        nconc,
+        x,
+        count,
+        x,
+        sum,
+        x,
+        maximize,
+        x,
+        minimize,
+        x,
+    ];
+    let ast = parse_loop(&mut ctx, &input)?;
+    assert_eq!(ast.name, Some(name));
+    assert!(matches!(ast.clauses[0], LoopClause::With { init, .. } if init == Word::fixnum(4)));
+    assert!(matches!(ast.clauses[1], LoopClause::Repeat(count) if count == Word::fixnum(2)));
+    assert!(matches!(ast.clauses[2], LoopClause::While(test) if test == Word::TRUE));
+    assert!(matches!(ast.clauses[3], LoopClause::Until(test) if test == Word::NIL));
+    assert!(matches!(ast.clauses[4], LoopClause::Initially(ref forms) if forms == &vec![x]));
+    assert!(matches!(ast.clauses[5], LoopClause::Finally(ref forms) if forms == &vec![x]));
+    let kinds = ast.clauses[6..]
+        .iter()
+        .map(|clause| match clause {
+            LoopClause::Accumulate { kind, variable, .. } => (*kind, *variable),
+            _ => panic!("expected accumulator clause"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(kinds.len(), 7);
+    assert_eq!(kinds[0], (AccumulatorKind::Collect, Some(collected)));
+    assert_eq!(kinds[1].0, AccumulatorKind::Append);
+    assert_eq!(kinds[2].0, AccumulatorKind::Nconc);
+    assert_eq!(kinds[3].0, AccumulatorKind::Count);
+    assert_eq!(kinds[4].0, AccumulatorKind::Sum);
+    assert_eq!(kinds[5].0, AccumulatorKind::Maximize);
+    assert_eq!(kinds[6].0, AccumulatorKind::Minimize);
+    Ok(())
+}
+
+#[test]
+fn parses_conditional_else_and_expands_unless_with_it_binding() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let it = symbol(&mut ctx, &runtime, "IT")?;
+    let input = [
+        symbol(&mut ctx, &runtime, "UNLESS")?,
+        x,
+        symbol(&mut ctx, &runtime, "DO")?,
+        it,
+        symbol(&mut ctx, &runtime, "ELSE")?,
+        symbol(&mut ctx, &runtime, "RETURN")?,
+        x,
+        symbol(&mut ctx, &runtime, "END")?,
+    ];
+    let ast = parse_loop(&mut ctx, &input)?;
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [LoopClause::Conditional {
+            kind: ConditionalKind::Unless,
+            test,
+            then,
+            otherwise,
+        }] if *test == x && then == &vec![LoopClause::Do(vec![it])] && otherwise == &vec![LoopClause::Return(x)]
+    ));
+    let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let outer = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, outer[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let tagbody = elements(&mut ctx, progn[1])?;
+    let let_symbol = symbol(&mut ctx, &runtime, "LET")?;
+    let mut unless_if = None;
+    for word in tagbody.iter().copied() {
+        if let Ok(parts) = elements(&mut ctx, word)
+            && parts.first().copied() == Some(let_symbol)
+        {
+            unless_if = Some(parts);
+            break;
+        }
+    }
+    assert!(unless_if.is_some());
+    let let_parts = unless_if.unwrap();
+    let if_parts = elements(&mut ctx, let_parts[2])?;
+    assert_eq!(if_parts[0], symbol(&mut ctx, &runtime, "IF")?);
+    assert_eq!(
+        elements(&mut ctx, if_parts[1])?[0],
+        symbol(&mut ctx, &runtime, "NOT")?
+    );
+    Ok(())
+}

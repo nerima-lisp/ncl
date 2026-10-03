@@ -46,3 +46,37 @@ pub fn expand(
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::list;
+
+    #[test]
+    fn psetq_expansion_rejects_non_symbol_bindings() -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let input = list(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(11)])?;
+        let input_args = [input];
+        let args = BuiltinArgs::new(&input_args);
+        assert_eq!(
+            expand(&mut ctx, &runtime, &args, &mut MultipleValues::new()),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn psetq_rejects_missing_input() -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let mut values = MultipleValues::new();
+        assert!(matches!(
+            expand(&mut ctx, &runtime, &BuiltinArgs::new(&[]), &mut values),
+            Err(ObjectError::TypeError)
+        ));
+        Ok(())
+    }
+}

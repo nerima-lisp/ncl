@@ -355,3 +355,98 @@ pub fn expand_destructuring_bind(
     let result = held_call(ctx, runtime, &mut held, "LET*", &let_args)?;
     held_get(&held, result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::form::{elements, list, symbol};
+
+    fn fixture() -> std::result::Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    fn expands_with_body(
+        runtime: &Runtime,
+        ctx: &mut ThreadContext,
+        pattern: Word,
+    ) -> std::result::Result<(), ObjectError> {
+        let value = Word::fixnum(11);
+        let body = symbol(ctx, runtime, "BODY")?;
+        let expansion = expand_destructuring_bind(ctx, runtime, pattern, value, &[body])?;
+        let parts = elements(ctx, expansion)?;
+        assert_eq!(parts[0], symbol(ctx, runtime, "LET*")?);
+        assert_eq!(parts.last().copied(), Some(body));
+        Ok(())
+    }
+
+    #[test]
+    fn optional_rest_whole_and_environment_patterns_expand() -> std::result::Result<(), ObjectError>
+    {
+        let (runtime, mut ctx) = fixture()?;
+        let a = symbol(&mut ctx, &runtime, "A")?;
+        let b = symbol(&mut ctx, &runtime, "B")?;
+        let c = symbol(&mut ctx, &runtime, "C")?;
+        let rest = symbol(&mut ctx, &runtime, "REST")?;
+        let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
+        let environment = symbol(&mut ctx, &runtime, "ENV")?;
+        let optional = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+        let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+        let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+        let environment_marker = symbol(&mut ctx, &runtime, "&ENVIRONMENT")?;
+        let optional_spec = list(&mut ctx, &runtime, &[b, Word::fixnum(2), c])?;
+        let pattern = list(
+            &mut ctx,
+            &runtime,
+            &[
+                whole_marker,
+                whole,
+                environment_marker,
+                environment,
+                a,
+                optional,
+                optional_spec,
+                rest_marker,
+                rest,
+            ],
+        )?;
+        expands_with_body(&runtime, &mut ctx, pattern)?;
+        Ok(())
+    }
+
+    #[test]
+    fn key_patterns_cover_defaults_supplied_and_allow_other_keys()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let key = symbol(&mut ctx, &runtime, "&KEY")?;
+        let allow = symbol(&mut ctx, &runtime, "&ALLOW-OTHER-KEYS")?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let supplied = symbol(&mut ctx, &runtime, "X-P")?;
+        let custom_keyword = symbol(&mut ctx, &runtime, "KEYWORD::VALUE")?;
+        let explicit = list(&mut ctx, &runtime, &[custom_keyword, x])?;
+        let spec = list(&mut ctx, &runtime, &[explicit, Word::fixnum(8), supplied])?;
+        let pattern = list(&mut ctx, &runtime, &[key, spec, allow])?;
+        expands_with_body(&runtime, &mut ctx, pattern)?;
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_aux_and_allow_other_keys_are_rejected_outside_key_section()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let aux = symbol(&mut ctx, &runtime, "&AUX")?;
+        let allow = symbol(&mut ctx, &runtime, "&ALLOW-OTHER-KEYS")?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        for marker in [aux, allow] {
+            let pattern = list(&mut ctx, &runtime, &[marker, x])?;
+            assert_eq!(
+                expand_destructuring_bind(&mut ctx, &runtime, pattern, Word::NIL, &[body]),
+                Err(ObjectError::TypeError)
+            );
+        }
+        Ok(())
+    }
+}

@@ -127,3 +127,104 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        register(&runtime, &mut ctx)?;
+        Ok((runtime, ctx))
+    }
+
+    fn builtin(
+        runtime: &Runtime,
+        ctx: &mut ThreadContext,
+        name: &str,
+    ) -> Result<ncl_object::FunctionObject, ObjectError> {
+        let function = runtime
+            .function(ctx, "COMMON-LISP", name)
+            .ok_or(ObjectError::TypeError)?;
+        ncl_object::FunctionObject::try_from(function)
+    }
+
+    #[test]
+    fn predicates_and_identity_return_their_expected_values() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup()?;
+        let identity = builtin(&runtime, &mut ctx, "IDENTITY")?;
+        let not = builtin(&runtime, &mut ctx, "NOT")?;
+        let null = builtin(&runtime, &mut ctx, "NULL")?;
+        let functionp = builtin(&runtime, &mut ctx, "FUNCTIONP")?;
+
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, identity, &[Word::fixnum(7)]),
+            Ok(Word::fixnum(7))
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, not, &[Word::NIL]),
+            Ok(Word::TRUE)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, null, &[Word::fixnum(1)]),
+            Ok(Word::NIL)
+        );
+        let values = builtin(&runtime, &mut ctx, "VALUES")?;
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, functionp, &[values.as_word()]),
+            Ok(Word::TRUE)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, functionp, &[Word::fixnum(1)]),
+            Ok(Word::NIL)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn values_and_values_list_preserve_all_values() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup()?;
+        let values = builtin(&runtime, &mut ctx, "VALUES")?;
+        assert_eq!(
+            runtime.call_builtin(
+                &mut ctx,
+                values,
+                &[Word::fixnum(2), Word::fixnum(4), Word::fixnum(6)],
+            ),
+            Ok(Word::fixnum(2))
+        );
+        assert_eq!(
+            ctx.values(),
+            &[Word::fixnum(2), Word::fixnum(4), Word::fixnum(6)]
+        );
+        assert_eq!(runtime.call_builtin(&mut ctx, values, &[]), Ok(Word::NIL));
+        assert_eq!(ctx.values(), &[]);
+
+        let first = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(8), Word::NIL)?;
+        let list = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(7), first)?;
+        let values_list = builtin(&runtime, &mut ctx, "VALUES-LIST")?;
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, values_list, &[list]),
+            Ok(Word::fixnum(7))
+        );
+        assert_eq!(ctx.values(), &[Word::fixnum(7), Word::fixnum(8)]);
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, values_list, &[Word::fixnum(0)]),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn required_arguments_are_checked() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = setup()?;
+        let identity = builtin(&runtime, &mut ctx, "IDENTITY")?;
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, identity, &[]),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+}

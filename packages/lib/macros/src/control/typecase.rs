@@ -99,3 +99,35 @@ pub(crate) fn expand(
         form(scope.context_mut(), runtime, "LET", &[binding, branch_word])
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expands_default_and_error_fallbacks() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+        let otherwise = symbol(&mut ctx, &runtime, "OTHERWISE")?;
+        let typed = list(&mut ctx, &runtime, &[integer, Word::fixnum(1)])?;
+        let default = list(&mut ctx, &runtime, &[otherwise, Word::fixnum(2)])?;
+        let expansion = expand(
+            &mut ctx,
+            &runtime,
+            &[Word::fixnum(1), typed, default],
+            false,
+        )?;
+        assert_eq!(
+            elements(&mut ctx, expansion)?[0],
+            symbol(&mut ctx, &runtime, "LET")?
+        );
+        let error_expansion = expand(&mut ctx, &runtime, &[Word::fixnum(1), typed], true)?;
+        assert_eq!(
+            elements(&mut ctx, error_expansion)?[0],
+            symbol(&mut ctx, &runtime, "LET")?
+        );
+        Ok(())
+    }
+}

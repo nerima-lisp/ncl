@@ -64,3 +64,62 @@ fn iteration_macros_validate_specs_and_build_blocks() -> Result<(), ObjectError>
     assert_eq!(parts[0], symbol(&mut ctx, &runtime, "BLOCK")?);
     Ok(())
 }
+
+#[test]
+fn iteration_macros_preserve_explicit_result_forms() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let result = symbol(&mut ctx, &runtime, "RESULT")?;
+
+    let dolist = symbol(&mut ctx, &runtime, "DOLIST")?;
+    let dolist_spec = list(&mut ctx, &runtime, &[x, Word::NIL, result])?;
+    let dolist_form = list(&mut ctx, &runtime, &[dolist, dolist_spec, x])?;
+    let dolist_expansion = expand(&mut ctx, &runtime, "DOLIST", dolist_form)?;
+    let dolist_parts = elements(&mut ctx, dolist_expansion)?;
+    let dolist_block = elements(&mut ctx, dolist_parts[2])?;
+    let dolist_body_form = dolist_block[2];
+    let dolist_body = elements(&mut ctx, dolist_body_form)?;
+    assert!(dolist_body.last().is_some());
+
+    let dotimes = symbol(&mut ctx, &runtime, "DOTIMES")?;
+    let dotimes_spec = list(&mut ctx, &runtime, &[x, Word::fixnum(2), result])?;
+    let dotimes_form = list(&mut ctx, &runtime, &[dotimes, dotimes_spec, x])?;
+    let dotimes_expansion = expand(&mut ctx, &runtime, "DOTIMES", dotimes_form)?;
+    let dotimes_parts = elements(&mut ctx, dotimes_expansion)?;
+    let dotimes_block = elements(&mut ctx, dotimes_parts[2])?;
+    let dotimes_body_form = dotimes_block[2];
+    let dotimes_body = elements(&mut ctx, dotimes_body_form)?;
+    assert!(dotimes_body.last().is_some());
+    Ok(())
+}
+
+#[test]
+fn iteration_macros_reject_invalid_variables_and_spec_lengths() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let dolist = symbol(&mut ctx, &runtime, "DOLIST")?;
+    let dotimes = symbol(&mut ctx, &runtime, "DOTIMES")?;
+    let number = Word::fixnum(1);
+    let too_short = list(&mut ctx, &runtime, &[number])?;
+    let too_long = list(
+        &mut ctx,
+        &runtime,
+        &[number, Word::NIL, Word::NIL, Word::NIL],
+    )?;
+    for (name, operator, spec) in [
+        ("DOLIST", dolist, too_short),
+        ("DOTIMES", dotimes, too_long),
+    ] {
+        let form = list(&mut ctx, &runtime, &[operator, spec])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, form),
+            Err(ObjectError::TypeError)
+        );
+    }
+    Ok(())
+}

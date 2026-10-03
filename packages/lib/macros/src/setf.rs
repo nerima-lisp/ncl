@@ -412,3 +412,60 @@ pub fn expand_get_setf_expansion(
 #[cfg(test)]
 #[path = "setf_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    #[test]
+    fn variable_place_expansion_contains_store_and_access_values() -> Result<(), ObjectError> {
+        let runtime = ncl_object::Runtime::new()?;
+        let mut ctx = ncl_object::ThreadContext::new();
+        ctx.register(&runtime)?;
+        let variable = symbol(&mut ctx, &runtime, "VALUE")?;
+        let expansion = place(&mut ctx, &runtime, &PlaceRegistry::new(&runtime), variable)?;
+        assert!(expansion.temporary_variables.is_empty());
+        assert!(expansion.value_forms.is_empty());
+        assert_eq!(expansion.store_variables.len(), 1);
+        assert_eq!(expansion.access_form, variable);
+        let store = elements(&mut ctx, expansion.store_form)?;
+        assert_eq!(store[0], symbol(&mut ctx, &runtime, "SETQ")?);
+        assert_eq!(store[1], variable);
+        assert_eq!(store.len(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn place_rejects_foreign_registry_and_malformed_expansions() -> Result<(), ObjectError> {
+        let runtime = ncl_object::Runtime::new()?;
+        let other = ncl_object::Runtime::new()?;
+        let mut ctx = ncl_object::ThreadContext::new();
+        ctx.register(&runtime)?;
+        let variable = symbol(&mut ctx, &runtime, "VALUE")?;
+        assert!(matches!(
+            place(&mut ctx, &runtime, &PlaceRegistry::new(&other), variable),
+            Err(ObjectError::TypeError)
+        ));
+        let malformed = SetfExpansion {
+            temporary_variables: vec![variable],
+            value_forms: vec![],
+            store_variables: vec![],
+            store_form: Word::NIL,
+            access_form: Word::NIL,
+        };
+        assert!(matches!(
+            validate_expansion(&malformed),
+            Err(ObjectError::TypeError)
+        ));
+        assert!(matches!(
+            expand_setf(
+                &mut ctx,
+                &runtime,
+                &PlaceRegistry::new(&runtime),
+                &[variable]
+            ),
+            Err(ObjectError::TypeError)
+        ));
+        Ok(())
+    }
+}

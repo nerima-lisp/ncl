@@ -342,3 +342,73 @@ pub fn register_runtime_support(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::form::elements;
+
+    fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    #[test]
+    fn place_expanders_build_expected_access_and_store_forms() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let name = symbol(&mut ctx, &runtime, "F")?;
+        let property = symbol(&mut ctx, &runtime, "P")?;
+
+        let expansion = fdefinition_place(&mut ctx, &runtime, &[name])?;
+        assert_eq!(
+            elements(&mut ctx, expansion.access_form)?[0],
+            symbol(&mut ctx, &runtime, "FDEFINITION")?
+        );
+        assert_eq!(expansion.value_forms.len(), 0);
+        assert_eq!(expansion.store_variables.len(), 1);
+
+        let expansion = get_place(&mut ctx, &runtime, &[name, property])?;
+        assert_eq!(expansion.value_forms.len(), 2);
+        let access = elements(&mut ctx, expansion.access_form)?;
+        assert_eq!(access[0], symbol(&mut ctx, &runtime, "GET")?);
+        assert_eq!(access.len(), 3);
+
+        assert_eq!(
+            macro_function_place(&mut ctx, &runtime, &[]),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            get_place(&mut ctx, &runtime, &[name]),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn get_builtin_round_trips_a_new_property_value() -> Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let name = symbol(&mut ctx, &runtime, "S")?;
+        let property = symbol(&mut ctx, &runtime, "P")?;
+        let value = Word::fixnum(19);
+        let input = [name, property, value];
+        let args = BuiltinArgs::new(&input);
+        let mut values = ncl_object::MultipleValues::new();
+        assert_eq!(
+            set_get_builtin(&mut ctx, &runtime, &args, &mut values)?,
+            value
+        );
+
+        let lookup_args = BuiltinArgs::new(&input[..2]);
+        assert_eq!(
+            get_builtin(&mut ctx, &runtime, &lookup_args, &mut values)?,
+            value
+        );
+        assert_eq!(
+            get_builtin(&mut ctx, &runtime, &BuiltinArgs::new(&[name]), &mut values),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+}

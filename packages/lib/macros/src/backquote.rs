@@ -237,3 +237,66 @@ pub fn expand_quasiquote_adapter(
     let result = qq(ctx, runtime, &mut held, 0, 1, &markers)?;
     held_get(&held, result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture() -> Result<(Runtime, ThreadContext)> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    fn expand(runtime: &Runtime, ctx: &mut ThreadContext, datum: Word) -> Result<Word> {
+        let marker = symbol(ctx, runtime, "QUASIQUOTE")?;
+        let form = list(ctx, runtime, &[marker, datum])?;
+        let input = [form];
+        let args = BuiltinArgs::new(&input);
+        expand_quasiquote_adapter(ctx, runtime, &args, &mut MultipleValues::new())
+    }
+
+    #[test]
+    fn expands_atoms_lists_vectors_and_nested_markers() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;
+        let splice = symbol(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+        let quasiquote = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
+        let quoted_x = list(&mut ctx, &runtime, &[unquote, x])?;
+        let tail = list(&mut ctx, &runtime, &[splice, x])?;
+        let datum = list(&mut ctx, &runtime, &[Word::fixnum(1), quoted_x, tail])?;
+        let expansion = expand(&runtime, &mut ctx, datum)?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "CONS")?);
+
+        let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[x, quoted_x])?;
+        let vector_expansion = expand(&runtime, &mut ctx, vector)?;
+        let vector_parts = elements(&mut ctx, vector_expansion)?;
+        assert_eq!(vector_parts[0], symbol(&mut ctx, &runtime, "APPLY")?);
+
+        let nested = list(&mut ctx, &runtime, &[quasiquote, quoted_x])?;
+        let nested_expansion = expand(&runtime, &mut ctx, nested)?;
+        let nested_parts = elements(&mut ctx, nested_expansion)?;
+        assert_eq!(nested_parts[0], symbol(&mut ctx, &runtime, "LIST")?);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_malformed_input_and_bare_splice() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let args = BuiltinArgs::new(&[]);
+        assert_eq!(
+            expand_quasiquote_adapter(&mut ctx, &runtime, &args, &mut MultipleValues::new()),
+            Err(ObjectError::TypeError)
+        );
+        let splice = symbol(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+        let datum = list(&mut ctx, &runtime, &[splice, Word::fixnum(1)])?;
+        assert_eq!(
+            expand(&runtime, &mut ctx, datum),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+}

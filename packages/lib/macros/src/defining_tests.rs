@@ -125,3 +125,62 @@ fn callback_registry_covers_requested_definers() {
         assert!(callback_for(name).is_some(), "{name}");
     }
 }
+
+#[test]
+fn variable_definers_select_their_expected_operations() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let value = Word::fixnum(7);
+
+    for (name_text, operator_text, expected_operation) in [
+        ("V-DEFVAR", "DEFVAR", "UNLESS"),
+        ("V-DEFPARAMETER", "DEFPARAMETER", "SETQ"),
+        ("V-DEFCONSTANT", "DEFCONSTANT", "SETQ"),
+    ] {
+        let name = symbol(&mut ctx, &runtime, name_text)?;
+        let operator = symbol(&mut ctx, &runtime, operator_text)?;
+        let form = list(&mut ctx, &runtime, &[operator, name, value])?;
+        let expansion = call(&runtime, &mut ctx, operator_text, form)?;
+        let parts = elements(&mut ctx, expansion)?;
+        let operation = elements(&mut ctx, parts[1])?;
+        assert_eq!(
+            operation[0],
+            symbol(&mut ctx, &runtime, expected_operation)?
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn symbol_and_compiler_macro_definitions_preserve_values() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    assert!(callback_for("DEFINE-SYMBOL-MACRO").is_some());
+    assert!(callback_for("DEFINE-COMPILER-MACRO").is_some());
+    let malformed = [Word::NIL];
+    let mut values = ncl_object::MultipleValues::new();
+    assert_eq!(
+        define_symbol_macro(&runtime, &mut ctx, &malformed, &mut values),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        define_compiler_macro(&runtime, &mut ctx, &malformed, &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn setf_definition_alias_and_invalid_forms_are_checked() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let mut values = ncl_object::MultipleValues::new();
+    let malformed = [Word::NIL];
+    assert_eq!(
+        defsetf(&runtime, &mut ctx, &malformed, &mut values),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        define_setf_expander(&runtime, &mut ctx, &malformed, &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

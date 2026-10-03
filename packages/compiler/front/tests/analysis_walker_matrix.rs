@@ -11,7 +11,7 @@ fn symbol(name: &str) -> SymbolRef {
     SymbolRef::interned("COMMON-LISP-USER", name)
 }
 
-fn lambda(body: Vec<Expr>) -> LambdaExpr {
+const fn lambda(body: Vec<Expr>) -> LambdaExpr {
     LambdaExpr {
         lambda_list: LambdaList::new(),
         declarations: Vec::new(),
@@ -39,6 +39,7 @@ fn assert_verifies(function: &Function, label: &str) {
     assert_eq!(verify(function), Ok(()), "{label} ({}) must verify", function.name);
 }
 
+#[allow(clippy::too_many_lines)]
 fn go_wrapper_cases(tag: &SymbolRef) -> Vec<(&'static str, Expr)> {
     let go = || Expr::Go { tag: tag.clone() };
     let local = |name: &str| LocalFunction {
@@ -158,6 +159,7 @@ fn go_wrapper_cases(tag: &SymbolRef) -> Vec<(&'static str, Expr)> {
     ]
 }
 
+#[allow(clippy::too_many_lines)]
 fn return_unwind_wrapper_cases(name: &SymbolRef) -> Vec<(&'static str, Expr)> {
     let payload = || Expr::UnwindProtect {
         protected: Box::new(return_from(name)),
@@ -301,8 +303,8 @@ fn return_and_unwind_walkers_preserve_their_handler_values() {
         .unwrap_or_else(|error| panic!("{label}: {error}"));
         assert_verifies(&lowered.entry, label);
         let kinds = handler_kinds(&lowered.entry);
-        assert_eq!(kinds.contains(&HandlerKind::UnwindProtect), true, "{label}");
-        assert_eq!(kinds.contains(&HandlerKind::Catch), true, "{label}");
+        assert!(kinds.contains(&HandlerKind::UnwindProtect), "{label}");
+        assert!(kinds.contains(&HandlerKind::Catch), "{label}");
         assert!(lowered.entry.blocks.iter().any(|block| {
             matches!(block.terminator, Terminator::Throw { .. })
         }), "{label} must throw the escaping return");

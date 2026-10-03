@@ -264,6 +264,7 @@ fn merges_duplicate_comparisons_and_preserves_boolean_result() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn rewrites_values_in_every_terminator_shape() {
     fn function_with(term: Terminator, ty: Ty) -> Function {
         let return_types = if matches!(term, Terminator::Return { .. }) {

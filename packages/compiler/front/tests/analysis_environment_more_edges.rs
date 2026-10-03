@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_compiler_front::{
-    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef,
+    Expr, FunctionDesignator, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef, TagbodyItem,
     lower_toplevel,
 };
 use ncl_ir::{Function, HandlerKind, OpKind, Terminator, verify};
@@ -163,5 +163,92 @@ fn function_lambda_designator_boxes_an_assigned_captured_value() {
     assert!(any_op(&lowered.nested[0], |kind| matches!(
         kind,
         OpKind::StoreField { field: 0, .. }
+    )));
+}
+
+#[test]
+fn return_from_in_let_initializer_marks_the_outer_block_as_escaping() {
+    let exit = symbol("LET-EXIT");
+    let expression = Expr::Block {
+        name: exit.clone(),
+        body: vec![Expr::Let {
+            sequential: false,
+            bindings: vec![LetBinding {
+                name: symbol("FUNCTION"),
+                value: Some(Expr::Lambda(Box::new(lambda(Expr::ReturnFrom {
+                    name: exit,
+                    value: Some(Box::new(Expr::Constant(Literal::fixnum(1)))),
+                })))),
+            }],
+            declarations: Vec::new(),
+            body: vec![Expr::Constant(Literal::Nil)],
+        }],
+    };
+
+    let lowered = lower_toplevel(&expression).expect("let initializer return lowers");
+    assert_verifies(&lowered.entry);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| { region.kind == HandlerKind::Catch })
+    );
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeClosure { .. }
+    )));
+}
+
+#[test]
+fn return_from_in_labels_definition_marks_the_outer_block_as_escaping() {
+    let exit = symbol("LABELS-EXIT");
+    let function_name = symbol("ESCAPE");
+    let expression = Expr::Block {
+        name: exit.clone(),
+        body: vec![Expr::Labels {
+            definitions: vec![ncl_compiler_front::LocalFunction {
+                name: function_name,
+                lambda: lambda(Expr::ReturnFrom {
+                    name: exit,
+                    value: Some(Box::new(Expr::Constant(Literal::fixnum(2)))),
+                }),
+            }],
+            declarations: Vec::new(),
+            body: vec![Expr::Constant(Literal::Nil)],
+        }],
+    };
+
+    let lowered = lower_toplevel(&expression).expect("labels return lowers");
+    assert_verifies(&lowered.entry);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| { region.kind == HandlerKind::Catch })
+    );
+}
+
+#[test]
+fn go_inside_lambda_and_function_designator_is_seen_by_tagbody_analysis() {
+    let tag = symbol("LAMBDA-GO");
+    let expression = Expr::Tagbody(vec![
+        TagbodyItem::Form(Expr::Lambda(Box::new(lambda(Expr::Go {
+            tag: tag.clone(),
+        })))),
+        TagbodyItem::Form(Expr::Function(FunctionDesignator::Lambda(Box::new(
+            lambda(Expr::Go { tag: tag.clone() }),
+        )))),
+        TagbodyItem::Tag(tag),
+        TagbodyItem::Form(Expr::Constant(Literal::fixnum(3))),
+    ]);
+
+    let lowered = lower_toplevel(&expression).expect("nested go forms lower");
+    assert_verifies(&lowered.entry);
+    assert!(lowered.nested.len() >= 2);
+    assert!(any_terminator(&lowered.entry, |term| matches!(
+        term,
+        Terminator::Jump { .. }
     )));
 }

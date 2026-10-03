@@ -310,6 +310,7 @@ impl<'a> Printer<'a> {
             }
             cursor = cdr(&*self.ctx, cursor)?;
         }
+        // check-added-lines: allow(index) fixed pathname slot layout
         for (index, separator) in [(3, '\0'), (4, '.')] {
             let component = structure_ref(&*self.ctx, object, index)?;
             if component == Word::NIL {

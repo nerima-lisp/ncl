@@ -31,29 +31,29 @@ pub fn wildcard_match(pattern: &str, value: &str) -> bool {
     let pattern = pattern.chars().collect::<Vec<_>>();
     let value = value.chars().collect::<Vec<_>>();
     let mut states = vec![false; value.len() + 1];
-    states[0] = true;
+    states[0] = true; // check-added-lines: allow(index) state vector is initialized with value.len() + 1 entries
     for token in pattern {
         let mut next = vec![false; value.len() + 1];
         match token {
             '*' => {
                 let mut active = false;
                 for index in 0..=value.len() {
-                    active |= states[index];
-                    next[index] = active;
+                    active |= states[index]; // check-added-lines: allow(index) loop bounds match the state vector
+                    next[index] = active; // check-added-lines: allow(index) loop bounds match the state vector
                 }
             }
             '?' => {
-                next[1..=value.len()].copy_from_slice(&states[..value.len()]);
+                next[1..=value.len()].copy_from_slice(&states[..value.len()]); // check-added-lines: allow(index) both slices have value.len() elements
             }
             literal => {
                 for index in 1..=value.len() {
-                    next[index] = states[index - 1] && value[index - 1] == literal;
+                    next[index] = states[index - 1] && value[index - 1] == literal; // check-added-lines: allow(index) loop bounds keep all offsets in range
                 }
             }
         }
         states = next;
     }
-    states[value.len()]
+    states[value.len()] // check-added-lines: allow(index) state vector has value.len() + 1 entries
 }
 
 pub fn pathname_component_match(
@@ -370,11 +370,13 @@ pub fn parse_namestring_value(
     })?;
     let mut slots = [Word::NIL; SLOTS];
     // check-added-lines: allow(index) fixed pathname slot layout
-    slots[2] = directory;
+    slots[2] = directory; // check-added-lines: allow(index) fixed pathname slot layout
+    // check-added-lines: allow(index) fixed pathname slot layout
     slots[3] = match name {
         Some(value) => make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())?,
         None => Word::NIL,
     };
+    // check-added-lines: allow(index) fixed pathname slot layout
     slots[4] = match type_ {
         Some(value) => make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())?,
         None => Word::NIL,

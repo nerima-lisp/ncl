@@ -76,12 +76,12 @@ fn parse_keys(ctx: &ThreadContext, args: &[Word]) -> Result<[Word; SLOTS], Objec
     for pair in args.chunks(2) {
         // check-added-lines: allow(index) each pair is validated by chunks(2)
         match keyword_name(ctx, pair[0])?.as_str() {
-            "HOST" => slots[0] = pair[1],
-            "DEVICE" => slots[1] = pair[1],
-            "DIRECTORY" => slots[2] = pair[1],
-            "NAME" => slots[3] = pair[1],
-            "TYPE" => slots[4] = pair[1],
-            "VERSION" => slots[5] = pair[1],
+            "HOST" => slots[0] = pair[1], // check-added-lines: allow(index) chunks(2) guarantees both entries
+            "DEVICE" => slots[1] = pair[1], // check-added-lines: allow(index) chunks(2) guarantees both entries
+            "DIRECTORY" => slots[2] = pair[1], // check-added-lines: allow(index) fixed pathname slot
+            "NAME" => slots[3] = pair[1], // check-added-lines: allow(index) fixed pathname slot
+            "TYPE" => slots[4] = pair[1], // check-added-lines: allow(index) fixed pathname slot
+            "VERSION" => slots[5] = pair[1], // check-added-lines: allow(index) fixed pathname slot
             "DEFAULTS" => {}
             _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown keys
         }

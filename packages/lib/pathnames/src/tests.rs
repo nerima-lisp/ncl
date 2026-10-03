@@ -48,27 +48,27 @@ fn pathname_builtins_construct_access_and_round_trip() -> Result<(), ObjectError
         "MAKE-PATHNAME",
         &[name_key, name, type_key, type_, directory_key, directory],
     )?;
-    // check-added-lines: allow(panic)
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
         call(&runtime, &mut ctx, "PATHNAMEP", &[pathname])?,
         Word::TRUE
     );
-    // check-added-lines: allow(panic)
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
         call(&runtime, &mut ctx, "PATHNAME-NAME", &[pathname])?,
         name
     );
-    // check-added-lines: allow(panic)
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
         call(&runtime, &mut ctx, "PATHNAME-TYPE", &[pathname])?,
         type_
     );
     let namestring = call(&runtime, &mut ctx, "NAMESTRING", &[pathname])?;
-    assert_eq!(string_value(&ctx, namestring)?, "main.lisp"); // check-added-lines: allow(panic)
+    assert_eq!(string_value(&ctx, namestring)?, "main.lisp"); // check-added-lines: allow(panic) namestring value assertion
     let parsed = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[namestring])?;
-    assert_eq!(ctx.values().len(), 3); // check-added-lines: allow(panic)
+    assert_eq!(ctx.values().len(), 3); // check-added-lines: allow(panic) multiple-value count assertion
     let reparsed_namestring = call(&runtime, &mut ctx, "NAMESTRING", &[parsed])?;
-    assert_eq!(string_value(&ctx, reparsed_namestring)?, "main.lisp"); // check-added-lines: allow(panic)
+    assert_eq!(string_value(&ctx, reparsed_namestring)?, "main.lisp"); // check-added-lines: allow(panic) round-trip value assertion
     Ok(())
 }
 
@@ -85,7 +85,7 @@ fn parse_namestring_preserves_absolute_directory() -> Result<(), ObjectError> {
     )?;
     let pathname = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[input])?;
     let namestring = call(&runtime, &mut ctx, "NAMESTRING", &[pathname])?;
-    assert_eq!(string_value(&ctx, namestring)?, "/tmp/x.txt"); // check-added-lines: allow(panic)
+    assert_eq!(string_value(&ctx, namestring)?, "/tmp/x.txt"); // check-added-lines: allow(panic) absolute namestring assertion
     Ok(())
 }
 
@@ -107,7 +107,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     )?;
     let candidate = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[candidate])?;
     let pattern = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[pattern])?;
-    // check-added-lines: allow(panic)
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
         call(&runtime, &mut ctx, "WILD-PATHNAME-P", &[pattern])?,
         Word::TRUE
@@ -118,7 +118,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         "PATHNAME-MATCH-P",
         &[candidate, pattern],
     );
-    assert_eq!(matched?, Word::TRUE); // check-added-lines: allow(panic)
+    assert_eq!(matched?, Word::TRUE); // check-added-lines: allow(panic) wildcard match assertion
 
     let relative = make_string(&mut ctx, &runtime, &['x'])?;
     let defaults = make_string(
@@ -130,7 +130,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     let defaults = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[defaults])?;
     let merged = call(&runtime, &mut ctx, "MERGE-PATHNAMES", &[relative, defaults])?;
     let merged_name = call(&runtime, &mut ctx, "NAMESTRING", &[merged])?;
-    assert_eq!(string_value(&ctx, merged_name)?, "/tmp/x.lisp"); // check-added-lines: allow(panic)
+    assert_eq!(string_value(&ctx, merged_name)?, "/tmp/x.lisp"); // check-added-lines: allow(panic) merged namestring assertion
     Ok(())
 }
 
@@ -142,18 +142,18 @@ fn file_metadata_and_designators_return_values() -> Result<(), ObjectError> {
     crate::register(&runtime)?;
     let existing = make_string(&mut ctx, &runtime, &['/', 't', 'm', 'p'])?;
     let date = call(&runtime, &mut ctx, "FILE-WRITE-DATE", &[existing])?;
-    assert_ne!(date, Word::NIL); // check-added-lines: allow(panic)
-    // check-added-lines: allow(panic)
+    assert_ne!(date, Word::NIL); // check-added-lines: allow(panic) metadata presence assertion
+    // check-added-lines: allow(panic) placeholder result assertion
     assert_eq!(
         call(&runtime, &mut ctx, "FILE-AUTHOR", &[existing])?,
         Word::NIL
     );
-    // check-added-lines: allow(panic)
+    // check-added-lines: allow(panic) placeholder result assertion
     assert_eq!(
         call(&runtime, &mut ctx, "FILE-ERROR-PATHNAME", &[Word::NIL])?,
         Word::NIL
     );
     let host = call(&runtime, &mut ctx, "HOST-NAMESTRING", &[existing])?;
-    assert_eq!(string_value(&ctx, host)?, ""); // check-added-lines: allow(panic)
+    assert_eq!(string_value(&ctx, host)?, ""); // check-added-lines: allow(panic) host namestring assertion
     Ok(())
 }

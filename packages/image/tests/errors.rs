@@ -6,12 +6,12 @@
 
 //! Error and side-effect coverage for the public image API.
 
-use ncl_image::{load, save, CodeImage, ImageError};
+use ncl_image::{CodeImage, ImageError, load, save};
 use ncl_object::{
-    make_array, make_readtable, make_stream, make_string, ArrayElementType, ArrayOptions,
-    ObjectError, Runtime, ThreadContext, Word,
+    ArrayElementType, ArrayOptions, ObjectError, Runtime, ThreadContext, Word, make_array,
+    make_readtable, make_stream, make_string,
 };
-use ncl_sys::{alloc_code, CodeError, StorageCondition};
+use ncl_sys::{CodeError, StorageCondition, alloc_code};
 
 fn empty_image() -> Vec<u8> {
     let runtime = Runtime::new().unwrap();

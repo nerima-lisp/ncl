@@ -2,7 +2,7 @@
 
 use super::super::*;
 use ncl_object::{
-    make_string, make_symbol, symbol_name, symbol_value, FunctionObject, ObjectError,
+    FunctionObject, ObjectError, make_string, make_symbol, symbol_name, symbol_value,
 };
 
 fn read_string(ctx: &ThreadContext, word: Word) -> String {

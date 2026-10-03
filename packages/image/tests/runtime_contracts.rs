@@ -15,8 +15,7 @@ fn unicode_string_round_trip_preserves_character_sequence() {
     let runtime = Runtime::new().expect("source runtime");
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).expect("source thread registration");
-    let value = make_string(&mut ctx, &runtime, &['A', '界', '🦀', 'Z'])
-        .expect("unicode string");
+    let value = make_string(&mut ctx, &runtime, &['A', '界', '🦀', 'Z']).expect("unicode string");
 
     let bytes = save(&runtime, &mut ctx, &[value], &[]).expect("save unicode string");
 

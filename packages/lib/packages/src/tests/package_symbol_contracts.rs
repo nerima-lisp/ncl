@@ -2,7 +2,7 @@
 
 use super::*;
 use ncl_object::{
-    symbol_function, symbol_plist, symbol_value, FunctionObject, ObjectError, StringObject,
+    FunctionObject, ObjectError, StringObject, symbol_function, symbol_plist, symbol_value,
 };
 
 fn function(
@@ -236,9 +236,11 @@ fn symbol_builtins_cover_cells_properties_and_generated_names() -> Result<(), Ob
     let gentemp_prefix = string(&mut ctx, &runtime, "T-");
     let temp = runtime.call_builtin(&mut ctx, gentemp, &[gentemp_prefix, package])?;
     let temp_name = ncl_object::symbol_name(&ctx, temp)?;
-    assert!(Package::from_word(package)
-        .find_symbol(&mut ctx, temp_name)?
-        .is_some());
+    assert!(
+        Package::from_word(package)
+            .find_symbol(&mut ctx, temp_name)?
+            .is_some()
+    );
     Ok(())
 }
 

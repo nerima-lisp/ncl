@@ -9,8 +9,8 @@
 
 use ncl_image::{load, save};
 use ncl_object::{
-    car, cdr, make_string, make_symbol, set_symbol_value, string_length, string_ref, symbol_name,
-    symbol_package, symbol_value, Package, Runtime, ThreadContext, Word,
+    Package, Runtime, ThreadContext, Word, car, cdr, make_string, make_symbol, set_symbol_value,
+    string_length, string_ref, symbol_name, symbol_package, symbol_value,
 };
 
 fn read_string(ctx: &ThreadContext, value: Word) -> String {
@@ -86,6 +86,10 @@ fn package_nickname_cases_round_trip_in_order() {
         Case {
             name: "IMAGE-PACKAGE-TWO",
             nicknames: &["IMAGE-TWO", "IMAGE-SECOND"],
+        },
+        Case {
+            name: "IMAGE-PACKAGE-NO-NICKNAME",
+            nicknames: &[],
         },
     ] {
         let runtime = Runtime::new().expect("source runtime");

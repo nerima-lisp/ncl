@@ -41,3 +41,21 @@ fn defpackage_imports_and_interns_symbols_through_the_cli() {
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "T");
 }
+
+#[test]
+fn package_builtins_accept_lisp_designators_and_mutate_symbols() {
+    let output = ncl()
+        .args([
+            "--eval",
+            "(progn (defpackage \"NCL-DEFPKG4-BUILTINS\" (:use #:cl)) (let* ((package (find-package 'NCL-DEFPKG4-BUILTINS)) (symbol (intern \"VALUE\" package))) (set symbol 9) (export (list symbol) package) (if (and (packagep package) (eq (find-symbol \"VALUE\" 'NCL-DEFPKG4-BUILTINS) symbol) (eq (symbol-value symbol) 9) (eq (find-symbol \"MISSING\" package) nil)) t nil)))",
+        ])
+        .output()
+        .unwrap_or_else(|error| panic!("ncl failed to start: {error}"));
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "T");
+}

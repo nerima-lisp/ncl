@@ -81,3 +81,31 @@ stream_accessor!(
     stream_offset::IMPLEMENTATION,
     "Read a stream implementation."
 );
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_accessors_return_each_descriptor_field() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let stream = make_stream(
+            &mut ctx,
+            &runtime,
+            Word::fixnum(1),
+            Word::fixnum(2),
+            Word::fixnum(3),
+            Word::fixnum(4),
+            Word::fixnum(5),
+        )
+        .expect("stream");
+        assert_eq!(stream_direction(&ctx, stream), Ok(Word::fixnum(1)));
+        assert_eq!(stream_element_type(&ctx, stream), Ok(Word::fixnum(2)));
+        assert_eq!(stream_external_format(&ctx, stream), Ok(Word::fixnum(3)));
+        assert_eq!(stream_state(&ctx, stream), Ok(Word::fixnum(4)));
+        assert_eq!(stream_implementation(&ctx, stream), Ok(Word::fixnum(5)));
+    }
+}

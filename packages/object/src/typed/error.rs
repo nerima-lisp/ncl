@@ -191,6 +191,7 @@ impl ObjectError {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -223,5 +224,50 @@ mod tests {
         for (error, expected) in cases {
             assert_eq!(error.kind(), expected);
         }
+    }
+
+    #[test]
+    fn object_type_names_and_error_conversions_are_stable() {
+        let types = [
+            (ObjectType::Fixnum, "fixnum"),
+            (ObjectType::Character, "character"),
+            (ObjectType::Cons, "cons"),
+            (ObjectType::Symbol, "symbol"),
+            (ObjectType::String, "string"),
+            (ObjectType::SimpleVector, "simple-vector"),
+            (ObjectType::SpecializedArray, "specialized-array"),
+            (ObjectType::Array, "array"),
+            (ObjectType::HashTable, "hash-table"),
+            (ObjectType::Function, "function"),
+            (ObjectType::Closure, "closure"),
+            (ObjectType::Instance, "instance"),
+            (ObjectType::Structure, "structure-object"),
+            (ObjectType::Bignum, "bignum"),
+            (ObjectType::Ratio, "ratio"),
+            (ObjectType::DoubleFloat, "double-float"),
+            (ObjectType::Complex, "complex"),
+            (ObjectType::Package, "package"),
+            (ObjectType::Readtable, "readtable"),
+            (ObjectType::Stream, "stream"),
+            (ObjectType::Code, "code"),
+        ];
+        for (object_type, name) in types {
+            assert_eq!(object_type.name(), name);
+        }
+        let type_error = TypeError {
+            datum: Word::fixnum(1),
+            expected: ObjectType::String,
+        };
+        assert_eq!(
+            LispError::from(type_error),
+            LispError::TypeError {
+                datum: Word::fixnum(1),
+                expected: ObjectType::String,
+            }
+        );
+        assert_eq!(
+            LispError::from(ObjectError::Layout),
+            LispError::Object(ObjectError::Layout)
+        );
     }
 }

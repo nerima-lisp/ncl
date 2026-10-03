@@ -222,3 +222,33 @@ pub fn complex_imag(ctx: &ThreadContext, object: Complex) -> Result<Word, Object
 pub fn bignum_sign(ctx: &ThreadContext, object: Bignum) -> Result<bool, ObjectError> {
     Ok(get(ctx, object.into(), widetag::BIGNUM, number_offset::SIGN)?.bits() != 0)
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numeric_accessors_preserve_encoded_values() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let positive =
+            make_bignum_from_limbs(&mut ctx, &runtime, false, &[1, 2, 3]).expect("bignum");
+        let negative =
+            make_bignum_from_i128(&mut ctx, &runtime, -((1_i128) << 65)).expect("bignum");
+        assert_eq!(bignum_limbs(&ctx, positive), Ok(vec![1, 2, 3]));
+        assert!(!bignum_sign(&ctx, positive).expect("sign"));
+        assert!(bignum_sign(&ctx, negative).expect("sign"));
+        let ratio =
+            make_ratio(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(3)).expect("ratio");
+        assert_eq!(ratio_numerator(&ctx, ratio), Ok(Word::fixnum(2)));
+        assert_eq!(ratio_denominator(&ctx, ratio), Ok(Word::fixnum(3)));
+        let double = make_double(&mut ctx, &runtime, 1.5).expect("double");
+        assert_eq!(double_value(&ctx, double), Ok(1.5));
+        let complex =
+            make_complex(&mut ctx, &runtime, Word::fixnum(4), Word::fixnum(5)).expect("complex");
+        assert_eq!(complex_real(&ctx, complex), Ok(Word::fixnum(4)));
+        assert_eq!(complex_imag(&ctx, complex), Ok(Word::fixnum(5)));
+    }
+}

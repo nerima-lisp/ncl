@@ -186,4 +186,10 @@ mod tests {
         assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
         assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
     }
+
+    #[test]
+    fn reference_words_preserve_payload_to_header_alignment() {
+        assert_eq!(reference_words(&[0, 2, 5]), vec![1, 3, 6]);
+        assert_eq!(reference_words(&[]), Vec::<usize>::new());
+    }
 }

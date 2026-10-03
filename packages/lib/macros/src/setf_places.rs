@@ -249,3 +249,77 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 #[cfg(test)]
 #[path = "setf_places_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    use crate::{elements, symbol};
+
+    #[test]
+    fn registered_place_expanders_produce_expected_store_operators() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        register(&mut ctx, &runtime)?;
+        let cases = [
+            ("CAR", &[Word::fixnum(1)][..], "RPLACA", true),
+            ("CDR", &[Word::fixnum(1)][..], "RPLACD", true),
+            (
+                "NTH",
+                &[Word::fixnum(0), Word::fixnum(1)][..],
+                "RPLACA",
+                true,
+            ),
+            ("SYMBOL-VALUE", &[Word::fixnum(1)][..], "SET", false),
+            ("AREF", &[Word::fixnum(1)][..], "NCL-EXT::AREF-SET", false),
+            ("SVREF", &[Word::fixnum(1)][..], "NCL-EXT::SVREF-SET", false),
+            (
+                "GETHASH",
+                &[Word::fixnum(1)][..],
+                "NCL-EXT::GETHASH-SET",
+                false,
+            ),
+        ];
+        for (name, args, setter, mutator) in cases {
+            let operator = symbol(&mut ctx, &runtime, name)?;
+            let expansion =
+                runtime
+                    .place_expander(&ctx, operator)?
+                    .ok_or(ObjectError::TypeError)?(&mut ctx, &runtime, args)?;
+            assert_eq!(expansion.store_variables.len(), 1);
+            let form = elements(&mut ctx, expansion.store_form)?;
+            if mutator {
+                assert_eq!(form[0], symbol(&mut ctx, &runtime, "PROGN")?);
+                let mutation = elements(&mut ctx, form[1])?;
+                assert_eq!(mutation[0], symbol(&mut ctx, &runtime, setter)?);
+            } else {
+                assert_eq!(form[0], symbol(&mut ctx, &runtime, setter)?);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn place_expanders_reject_wrong_arity() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        assert!(matches!(
+            car_place(&mut ctx, &runtime, &[]),
+            Err(ObjectError::TypeError)
+        ));
+        assert!(matches!(
+            cdr_place(&mut ctx, &runtime, &[Word::NIL, Word::NIL]),
+            Err(ObjectError::TypeError)
+        ));
+        assert!(matches!(
+            nth_place(&mut ctx, &runtime, &[Word::NIL]),
+            Err(ObjectError::TypeError)
+        ));
+        assert!(matches!(
+            setter_place(&mut ctx, &runtime, &[], "AREF", "SET"),
+            Err(ObjectError::TypeError)
+        ));
+        Ok(())
+    }
+}

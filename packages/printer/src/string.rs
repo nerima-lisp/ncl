@@ -45,3 +45,7 @@ impl Printer<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "string/tests/coverage.rs"]
+mod tests;

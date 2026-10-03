@@ -91,3 +91,81 @@ impl From<CodeError> for ImageError {
         Self::Code(error)
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::needless_pass_by_value,
+    clippy::unwrap_used,
+    reason = "tests assert on error values"
+)]
+mod tests {
+    use super::ImageError;
+    use ncl_object::ObjectError;
+    use ncl_sys::CodeError;
+
+    #[test]
+    fn every_error_variant_has_a_stable_display() {
+        let cases = [
+            (
+                ImageError::Truncated {
+                    offset: 3,
+                    needed: 4,
+                },
+                "image truncated at 3, needed 4 bytes",
+            ),
+            (ImageError::BadMagic, "not an NCL image"),
+            (
+                ImageError::UnsupportedVersion {
+                    found: 2,
+                    supported: 1,
+                },
+                "image version 2, this build supports 1",
+            ),
+            (
+                ImageError::InvalidField {
+                    field: "pointer width",
+                },
+                "invalid image field: pointer width",
+            ),
+            (
+                ImageError::UnknownTag {
+                    space: "reference",
+                    tag: 9,
+                },
+                "unknown reference tag 9",
+            ),
+            (
+                ImageError::UnsupportedKind { kind: "stream" },
+                "unsupported object kind: stream",
+            ),
+            (
+                ImageError::InvalidLayout {
+                    field: "object count",
+                },
+                "image layout overflow: object count",
+            ),
+            (
+                ImageError::Object(ObjectError::Layout),
+                "object error: Layout",
+            ),
+            (
+                ImageError::Code(CodeError::NotPublished),
+                "code error: NotPublished",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn object_errors_are_sources_but_code_errors_are_not() {
+        let object = ImageError::Object(ObjectError::Layout);
+        assert!(std::error::Error::source(&object).is_some());
+        let code = ImageError::Code(CodeError::NotPublished);
+        assert!(std::error::Error::source(&code).is_none());
+        assert_eq!(ImageError::from(ObjectError::Layout), object);
+        assert_eq!(ImageError::from(CodeError::NotPublished), code);
+    }
+}

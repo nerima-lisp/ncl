@@ -181,4 +181,55 @@ mod runtime_tests {
             assert_eq!(runtime.format_result(value), "7");
         }
     }
+
+    #[test]
+    fn evaluates_fast_arithmetic_entries_and_comparisons() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        for (source, expected) in [("(+ 40 2)", "42"), ("(- 44 2)", "42"), ("(* 6 7)", "42")] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+        for (source, expected) in [("(< 1 2)", "T"), ("(< 2 1)", "NIL")] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+    }
+
+    #[test]
+    fn eval_when_selects_execute_and_compile_toplevel_situations() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let executed = runtime
+            .eval("(eval-when (:execute) 41 42)")
+            .unwrap_or_else(|error| panic!("execute eval-when failed: {error}"));
+        assert_eq!(runtime.format_result(executed), "42");
+
+        let skipped = runtime
+            .eval("(eval-when (:compile-toplevel) 42)")
+            .unwrap_or_else(|error| panic!("skipped eval-when failed: {error}"));
+        assert_eq!(runtime.format_result(skipped), "NIL");
+    }
+
+    #[test]
+    fn compile_file_selects_compile_toplevel_and_rejects_bad_eval_when() {
+        let path =
+            std::env::temp_dir().join(format!("ncl-runtime-eval-when-{}.lisp", std::process::id()));
+        if let Err(error) = fs::write(&path, "(eval-when (:compile-toplevel) 42)") {
+            panic!("source file creation failed: {error}");
+        }
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let value = runtime
+            .compile_file(&path)
+            .unwrap_or_else(|error| panic!("compile_file failed: {error}"));
+        assert_eq!(runtime.format_result(value), "42");
+
+        let malformed = runtime.eval("(eval-when (:unknown) 42)");
+        assert!(matches!(malformed, Err(RuntimeError::Front(_))));
+        if let Err(error) = fs::remove_file(path) {
+            panic!("source cleanup failed: {error}");
+        }
+    }
 }

@@ -28,6 +28,84 @@ pub trait FromLispArg: Sized {
     /// Returns a typed condition when the word does not satisfy the argument type.
     fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn immediate_word_views_round_trip_values_and_reject_wrong_types() {
+        let fixnum = Word::fixnum(-12);
+        let character = Word::character('λ' as u32);
+
+        assert_eq!(
+            WordView::try_from_word(fixnum, ObjectType::Fixnum),
+            Ok(WordView::Fixnum(-12))
+        );
+        assert_eq!(
+            WordView::try_from_word(character, ObjectType::Character),
+            Ok(WordView::Character('λ' as u32))
+        );
+        assert_eq!(WordView::Fixnum(-12).as_word(), fixnum);
+        assert_eq!(WordView::Character('λ' as u32).as_word(), character);
+        assert_eq!(
+            WordView::try_from_word(fixnum, ObjectType::Character),
+            Err(TypeError {
+                datum: fixnum,
+                expected: ObjectType::Character
+            })
+        );
+    }
+
+    #[test]
+    fn list_argument_conversion_preserves_nil_and_validates_cons_lowtag() {
+        let context = ThreadContext::new();
+        assert_eq!(List::from_lisp_arg(&context, Word::NIL), Ok(List::Nil));
+        let cons = Word::pointer(0x1000, ncl_sys::LowTag::List);
+        assert_eq!(
+            List::from_lisp_arg(&context, cons),
+            Ok(List::Cons(Cons::from_word(cons)))
+        );
+        assert_eq!(
+            List::from_lisp_arg(&context, Word::fixnum(1)),
+            Err(LispError::TypeError {
+                datum: Word::fixnum(1),
+                expected: ObjectType::Cons
+            })
+        );
+    }
+
+    #[test]
+    fn object_type_names_cover_the_typed_abi_categories() {
+        let values = [
+            (ObjectType::Fixnum, "fixnum"),
+            (ObjectType::Character, "character"),
+            (ObjectType::Cons, "cons"),
+            (ObjectType::Symbol, "symbol"),
+            (ObjectType::String, "string"),
+            (ObjectType::SimpleVector, "simple-vector"),
+            (ObjectType::SpecializedArray, "specialized-array"),
+            (ObjectType::Array, "array"),
+            (ObjectType::HashTable, "hash-table"),
+            (ObjectType::Function, "function"),
+            (ObjectType::Closure, "closure"),
+            (ObjectType::Instance, "instance"),
+            (ObjectType::Structure, "structure-object"),
+            (ObjectType::Bignum, "bignum"),
+            (ObjectType::Ratio, "ratio"),
+            (ObjectType::DoubleFloat, "double-float"),
+            (ObjectType::Complex, "complex"),
+            (ObjectType::Package, "package"),
+            (ObjectType::Readtable, "readtable"),
+            (ObjectType::Stream, "stream"),
+            (ObjectType::Code, "code"),
+        ];
+        for (kind, name) in values {
+            assert_eq!(kind.name(), name);
+        }
+    }
+}
+
 impl FromLispArg for Word {
     fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
         Ok(word)

@@ -329,3 +329,49 @@ pub fn write_to_string(
     let characters: Vec<char> = sink.into_string().chars().collect();
     make_string(ctx, runtime, &characters).map_err(PrintError::from)
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::{Printer, character_code, write_to_string};
+    use crate::{PrintOptions, StringSink};
+    use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_simple_vector};
+
+    #[test]
+    fn printer_writes_immediates_and_pretty_separators() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let mut sink = StringSink::new();
+        let mut printer = Printer::new(
+            &mut ctx,
+            &runtime,
+            &mut sink,
+            PrintOptions::new().with_pretty(true),
+        );
+        printer.print(Word::NIL).unwrap();
+        printer.write_char(' ').unwrap();
+        printer.print(Word::TRUE).unwrap();
+        printer.margin = 1;
+        printer.separator(2).unwrap();
+        assert_eq!(sink.into_string(), "NIL T\n  ");
+        assert_eq!(character_code(Word::character(u32::from('A'))), Some(65));
+        assert_eq!(character_code(Word::fixnum(1)), None);
+    }
+
+    #[test]
+    fn write_to_string_handles_empty_sequences() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let vector = make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+        let rendered = write_to_string(&mut ctx, &runtime, vector, &PrintOptions::new()).unwrap();
+        assert_eq!(ncl_object::string_length(&ctx, rendered).unwrap(), 3);
+        let cons = make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).unwrap();
+        let rendered = write_to_string(&mut ctx, &runtime, cons, &PrintOptions::new()).unwrap();
+        assert_eq!(ncl_object::string_length(&ctx, rendered).unwrap(), 5);
+    }
+}

@@ -112,6 +112,120 @@ mod structure_tests {
         assert_eq!(ncl_object::structure_ref(&context, copy, 1), Ok(Word::fixnum(22)));
         Ok(())
     }
+
+    #[test]
+    fn structure_make_builtin_validates_layout_and_preserves_slots() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        let layout = runtime.register_structure_layout(2)?;
+        let arguments = [
+            Word::fixnum(i64::from(layout.as_u32())),
+            Word::fixnum(31),
+            Word::fixnum(41),
+        ];
+        let args = ncl_object::BuiltinArgs::new(&arguments);
+        let mut values = MultipleValues::default();
+        let structure = structure_make_builtin(&mut context, &runtime, &args, &mut values)?;
+        assert_eq!(ncl_object::structure_ref(&context, structure, 0), Ok(Word::fixnum(31)));
+        assert_eq!(ncl_object::structure_ref(&context, structure, 1), Ok(Word::fixnum(41)));
+
+        let invalid_layout = [Word::fixnum(-1), Word::fixnum(31)];
+        let args = ncl_object::BuiltinArgs::new(&invalid_layout);
+        assert_eq!(
+            structure_make_builtin(&mut context, &runtime, &args, &mut values),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn structure_ref_and_set_builtins_return_values_and_reject_invalid_arguments() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        let layout = runtime.register_structure_layout(1)?;
+        let structure = ncl_object::make_structure(
+            &mut context,
+            &runtime,
+            layout,
+            &[Word::fixnum(7)],
+        )?;
+        let mut values = MultipleValues::default();
+        let ref_arguments = [structure, Word::fixnum(0)];
+        let args = ncl_object::BuiltinArgs::new(&ref_arguments);
+        assert_eq!(
+            structure_ref_builtin(&mut context, &runtime, &args, &mut values),
+            Ok(Word::fixnum(7))
+        );
+        let invalid_index = [structure, Word::fixnum(-1)];
+        let args = ncl_object::BuiltinArgs::new(&invalid_index);
+        assert_eq!(
+            structure_ref_builtin(&mut context, &runtime, &args, &mut values),
+            Err(ObjectError::TypeError)
+        );
+
+        let set_arguments = [structure, Word::fixnum(0), Word::fixnum(9)];
+        let args = ncl_object::BuiltinArgs::new(&set_arguments);
+        assert_eq!(
+            structure_set_builtin(&mut context, &runtime, &args, &mut values),
+            Ok(Word::fixnum(9))
+        );
+        assert_eq!(ncl_object::structure_ref(&context, structure, 0), Ok(Word::fixnum(9)));
+        let not_a_structure = [Word::fixnum(0), Word::fixnum(0), Word::fixnum(9)];
+        let args = ncl_object::BuiltinArgs::new(&not_a_structure);
+        assert_eq!(
+            structure_set_builtin(&mut context, &runtime, &args, &mut values),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn structure_predicate_and_copy_builtins_cover_matching_and_invalid_objects() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        let layout = runtime.register_structure_layout(1)?;
+        let structure = ncl_object::make_structure(
+            &mut context,
+            &runtime,
+            layout,
+            &[Word::fixnum(13)],
+        )?;
+        let mut values = MultipleValues::default();
+        let matching = [structure, Word::fixnum(i64::from(layout.as_u32()))];
+        let args = ncl_object::BuiltinArgs::new(&matching);
+        assert_eq!(
+            structure_predicate_builtin(&mut context, &runtime, &args, &mut values),
+            Ok(Word::TRUE)
+        );
+        let different_layout = [structure, Word::fixnum(i64::from(layout.as_u32()) + 1)];
+        let args = ncl_object::BuiltinArgs::new(&different_layout);
+        assert_eq!(
+            structure_predicate_builtin(&mut context, &runtime, &args, &mut values),
+            Ok(Word::NIL)
+        );
+        let invalid_object = [Word::fixnum(0), Word::fixnum(i64::from(layout.as_u32()))];
+        let args = ncl_object::BuiltinArgs::new(&invalid_object);
+        assert_eq!(
+            structure_predicate_builtin(&mut context, &runtime, &args, &mut values),
+            Ok(Word::NIL)
+        );
+
+        let copy_arguments = [structure];
+        let args = ncl_object::BuiltinArgs::new(&copy_arguments);
+        let copy = structure_copy_builtin(&mut context, &runtime, &args, &mut values)?;
+        assert_ne!(copy, structure);
+        assert_eq!(ncl_object::structure_ref(&context, copy, 0), Ok(Word::fixnum(13)));
+        let invalid_copy = [Word::fixnum(0)];
+        let args = ncl_object::BuiltinArgs::new(&invalid_copy);
+        assert_eq!(
+            structure_copy_builtin(&mut context, &runtime, &args, &mut values),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
 }
 
 const fn descriptor(arity: BuiltinArity) -> Builtin {

@@ -49,3 +49,42 @@ pub fn register_place(
 ) -> Result<(), ObjectError> {
     PlaceRegistry::new(runtime).define(ctx, operator, expander)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn expansion(
+        _: &mut ThreadContext,
+        _: &Runtime,
+        args: &[Word],
+    ) -> Result<SetfExpansion, ObjectError> {
+        if args.is_empty() {
+            return Err(ObjectError::TypeError);
+        }
+        Ok(SetfExpansion {
+            temporary_variables: vec![],
+            value_forms: vec![],
+            store_variables: vec![Word::fixnum(7)],
+            store_form: Word::fixnum(8),
+            access_form: Word::fixnum(9),
+        })
+    }
+
+    #[test]
+    fn registry_round_trip_and_runtime_identity_are_value_checked() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let other = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let operator = crate::symbol(&mut ctx, &runtime, "TEST-PLACE")?;
+        let registry = PlaceRegistry::new(&runtime);
+        assert!(registry.belongs_to(&runtime));
+        assert!(!registry.belongs_to(&other));
+        assert!(registry.get(&ctx, operator)?.is_none());
+        registry.define(&ctx, operator, expansion)?;
+        assert!(registry.get(&ctx, operator)?.is_some());
+        assert_eq!(register_place(&ctx, &runtime, operator, expansion), Ok(()));
+        Ok(())
+    }
+}

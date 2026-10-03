@@ -434,3 +434,7 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/hash_tables.rs"]
+mod tests;

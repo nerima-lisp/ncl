@@ -189,3 +189,39 @@ impl ObjectError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn object_error_kind_preserves_each_stable_category() {
+        let cases = [
+            (ObjectError::TypeError, ObjectErrorKind::Type),
+            (
+                ObjectError::Storage(StorageCondition::ThreadNotRegistered),
+                ObjectErrorKind::Storage(StorageCondition::ThreadNotRegistered),
+            ),
+            (ObjectError::Layout, ObjectErrorKind::Layout),
+            (ObjectError::Unbound, ObjectErrorKind::Unbound),
+            (
+                ObjectError::UndefinedFunction,
+                ObjectErrorKind::UndefinedFunction,
+            ),
+            (ObjectError::NonLocalExit, ObjectErrorKind::NonLocalExit),
+            (
+                ObjectError::RootStackCorrupted,
+                ObjectErrorKind::RootStackCorrupted,
+            ),
+            (ObjectError::Unsupported, ObjectErrorKind::Unsupported),
+            (
+                ObjectError::PackageConflict,
+                ObjectErrorKind::PackageConflict,
+            ),
+            (ObjectError::ControlError, ObjectErrorKind::ControlError),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.kind(), expected);
+        }
+    }
+}

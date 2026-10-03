@@ -484,3 +484,7 @@ fn check_architecture(architecture: ncl_objfile::Architecture) -> Result<(), Ima
 const fn invalid(field: &'static str) -> ImageError {
     ImageError::InvalidLayout { field }
 }
+
+#[cfg(test)]
+#[path = "tests_restore.rs"]
+mod tests;

@@ -217,11 +217,45 @@ jobs:
       # but only partially by region metrics, so region is the stricter and
       # more accurate signal. This ratchet must remain at the production
       # target; lowering it would hide an untested branch.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info --fail-under-regions 95.0
+      - name: Run coverage tests and collect reports
+        shell: bash
+        run: |
+          set +e
+          cargo llvm-cov --locked --workspace --all-features --all-targets --no-report
+          test_status=$?
+
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tee coverage-summary.txt
+          summary_status=${PIPESTATUS[0]}
+          cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+          cargo llvm-cov report --workspace --json --output-path coverage.json
+          json_status=$?
+          cargo llvm-cov report --workspace --lcov --output-path lcov.info
+          lcov_status=$?
+
+          cargo llvm-cov report --workspace --fail-under-regions 95.0
+          gate_status=$?
+
+          if [ "$test_status" -ne 0 ]; then
+            exit "$test_status"
+          fi
+          if [ "$summary_status" -ne 0 ]; then
+            exit "$summary_status"
+          fi
+          if [ "$json_status" -ne 0 ]; then
+            exit "$json_status"
+          fi
+          if [ "$lcov_status" -ne 0 ]; then
+            exit "$lcov_status"
+          fi
+          exit "$gate_status"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: coverage-lcov
-          path: lcov.info
+          name: coverage-reports
+          path: |
+            lcov.info
+            coverage.json
 
   security:
     # cargo audit scans every dependency reachable via Cargo.lock, which includes

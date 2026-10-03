@@ -445,4 +445,38 @@ mod tests {
             Err(ObjectError::TypeError)
         );
     }
+
+    #[test]
+    fn slot_callbacks_cover_bound_unbound_mutation_and_eql_payload() {
+        let (runtime, mut ctx) = setup();
+        let class = make_simple_vector(
+            &mut ctx,
+            &runtime,
+            &[Word::fixnum(1), Word::NIL, Word::NIL, Word::NIL, Word::NIL],
+        )
+        .expect("class");
+        let location = Fixnum::try_from_word(Word::fixnum(0)).expect("fixnum location");
+        let slot = make_slot_descriptor(&mut ctx, &runtime, Word::fixnum(2), Some(location))
+            .expect("slot");
+        let eql = make_eql_specializer(&mut ctx, &runtime, Word::fixnum(3)).expect("eql");
+        let instance = ncl_object::make_instance(
+            &mut ctx,
+            &runtime,
+            class,
+            &[Word::UNBOUND],
+        )
+        .expect("instance");
+        let arguments = [class, instance.as_word(), slot];
+        let args = BuiltinArgs::new(&arguments);
+        let mut values = MultipleValues::new();
+
+        assert_eq!(slot_definition_name_builtin(&mut ctx, &runtime, &BuiltinArgs::new(&[slot]), &mut values), Ok(Word::fixnum(2)));
+        assert_eq!(slot_definition_location_builtin(&mut ctx, &runtime, &BuiltinArgs::new(&[slot]), &mut values), Ok(Word::fixnum(0)));
+        assert_eq!(slot_value_using_class_builtin(&mut ctx, &runtime, &args, &mut values), Ok(Word::UNBOUND));
+        assert_eq!(slot_boundp_using_class_builtin(&mut ctx, &runtime, &args, &mut values), Ok(Word::NIL));
+        slot_set(&mut ctx, instance, 0, Word::TRUE).expect("set slot");
+        assert_eq!(slot_boundp_using_class_builtin(&mut ctx, &runtime, &args, &mut values), Ok(Word::TRUE));
+        assert_eq!(slot_makunbound_using_class_builtin(&mut ctx, &runtime, &args, &mut values), Ok(instance.as_word()));
+        assert_eq!(eql_specializer_object_builtin(&mut ctx, &runtime, &BuiltinArgs::new(&[eql]), &mut values), Ok(Word::fixnum(3)));
+    }
 }

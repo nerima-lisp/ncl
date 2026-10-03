@@ -311,4 +311,42 @@ mod tests {
             Err(ObjectError::TypeError)
         );
     }
+
+    #[test]
+    fn define_class_and_slot_ref_reject_malformed_arguments() {
+        let (runtime, mut ctx) = setup();
+        let mut values = MultipleValues::new();
+        let report = Word::NIL;
+        assert_eq!(
+            define_condition_class_builtin(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[Word::NIL, Word::NIL, Word::NIL, report]),
+                &mut values,
+            ),
+            Err(ObjectError::TypeError)
+        );
+
+        let name = symbol(&mut ctx, &runtime, "MALFORMED-CONDITION");
+        let bad_parent = list(&mut ctx, &runtime, &[Word::fixnum(1)]);
+        assert_eq!(
+            define_condition_class_builtin(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[name, bad_parent, Word::NIL, report]),
+                &mut values,
+            ),
+            Err(ObjectError::TypeError)
+        );
+
+        let class = runtime.class(&mut ctx, "CONDITION").unwrap();
+        let instance = make_instance(&mut ctx, &runtime, class, &[]).unwrap();
+        assert!(condition_slot_ref_builtin(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&[instance.as_word(), Word::fixnum(99)]),
+            &mut values,
+        )
+        .is_err());
+    }
 }

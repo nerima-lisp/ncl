@@ -475,4 +475,17 @@ mod additional_tests {
             vec![MethodId::new(2)]
         );
     }
+
+    #[test]
+    fn class_finalization_deduplicates_slots_in_multiple_inheritance() {
+        let slot = SlotDefinition::new(SlotId::new(5), Allocation::Instance, None);
+        let mut left = Class::new(ClassId::new(1), Vec::new(), vec![slot]);
+        let mut right = Class::new(ClassId::new(2), Vec::new(), vec![slot]);
+        left.finalize_inheritance(&[]).unwrap();
+        right.finalize_inheritance(&[]).unwrap();
+        let mut child = Class::new(ClassId::new(3), vec![ClassId::new(1), ClassId::new(2)], Vec::new());
+        assert_eq!(child.finalize_inheritance(&[left, right]), Ok(()));
+        assert_eq!(child.effective_slots().len(), 1);
+        assert_eq!(child.effective_slots()[0].location(), Some(0));
+    }
 }

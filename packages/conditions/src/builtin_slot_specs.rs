@@ -89,3 +89,30 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "coverage tests assert on installed metadata")]
+
+    use super::*;
+    use crate::class::condition_class;
+    use crate::slots::slot_specs;
+
+    #[test]
+    fn install_records_slot_metadata_for_each_builtin_family() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        crate::register::register(&runtime).unwrap();
+
+        for (name, length) in [
+            ("SIMPLE-CONDITION", 2),
+            ("TYPE-ERROR", 2),
+            ("DIVISION-BY-ZERO", 2),
+            ("UNBOUND-VARIABLE", 1),
+        ] {
+            let class = condition_class(&mut ctx, &runtime, name).unwrap();
+            assert_eq!(slot_specs(&ctx, class.as_word()).unwrap().len(), length, "{name}");
+        }
+    }
+}

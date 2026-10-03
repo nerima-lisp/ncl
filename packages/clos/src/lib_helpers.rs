@@ -391,4 +391,42 @@ mod helper_tests {
         assert_eq!(has_method_registry(&mut scope, &runtime, name), Ok(true));
         assert_eq!(method_registry(&mut scope, &runtime, name).map(|h| scope.get(h).as_word()), Ok(scope.get(registry).as_word()));
     }
+
+    #[test]
+    fn helper_form_builders_preserve_their_exact_shapes() {
+        let (runtime, mut ctx) = setup();
+        let name = intern(&mut ctx, &runtime, "NCL", "ACCESSOR");
+        let slot = intern(&mut ctx, &runtime, "NCL", "SLOT");
+        let value = intern(&mut ctx, &runtime, "NCL", "VALUE");
+        let mut scope = Scope::new(&mut ctx);
+        let name = scope.root(Local::from_word(name));
+        let slot = scope.root(Local::from_word(slot));
+        let value = scope.root(Local::from_word(value));
+
+        let quoted_form = quoted(&mut scope, &runtime, value).expect("quoted form");
+        let quoted_word = scope.get(quoted_form).as_word();
+        assert_eq!(form_elements(scope.context(), quoted_word).unwrap().len(), 2);
+
+        let definition = make_accessor_definition(&mut scope, &runtime, name, slot)
+            .expect("accessor definition");
+        assert_eq!(form_elements(scope.context(), scope.get(definition).as_word()).unwrap().len(), 4);
+
+        let value_local = Local::from_word(scope.get(value).as_word());
+        let forms = scope.root_many(&[value_local]);
+        let progn = make_progn(&mut scope, &runtime, &forms).expect("progn");
+        assert_eq!(form_elements(scope.context(), scope.get(progn).as_word()).unwrap().len(), 2);
+
+        let entry = method_registry_entry(&mut scope, &runtime, value, slot, name)
+            .expect("method registry entry");
+        assert_eq!(form_elements(scope.context(), scope.get(entry).as_word()).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn class_depth_reads_the_registered_superclass_chain() {
+        let (runtime, mut ctx) = setup();
+        let integer = runtime.class(&mut ctx, "INTEGER").expect("integer class");
+        let t = runtime.class(&mut ctx, "T").expect("root class");
+        assert_eq!(class_depth(&ctx, integer), Ok(1));
+        assert_eq!(class_depth(&ctx, t), Ok(0));
+    }
 }

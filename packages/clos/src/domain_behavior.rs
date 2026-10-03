@@ -396,4 +396,26 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn generic_function_finds_and_removes_methods_while_invalidating_cache() {
+        let mut generic = GenericFunction::default();
+        let specializers = vec![Specializer::Class(ClassId::new(4))];
+        generic
+            .add_method(Method::new(
+                MethodId::new(8),
+                specializers.clone(),
+                MethodQualifier::Primary,
+                MethodId::new(18),
+            ))
+            .unwrap();
+        assert!(generic.find_method(&specializers, MethodQualifier::Primary).is_some());
+        assert_eq!(generic.compute_applicable_methods(&[DispatchArgument::Class(ClassId::new(4))]), vec![MethodId::new(8)]);
+        assert_eq!(generic.cache_len(), 1);
+        assert!(generic.remove_method(MethodId::new(8)));
+        assert_eq!(generic.cache_len(), 0);
+        assert!(generic.find_method(&specializers, MethodQualifier::Primary).is_none());
+        generic.invalidate_for_class_redefinition(ClassId::new(4));
+        assert_eq!(generic.cache_len(), 0);
+    }
 }

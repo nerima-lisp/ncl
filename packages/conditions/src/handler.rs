@@ -248,3 +248,48 @@ fn class_matches(
     }
     Ok(false)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "coverage tests assert on helper results")]
+
+    use super::*;
+    use crate::class::{condition_class, make_condition};
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        crate::register::register(&runtime).unwrap();
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn class_matching_walks_to_a_parent_and_rejects_unrelated_classes() {
+        let (runtime, mut ctx) = setup();
+        let child = condition_class(&mut ctx, &runtime, "SIMPLE-ERROR").unwrap();
+        let parent = condition_class(&mut ctx, &runtime, "ERROR").unwrap();
+        let unrelated = condition_class(&mut ctx, &runtime, "WARNING").unwrap();
+
+        assert_eq!(class_matches(&ctx, child.as_word(), parent.as_word()), Ok(true));
+        assert_eq!(class_matches(&ctx, child.as_word(), unrelated.as_word()), Ok(false));
+    }
+
+    #[test]
+    fn condition_object_error_maps_non_object_failures_to_layout() {
+        assert_eq!(condition_object_error(ConditionError::Unhandled), ncl_object::ObjectError::Layout);
+        assert_eq!(condition_object_error(ConditionError::NotACondition), ncl_object::ObjectError::Layout);
+        assert_eq!(condition_object_error(ConditionError::RestartNotFound), ncl_object::ObjectError::Layout);
+        assert_eq!(condition_object_error(ConditionError::ChainCorrupt), ncl_object::ObjectError::Layout);
+        assert_eq!(condition_object_error(ConditionError::Object(ncl_object::ObjectError::TypeError)), ncl_object::ObjectError::TypeError);
+    }
+
+    #[test]
+    fn signal_matched_reports_false_for_a_valid_unhandled_condition() {
+        let (runtime, mut ctx) = setup();
+        let class = condition_class(&mut ctx, &runtime, "PROGRAM-ERROR").unwrap();
+        let condition = make_condition(&mut ctx, &runtime, class, &[]).unwrap();
+
+        assert_eq!(signal_matched(&mut ctx, condition), Ok(false));
+    }
+}

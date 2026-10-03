@@ -92,3 +92,35 @@ pub fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> 
     let name = crate::condition_class_name(ctx, crate::ConditionClass::from_word(class)).ok()?;
     Some(format!("{} condition", string_text(ctx, name)?))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "coverage tests assert on report formatting")]
+
+    use super::*;
+    use ncl_object::{Runtime, make_cons, make_string};
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn describe_word_handles_fixnums_and_unknown_values() {
+        let (_runtime, ctx) = setup();
+
+        assert_eq!(describe_word(&ctx, Word::fixnum(12)), "12");
+        assert_eq!(describe_word(&ctx, Word::NIL), "#<OBJECT>");
+    }
+
+    #[test]
+    fn format_simple_report_preserves_unknown_directives_and_trailing_tilde() {
+        let (runtime, mut ctx) = setup();
+        let arguments = make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::NIL).unwrap();
+        assert_eq!(format_simple_report(&ctx, "~x~a~", arguments), "~x3~");
+        let string = make_string(&mut ctx, &runtime, &['x']).unwrap();
+        assert_eq!(describe_word(&ctx, string), "x");
+    }
+}

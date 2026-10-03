@@ -78,3 +78,26 @@ pub(super) fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(),
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_object::FunctionObject;
+
+    #[test]
+    fn registration_exposes_multiple_value_call_list() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        register(&mut ctx, &runtime)?;
+        let function = runtime
+            .function(&mut ctx, "NCL-EXT", "MULTIPLE-VALUE-CALL-LIST")
+            .ok_or(ObjectError::TypeError)?;
+        assert!(FunctionObject::try_from(function).is_ok());
+        let capture = runtime
+            .function(&mut ctx, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES")
+            .ok_or(ObjectError::TypeError)?;
+        assert!(FunctionObject::try_from(capture).is_ok());
+        Ok(())
+    }
+}

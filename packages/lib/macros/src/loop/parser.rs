@@ -495,3 +495,6 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
     }
     Ok(LoopAst { name, clauses })
 }
+#[cfg(test)]
+#[path = "../tests/loop_parser_tests.rs"]
+mod tests;

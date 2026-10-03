@@ -132,4 +132,32 @@ mod tests {
         assert!(matches!(result, Err(ObjectError::TypeError)));
         Ok(())
     }
+
+    #[test]
+    fn with_expansion_roots_passes_rooted_fields_to_callback() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let expansion = SetfExpansion {
+            temporary_variables: vec![Word::fixnum(1), Word::fixnum(2)],
+            value_forms: vec![Word::fixnum(3), Word::fixnum(4)],
+            store_variables: vec![Word::fixnum(5)],
+            store_form: Word::fixnum(6),
+            access_form: Word::fixnum(7),
+        };
+        let result = with_expansion_roots(
+            &mut ctx,
+            &expansion,
+            |_, temporary, values, stores, store, access| {
+                assert_eq!(temporary, &[Word::fixnum(1), Word::fixnum(2)]);
+                assert_eq!(values, &[Word::fixnum(3), Word::fixnum(4)]);
+                assert_eq!(stores, &[Word::fixnum(5)]);
+                assert_eq!(store, Word::fixnum(6));
+                assert_eq!(access, Word::fixnum(7));
+                Ok(Word::TRUE)
+            },
+        )?;
+        assert_eq!(result, Word::TRUE);
+        Ok(())
+    }
 }

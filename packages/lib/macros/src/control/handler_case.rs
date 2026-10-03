@@ -201,3 +201,34 @@ pub(super) fn expand_ignore_errors(
     let handler_case_words = [scope.get(protected).as_word(), scope.get(clause).as_word()];
     expand(scope.context_mut(), runtime, &handler_case_words)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    #[test]
+    fn handler_case_builds_bound_and_no_error_paths() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let condition = symbol(&mut ctx, &runtime, "ERROR")?;
+        let variable = symbol(&mut ctx, &runtime, "C")?;
+        let body = condition;
+        let binding = list(&mut ctx, &runtime, &[])?;
+        let variables = list(&mut ctx, &runtime, &[variable])?;
+        let clause = list(&mut ctx, &runtime, &[condition, variables, body])?;
+        let marker = symbol(&mut ctx, &runtime, "NO-ERROR")?;
+        let no_error = list(&mut ctx, &runtime, &[marker, Word::NIL, body])?;
+        let expansion = expand(&mut ctx, &runtime, &[body, clause, no_error])?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "BLOCK")?);
+        let ignored = expand_ignore_errors(&mut ctx, &runtime, &[body])?;
+        assert_eq!(
+            elements(&mut ctx, ignored)?[0],
+            symbol(&mut ctx, &runtime, "BLOCK")?
+        );
+        let _ = binding;
+        Ok(())
+    }
+}

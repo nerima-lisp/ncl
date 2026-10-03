@@ -449,4 +449,37 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn destructuring_value_shapes_cover_dotted_nested_optional_and_key_tails()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let outer = symbol(&mut ctx, &runtime, "OUTER")?;
+        let inner = symbol(&mut ctx, &runtime, "INNER")?;
+        let tail = symbol(&mut ctx, &runtime, "TAIL")?;
+        let optional = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+        let rest = symbol(&mut ctx, &runtime, "&REST")?;
+        let key = symbol(&mut ctx, &runtime, "&KEY")?;
+        let nested = list(&mut ctx, &runtime, &[inner])?;
+        let optional_spec = list(&mut ctx, &runtime, &[inner, Word::fixnum(9)])?;
+        let key_spec = list(&mut ctx, &runtime, &[tail, Word::fixnum(3)])?;
+        let pattern = list(
+            &mut ctx,
+            &runtime,
+            &[nested, optional, optional_spec, rest, tail, key, key_spec],
+        )?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let expansion = expand_destructuring_bind(&mut ctx, &runtime, pattern, outer, &[body])?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+        let bindings = elements(&mut ctx, parts[1])?;
+        assert!(bindings.len() > 4);
+        assert!(bindings.iter().any(|binding| {
+            elements(&mut ctx, *binding).is_ok_and(|pair| pair.first() == Some(&inner))
+        }));
+        assert!(bindings.iter().any(|binding| {
+            elements(&mut ctx, *binding).is_ok_and(|pair| pair.first() == Some(&tail))
+        }));
+        Ok(())
+    }
 }

@@ -44,3 +44,29 @@ pub fn fresh_symbol(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, 
     let package = runtime.ensure_package(ctx, "NCL")?;
     Package::from_word(package).gensym(ctx, runtime)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_elements_and_symbols_preserve_values() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let value = symbol(&mut ctx, &runtime, "NCL::VALUE")?;
+        let form = list(&mut ctx, &runtime, &[value, Word::fixnum(7)])?;
+        assert_eq!(elements(&mut ctx, form)?, vec![value, Word::fixnum(7)]);
+        assert_eq!(elements(&mut ctx, Word::NIL)?, Vec::<Word>::new());
+        let plain = symbol(&mut ctx, &runtime, "VALUE")?;
+        let qualified = symbol(&mut ctx, &runtime, "COMMON-LISP::VALUE")?;
+        assert_eq!(plain, qualified);
+        assert_ne!(
+            fresh_symbol(&mut ctx, &runtime)?,
+            fresh_symbol(&mut ctx, &runtime)?
+        );
+        let dotted = make_cons(&mut ctx, &runtime, value, Word::fixnum(1))?;
+        assert_eq!(elements(&mut ctx, dotted), Err(ObjectError::TypeError));
+        Ok(())
+    }
+}

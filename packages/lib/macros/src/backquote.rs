@@ -279,6 +279,8 @@ mod tests {
         let nested = list(&mut ctx, &runtime, &[quasiquote, quoted_x])?;
         let nested_expansion = expand(&runtime, &mut ctx, nested)?;
         let nested_parts = elements(&mut ctx, nested_expansion)?;
+        println!("nested_parts={nested_parts:?}");
+        println!("nested_parts={nested_parts:?}");
         assert_eq!(nested_parts[0], symbol(&mut ctx, &runtime, "LIST")?);
         Ok(())
     }
@@ -297,6 +299,35 @@ mod tests {
             expand(&runtime, &mut ctx, datum),
             Err(ObjectError::TypeError)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn preserves_noncanonical_markers_and_expands_dotted_and_nested_splices() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let unquote = symbol(&mut ctx, &runtime, "UNQUOTE")?;
+        let splice = symbol(&mut ctx, &runtime, "UNQUOTE-SPLICING")?;
+        let quasiquote = symbol(&mut ctx, &runtime, "QUASIQUOTE")?;
+        let noncanonical = list(&mut ctx, &runtime, &[unquote, x, Word::fixnum(1)])?;
+        let quoted = expand(&runtime, &mut ctx, noncanonical)?;
+        let quoted_parts = elements(&mut ctx, quoted)?;
+        assert_eq!(quoted_parts[0], symbol(&mut ctx, &runtime, "CONS")?);
+        assert_ne!(quoted, noncanonical);
+
+        let unquoted_tail = list(&mut ctx, &runtime, &[unquote, x])?;
+        let dotted = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(1), unquoted_tail)?;
+        let dotted_expansion = expand(&runtime, &mut ctx, dotted)?;
+        assert_eq!(
+            elements(&mut ctx, dotted_expansion)?[0],
+            symbol(&mut ctx, &runtime, "CONS")?
+        );
+
+        let nested_splice = list(&mut ctx, &runtime, &[splice, x])?;
+        let nested = list(&mut ctx, &runtime, &[quasiquote, nested_splice])?;
+        let nested_expansion = expand(&runtime, &mut ctx, nested)?;
+        let nested_parts = elements(&mut ctx, nested_expansion)?;
+        assert!(!nested_parts.is_empty());
         Ok(())
     }
 }

@@ -142,3 +142,35 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_t_and_nested_or_and_preserves_handler_body() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let t = symbol(&mut ctx, &runtime, "T")?;
+        let condition = symbol(&mut ctx, &runtime, "CONDITION")?;
+        assert!(symbol_named(&ctx, t, "T"));
+        assert!(!symbol_named(&ctx, Word::fixnum(1), "T"));
+        let or = symbol(&mut ctx, &runtime, "OR")?;
+        let nested = list(&mut ctx, &runtime, &[or, t, condition])?;
+        let resolved = resolve_type_specifiers(&mut ctx, &runtime, nested)?;
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0], condition);
+        assert_eq!(resolved[1], condition);
+
+        let handler = symbol(&mut ctx, &runtime, "HANDLER")?;
+        let clause = list(&mut ctx, &runtime, &[nested, handler])?;
+        let clauses = list(&mut ctx, &runtime, &[clause])?;
+        let expansion = expand(&mut ctx, &runtime, &[clauses, handler])?;
+        assert_eq!(
+            elements(&mut ctx, expansion)?[0],
+            symbol(&mut ctx, &runtime, "LET")?
+        );
+        Ok(())
+    }
+}

@@ -79,4 +79,31 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[test]
+    fn psetq_expansion_binds_temporaries_and_assigns_in_order()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let a = crate::symbol(&mut ctx, &runtime, "A")?;
+        let b = crate::symbol(&mut ctx, &runtime, "B")?;
+        let operator = crate::symbol(&mut ctx, &runtime, "PSETQ")?;
+        let input = crate::list(
+            &mut ctx,
+            &runtime,
+            &[operator, a, Word::fixnum(1), b, Word::fixnum(2)],
+        )?;
+        let mut values = MultipleValues::new();
+        let expansion = expand(&mut ctx, &runtime, &BuiltinArgs::new(&[input]), &mut values)?;
+        let parts = crate::elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], crate::symbol(&mut ctx, &runtime, "LET")?);
+        let bindings = crate::elements(&mut ctx, parts[1])?;
+        assert_eq!(bindings.len(), 2);
+        let assignment = crate::elements(&mut ctx, parts[2])?;
+        assert_eq!(assignment[0], crate::symbol(&mut ctx, &runtime, "SETQ")?);
+        assert_eq!(assignment[1], a);
+        assert_eq!(assignment[3], b);
+        Ok(())
+    }
 }

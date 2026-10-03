@@ -13,6 +13,31 @@ use ncl_object::{
 };
 use ncl_sys::{CodeError, StorageCondition, alloc_code};
 
+struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    fn new() -> Self {
+        let base = std::env::temp_dir();
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = base.join(format!("ncl-image-restore-{suffix}"));
+        std::fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.0).unwrap();
+    }
+}
+
 fn empty_image() -> Vec<u8> {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
@@ -48,6 +73,91 @@ fn image_with_code_payload(payload: &[u8]) -> Vec<u8> {
     image.truncate(64);
     image.extend_from_slice(payload);
     image
+}
+
+fn object_ref(out: &mut Vec<u8>, id: u32) {
+    out.push(1);
+    out.extend_from_slice(&id.to_le_bytes());
+}
+
+fn invalid_restore_payloads() -> Vec<(&'static str, Vec<u8>)> {
+    let mut cases = Vec::new();
+
+    let mut symbol = vec![1];
+    symbol.extend_from_slice(&0_u32.to_le_bytes());
+    symbol.extend_from_slice(&0_u32.to_le_bytes());
+    symbol.extend_from_slice(&0_u32.to_le_bytes());
+    object_ref(&mut symbol, 1);
+    object_ref(&mut symbol, 1);
+    object_ref(&mut symbol, 1);
+    cases.push(("symbol", symbol));
+
+    let mut hash = vec![6, 0, 0, 1, 0, 0, 0];
+    object_ref(&mut hash, 1);
+    object_ref(&mut hash, 1);
+    cases.push(("hash", hash));
+
+    let mut structure = vec![7, 1, 0, 0, 0];
+    object_ref(&mut structure, 1);
+    cases.push(("structure", structure));
+
+    let mut instance = vec![8];
+    object_ref(&mut instance, 1);
+    instance.extend_from_slice(&0_u32.to_le_bytes());
+    cases.push(("instance", instance));
+
+    let mut function = vec![9, 0];
+    function.extend_from_slice(&0_u64.to_le_bytes());
+    object_ref(&mut function, 1);
+    object_ref(&mut function, 1);
+    object_ref(&mut function, 1);
+    function.extend_from_slice(&0_u32.to_le_bytes());
+    cases.push(("function", function));
+
+    let mut code = vec![10];
+    code.extend_from_slice(&0_u64.to_le_bytes());
+    code.extend_from_slice(&0_u64.to_le_bytes());
+    object_ref(&mut code, 1);
+    object_ref(&mut code, 1);
+    object_ref(&mut code, 1);
+    cases.push(("code", code));
+
+    let mut ratio = vec![12];
+    object_ref(&mut ratio, 1);
+    object_ref(&mut ratio, 1);
+    cases.push(("ratio", ratio));
+
+    let mut complex = vec![14];
+    object_ref(&mut complex, 1);
+    object_ref(&mut complex, 1);
+    cases.push(("complex", complex));
+
+    cases
+}
+
+#[test]
+fn saving_immediate_roots_round_trips_their_concrete_values() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let roots = [
+        Word::fixnum(-23),
+        Word::character('界' as u32),
+        Word::UNBOUND,
+        Word::NIL,
+    ];
+
+    let image = save(&runtime, &mut ctx, &roots, &[]).unwrap();
+    let directory = TempDir::new();
+    let path = directory.path().join("immediates.ncl");
+    std::fs::write(&path, &image).unwrap();
+    let image_from_disk = std::fs::read(&path).unwrap();
+
+    let destination = Runtime::new().unwrap();
+    let mut destination_ctx = ThreadContext::new();
+    destination_ctx.register(&destination).unwrap();
+    let loaded = load(&image_from_disk, &destination, &mut destination_ctx).unwrap();
+    assert_eq!(loaded.roots, roots);
 }
 
 #[test]
@@ -172,11 +282,16 @@ fn saving_an_unsupported_array_reports_kind_and_preserves_features() {
     )
     .unwrap();
 
+    let error = save(&runtime, &mut ctx, &[array], &[]).unwrap_err();
     assert_eq!(
-        save(&runtime, &mut ctx, &[array], &[]),
-        Err(ImageError::UnsupportedKind {
+        error,
+        ImageError::UnsupportedKind {
             kind: "non-simple array"
-        })
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "unsupported object kind: non-simple array"
     );
     assert_eq!(runtime.features(), features_before);
 }
@@ -190,9 +305,14 @@ fn saving_readtables_and_streams_reports_their_unsupported_kinds() {
     let features_before = runtime.features();
 
     let readtable = make_readtable(&mut ctx, &runtime, Word::NIL, Word::NIL, Word::NIL).unwrap();
+    let readtable_error = save(&runtime, &mut ctx, &[readtable.into()], &[]).unwrap_err();
     assert_eq!(
-        save(&runtime, &mut ctx, &[readtable.into()], &[]),
-        Err(ImageError::UnsupportedKind { kind: "readtable" })
+        readtable_error,
+        ImageError::UnsupportedKind { kind: "readtable" }
+    );
+    assert_eq!(
+        readtable_error.to_string(),
+        "unsupported object kind: readtable"
     );
 
     let stream = make_stream(
@@ -205,10 +325,9 @@ fn saving_readtables_and_streams_reports_their_unsupported_kinds() {
         Word::NIL,
     )
     .unwrap();
-    assert_eq!(
-        save(&runtime, &mut ctx, &[stream.into()], &[]),
-        Err(ImageError::UnsupportedKind { kind: "stream" })
-    );
+    let stream_error = save(&runtime, &mut ctx, &[stream.into()], &[]).unwrap_err();
+    assert_eq!(stream_error, ImageError::UnsupportedKind { kind: "stream" });
+    assert_eq!(stream_error.to_string(), "unsupported object kind: stream");
     assert_eq!(runtime.features(), features_before);
 }
 
@@ -356,6 +475,26 @@ fn malformed_object_payload_references_fail_during_reconstruction() {
             field: "object reference"
         }
     );
+}
+
+#[test]
+fn every_reference_bearing_restore_record_rejects_missing_objects() {
+    let tempdir = TempDir::new();
+    for (name, payload) in invalid_restore_payloads() {
+        let path = tempdir.path().join(format!("{name}.image"));
+        let image = image_with_payload(1, 0, &payload);
+        std::fs::write(&path, &image).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let error = load_error(&bytes);
+        assert_eq!(
+            error,
+            ImageError::InvalidLayout {
+                field: "object reference"
+            },
+            "{name}"
+        );
+        assert_eq!(error.to_string(), "image layout overflow: object reference");
+    }
 }
 
 #[test]

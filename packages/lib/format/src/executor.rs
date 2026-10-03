@@ -8,7 +8,7 @@ use crate::{ControlPart, Directive, DirectiveKind, FormatControl};
 mod control;
 mod parameters;
 #[cfg(test)]
-#[path = "executor/executor_test.rs"]
+#[path = "executor/tests/executor_test.rs"]
 mod tests;
 mod value;
 

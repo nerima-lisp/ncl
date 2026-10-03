@@ -208,7 +208,10 @@ mod tests {
     #[test]
     fn covers_format_builtin_error_paths() {
         let (runtime, mut ctx, function) = setup();
-        assert_eq!(runtime.call_builtin(&mut ctx, function, &[]), Err(ObjectError::TypeError));
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[]),
+            Err(ObjectError::TypeError)
+        );
         let control = string(&runtime, &mut ctx, "~A");
         assert_eq!(
             runtime.call_builtin(&mut ctx, function, &[Word::NIL, control]),

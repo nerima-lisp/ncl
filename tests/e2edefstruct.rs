@@ -51,6 +51,14 @@ fn defstruct_constructor_accessors_predicate_copy_and_print() {
 }
 
 #[test]
+fn defstruct_accessors_are_setf_places() {
+    assert_eval(
+        "(progn (defstruct point x) (let ((p (make-point :x 3))) (list (setf (point-x p) 9) (point-x p))))",
+        "(9 9)",
+    );
+}
+
+#[test]
 fn defstruct_typep_and_class_of_work() {
     assert_eval(
         "(progn (defstruct point x) (let ((p (make-point :x 3))) (list (point-x p) (typep p 'point) (class-name (class-of p)))))",

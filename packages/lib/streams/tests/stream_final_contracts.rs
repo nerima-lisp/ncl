@@ -277,8 +277,9 @@ fn standard_stream_defaults_and_wrong_directions_are_exact() {
         runtime.call_builtin(&mut ctx, write_byte, &[Word::fixnum(7), input]),
         Err(ncl_object::ObjectError::TypeError)
     );
+    let empty_data = data_stream(&runtime, &mut ctx, &[]);
     assert_eq!(
-        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, input]),
+        runtime.call_builtin(&mut ctx, peek, &[Word::NIL, empty_data]),
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
@@ -290,14 +291,14 @@ fn standard_stream_defaults_and_wrong_directions_are_exact() {
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
-        runtime.call_builtin(&mut ctx, read, &[input, Word::NIL, Word::fixnum(702)]),
+        runtime.call_builtin(&mut ctx, read, &[empty_data, Word::NIL, Word::fixnum(702)]),
         Ok(Word::fixnum(702))
     );
     assert_eq!(
         runtime.call_builtin(
             &mut ctx,
             read_no_hang,
-            &[input, Word::NIL, Word::fixnum(703)]
+            &[empty_data, Word::NIL, Word::fixnum(703)]
         ),
         Ok(Word::fixnum(703))
     );

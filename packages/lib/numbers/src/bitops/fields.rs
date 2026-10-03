@@ -3,7 +3,11 @@
 use super::{MultipleValues, ObjectError, Runtime, ThreadContext, Word, integer, integer_word};
 
 fn byte_parts(spec: Word) -> Result<(u32, u32), ObjectError> {
-    let bits = spec.bits();
+    let bits = u64::from_ne_bytes(
+        spec.as_fixnum()
+            .ok_or(ObjectError::TypeError)?
+            .to_ne_bytes(),
+    );
     Ok((
         u32::try_from(bits & u64::from(u32::MAX)).map_err(|_| ObjectError::TypeError)?,
         u32::try_from(bits >> 32).map_err(|_| ObjectError::TypeError)?,

@@ -86,6 +86,11 @@ const CASES: &[Case] = &[
         expected: "#\\a",
     },
     Case {
+        builtin: "READ-CHAR-NO-HANG",
+        source: "(read-char-no-hang (make-string-input-stream \"\") nil :eof)",
+        expected: ":EOF",
+    },
+    Case {
         builtin: "PEEK-CHAR",
         source: "(peek-char t (make-string-input-stream \" a\") nil (code-char 33))",
         expected: "#\\a",
@@ -109,6 +114,11 @@ const CASES: &[Case] = &[
         builtin: "READ-LINE",
         source: "(multiple-value-list (read-line (make-string-input-stream \"abc\")))",
         expected: "(\"abc\" T)",
+    },
+    Case {
+        builtin: "READ-LINE",
+        source: "(read-line (make-string-input-stream \"\") nil :eof)",
+        expected: ":EOF",
     },
     Case {
         builtin: "READ-BYTE",
@@ -146,6 +156,11 @@ const CASES: &[Case] = &[
         expected: "\"abc\n\"",
     },
     Case {
+        builtin: "WRITE-LINE",
+        source: "(let ((s (make-string-output-stream))) (write-line \"abc\" s :start 1 :end 2) (get-output-stream-string s))",
+        expected: "\"b\n\"",
+    },
+    Case {
         builtin: "TERPRI",
         source: "(let ((s (make-string-output-stream))) (terpri s) (get-output-stream-string s))",
         expected: "\"\n\"",
@@ -159,6 +174,11 @@ const CASES: &[Case] = &[
         builtin: "FRESH-LINE",
         source: "(let ((s (make-string-output-stream))) (fresh-line s))",
         expected: "NIL",
+    },
+    Case {
+        builtin: "FRESH-LINE",
+        source: "(let ((s (make-string-output-stream))) (write-char (code-char 120) s) (list (fresh-line s) (get-output-stream-string s)))",
+        expected: "(T \"x\n\")",
     },
     Case {
         builtin: "MAKE-STRING-OUTPUT-STREAM",
@@ -209,6 +229,11 @@ const CASES: &[Case] = &[
         builtin: "WITH-INPUT-FROM-STRING",
         source: "(with-input-from-string (s \"x\") (read-char s))",
         expected: "#\\x",
+    },
+    Case {
+        builtin: "INPUT-STREAM-P",
+        source: "(let ((s (make-string-input-stream \"x\"))) (list (input-stream-p s) (output-stream-p s)))",
+        expected: "(T NIL)",
     },
 ];
 
@@ -266,6 +291,41 @@ fn registered_stream_builtins_have_compiled_probes() {
 }
 
 #[test]
+fn stream_character_edges_run_through_compiled_code() {
+    let cases = [
+        (
+            "(read-char-no-hang (make-string-input-stream \"\") nil :eof)",
+            ":EOF",
+        ),
+        (
+            "(read-line (make-string-input-stream \"\") nil :eof)",
+            ":EOF",
+        ),
+        (
+            "(let ((s (make-string-output-stream))) (write-line \"abc\" s :start 1 :end 2) (get-output-stream-string s))",
+            "\"b\n\"",
+        ),
+        (
+            "(let ((s (make-string-output-stream))) (write-char (code-char 120) s) (list (fresh-line s) (get-output-stream-string s)))",
+            "(T \"x\n\")",
+        ),
+        (
+            "(let ((s (make-string-input-stream \"x\"))) (list (input-stream-p s) (output-stream-p s)))",
+            "(T NIL)",
+        ),
+    ];
+    for (source, expected) in cases {
+        let output = run(source);
+        assert_eq!(output.status.code(), Some(0), "{source}");
+        assert!(output.stderr.is_empty(), "{source}: {:?}", output.stderr);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!("{expected}\n")
+        );
+    }
+}
+
+#[test]
 fn file_stream_round_trip_uses_a_temporary_file() {
     let path = std::env::temp_dir().join(format!("ncl-e2estream-{}", std::process::id()));
     std::fs::write(&path, "abc\n").unwrap_or_else(|error| panic!("{path:?}: {error}"));
@@ -277,6 +337,29 @@ fn file_stream_round_trip_uses_a_temporary_file() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "(T 4 \"abc\" T)\n");
+
+    let source = format!(
+        "(let ((s (open \"{path}\" :direction :io))) (list (file-position s) (file-length s) (read-byte s) (file-position s) (close s)))"
+    );
+    let output = run(&source);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "(0 4 97 1 T)\n");
+
+    let source = format!(
+        "(let ((s (open \"{path}\" :direction :output :if-exists :supersede))) (write-string \"z\" s) (close s))"
+    );
+    let output = run(&source);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "T\n");
+
+    let source =
+        format!("(let ((s (open \"{path}\" :direction :input))) (prog1 (read-line s) (close s)))");
+    let output = run(&source);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "\"z\"\n");
     std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
 }
 

@@ -374,3 +374,7 @@ impl Runtime {
             .clone()
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/support/registry_extensions_tests.rs"]
+mod tests;

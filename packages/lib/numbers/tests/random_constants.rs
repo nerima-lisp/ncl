@@ -2,8 +2,8 @@
 
 use ncl_object::{
     Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext,
-    Word, bignum_limbs, bignum_sign, classify_object, double_value, symbol_is_constant,
-    symbol_is_special, symbol_value,
+    Word, bignum_limbs, bignum_sign, classify_object, double_value, instance_class,
+    symbol_is_constant, symbol_is_special, symbol_value,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -126,8 +126,69 @@ fn random_rejects_invalid_limits() {
     let (runtime, mut ctx) = setup();
     let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::NIL]).unwrap();
     for limit in [Word::fixnum(0), Word::fixnum(-1), Word::NIL] {
-        assert!(call(&runtime, &mut ctx, "RANDOM", &[limit, state]).is_err());
+        assert_eq!(
+            call(&runtime, &mut ctx, "RANDOM", &[limit, state]),
+            Err(ObjectError::TypeError)
+        );
     }
+}
+
+#[test]
+fn random_covers_default_state_one_limit_and_float_errors() {
+    let (runtime, mut ctx) = setup();
+    let one_result = call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(1)]).unwrap();
+    assert_eq!(integer(&ctx, one_result), 0);
+
+    let true_state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::TRUE]).unwrap();
+    let true_state_again = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::TRUE]).unwrap();
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "RANDOM",
+            &[Word::fixnum(100), true_state]
+        ),
+        call(
+            &runtime,
+            &mut ctx,
+            "RANDOM",
+            &[Word::fixnum(100), true_state_again]
+        )
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "RANDOM", &[Word::fixnum(10), Word::NIL]),
+        Err(ObjectError::TypeError)
+    );
+
+    for limit in [0.0, -1.0, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let limit = ncl_object::make_double(&mut ctx, &runtime, limit)
+            .unwrap()
+            .into();
+        assert_eq!(
+            call(&runtime, &mut ctx, "RANDOM", &[limit, true_state]),
+            Err(ObjectError::TypeError),
+            "RANDOM must reject limit {limit:?}"
+        );
+    }
+}
+
+#[test]
+fn random_accepts_the_i128_boundary_and_returns_an_integer_in_range() {
+    let (runtime, mut ctx) = setup();
+    let state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::NIL]).unwrap();
+    let limit = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    let value = call(&runtime, &mut ctx, "RANDOM", &[limit, state]).unwrap();
+    let value = integer(&ctx, value);
+    assert!(
+        (0..i128::MAX).contains(&value),
+        "RANDOM result {value} is out of range"
+    );
 }
 
 #[test]
@@ -161,10 +222,9 @@ fn registration_survives_gc_stress_and_strict_forwarding() {
 
     let random_state = common_lisp_symbol(&runtime, &mut ctx, "*RANDOM-STATE*");
     let state = symbol_value(&ctx, random_state).unwrap();
-    assert!(matches!(
-        classify_object(&ctx, state),
-        ObjectRef::Instance(_)
-    ));
+    let state_class = instance_class(&ctx, ncl_object::Instance::from_word(state)).unwrap();
+    let expected_class = runtime.class(&mut ctx, "RANDOM-STATE").unwrap();
+    assert_eq!(state_class, expected_class);
     let pi = common_lisp_symbol(&runtime, &mut ctx, "PI");
     assert!(float(&ctx, symbol_value(&ctx, pi).unwrap()).is_finite());
 }

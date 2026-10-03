@@ -81,6 +81,46 @@ fn labels_resolve_and_are_retained() {
 }
 
 #[test]
+fn conditional_literal_and_test_branch_fixups_patch_exact_bytes() {
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler
+        .emit(&Inst::BCond {
+            cond: Cond::Eq,
+            label,
+        })
+        .unwrap();
+    assembler.emit(&Inst::Cbz { rt: x(0), label }).unwrap();
+    assembler
+        .emit(&Inst::LdrLiteral { rt: x(1), label })
+        .unwrap();
+    assembler
+        .emit(&Inst::Tbz {
+            rt: x(2),
+            bit: 1,
+            label,
+        })
+        .unwrap();
+    assembler
+        .emit(&Inst::Tbnz {
+            rt: x(3),
+            bit: 33,
+            label,
+        })
+        .unwrap();
+    assembler.bind(label).unwrap();
+    let blob = assembler.finish().unwrap();
+    assert_eq!(
+        blob.bytes,
+        [
+            0xa0, 0x00, 0x00, 0x54, 0x80, 0x00, 0x00, 0xb4, 0x61, 0x00, 0x00, 0x58, 0x42, 0x00,
+            0x08, 0x36, 0x23, 0x00, 0x08, 0xb7,
+        ]
+    );
+    assert_eq!(blob.fixups.len(), 5);
+}
+
+#[test]
 fn immediate_sequence_and_encoding() {
     assert_eq!(mov_imm64(x(0), 1).len(), 1);
     assert_eq!(encode(&Inst::Nop, 0), Ok(0xD503_201F));
@@ -95,6 +135,22 @@ fn immediate_sequence_and_encoding() {
             0
         )
         .is_ok()
+    );
+}
+
+#[test]
+fn mov_imm64_returns_encodable_instruction_sequence() {
+    let instructions = mov_imm64(x(3), 0x1234_0000_ffff_0001);
+    assert_eq!(instructions.len(), 3);
+    let mut assembler = Assembler::new();
+    for instruction in &instructions {
+        assembler.emit(instruction).unwrap();
+    }
+    assert_eq!(
+        assembler.finish().unwrap().bytes,
+        [
+            0x23, 0x00, 0x80, 0xd2, 0xe3, 0xff, 0xbf, 0xf2, 0x83, 0x46, 0xe2, 0xf2,
+        ]
     );
 }
 

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 /// A collection of functions optimized together.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Module {
-    /// Functions indexed by their stable [`FunctionId`], not by vector position.
+    /// Functions indexed by their stable [`ncl_ir::FunctionId`], not by vector position.
     pub functions: Vec<Function>,
 }
 
@@ -404,17 +404,23 @@ pub use dce::DeadCodeElimination;
 #[path = "dce_tests.rs"]
 mod dce_tests;
 #[cfg(test)]
-#[path = "gvn_tests.rs"]
+#[path = "tests_gvn.rs"]
 mod gvn_tests;
 #[cfg(test)]
 #[path = "manager_tests.rs"]
 mod manager_tests;
 #[cfg(test)]
+#[path = "tests_optimization_edge_cases.rs"]
+mod optimization_edge_cases_tests;
+#[cfg(test)]
 #[path = "remap_tests.rs"]
 mod remap_tests;
 #[cfg(test)]
-#[path = "sccp_tests.rs"]
+#[path = "tests_sccp.rs"]
 mod sccp_tests;
+#[cfg(test)]
+#[path = "tests_sccp_unreachable_blocks.rs"]
+mod sccp_unreachable_blocks_tests;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

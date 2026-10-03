@@ -265,3 +265,131 @@ fn method_match(
     }
     Ok(Some(score))
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod helper_tests {
+    use super::*;
+    use ncl_object::{make_cons, make_double, Package};
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context");
+        crate::register(&runtime).expect("clos registration");
+        (runtime, ctx)
+    }
+
+    fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
+        let mut scope = Scope::new(ctx);
+        let roots = scope.root_many(
+            &values
+                .iter()
+                .copied()
+                .map(Local::from_word)
+                .collect::<Vec<_>>(),
+        );
+        let result = scope.make_list(runtime, &roots).expect("list");
+        scope.get(result).as_word()
+    }
+
+    fn intern(ctx: &mut ThreadContext, runtime: &Runtime, package: &str, name: &str) -> Word {
+        Package::from_word(runtime.find_package(ctx, package).expect("package"))
+            .intern(ctx, runtime, name)
+            .expect("symbol")
+            .0
+    }
+
+    #[test]
+    fn form_elements_rejects_dotted_lists_and_method_qualifiers_map_to_values() {
+        let (runtime, mut ctx) = setup();
+        let dotted = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2)).expect("dotted");
+        assert_eq!(form_elements(&ctx, dotted), Err(ObjectError::TypeError));
+
+        for (name, expected) in [
+            ("BEFORE", METHOD_QUALIFIER_BEFORE),
+            (":BEFORE", METHOD_QUALIFIER_BEFORE),
+            ("AFTER", METHOD_QUALIFIER_AFTER),
+            (":AFTER", METHOD_QUALIFIER_AFTER),
+            ("AROUND", METHOD_QUALIFIER_AROUND),
+            (":AROUND", METHOD_QUALIFIER_AROUND),
+        ] {
+            let symbol = intern(&mut ctx, &runtime, "NCL", name);
+            assert_eq!(method_qualifier(&ctx, symbol), Ok(Some(Word::fixnum(expected))));
+        }
+        assert_eq!(method_qualifier(&ctx, Word::fixnum(0)), Ok(None));
+        let primary = intern(&mut ctx, &runtime, "NCL", "PRIMARY");
+        assert_eq!(method_qualifier(&ctx, primary), Ok(None));
+    }
+
+    #[test]
+    fn eql_word_distinguishes_double_float_objects_with_equal_payloads() {
+        let (runtime, mut ctx) = setup();
+        let left = make_double(&mut ctx, &runtime, 2.5).expect("double").as_word();
+        let same = make_double(&mut ctx, &runtime, 2.5).expect("double").as_word();
+        let different = make_double(&mut ctx, &runtime, 3.5).expect("double").as_word();
+
+        assert!(eql_word(&ctx, left, left));
+        assert!(!eql_word(&ctx, left, same));
+        assert!(!eql_word(&ctx, left, different));
+        assert!(!eql_word(&ctx, left, Word::fixnum(2)));
+    }
+
+    #[test]
+    fn method_definition_parts_support_tagged_and_plain_encodings() {
+        let (runtime, mut ctx) = setup();
+        let tag = intern(&mut ctx, &runtime, "NCL", "*CLOS-METHOD-DEFINITION*");
+        let qualifier = Word::fixnum(METHOD_QUALIFIER_AFTER);
+        let specializers = list(&mut ctx, &runtime, &[Word::fixnum(10)]);
+        let tagged = list(&mut ctx, &runtime, &[tag, qualifier, specializers]);
+        let mut scope = Scope::new(&mut ctx);
+        let encoded = scope.root(Local::from_word(tagged));
+        let (actual_specializers, actual_qualifier) =
+            method_definition_parts(&mut scope, &runtime, encoded).expect("tagged definition");
+        assert_eq!(scope.get(actual_specializers).as_word(), specializers);
+        assert_eq!(scope.get(actual_qualifier).as_word(), qualifier);
+
+        let plain = scope.root(Local::from_word(specializers));
+        let (actual_plain, primary) =
+            method_definition_parts(&mut scope, &runtime, plain).expect("plain definition");
+        assert_eq!(scope.get(actual_plain).as_word(), specializers);
+        assert_eq!(scope.get(primary).as_word(), Word::fixnum(METHOD_QUALIFIER_PRIMARY));
+    }
+
+    #[test]
+    fn method_match_returns_value_scores_for_length_eql_and_class_cases() {
+        let (runtime, mut ctx) = setup();
+        let variable = intern(&mut ctx, &runtime, "NCL", "VALUE");
+        let t = intern(&mut ctx, &runtime, "COMMON-LISP", "T");
+        let integer = intern(&mut ctx, &runtime, "COMMON-LISP", "INTEGER");
+        let eql = intern(&mut ctx, &runtime, "COMMON-LISP", "EQL");
+        let class_specializer = list(&mut ctx, &runtime, &[variable, integer]);
+        let t_specializer = list(&mut ctx, &runtime, &[variable, t]);
+        let eql_form = list(&mut ctx, &runtime, &[eql, Word::fixnum(7)]);
+        let eql_specializer = list(&mut ctx, &runtime, &[variable, eql_form]);
+        let class_method = list(&mut ctx, &runtime, &[class_specializer]);
+        let t_method = list(&mut ctx, &runtime, &[t_specializer]);
+        let eql_method = list(&mut ctx, &runtime, &[eql_specializer]);
+
+        assert_eq!(method_match(&mut ctx, &runtime, class_method, &[Word::fixnum(7)]), Ok(Some(1)));
+        assert_eq!(method_match(&mut ctx, &runtime, t_method, &[Word::fixnum(7)]), Ok(Some(0)));
+        assert_eq!(method_match(&mut ctx, &runtime, eql_method, &[Word::fixnum(7)]), Ok(Some(10_000)));
+        assert_eq!(method_match(&mut ctx, &runtime, eql_method, &[Word::fixnum(8)]), Ok(None));
+        assert_eq!(method_match(&mut ctx, &runtime, t_method, &[]), Ok(None));
+    }
+
+    #[test]
+    fn method_registry_reports_absence_then_returns_the_registered_value() {
+        let (runtime, mut ctx) = setup();
+        let name = intern(&mut ctx, &runtime, "NCL", "REGISTRY-TEST");
+        let registry = list(&mut ctx, &runtime, &[Word::fixnum(42)]);
+        let mut scope = Scope::new(&mut ctx);
+        let name = scope.root(Local::from_word(name));
+        assert_eq!(has_method_registry(&mut scope, &runtime, name), Ok(false));
+        assert_eq!(method_registry(&mut scope, &runtime, name).map(|h| scope.get(h).as_word()), Ok(Word::NIL));
+        let registry = scope.root(Local::from_word(registry));
+        set_method_registry(&mut scope, &runtime, name, registry).expect("set registry");
+        assert_eq!(has_method_registry(&mut scope, &runtime, name), Ok(true));
+        assert_eq!(method_registry(&mut scope, &runtime, name).map(|h| scope.get(h).as_word()), Ok(scope.get(registry).as_word()));
+    }
+}

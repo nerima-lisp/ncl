@@ -178,6 +178,66 @@ fn in_package_expands_to_setq_of_star_package_star() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn package_expanders_reject_bad_designators_duplicate_singletons_and_arity() -> Result<()> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let defpackage = symbol(&mut ctx, &runtime, "DEFPACKAGE")?;
+    let name = symbol(&mut ctx, &runtime, "BAD-PACKAGE")?;
+    let documentation = symbol(&mut ctx, &runtime, "DOCUMENTATION")?;
+    let size = symbol(&mut ctx, &runtime, "SIZE")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let documentation_clause = list(&mut ctx, &runtime, &[documentation, value])?;
+    let duplicate_documentation = list(&mut ctx, &runtime, &[documentation, value])?;
+    let duplicate_form = list(
+        &mut ctx,
+        &runtime,
+        &[
+            defpackage,
+            name,
+            documentation_clause,
+            duplicate_documentation,
+        ],
+    )?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, defpackage_adapter, duplicate_form),
+        Err(ObjectError::TypeError)
+    );
+
+    let size_clause = list(&mut ctx, &runtime, &[size, value])?;
+    let duplicate_size = list(&mut ctx, &runtime, &[size, value])?;
+    let duplicate_size_form = list(
+        &mut ctx,
+        &runtime,
+        &[defpackage, name, size_clause, duplicate_size],
+    )?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, defpackage_adapter, duplicate_size_form),
+        Err(ObjectError::TypeError)
+    );
+
+    let bad_name = Word::fixnum(7);
+    let bad_name_form = list(&mut ctx, &runtime, &[defpackage, bad_name])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, defpackage_adapter, bad_name_form),
+        Err(ObjectError::TypeError)
+    );
+
+    let in_package = symbol(&mut ctx, &runtime, "IN-PACKAGE")?;
+    let bad_designator = list(&mut ctx, &runtime, &[in_package, Word::fixnum(7)])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, in_package_adapter, bad_designator),
+        Err(ObjectError::TypeError)
+    );
+    let missing_name = list(&mut ctx, &runtime, &[in_package])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, in_package_adapter, missing_name),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
 /// Every `held_*` helper allocates while other, already-built sub-forms are
 /// still needed. Under `gc_stress` (a collection before every allocation)
 /// and `strict_forwarding` (panic on a stale, unforwarded `Word`), a form

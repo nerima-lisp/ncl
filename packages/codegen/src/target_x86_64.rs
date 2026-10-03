@@ -63,7 +63,7 @@ mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
     RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
-    lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
+    lower_op, lower_pending_check, lower_return_or_throw, move_args, slots, value_is_raw_entry,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -431,14 +431,32 @@ pub fn compile_function_x86_64(
                     &labels,
                 )?;
             }
-            Terminator::CallReturn { function, args } => {
-                lower_call(&mut assembler, *function, args, &value_slots)?;
+            Terminator::CallReturn {
+                function: callee,
+                args,
+            } => {
+                lower_call(
+                    &mut assembler,
+                    *callee,
+                    args,
+                    &value_slots,
+                    value_is_raw_entry(function, *callee),
+                )?;
                 let call_pc = emit_call(&mut assembler)?;
                 add_map(&mut maps, call_pc, frame, &value_slots, position, FLAG_CALL)?;
                 emit_epilogue(&mut assembler)?;
             }
-            Terminator::TailCall { function, args } => {
-                lower_call(&mut assembler, *function, args, &value_slots)?;
+            Terminator::TailCall {
+                function: callee,
+                args,
+            } => {
+                lower_call(
+                    &mut assembler,
+                    *callee,
+                    args,
+                    &value_slots,
+                    value_is_raw_entry(function, *callee),
+                )?;
                 emit_tail_transfer(&mut assembler)?;
             }
             Terminator::Throw { .. } => {
@@ -470,3 +488,8 @@ pub fn compile_function_x86_64(
         debug: Vec::new(),
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+#[path = "tests_target_x86_64.rs"]
+mod tests;

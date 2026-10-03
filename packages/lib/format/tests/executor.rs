@@ -2,7 +2,7 @@
 
 use ncl_lib_format::{FormatError, execute, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_string};
-use ncl_printer::StringSink;
+use ncl_printer::{PrintError, StringSink};
 
 fn context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().expect("runtime");
@@ -47,6 +47,16 @@ fn executes_integer_radices_and_line_controls() {
 }
 
 #[test]
+fn executes_zero_and_multiple_tilde_repeats_with_expected_line_state() {
+    let (runtime, mut ctx) = context();
+    let control = parse("head~3~~0~~&tail").expect("control");
+    let mut sink = StringSink::new();
+
+    assert_eq!(execute(&control, &[], &mut ctx, &runtime, &mut sink), Ok(0));
+    assert_eq!(sink.into_string(), "head~~~\ntail");
+}
+
+#[test]
 fn rejects_missing_and_non_integer_arguments() {
     let (runtime, mut ctx) = context();
     let mut sink = StringSink::new();
@@ -74,4 +84,100 @@ fn ampersand_does_not_add_a_second_newline_at_line_start() {
     let mut sink = StringSink::new();
     execute(&control, &[], &mut ctx, &runtime, &mut sink).expect("execute");
     assert_eq!(sink.into_string(), "a\nb");
+}
+
+#[test]
+fn rejects_invalid_repeat_parameters_and_preserves_consumed_argument_count() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~-1%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~0%~A").expect("control"),
+            &[Word::fixnum(7)],
+            &mut ctx,
+            &runtime,
+            &mut sink
+        ),
+        Ok(1)
+    );
+    assert_eq!(sink.into_string(), "7");
+}
+
+#[test]
+fn rejects_character_and_relative_repeat_parameters() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    assert_eq!(
+        execute(
+            &parse("~'x%").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Percent,
+        })
+    );
+    assert_eq!(
+        execute(
+            &parse("~v~").expect("control"),
+            &[],
+            &mut ctx,
+            &runtime,
+            &mut sink,
+        ),
+        Err(FormatError::InvalidParameter {
+            directive: ncl_lib_format::DirectiveKind::Tilde,
+        })
+    );
+}
+
+#[test]
+fn format_errors_expose_specific_messages_and_sources() {
+    use std::error::Error;
+
+    let cases = [
+        (
+            FormatError::MissingArgument {
+                directive: ncl_lib_format::DirectiveKind::A,
+            },
+            "format: missing argument for ~A",
+        ),
+        (
+            FormatError::InvalidParameter {
+                directive: ncl_lib_format::DirectiveKind::Percent,
+            },
+            "format: invalid parameter for ~Percent",
+        ),
+        (
+            FormatError::NonInteger {
+                directive: ncl_lib_format::DirectiveKind::D,
+            },
+            "format: expected integer for ~D",
+        ),
+    ];
+    for (error, message) in cases {
+        assert_eq!(error.to_string(), message);
+        assert!(error.source().is_none());
+    }
+
+    let print_error = FormatError::from(PrintError::Sink("closed".to_owned()));
+    assert_eq!(print_error.to_string(), "format: print: sink error: closed");
+    assert_eq!(
+        print_error.source().map(ToString::to_string),
+        Some("print: sink error: closed".to_owned())
+    );
 }

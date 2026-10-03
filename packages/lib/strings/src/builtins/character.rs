@@ -90,23 +90,14 @@ fn character_arg(value: Word) -> Result<char, ObjectError> {
     character(value)
 }
 
-fn builtin_words(args: &BuiltinArgs<'_>) -> Vec<Word> {
-    (0..args.len())
-        .filter_map(|index| args.get(index))
-        .collect()
-}
-
-fn char_predicate<F>(args: &[Word], predicate: F) -> Result<Word, ObjectError>
+fn char_predicate<F>(args: &BuiltinArgs<'_>, predicate: F) -> Result<Word, ObjectError>
 where
     F: Fn(char, char) -> bool,
 {
-    if args.len() < 2 {
-        return Err(ObjectError::TypeError);
-    }
-    let first = character_arg(args[0])?;
+    let first = character_arg(args.required(0)?)?;
     let mut previous = first;
-    for &arg in &args[1..] {
-        let current = character_arg(arg)?;
+    for index in 1..args.len() {
+        let current = character_arg(args.required(index)?)?;
         if !predicate(previous, current) {
             return Ok(Word::NIL);
         }
@@ -115,7 +106,7 @@ where
     Ok(Word::TRUE)
 }
 
-fn char_compare_builtin<F>(args: &[Word], predicate: F) -> Result<Word, ObjectError>
+fn char_compare_builtin<F>(args: &BuiltinArgs<'_>, predicate: F) -> Result<Word, ObjectError>
 where
     F: Fn(char, char) -> bool,
 {
@@ -126,18 +117,18 @@ fn char_casefold(value: char) -> char {
     value.to_lowercase().next().unwrap_or(value)
 }
 
-fn char_case_compare<F>(args: &[Word], predicate: F) -> Result<Word, ObjectError>
+fn char_case_compare<F>(args: &BuiltinArgs<'_>, predicate: F) -> Result<Word, ObjectError>
 where
     F: Fn(char, char) -> bool,
 {
     char_compare_builtin(args, |a, b| predicate(char_casefold(a), char_casefold(b)))
 }
 
-fn simple_char_builtin<F>(args: &[Word], map: F) -> Result<Word, ObjectError>
+fn simple_char_builtin<F>(args: &BuiltinArgs<'_>, map: F) -> Result<Word, ObjectError>
 where
     F: Fn(char) -> char,
 {
-    Ok(Word::character(map(character_arg(args[0])?) as u32))
+    Ok(Word::character(u32::from(map(character_arg(args.required(0)?)?))))
 }
 
 fn alpha_char_p_builtin(
@@ -236,7 +227,7 @@ fn char_upcase_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    simple_char_builtin(&builtin_words(args), |c| {
+    simple_char_builtin(args, |c| {
         c.to_uppercase().next().unwrap_or(c)
     })
 }
@@ -246,7 +237,7 @@ fn char_downcase_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    simple_char_builtin(&builtin_words(args), |c| {
+    simple_char_builtin(args, |c| {
         c.to_lowercase().next().unwrap_or(c)
     })
 }

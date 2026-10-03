@@ -253,3 +253,7 @@ pub(super) fn lower_prim(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests_aarch64_lowering_primitives.rs"]
+mod tests;

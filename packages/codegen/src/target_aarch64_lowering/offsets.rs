@@ -27,3 +27,49 @@ pub fn spill_offset(index: usize) -> Result<i16, CodegenError> {
         .checked_neg()
         .ok_or(CodegenError::FrameOverflow)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Allocation, Location};
+    use std::collections::BTreeMap;
+
+    fn allocation(location: Option<Location>) -> Allocation {
+        Allocation {
+            intervals: Vec::new(),
+            locations: location
+                .map(|location| vec![(ValueId(0), location)])
+                .unwrap_or_default(),
+            spill_words: 0,
+            safepoint_registers: BTreeMap::new(),
+            outgoing_base: 0,
+            incoming_args_base: None,
+        }
+    }
+
+    #[test]
+    fn spill_offsets_cover_register_unknown_and_machine_boundaries() {
+        assert_eq!(
+            spill_slot_offset(&allocation(Some(Location::Spill(2))), ValueId(0)),
+            Ok(24)
+        );
+        assert_eq!(
+            spill_slot_offset(&allocation(Some(Location::Register(1))), ValueId(0)),
+            Err(CodegenError::Unsupported(
+                "register value has no spill slot".into()
+            ))
+        );
+        assert_eq!(
+            spill_slot_offset(&allocation(None), ValueId(0)),
+            Err(CodegenError::UnknownValue(ValueId(0)))
+        );
+        assert_eq!(
+            spill_slot_offset(&allocation(Some(Location::Spill(u32::MAX))), ValueId(0)),
+            Err(CodegenError::FrameOverflow)
+        );
+        assert_eq!(spill_offset(0), Ok(0));
+        assert_eq!(spill_offset(1), Ok(-8));
+        assert_eq!(spill_offset(usize::MAX), Err(CodegenError::FrameOverflow));
+        assert_eq!(spill_offset(4_096), Err(CodegenError::FrameOverflow));
+    }
+}

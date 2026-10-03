@@ -71,6 +71,28 @@ mod runtime_tests {
     }
 
     #[test]
+    fn load_accepts_a_pathname_designator() {
+        let path =
+            std::env::temp_dir().join(format!("ncl-runtime-pathname-{}.lisp", std::process::id()));
+        if let Err(error) = fs::write(&path, "45") {
+            panic!("source file creation failed: {error}");
+        }
+        let mut runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime initialization failed: {error}"),
+        };
+        let source = format!("(load (pathname \"{}\"))", path.display());
+        let value = match runtime.eval(&source) {
+            Ok(value) => value,
+            Err(error) => panic!("pathname load failed: {error}"),
+        };
+        assert_eq!(runtime.format_result(value), "45");
+        if let Err(error) = fs::remove_file(path) {
+            panic!("source file cleanup failed: {error}");
+        }
+    }
+
+    #[test]
     fn load_file_evaluates_multiple_forms_in_order() {
         let path = std::env::temp_dir().join(format!(
             "ncl-runtime-multiple-forms-{}.lisp",

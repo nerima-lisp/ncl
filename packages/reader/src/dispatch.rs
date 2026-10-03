@@ -4,8 +4,8 @@ use std::cell::Cell;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, Local, ObjectRef, Runtime, Scope, ThreadContext, Word, car, cdr,
-    classify_object, make_complex, make_cons, make_simple_vector, make_specialized_array,
+    ArrayElementType, FunctionObject, Local, ObjectRef, Runtime, Scope, ThreadContext, Word, car,
+    cdr, classify_object, make_complex, make_cons, make_simple_vector, make_specialized_array,
     make_string, make_structure, make_symbol, pop_root, push_root, simple_vector_length,
     simple_vector_ref, string_length, string_ref, symbol_name,
 };
@@ -68,7 +68,7 @@ pub fn read_sharp(
         'c' | 'C' => read_complex(ctx, runtime, source, opts, rt, labels).map(Some),
         'a' | 'A' => Err(ReadError::ArraySyntax),
         's' | 'S' => read_structure(ctx, runtime, source, opts, rt, labels).map(Some),
-        'p' | 'P' => Err(ReadError::PathnameSyntax),
+        'p' | 'P' => read_pathname(ctx, runtime, source, opts, rt, labels).map(Some),
         '0'..='9' => {
             source.unread_char(sub);
             let number = read_label_number(source)?;
@@ -94,6 +94,33 @@ pub fn read_sharp(
         }
         other => Err(ReadError::UndefinedDispatchMacro(other)),
     }
+}
+
+/// Read a `#P` pathname literal through the registered pathname parser.
+fn read_pathname(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    source: &mut dyn CharSource,
+    opts: &ReadOptions,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
+) -> Result<Word, ReadError> {
+    let form =
+        read_form(ctx, runtime, source, opts, rt, labels)?.ok_or(ReadError::UnexpectedEof)?;
+    let mut form = form;
+    let form_token = push_root(ctx, &mut form);
+    let result = runtime
+        .function(ctx, "COMMON-LISP", "PARSE-NAMESTRING")
+        .ok_or(ReadError::PathnameSyntax)
+        .and_then(|function| {
+            let function =
+                FunctionObject::try_from(function).map_err(|_| ReadError::PathnameSyntax)?;
+            runtime
+                .call_builtin(ctx, function, &[form])
+                .map_err(ReadError::from)
+        });
+    let _ = pop_root(ctx, form_token);
+    result
 }
 
 /// Read a `#S(name :slot value ...)` structure literal.

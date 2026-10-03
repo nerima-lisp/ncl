@@ -69,32 +69,8 @@ pub(super) fn execute_control_kind(
             *state.argument_index = target.min(state.arguments.len());
         }
         DirectiveKind::UpArrow => *state.argument_index = state.arguments.len(),
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::W
-        | DirectiveKind::Less
-        | DirectiveKind::Greater
-        | DirectiveKind::ColonGreater
-        | DirectiveKind::Slash
-        | DirectiveKind::BracketOpen
-        | DirectiveKind::BracketClose
-        | DirectiveKind::BraceOpen
-        | DirectiveKind::BraceClose
-        | DirectiveKind::Question
-        | DirectiveKind::ParenOpen
-        | DirectiveKind::ParenClose
-        | DirectiveKind::Semicolon
-        | DirectiveKind::Newline => {
+        _ => {
+            // check-added-lines: allow(wildcard) non-control directives
             return Err(FormatError::InvalidParameter {
                 directive: directive.kind,
             });

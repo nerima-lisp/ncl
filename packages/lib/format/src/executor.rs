@@ -7,6 +7,9 @@ use crate::{ControlPart, Directive, DirectiveKind, FormatControl};
 
 mod control;
 mod parameters;
+#[cfg(test)]
+#[path = "executor/executor_test.rs"]
+mod tests;
 mod value;
 
 use control::{execute_character, execute_control_kind};
@@ -139,37 +142,7 @@ fn execute_compound(
         DirectiveKind::ParenOpen => execute_case_group(parts, index, end, directive, state)?,
         DirectiveKind::Less => execute_justification(parts, index, end, directive, state)?,
         DirectiveKind::Question => execute_nested(parts, index, state)?,
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::W
-        | DirectiveKind::Underscore
-        | DirectiveKind::Greater
-        | DirectiveKind::ColonGreater
-        | DirectiveKind::I
-        | DirectiveKind::Slash
-        | DirectiveKind::T
-        | DirectiveKind::Star
-        | DirectiveKind::BracketClose
-        | DirectiveKind::BraceClose
-        | DirectiveKind::ParenClose
-        | DirectiveKind::P
-        | DirectiveKind::Bar
-        | DirectiveKind::Semicolon
-        | DirectiveKind::UpArrow
-        | DirectiveKind::Newline
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Tilde => None,
+        _ => None, // check-added-lines: allow(wildcard) non-compound directives
     };
     Ok(next)
 }

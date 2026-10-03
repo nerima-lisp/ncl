@@ -181,3 +181,49 @@ impl CharSink for WriteCharSink<'_> {
         .map_err(PrintError::Object)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (Runtime, ThreadContext, FunctionObject) {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context");
+        ncl_lib_streams::register(&runtime).expect("streams");
+        register(&runtime).expect("format");
+        let function = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, "COMMON-LISP", "FORMAT")
+                .expect("FORMAT"),
+        )
+        .expect("function");
+        (runtime, ctx, function)
+    }
+
+    fn string(runtime: &Runtime, ctx: &mut ThreadContext, value: &str) -> Word {
+        make_string(ctx, runtime, &value.chars().collect::<Vec<_>>()).expect("string")
+    }
+
+    #[test]
+    fn covers_format_builtin_error_paths() {
+        let (runtime, mut ctx, function) = setup();
+        assert_eq!(runtime.call_builtin(&mut ctx, function, &[]), Err(ObjectError::TypeError));
+        let control = string(&runtime, &mut ctx, "~A");
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[Word::NIL, control]),
+            Err(ObjectError::TypeError)
+        );
+        let bad_value = string(&runtime, &mut ctx, "not-an-integer");
+        let decimal = string(&runtime, &mut ctx, "~D");
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[Word::NIL, decimal, bad_value]),
+            Err(ObjectError::TypeError)
+        );
+        let invalid = string(&runtime, &mut ctx, "~");
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[Word::NIL, invalid]),
+            Err(ObjectError::TypeError)
+        );
+    }
+}

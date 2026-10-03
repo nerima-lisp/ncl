@@ -22,30 +22,8 @@ pub(super) fn execute_value_kind(
             return execute_float_directive(directive, state);
         }
         DirectiveKind::Dollar => return execute_currency_directive(directive, state),
-        DirectiveKind::C
-        | DirectiveKind::Underscore
-        | DirectiveKind::Less
-        | DirectiveKind::Greater
-        | DirectiveKind::ColonGreater
-        | DirectiveKind::I
-        | DirectiveKind::Slash
-        | DirectiveKind::T
-        | DirectiveKind::Star
-        | DirectiveKind::BracketOpen
-        | DirectiveKind::BracketClose
-        | DirectiveKind::BraceOpen
-        | DirectiveKind::BraceClose
-        | DirectiveKind::Question
-        | DirectiveKind::ParenOpen
-        | DirectiveKind::ParenClose
-        | DirectiveKind::P
-        | DirectiveKind::Bar
-        | DirectiveKind::Semicolon
-        | DirectiveKind::UpArrow
-        | DirectiveKind::Newline
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Tilde => {
+        _ => {
+            // check-added-lines: allow(wildcard) non-value directives
             return Err(FormatError::InvalidParameter {
                 directive: directive.kind,
             });
@@ -110,43 +88,11 @@ fn render_float(
         )?;
         return Ok(sink.into_string());
     };
-    Ok(match directive.kind {
-        DirectiveKind::E => format!("{value:.digits$e}"),
-        DirectiveKind::F | DirectiveKind::G => fixed_float(value, digits),
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::Dollar
-        | DirectiveKind::W
-        | DirectiveKind::Underscore
-        | DirectiveKind::Less
-        | DirectiveKind::Greater
-        | DirectiveKind::ColonGreater
-        | DirectiveKind::I
-        | DirectiveKind::Slash
-        | DirectiveKind::T
-        | DirectiveKind::Star
-        | DirectiveKind::BracketOpen
-        | DirectiveKind::BracketClose
-        | DirectiveKind::BraceOpen
-        | DirectiveKind::BraceClose
-        | DirectiveKind::Question
-        | DirectiveKind::ParenOpen
-        | DirectiveKind::ParenClose
-        | DirectiveKind::P
-        | DirectiveKind::Bar
-        | DirectiveKind::Semicolon
-        | DirectiveKind::UpArrow
-        | DirectiveKind::Newline
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Tilde => format!("{value:.digits$}"),
-    })
+    if directive.kind == DirectiveKind::E {
+        Ok(format!("{value:.digits$e}"))
+    } else {
+        Ok(fixed_float(value, digits))
+    }
 }
 
 fn fixed_float(value: f64, digits: usize) -> String {

@@ -496,7 +496,9 @@ fn compare_and_return_bytes_are_checked_against_explicit_templates() {
         Inst::Setcc(Cond::Ge, Reg::R10),
         Inst::MovMR(Mem::base(Reg::Rbp, -24), Reg::R10),
     ] {
-        expected.emit(&instruction).expect("expected compare encoding");
+        expected
+            .emit(&instruction)
+            .expect("expected compare encoding");
     }
     assert_eq!(actual.bytes(), expected.bytes());
 }

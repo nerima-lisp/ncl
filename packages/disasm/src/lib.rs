@@ -104,7 +104,7 @@ mod tests {
 
     use ncl_asm_aarch64::{Inst, MemOperand, Reg, RegOrSp};
 
-    use super::{Architecture, DecodeError, decode, resolve_labels};
+    use super::{decode, resolve_labels, Architecture, DecodeError};
 
     fn aarch64_words(words: &[u32]) -> Vec<u8> {
         words.iter().flat_map(|word| word.to_le_bytes()).collect()

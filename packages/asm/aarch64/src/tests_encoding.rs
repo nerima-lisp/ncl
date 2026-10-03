@@ -10,16 +10,12 @@ fn encoding_helpers_reject_and_accept_boundary_values() {
     assert!(encoding_helpers::wide(0, Reg(3), 0xab, 48, 0).is_ok());
     assert_eq!(
         encoding_helpers::addsub(RegOrSp::Sp, RegOrSp::Sp, 4096, false, false),
-        Err(EncodeError::ImmediateOutOfRange { value: 4096, bits: 12 })
+        Err(EncodeError::ImmediateOutOfRange {
+            value: 4096,
+            bits: 12
+        })
     );
-    assert!(encoding_helpers::reg3(
-        0,
-        Reg(0),
-        RegOrSp::Sp,
-        Reg(1),
-        Shift::Asr(63)
-    )
-    .is_ok());
+    assert!(encoding_helpers::reg3(0, Reg(0), RegOrSp::Sp, Reg(1), Shift::Asr(63)).is_ok());
     assert_eq!(
         encoding_helpers::reg3(0, Reg(0), RegOrSp::Sp, Reg(1), Shift::Lsl(64)),
         Err(EncodeError::ImmediateOutOfRange { value: 64, bits: 6 })

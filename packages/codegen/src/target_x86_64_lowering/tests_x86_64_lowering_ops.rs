@@ -1,7 +1,7 @@
 use super::{lower_op, lower_prim, move_args};
 use crate::{
-    Allocation, AllocationTarget, CodegenError, Location, X86_64Abi, allocate,
-    tests_x86_64_fixture::X86_64FixtureAbi,
+    allocate, tests_x86_64_fixture::X86_64FixtureAbi, Allocation, AllocationTarget, CodegenError,
+    Location, X86_64Abi,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem, Reg};
 use ncl_ir::{
@@ -545,12 +545,10 @@ fn indirect_calls_emit_the_same_machine_call_template_as_direct_calls() {
 
     let compiled = crate::compile_function_x86_64(&builder.finish(), &X86_64Abi)
         .expect("indirect call lowering");
-    assert!(
-        compiled
-            .code
-            .windows(3)
-            .any(|bytes| bytes == [0x41, 0xff, 0xd3])
-    );
+    assert!(compiled
+        .code
+        .windows(3)
+        .any(|bytes| bytes == [0x41, 0xff, 0xd3]));
 }
 
 #[test]

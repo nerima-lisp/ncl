@@ -50,6 +50,28 @@ fn parser_rejects_signed_integer_and_escape_edges() {
 }
 
 #[test]
+fn parser_reports_signed_integer_format_errors() {
+    let function = finish(
+        "signed",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Fixnum(1)],
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    );
+    let printed = function.to_string();
+
+    assert_eq!(
+        parse(&printed.replace(",i1,", ",1,")),
+        Err(ParseError("bad signed integer".into()))
+    );
+    assert_eq!(
+        parse(&printed.replace(",i1,", ",i-zz,")),
+        Err(ParseError("bad integer".into()))
+    );
+}
+
+#[test]
 fn parser_rejects_descriptor_and_debug_edges() {
     let comparison = finish(
         "compare",

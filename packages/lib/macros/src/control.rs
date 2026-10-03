@@ -20,6 +20,7 @@ mod multiple_values;
 pub(crate) use handler_bind::{binding, bindings};
 pub(crate) use multiple_values::{
     expand_multiple_value_bind_adapter, expand_multiple_value_list_adapter,
+    expand_multiple_value_setq,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;

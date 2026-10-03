@@ -67,6 +67,56 @@ fn immediate_views_keep_the_tagged_word_contract() {
 }
 
 #[test]
+fn immediate_views_preserve_signed_and_unicode_boundary_values() {
+    for value in [-(1_i64 << 62), -1, 0, 1, (1_i64 << 62) - 1] {
+        let word = Word::fixnum(value);
+        assert_eq!(classify(word), ObjectRef::Fixnum(value));
+        assert_eq!(WordView::from(classify(word)), WordView::Fixnum(value));
+        assert_eq!(WordView::from(classify(word)).as_word(), word);
+    }
+    for value in [0, 0x10_FFFF] {
+        let word = Word::character(value);
+        assert_eq!(classify(word), ObjectRef::Character(value));
+        assert_eq!(WordView::from(classify(word)), WordView::Character(value));
+        assert_eq!(WordView::from(classify(word)).as_word(), word);
+    }
+    let invalid_character = Word::character(0x10_FFFF + 1);
+    assert_eq!(
+        classify(invalid_character),
+        ObjectRef::Cons(invalid_character)
+    );
+}
+
+#[test]
+fn object_type_names_match_their_public_type_categories() {
+    for (object_type, name) in [
+        (ObjectType::Fixnum, "fixnum"),
+        (ObjectType::Character, "character"),
+        (ObjectType::Cons, "cons"),
+        (ObjectType::Symbol, "symbol"),
+        (ObjectType::String, "string"),
+        (ObjectType::SimpleVector, "simple-vector"),
+        (ObjectType::SpecializedArray, "specialized-array"),
+        (ObjectType::Array, "array"),
+        (ObjectType::HashTable, "hash-table"),
+        (ObjectType::Function, "function"),
+        (ObjectType::Closure, "closure"),
+        (ObjectType::Instance, "instance"),
+        (ObjectType::Structure, "structure-object"),
+        (ObjectType::Bignum, "bignum"),
+        (ObjectType::Ratio, "ratio"),
+        (ObjectType::DoubleFloat, "double-float"),
+        (ObjectType::Complex, "complex"),
+        (ObjectType::Package, "package"),
+        (ObjectType::Readtable, "readtable"),
+        (ObjectType::Stream, "stream"),
+        (ObjectType::Code, "code"),
+    ] {
+        assert_eq!(object_type.name(), name);
+    }
+}
+
+#[test]
 #[allow(
     clippy::too_many_lines,
     reason = "the test covers every supported heap representation"

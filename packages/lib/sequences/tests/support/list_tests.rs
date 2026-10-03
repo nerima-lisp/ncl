@@ -17,7 +17,10 @@ fn empty_list_sequence_has_no_elements() {
         Err(error) => panic!("sequence_length failed: {error:?}"),
     };
     assert_eq!(length, 0);
-    assert!(sequence_elt(&ctx, sequence, Word::fixnum(0)).is_err());
+    assert_eq!(
+        sequence_elt(&ctx, sequence, Word::fixnum(0)),
+        Err(ObjectError::TypeError)
+    );
 }
 
 #[test]
@@ -45,5 +48,8 @@ fn string_sequence_conversion_validates_word_character() {
         Err(error) => panic!("string_ref failed: {error:?}"),
     };
     assert_eq!(character, 'λ');
-    assert!(sequence_result(&mut ctx, &runtime, marker, &[Word::fixnum(65)]).is_err());
+    assert_eq!(
+        sequence_result(&mut ctx, &runtime, marker, &[Word::fixnum(65)]),
+        Err(ObjectError::TypeError)
+    );
 }

@@ -478,6 +478,61 @@ fn slot_accessors_reject_non_fixnum_locations() {
 }
 
 #[test]
+fn slot_location_nil_and_out_of_range_have_explicit_results() {
+    let (runtime, mut ctx) = setup();
+    let class = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, class, &[Word::TRUE]).unwrap();
+    let no_location =
+        mop::make_slot_descriptor(&mut ctx, &runtime, Word::fixnum(91), None).unwrap();
+    let out_of_range = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        Word::fixnum(92),
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(1)).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        call(
+            &mut ctx,
+            &runtime,
+            "SLOT-DEFINITION-LOCATION",
+            &[no_location]
+        ),
+        Ok(Word::NIL)
+    );
+    for slot in [no_location, out_of_range] {
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-VALUE-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-BOUNDP-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+        assert_eq!(
+            call(
+                &mut ctx,
+                &runtime,
+                "SLOT-MAKUNBOUND-USING-CLASS",
+                &[class, instance, slot]
+            ),
+            Err(ncl_object::ObjectError::TypeError)
+        );
+    }
+}
+
+#[test]
 fn slot_accessors_require_the_instance_class_to_match_exactly() {
     let (runtime, mut ctx) = setup();
     let parent = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();

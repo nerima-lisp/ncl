@@ -258,5 +258,27 @@ fn primitive_helpers_cover_capture_offset_and_resultless_success_boundaries() {
         &allocation,
     )
     .unwrap_or_else(|error| panic!("resultless primitive: {error:?}"));
-    assert!(!encoded(assembler).is_empty());
+    let actual = encoded(assembler);
+    let mut expected = Assembler::new();
+    for instruction in [
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(16)),
+            rn: RegOrSp::Reg(Reg(1)),
+        },
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(17)),
+            rn: RegOrSp::Reg(Reg(2)),
+        },
+        Inst::Add {
+            rd: RegOrSp::Reg(Reg(16)),
+            rn: RegOrSp::Reg(Reg(16)),
+            rm: Reg(17),
+            shift: Shift::Lsl(0),
+        },
+    ] {
+        expected
+            .emit(&instruction)
+            .unwrap_or_else(|error| panic!("expected instruction encoding: {error:?}"));
+    }
+    assert_eq!(actual, encoded(expected));
 }

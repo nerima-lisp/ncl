@@ -130,7 +130,146 @@ fn destructuring_key_patterns_expand_defaults_supplied_and_explicit_keywords()
     let expanded = call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form)?;
     let parts = elements(&mut ctx, expanded)?;
     assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
-    assert!(elements(&mut ctx, parts[1])?.len() >= 6);
+    let bindings = elements(&mut ctx, parts[1])?;
+    assert!(bindings.len() >= 6);
+    let key_binding = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|binding| binding.first() == Some(&name))
+        .expect("bare key name binding");
+    let key_value = elements(&mut ctx, key_binding[1])?;
+    assert_eq!(key_value[0], symbol(&mut ctx, &runtime, "IF")?);
+    assert!(key_value.len() >= 3);
+    assert!(key_value.contains(&default));
+    let supplied_binding = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|binding| binding.first() == Some(&supplied))
+        .expect("key supplied-p binding");
+    assert_eq!(
+        elements(&mut ctx, supplied_binding[1])?[0],
+        symbol(&mut ctx, &runtime, "IF")?
+    );
+    let explicit_binding = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|binding| binding.first() == Some(&explicit_name))
+        .expect("explicit keyword name binding");
+    assert!(elements(&mut ctx, explicit_binding[1])?.len() >= 3);
+    Ok(())
+}
+
+#[test]
+fn destructuring_optional_rest_whole_and_environment_expand_to_checked_bindings()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
+    let environment = symbol(&mut ctx, &runtime, "ENVIRONMENT")?;
+    let a = symbol(&mut ctx, &runtime, "A")?;
+    let b = symbol(&mut ctx, &runtime, "B")?;
+    let fallback = symbol(&mut ctx, &runtime, "FALLBACK")?;
+    let supplied = symbol(&mut ctx, &runtime, "B-SUPPLIED")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let environment_marker = symbol(&mut ctx, &runtime, "&ENVIRONMENT")?;
+    let optional_marker = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let optional_spec = list(&mut ctx, &runtime, &[b, fallback, supplied])?;
+    let pattern = list(
+        &mut ctx,
+        &runtime,
+        &[
+            whole_marker,
+            whole,
+            environment_marker,
+            environment,
+            a,
+            optional_marker,
+            optional_spec,
+            rest_marker,
+            rest,
+        ],
+    )?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let form = list(&mut ctx, &runtime, &[op, pattern, value, a])?;
+    let expanded = call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form)?;
+    let parts = elements(&mut ctx, expanded)?;
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    let bindings = elements(&mut ctx, parts[1])?;
+    let as_forms = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?;
+    let whole_binding = as_forms
+        .iter()
+        .find(|binding| binding.first() == Some(&whole))
+        .expect("&whole binding");
+    assert_eq!(whole_binding[1], as_forms[0][0]);
+    let environment_binding = as_forms
+        .iter()
+        .find(|binding| binding.first() == Some(&environment))
+        .expect("&environment binding");
+    assert_eq!(environment_binding[1], Word::NIL);
+    let optional_binding = as_forms
+        .iter()
+        .find(|binding| binding.first() == Some(&b))
+        .expect("&optional binding");
+    let optional_value = elements(&mut ctx, optional_binding[1])?;
+    assert_eq!(optional_value[0], symbol(&mut ctx, &runtime, "IF")?);
+    assert!(optional_value.contains(&fallback));
+    let supplied_binding = as_forms
+        .iter()
+        .find(|binding| binding.first() == Some(&supplied))
+        .expect("optional supplied-p binding");
+    assert_eq!(
+        elements(&mut ctx, supplied_binding[1])?[0],
+        symbol(&mut ctx, &runtime, "IF")?
+    );
+    let rest_binding = as_forms
+        .iter()
+        .find(|binding| binding.first() == Some(&rest))
+        .expect("&rest binding");
+    assert_ne!(rest_binding[1], Word::NIL);
+    Ok(())
+}
+
+#[test]
+fn destructuring_rejects_malformed_rest_key_and_whole_tails() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let trailing = symbol(&mut ctx, &runtime, "TRAILING")?;
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let rest_pattern = list(&mut ctx, &runtime, &[rest_marker, rest, trailing])?;
+    let rest_form = list(&mut ctx, &runtime, &[op, rest_pattern, value])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", rest_form),
+        Err(ObjectError::TypeError)
+    );
+
+    let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
+    let dotted_key_pattern = ncl_object::make_cons(&mut ctx, &runtime, key_marker, rest)?;
+    let key_form = list(&mut ctx, &runtime, &[op, dotted_key_pattern, value])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", key_form),
+        Err(ObjectError::TypeError)
+    );
+
+    let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let missing_whole = list(&mut ctx, &runtime, &[whole_marker])?;
+    let whole_form = list(&mut ctx, &runtime, &[op, missing_whole, value])?;
+    assert_eq!(
+        call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", whole_form),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 
@@ -142,6 +281,121 @@ fn destructuring_key_and_marker_errors_are_reported() -> Result<(), ObjectError>
     for marker in ["&AUX", "&ALLOW-OTHER-KEYS"] {
         let marker_symbol = symbol(&mut ctx, &runtime, marker)?;
         let pattern = list(&mut ctx, &runtime, &[marker_symbol])?;
+        let form = list(&mut ctx, &runtime, &[op, pattern, value])?;
+        assert_eq!(
+            call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form),
+            Err(ObjectError::TypeError)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn destructuring_optional_rest_whole_and_environment_bindings_expand_distinctly()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
+    let environment = symbol(&mut ctx, &runtime, "ENVIRONMENT")?;
+    let optional = symbol(&mut ctx, &runtime, "OPTIONAL")?;
+    let default = symbol(&mut ctx, &runtime, "DEFAULT")?;
+    let supplied = symbol(&mut ctx, &runtime, "SUPPLIED")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let environment_marker = symbol(&mut ctx, &runtime, "&ENVIRONMENT")?;
+    let optional_marker = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let if_symbol = symbol(&mut ctx, &runtime, "IF")?;
+    let optional_spec = list(&mut ctx, &runtime, &[optional, default, supplied])?;
+    let pattern = list(
+        &mut ctx,
+        &runtime,
+        &[
+            whole_marker,
+            whole,
+            environment_marker,
+            environment,
+            optional_marker,
+            optional_spec,
+            rest_marker,
+            rest,
+        ],
+    )?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let form = list(&mut ctx, &runtime, &[op, pattern, value, body])?;
+    let expanded = call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form)?;
+    let parts = elements(&mut ctx, expanded)?;
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+    let bindings = elements(&mut ctx, parts[1])?;
+    let source_binding = elements(&mut ctx, bindings[0])?;
+    assert_eq!(source_binding[1], value);
+    let source = source_binding[0];
+    assert_eq!(elements(&mut ctx, bindings[1])?, vec![whole, source]);
+    assert_eq!(
+        elements(&mut ctx, bindings[2])?,
+        vec![environment, Word::NIL]
+    );
+
+    let optional_binding = elements(&mut ctx, bindings[3])?;
+    assert_eq!(optional_binding[0], optional);
+    assert_eq!(elements(&mut ctx, optional_binding[1])?[0], if_symbol);
+    let supplied_binding = elements(&mut ctx, bindings[4])?;
+    assert_eq!(supplied_binding[0], supplied);
+    assert_eq!(elements(&mut ctx, supplied_binding[1])?[0], if_symbol);
+    assert_eq!(elements(&mut ctx, bindings[6])?, vec![rest, source]);
+    assert_eq!(parts[2], body);
+    Ok(())
+}
+
+#[test]
+fn destructuring_key_supplied_p_and_custom_keyword_expand_to_lookup_guards()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let name = symbol(&mut ctx, &runtime, "NAME")?;
+    let default = symbol(&mut ctx, &runtime, "DEFAULT")?;
+    let supplied = symbol(&mut ctx, &runtime, "SUPPLIED")?;
+    let keyword = symbol(&mut ctx, &runtime, ":CUSTOM")?;
+    let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
+    let if_symbol = symbol(&mut ctx, &runtime, "IF")?;
+    let pair = list(&mut ctx, &runtime, &[keyword, name])?;
+    let spec = list(&mut ctx, &runtime, &[pair, default, supplied])?;
+    let pattern = list(&mut ctx, &runtime, &[key_marker, spec])?;
+    let form = list(&mut ctx, &runtime, &[op, pattern, value, name])?;
+    let expanded = call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form)?;
+    let parts = elements(&mut ctx, expanded)?;
+    let bindings = elements(&mut ctx, parts[1])?;
+    let name_binding = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|binding| binding.first() == Some(&name))
+        .ok_or(ObjectError::TypeError)?;
+    assert_eq!(elements(&mut ctx, name_binding[1])?[0], if_symbol);
+    let supplied_binding = bindings
+        .iter()
+        .map(|binding| elements(&mut ctx, *binding))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|binding| binding.first() == Some(&supplied))
+        .ok_or(ObjectError::TypeError)?;
+    assert_eq!(elements(&mut ctx, supplied_binding[1])?[0], if_symbol);
+    Ok(())
+}
+
+#[test]
+fn destructuring_rejects_incomplete_rest_and_key_specs() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let op = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+    let rest_marker = symbol(&mut ctx, &runtime, "&REST")?;
+    let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
+    let missing_rest = list(&mut ctx, &runtime, &[rest_marker])?;
+    let missing_key_name = list(&mut ctx, &runtime, &[key_marker, Word::NIL])?;
+    for pattern in [missing_rest, missing_key_name] {
         let form = list(&mut ctx, &runtime, &[op, pattern, value])?;
         assert_eq!(
             call_macro(&runtime, &mut ctx, "DESTRUCTURING-BIND", form),

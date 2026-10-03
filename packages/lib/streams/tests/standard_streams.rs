@@ -43,10 +43,11 @@ fn standard_stream_variables_are_typed_special_streams() {
         let stream_symbol = symbol(&runtime, &mut ctx, name);
         assert!(symbol_is_special(&ctx, stream_symbol).unwrap(), "{name}");
         let stream = symbol_value(&ctx, stream_symbol).unwrap();
-        assert!(matches!(
+        assert_eq!(
             classify_object(&ctx, stream),
-            ObjectRef::Stream(_)
-        ));
+            ObjectRef::Stream(stream),
+            "{name}"
+        );
         let direction = stream_direction(&ctx, ncl_object::Stream::from_word(stream)).unwrap();
         let direction_name = match name {
             "*TERMINAL-IO*" | "*QUERY-IO*" | "*DEBUG-IO*" => "IO",

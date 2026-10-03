@@ -467,3 +467,7 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
         }
     })
 }
+
+#[cfg(test)]
+#[path = "tests_record.rs"]
+mod tests;

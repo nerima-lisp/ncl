@@ -49,3 +49,71 @@ fn symbol_text(ctx: &ThreadContext, string: Word) -> Result<String, ObjectError>
         .map(|index| crate::string_ref(ctx, string, index))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn symbol(package: &str, name: &str) -> StructureSymbol {
+        StructureSymbol {
+            package: package.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    #[test]
+    fn register_indexes_layout_and_qualified_symbol_values() {
+        let name = symbol("NCL-TEST", "POINT");
+        let layout = crate::StructureLayout::from(17);
+        let description = StructureDescription {
+            layout,
+            parent: None,
+            name: name.clone(),
+        };
+        let mut registry = StructureRegistry::default();
+
+        registry.register(name.clone(), description);
+
+        assert_eq!(registry.by_symbol.get(&name), Some(&17));
+        let stored = registry
+            .by_layout
+            .get(&17)
+            .unwrap_or_else(|| panic!("layout missing"));
+        assert_eq!(stored.layout, layout);
+        assert_eq!(stored.parent, None);
+        assert_eq!(stored.name.qualified_name(), "NCL-TEST::POINT");
+    }
+
+    #[test]
+    fn duplicate_layout_replaces_description_but_keeps_symbol_index_value() {
+        let first = symbol("NCL-TEST", "FIRST");
+        let second = symbol("NCL-TEST", "SECOND");
+        let layout = crate::StructureLayout::from(3);
+        let mut registry = StructureRegistry::default();
+
+        registry.register(
+            first.clone(),
+            StructureDescription {
+                layout,
+                parent: None,
+                name: first.clone(),
+            },
+        );
+        registry.register(
+            second.clone(),
+            StructureDescription {
+                layout,
+                parent: Some(crate::StructureLayout::from(2)),
+                name: second.clone(),
+            },
+        );
+
+        assert_eq!(registry.by_symbol.get(&first), Some(&3));
+        assert_eq!(registry.by_symbol.get(&second), Some(&3));
+        assert_eq!(
+            registry.by_layout.get(&3).map(|value| value.parent),
+            Some(Some(2.into()))
+        );
+        assert_eq!(registry.by_layout.len(), 1);
+    }
+}

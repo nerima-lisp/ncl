@@ -253,3 +253,141 @@ impl<'a> Reader<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid("string encoding"))
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::needless_pass_by_value,
+    clippy::unwrap_used,
+    reason = "tests assert on format failures"
+)]
+mod tests {
+    use super::{FORMAT_VERSION, ImageFile, MAGIC, Reader, narrow, put_string};
+    use crate::code::CodeImage;
+    use crate::error::ImageError;
+    use crate::record::{Record, Ref};
+
+    fn image() -> ImageFile {
+        ImageFile {
+            architecture: ncl_objfile::Architecture::X86_64,
+            gc_epoch: 42,
+            objects: vec![Record::String("hello".into())],
+            roots: vec![Ref::Object(0), Ref::Immediate(9)],
+            code: vec![CodeImage::from_raw(vec![1, 2, 3], 1, 4, "entry".into()).unwrap()],
+            features: vec!["NCL".into(), "TEST".into()],
+        }
+    }
+
+    #[test]
+    fn image_file_round_trips_header_and_payload_values() {
+        let expected = image();
+        let bytes = expected.to_bytes().unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], MAGIC);
+        assert_eq!(bytes.len(), 125);
+        assert_eq!(ImageFile::from_bytes(&bytes).unwrap(), expected);
+        assert_eq!(super::header_size().unwrap(), 64);
+        assert_eq!(
+            super::invalid("x"),
+            ImageError::InvalidLayout { field: "x" }
+        );
+        assert_eq!(narrow(7, "count").unwrap(), 7);
+    }
+
+    #[test]
+    fn image_header_rejects_each_incompatible_field() {
+        let source = image().to_bytes().unwrap();
+        let cases = [
+            (0, vec![b'X'], ImageError::BadMagic),
+            (
+                8,
+                FORMAT_VERSION.wrapping_add(1).to_le_bytes().to_vec(),
+                ImageError::UnsupportedVersion {
+                    found: 2,
+                    supported: 1,
+                },
+            ),
+            (
+                10,
+                vec![99],
+                ImageError::UnknownTag {
+                    space: "architecture",
+                    tag: 99,
+                },
+            ),
+            (
+                11,
+                vec![0],
+                ImageError::InvalidLayout {
+                    field: "pointer width",
+                },
+            ),
+            (
+                12,
+                vec![0],
+                ImageError::InvalidLayout {
+                    field: "endianness",
+                },
+            ),
+            (
+                13,
+                vec![0],
+                ImageError::InvalidLayout {
+                    field: "header size",
+                },
+            ),
+        ];
+        for (offset, replacement, expected) in cases {
+            let mut bytes = source.clone();
+            bytes[offset..offset + replacement.len()].copy_from_slice(&replacement);
+            assert_eq!(ImageFile::from_bytes(&bytes).unwrap_err(), expected);
+        }
+        assert_eq!(
+            ImageFile::from_bytes(&[]).unwrap_err(),
+            ImageError::Truncated {
+                offset: 0,
+                needed: 8
+            }
+        );
+        let mut bytes = source;
+        bytes[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            ImageFile::from_bytes(&bytes).unwrap_err(),
+            ImageError::Truncated {
+                offset: u32::MAX as usize,
+                needed: 61
+            }
+        );
+    }
+
+    #[test]
+    fn reader_decodes_scalars_and_rejects_truncated_or_invalid_utf8() {
+        let mut bytes = Vec::new();
+        super::put_u8(&mut bytes, 3);
+        super::put_u16(&mut bytes, 0x0201);
+        super::put_u32(&mut bytes, 0x0403_0201);
+        super::put_u64(&mut bytes, 0x0807_0605_0403_0201);
+        let mut reader = Reader::new(&bytes);
+        assert_eq!(reader.u8().unwrap(), 3);
+        assert_eq!(reader.u16().unwrap(), 0x0201);
+        assert_eq!(reader.u32().unwrap(), 0x0403_0201);
+        assert_eq!(reader.u64().unwrap(), 0x0807_0605_0403_0201);
+        assert_eq!(
+            reader.take(1).unwrap_err(),
+            ImageError::Truncated {
+                offset: 15,
+                needed: 1
+            }
+        );
+
+        let mut invalid = Vec::new();
+        put_string(&mut invalid, "").unwrap();
+        assert_eq!(Reader::new(&invalid).string().unwrap(), "");
+        let invalid = [1, 0, 0, 0, 0xff];
+        assert_eq!(
+            Reader::new(&invalid).string().unwrap_err(),
+            ImageError::InvalidLayout {
+                field: "string encoding"
+            }
+        );
+    }
+}

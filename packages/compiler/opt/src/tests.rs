@@ -73,7 +73,7 @@ fn recursive_and_unsafe_callees_are_skipped() {
 }
 
 #[test]
-fn generated_lambda_with_load_arg_is_not_inlined() {
+fn generated_lambda_with_load_arg_is_not_inlined() -> Result<(), String> {
     let mut callee_builder = ncl_ir::FunctionBuilder::new(
         FunctionId(2),
         "generated-lambda",
@@ -91,7 +91,10 @@ fn generated_lambda_with_load_arg_is_not_inlined() {
     );
     let loaded = callee_builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
-        .fixture()[0];
+        .fixture()
+        .into_iter()
+        .next()
+        .ok_or_else(|| "LoadArg did not produce a value".to_owned())?;
     callee_builder
         .terminate(Terminator::Return {
             values: vec![loaded],
@@ -99,7 +102,8 @@ fn generated_lambda_with_load_arg_is_not_inlined() {
         .fixture();
     let callee = callee_builder.finish();
 
-    assert!(InlineDirectCalls::prohibited(&callee));
+    assert_eq!(InlineDirectCalls::prohibited(&callee), true);
+    Ok(())
 }
 
 #[test]

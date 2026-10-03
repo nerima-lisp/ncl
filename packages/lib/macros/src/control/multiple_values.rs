@@ -12,10 +12,11 @@ pub(crate) fn expand_multiple_value_setq(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result {
-    let [variables, value] = values else {
+    if values.len() != 2 {
         return Err(ObjectError::TypeError);
-    };
-    let variables = crate::elements(ctx, *variables)?;
+    }
+    let variables = crate::elements(ctx, *values.first().ok_or(ObjectError::TypeError)?)?;
+    let value = *values.get(1).ok_or(ObjectError::TypeError)?;
     if variables
         .iter()
         .any(|variable| !matches!(classify_object(ctx, *variable), ObjectRef::Symbol(_)))
@@ -37,7 +38,7 @@ pub(crate) fn expand_multiple_value_setq(
         ctx,
         runtime,
         "MULTIPLE-VALUE-BIND",
-        &[temporary_list, *value, body],
+        &[temporary_list, value, body],
     )
 }
 

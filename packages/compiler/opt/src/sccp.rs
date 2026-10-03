@@ -288,11 +288,6 @@ impl Sccp {
         let constants = function.constants.clone();
         for block in &mut function.blocks {
             if !reachable.contains(&block.id) {
-                if !matches!(block.terminator, Terminator::Unreachable) || !block.ops.is_empty() {
-                    block.ops.clear();
-                    block.terminator = Terminator::Unreachable;
-                    changed = true;
-                }
                 continue;
             }
             for op in &mut block.ops {
@@ -366,7 +361,47 @@ impl Sccp {
                 changed = true;
             }
         }
+        changed |= Self::retain_referenced_blocks(function);
         changed
+    }
+
+    fn retain_referenced_blocks(function: &mut Function) -> bool {
+        let Some(entry) = function.blocks.first() else {
+            return false;
+        };
+        let mut retained = HashSet::from([entry.id]);
+        let mut worklist = VecDeque::from([entry.id]);
+        while let Some(block_id) = worklist.pop_front() {
+            let Some(block) = function.blocks.iter().find(|block| block.id == block_id) else {
+                continue;
+            };
+            let successors = match &block.terminator {
+                Terminator::Jump { target, .. } => vec![*target],
+                Terminator::Branch {
+                    then_target,
+                    else_target,
+                    ..
+                } => vec![*then_target, *else_target],
+                Terminator::Switch { cases, default, .. } => cases
+                    .iter()
+                    .map(|(_, target, _)| *target)
+                    .chain(std::iter::once(*default))
+                    .collect(),
+                Terminator::CallReturn { .. }
+                | Terminator::TailCall { .. }
+                | Terminator::Return { .. }
+                | Terminator::Throw { .. }
+                | Terminator::Unreachable => Vec::new(),
+            };
+            for successor in successors {
+                if retained.insert(successor) {
+                    worklist.push_back(successor);
+                }
+            }
+        }
+        let block_count = function.blocks.len();
+        function.blocks.retain(|block| retained.contains(&block.id));
+        function.blocks.len() != block_count
     }
 
     fn constant_value_from(constants: &[Constant], state: State) -> Option<&Constant> {

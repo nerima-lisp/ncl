@@ -154,6 +154,45 @@ fn loaded_objects_survive_a_full_collection() {
     let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
 }
 
+#[test]
+fn hash_table_tests_and_weakness_modes_round_trip() {
+    for test in [
+        HashTest::Eq,
+        HashTest::Eql,
+        HashTest::Equal,
+        HashTest::Equalp,
+    ] {
+        for weakness in [
+            Weakness::None,
+            Weakness::Key,
+            Weakness::Value,
+            Weakness::KeyAndValue,
+            Weakness::KeyOrValue,
+        ] {
+            let runtime = Runtime::new().unwrap();
+            let mut ctx = ThreadContext::new();
+            ctx.register(&runtime).unwrap();
+            let table = HashTable::new(&mut ctx, &runtime, test, weakness).unwrap();
+            table
+                .insert(&mut ctx, &runtime, Word::fixnum(7), Word::fixnum(9))
+                .unwrap();
+            let image = save(&runtime, &mut ctx, &[table.as_word()], &[]).unwrap();
+
+            let runtime2 = Runtime::new().unwrap();
+            let mut ctx2 = ThreadContext::new();
+            ctx2.register(&runtime2).unwrap();
+            let loaded = load(&image, &runtime2, &mut ctx2).unwrap();
+            let restored = HashTable::from_word(loaded.roots[0]);
+            assert_eq!(restored.test(&ctx2).unwrap(), test);
+            assert_eq!(restored.weakness(&ctx2).unwrap(), weakness);
+            assert_eq!(
+                restored.get(&mut ctx2, Word::fixnum(7)).unwrap(),
+                Some(Word::fixnum(9))
+            );
+        }
+    }
+}
+
 /// Report whether two object graphs have the same shape and contents.
 fn isomorphic(a: &mut ThreadContext, wa: Word, b: &mut ThreadContext, wb: Word) -> bool {
     let mut seen = HashSet::new();

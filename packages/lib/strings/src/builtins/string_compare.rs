@@ -4,9 +4,9 @@ fn string_compare_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
     comparison: StringComparison,
-    fold: bool,
+    folding: CaseFolding,
 ) -> Result<Word, ObjectError> {
-    let (left, right) = string_compare_values(ctx, args, fold)?;
+    let (left, right) = string_compare_values(ctx, args, folding)?;
     let ordering = left.as_slice().cmp(right.as_slice());
     let index = left
         .iter()
@@ -33,6 +33,38 @@ fn string_compare_builtin(
 }
 
 #[derive(Clone, Copy)]
+enum Case {
+    Upper,
+    Lower,
+}
+
+impl Case {
+    fn map(self, value: char) -> Vec<char> {
+        match self {
+            Self::Upper => value.to_uppercase().collect(),
+            Self::Lower => value.to_lowercase().collect(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TrimSide {
+    Left,
+    Right,
+    Both,
+}
+
+impl TrimSide {
+    const fn includes_left(self) -> bool {
+        matches!(self, Self::Left | Self::Both)
+    }
+
+    const fn includes_right(self) -> bool {
+        matches!(self, Self::Right | Self::Both)
+    }
+}
+
+#[derive(Clone, Copy)]
 enum StringComparison {
     Equal,
     NotEqual,
@@ -42,10 +74,16 @@ enum StringComparison {
     NotLess,
 }
 
+#[derive(Clone, Copy)]
+enum CaseFolding {
+    Sensitive,
+    Insensitive,
+}
+
 fn string_compare_values(
     ctx: &ThreadContext,
     args: &BuiltinArgs<'_>,
-    fold: bool,
+    folding: CaseFolding,
 ) -> Result<(Vec<char>, Vec<char>), ObjectError> {
     let left_value = args.required(0)?;
     let right_value = args.required(1)?;
@@ -87,7 +125,7 @@ fn string_compare_values(
     let right_range = right_chars
         .get(right_start..right_end)
         .ok_or(ObjectError::TypeError)?;
-    let left = if fold {
+    let left = if matches!(folding, CaseFolding::Insensitive) {
         left_range
             .iter()
             .copied()
@@ -96,7 +134,7 @@ fn string_compare_values(
     } else {
         left_range.to_vec()
     };
-    let right = if fold {
+    let right = if matches!(folding, CaseFolding::Insensitive) {
         right_range
             .iter()
             .copied()
@@ -120,7 +158,7 @@ fn string_equal_builtin(
         args,
         values,
         StringComparison::Equal,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_not_equal_builtin(
@@ -135,7 +173,7 @@ fn string_not_equal_builtin(
         args,
         values,
         StringComparison::NotEqual,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_less_builtin(
@@ -150,7 +188,7 @@ fn string_less_builtin(
         args,
         values,
         StringComparison::Less,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_greater_builtin(
@@ -165,7 +203,7 @@ fn string_greater_builtin(
         args,
         values,
         StringComparison::Greater,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_not_greater_builtin(
@@ -180,7 +218,7 @@ fn string_not_greater_builtin(
         args,
         values,
         StringComparison::NotGreater,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_not_less_builtin(
@@ -195,7 +233,7 @@ fn string_not_less_builtin(
         args,
         values,
         StringComparison::NotLess,
-        false,
+        CaseFolding::Sensitive,
     )
 }
 fn string_equal_ci_builtin(
@@ -210,7 +248,7 @@ fn string_equal_ci_builtin(
         args,
         values,
         StringComparison::Equal,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 fn string_not_equal_ci_builtin(
@@ -225,7 +263,7 @@ fn string_not_equal_ci_builtin(
         args,
         values,
         StringComparison::NotEqual,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 fn string_less_ci_builtin(
@@ -240,7 +278,7 @@ fn string_less_ci_builtin(
         args,
         values,
         StringComparison::Less,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 fn string_greater_ci_builtin(
@@ -255,7 +293,7 @@ fn string_greater_ci_builtin(
         args,
         values,
         StringComparison::Greater,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 fn string_not_greater_ci_builtin(
@@ -270,7 +308,7 @@ fn string_not_greater_ci_builtin(
         args,
         values,
         StringComparison::NotGreater,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 fn string_not_less_ci_builtin(
@@ -285,7 +323,7 @@ fn string_not_less_ci_builtin(
         args,
         values,
         StringComparison::NotLess,
-        true,
+        CaseFolding::Insensitive,
     )
 }
 
@@ -293,7 +331,7 @@ fn string_case_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
-    upper: bool,
+    case: Case,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
     let chars = string_chars(ctx, value)?;
@@ -303,11 +341,7 @@ fn string_case_builtin(
         runtime,
         chars.iter().enumerate().flat_map(|(index, &character)| {
             if (start..end).contains(&index) {
-                if upper {
-                    character.to_uppercase().collect::<Vec<_>>()
-                } else {
-                    character.to_lowercase().collect::<Vec<_>>()
-                }
+                case.map(character)
             } else {
                 vec![character]
             }
@@ -321,7 +355,7 @@ fn string_upcase_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_case_builtin(ctx, runtime, args, true)
+    string_case_builtin(ctx, runtime, args, Case::Upper)
 }
 fn string_downcase_builtin(
     ctx: &mut ThreadContext,
@@ -329,7 +363,7 @@ fn string_downcase_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_case_builtin(ctx, runtime, args, false)
+    string_case_builtin(ctx, runtime, args, Case::Lower)
 }
 fn string_capitalize_builtin(
     ctx: &mut ThreadContext,
@@ -388,18 +422,18 @@ fn trim_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
-    side: u8,
+    side: TrimSide,
 ) -> Result<Word, ObjectError> {
     let bag = string_chars(ctx, args.required(0)?)?;
     let input = string_chars(ctx, args.required(1)?)?;
     let mut start = 0;
     let mut end = input.len();
-    if side & 1 != 0 {
+    if side.includes_left() {
         while start < end && bag.contains(&input[start]) {
             start += 1;
         }
     }
-    if side & 2 != 0 {
+    if side.includes_right() {
         while end > start && bag.contains(&input[end - 1]) {
             end -= 1;
         }
@@ -413,7 +447,7 @@ fn string_trim_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    trim_builtin(ctx, runtime, args, 3)
+    trim_builtin(ctx, runtime, args, TrimSide::Both)
 }
 fn string_left_trim_builtin(
     ctx: &mut ThreadContext,
@@ -421,7 +455,7 @@ fn string_left_trim_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    trim_builtin(ctx, runtime, args, 1)
+    trim_builtin(ctx, runtime, args, TrimSide::Left)
 }
 fn string_right_trim_builtin(
     ctx: &mut ThreadContext,
@@ -429,5 +463,5 @@ fn string_right_trim_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    trim_builtin(ctx, runtime, args, 2)
+    trim_builtin(ctx, runtime, args, TrimSide::Right)
 }

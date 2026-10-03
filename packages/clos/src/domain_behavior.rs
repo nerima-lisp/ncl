@@ -221,16 +221,32 @@ mod tests {
     fn finalization_assigns_effective_slot_locations() {
         let slot = SlotDefinition::new(SlotId::new(1), Allocation::Instance, Some(7));
         let mut class = Class::new(ClassId::new(1), Vec::new(), vec![slot]);
+        assert_eq!(class.id(), ClassId::new(1));
+        assert_eq!(class.direct_superclasses(), &[]);
+        assert_eq!(class.version(), 0);
         assert!(class.finalize_inheritance(&[]).is_ok());
         assert_eq!(class.class_precedence_list(), &[ClassId::new(1)]);
         assert_eq!(class.effective_slots()[0].location(), Some(0));
+        assert_eq!(class.version(), 1);
     }
 
     #[test]
     fn finalization_uses_c3_precedence_for_a_diamond() {
-        let mut left = Class::new(ClassId::new(2), vec![ClassId::new(1)], Vec::new());
-        let mut right = Class::new(ClassId::new(3), vec![ClassId::new(1)], Vec::new());
-        let root = Class::new(ClassId::new(1), Vec::new(), Vec::new());
+        let mut left = Class::new(
+            ClassId::new(2),
+            vec![ClassId::new(1)],
+            vec![SlotDefinition::new(SlotId::new(2), Allocation::Instance, None)],
+        );
+        let mut right = Class::new(
+            ClassId::new(3),
+            vec![ClassId::new(1)],
+            vec![SlotDefinition::new(SlotId::new(3), Allocation::Instance, None)],
+        );
+        let root = Class::new(
+            ClassId::new(1),
+            Vec::new(),
+            vec![SlotDefinition::new(SlotId::new(1), Allocation::Instance, None)],
+        );
         let mut root = root;
         assert!(root.finalize_inheritance(&[]).is_ok());
         assert!(left.finalize_inheritance(&[root.clone()]).is_ok());
@@ -245,6 +261,37 @@ mod tests {
             leaf.class_precedence_list(),
             &[ClassId::new(4), ClassId::new(2), ClassId::new(3), ClassId::new(1)]
         );
+        assert_eq!(leaf.effective_slots().len(), 3);
+        assert_eq!(
+            leaf.effective_slots()
+                .iter()
+                .map(|slot| slot.id())
+                .collect::<Vec<_>>(),
+            vec![SlotId::new(1), SlotId::new(2), SlotId::new(3)]
+        );
+        assert_eq!(
+            leaf.effective_slots()
+                .iter()
+                .map(|slot| slot.location())
+                .collect::<Vec<_>>(),
+            vec![Some(0), Some(1), Some(2)]
+        );
+    }
+
+    #[test]
+    fn redefining_class_clears_finalized_state_and_increments_version() {
+        let slot = SlotDefinition::new(SlotId::new(1), Allocation::Instance, None);
+        let replacement = SlotDefinition::new(SlotId::new(2), Allocation::Instance, None);
+        let mut class = Class::new(ClassId::new(5), Vec::new(), vec![slot]);
+        assert!(class.finalize_inheritance(&[]).is_ok());
+        assert_eq!(class.version(), 1);
+        class.redefine(vec![replacement]);
+        assert_eq!(class.version(), 2);
+        assert!(class.class_precedence_list().is_empty());
+        assert!(class.effective_slots().is_empty());
+        assert!(class.finalize_inheritance(&[]).is_ok());
+        assert_eq!(class.effective_slots()[0].id(), SlotId::new(2));
+        assert_eq!(class.version(), 3);
     }
 
     #[test]
@@ -256,6 +303,13 @@ mod tests {
             MethodQualifier::Primary,
             MethodId::new(9),
         );
+        assert_eq!(method.id(), MethodId::new(1));
+        assert_eq!(
+            method.specializers(),
+            &[Specializer::Class(ClassId::new(1))]
+        );
+        assert_eq!(method.qualifier(), MethodQualifier::Primary);
+        assert_eq!(method.body(), MethodId::new(9));
         assert!(generic.add_method(method).is_ok());
         assert_eq!(
             generic.applicable_methods(&[ClassId::new(1)]),

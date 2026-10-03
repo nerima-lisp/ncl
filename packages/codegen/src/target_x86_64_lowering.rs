@@ -479,9 +479,19 @@ pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
 mod closure;
 #[path = "target_x86_64_lowering/ops.rs"]
 pub(super) mod ops;
+#[path = "target_x86_64_lowering/ops_helpers.rs"]
+mod ops_helpers;
 #[path = "target_x86_64_lowering/ops_support.rs"]
 mod ops_support;
+#[path = "target_x86_64_lowering/value_types.rs"]
+mod value_types;
 pub(super) use closure::closure_capture_count;
 pub(super) use ops_support::{load_heap_constant, store_closure_capture};
 
 pub(super) use ops::{lower_op, move_args};
+pub(super) use value_types::value_is_raw_entry;
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+#[path = "tests_target_x86_64_lowering.rs"]
+mod tests;

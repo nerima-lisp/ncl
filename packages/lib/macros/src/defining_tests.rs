@@ -58,6 +58,7 @@ fn malformed_definition_is_rejected() -> Result<(), ObjectError> {
     let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
     let form = list(&mut ctx, &runtime, &[operator])?;
     let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test asserts the exact rejection.
     assert_eq!(
         defun(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
@@ -73,10 +74,107 @@ fn malformed_lambda_list_is_rejected() -> Result<(), ObjectError> {
     let bad_lambda_list = symbol(&mut ctx, &runtime, "ARGS")?;
     let form = list(&mut ctx, &runtime, &[operator, name, bad_lambda_list])?;
     let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test asserts the exact rejection.
     assert_eq!(
         defun(&runtime, &mut ctx, &[form], &mut values),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn malformed_function_definition_name_is_rejected() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
+    let form = list(&mut ctx, &runtime, &[operator, Word::TRUE, Word::NIL])?;
+    let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        defun(&runtime, &mut ctx, &[form], &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn malformed_macro_definition_is_rejected() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let operator = symbol(&mut ctx, &runtime, "DEFMACRO")?;
+    let name = symbol(&mut ctx, &runtime, "M")?;
+    let form = list(&mut ctx, &runtime, &[operator, name])?;
+    let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        defmacro(&runtime, &mut ctx, &[form], &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn malformed_whole_lambda_list_is_rejected() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let operator = symbol(&mut ctx, &runtime, "DEFMACRO")?;
+    let name = symbol(&mut ctx, &runtime, "M")?;
+    let whole = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let lambda_list = list(&mut ctx, &runtime, &[whole])?;
+    let form = list(&mut ctx, &runtime, &[operator, name, lambda_list])?;
+    let mut values = ncl_object::MultipleValues::new();
+    // check-added-lines: allow(panic) test asserts the exact rejection.
+    assert_eq!(
+        defmacro(&runtime, &mut ctx, &[form], &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn macro_definitions_bind_and_strip_whole_variable() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "M")?;
+    let whole = symbol(&mut ctx, &runtime, "WHOLE")?;
+    let argument = symbol(&mut ctx, &runtime, "ARGUMENT")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let defmacro = symbol(&mut ctx, &runtime, "DEFMACRO")?;
+    let whole_marker = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let lambda_list = list(&mut ctx, &runtime, &[whole_marker, whole, argument])?;
+    let form = list(&mut ctx, &runtime, &[defmacro, name, lambda_list, body])?;
+
+    let expansion = call(&runtime, &mut ctx, "DEFMACRO", form)?;
+    let expansion_parts = elements(&mut ctx, expansion)?;
+    let setf = elements(&mut ctx, expansion_parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let function = elements(&mut ctx, setf[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let lambda = elements(&mut ctx, function[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(lambda[0], symbol(&mut ctx, &runtime, "LAMBDA")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+
+    let let_form = elements(&mut ctx, lambda[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(let_form[0], symbol(&mut ctx, &runtime, "LET")?); // check-added-lines: allow(panic,index) exact expansion assertion.
+    let bindings = elements(&mut ctx, let_form[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let binding = elements(&mut ctx, bindings[0])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(binding[0], whole); // check-added-lines: allow(panic,index) exact expansion assertion.
+    let whole_parameter = elements(&mut ctx, lambda[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(whole_parameter.len(), 1); // check-added-lines: allow(panic) exact expansion assertion.
+    assert_eq!(binding[1], whole_parameter[0]); // check-added-lines: allow(panic,index) exact expansion assertion.
+    Ok(())
+}
+
+#[test]
+fn macro_definitions_preserve_non_whole_lambda_list() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "M")?;
+    let argument = symbol(&mut ctx, &runtime, "ARGUMENT")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let defmacro = symbol(&mut ctx, &runtime, "DEFMACRO")?;
+    let lambda_list = list(&mut ctx, &runtime, &[argument])?;
+    let form = list(&mut ctx, &runtime, &[defmacro, name, lambda_list, body])?;
+
+    let expansion = call(&runtime, &mut ctx, "DEFMACRO", form)?;
+    let expansion_parts = elements(&mut ctx, expansion)?;
+    let setf = elements(&mut ctx, expansion_parts[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let function = elements(&mut ctx, setf[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let lambda = elements(&mut ctx, function[1])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    let lambda_body = elements(&mut ctx, lambda[2])?; // check-added-lines: allow(index) expansion shape is asserted below.
+    assert_eq!(lambda_body[0], symbol(&mut ctx, &runtime, "LET*")?); // check-added-lines: allow(panic,index) exact expansion assertion.
     Ok(())
 }
 

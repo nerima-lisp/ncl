@@ -29,7 +29,7 @@ jobs:
           python3 scripts/conformance_scoreboard.py \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
             --ansi-command "${GITHUB_WORKSPACE}/target/release/ncl --load doit.lsp" \
-            --cl-bench-command "${GITHUB_WORKSPACE}/target/release/ncl --load tests.lisp" \
+            --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${GITHUB_WORKSPACE}/target/release/ncl" \
             --output "conformance/scoreboard/$(date -u +%F)-${GITHUB_SHA}.json"
       - uses: actions/upload-artifact@v4
         if: always()

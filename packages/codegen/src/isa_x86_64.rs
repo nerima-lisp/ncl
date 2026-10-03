@@ -55,3 +55,7 @@ pub fn epilogue() -> Vec<Inst> {
         Inst::Ret,
     ]
 }
+
+#[cfg(test)]
+#[path = "isa_x86_64_coverage_tests.rs"]
+mod coverage_tests;

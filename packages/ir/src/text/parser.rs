@@ -78,12 +78,27 @@ impl<'a> Reader<'a> {
     }
     fn i(&mut self) -> Result<i64, ParseError> {
         let s = self.next()?;
-        i64::from_str_radix(
-            s.strip_prefix('i')
-                .ok_or_else(|| ParseError("bad signed integer".into()))?,
-            16,
-        )
-        .map_err(|_| ParseError("bad integer".into()))
+        let digits = s
+            .strip_prefix('i')
+            .ok_or_else(|| ParseError("bad signed integer".into()))?;
+        if let Some(negative) = digits.strip_prefix('-') {
+            let magnitude =
+                u64::from_str_radix(negative, 16).map_err(|_| ParseError("bad integer".into()))?;
+            if magnitude > 1_u64 << 63 {
+                return Err(ParseError("integer out of range".into()));
+            }
+            if magnitude == 1_u64 << 63 {
+                Ok(i64::MIN)
+            } else {
+                let magnitude = i64::try_from(magnitude)
+                    .map_err(|_| ParseError("integer out of range".into()))?;
+                Ok(-magnitude)
+            }
+        } else {
+            let raw =
+                u64::from_str_radix(digits, 16).map_err(|_| ParseError("bad integer".into()))?;
+            Ok(raw.cast_signed())
+        }
     }
     fn s(&mut self) -> Result<String, ParseError> {
         unesc(self.next()?)

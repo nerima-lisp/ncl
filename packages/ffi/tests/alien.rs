@@ -10,7 +10,10 @@ use ncl_ffi::{
     AlienRoutine, AlienType, FfiError, align_of, marshal_argument, offset_of, parse_type_name,
     parse_type_specifier, record_size, size_of, union_size, unmarshal_result,
 };
-use ncl_object::{DoubleFloat, Runtime, ThreadContext, Word, double_value, make_double};
+use ncl_object::{
+    Bignum, DoubleFloat, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, double_value,
+    make_double,
+};
 
 /// Declare a runtime and a registered context as test locals, in that order so
 /// the context drops before the runtime that owns its heap.
@@ -91,6 +94,24 @@ fn malformed_specifier_is_rejected() {
     assert!(parse_type_specifier("(array int)").is_err());
     assert!(parse_type_specifier("(bogus int)").is_err());
     assert!(parse_type_specifier("(pointer int) extra").is_err());
+}
+
+#[test]
+fn nested_function_specifier_preserves_named_and_bare_arguments() {
+    assert_eq!(
+        parse_type_specifier(
+            "(function (pointer unsigned_char) ((buffer (array short 3)) unsigned_long))"
+        ),
+        Ok(AlienType::function(
+            "",
+            vec![
+                AlienType::array(AlienType::Short, 3),
+                AlienType::UnsignedLong,
+            ],
+            AlienType::pointer(AlienType::UnsignedChar),
+            false,
+        ))
+    );
 }
 
 #[test]
@@ -237,6 +258,45 @@ fn integer_round_trips_through_bytes() {
     let bytes = marshal_argument(&ctx, &AlienType::Int, Word::fixnum(-7)).unwrap();
     let value = unmarshal_result(&mut ctx, &runtime, &AlienType::Int, &bytes).unwrap();
     assert_eq!(value.as_fixnum(), Some(-7));
+}
+
+#[test]
+fn integer_boundaries_round_trip_with_their_declared_width() {
+    fixture!(runtime, ctx);
+
+    let signed = unmarshal_result(
+        &mut ctx,
+        &runtime,
+        &AlienType::LongLong,
+        &i64::MIN.to_le_bytes(),
+    )
+    .unwrap();
+    assert_eq!(bignum_sign(&ctx, Bignum::from_word(signed)), Ok(true));
+    assert_eq!(
+        bignum_limbs(&ctx, Bignum::from_word(signed)),
+        Ok(vec![0, 0x8000_0000])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::LongLong, signed).unwrap(),
+        i64::MIN.to_le_bytes()
+    );
+
+    let unsigned = unmarshal_result(
+        &mut ctx,
+        &runtime,
+        &AlienType::UnsignedLongLong,
+        &u64::MAX.to_le_bytes(),
+    )
+    .unwrap();
+    assert_eq!(bignum_sign(&ctx, Bignum::from_word(unsigned)), Ok(false));
+    assert_eq!(
+        bignum_limbs(&ctx, Bignum::from_word(unsigned)),
+        Ok(vec![0xffff_ffff, 0xffff_ffff])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedLongLong, unsigned).unwrap(),
+        u64::MAX.to_le_bytes()
+    );
 }
 
 #[test]

@@ -10,7 +10,7 @@
 
 #![cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 
-use ncl_image::{CodeImage, load, save};
+use ncl_image::{CodeImage, ImageError, load, save};
 use ncl_object::{Runtime, ThreadContext};
 use ncl_sys::{alloc_code, invoke_entry, publish_code, write_code};
 
@@ -40,6 +40,34 @@ fn published_code_executes_after_a_load() {
     let (value, count) = invoke_entry(&loaded.code[0], 0, ctx.thread_mut(), 0, [0; 4], 0);
     assert_eq!(value, EXPECTED);
     assert_eq!(count, 1);
+}
+
+#[test]
+fn code_image_exposes_raw_metadata_and_accepts_empty_code() {
+    let image = CodeImage::from_raw(vec![1, 2, 3], 2, 7, "N25-EMPTY".to_owned()).unwrap();
+    assert_eq!(image.bytes(), &[1, 2, 3]);
+    assert_eq!(image.entry_offset(), 2);
+    assert_eq!(image.frame_words(), 7);
+    assert_eq!(image.function_name(), "N25-EMPTY");
+
+    let empty = CodeImage::from_raw(Vec::new(), 0, 0, "empty".to_owned()).unwrap();
+    assert!(empty.bytes().is_empty());
+    assert_eq!(empty.entry_offset(), 0);
+}
+
+#[test]
+fn code_image_rejects_unpublished_code_and_invalid_offsets() {
+    let code = alloc_code(3).unwrap();
+    assert!(matches!(
+        CodeImage::capture(&code, 0, 0, "unpublished"),
+        Err(ImageError::Code(ncl_sys::CodeError::NotPublished))
+    ));
+    assert_eq!(
+        CodeImage::from_raw(vec![1, 2, 3], 4, 0, "invalid".to_owned()),
+        Err(ImageError::InvalidLayout {
+            field: "code entry offset"
+        })
+    );
 }
 
 /// Machine code that returns [`EXPECTED`] as one value.

@@ -82,3 +82,37 @@ fn top_level_package_forms_update_the_reader_package_for_later_forms() {
         .unwrap();
     assert_eq!(runtime.format_result(value), "99");
 }
+
+#[test]
+fn top_level_package_string_and_multiple_declarations_preserve_the_last_value() {
+    let mut runtime = Runtime::new().unwrap();
+
+    let value = runtime
+        .load(
+            "(in-package \"COMMON-LISP-USER\")\n\
+             (locally\n\
+               (declare (special *runtime-load-option-test*))\n\
+               (declare (optimize (speed 3)))\n\
+               101\n\
+               102)",
+        )
+        .unwrap();
+
+    assert_eq!(runtime.format_result(value), "102");
+}
+
+#[test]
+fn load_file_rejects_non_utf8_source_with_a_specific_native_error() {
+    let file = path("invalid-utf8");
+    fs::write(&file, [0xff]).unwrap();
+    let mut runtime = Runtime::new().unwrap();
+
+    let result = runtime.load_file(&file);
+
+    assert!(matches!(
+        result,
+        Err(RuntimeError::Native(message))
+            if message == "source file is not valid UTF-8"
+    ));
+    fs::remove_file(file).unwrap();
+}

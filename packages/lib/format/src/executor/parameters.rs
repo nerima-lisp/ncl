@@ -18,7 +18,7 @@ pub(super) fn parameter_width(
     match parameter {
         None | Some(Parameter::Unsupplied) => Ok(0),
         Some(Parameter::Integer(value)) if *value >= 0 => {
-            usize::try_from(*value).map_err(|_| FormatError::InvalidParameter { directive })
+            Ok(*value as usize)
         }
         Some(
             Parameter::Integer(_)
@@ -35,9 +35,7 @@ pub(super) fn parameter_usize(
 ) -> Result<Option<usize>, FormatError> {
     match parameter {
         None | Some(Parameter::Unsupplied) => Ok(None),
-        Some(Parameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
-            .map(Some)
-            .map_err(|_| FormatError::InvalidParameter { directive }),
+        Some(Parameter::Integer(value)) if *value >= 0 => Ok(Some(*value as usize)),
         Some(
             Parameter::Integer(_)
             | Parameter::Character(_)
@@ -61,9 +59,7 @@ pub(super) fn repeat_count(directive: &Directive) -> Result<usize, FormatError> 
     match directive.parameters.first() {
         None | Some(Parameter::Unsupplied) => Ok(1),
         Some(Parameter::Integer(value)) if *value >= 0 => {
-            usize::try_from(*value).map_err(|_| FormatError::InvalidParameter {
-                directive: directive.kind,
-            })
+            Ok(*value as usize)
         }
         Some(
             Parameter::Integer(_)

@@ -10,10 +10,13 @@ mod parameters;
 #[cfg(test)]
 #[path = "executor/tests/executor_test.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "executor/tests/compound_test.rs"]
+mod compound_tests;
 mod value;
 
 use control::{execute_character, execute_control_kind};
-use parameters::{object_string, parameter_width};
+use parameters::{object_string, parameter_i64, parameter_usize, parameter_width};
 use value::execute_value_kind;
 
 /// A failure while executing a FORMAT control.
@@ -135,11 +138,11 @@ fn execute_compound(
         return Ok(None);
     };
     let next = match directive.kind {
-        DirectiveKind::BracketOpen => execute_bracket(parts, index, end, state)?,
-        DirectiveKind::BraceOpen => execute_brace(parts, index, end, state)?,
+        DirectiveKind::BracketOpen => execute_bracket(parts, index, end, directive, state)?,
+        DirectiveKind::BraceOpen => execute_brace(parts, index, end, directive, state)?,
         DirectiveKind::ParenOpen => execute_case_group(parts, index, end, directive, state)?,
         DirectiveKind::Less => execute_justification(parts, index, end, directive, state)?,
-        DirectiveKind::Question => execute_nested(parts, index, state)?,
+        DirectiveKind::Question => execute_nested(parts, index, directive, state)?,
         _ => None, // check-added-lines: allow(wildcard) non-compound directives
     };
     Ok(next)
@@ -149,6 +152,7 @@ fn execute_bracket(
     parts: &[ControlPart],
     index: usize,
     end: usize,
+    directive: &Directive,
     state: &mut ExecutionState<'_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
@@ -159,20 +163,50 @@ fn execute_bracket(
         DirectiveKind::BracketClose,
     )?;
     let branches = split_branches(parts, index + 1, close);
-    let selector = next_argument_kind(state, DirectiveKind::BracketOpen)?;
-    let selected = selector
-        .as_fixnum()
-        .and_then(|value| usize::try_from(value).ok())
-        .unwrap_or(0);
-    let (start, branch_end) = branches[selected.min(branches.len() - 1)]; // check-added-lines: allow(index) branches are always non-empty
-    execute_parts(parts, start, branch_end, state)?;
+    let selected = if let Some(parameter) = directive_parameter(directive) {
+        parameter
+    } else if directive.colon {
+        let value = next_argument_kind(state, DirectiveKind::BracketOpen)?;
+        usize::from(value != Word::NIL)
+    } else if directive.at_sign {
+        let value = state
+            .arguments
+            .get(*state.argument_index)
+            .copied()
+            .ok_or(FormatError::MissingArgument {
+                directive: DirectiveKind::BracketOpen,
+            })?;
+        if value == Word::NIL {
+            *state.argument_index += 1;
+            return Ok(Some(close + 1));
+        }
+        0
+    } else {
+        let selector = next_argument_kind(state, DirectiveKind::BracketOpen)?;
+        selector
+            .as_fixnum()
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0)
+    };
+    let selected_branch = branches
+        .get(selected)
+        .copied()
+        .or_else(|| branches.iter().find(|(_, _, default)| *default).copied());
+    if let Some((start, branch_end, _)) = selected_branch {
+        execute_parts(parts, start, branch_end, state)?;
+    }
     Ok(Some(close + 1))
+}
+
+fn directive_parameter(directive: &Directive) -> Option<usize> {
+    parameter_i64(directive.parameters.first()).and_then(|value| usize::try_from(value).ok())
 }
 
 fn execute_brace(
     parts: &[ControlPart],
     index: usize,
     end: usize,
+    directive: &Directive,
     state: &mut ExecutionState<'_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
@@ -182,15 +216,44 @@ fn execute_brace(
         DirectiveKind::BraceOpen,
         DirectiveKind::BraceClose,
     )?;
+    if directive.at_sign {
+        let limit = parameter_usize(directive.parameters.first(), directive.kind)?;
+        let mut repetitions = 0;
+        while *state.argument_index < state.arguments.len()
+            && limit.is_none_or(|limit| repetitions < limit)
+        {
+            let before = *state.argument_index;
+            execute_parts(parts, index + 1, close, state)?;
+            repetitions += 1;
+            if *state.argument_index == before {
+                break;
+            }
+        }
+        return Ok(Some(close + 1));
+    }
     let mut item = next_argument_kind(state, DirectiveKind::BraceOpen)?;
+    let limit = parameter_usize(directive.parameters.first(), directive.kind)?;
+    let mut repetitions = 0;
     while item != Word::NIL {
         let value = car(state.ctx, item).map_err(|_| FormatError::InvalidParameter {
             directive: DirectiveKind::BraceOpen,
         })?;
-        let one = [value];
+        let mut values = vec![value];
+        if directive.colon {
+            values.clear();
+            let mut nested_item = value;
+            while nested_item != Word::NIL {
+                values.push(car(state.ctx, nested_item).map_err(|_| FormatError::InvalidParameter {
+                    directive: DirectiveKind::BraceOpen,
+                })?);
+                nested_item = cdr(state.ctx, nested_item).map_err(|_| FormatError::InvalidParameter {
+                    directive: DirectiveKind::BraceOpen,
+                })?;
+            }
+        }
         let mut nested_index = 0;
         let mut nested = ExecutionState {
-            arguments: &one,
+            arguments: &values,
             argument_index: &mut nested_index,
             ctx: state.ctx,
             runtime: state.runtime,
@@ -201,6 +264,10 @@ fn execute_brace(
         item = cdr(state.ctx, item).map_err(|_| FormatError::InvalidParameter {
             directive: DirectiveKind::BraceOpen,
         })?;
+        repetitions += 1;
+        if limit.is_some_and(|limit| repetitions >= limit) {
+            break;
+        }
     }
     Ok(Some(close + 1))
 }
@@ -230,14 +297,50 @@ fn execute_case_group(
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
-    let text = if directive.colon {
-        text.to_lowercase()
-    } else {
-        text.to_uppercase()
+    let text = match (directive.colon, directive.at_sign) {
+        (false, false) => text.to_lowercase(),
+        (true, false) => capitalize_words(&text),
+        (false, true) => capitalize_first_word(&text),
+        (true, true) => text.to_uppercase(),
     };
     state.sink.write_str(&text).map_err(FormatError::from)?;
     *state.line_start = text.ends_with('\n');
     Ok(Some(close + 1))
+}
+
+fn capitalize_words(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut word_start = true;
+    for character in text.chars() {
+        if character.is_alphabetic() {
+            if word_start {
+                result.extend(character.to_uppercase());
+                word_start = false;
+            } else {
+                result.extend(character.to_lowercase());
+            }
+        } else {
+            word_start = !character.is_alphanumeric();
+            result.push(character);
+        }
+    }
+    result
+}
+
+fn capitalize_first_word(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut first = true;
+    for character in text.chars() {
+        if first && character.is_alphabetic() {
+            result.extend(character.to_uppercase());
+            first = false;
+        } else if !first && character.is_alphabetic() {
+            result.extend(character.to_lowercase());
+        } else {
+            result.push(character);
+        }
+    }
+    result
 }
 
 fn execute_justification(
@@ -254,38 +357,131 @@ fn execute_justification(
         DirectiveKind::Less,
         DirectiveKind::Greater,
     )?;
-    let mut local = StringSink::new();
-    let mut nested = ExecutionState {
-        arguments: state.arguments,
-        argument_index: state.argument_index,
-        ctx: state.ctx,
-        runtime: state.runtime,
-        sink: &mut local,
-        line_start: state.line_start,
-    };
-    execute_parts(parts, index + 1, close, &mut nested)?;
-    let text = local.into_string();
-    let width = parameter_width(directive.parameters.first(), directive.kind)?;
-    for _ in 0..width.saturating_sub(text.chars().count()) {
-        state.sink.write_char(' ').map_err(FormatError::from)?;
+    let segments = split_justification(parts, index + 1, close);
+    let mut rendered = Vec::with_capacity(segments.len());
+    for (start, segment_end) in segments {
+        let mut local = StringSink::new();
+        let mut nested = ExecutionState {
+            arguments: state.arguments,
+            argument_index: state.argument_index,
+            ctx: state.ctx,
+            runtime: state.runtime,
+            sink: &mut local,
+            line_start: state.line_start,
+        };
+        execute_parts(parts, start, segment_end, &mut nested)?;
+        rendered.push(local.into_string());
     }
-    state.sink.write_str(&text).map_err(FormatError::from)?;
+    let mincol = parameter_width(directive.parameters.first(), directive.kind)?;
+    let colinc = parameter_usize(directive.parameters.get(1), directive.kind)?.unwrap_or(1).max(1);
+    let minpad = parameter_usize(directive.parameters.get(2), directive.kind)?.unwrap_or(0);
+    let padchar = directive
+        .parameters
+        .get(3)
+        .and_then(|parameter| match parameter {
+            crate::Parameter::Character(value) => Some(*value),
+            _ => None,
+        })
+        .unwrap_or(' ');
+    let content_width: usize = rendered.iter().map(|text| text.chars().count()).sum();
+    let required = content_width + minpad.saturating_mul(rendered.len().saturating_sub(1));
+    let width = if required <= mincol {
+        mincol
+    } else {
+        required + (colinc - required % colinc) % colinc
+    };
+    let padding = width.saturating_sub(content_width);
+    if rendered.len() == 1 {
+        if !directive.at_sign {
+            write_padding(state, padding, padchar)?;
+        }
+        state.sink.write_str(&rendered[0]).map_err(FormatError::from)?;
+        if directive.at_sign {
+            write_padding(state, padding, padchar)?;
+        }
+    } else {
+        let gaps = rendered.len() - 1;
+        let mut gap_sizes = vec![minpad; gaps];
+        let extra = padding.saturating_sub(minpad * gaps);
+        for (index, gap) in gap_sizes.iter_mut().enumerate() {
+            *gap += extra / gaps + usize::from(index < extra % gaps);
+        }
+        if directive.colon {
+            write_padding(state, padding.saturating_sub(extra), padchar)?;
+        }
+        for (index, text) in rendered.iter().enumerate() {
+            state.sink.write_str(text).map_err(FormatError::from)?;
+            if let Some(gap) = gap_sizes.get(index) {
+                write_padding(state, *gap, padchar)?;
+            }
+        }
+        if directive.at_sign {
+            write_padding(state, padding.saturating_sub(extra), padchar)?;
+        }
+    }
     Ok(Some(close + 1))
+}
+
+fn write_padding(
+    state: &mut ExecutionState<'_>,
+    count: usize,
+    character: char,
+) -> Result<(), FormatError> {
+    for _ in 0..count {
+        state.sink.write_char(character).map_err(FormatError::from)?;
+    }
+    Ok(())
+}
+
+fn split_justification(
+    parts: &[ControlPart],
+    start: usize,
+    end: usize,
+) -> Vec<(usize, usize)> {
+    let mut segments = Vec::new();
+    let mut segment_start = start;
+    let mut depth = 0;
+    for index in start..end {
+        if let Some(ControlPart::Directive(directive)) = parts.get(index) {
+            match directive.kind {
+                DirectiveKind::BracketOpen
+                | DirectiveKind::BraceOpen
+                | DirectiveKind::ParenOpen
+                | DirectiveKind::Less => depth += 1,
+                DirectiveKind::BracketClose
+                | DirectiveKind::BraceClose
+                | DirectiveKind::ParenClose
+                | DirectiveKind::Greater if depth > 0 => depth -= 1,
+                DirectiveKind::Semicolon if depth == 0 => {
+                    segments.push((segment_start, index));
+                    segment_start = index + 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    segments.push((segment_start, end));
+    segments
 }
 
 fn execute_nested(
     _parts: &[ControlPart],
     index: usize,
+    directive: &Directive,
     state: &mut ExecutionState<'_>,
 ) -> Result<Option<usize>, FormatError> {
     let control_word = next_argument_kind(state, DirectiveKind::Question)?;
-    let data = next_argument_kind(state, DirectiveKind::Question)?;
     let control = object_string(state.ctx, control_word).ok_or(FormatError::InvalidParameter {
         directive: DirectiveKind::Question,
     })?;
     let nested = crate::parse(&control).map_err(|_| FormatError::InvalidParameter {
         directive: DirectiveKind::Question,
     })?;
+    if directive.at_sign {
+        execute_parts(&nested.parts, 0, nested.parts.len(), state)?;
+        return Ok(Some(index + 1));
+    }
+    let data = next_argument_kind(state, DirectiveKind::Question)?;
     let mut values = Vec::new();
     let mut item = data;
     while item != Word::NIL {
@@ -340,22 +536,26 @@ fn matching(
     Err(FormatError::InvalidParameter { directive: opening })
 }
 
-fn split_branches(parts: &[ControlPart], start: usize, end: usize) -> Vec<(usize, usize)> {
+fn split_branches(parts: &[ControlPart], start: usize, end: usize) -> Vec<(usize, usize, bool)> {
     let mut result = Vec::new();
     let mut branch_start = start;
+    let mut depth = 0;
+    let mut default = false;
     for index in start..end {
-        if matches!(
-            parts.get(index),
-            Some(ControlPart::Directive(Directive {
-                kind: DirectiveKind::Semicolon,
-                ..
-            }))
-        ) {
-            result.push((branch_start, index));
-            branch_start = index + 1;
+        if let Some(ControlPart::Directive(directive)) = parts.get(index) {
+            match directive.kind {
+                DirectiveKind::BracketOpen => depth += 1,
+                DirectiveKind::BracketClose if depth > 0 => depth -= 1,
+                DirectiveKind::Semicolon if depth == 0 => {
+                    result.push((branch_start, index, default));
+                    branch_start = index + 1;
+                    default = directive.colon;
+                }
+                _ => {}
+            }
         }
     }
-    result.push((branch_start, end));
+    result.push((branch_start, end, default));
     result
 }
 

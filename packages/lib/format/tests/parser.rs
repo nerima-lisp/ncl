@@ -203,6 +203,7 @@ fn parses_signed_parameters_and_rejects_integer_overflow() {
             kind: ncl_lib_format::ParseErrorKind::InvalidParameter,
         })
     );
+    assert!(parse("~-9223372036854775808D").is_err());
 }
 
 #[test]

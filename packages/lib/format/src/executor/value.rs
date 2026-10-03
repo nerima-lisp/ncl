@@ -16,6 +16,9 @@ pub(super) fn execute_value_kind(
         DirectiveKind::B => PrintOptions::new().with_base(2),
         DirectiveKind::O => PrintOptions::new().with_base(8),
         DirectiveKind::X => PrintOptions::new().with_base(16),
+        DirectiveKind::R if directive.parameters.is_empty() => {
+            return execute_unparameterized_radix(directive, state);
+        }
         DirectiveKind::R => PrintOptions::new().with_base(radix_parameter(directive)?),
         DirectiveKind::W => PrintOptions::new().with_readably(true),
         DirectiveKind::F | DirectiveKind::E | DirectiveKind::G => {
@@ -30,6 +33,164 @@ pub(super) fn execute_value_kind(
         }
     };
     execute_value_directive(directive, state, options)
+}
+
+fn execute_unparameterized_radix(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<(), FormatError> {
+    let value = next_argument(directive, state)?;
+    if !is_integer(state.ctx, value) {
+        return Err(FormatError::NonInteger {
+            directive: directive.kind,
+        });
+    }
+    let mut rendered = StringSink::new();
+    write(
+        state.ctx,
+        state.runtime,
+        value,
+        &mut rendered,
+        &PrintOptions::new().with_base(10),
+    )?;
+    let number = rendered
+        .into_string()
+        .parse::<i128>()
+        .map_err(|_| FormatError::InvalidParameter {
+            directive: directive.kind,
+        })?;
+    let rendered = if directive.at_sign {
+        roman(number, directive.colon)
+    } else if directive.colon {
+        ordinal(number)
+    } else {
+        cardinal(number)
+    };
+    write_padded(state, directive, &rendered)
+}
+
+fn cardinal(value: i128) -> String {
+    if value < 0 {
+        return format!("minus {}", cardinal(-value));
+    }
+    if value == 0 {
+        return "zero".to_owned();
+    }
+    let mut result = String::new();
+    let mut remaining = value;
+    for (scale, name) in [(1_000_000_000_000_i128, "trillion"),
+        (1_000_000_000_i128, "billion"),
+        (1_000_000_i128, "million"),
+        (1_000_i128, "thousand")]
+    {
+        if remaining >= scale {
+            append_words(&mut result, under_thousand(remaining / scale));
+            result.push(' ');
+            result.push_str(name);
+            remaining %= scale;
+            if remaining != 0 {
+                result.push(' ');
+            }
+        }
+    }
+    if remaining != 0 {
+        append_words(&mut result, under_thousand(remaining));
+    }
+    result
+}
+
+pub(super) fn append_words(result: &mut String, words: String) {
+    if !result.is_empty() && !result.ends_with(' ') {
+        result.push(' ');
+    }
+    result.push_str(&words);
+}
+
+fn under_thousand(value: i128) -> String {
+    const ONES: [&str; 20] = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+        "seventeen", "eighteen", "nineteen",
+    ];
+    const TENS: [&str; 10] = [
+        "zero", "ten", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
+        "ninety",
+    ];
+    if value < 20 {
+        return ONES[value as usize].to_owned();
+    }
+    if value < 100 {
+        let tens = value / 10;
+        let ones = value % 10;
+        return if ones == 0 {
+            TENS[tens as usize].to_owned()
+        } else {
+            format!("{}-{}", TENS[tens as usize], ONES[ones as usize])
+        };
+    }
+    let hundreds = value / 100;
+    let rest = value % 100;
+    if rest == 0 {
+        format!("{} hundred", ONES[hundreds as usize])
+    } else {
+        format!("{} hundred {}", ONES[hundreds as usize], under_thousand(rest))
+    }
+}
+
+fn ordinal(value: i128) -> String {
+    if value < 0 {
+        return format!("minus {}", ordinal(-value));
+    }
+    let cardinal = cardinal(value);
+    if let Some(prefix) = cardinal.strip_suffix("one") {
+        return format!("{}first", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("two") {
+        return format!("{}second", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("three") {
+        return format!("{}third", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("five") {
+        return format!("{}fifth", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("eight") {
+        return format!("{}eighth", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("nine") {
+        return format!("{}ninth", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("twelve") {
+        return format!("{}twelfth", prefix);
+    }
+    if let Some(prefix) = cardinal.strip_suffix("y") {
+        return format!("{}ieth", prefix);
+    }
+    format!("{}th", cardinal)
+}
+
+fn roman(value: i128, old: bool) -> String {
+    if value == 0 {
+        return "N".to_owned();
+    }
+    if value < 0 {
+        return format!("-{}", roman(-value, old));
+    }
+    let symbols: &[(i128, &str)] = if old {
+        &[(1000, "M"), (500, "D"), (100, "C"), (50, "L"), (10, "X"), (5, "V"), (1, "I")]
+    } else {
+        &[(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+            (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+    };
+    let mut remaining = value;
+    let mut result = String::new();
+    for (unit, symbol) in symbols {
+        while remaining >= *unit {
+            result.push_str(symbol);
+            remaining -= *unit;
+        }
+    }
+    result
 }
 
 fn execute_float_directive(
@@ -51,7 +212,10 @@ fn execute_float_directive(
             })?,
         );
     }
-    let rendered = render_float(state, value, object, directive)?;
+    let mut rendered = render_float(state, value, object, directive)?;
+    if directive.at_sign && !rendered.starts_with('-') {
+        rendered.insert(0, '+');
+    }
     write_padded(state, directive, &rendered)
 }
 
@@ -117,17 +281,10 @@ fn write_padded(
         })
         .unwrap_or(' ');
     let padding = width.saturating_sub(rendered.chars().count());
-    if !directive.at_sign {
-        for _ in 0..padding {
-            state.sink.write_char(pad).map_err(FormatError::from)?;
-        }
+    for _ in 0..padding {
+        state.sink.write_char(pad).map_err(FormatError::from)?;
     }
     state.sink.write_str(rendered).map_err(FormatError::from)?;
-    if directive.at_sign {
-        for _ in 0..padding {
-            state.sink.write_char(pad).map_err(FormatError::from)?;
-        }
-    }
     *state.line_start = false;
     Ok(())
 }
@@ -169,15 +326,27 @@ fn execute_value_with_argument(
         parameter_width(directive.parameters.first(), directive.kind)?
     };
     let padding = width.saturating_sub(rendered.chars().count());
-    if !directive.at_sign {
+    let pad = directive
+        .parameters
+        .get(1)
+        .and_then(|parameter| match parameter {
+            Parameter::Character(value) => Some(*value),
+            _ => None,
+        })
+        .unwrap_or(' ');
+    let right_pad = matches!(
+        directive.kind,
+        DirectiveKind::A | DirectiveKind::S | DirectiveKind::W
+    ) && !directive.at_sign;
+    if !right_pad {
         for _ in 0..padding {
-            state.sink.write_char(' ').map_err(FormatError::from)?;
+            state.sink.write_char(pad).map_err(FormatError::from)?;
         }
     }
     state.sink.write_str(&rendered).map_err(FormatError::from)?;
-    if directive.at_sign {
+    if right_pad {
         for _ in 0..padding {
-            state.sink.write_char(' ').map_err(FormatError::from)?;
+            state.sink.write_char(pad).map_err(FormatError::from)?;
         }
     }
     *state.line_start = false;
@@ -191,7 +360,5 @@ fn radix_parameter(directive: &Directive) -> Result<u32, FormatError> {
             directive: directive.kind,
         });
     }
-    u32::try_from(value).map_err(|_| FormatError::InvalidParameter {
-        directive: directive.kind,
-    })
+    Ok(value as u32)
 }

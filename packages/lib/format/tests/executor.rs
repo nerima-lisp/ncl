@@ -160,7 +160,7 @@ fn executes_character_radix_float_width_and_printer_directives() {
     .expect("execute");
     assert_eq!(
         sink.into_string(),
-        "a/FF/1.25/1.25/1.25/1.25/    x/x    /\"x\""
+        "a/FF/1.25/1.25/1.25/1.25/x    /    x/\"x\""
     );
 }
 
@@ -174,7 +174,7 @@ fn executes_compound_control_directives() {
     let controls = [
         ("~[zero~;one~]", vec![Word::fixnum(1)], "one"),
         ("~{~A,~}", vec![list], "one,two,"),
-        ("~@(hello~)", vec![], "HELLO"),
+        ("~@(hello~)", vec![], "Hello"),
         ("~10<ok~>", vec![], "        ok"),
         ("~?", vec![string(&runtime, &mut ctx, "~A"), list], "one"),
     ];
@@ -311,7 +311,7 @@ fn exercises_early_termination_case_variants_and_parameter_errors() {
         &mut sink,
     )
     .expect("execute");
-    assert_eq!(sink.into_string(), "one");
+    assert_eq!(sink.into_string(), "");
     let mut sink = StringSink::new();
     execute(
         &parse("~[zero~;one~]").expect("control"),
@@ -331,7 +331,7 @@ fn exercises_early_termination_case_variants_and_parameter_errors() {
         &mut sink,
     )
     .expect("execute");
-    assert_eq!(sink.into_string(), "hello");
+    assert_eq!(sink.into_string(), "Hello");
     assert!(parse("~2,0T").is_err());
     assert!(parse("~-1A").is_err());
 }
@@ -492,4 +492,19 @@ fn format_errors_expose_specific_messages_and_sources() {
         print_error.source().map(ToString::to_string),
         Some("print: sink error: closed".to_owned())
     );
+}
+
+#[test]
+fn nested_bracket_directives_keep_inner_semicolons_in_one_branch() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    execute(
+        &parse("~[outer~[inner-zero~;inner-one~]~;fallback~]").expect("control"),
+        &[Word::fixnum(0), Word::fixnum(1)],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "outerinner-one");
 }

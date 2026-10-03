@@ -91,12 +91,12 @@ fn covers_compound_edges_and_argument_errors() {
     );
     assert_eq!(
         run("~[zero~;one~]", &[Word::fixnum(9)], &mut ctx, &runtime),
-        "one"
+        ""
     );
     assert_eq!(run("~{~A,~}", &[list], &mut ctx, &runtime), "one,two,");
     assert_eq!(run("~{~A~}", &[Word::NIL], &mut ctx, &runtime), "");
-    assert_eq!(run("~:(Hi~)", &[], &mut ctx, &runtime), "hi");
-    assert_eq!(run("~(Hi~)", &[], &mut ctx, &runtime), "HI");
+    assert_eq!(run("~:(Hi~)", &[], &mut ctx, &runtime), "Hi");
+    assert_eq!(run("~(Hi~)", &[], &mut ctx, &runtime), "hi");
     assert_eq!(run("~10<ok~>", &[], &mut ctx, &runtime), "        ok");
     assert_eq!(run("~:>ok", &[], &mut ctx, &runtime), "ok");
     assert_eq!(
@@ -170,7 +170,7 @@ fn covers_value_formats_and_invalid_inputs() {
     let value = string(&runtime, &mut ctx, "x");
     assert_eq!(
         run("~5,'0A/~5@A", &[value, value], &mut ctx, &runtime),
-        "    x/x    "
+        "x0000/    x"
     );
     assert_eq!(
         run(
@@ -301,7 +301,7 @@ fn covers_control_directive_variants() {
             &mut ctx,
             &runtime
         ),
-        "/s/"
+        "/s/s"
     );
     assert_eq!(
         run(
@@ -372,7 +372,7 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
     );
     assert_eq!(
         run("~8,2@F", &[float.into()], &mut ctx, &runtime),
-        "1.25    "
+        "   +1.25"
     );
     assert_eq!(run("~16R", &[Word::fixnum(255)], &mut ctx, &runtime), "FF");
     assert_eq!(
@@ -382,7 +382,7 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
             &mut ctx,
             &runtime
         ),
-        "       x/\"x\"     "
+        "x       /     \"x\""
     );
     assert!(
         execute(
@@ -416,7 +416,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     assert_eq!(run("a~/", &[], &mut ctx, &runtime), "a\n");
     assert_eq!(
         run("~8,2@$", &[float.into()], &mut ctx, &runtime),
-        "1.25    "
+        "    1.25"
     );
 
     let mut sink = StringSink::new();

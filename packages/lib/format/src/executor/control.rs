@@ -1,6 +1,6 @@
 use ncl_object::{ObjectRef, Word, classify_object};
 
-use super::parameters::{is_integer, parameter_i64, repeat_count_for};
+use super::parameters::{parameter_i64, repeat_count_for};
 use super::{ExecutionState, FormatError, next_argument};
 use crate::{Directive, DirectiveKind};
 
@@ -48,27 +48,49 @@ pub(super) fn execute_control_kind(
             *state.line_start = false;
         }
         DirectiveKind::P => {
-            let value = next_argument(directive, state)?;
-            if is_integer(state.ctx, value) && value != Word::fixnum(1) {
+            let value = if directive.colon {
+                state
+                    .argument_index
+                    .checked_sub(1)
+                    .and_then(|index| state.arguments.get(index).copied())
+                    .ok_or(FormatError::MissingArgument {
+                        directive: directive.kind,
+                    })?
+            } else {
+                next_argument(directive, state)?
+            };
+            if directive.at_sign {
+                state
+                    .sink
+                    .write_str(if value == Word::fixnum(1) { "y" } else { "ies" })
+                    .map_err(FormatError::from)?;
+            } else if value != Word::fixnum(1) {
                 state.sink.write_char('s').map_err(FormatError::from)?;
             }
         }
         DirectiveKind::Star => {
             let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
-            let current = i128::try_from(*state.argument_index).map_err(|_| {
-                FormatError::InvalidParameter {
-                    directive: directive.kind,
-                }
-            })?;
+            let current = *state.argument_index as i128;
             let target_value = current + i128::from(offset);
             let target_value = if target_value < 0 { 0 } else { target_value };
-            let target =
-                usize::try_from(target_value).map_err(|_| FormatError::InvalidParameter {
-                    directive: directive.kind,
-                })?;
+            let target = target_value.min(usize::MAX as i128) as usize;
             *state.argument_index = target.min(state.arguments.len());
         }
-        DirectiveKind::UpArrow => *state.argument_index = state.arguments.len(),
+        DirectiveKind::UpArrow => {
+            let exhausted = state.arguments.len() == *state.argument_index;
+            let terminate = if directive.parameters.is_empty() {
+                exhausted
+            } else {
+                directive
+                    .parameters
+                    .first()
+                    .and_then(|parameter| parameter_i64(Some(parameter)))
+                    .is_some_and(|limit| i64::try_from(state.arguments.len()).is_ok_and(|len| len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit))
+            };
+            if terminate {
+                *state.argument_index = state.arguments.len();
+            }
+        }
         // check-added-lines: allow(wildcard) non-control directives
         _ => {
             return Err(FormatError::InvalidParameter {
@@ -108,12 +130,8 @@ fn tab_count(directive: &Directive) -> Result<usize, FormatError> {
             directive: directive.kind,
         });
     }
-    let column = usize::try_from(column).map_err(|_| FormatError::InvalidParameter {
-        directive: directive.kind,
-    })?;
-    let increment = usize::try_from(increment).map_err(|_| FormatError::InvalidParameter {
-        directive: directive.kind,
-    })?;
+    let column = column as usize;
+    let increment = increment as usize;
     Ok(column.div_ceil(increment))
 }
 

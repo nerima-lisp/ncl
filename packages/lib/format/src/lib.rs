@@ -179,12 +179,7 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                                 kind: ParseErrorKind::InvalidParameter,
                             })?;
                     }
-                    parameters.push(Parameter::Integer(value.checked_mul(sign).ok_or(
-                        ParseError {
-                            offset: digit_start,
-                            kind: ParseErrorKind::InvalidParameter,
-                        },
-                    )?));
+                    parameters.push(Parameter::Integer(value * sign));
                     comma_pending = false;
                     continue;
                 }
@@ -267,7 +262,6 @@ fn validate_parameters(
         }
         DirectiveKind::A
         | DirectiveKind::S
-        | DirectiveKind::D
         | DirectiveKind::B
         | DirectiveKind::O
         | DirectiveKind::X
@@ -284,6 +278,7 @@ fn validate_parameters(
                 nonnegative(parameters.get(1))?;
             }
         }
+        DirectiveKind::D => {}
         DirectiveKind::Percent
         | DirectiveKind::Ampersand
         | DirectiveKind::Tilde

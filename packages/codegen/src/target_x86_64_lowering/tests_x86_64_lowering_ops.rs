@@ -434,6 +434,79 @@ fn operation_errors_keep_constant_handler_and_copy_contracts_typed() {
 }
 
 #[test]
+fn builtin_lowering_reports_arity_and_stages_generated_lambda_arguments() {
+    let function = FunctionBuilder::new(
+        ncl_ir::FunctionId(218),
+        "builtin-arity-and-rest-arguments",
+        Vec::new(),
+        Vec::new(),
+    )
+    .finish();
+    let mut slots = slots_with_locations(
+        &[
+            (ValueId(0), Location::Register(0)),
+            (ValueId(1), Location::Register(1)),
+        ],
+        0,
+    );
+    slots.incoming_args_base = Some(0);
+
+    let mut assembler = Assembler::new();
+    let missing_rest_operands = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "make-rest-list".into(),
+            args: Vec::new(),
+        },
+        loc: None,
+    };
+    assert!(matches!(
+        lower_op(
+            &mut assembler,
+            &missing_rest_operands,
+            &function,
+            &slots,
+            &X86_64Abi,
+        ),
+        Err(CodegenError::Unsupported(message))
+            if message == "make-rest-list requires argc and start"
+    ));
+
+    let too_many_arguments = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "identity".into(),
+            args: (0..=4).map(ValueId).collect(),
+        },
+        loc: None,
+    };
+    assert!(matches!(
+        lower_op(
+            &mut assembler,
+            &too_many_arguments,
+            &function,
+            &slots,
+            &X86_64Abi,
+        ),
+        Err(CodegenError::Unsupported(message))
+            if message == "x86-64 builtins support at most four arguments"
+    ));
+
+    let rest_builtin = Op {
+        results: Vec::new(),
+        kind: OpKind::Builtin {
+            name: "make-rest-list".into(),
+            args: vec![ValueId(0), ValueId(1)],
+        },
+        loc: None,
+    };
+    let mut staged = Assembler::new();
+    lower_op(&mut staged, &rest_builtin, &function, &slots, &X86_64Abi)
+        .expect("generated lambda rest arguments lower");
+    assert!(!staged.bytes().is_empty());
+}
+
+#[test]
 fn indirect_calls_emit_the_same_machine_call_template_as_direct_calls() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(216),

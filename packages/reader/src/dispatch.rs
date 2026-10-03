@@ -49,7 +49,14 @@ pub fn read_sharp(
         ':' => read_uninterned(ctx, runtime, source, rt).map(Some),
         '.' => {
             if matches!(opts.read_evaluation(), crate::ReadEvaluation::Enabled) {
-                Err(ReadError::ReadEvalUnavailable)
+                if !ctx.reader_evaluator_available() {
+                    return Err(ReadError::ReadEvalUnavailable);
+                }
+                let form = read_form(ctx, runtime, source, opts, rt, labels)?
+                    .ok_or(ReadError::UnexpectedEof)?;
+                ctx.evaluate_reader_form(form)
+                    .map(Some)
+                    .map_err(ReadError::from)
             } else {
                 Err(ReadError::ReadEvalDisabled)
             }

@@ -245,6 +245,29 @@ impl Default for InlineDirectCalls {
 }
 
 impl InlineDirectCalls {
+    fn finish(
+        function: &mut Function,
+        replacements: &HashMap<ValueId, ValueId>,
+        original: Function,
+    ) -> bool {
+        for block in &mut function.blocks {
+            for op in &mut block.ops {
+                remap_op_values(op, replacements);
+            }
+            remap_term_values(&mut block.terminator, replacements);
+        }
+        Self::restore_if_invalid(function, original)
+    }
+
+    fn restore_if_invalid(function: &mut Function, original: Function) -> bool {
+        if ncl_ir::verify(function).is_err() {
+            *function = original;
+            true
+        } else {
+            false
+        }
+    }
+
     fn prohibited(function: &Function) -> bool {
         !function.handler_regions.is_empty()
             || function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
@@ -253,6 +276,7 @@ impl InlineDirectCalls {
                     OpKind::MakeClosure { .. }
                         | OpKind::MakeValueCell { .. }
                         | OpKind::CallClosure { .. }
+                        | OpKind::LoadArg { .. }
                         | OpKind::SetMultipleValues { .. }
                 )
             })
@@ -293,6 +317,7 @@ impl FunctionPass for InlineDirectCalls {
         if Self::prohibited(function) {
             return Ok(false);
         }
+        let original = function.clone();
         let mut changed = false;
         let mut replacements = HashMap::new();
         let function_view = function.clone();
@@ -380,13 +405,8 @@ impl FunctionPass for InlineDirectCalls {
             }
             block.ops = new_ops;
         }
-        if changed {
-            for block in &mut function.blocks {
-                for op in &mut block.ops {
-                    remap_op_values(op, &replacements);
-                }
-                remap_term_values(&mut block.terminator, &replacements);
-            }
+        if changed && Self::finish(function, &replacements, original) {
+            return Ok(false);
         }
         Ok(changed)
     }

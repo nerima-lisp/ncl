@@ -183,25 +183,37 @@ fn defmethod_macro_builtin(
     let specializer_fields = macro_list_to_handles(&mut scope, specializer_form)?;
     let mut user_lambda = scope.root_many(&[]);
     let mut lambda_parameters = scope.root_many(&[]);
-    for field in specializer_fields.iter().copied() {
+    let mut dispatch_fields = scope.root_many(&[]);
+    let mut field_index = 0;
+    while field_index < specializer_fields.len() {
+        let field = specializer_fields.as_slice()[field_index]; // check-added-lines: allow(index) field_index is bounded by the loop condition
         if scope.get(field).as_word().is_cons() {
             let fields = macro_list_to_handles(&mut scope, field)?;
             let parameter = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
             macro_push_handle(&mut scope, &mut user_lambda, parameter);
             macro_push_handle(&mut scope, &mut lambda_parameters, parameter);
+            macro_push_handle(&mut scope, &mut dispatch_fields, field);
         } else if symbol_name_string(scope.context(), scope.get(field).as_word())? == "&REST" {
-            macro_push_handle(&mut scope, &mut user_lambda, field);
             let parameter = *specializer_fields
                 .as_slice()
-                .get(user_lambda.len())
+                .get(field_index + 1)
                 .ok_or(ObjectError::TypeError)?;
+            macro_push_handle(&mut scope, &mut user_lambda, field);
             macro_push_handle(&mut scope, &mut user_lambda, parameter);
             macro_push_handle(&mut scope, &mut lambda_parameters, parameter);
+            macro_push_handle(&mut scope, &mut dispatch_fields, field);
+            if field_index + 2 != specializer_fields.len() {
+                return Err(ObjectError::TypeError);
+            }
+            break;
         } else {
-            return Err(ObjectError::TypeError);
+            macro_push_handle(&mut scope, &mut user_lambda, field);
+            macro_push_handle(&mut scope, &mut lambda_parameters, field);
+            macro_push_handle(&mut scope, &mut dispatch_fields, field);
         }
+        field_index += 1;
     }
-    let dispatch_specializers = scope.make_list(runtime, &specializer_fields)?;
+    let dispatch_specializers = scope.make_list(runtime, &dispatch_fields)?;
     let defun = scope.intern(runtime, COMMON_LISP, "DEFUN")?;
     let dispatch = scope.intern(runtime, COMMON_LISP, "%CLOS-DISPATCH")?;
     let args_symbol = scope.intern(runtime, COMMON_LISP, "ARGS")?;

@@ -242,6 +242,9 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
             }
         }
     }
+    if !has_iteration_driver && hash_iteration.is_none() {
+        return Err(ObjectError::Unsupported); // check-added-lines: allow(unsupported) this is the required invalid LOOP shape error
+    }
     let body = expand_body(ctx, runtime, &mut held, &body, end)?;
     let loop_body = if hash_iteration.is_some() && !has_iteration_driver {
         let mut tagbody = vec![start];

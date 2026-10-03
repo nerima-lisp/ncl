@@ -181,3 +181,152 @@ fn parser_rejects_descriptor_and_debug_edges() {
         "bad handler kind"
     );
 }
+
+#[test]
+fn parser_reports_structural_and_descriptor_errors() {
+    assert_eq!(parse_error("not an ir function"), "expected fn header");
+    let minimal_text = minimal().to_string();
+    assert_eq!(
+        parse_error(&format!("{minimal_text}trailing")),
+        "trailing input"
+    );
+
+    let typed = finish(
+        "typed",
+        vec![Param {
+            name: "x".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    );
+    let typed_text = typed.to_string();
+    assert_eq!(
+        parse_error(&typed_text.replacen(",0,", ",9,", 1)),
+        "bad type"
+    );
+
+    let op = finish(
+        "op",
+        vec![Param {
+            name: "x".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(1, Ty::Word)],
+                OpKind::Builtin {
+                    name: "builtin".into(),
+                    args: vec![ValueId(0)],
+                },
+            )],
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+        )],
+        Vec::new(),
+    );
+    let op_text = op.to_string();
+    assert_eq!(
+        parse_error(&op_text.replacen(",c,builtin,", ",ff,builtin,", 1)),
+        "bad operation"
+    );
+    assert_eq!(
+        parse_error(&op_text.replacen(",c,builtin,", ",d,NoSuchPrimitive,", 1)),
+        "bad primitive"
+    );
+}
+
+#[test]
+fn parser_round_trips_all_string_dispatch_variants() {
+    let mut ops = [
+        Prim::Car,
+        Prim::Cdr,
+        Prim::Rplaca,
+        Prim::Rplacd,
+        Prim::Svref,
+        Prim::Aref,
+        Prim::Aset,
+        Prim::FixnumAdd,
+        Prim::FixnumSub,
+        Prim::FixnumMul,
+        Prim::FixnumDiv,
+        Prim::FixnumLt,
+        Prim::FixnumLe,
+        Prim::FixnumEq,
+        Prim::Eq,
+        Prim::Eql,
+        Prim::Typep,
+    ]
+    .into_iter()
+    .map(|primitive| {
+        op(
+            &[],
+            OpKind::Prim {
+                op: primitive,
+                args: vec![ValueId(0)],
+                condition: None,
+            },
+        )
+    })
+    .collect::<Vec<_>>();
+    ops.extend(
+        [
+            Compare::Eq,
+            Compare::Ne,
+            Compare::Lt,
+            Compare::Le,
+            Compare::Gt,
+            Compare::Ge,
+        ]
+        .into_iter()
+        .map(|comparison| {
+            op(
+                &[],
+                OpKind::Compare {
+                    op: comparison,
+                    left: ValueId(0),
+                    right: ValueId(0),
+                },
+            )
+        }),
+    );
+    ops.extend(
+        [
+            Convert::WordToI64,
+            Convert::I64ToWord,
+            Convert::WordToF64,
+            Convert::F64ToWord,
+            Convert::AddressToWord,
+            Convert::WordToAddress,
+        ]
+        .into_iter()
+        .map(|conversion| {
+            op(
+                &[],
+                OpKind::Convert {
+                    op: conversion,
+                    value: ValueId(0),
+                },
+            )
+        }),
+    );
+
+    let function = finish(
+        "dispatch-variants",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![block(0, ops, Terminator::Return { values: Vec::new() })],
+        Vec::new(),
+    );
+    assert_eq!(parse(&function.to_string()), Ok(function));
+}

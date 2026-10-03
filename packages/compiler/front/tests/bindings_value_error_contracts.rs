@@ -1,7 +1,7 @@
 //! Value-sensitive checks for lexical binding and call-form lowering.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use ncl_compiler_front::{Expr, LetBinding, Literal, SymbolRef};
+use ncl_compiler_front::{Expr, LambdaExpr, LambdaList, LetBinding, Literal, SymbolRef};
 use ncl_ir::{BlockId, Constant, Function, HandlerKind, OpKind, Terminator, ValueId, verify};
 
 fn symbol(name: &str) -> SymbolRef {
@@ -221,4 +221,65 @@ fn progv_restores_on_a_nonlocal_exit_and_returns_nil_from_its_handler() {
         constant_for_value(&lowered.entry, *values_target),
         Some(&Constant::Nil)
     );
+}
+
+#[test]
+fn progv_normal_exit_leaves_the_handler_and_returns_the_body_value() {
+    let expression = Expr::Progv {
+        symbols: Box::new(Expr::Constant(Literal::Nil)),
+        values: Box::new(Expr::Constant(Literal::Nil)),
+        body: vec![Expr::Constant(Literal::fixnum(37))],
+    };
+    let lowered = ncl_compiler_front::lower_toplevel(&expression).expect("progv lowers");
+
+    assert_verifies(&lowered.entry);
+    let region = lowered
+        .entry
+        .handler_regions
+        .first()
+        .expect("the progv handler region is present");
+    assert_eq!(region.kind, HandlerKind::Progv);
+    assert_eq!(region.protected, vec![BlockId(0)]);
+    assert_eq!(region.cleanup, None);
+    let leave_count = ops(&lowered.entry)
+        .filter(|op| matches!(op.kind, OpKind::LeaveHandler { region: id } if id == region.id))
+        .count();
+    assert_eq!(leave_count, 2);
+    assert!(lowered.entry.blocks.iter().any(|block| {
+        matches!(&block.terminator, Terminator::Jump { args, .. }
+        if args.first().is_some_and(|value| {
+            constant_for_value(&lowered.entry, *value) == Some(&Constant::Fixnum(37))
+        }))
+    }));
+}
+
+#[test]
+fn captured_setq_writes_through_the_value_cell() {
+    let name = symbol("CAPTURED");
+    let expression = Expr::Let {
+        sequential: false,
+        bindings: vec![LetBinding {
+            name: name.clone(),
+            value: Some(Expr::Constant(Literal::fixnum(5))),
+        }],
+        declarations: Vec::new(),
+        body: vec![Expr::Lambda(Box::new(LambdaExpr {
+            lambda_list: LambdaList::new(),
+            declarations: Vec::new(),
+            docstring: None,
+            body: vec![Expr::Setq(vec![(
+                name,
+                Expr::Constant(Literal::fixnum(41)),
+            )])],
+        }))],
+    };
+    let lowered = ncl_compiler_front::lower_toplevel(&expression).expect("captured setq lowers");
+
+    assert_verifies(&lowered.entry);
+    let nested = lowered.nested.first().expect("captured lambda is lowered");
+    assert_verifies(nested);
+    assert!(ops(nested).any(|op| {
+        matches!(op.kind, OpKind::StoreField { field: 0, value, .. }
+            if constant_for_value(nested, value) == Some(&Constant::Fixnum(41)))
+    }));
 }

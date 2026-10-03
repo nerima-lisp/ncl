@@ -4,10 +4,11 @@ use std::ptr::NonNull;
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::MacroCaller;
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
-    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
-    make_bignum_from_limbs, make_closure, make_complex, make_cons, make_double, make_ratio,
-    make_simple_vector, make_string, make_value_cell, symbol_function,
+    ArrayElementType, ArrayOptions, BuiltinIdentifier, CodeObject, Function, FunctionObject,
+    ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word, array_row_major_set, cdr,
+    function_code, function_entry, make_array, make_bignum_from_limbs, make_closure, make_complex,
+    make_cons, make_double, make_ratio, make_simple_vector, make_specialized_array, make_string,
+    make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
@@ -370,6 +371,49 @@ pub fn resolve_constant(
                         ncl_ir::StructureKind::SimpleVector => {
                             make_simple_vector(ctx, runtime, &values)?
                         }
+                    }
+                }
+                ncl_ir::Constant::Array {
+                    dimensions,
+                    element_type,
+                    elements,
+                } => {
+                    let values = elements
+                        .iter()
+                        .map(resolved)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let element_type = match element_type {
+                        ncl_ir::ArrayElementType::T => ArrayElementType::T,
+                        ncl_ir::ArrayElementType::Bit => ArrayElementType::Bit,
+                        ncl_ir::ArrayElementType::Character => ArrayElementType::Character,
+                        ncl_ir::ArrayElementType::BaseChar => ArrayElementType::BaseChar,
+                        ncl_ir::ArrayElementType::Fixnum => ArrayElementType::Fixnum,
+                        ncl_ir::ArrayElementType::Signed => ArrayElementType::Signed,
+                        ncl_ir::ArrayElementType::Unsigned => ArrayElementType::Unsigned,
+                        ncl_ir::ArrayElementType::SingleFloat => ArrayElementType::SingleFloat,
+                        ncl_ir::ArrayElementType::DoubleFloat => ArrayElementType::DoubleFloat,
+                    };
+                    if element_type == ArrayElementType::T {
+                        let initial_element = values.first().copied().unwrap_or(Word::NIL);
+                        let array = make_array(
+                            ctx,
+                            runtime,
+                            dimensions,
+                            ArrayOptions {
+                                element_type,
+                                initial_element,
+                                adjustable: false,
+                                fill_pointer: None,
+                                displaced_to: None,
+                                displaced_index_offset: 0,
+                            },
+                        )?;
+                        for (index, value) in values.iter().copied().enumerate() {
+                            array_row_major_set(ctx, array, index, value)?;
+                        }
+                        array
+                    } else {
+                        make_specialized_array(ctx, runtime, element_type, &values)?
                     }
                 }
                 ncl_ir::Constant::DoubleFloat(value) => {

@@ -129,6 +129,12 @@ pub enum Constant {
         kind: StructureKind,
         elements: Vec<ConstantIndex>,
     },
+    /// An immutable array literal, with row-major element constants.
+    Array {
+        dimensions: Vec<usize>,
+        element_type: ArrayElementType,
+        elements: Vec<ConstantIndex>,
+    },
     Nil,
     T,
     Unbound,
@@ -148,6 +154,20 @@ pub enum Constant {
         real: ConstantIndex,
         imaginary: ConstantIndex,
     },
+}
+
+/// Element representations supported by an array constant.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArrayElementType {
+    T,
+    Bit,
+    Character,
+    BaseChar,
+    Fixnum,
+    Signed,
+    Unsigned,
+    SingleFloat,
+    DoubleFloat,
 }
 
 /// A direct primitive operation.

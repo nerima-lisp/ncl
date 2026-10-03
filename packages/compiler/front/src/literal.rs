@@ -6,6 +6,7 @@
 //! that `Constant::Object` defers to the constant table.
 
 use crate::symbols::SymbolRef;
+use ncl_object::ArrayElementType;
 
 /// A numeric literal.
 #[derive(Clone, Debug, PartialEq)]
@@ -64,6 +65,8 @@ pub enum Literal {
     Array {
         /// The dimensions, most significant first.
         dimensions: Vec<usize>,
+        /// The array element representation.
+        element_type: ArrayElementType,
         /// The row-major elements.
         elements: Vec<Self>,
     },

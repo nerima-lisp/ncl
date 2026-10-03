@@ -169,6 +169,7 @@ pub fn lower_op(
                     | ncl_ir::Constant::Object(_)
                     | ncl_ir::Constant::StringBytes(_)
                     | ncl_ir::Constant::Structure { .. }
+                    | ncl_ir::Constant::Array { .. }
                     | ncl_ir::Constant::Bignum { .. }
                     | ncl_ir::Constant::Ratio { .. }
                     | ncl_ir::Constant::Complex { .. }

@@ -1,10 +1,10 @@
 //! Text serialization parser.
 use super::ParseError;
 use crate::{
-    BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
-    DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind, HandlerRegion,
-    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind, Terminator, Ty,
-    ValueId,
+    ArrayElementType, BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert,
+    DebugLocation, DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind,
+    HandlerRegion, HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind,
+    Terminator, Ty, ValueId,
 };
 
 fn u32(value: u64) -> Result<u32, ParseError> {
@@ -202,6 +202,33 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
             };
             Constant::Structure {
                 kind,
+                elements: (0..r.u()?)
+                    .map(|_| Ok(ConstantIndex(u32(r.u()?)?)))
+                    .collect::<Result<Vec<_>, ParseError>>()?,
+            }
+        }
+        15 => {
+            let dimensions = (0..r.u()?)
+                .map(|_| {
+                    usize::try_from(r.u()?)
+                        .map_err(|_| ParseError("array dimension overflow".into()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let element_type = match r.u()? {
+                0 => ArrayElementType::T,
+                1 => ArrayElementType::Bit,
+                2 => ArrayElementType::Character,
+                3 => ArrayElementType::BaseChar,
+                4 => ArrayElementType::Fixnum,
+                5 => ArrayElementType::Signed,
+                6 => ArrayElementType::Unsigned,
+                7 => ArrayElementType::SingleFloat,
+                8 => ArrayElementType::DoubleFloat,
+                _ => return Err(ParseError("bad array element type".into())),
+            };
+            Constant::Array {
+                dimensions,
+                element_type,
                 elements: (0..r.u()?)
                     .map(|_| Ok(ConstantIndex(u32(r.u()?)?)))
                     .collect::<Result<Vec<_>, ParseError>>()?,

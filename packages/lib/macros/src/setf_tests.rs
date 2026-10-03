@@ -237,6 +237,27 @@ fn modifying_macros_emit_the_expected_value_and_store_forms() -> Result<(), Obje
 }
 
 #[test]
+fn modifying_macros_accept_the_wrapped_place() -> Result<(), ObjectError> {
+    let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let the = symbol(&mut ctx, &runtime, "THE")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let typed_place = list(&mut ctx, &runtime, &[the, fixnum, x])?;
+
+    let expansion = expand_incf(&mut ctx, &runtime, &registry, &[typed_place])?;
+    let parts = elements(&mut ctx, expansion)?;
+    let binding = elements(&mut ctx, parts[1])?[0];
+    let binding_parts = elements(&mut ctx, binding)?;
+    assert_eq!(elements(&mut ctx, binding_parts[1])?[1], x);
+    named(&mut ctx, &runtime, parts[2], "SETQ")?;
+    Ok(())
+}
+
+#[test]
 fn remf_and_expansion_support_validate_their_error_paths() -> Result<(), ObjectError> {
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
     let runtime = Runtime::new()?;

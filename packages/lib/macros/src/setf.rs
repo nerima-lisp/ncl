@@ -71,13 +71,13 @@ fn place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     registry: &PlaceRegistry,
-    place: Word,
+    place_word: Word,
 ) -> Result<SetfExpansion, ObjectError> {
     if !registry.belongs_to(runtime) {
         return Err(ObjectError::TypeError);
     }
-    if matches!(classify_object(ctx, place), ObjectRef::Symbol(_)) {
-        let mut place = place;
+    if matches!(classify_object(ctx, place_word), ObjectRef::Symbol(_)) {
+        let mut place = place_word;
         return ncl_object::with_root(ctx, &mut place, |ctx, place| {
             let store = fresh_symbol(ctx, runtime)?;
             let store_form = form(ctx, runtime, "SETQ", &[*place, store])?;
@@ -90,11 +90,15 @@ fn place(
             })
         });
     }
-    if !place.is_cons() {
+    if !place_word.is_cons() {
         return Err(ObjectError::TypeError);
     }
-    let parts = elements(ctx, place)?;
+    let parts = elements(ctx, place_word)?;
     let (operator, arguments) = parts.split_first().ok_or(ObjectError::TypeError)?;
+    if *operator == symbol(ctx, runtime, "THE")? {
+        let wrapped_place = arguments.get(1).copied().ok_or(ObjectError::TypeError)?;
+        return place(ctx, runtime, registry, wrapped_place);
+    }
     let expansion = if let Some(expander) = registry.get(ctx, *operator)? {
         expander(ctx, runtime, arguments)?
     } else {

@@ -48,6 +48,18 @@ fn block_preserves_function_declarations() {
 }
 
 #[test]
+fn fprint_initializer_runs_through_declared_recursive_helper() {
+    let mut runtime = Runtime::new().unwrap();
+    runtime
+        .eval(include_str!("fixtures/fprint_init.lisp"))
+        .unwrap();
+    assert_eq!(
+        eval(&mut runtime, "(progn (fprint-init 1 1 '(a b)) 42)"),
+        "42"
+    );
+}
+
+#[test]
 fn local_macro_expander_calls_a_compiled_function() {
     let mut runtime = Runtime::new().unwrap();
 

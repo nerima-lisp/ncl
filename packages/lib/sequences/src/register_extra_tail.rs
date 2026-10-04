@@ -3,7 +3,43 @@ use super::{
     Word, callback_word, domain, keep_result, list_map_entry, order_set_entry, root_args,
     selection_parse, sequence_arg, word_at, words,
 };
-use ncl_object::{ObjectRef, classify_object, string_length, string_ref, symbol_name};
+use ncl_object::{ObjectRef, car as object_car, cdr as object_cdr, classify_object, string_length,
+    string_ref, symbol_name};
+
+pub fn subst_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let replacement = args.get(0).ok_or(ObjectError::TypeError)?;
+    let old = args.get(1).ok_or(ObjectError::TypeError)?;
+    let tree = args.get(2).ok_or(ObjectError::TypeError)?;
+
+    fn substitute(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        replacement: Word,
+        old: Word,
+        tree: Word,
+    ) -> Result<Word, ObjectError> {
+        if domain::equality::equal(ctx, tree, old)? {
+            return Ok(replacement);
+        }
+        if !matches!(classify_object(ctx, tree), ObjectRef::Cons(_)) {
+            return Ok(tree);
+        }
+        let car = substitute(ctx, runtime, replacement, old, object_car(ctx, tree)?)?;
+        let cdr = substitute(ctx, runtime, replacement, old, object_cdr(ctx, tree)?)?;
+        let mut scope = Scope::new(ctx);
+        let car = scope.root(ncl_object::Local::from_word(car));
+        let cdr = scope.root(ncl_object::Local::from_word(cdr));
+        let result = scope.make_cons(runtime, car, cdr)?;
+        Ok(scope.get(result).as_word())
+    }
+
+    substitute(ctx, runtime, replacement, old, tree)
+}
 
 /// Parse the `:key`, `:initial-value`, `:from-end`, `:start`, and `:end`
 /// keyword arguments that trail REDUCE's required function and sequence.

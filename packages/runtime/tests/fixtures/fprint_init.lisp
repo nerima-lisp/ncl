@@ -1,0 +1,15 @@
+(defun fprint-init-aux (m n atoms)
+  (declare (fixnum m n))
+  (cond ((zerop m) (pop atoms))
+        (t
+         (do ((i n (- i 2))
+              (a ()))
+             ((< i 1) a)
+           (push (pop atoms) a)
+           (push (fprint-init-aux (1- m) n atoms) a)))))
+
+(defun fprint-init (m n atoms)
+  (let ((atoms (subst () () atoms)))
+    (do ((a atoms (cdr a)))
+        ((null (cdr a)) (rplacd a atoms)))
+    (fprint-init-aux m n atoms)))

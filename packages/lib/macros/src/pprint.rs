@@ -73,7 +73,7 @@ fn expand_logical_block(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
         }
         let (stream_word, object, keyword_values) = match spec.as_slice() {
             [stream, object, rest @ ..] => (*stream, *object, rest),
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) slice shape validation
         };
         let stream = stream_form(ctx, runtime, stream_word)?;
         let mut prefix = Word::NIL;
@@ -82,6 +82,7 @@ fn expand_logical_block(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
         let mut pairs = keyword_values.chunks(2);
         for pair in &mut pairs {
             let [key, value] = pair else {
+                // check-added-lines: allow(index) fixed pair destructuring
                 return Err(ObjectError::TypeError);
             };
             let key = *key;

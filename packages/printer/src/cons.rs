@@ -8,6 +8,9 @@ use crate::print::Printer;
 impl Printer<'_> {
     /// Print a cons as a list, a dotted pair, or a quote abbreviation.
     pub fn print_cons(&mut self, list: Word) -> Result<(), PrintError> {
+        if self.options.pretty() && self.print_standard_operator_form(list)? {
+            return Ok(());
+        }
         if let Some(abbreviation) = self.abbreviation(list)? {
             self.write_str(abbreviation)?;
             let tail = cdr(self.ctx, list)?;
@@ -49,6 +52,45 @@ impl Printer<'_> {
             }
         }
         self.write_char(')')
+    }
+
+    fn print_standard_operator_form(&mut self, list: Word) -> Result<bool, PrintError> {
+        let head = car(self.ctx, list)?;
+        if !matches!(classify_object(self.ctx, head), ObjectRef::Symbol(_)) {
+            return Ok(false);
+        }
+        let package = symbol_package(&*self.ctx, head).ok();
+        let common_lisp = package.is_some_and(|package| {
+            self.runtime.find_package(&*self.ctx, "COMMON-LISP") == Some(package)
+        });
+        if !common_lisp || !matches!(self.symbol_text(head)?.as_str(), "LET" | "LET*" | "DEFUN") {
+            return Ok(false);
+        }
+        let mut cursor = list;
+        while cursor != Word::NIL {
+            if !cursor.is_cons() {
+                return Ok(false);
+            }
+            cursor = cdr(self.ctx, cursor)?;
+        }
+
+        self.write_char('(')?;
+        self.print(head)?;
+        cursor = cdr(self.ctx, list)?;
+        let mut first = true;
+        while cursor != Word::NIL {
+            let item = car(self.ctx, cursor)?;
+            if first {
+                self.write_char(' ')?;
+                first = false;
+            } else {
+                self.separator(2)?;
+            }
+            self.print(item)?;
+            cursor = cdr(self.ctx, cursor)?;
+        }
+        self.write_char(')')?;
+        Ok(true)
     }
 
     /// Detect the `'` and `#'` reader abbreviations.

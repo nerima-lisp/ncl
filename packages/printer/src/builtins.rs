@@ -313,7 +313,7 @@ fn pprint_newline(
     with_layout_state(stream, |state| {
         let newline = match kind.as_str() {
             "MANDATORY" => NewlineKind::Mandatory,
-            "MISR" => NewlineKind::Miser,
+            "MISER" => NewlineKind::Miser,
             "FILL" => NewlineKind::Fill,
             _ => NewlineKind::Linear,
         };
@@ -400,7 +400,7 @@ fn pprint_object(
         with_layout_state(stream, |state| {
             flush_pending(ctx, runtime, stream, state, false)?;
             call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
-            state.column = rendered_text_length(ctx, *rendered)?;
+            state.column = rendered_text_column(ctx, *rendered)?;
             Ok(())
         })
     })?;
@@ -436,8 +436,9 @@ fn flush_pending(
             "WRITE-CHAR",
             &[Word::character(u32::from('\n')), stream],
         )?;
-        state.column = state.indent;
+        state.column = 0;
         write_spaces(ctx, runtime, stream, state.indent)?;
+        state.column = state.indent;
     } else {
         call_builtin(
             ctx,
@@ -475,8 +476,17 @@ fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError>
         .collect()
 }
 
-fn rendered_text_length(ctx: &ThreadContext, string: Word) -> Result<usize, ObjectError> {
-    ncl_object::string_length(ctx, string)
+fn rendered_text_column(ctx: &ThreadContext, string: Word) -> Result<usize, ObjectError> {
+    let length = ncl_object::string_length(ctx, string)?;
+    let mut column = 0;
+    for index in 0..length {
+        if ncl_object::string_ref(ctx, string, index)? == '\n' {
+            column = 0;
+        } else {
+            column += 1;
+        }
+    }
+    Ok(column)
 }
 
 fn register_print_builtin(

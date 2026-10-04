@@ -264,6 +264,42 @@ fn quote_abbreviation_requires_common_lisp_operator() {
 }
 
 #[test]
+fn pretty_prints_standard_operator_forms_with_indent() {
+    let (runtime, mut ctx) = context();
+    let let_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "LET");
+    let car_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "CAR");
+    let bindings = list(&runtime, &mut ctx, &[]);
+    let body = list(&runtime, &mut ctx, &[car_symbol, Word::fixnum(1)]);
+    let form = list(&runtime, &mut ctx, &[let_symbol, bindings, body]);
+    let output = print(
+        &runtime,
+        &mut ctx,
+        form,
+        &PrintOptions::new().with_pretty(true).with_right_margin(8),
+    );
+    assert_eq!(output, "(LET NIL\n  (CAR 1))");
+
+    let defun_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "DEFUN");
+    let function_name = intern(&runtime, &mut ctx, "COMMON-LISP-USER", "F");
+    let lambda_list = list(&runtime, &mut ctx, &[car_symbol]);
+    let defun = list(
+        &runtime,
+        &mut ctx,
+        &[defun_symbol, function_name, lambda_list, body],
+    );
+    let output = print(
+        &runtime,
+        &mut ctx,
+        defun,
+        &PrintOptions::new().with_pretty(true).with_right_margin(8),
+    );
+    assert_eq!(
+        output,
+        "(DEFUN COMMON-LISP-USER:F\n  (CAR) (CAR\n         1))"
+    );
+}
+
+#[test]
 fn print_level_truncates_nesting() {
     let (runtime, mut ctx) = context();
     let options = PrintOptions::new();

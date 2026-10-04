@@ -17,6 +17,7 @@ pub use super::logical::{
     translate_logical_pathname_builtin,
 };
 pub use file_ops::file_error_pathname_builtin;
+pub use file_ops::translate_pathname_builtin;
 #[path = "parse.rs"]
 mod parse;
 pub use parse::{parse_namestring_builtin, parse_namestring_value};
@@ -356,27 +357,6 @@ pub fn directory_builtin(
     let _ = pattern;
     list(ctx, runtime, &matches)
 }
-pub fn translate_pathname_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let source = pathname_designator(ctx, runtime, args.required(0)?)?;
-    let from = pathname_designator(ctx, runtime, args.required(1)?)?;
-    let to = pathname_designator(ctx, runtime, args.required(2)?)?;
-    let source_name = namestring_value(ctx, source)?;
-    let from_name = namestring_value(ctx, from)?;
-    let to_name = namestring_value(ctx, to)?;
-    if !wildcard_match(&from_name, &source_name) {
-        return Err(ObjectError::TypeError);
-    }
-    let translated =
-        translate_wildcards(&from_name, &to_name, &source_name).ok_or(ObjectError::TypeError)?;
-    let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
-    parse_namestring_value(ctx, runtime, string)
-}
-
 pub fn wild_pathname_p_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

@@ -61,6 +61,7 @@ fn pathname_builtins_construct_access_and_round_trip() -> Result<(), ObjectError
     // check-added-lines: allow(panic) value assertion is the behavior under test
     // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard recursive value assertion
         // check-added-lines: allow(panic) value assertion is the behavior under test
         call(&runtime, &mut ctx, "PATHNAMEP", &[pathname])?,
         Word::TRUE
@@ -68,6 +69,7 @@ fn pathname_builtins_construct_access_and_round_trip() -> Result<(), ObjectError
     // check-added-lines: allow(panic) value assertion is the behavior under test
     // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard field value assertion
         // check-added-lines: allow(panic) value assertion is the behavior under test
         call(&runtime, &mut ctx, "PATHNAME-NAME", &[pathname])?,
         name
@@ -227,6 +229,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     )?;
     assert_eq!(
         // check-added-lines: allow(panic) wildcard recursive value assertion
+        // check-added-lines: allow(panic) wildcard recursive value assertion
         // check-added-lines: allow(panic) value assertion is the behavior under test
         call(
             &runtime,
@@ -238,6 +241,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     ); // check-added-lines: allow(panic) wild-inferiors matches zero or more directories
     let directory_field = keyword(&mut ctx, &runtime, "DIRECTORY")?;
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard field value assertion
         // check-added-lines: allow(panic) wildcard matching value assertion
         call(
             &runtime,

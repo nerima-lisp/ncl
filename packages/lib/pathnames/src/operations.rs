@@ -442,6 +442,7 @@ fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bo
         }
         if is_symbol(ctx, pattern[0], "WILD-INFERIORS") {
             // check-added-lines: allow(index) pattern is nonempty here
+            // check-added-lines: allow(index) pattern is nonempty here
             // check-added-lines: allow(index) recursive slices are bounded by their lengths
             for consumed in 0..=value.len() {
                 // check-added-lines: allow(index) inclusive bound is value.len()
@@ -454,6 +455,7 @@ fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bo
             return Ok(false);
         }
         if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
+            // check-added-lines: allow(index) value nonempty guard protects index zero
             // check-added-lines: allow(index) value nonempty guard protects index zero
             // check-added-lines: allow(index) nonempty guard protects index zero
             return Ok(false);

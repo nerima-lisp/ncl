@@ -208,3 +208,45 @@ callbacks! {
     expand_dolist, expand_dolist_adapter, dolist;
     expand_dotimes, expand_dotimes_adapter, dotimes
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    #[test]
+    fn iteration_adapters_expand_valid_forms_and_reject_missing_arguments()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let mut values = MultipleValues::new();
+        let empty = BuiltinArgs::new(&[]);
+        assert_eq!(
+            expand_dolist_adapter(&mut ctx, &runtime, &empty, &mut values),
+            Err(ObjectError::TypeError)
+        );
+
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let list_value = list(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])?;
+        let spec = list(&mut ctx, &runtime, &[x, list_value, Word::fixnum(9)])?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let dolist = symbol(&mut ctx, &runtime, "DOLIST")?;
+        let form = list(&mut ctx, &runtime, &[dolist, spec, body])?;
+        let expansion =
+            expand_dolist_adapter(&mut ctx, &runtime, &BuiltinArgs::new(&[form]), &mut values)?;
+        assert_eq!(
+            elements(&mut ctx, expansion)?[0],
+            symbol(&mut ctx, &runtime, "BLOCK")?
+        );
+
+        let count = list(&mut ctx, &runtime, &[x, Word::fixnum(3), Word::fixnum(7)])?;
+        let dotimes = symbol(&mut ctx, &runtime, "DOTIMES")?;
+        let form = list(&mut ctx, &runtime, &[dotimes, count, body])?;
+        let expansion =
+            expand_dotimes_adapter(&mut ctx, &runtime, &BuiltinArgs::new(&[form]), &mut values)?;
+        assert!(elements(&mut ctx, expansion)?.len() >= 3);
+        assert_eq!(held_get(&[], 0), Err(ObjectError::TypeError));
+        Ok(())
+    }
+}

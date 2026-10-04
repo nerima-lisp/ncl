@@ -148,3 +148,64 @@ pub fn held_raw_list(
     *held = refreshed;
     Ok(held_push(held, value))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol;
+
+    fn fixture() -> std::result::Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    #[test]
+    fn held_helpers_preserve_values_and_report_bad_indexes() -> std::result::Result<(), ObjectError>
+    {
+        let (runtime, mut ctx) = fixture()?;
+        let name = symbol(&mut ctx, &runtime, "X")?;
+        let mut held = vec![name, Word::fixnum(7)];
+        assert_eq!(held_get(&held, 1)?, Word::fixnum(7));
+        assert_eq!(held_get(&held, 2), Err(ObjectError::TypeError));
+        assert_eq!(held_push(&mut held, Word::NIL), 2);
+        let fresh = held_fresh(&mut ctx, &runtime, &mut held)?;
+        assert_ne!(held_get(&held, fresh)?, Word::NIL);
+        let held_name = held_symbol(&mut ctx, &runtime, &mut held, "Y")?;
+        assert_eq!(
+            held_get(&held, held_name)?,
+            symbol(&mut ctx, &runtime, "Y")?
+        );
+        let text = held_string(&mut ctx, &runtime, &mut held, "ok")?;
+        assert_eq!(ncl_object::string_length(&ctx, held_get(&held, text)?)?, 2);
+        let call = held_call(&mut ctx, &runtime, &mut held, "CAR", &[fresh])?;
+        assert_eq!(
+            ncl_object::car(&ctx, held_get(&held, call)?)?,
+            symbol(&mut ctx, &runtime, "CAR")?
+        );
+        let apply = held_apply(&mut ctx, &runtime, &mut held, fresh, &[held_name])?;
+        assert_eq!(
+            ncl_object::car(&ctx, held_get(&held, apply)?)?,
+            held_get(&held, fresh)?
+        );
+        let raw = held_raw_list(&mut ctx, &runtime, &mut held, &[fresh, held_name])?;
+        assert_eq!(
+            ncl_object::car(&ctx, held_get(&held, raw)?)?,
+            held_get(&held, fresh)?
+        );
+        assert_eq!(
+            held_call(&mut ctx, &runtime, &mut held, "CAR", &[99]),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            held_apply(&mut ctx, &runtime, &mut held, 99, &[]),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            held_raw_list(&mut ctx, &runtime, &mut held, &[99]),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+}

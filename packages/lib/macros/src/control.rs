@@ -427,3 +427,7 @@ expand_with_simple_restart, expand_with_simple_restart_adapter, Kind::WithSimple
 expand_check_type, expand_check_type_adapter, Kind::CheckType;
 expand_assert, expand_assert_adapter, Kind::Assert;
 expand_define_condition, expand_define_condition_adapter, Kind::DefineCondition }
+
+#[cfg(test)]
+#[path = "tests/control_tests.rs"]
+mod tests;

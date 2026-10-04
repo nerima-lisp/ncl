@@ -237,6 +237,28 @@ fn actual_pretty_printer_adapter_handles_format_layout_directives() {
 }
 
 #[test]
+fn actual_pretty_printer_adapter_maps_all_format_layout_modifiers() {
+    let (runtime, mut ctx) = context();
+    let mut output = StringSink::new();
+    let shared = ncl_printer::PrettyPrinter::with_options(&mut output, 4, 0).into_shared();
+    let pretty = Rc::new(RefCell::new(shared.adapter()));
+    let mut fallback = StringSink::new();
+    execute_with_options(
+        &parse("~:_~@_~:@_~@I~@2T~<~A~:>").expect("control"),
+        &[Word::fixnum(7)],
+        &mut ctx,
+        &runtime,
+        None,
+        Some(pretty.clone()),
+        &mut fallback,
+    )
+    .expect("execute");
+    drop(pretty);
+    drop(shared);
+    assert!(output.into_string().contains('7'));
+}
+
+#[test]
 fn connects_layout_directives_to_the_pretty_printer_boundary() {
     let (runtime, mut ctx) = context();
     let pretty = Rc::new(RefCell::new(RecordingPretty::default()));

@@ -178,3 +178,119 @@ fn private_fasl_writer_rejects_non_i32_addends() {
         })
     );
 }
+
+#[test]
+fn fasl_reader_rejects_relocations_outside_code_and_unknown_sections() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: vec![1],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 1,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(0),
+                addend: 0,
+            }],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    let bytes = FaslWriter::write(&value).unwrap_or_default();
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "FASL relocation",
+            offset: 1,
+            size: 1,
+        })
+    );
+
+    let mut value = value;
+    value.sections.relocations[0].offset = 0;
+    value.sections.relocations[0].section = SectionId(2);
+    let bytes = FaslWriter::write(&value).unwrap_or_default();
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidReference {
+            kind: "FASL relocation section",
+            index: 2,
+        })
+    );
+}
+
+#[test]
+fn fasl_reader_rejects_each_header_mismatch() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 7,
+        },
+        sections: FaslSection {
+            code: vec![],
+            relocations: vec![],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    let bytes = FaslWriter::write(&value).unwrap_or_default();
+    assert_eq!(
+        FaslReader::read(&bytes[..63], Architecture::X86_64, 7),
+        Err(ObjectError::Truncated {
+            offset: 63,
+            needed: 64
+        })
+    );
+    let mut bad = bytes.clone();
+    bad[0] = b'X';
+    assert_eq!(
+        FaslReader::read(&bad, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "magic",
+            value: 0
+        })
+    );
+    let mut bad = bytes.clone();
+    bad[8] = 2;
+    assert_eq!(
+        FaslReader::read(&bad, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "version",
+            value: 2
+        })
+    );
+    let mut bad = bytes.clone();
+    bad[11] = 4;
+    assert_eq!(
+        FaslReader::read(&bad, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "pointer width",
+            value: 4
+        })
+    );
+    let mut bad = bytes.clone();
+    bad[14] = 1;
+    assert_eq!(
+        FaslReader::read(&bad, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "reserved",
+            value: 1
+        })
+    );
+    let mut bad = bytes;
+    bad[16] = 8;
+    assert_eq!(
+        FaslReader::read(&bad, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "feature bitmap",
+            value: 8
+        })
+    );
+}

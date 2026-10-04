@@ -1,4 +1,5 @@
 use super::*;
+use crate::{Architecture, ExecutableImage, write_mach_executable};
 
 #[test]
 fn private_macho_relocation_encoder_covers_descriptor_bits() {
@@ -248,4 +249,68 @@ fn public_macho_validator_reports_header_and_command_errors() {
             "invalid Mach-O load commands"
         ))
     ));
+}
+
+#[test]
+fn public_macho_validator_reports_cpu_and_command_boundaries() {
+    let value = MachObject {
+        architecture: MachArchitecture::X86_64,
+        sections: vec![MachSection {
+            id: SectionId(1),
+            segment: "__TEXT".into(),
+            name: "__text".into(),
+            bytes: vec![1],
+        }],
+        relocations: vec![],
+    };
+    let bytes = value.write().unwrap_or_default();
+    let mut bad_cpu = bytes.clone();
+    bad_cpu[4..8].copy_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&bad_cpu, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidField {
+            field: "Mach-O CPU",
+            value: 0
+        })
+    );
+    let mut no_commands = bytes.clone();
+    no_commands[16..20].copy_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&no_commands, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "invalid Mach-O load commands"
+        ))
+    );
+    let mut bad_size = bytes;
+    bad_size[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert_eq!(
+        validate_macho(&bad_size, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid Mach-O command size"))
+    );
+}
+
+#[test]
+fn mach_executable_validator_rejects_missing_main_and_metadata() {
+    let image = ExecutableImage {
+        architecture: Architecture::X86_64,
+        code: vec![1],
+        metadata: vec![2],
+    };
+    let bytes = write_mach_executable(&image, MachArchitecture::X86_64).unwrap_or_default();
+    let mut missing_main = bytes.clone();
+    missing_main[400..404].copy_from_slice(&0x2u32.to_le_bytes());
+    assert_eq!(
+        validate_mach_executable(&missing_main, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "missing NCL executable metadata"
+        ))
+    );
+    let mut empty_metadata = bytes;
+    empty_metadata[32 + 152 + 72 + 40..32 + 152 + 72 + 48].copy_from_slice(&0u64.to_le_bytes());
+    assert_eq!(
+        validate_mach_executable(&empty_metadata, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "missing NCL executable metadata"
+        ))
+    );
 }

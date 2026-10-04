@@ -224,3 +224,66 @@ fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
         ))
     );
 }
+
+#[test]
+fn public_elf_validator_reports_missing_segments_and_bounds() {
+    let image = ExecutableImage {
+        architecture: Architecture::X86_64,
+        code: vec![1],
+        metadata: vec![2],
+    };
+    let bytes = write_elf_executable(&image).unwrap_or_default();
+    let mut short_table = bytes.clone();
+    short_table[56..58].copy_from_slice(&1u16.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&short_table, Architecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid ELF program headers"))
+    );
+    let mut out_of_bounds = bytes.clone();
+    out_of_bounds[64 + 8..64 + 16].copy_from_slice(&u64::MAX.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&out_of_bounds, Architecture::X86_64),
+        Err(ObjectError::OutOfBounds {
+            section: "ELF load segment",
+            offset: u64::MAX as u64,
+            size: 1
+        })
+    );
+    let mut no_metadata = bytes;
+    no_metadata[64 + 56 + 32..64 + 56 + 40].copy_from_slice(&0u64.to_le_bytes());
+    assert_eq!(
+        validate_elf_executable(&no_metadata, Architecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "missing NCL executable segments"
+        ))
+    );
+}
+
+#[test]
+fn private_elf_segments_reject_short_and_invalid_load_fields() {
+    let mut bytes = vec![0; 56];
+    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
+    bytes[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 1, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "ELF load segment",
+            offset: u64::MAX,
+            size: 0
+        })
+    );
+    let mut bytes = vec![0; 56];
+    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
+    bytes[8..16].copy_from_slice(&1u64.to_le_bytes());
+    bytes[32..40].copy_from_slice(&u64::MAX.to_le_bytes());
+    assert_eq!(
+        validate_elf_segments(&bytes, 0, 56, 1, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "ELF load segment",
+            offset: 1,
+            size: u64::MAX
+        })
+    );
+}

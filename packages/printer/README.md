@@ -26,6 +26,24 @@ by printer integrations. Conditional breaks remain pending until the next
 text is emitted, so a caller can construct a block without pre-measuring each
 item.
 
+`PrettyPrinter` also implements `CharSink`. A FORMAT or logical-block
+adapter owns one instance for the output operation, passes it to nested
+`ncl_printer::write` calls, and calls `finish()` before returning:
+
+```text
+let mut layout = PrettyPrinter::with_options(&mut sink, right_margin, miser_width);
+layout.start_logical_block(prefix, per_line_prefix)?;
+ncl_printer::write(ctx, runtime, object, &mut layout, &options)?;
+layout.newline(NewlineKind::Linear)?;
+layout.indent(IndentMode::Block, amount);
+layout.tab(TabKind::Relative, column, increment)?;
+layout.end_logical_block(suffix)?;
+layout.finish()?;
+```
+
+`finish()` flushes a trailing conditional break. `end_logical_block()` also
+flushes before writing its suffix.
+
 | item | role |
 | --- | --- |
 | `CharSink` | output trait: `write_char`, `write_str`. `ncl-lib-streams` adapts streams to it. |

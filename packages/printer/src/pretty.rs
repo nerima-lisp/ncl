@@ -144,6 +144,15 @@ impl<'a> PrettyPrinter<'a> {
         self.write_str(suffix)
     }
 
+    /// Flush a pending conditional break without ending a logical block.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sink error when the pending layout cannot be written.
+    pub fn finish(&mut self) -> Result<(), PrintError> {
+        self.flush_pending(false)
+    }
+
     /// Request a newline according to `kind`.
     ///
     /// # Errors
@@ -277,6 +286,16 @@ impl<'a> PrettyPrinter<'a> {
     }
 }
 
+impl CharSink for PrettyPrinter<'_> {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        PrettyPrinter::write_char(self, character)
+    }
+
+    fn write_str(&mut self, text: &str) -> Result<(), PrintError> {
+        PrettyPrinter::write_str(self, text)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{IndentMode, NewlineKind, PrettyPrinter, TabKind};
@@ -307,6 +326,23 @@ mod tests {
         printer.write_str("y")?;
         drop(printer);
         assert_eq!(sink.as_str(), "x\n   y");
+        Ok(())
+    }
+
+    #[test]
+    fn pretty_printer_is_a_nested_char_sink() -> Result<(), PrintError> {
+        let mut sink = StringSink::new();
+        let mut printer = PrettyPrinter::with_options(&mut sink, 8, 0);
+        printer.start_logical_block("[", None)?;
+        {
+            let nested: &mut dyn crate::CharSink = &mut printer;
+            nested.write_str("abc")?;
+            nested.write_char('d')?;
+        }
+        printer.finish()?;
+        printer.end_logical_block("]")?;
+        drop(printer);
+        assert_eq!(sink.as_str(), "[abcd]");
         Ok(())
     }
 

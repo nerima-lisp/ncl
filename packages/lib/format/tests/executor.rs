@@ -225,7 +225,7 @@ fn executes_parameterized_float_formats_and_rejects_invalid_values() {
         })
     );
     execute(
-        &parse("~8,2F/~10,2E/~8,1G/~8,3$").expect("control"),
+        &parse("~8,2F/~10,2E/~8,1G/~3,1,8$").expect("control"),
         &[float.into(), float.into(), float.into(), float.into()],
         &mut ctx,
         &runtime,

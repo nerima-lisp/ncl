@@ -314,7 +314,7 @@ fn covers_justification_and_parameterized_float_edges() {
         "****31.42"
     );
     assert_eq!(
-        run("~9,2,1,,'*E", &[float.into()], &mut ctx, &runtime),
+        run("~9,2,,1,,'*E", &[float.into()], &mut ctx, &runtime),
         "***3.14e1"
     );
     assert_eq!(run("~F", &[float.into()], &mut ctx, &runtime), "3.14159");

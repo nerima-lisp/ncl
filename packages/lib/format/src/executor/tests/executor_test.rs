@@ -224,7 +224,12 @@ fn covers_value_formats_and_invalid_inputs() {
         .expect("float")
         .into();
     assert_eq!(
-        run("~8,2F/~10,2E/~8,1G/~8,3$", &[float; 4], &mut ctx, &runtime),
+        run(
+            "~8,2F/~10,2E/~8,1G/~3,1,8$",
+            &[float; 4],
+            &mut ctx,
+            &runtime
+        ),
         "   12.35/    1.23e1/    12.3/  12.345"
     );
     assert!(
@@ -402,7 +407,7 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
     let (runtime, mut ctx) = context();
     let float = make_double(&mut ctx, &runtime, 1.25).expect("float");
     assert_eq!(
-        run("~8,2,1E", &[float.into()], &mut ctx, &runtime),
+        run("~8,2,,1E", &[float.into()], &mut ctx, &runtime),
         "  1.25e1"
     );
     assert_eq!(
@@ -410,7 +415,7 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
         "   12.50"
     );
     assert_eq!(
-        run("~8,2,,,'0$", &[float.into()], &mut ctx, &runtime),
+        run("~2,1,8,'0$", &[float.into()], &mut ctx, &runtime),
         "00001.25"
     );
     assert_eq!(
@@ -464,8 +469,8 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     let float = make_double(&mut ctx, &runtime, 1.25).expect("float");
     assert_eq!(run("a~/", &[], &mut ctx, &runtime), "a\n");
     assert_eq!(
-        run("~8,2@$", &[float.into()], &mut ctx, &runtime),
-        "    1.25"
+        run("~2,1,8@$", &[float.into()], &mut ctx, &runtime),
+        "   +1.25"
     );
 
     let mut sink = StringSink::new();
@@ -527,7 +532,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
             crate::Parameter::Integer(2),
             crate::Parameter::Unsupplied,
             crate::Parameter::Unsupplied,
-            crate::Parameter::Integer(1),
+            crate::Parameter::Character('0'),
         ],
         colon: false,
         at_sign: false,

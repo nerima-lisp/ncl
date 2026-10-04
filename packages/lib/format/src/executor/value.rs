@@ -257,7 +257,12 @@ fn execute_float_directive(
     };
     let mut value = double_value(state.ctx, ncl_object::DoubleFloat::from_word(number))
         .map_err(PrintError::from)?;
-    if let Some(scale) = parameter_i64(directive.parameters.get(2)) {
+    let scale_index = if directive.kind == DirectiveKind::E || directive.kind == DirectiveKind::G {
+        3
+    } else {
+        2
+    };
+    if let Some(scale) = parameter_i64(directive.parameters.get(scale_index)) {
         value *= 10_f64.powi(
             i32::try_from(scale).map_err(|_| FormatError::InvalidParameter {
                 directive: directive.kind,
@@ -268,7 +273,35 @@ fn execute_float_directive(
     if directive.at_sign && !rendered.starts_with('-') {
         rendered.insert(0, '+');
     }
-    write_padded(state, directive, &rendered)
+    let width = parameter_usize(directive.parameters.first(), directive.kind)?;
+    let overflow_index = if directive.kind == DirectiveKind::F {
+        3
+    } else {
+        4
+    };
+    let pad_index = if directive.kind == DirectiveKind::F {
+        4
+    } else {
+        5
+    };
+    let overflow = parameter_char(directive, overflow_index)?;
+    let pad = parameter_char(directive, pad_index)?.unwrap_or(' ');
+    if let Some(width) = width {
+        if rendered.chars().count() > width {
+            if let Some(overflow) = overflow {
+                rendered = std::iter::repeat_n(overflow, width).collect();
+            }
+        } else {
+            rendered = format!(
+                "{}{}",
+                pad.to_string().repeat(width - rendered.chars().count()),
+                rendered
+            );
+        }
+    }
+    state.sink.write_str(&rendered).map_err(FormatError::from)?;
+    *state.line_start = false;
+    Ok(())
 }
 
 fn execute_currency_directive(
@@ -283,8 +316,41 @@ fn execute_currency_directive(
     };
     let value = double_value(state.ctx, ncl_object::DoubleFloat::from_word(number))
         .map_err(PrintError::from)?;
-    let digits = parameter_usize(directive.parameters.get(1), directive.kind)?.unwrap_or(2);
-    write_padded(state, directive, &format!("{value:.digits$}"))
+    let digits = parameter_usize(directive.parameters.first(), directive.kind)?.unwrap_or(2);
+    let minimum_units = parameter_usize(directive.parameters.get(1), directive.kind)?.unwrap_or(1);
+    let width = parameter_usize(directive.parameters.get(2), directive.kind)?.unwrap_or(0);
+    let pad = parameter_char(directive, 3)?.unwrap_or(' ');
+    let magnitude = format!("{value:.digits$}");
+    let unsigned_sign = if directive.at_sign {
+        ("+", magnitude.as_str())
+    } else {
+        ("", magnitude.as_str())
+    };
+    let (sign, unsigned) = magnitude
+        .strip_prefix('-')
+        .map_or(unsigned_sign, |unsigned| ("-", unsigned));
+    let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
+    let whole = format!("{whole:0>minimum_units$}");
+    let rendered = format!("{sign}{whole}.{fraction}");
+    let padding = width.saturating_sub(rendered.chars().count());
+    if directive.colon {
+        state.sink.write_str(sign).map_err(FormatError::from)?;
+        state
+            .sink
+            .write_str(&format!(
+                "{}{}.{fraction}",
+                pad.to_string().repeat(padding),
+                whole
+            ))
+            .map_err(FormatError::from)?;
+    } else {
+        state
+            .sink
+            .write_str(&format!("{}{rendered}", pad.to_string().repeat(padding)))
+            .map_err(FormatError::from)?;
+    }
+    *state.line_start = false;
+    Ok(())
 }
 
 fn render_float(
@@ -305,9 +371,41 @@ fn render_float(
         return Ok(sink.into_string());
     };
     if directive.kind == DirectiveKind::E {
-        Ok(format!("{value:.digits$e}"))
+        let mut rendered = format!("{value:.digits$e}");
+        if let Some(exponent_width) = parameter_usize(directive.parameters.get(2), directive.kind)?
+            && let Some((mantissa, exponent)) = rendered.split_once('e')
+        {
+            let sign = exponent.strip_prefix('+').map_or("", |_| "+");
+            let digits = exponent.trim_start_matches(['+', '-']);
+            let exponent_sign = if exponent.starts_with('-') { "-" } else { sign };
+            rendered = format!("{mantissa}e{exponent_sign}{digits:0>exponent_width$}");
+        }
+        Ok(rendered)
+    } else if directive.kind == DirectiveKind::G {
+        let exponent = value.abs() >= 1_000_000_f64 || (value != 0.0 && value.abs() < 0.0001);
+        if exponent {
+            let mut exponential = format!("{value:.digits$e}");
+            if let Some(exponent_char) = parameter_char(directive, 6)? {
+                exponential = exponential.replace('e', &exponent_char.to_string());
+            }
+            Ok(exponential)
+        } else {
+            Ok(fixed_float(value, digits))
+        }
     } else {
         Ok(fixed_float(value, digits))
+    }
+}
+
+fn parameter_char(directive: &Directive, index: usize) -> Result<Option<char>, FormatError> {
+    match directive.parameters.get(index) {
+        None | Some(Parameter::Unsupplied) => Ok(None),
+        Some(Parameter::Character(value)) => Ok(Some(*value)),
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::ArgumentCount) => {
+            Err(FormatError::InvalidParameter {
+                directive: directive.kind,
+            })
+        }
     }
 }
 

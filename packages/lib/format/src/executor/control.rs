@@ -178,6 +178,7 @@ fn execute_up_arrow(
         [value] => *value == 0,
         [left, right] => left == right,
         [low, middle, high] => low <= middle && middle <= high,
+        // check-added-lines: allow(wildcard) The parser accepts arbitrary parameter counts.
         _ => false,
     };
     if terminate {

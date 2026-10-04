@@ -23,7 +23,8 @@ pub(super) fn execute_float_directive(
         2
     };
     let scale = parameter_i64(directive.parameters.get(scale_index))
-        .unwrap_or_else(|| i64::from(directive.kind == DirectiveKind::E));
+        // check-added-lines: allow(panic) This option has a fixed primitive fallback.
+        .unwrap_or(i64::from(directive.kind == DirectiveKind::E));
     let scaled = directive.kind == DirectiveKind::F
         || directive.kind == DirectiveKind::E
         || (directive.kind == DirectiveKind::G && g_uses_exponential(value));
@@ -193,6 +194,7 @@ fn render_exponential(
     let mut exponent = if magnitude == 0.0 {
         0
     } else {
+        // check-added-lines: allow(as-cast) The exponent is bounded by finite f64 values.
         magnitude.log10().floor() as i32
     };
     let mut coefficient = if magnitude == 0.0 {

@@ -266,7 +266,11 @@ fn method_match(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "coverage tests assert on helper results"
+)]
 mod helper_tests {
     use super::*;
     use ncl_object::{make_cons, make_double, Package};

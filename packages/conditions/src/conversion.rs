@@ -156,7 +156,11 @@ pub fn condition_from_lisp_error(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::indexing_slicing, clippy::unwrap_used, reason = "coverage tests assert on helper results")]
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "coverage tests assert on helper results"
+    )]
 
     use super::*;
 
@@ -177,10 +181,22 @@ mod tests {
 
     #[test]
     fn object_error_preserves_object_errors_and_maps_condition_errors() {
-        assert_eq!(object_error(ConditionError::Object(ObjectError::TypeError)), ObjectError::TypeError);
+        assert_eq!(
+            object_error(ConditionError::Object(ObjectError::TypeError)),
+            ObjectError::TypeError
+        );
         assert_eq!(object_error(ConditionError::Unhandled), ObjectError::Layout);
-        assert_eq!(object_error(ConditionError::NotACondition), ObjectError::Layout);
-        assert_eq!(object_error(ConditionError::RestartNotFound), ObjectError::Layout);
-        assert_eq!(object_error(ConditionError::ChainCorrupt), ObjectError::Layout);
+        assert_eq!(
+            object_error(ConditionError::NotACondition),
+            ObjectError::Layout
+        );
+        assert_eq!(
+            object_error(ConditionError::RestartNotFound),
+            ObjectError::Layout
+        );
+        assert_eq!(
+            object_error(ConditionError::ChainCorrupt),
+            ObjectError::Layout
+        );
     }
 }

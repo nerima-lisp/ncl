@@ -123,7 +123,7 @@ fn header_options_cover_named_and_disabled_defstruct_features() -> Result<(), Ob
     assert!(contains(&ctx, expansion, accessor)?);
     let plist = ncl_object::symbol_plist(&ctx, record)?;
     assert!(contains(&ctx, plist, printer)?);
-    assert!(!runtime.structure_layout_for_symbol(&ctx, record).is_none());
+    assert!(runtime.structure_layout_for_symbol(&ctx, record).is_some());
     Ok(())
 }
 

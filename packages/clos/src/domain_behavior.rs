@@ -214,6 +214,7 @@ impl GenericFunction {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "coverage tests assert on domain results")]
 mod tests {
     use super::*;
 

@@ -408,9 +408,13 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 mod tests;
 
 #[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    reason = "coverage tests assert on helper results"
+)]
 mod inline_tests {
     use super::*;
-    use ncl_object::{make_simple_vector, Runtime};
+    use ncl_object::{Runtime, make_simple_vector};
 
     fn setup() -> (Runtime, ThreadContext) {
         let runtime = Runtime::new().expect("runtime");
@@ -423,8 +427,8 @@ mod inline_tests {
     fn initarg_list_checks_pair_shape_and_first_matching_value() {
         let key = Word::fixnum(1);
         let value = Word::fixnum(2);
-        let parsed = InitArgList::parse(&[key, value, key, Word::fixnum(3)])
-            .expect("even initargs");
+        let parsed =
+            InitArgList::parse(&[key, value, key, Word::fixnum(3)]).expect("even initargs");
         assert_eq!(parsed.value_for(key).map(|value| value.0), Some(value));
         assert!(matches!(
             InitArgList::parse(&[key]),
@@ -438,27 +442,25 @@ mod inline_tests {
         let direct = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(10)]).expect("direct");
         let effective =
             make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(11)]).expect("effective");
-        let legacy = make_simple_vector(
-            &mut ctx,
-            &runtime,
-            &[Word::NIL, Word::NIL, direct],
-        )
-        .expect("legacy class");
+        let legacy = make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, direct])
+            .expect("legacy class");
         let extended = make_simple_vector(
             &mut ctx,
             &runtime,
             &[Word::NIL, Word::NIL, direct, Word::NIL, effective],
         )
         .expect("extended class");
-        let empty = make_simple_vector(
-            &mut ctx,
-            &runtime,
-            &[Word::NIL, Word::NIL, Word::NIL],
-        )
-        .expect("empty class");
+        let empty = make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::NIL])
+            .expect("empty class");
 
-        assert_eq!(class_slots(&ctx, legacy).expect("legacy slots"), vec![Word::fixnum(10)]);
-        assert_eq!(class_slots(&ctx, extended).expect("effective slots"), vec![Word::fixnum(11)]);
+        assert_eq!(
+            class_slots(&ctx, legacy).expect("legacy slots"),
+            vec![Word::fixnum(10)]
+        );
+        assert_eq!(
+            class_slots(&ctx, extended).expect("effective slots"),
+            vec![Word::fixnum(11)]
+        );
         assert!(class_slots(&ctx, empty).expect("empty slots").is_empty());
     }
 
@@ -467,8 +469,17 @@ mod inline_tests {
         let (runtime, mut ctx) = setup();
         let class = make_simple_vector(&mut ctx, &runtime, &[]).expect("class");
         assert_eq!(resolve_class(&mut ctx, &runtime, class), Ok(class));
-        assert_eq!(resolve_class(&mut ctx, &runtime, Word::fixnum(7)), Err(ObjectError::TypeError));
-        assert_eq!(instance_argument(&mut ctx, Word::NIL), Err(ObjectError::TypeError));
-        assert_eq!(initarg_adapter(&BuiltinArgs::new(&[class, Word::fixnum(1)])), Err(ObjectError::TypeError));
+        assert_eq!(
+            resolve_class(&mut ctx, &runtime, Word::fixnum(7)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            instance_argument(&mut ctx, Word::NIL),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            initarg_adapter(&BuiltinArgs::new(&[class, Word::fixnum(1)])),
+            Err(ObjectError::TypeError)
+        );
     }
 }

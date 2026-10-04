@@ -309,13 +309,23 @@ mod tests {
     #[test]
     fn instantiate_uses_the_first_matching_pair_and_nil_for_anonymous_slots() {
         let (runtime, mut ctx) = setup();
-        let class = make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::NIL]).unwrap();
+        let class =
+            make_simple_vector(&mut ctx, &runtime, &[Word::NIL, Word::NIL, Word::NIL]).unwrap();
         let key = keyword(&mut ctx, &runtime, "VALUE").unwrap();
         set_slot_specs(
             &mut ctx,
             &runtime,
             class,
-            &[SlotSpec { initarg: key, initform: Word::NIL }, SlotSpec { initarg: Word::NIL, initform: Word::NIL }],
+            &[
+                SlotSpec {
+                    initarg: key,
+                    initform: Word::NIL,
+                },
+                SlotSpec {
+                    initarg: Word::NIL,
+                    initform: Word::NIL,
+                },
+            ],
         )
         .unwrap();
         let instance = instantiate(
@@ -326,7 +336,13 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(slot_ref(&ctx, Instance::from_word(instance), 0), Ok(Word::fixnum(1)));
-        assert_eq!(slot_ref(&ctx, Instance::from_word(instance), 1), Ok(Word::NIL));
+        assert_eq!(
+            slot_ref(&ctx, Instance::from_word(instance), 0),
+            Ok(Word::fixnum(1))
+        );
+        assert_eq!(
+            slot_ref(&ctx, Instance::from_word(instance), 1),
+            Ok(Word::NIL)
+        );
     }
 }

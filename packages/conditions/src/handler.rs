@@ -251,7 +251,10 @@ fn class_matches(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, reason = "coverage tests assert on helper results")]
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on helper results"
+    )]
 
     use super::*;
     use crate::class::{condition_class, make_condition};
@@ -271,17 +274,38 @@ mod tests {
         let parent = condition_class(&mut ctx, &runtime, "ERROR").unwrap();
         let unrelated = condition_class(&mut ctx, &runtime, "WARNING").unwrap();
 
-        assert_eq!(class_matches(&ctx, child.as_word(), parent.as_word()), Ok(true));
-        assert_eq!(class_matches(&ctx, child.as_word(), unrelated.as_word()), Ok(false));
+        assert_eq!(
+            class_matches(&ctx, child.as_word(), parent.as_word()),
+            Ok(true)
+        );
+        assert_eq!(
+            class_matches(&ctx, child.as_word(), unrelated.as_word()),
+            Ok(false)
+        );
     }
 
     #[test]
     fn condition_object_error_maps_non_object_failures_to_layout() {
-        assert_eq!(condition_object_error(ConditionError::Unhandled), ncl_object::ObjectError::Layout);
-        assert_eq!(condition_object_error(ConditionError::NotACondition), ncl_object::ObjectError::Layout);
-        assert_eq!(condition_object_error(ConditionError::RestartNotFound), ncl_object::ObjectError::Layout);
-        assert_eq!(condition_object_error(ConditionError::ChainCorrupt), ncl_object::ObjectError::Layout);
-        assert_eq!(condition_object_error(ConditionError::Object(ncl_object::ObjectError::TypeError)), ncl_object::ObjectError::TypeError);
+        assert_eq!(
+            condition_object_error(ConditionError::Unhandled),
+            ncl_object::ObjectError::Layout
+        );
+        assert_eq!(
+            condition_object_error(ConditionError::NotACondition),
+            ncl_object::ObjectError::Layout
+        );
+        assert_eq!(
+            condition_object_error(ConditionError::RestartNotFound),
+            ncl_object::ObjectError::Layout
+        );
+        assert_eq!(
+            condition_object_error(ConditionError::ChainCorrupt),
+            ncl_object::ObjectError::Layout
+        );
+        assert_eq!(
+            condition_object_error(ConditionError::Object(ncl_object::ObjectError::TypeError)),
+            ncl_object::ObjectError::TypeError
+        );
     }
 
     #[test]

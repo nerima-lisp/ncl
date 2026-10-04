@@ -61,3 +61,45 @@ fn substitute_wildcards(pattern: &str, captures: &[String]) -> String {
     }
     result
 }
+
+pub fn directory_match(
+    ctx: &ThreadContext,
+    pattern: Word,
+    value: Word,
+) -> Result<bool, ObjectError> {
+    if pattern == Word::NIL {
+        return Ok(true);
+    }
+    fn parts(ctx: &ThreadContext, value: Word) -> Result<Vec<Word>, ObjectError> {
+        let mut result = Vec::new();
+        let mut cursor = value;
+        while cursor != Word::NIL {
+            result.push(car(ctx, cursor)?);
+            cursor = cdr(ctx, cursor)?;
+        }
+        Ok(result)
+    }
+    fn matches(ctx: &ThreadContext, pattern: &[Word], value: &[Word]) -> Result<bool, ObjectError> {
+        if pattern.is_empty() {
+            return Ok(value.is_empty());
+        }
+        if symbol_text(ctx, pattern[0])
+            .is_ok_and(|name| name.eq_ignore_ascii_case("WILD-INFERIORS"))
+        {
+            for consumed in 0..=value.len() {
+                // check-added-lines: allow(index) bounded by value length
+                if matches(ctx, &pattern[1..], &value[consumed..])? {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+        if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
+            return Ok(false);
+        }
+        matches(ctx, &pattern[1..], &value[1..])
+    }
+    matches(ctx, &parts(ctx, pattern)?, &parts(ctx, value)?)
+}
+use super::operations::pathname_component_match;
+use super::{ObjectError, ThreadContext, Word, car, cdr, symbol_text};

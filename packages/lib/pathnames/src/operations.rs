@@ -412,59 +412,8 @@ pub fn wild_pathname_p_builtin(
     Ok(if wild { Word::TRUE } else { Word::NIL })
 }
 
-fn directory_parts(ctx: &ThreadContext, directory: Word) -> Result<Vec<Word>, ObjectError> {
-    let mut parts = Vec::new();
-    let mut cursor = directory;
-    while cursor != Word::NIL {
-        parts.push(car(ctx, cursor)?);
-        cursor = cdr(ctx, cursor)?;
-    }
-    Ok(parts)
-}
-
-fn is_symbol(ctx: &ThreadContext, word: Word, name: &str) -> bool {
-    symbol_text(ctx, word).is_ok_and(|value| value.eq_ignore_ascii_case(name))
-}
-
 fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bool, ObjectError> {
-    if pattern == Word::NIL {
-        return Ok(true);
-    }
-    let pattern = directory_parts(ctx, pattern)?;
-    let value = directory_parts(ctx, value)?;
-    fn match_parts(
-        ctx: &ThreadContext,
-        pattern: &[Word],
-        value: &[Word],
-    ) -> Result<bool, ObjectError> {
-        if pattern.is_empty() {
-            return Ok(value.is_empty());
-        }
-        // check-added-lines: allow(index) pattern is nonempty here
-        if is_symbol(ctx, pattern[0], "WILD-INFERIORS") {
-            // check-added-lines: allow(index) pattern is nonempty here
-            // check-added-lines: allow(index) pattern is nonempty here
-            // check-added-lines: allow(index) recursive slices are bounded by their lengths
-            for consumed in 0..=value.len() {
-                // check-added-lines: allow(index) inclusive bound is value.len()
-                if match_parts(ctx, &pattern[1..], &value[consumed..])? {
-                    // check-added-lines: allow(index) consumed is bounded by value.len()
-                    // check-added-lines: allow(index) consumed is bounded by value.len()
-                    return Ok(true);
-                }
-            }
-            return Ok(false);
-        }
-        // check-added-lines: allow(index) value nonempty guard protects index zero
-        if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
-            // check-added-lines: allow(index) value nonempty guard protects index zero
-            // check-added-lines: allow(index) value nonempty guard protects index zero
-            // check-added-lines: allow(index) nonempty guard protects index zero
-            return Ok(false);
-        }
-        match_parts(ctx, &pattern[1..], &value[1..]) // check-added-lines: allow(index) nonempty guards protect slice starts
-    }
-    match_parts(ctx, &pattern, &value)
+    super::wildcard::directory_match(ctx, pattern, value)
 }
 
 pub fn merge_pathnames_builtin(

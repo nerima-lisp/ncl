@@ -83,6 +83,7 @@ pub fn directory_match(
         if pattern.is_empty() {
             return Ok(value.is_empty());
         }
+        // check-added-lines: allow(index) pattern is nonempty after the guard
         if symbol_text(ctx, pattern[0])
             .is_ok_and(|name| name.eq_ignore_ascii_case("WILD-INFERIORS"))
         {
@@ -94,10 +95,11 @@ pub fn directory_match(
             }
             return Ok(false);
         }
+        // check-added-lines: allow(index) value is checked nonempty before indexing
         if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
             return Ok(false);
         }
-        matches(ctx, &pattern[1..], &value[1..])
+        matches(ctx, &pattern[1..], &value[1..]) // check-added-lines: allow(index) nonempty guards protect slice starts
     }
     matches(ctx, &parts(ctx, pattern)?, &parts(ctx, value)?)
 }

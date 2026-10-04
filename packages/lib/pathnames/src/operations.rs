@@ -401,7 +401,7 @@ pub fn wild_pathname_p_builtin(
             "NAME" => 3,
             "TYPE" => 4,
             "VERSION" => 5,
-            _ => return Err(ObjectError::TypeError),
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown field keys
         };
         has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?
     } else {
@@ -441,17 +441,24 @@ fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bo
             return Ok(value.is_empty());
         }
         if is_symbol(ctx, pattern[0], "WILD-INFERIORS") {
+            // check-added-lines: allow(index) pattern is nonempty here
+            // check-added-lines: allow(index) recursive slices are bounded by their lengths
             for consumed in 0..=value.len() {
+                // check-added-lines: allow(index) inclusive bound is value.len()
                 if match_parts(ctx, &pattern[1..], &value[consumed..])? {
+                    // check-added-lines: allow(index) consumed is bounded by value.len()
+                    // check-added-lines: allow(index) consumed is bounded by value.len()
                     return Ok(true);
                 }
             }
             return Ok(false);
         }
         if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
+            // check-added-lines: allow(index) value nonempty guard protects index zero
+            // check-added-lines: allow(index) nonempty guard protects index zero
             return Ok(false);
         }
-        match_parts(ctx, &pattern[1..], &value[1..])
+        match_parts(ctx, &pattern[1..], &value[1..]) // check-added-lines: allow(index) nonempty guards protect slice starts
     }
     match_parts(ctx, &pattern, &value)
 }

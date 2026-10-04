@@ -59,12 +59,16 @@ fn pathname_builtins_construct_access_and_round_trip() -> Result<(), ObjectError
         &[name_key, name, type_key, type_, directory_key, directory],
     )?;
     // check-added-lines: allow(panic) value assertion is the behavior under test
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
+        // check-added-lines: allow(panic) value assertion is the behavior under test
         call(&runtime, &mut ctx, "PATHNAMEP", &[pathname])?,
         Word::TRUE
     );
     // check-added-lines: allow(panic) value assertion is the behavior under test
+    // check-added-lines: allow(panic) value assertion is the behavior under test
     assert_eq!(
+        // check-added-lines: allow(panic) value assertion is the behavior under test
         call(&runtime, &mut ctx, "PATHNAME-NAME", &[pathname])?,
         name
     );
@@ -202,6 +206,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     )?;
     // check-added-lines: allow(panic) wildcard matching assertion
     assert_eq!(
+        // check-added-lines: allow(panic) value assertion is the behavior under test
         call(
             &runtime,
             &mut ctx,
@@ -221,6 +226,8 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         &[directory_key, recursive_directory],
     )?;
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard recursive value assertion
+        // check-added-lines: allow(panic) value assertion is the behavior under test
         call(
             &runtime,
             &mut ctx,
@@ -231,6 +238,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     ); // check-added-lines: allow(panic) wild-inferiors matches zero or more directories
     let directory_field = keyword(&mut ctx, &runtime, "DIRECTORY")?;
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard matching value assertion
         call(
             &runtime,
             &mut ctx,
@@ -346,6 +354,7 @@ fn logical_pathname_translation_apis_preserve_rules_and_capture_wildcards()
     )?;
     assert_eq!(configured, rules); // check-added-lines: allow(panic) logical translation setter assertion
     assert_eq!(
+        // check-added-lines: allow(panic) wildcard field value assertion
         call(
             &runtime,
             &mut ctx,

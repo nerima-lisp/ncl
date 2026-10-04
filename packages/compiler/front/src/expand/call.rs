@@ -182,7 +182,7 @@ impl<'a> FormExpander<'a> {
         if name.package_name() != Some("COMMON-LISP") {
             return Ok(None);
         }
-        if name.name == "DECLAIM" {
+        if name.name == "DECLAIM" || name.name == "DEFTYPE" {
             return Ok(Some(Step::Retry {
                 name: name.clone(),
                 form: Word::NIL,

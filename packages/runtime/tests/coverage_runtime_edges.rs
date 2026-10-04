@@ -60,6 +60,34 @@ fn fprint_initializer_runs_through_declared_recursive_helper() {
 }
 
 #[test]
+fn deftype_declarations_do_not_execute_as_runtime_forms() {
+    let mut runtime = Runtime::new().unwrap();
+    let source = r#"
+(defpackage :cl-bench.gabriel (:use :common-lisp))
+(in-package :cl-bench.gabriel)
+(eval-when (:load-toplevel :execute)
+  (defconstant +puzzle-size+ 511)
+  (defconstant +puzzle-classmax+ 3)
+  (defconstant +puzzle-dee+ 8)
+  (defconstant +puzzle-typemax+ 12))
+(defvar *iii* 0)
+(defvar *kount* 0)
+(declaim (type fixnum +puzzle-size+ +puzzle-classmax+ +puzzle-typemax+
+               *iii* *kount* +puzzle-dee+))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftype class-vector () `(simple-vector ,(1+ +puzzle-classmax+)))
+  (deftype type-vector () `(simple-vector ,(1+ +puzzle-typemax+)))
+  (deftype size-vector () `(simple-vector ,(1+ +puzzle-size+)))
+  (deftype p-array () `(simple-array t (,(1+ +puzzle-typemax+) ,(1+ +puzzle-size+)))))
+"#;
+
+    assert_eq!(
+        eval(&mut runtime, source),
+        "NIL",
+    );
+}
+
+#[test]
 fn local_macro_expander_calls_a_compiled_function() {
     let mut runtime = Runtime::new().unwrap();
 

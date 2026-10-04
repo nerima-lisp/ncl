@@ -3,7 +3,7 @@
 
 use ncl_object::{
     FunctionObject, Package, Runtime, ThreadContext, Word, make_double, make_ratio,
-    make_simple_vector, make_string,
+    make_simple_vector, make_string, set_symbol_value,
 };
 
 fn function(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
@@ -150,4 +150,42 @@ fn dispatch_matches_common_numeric_and_sequence_specifiers() {
         ncl_printer::pprint_dispatch(&mut ctx, float.as_word(), table).unwrap(),
         Word::fixnum(1)
     );
+}
+
+#[test]
+fn pprint_layout_primitives_write_to_the_ambient_stream() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    ncl_lib_streams::register(&runtime).unwrap();
+    let stream = call(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM", &[]);
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let standard_output = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "*STANDARD-OUTPUT*")
+        .unwrap()
+        .0;
+    set_symbol_value(&mut ctx, standard_output, stream).unwrap();
+    let keyword = runtime.ensure_package(&mut ctx, "KEYWORD").unwrap();
+    let mandatory = Package::from_word(keyword)
+        .intern(&mut ctx, &runtime, "MANDATORY")
+        .unwrap()
+        .0;
+    let relative = Package::from_word(keyword)
+        .intern(&mut ctx, &runtime, "RELATIVE")
+        .unwrap()
+        .0;
+    call(&runtime, &mut ctx, "PPRINT-NEWLINE", &[mandatory]);
+    call(
+        &runtime,
+        &mut ctx,
+        "PPRINT-TAB",
+        &[relative, Word::fixnum(2), Word::fixnum(0)],
+    );
+    let result = call(&runtime, &mut ctx, "GET-OUTPUT-STREAM-STRING", &[stream]);
+    let length = ncl_object::string_length(&ctx, result).unwrap();
+    let output: String = (0..length)
+        .map(|index| ncl_object::string_ref(&ctx, result, index).unwrap())
+        .collect();
+    assert_eq!(output, "\n  ");
 }

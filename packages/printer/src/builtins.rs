@@ -1,5 +1,8 @@
 //! Registration of the printer's owned symbols and its dispatch table.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
@@ -9,7 +12,16 @@ use ncl_object::{
     structure_layout, symbol_name, symbol_plist, symbol_value, with_root, with_roots,
 };
 
-use crate::{PrintError, PrintOptions, write_to_string};
+use crate::{NewlineKind, PrintError, PrintOptions, write_to_string};
+
+#[derive(Default)]
+struct LayoutState {
+    column: usize,
+    indent: usize,
+    pending: Option<NewlineKind>,
+}
+
+static LAYOUT_STATES: OnceLock<Mutex<HashMap<usize, LayoutState>>> = OnceLock::new();
 
 /// The `(package, name)` functions `ncl-printer` owns.
 const FUNCTIONS: [(&str, &str); 20] = [
@@ -162,13 +174,33 @@ fn register_pprint_builtin(
             },
             copy_pprint_dispatch_builtin,
         ),
-        "PPRINT-NEWLINE" | "PPRINT-INDENT" | "PPRINT-TAB" | "PPRINT-FILL" | "PPRINT-LINEAR"
-        | "PPRINT-TABULAR" => (
+        "PPRINT-NEWLINE" => (
             Builtin {
                 lambda_list: LambdaList::with_rest(&[], OBJECT_PARAMETER),
                 convention: BuiltinConvention::Adapted,
             },
-            pprint_primitive,
+            pprint_newline,
+        ),
+        "PPRINT-INDENT" => (
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[], OBJECT_PARAMETER),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_indent,
+        ),
+        "PPRINT-TAB" => (
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[], OBJECT_PARAMETER),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_tab,
+        ),
+        "PPRINT-FILL" | "PPRINT-LINEAR" | "PPRINT-TABULAR" => (
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[], OBJECT_PARAMETER),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_object,
         ),
         _ => return Err(ObjectError::Layout),
     };
@@ -269,19 +301,182 @@ fn copy_pprint_dispatch_builtin(
     copy_pprint_dispatch(ctx, runtime, table)
 }
 
-#[allow(
-    clippy::missing_const_for_fn,
-    clippy::unnecessary_wraps,
-    reason = "The shared builtin entry ABI requires a fallible, non-const function."
-)]
-fn pprint_primitive(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+fn pprint_newline(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let _ = args;
+    let stream = output_stream(ctx, runtime, None)?;
+    let kind = args.required(0)?;
+    let kind = symbol_text(ctx, kind)?.to_ascii_uppercase();
+    with_layout_state(stream, |state| {
+        let newline = match kind.as_str() {
+            "MANDATORY" => NewlineKind::Mandatory,
+            "MISR" => NewlineKind::Miser,
+            "FILL" => NewlineKind::Fill,
+            _ => NewlineKind::Linear,
+        };
+        state.pending = Some(newline);
+        if newline == NewlineKind::Mandatory {
+            flush_pending(ctx, runtime, stream, state, true)?;
+        }
+        Ok(())
+    })?;
     Ok(Word::NIL)
+}
+
+fn pprint_indent(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let stream = output_stream(ctx, runtime, None)?;
+    let amount = args
+        .required(1)?
+        .as_fixnum()
+        .ok_or(ObjectError::TypeError)?;
+    with_layout_state(stream, |state| {
+        state.indent = usize::try_from(amount).unwrap_or(0);
+        Ok(())
+    })?;
+    Ok(Word::NIL)
+}
+
+fn pprint_tab(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let stream = output_stream(ctx, runtime, None)?;
+    let column = usize::try_from(
+        args.required(1)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    let increment = usize::try_from(
+        args.required(2)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?,
+    )
+    .map_err(|_| ObjectError::TypeError)?;
+    with_layout_state(stream, |state| {
+        flush_pending(ctx, runtime, stream, state, false)?;
+        let target = match symbol_text(ctx, args.required(0)?)?
+            .to_ascii_uppercase()
+            .as_str()
+        {
+            "ABSOLUTE" => {
+                if state.column < column || increment == 0 {
+                    column
+                } else {
+                    column + (state.column - column) / increment * increment + increment
+                }
+            }
+            _ => state.column + column,
+        };
+        write_spaces(ctx, runtime, stream, target.saturating_sub(state.column))?;
+        state.column = target;
+        Ok(())
+    })?;
+    Ok(Word::NIL)
+}
+
+fn pprint_object(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let stream = output_stream(ctx, runtime, args.get(1))?;
+    let options = PrintOptions::from_specials(ctx, runtime).with_pretty(true);
+    let rendered =
+        write_to_string(ctx, runtime, object, &options).map_err(|error| print_error(&error))?;
+    with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
+        with_layout_state(stream, |state| {
+            flush_pending(ctx, runtime, stream, state, false)?;
+            call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
+            state.column = rendered_text_length(ctx, *rendered)?;
+            Ok(())
+        })
+    })?;
+    Ok(Word::NIL)
+}
+
+fn with_layout_state<T>(
+    stream: Word,
+    operation: impl FnOnce(&mut LayoutState) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let states = LAYOUT_STATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut states = states.lock().map_err(|_| ObjectError::Layout)?;
+    let mut state = states.remove(&stream.address()).unwrap_or_default();
+    let result = operation(&mut state);
+    states.insert(stream.address(), state);
+    result
+}
+
+fn flush_pending(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    stream: Word,
+    state: &mut LayoutState,
+    mandatory: bool,
+) -> Result<(), ObjectError> {
+    let Some(kind) = state.pending.take() else {
+        return Ok(());
+    };
+    if mandatory || matches!(kind, NewlineKind::Mandatory) {
+        call_builtin(
+            ctx,
+            runtime,
+            "WRITE-CHAR",
+            &[Word::character(u32::from('\n')), stream],
+        )?;
+        state.column = state.indent;
+        write_spaces(ctx, runtime, stream, state.indent)?;
+    } else {
+        call_builtin(
+            ctx,
+            runtime,
+            "WRITE-CHAR",
+            &[Word::character(u32::from(' ')), stream],
+        )?;
+        state.column += 1;
+    }
+    Ok(())
+}
+
+fn write_spaces(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    stream: Word,
+    count: usize,
+) -> Result<(), ObjectError> {
+    for _ in 0..count {
+        call_builtin(
+            ctx,
+            runtime,
+            "WRITE-CHAR",
+            &[Word::character(u32::from(' ')), stream],
+        )?;
+    }
+    Ok(())
+}
+
+fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
+    let name = symbol_name(ctx, symbol)?;
+    let length = ncl_object::string_length(ctx, name)?;
+    (0..length)
+        .map(|index| ncl_object::string_ref(ctx, name, index))
+        .collect()
+}
+
+fn rendered_text_length(ctx: &ThreadContext, string: Word) -> Result<usize, ObjectError> {
+    ncl_object::string_length(ctx, string)
 }
 
 fn register_print_builtin(

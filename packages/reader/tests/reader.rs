@@ -69,6 +69,15 @@ fn reads_fixnums() {
 }
 
 #[test]
+fn exponent_marker_without_a_mantissa_is_a_symbol() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let word = read_one(&runtime, &mut ctx, "e1");
+    assert_eq!(name_of(&ctx, word), "E1");
+}
+
+#[test]
 fn reads_a_bignum_beyond_fixnum() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
@@ -333,6 +342,17 @@ fn block_comments_are_skipped() {
         classify(read_one(&runtime, &mut ctx, "#| a comment |# 42")),
         ObjectRef::Fixnum(42)
     );
+}
+
+#[test]
+fn block_comments_before_list_terminators_are_skipped() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let form = read_one(&runtime, &mut ctx, "(list 1 #| trailing comment |#)");
+    assert_eq!(name_of(&ctx, car(&ctx, form).unwrap()), "LIST");
+    let rest = cdr(&ctx, form).unwrap();
+    assert_eq!(classify(car(&ctx, rest).unwrap()), ObjectRef::Fixnum(1));
 }
 
 #[test]

@@ -42,6 +42,7 @@ pub const MACROS: &[&str] = &[
     "NTH-VALUE",
     "MULTIPLE-VALUE-BIND",
     "MULTIPLE-VALUE-LIST",
+    "MULTIPLE-VALUE-SETQ",
     "OR",
     "POP",
     "PROG",
@@ -55,10 +56,13 @@ pub const MACROS: &[&str] = &[
     "REMF",
     "RETURN",
     "SETF",
+    "SHIFTF",
+    "ROTATEF",
     "TYPECASE",
     "UNLESS",
     "WHEN",
     "WITH-INPUT-FROM-STRING",
+    "WITH-OPEN-FILE",
     "WITH-OUTPUT-TO-STRING",
 ];
 

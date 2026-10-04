@@ -156,3 +156,26 @@ fn compiled_clos_throw_passes_through_call_next_method() {
     assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "42");
 }
+
+#[test]
+fn compiled_clos_untyped_method_parameters_dispatch_as_t() {
+    let output = run_ncl(
+        "(progn (defgeneric passthrough (a b)) (defmethod passthrough ((a integer) b) (+ a b)) (defgeneric eql-fib (x)) (defmethod eql-fib (x) (if (< x 2) x (+ (eql-fib (- x 1)) (eql-fib (- x 2))))) (list (passthrough 2 3) (eql-fib 8)))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(5 21)");
+}
+
+#[test]
+fn compiled_clos_and_qualified_method_accepts_rest_arguments() {
+    let output = run_ncl(
+        "(progn (defclass class-0-0 () ()) (defgeneric complex-method (self other)) (defmethod complex-method and ((self class-0-0) other &rest rest) (list (class-name (class-of self)) other rest)) (complex-method (make-instance 'class-0-0) 7 8 9))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(COMMON-LISP-USER:CLASS-0-0 7 (8 9))"
+    );
+}

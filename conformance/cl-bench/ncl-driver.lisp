@@ -38,6 +38,13 @@
          (runs (third benchmark))
          (setup (fourth benchmark))
          (samples nil))
+    (with-open-file (progress "/tmp/c2-clbench-bench-progress"
+                              :direction :output
+                              :if-exists :append
+                              :if-does-not-exist :create)
+      (format progress "BENCH ~A status=started~%" name))
+    (format *error-output* "BENCH ~A status=started~%" name)
+    (finish-output *error-output*)
     (dotimes (run runs)
       (declare (ignore run))
       (when setup (funcall setup))
@@ -46,6 +53,15 @@
         (funcall function)
         (push (elapsed-seconds start (get-internal-real-time)) samples)))
     (push (list name (nreverse samples)) *results*)
+    (with-open-file (progress "/tmp/c2-clbench-bench-progress"
+                              :direction :output
+                              :if-exists :append
+                              :if-does-not-exist :create)
+      (format progress "BENCH ~A status=passed seconds=~{~A~^,~}~%"
+              name (nreverse samples)))
+    (format *error-output* "BENCH ~A status=passed seconds=~{~A~^,~}~%"
+            name (nreverse samples))
+    (finish-output *error-output*)
     (car (last samples))))
 
 (defun bench-run ()
@@ -58,18 +74,14 @@
 
 (defun load-benchmark-file (file)
   (let ((start (get-internal-real-time)))
-    (block load-file
-      (handler-bind ((error
-                       (lambda (condition)
-                         (declare (ignore condition))
-                         (setf *load-failed* t)
-                         (push (list file :failed) *load-results*)
-                         (return-from load-file :failed))))
-        (load (merge-pathnames file *misc-dir*)))
-      (push (list file :loaded
-                  (elapsed-seconds start (get-internal-real-time)))
-            *load-results*)
-      :loaded)))
+    ;; The fixed cl-bench layout is a relative namestring accepted by LOAD.
+    (format *error-output* "LOAD ~A status=started~%" file)
+    (finish-output *error-output*)
+    (load (concatenate 'string *misc-dir* file))
+    (push (list file :loaded
+                (elapsed-seconds start (get-internal-real-time)))
+          *load-results*)
+    :loaded))
 
 (dolist (file '("arrays.lisp"
                 "bignum.lisp"
@@ -89,9 +101,4 @@
 ;; tests.lisp supplies only benchmark metadata and function designators.  It
 ;; is safe to load after the replacement DEFBENCH has been installed.
 (load-benchmark-file "tests.lisp")
-(if *load-failed*
-    (progn
-      (write-string "{\"status\":\"failed\",\"times\":[]}")
-      (finish-output)
-      (error "cl-bench benchmark load failed"))
-    (when *benchmarks* (bench-run)))
+(when *benchmarks* (bench-run))

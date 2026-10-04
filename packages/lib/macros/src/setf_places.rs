@@ -196,6 +196,20 @@ fn symbol_value_place(
     setter_place(ctx, runtime, args, "SYMBOL-VALUE", "SET")
 }
 
+fn fill_pointer_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    setter_place(
+        ctx,
+        runtime,
+        args,
+        "FILL-POINTER",
+        "NCL-EXT::FILL-POINTER-SET",
+    )
+}
+
 fn aref_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -234,6 +248,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("REST", rest_place as PlaceExpander),
         ("NTH", nth_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
+        ("FILL-POINTER", fill_pointer_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),
         ("GETHASH", gethash_place as PlaceExpander),

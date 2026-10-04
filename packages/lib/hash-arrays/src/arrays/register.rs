@@ -8,8 +8,8 @@ use super::{
     array_total_size_builtin, arrayp_builtin, bit_and_builtin, bit_andc1_builtin,
     bit_andc2_builtin, bit_builtin, bit_eqv_builtin, bit_ior_builtin, bit_nand_builtin,
     bit_nor_builtin, bit_not_builtin, bit_orc1_builtin, bit_orc2_builtin, bit_xor_builtin,
-    fill_pointer_builtin, make_array_builtin, register_one, register_one_ncl,
-    row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
+    fill_pointer_builtin, fill_pointer_set_builtin, make_array_builtin, register_one,
+    register_one_ncl, row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
     svref_set_builtin, vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin,
     vectorp_builtin,
 };
@@ -173,6 +173,13 @@ fn register_array_properties(
         "FILL-POINTER",
         LambdaList::fixed(&[ARRAY]),
         fill_pointer_builtin,
+    )?;
+    register_one_ncl(
+        runtime,
+        ctx,
+        "FILL-POINTER-SET",
+        LambdaList::fixed(&[ARRAY, VALUE]),
+        fill_pointer_set_builtin,
     )?;
     Ok(())
 }

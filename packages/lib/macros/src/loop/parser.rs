@@ -390,7 +390,6 @@ fn parse_conditional(
         otherwise,
     })
 }
-
 /// Parse the body of a LOOP form (the operator itself is not included).
 #[allow(clippy::too_many_lines)]
 pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
@@ -398,6 +397,10 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
     let mut name = None;
     let mut clauses = Vec::new();
     while cursor < input.len() {
+        if !is_keyword(ctx, input[cursor]) && input[cursor].is_cons() {
+            clauses.push(LoopClause::Do(input[cursor..].to_vec()));
+            break;
+        }
         let keyword = word_name(ctx, required(input, &mut cursor)?)?;
         match keyword.as_str() {
             "NAMED" => {

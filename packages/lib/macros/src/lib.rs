@@ -203,6 +203,16 @@ fn rotatef_callback(
 ) -> Result<Word, ObjectError> {
     call_macro(runtime, ctx, args, values, expand_rotatef)
 }
+fn multiple_value_setq_callback(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let form = expansion_arg(args)?;
+    let arguments = macro_arguments(ctx, form)?;
+    control::expand_multiple_value_setq(ctx, runtime, &arguments)
+}
 
 fn get_setf_expansion_callback(
     runtime: &Runtime,
@@ -238,7 +248,8 @@ adapters!
      pop_adapter => pop_callback,
      remf_adapter => remf_callback,
      shiftf_adapter => shiftf_callback,
-     rotatef_adapter => rotatef_callback);
+     rotatef_adapter => rotatef_callback,
+     multiple_value_setq_adapter => multiple_value_setq_callback);
 
 fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
     match name {
@@ -282,6 +293,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "NTH-VALUE" => Some(control::expand_nth_value_adapter),
         "MULTIPLE-VALUE-LIST" => Some(control::expand_multiple_value_list_adapter),
         "MULTIPLE-VALUE-BIND" => Some(control::expand_multiple_value_bind_adapter),
+        "MULTIPLE-VALUE-SETQ" => Some(multiple_value_setq_adapter),
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
         "PSETQ" => Some(psetq::expand),
@@ -296,6 +308,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DEFINE-CONDITION" => Some(control::expand_define_condition_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
+        "WITH-OPEN-FILE" => Some(string_stream::expand_open_file_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),

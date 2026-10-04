@@ -7,7 +7,7 @@ mod register_extra_tail;
 pub use register_extra_tail::{
     adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
     rassoc_entry, reduce_entry, remove_if_entry, remove_if_not_entry, set_difference_entry,
-    set_exclusive_or_entry, subsetp_entry, substitute_if_entry, substitute_if_not_entry,
+    set_exclusive_or_entry, subst_entry, subsetp_entry, substitute_if_entry, substitute_if_not_entry,
 };
 
 fn root_args<'ctx>(

@@ -187,6 +187,8 @@ fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, Ob
         METHOD_QUALIFIER_AFTER
     } else if matches!(name.as_str(), ":AROUND" | "AROUND") {
         METHOD_QUALIFIER_AROUND
+    } else if name == "AND" {
+        METHOD_QUALIFIER_PRIMARY
     } else {
         return Ok(None);
     };
@@ -230,11 +232,25 @@ fn method_match(
     arguments: &[Word],
 ) -> Result<Option<usize>, ObjectError> {
     let specializers = form_elements(ctx, specializers)?;
-    if specializers.len() != arguments.len() {
+    let has_rest = specializers.last().is_some_and(|specializer| {
+        symbol_name_string(ctx, *specializer)
+            .is_ok_and(|name| name == "&REST")
+    });
+    let fixed_specializers = if has_rest {
+        &specializers[..specializers.len() - 1] // check-added-lines: allow(index) has_rest proves the non-empty suffix
+    } else {
+        specializers.as_slice()
+    };
+    if (!has_rest && fixed_specializers.len() != arguments.len())
+        || (has_rest && fixed_specializers.len() > arguments.len())
+    {
         return Ok(None);
     }
     let mut score = 0;
-    for (specializer, argument) in specializers.iter().zip(arguments) {
+    for (specializer, argument) in fixed_specializers.iter().zip(arguments) {
+        if !specializer.is_cons() {
+            continue;
+        }
         let fields = form_elements(ctx, *specializer)?;
         let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
         if designator.is_cons() {

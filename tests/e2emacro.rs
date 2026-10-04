@@ -277,7 +277,7 @@ const XFAILS: &[XFail] = &[
     XFail {
         name: "loop-with-finally",
         source: "(loop with x = 2 finally (return x))",
-        stderr: "UndefinedValue",
+        stderr: "Unsupported",
         exit_code: 1,
     },
     XFail {

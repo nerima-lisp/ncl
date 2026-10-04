@@ -124,7 +124,12 @@ fn conversion_maps_remaining_object_and_typed_error_categories() {
     let cases = [
         (LispError::ControlError(ControlError::Go), "CONTROL-ERROR"),
         (LispError::StreamError(StreamError::Io), "STREAM-ERROR"),
-        (LispError::FileError(FileError::InvalidPath), "FILE-ERROR"),
+        (
+            LispError::FileError(FileError::InvalidPath {
+                pathname: Word::NIL,
+            }),
+            "FILE-ERROR",
+        ),
         (LispError::Object(ObjectError::UndefinedFunction), "ERROR"),
         (LispError::Object(ObjectError::NonLocalExit), "ERROR"),
         (LispError::Object(ObjectError::RootStackCorrupted), "ERROR"),

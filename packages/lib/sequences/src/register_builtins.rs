@@ -3,7 +3,7 @@ use super::register_extra::{
     mapc_entry, mapcan_entry, mapcar_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
     notany_entry, notevery_entry, rassoc_entry, reduce_entry, remove_entry, remove_if_entry,
     remove_if_not_entry, set_difference_entry, set_exclusive_or_entry, some_entry, sort_entry,
-    stable_sort_entry, subsetp_entry, substitute_entry, substitute_if_entry,
+    stable_sort_entry, subst_entry, subsetp_entry, substitute_entry, substitute_if_entry,
     substitute_if_not_entry, union_entry,
 };
 use super::{
@@ -442,6 +442,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("DELETE", remove_entry),
         ("DELETE-IF", remove_if_entry),
         ("DELETE-IF-NOT", remove_if_not_entry),
+        ("SUBST", subst_entry),
         ("SUBSTITUTE", substitute_entry),
         ("SUBSTITUTE-IF", substitute_if_entry),
         ("SUBSTITUTE-IF-NOT", substitute_if_not_entry),

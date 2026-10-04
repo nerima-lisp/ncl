@@ -372,3 +372,53 @@ pub fn expand_input_adapter(
     arguments.remove(0);
     expand_input(ctx, runtime, &arguments)
 }
+
+pub fn expand_open_file_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result {
+    let form = args.required(0)?;
+    let mut arguments = elements(ctx, form)?;
+    if arguments.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
+    arguments.remove(0);
+    ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
+        let spec = **roots.first().ok_or(ObjectError::TypeError)?;
+        let spec_parts = elements(ctx, spec)?;
+        let variable = *spec_parts.first().ok_or(ObjectError::TypeError)?;
+        if !matches!(classify_object(ctx, variable), ObjectRef::Symbol(_)) {
+            return Err(ObjectError::TypeError);
+        }
+        let path = *spec_parts.get(1).ok_or(ObjectError::TypeError)?;
+        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let variable_index = held.len();
+        held.push(variable);
+        let path_index = held.len();
+        held.push(path);
+        let mut open_indexes = vec![path_index];
+        for option in spec_parts.iter().skip(2).copied() {
+            let index = held.len();
+            held.push(option);
+            open_indexes.push(index);
+        }
+        let _open = held_form(ctx, runtime, &mut held, "OPEN", &open_indexes)?;
+        let stream_index = held.len() - 1;
+        let binding = held_list(ctx, runtime, &mut held, &[variable_index, stream_index])?;
+        let bindings = held_list(ctx, runtime, &mut held, &[binding])?;
+        let body_end = roots.len();
+        let body = held_form(
+            ctx,
+            runtime,
+            &mut held,
+            "PROGN",
+            &(1..body_end).collect::<Vec<_>>(),
+        )?;
+        let close = held_form(ctx, runtime, &mut held, "CLOSE", &[variable_index])?;
+        let protected = held_form(ctx, runtime, &mut held, "UNWIND-PROTECT", &[body, close])?;
+        let expansion = held_form(ctx, runtime, &mut held, "LET", &[bindings, protected])?;
+        held.get(expansion).copied().ok_or(ObjectError::Layout)
+    })
+}

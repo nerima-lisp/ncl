@@ -98,7 +98,9 @@ fn conversion_maps_typed_lisp_errors_to_specific_conditions() {
             "STREAM-ERROR",
         ),
         (
-            LispError::FileError(FileError::PermissionDenied),
+            LispError::FileError(FileError::PermissionDenied {
+                pathname: Word::NIL,
+            }),
             "FILE-ERROR",
         ),
         (LispError::Object(ObjectError::Unbound), "ERROR"),

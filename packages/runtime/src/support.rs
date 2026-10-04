@@ -7,7 +7,7 @@ use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
     make_bignum_from_limbs, make_closure, make_complex, make_cons, make_double, make_ratio,
-    make_simple_vector, make_string, make_value_cell, symbol_function,
+    make_simple_vector, make_string, make_symbol, make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
@@ -379,6 +379,10 @@ pub fn resolve_constant(
                     make_double(ctx, runtime, f64::from(*value))?.as_word()
                 }
                 ncl_ir::Constant::Symbol { package, name } => {
+                    if package == "NCL-UNINTERNED" {
+                        let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+                        return make_symbol(ctx, runtime, name);
+                    }
                     let package_word = runtime
                         .find_package(ctx, package)
                         .ok_or(ObjectError::Layout)?;

@@ -3,7 +3,9 @@
 //! These methods resolve one form to an [`Expr`] or to a replacement that must
 //! be expanded again. They live apart from `expand` to keep both files small.
 
-use ncl_object::{ObjectRef, Package, Runtime, ThreadContext, Word, car, symbol_is_macro};
+use ncl_object::{
+    ObjectRef, Package, Runtime, ThreadContext, Word, car, make_cons, symbol_is_macro,
+};
 
 use crate::ast::{Expr, LocalMacro, Operator};
 use crate::error::FrontError;
@@ -119,6 +121,9 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
+        if let Some(step) = self.expand_builtin_compatibility(&name, arguments)? {
+            return Ok(step);
+        }
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime
@@ -166,6 +171,57 @@ impl<'a> FormExpander<'a> {
         Ok(Step::Done(Expr::Call {
             operator: Operator::Name(name),
             arguments,
+        }))
+    }
+
+    fn expand_builtin_compatibility(
+        &mut self,
+        name: &SymbolRef,
+        arguments: &[Word],
+    ) -> Result<Option<Step>, FrontError> {
+        if name.package_name() != Some("COMMON-LISP") {
+            return Ok(None);
+        }
+        if name.name == "DECLAIM" || name.name == "DEFTYPE" {
+            return Ok(Some(Step::Retry {
+                name: name.clone(),
+                form: Word::NIL,
+            }));
+        }
+        if name.name != "WITH-STANDARD-IO-SYNTAX" {
+            return Ok(None);
+        }
+        let common_lisp = self
+            .runtime
+            .find_package(self.ctx, "COMMON-LISP")
+            .ok_or_else(|| FrontError::MacroExpansion {
+                name: name.clone(),
+                detail: "COMMON-LISP package is not present".to_owned(),
+            })?;
+        let (progn, _) = Package::from_word(common_lisp)
+            .intern(self.ctx, self.runtime, "PROGN")
+            .map_err(|error| FrontError::MacroExpansion {
+                name: name.clone(),
+                detail: error.to_string(),
+            })?;
+        let mut body = Word::NIL;
+        for argument in arguments.iter().rev().copied() {
+            body = make_cons(self.ctx, self.runtime, argument, body).map_err(|error| {
+                FrontError::MacroExpansion {
+                    name: name.clone(),
+                    detail: error.to_string(),
+                }
+            })?;
+        }
+        let form = make_cons(self.ctx, self.runtime, progn, body).map_err(|error| {
+            FrontError::MacroExpansion {
+                name: SymbolRef::interned("COMMON-LISP", "PROGN"),
+                detail: error.to_string(),
+            }
+        })?;
+        Ok(Some(Step::Retry {
+            name: name.clone(),
+            form,
         }))
     }
 

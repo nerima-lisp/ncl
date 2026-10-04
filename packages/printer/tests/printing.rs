@@ -423,6 +423,23 @@ fn options_come_from_the_ambient_variables() {
 }
 
 #[test]
+fn print_lines_stops_output_with_two_dots() {
+    let options = PrintOptions::new()
+        .with_pretty(true)
+        .with_right_margin(2)
+        .with_print_lines(Some(1));
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let first = Word::fixnum(1);
+    let second = Word::fixnum(2);
+    let list = make_cons(&mut ctx, &runtime, second, Word::NIL).unwrap();
+    let list = make_cons(&mut ctx, &runtime, first, list).unwrap();
+    let output = print(&runtime, &mut ctx, list, &options);
+    assert!(output.contains(".."), "output was {output:?}");
+}
+
+#[test]
 fn dispatch_table_survives_gc_stress() {
     let (runtime, mut ctx) = context();
     ctx.set_gc_stress(true);

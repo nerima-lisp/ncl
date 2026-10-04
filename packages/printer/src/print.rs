@@ -33,6 +33,44 @@ pub struct Printer<'a> {
     active: HashSet<usize>,
 }
 
+struct LineLimitSink<'a> {
+    sink: &'a mut dyn CharSink,
+    limit: usize,
+    lines: usize,
+    truncated: bool,
+}
+
+impl LineLimitSink<'_> {
+    fn write_limited_char(&mut self, character: char) -> Result<(), PrintError> {
+        if self.truncated {
+            return Ok(());
+        }
+        if character == '\n' && self.lines >= self.limit {
+            self.sink.write_str("..")?;
+            self.truncated = true;
+            return Ok(());
+        }
+        self.sink.write_char(character)?;
+        if character == '\n' {
+            self.lines += 1;
+        }
+        Ok(())
+    }
+}
+
+impl CharSink for LineLimitSink<'_> {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        self.write_limited_char(character)
+    }
+
+    fn write_str(&mut self, text: &str) -> Result<(), PrintError> {
+        for character in text.chars() {
+            self.write_limited_char(character)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> Printer<'a> {
     pub fn new(
         ctx: &'a mut ThreadContext,
@@ -301,7 +339,17 @@ pub fn write(
     sink: &mut dyn CharSink,
     options: &PrintOptions,
 ) -> Result<(), PrintError> {
-    let mut printer = Printer::new(ctx, runtime, sink, *options);
+    let mut limited_sink = options.print_lines().map(|limit| LineLimitSink {
+        sink,
+        limit: limit.get(),
+        lines: 1,
+        truncated: false,
+    });
+    let output: &mut dyn CharSink = match limited_sink.as_mut() {
+        Some(limited) => limited,
+        None => sink,
+    };
+    let mut printer = Printer::new(ctx, runtime, output, *options);
     if options.circle() {
         printer.enable_circle(object);
     }

@@ -236,3 +236,98 @@ fn malformed_defstruct_forms_return_type_error_with_no_partial_value() {
         Err(ObjectError::TypeError)
     );
 }
+
+#[test]
+fn option_error_and_disabled_paths_are_explicitly_exercised() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup();
+    let defstruct = intern(&runtime, &mut ctx, "DEFSTRUCT");
+    let header_record = intern(&runtime, &mut ctx, "OPTION-BRANCH-HEADER");
+    let header_slot = intern(&runtime, &mut ctx, "HEADER-SLOT");
+    let include = intern(&runtime, &mut ctx, ":INCLUDE");
+    let predicate = intern(&runtime, &mut ctx, ":PREDICATE");
+    let copier = intern(&runtime, &mut ctx, ":COPIER");
+    let print_function = intern(&runtime, &mut ctx, ":PRINT-FUNCTION");
+    let printer = intern(&runtime, &mut ctx, "OPTION-BRANCH-PRINTER");
+    let unknown = intern(&runtime, &mut ctx, ":OPTION-BRANCH-UNKNOWN");
+    let include_override = list(&mut ctx, &runtime, &[header_slot, Word::fixnum(7)]);
+    let include_form = list(&mut ctx, &runtime, &[include, Word::NIL, include_override]);
+    let predicate_form = list(&mut ctx, &runtime, &[predicate, Word::NIL]);
+    let copier_form = list(&mut ctx, &runtime, &[copier, Word::NIL]);
+    let print_function_form = list(&mut ctx, &runtime, &[print_function, printer]);
+    let header = list(
+        &mut ctx,
+        &runtime,
+        &[
+            header_record,
+            include_form,
+            predicate_form,
+            copier_form,
+            print_function_form,
+        ],
+    );
+    let form = list(&mut ctx, &runtime, &[defstruct, header, header_slot]);
+    let expansion = expand(&mut ctx, &runtime, form)?;
+    assert!(contains(&ctx, expansion, Word::NIL)?);
+    let plist = ncl_object::symbol_plist(&ctx, header_record)?;
+    assert!(contains(&ctx, plist, printer)?);
+
+    let unknown_form = list(&mut ctx, &runtime, &[unknown, Word::NIL]);
+    let unknown_header_options = list(&mut ctx, &runtime, &[header_record, unknown_form]);
+    let unknown_header = list(&mut ctx, &runtime, &[defstruct, unknown_header_options]);
+    assert_eq!(
+        expand(&mut ctx, &runtime, unknown_header),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn trailing_option_error_and_print_paths_are_explicitly_exercised() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup();
+    let defstruct = intern(&runtime, &mut ctx, "DEFSTRUCT");
+    let record = intern(&runtime, &mut ctx, "OPTION-BRANCH-TRAILING");
+    let slot = intern(&runtime, &mut ctx, "TRAILING-SLOT");
+    let print_function = intern(&runtime, &mut ctx, ":PRINT-FUNCTION");
+    let printer = intern(&runtime, &mut ctx, "OPTION-BRANCH-TRAILING-PRINTER");
+    let predicate = intern(&runtime, &mut ctx, ":PREDICATE");
+    let predicate_name = intern(&runtime, &mut ctx, "OPTION-BRANCH-TRAILING-P");
+    let copier = intern(&runtime, &mut ctx, ":COPIER");
+    let copier_name = intern(&runtime, &mut ctx, "COPY-OPTION-BRANCH-TRAILING");
+    let type_option = intern(&runtime, &mut ctx, ":TYPE");
+    let wrong_type = intern(&runtime, &mut ctx, "VECTOR");
+    let structure = intern(&runtime, &mut ctx, "STRUCTURE");
+    let wrong_type_record = intern(&runtime, &mut ctx, "OPTION-BRANCH-WRONG-TYPE");
+    let form = list(
+        &mut ctx,
+        &runtime,
+        &[
+            defstruct,
+            record,
+            slot,
+            print_function,
+            printer,
+            predicate,
+            predicate_name,
+            copier,
+            copier_name,
+            type_option,
+            structure,
+        ],
+    );
+    let expansion = expand(&mut ctx, &runtime, form)?;
+    let plist = ncl_object::symbol_plist(&ctx, record)?;
+    assert!(contains(&ctx, plist, printer)?);
+    assert!(contains(&ctx, expansion, predicate_name)?);
+    assert!(contains(&ctx, expansion, copier_name)?);
+
+    let wrong_type_form = list(
+        &mut ctx,
+        &runtime,
+        &[defstruct, wrong_type_record, type_option, wrong_type],
+    );
+    assert_eq!(
+        expand(&mut ctx, &runtime, wrong_type_form),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

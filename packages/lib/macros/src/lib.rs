@@ -308,6 +308,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DEFINE-CONDITION" => Some(control::expand_define_condition_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
+        "WITH-OPEN-FILE" => Some(string_stream::expand_open_file_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),

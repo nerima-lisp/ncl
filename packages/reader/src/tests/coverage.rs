@@ -3,7 +3,10 @@
 use std::cell::Cell;
 use std::fmt::Debug;
 
-use ncl_object::{Runtime, ThreadContext, Word, string_length, string_ref, symbol_name};
+use ncl_object::{
+    ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify, classify_object,
+    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
+};
 
 use crate::dispatch::read_sharp;
 use crate::features::eval_feature_expr;
@@ -13,7 +16,7 @@ use crate::reader::{FloatFormat, PackageName, ReadBase, ReadEvaluation, ReadSupp
 use crate::readtable::{
     CustomMacroKind, ReadtableCase, SyntaxKind, readtable_from_word, syntax_kind,
 };
-use crate::{ReadError, ReadOptions, read_from_string};
+use crate::{ReadError, ReadOptions, parse_integer, read_from_string};
 
 trait Required<T> {
     fn required(self) -> T;
@@ -292,4 +295,124 @@ fn error_display_and_source_have_stable_results() {
         assert!(!error.to_string().is_empty());
         assert!(std::error::Error::source(&error).is_none());
     }
+}
+
+#[test]
+fn embedded_dispatch_forms_return_concrete_values() {
+    let (runtime, mut ctx, options) = setup();
+    for (text, value) in [("#b101", 5), ("#o17", 15), ("#d-12", -12), ("#xFf", 255)] {
+        assert_eq!(
+            read_one(&runtime, &mut ctx, text, &options).as_fixnum(),
+            Some(value)
+        );
+    }
+    for (text, value) in [("#\\space", 32), ("#\\newline", 10), ("#\\A", 65)] {
+        assert_eq!(
+            read_one(&runtime, &mut ctx, text, &options).as_character(),
+            Some(value)
+        );
+    }
+    let vector = read_one(&runtime, &mut ctx, "#(1 #*101 #c(2 3))", &options);
+    assert!(matches!(
+        classify_object(&ctx, vector),
+        ObjectRef::SimpleVector(_)
+    ));
+    assert_eq!(simple_vector_length(&ctx, vector).required(), 3);
+    assert_eq!(
+        simple_vector_ref(&ctx, vector, 0).required().as_fixnum(),
+        Some(1)
+    );
+    let labelled = read_one(&runtime, &mut ctx, "(#2=(x y) #2#)", &options);
+    let first = car(&ctx, labelled).required();
+    let second = car(&ctx, cdr(&ctx, labelled).required()).required();
+    assert_eq!(classify(first), classify(second));
+    assert_eq!(symbol_text(&ctx, car(&ctx, first).required()), "X");
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#| outer #| inner |# |# 88", &options).as_fixnum(),
+        Some(88)
+    );
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#+(not :missing) 7", &options).as_fixnum(),
+        Some(7)
+    );
+    let complex = read_one(&runtime, &mut ctx, "#c(6 7)", &options);
+    assert!(matches!(
+        classify_object(&ctx, complex),
+        ObjectRef::Complex(_)
+    ));
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "#\\unknown", &options),
+        Err(ReadError::UnknownCharacterName("unknown".to_owned()))
+    );
+}
+
+#[test]
+fn embedded_reader_lists_strings_and_quotes_preserve_values() {
+    let (runtime, mut ctx, mut options) = setup();
+    let list = read_one(&runtime, &mut ctx, "(a b . c)", &options);
+    assert_eq!(symbol_text(&ctx, car(&ctx, list).required()), "A");
+    let tail = cdr(&ctx, list).required();
+    assert_eq!(symbol_text(&ctx, car(&ctx, tail).required()), "B");
+    assert_eq!(symbol_text(&ctx, cdr(&ctx, tail).required()), "C");
+    let quoted = read_one(&runtime, &mut ctx, "'x", &options);
+    assert_eq!(symbol_text(&ctx, car(&ctx, quoted).required()), "QUOTE");
+    let string = read_one(&runtime, &mut ctx, r#""line\nquote\"slash""#, &options);
+    let length = string_length(&ctx, string).required();
+    let value: String = (0..length)
+        .map(|i| string_ref(&ctx, string, i).required())
+        .collect();
+    assert_eq!(value, "linenquote\"slash");
+    options.set_read_suppression(ReadSuppression::Discard);
+    assert_eq!(read_one(&runtime, &mut ctx, "(a b)", &options), Word::NIL);
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "(a", &options),
+        Err(ReadError::UnexpectedEof)
+    );
+}
+
+#[test]
+fn embedded_token_and_number_paths_report_values() {
+    let (runtime, mut ctx, options) = setup();
+    let ratio = parse_number(
+        &mut ctx,
+        &runtime,
+        &['1', '/', '2'],
+        10,
+        options.default_float_format(),
+    )
+    .required()
+    .required();
+    assert!(matches!(classify_object(&ctx, ratio), ObjectRef::Ratio(_)));
+    let float = parse_number(
+        &mut ctx,
+        &runtime,
+        &['1', '.', '5'],
+        10,
+        options.default_float_format(),
+    )
+    .required()
+    .required();
+    assert!(matches!(
+        classify_object(&ctx, float),
+        ObjectRef::DoubleFloat(_)
+    ));
+    assert_eq!(
+        parse_integer(&mut ctx, &runtime, "  -17xyz", None, Some(0), Some(5))
+            .required()
+            .0
+            .as_fixnum(),
+        Some(-17)
+    );
+    let rt = Cell::new(options.readtable().object().as_word());
+    let mut source = StringSource::new(r"A|b|");
+    let token = crate::token::read_token_chars(&ctx, &mut source, &rt)
+        .required()
+        .required();
+    assert_eq!(token.characters().len(), 2);
+    assert!(token.characters()[1].is_escaped());
+    assert_eq!(token.fold_name(&(0..2), ReadtableCase::Invert), "ab");
+    assert_eq!(
+        crate::token::read_token_chars(&ctx, &mut StringSource::new("\\"), &rt),
+        Err(ReadError::UnexpectedEof)
+    );
 }

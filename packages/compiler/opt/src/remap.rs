@@ -244,3 +244,100 @@ pub fn remap_term_values(term: &mut Terminator, replacements: &HashMap<ValueId, 
         Terminator::Unreachable => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_ir::{Constant, FunctionBuilder, FunctionId, StructureKind, Ty};
+
+    #[test]
+    fn remaps_nested_constants_and_handles_missing_entries() {
+        let mut builder = FunctionBuilder::new(FunctionId(7), "remap", vec![], vec![]);
+        let object = builder.add_constant(Constant::Fixnum(9));
+        let structure = builder.add_constant(Constant::Structure {
+            kind: StructureKind::SimpleVector,
+            elements: vec![object],
+        });
+        let ratio = builder.add_constant(Constant::Ratio {
+            numerator: structure,
+            denominator: object,
+        });
+        let complex = builder.add_constant(Constant::Complex {
+            real: ratio,
+            imaginary: object,
+        });
+        let callee = builder.finish();
+        let mut constants = HashMap::new();
+        let mut caller_constants = Vec::new();
+        let mapped = remap_kind(
+            &OpKind::Const { result: complex },
+            &HashMap::new(),
+            &mut constants,
+            &mut caller_constants,
+            &callee,
+        );
+        assert_eq!(
+            mapped,
+            OpKind::Const {
+                result: ConstantIndex(0)
+            }
+        );
+        assert_eq!(caller_constants.len(), 4);
+        assert!(
+            caller_constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Fixnum(9)))
+        );
+        assert!(
+            caller_constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Structure { .. }))
+        );
+        assert!(
+            caller_constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Ratio { .. }))
+        );
+        assert!(
+            caller_constants
+                .iter()
+                .any(|constant| matches!(constant, Constant::Complex { .. }))
+        );
+        assert_eq!(
+            remap_constant(complex, &mut constants, &mut caller_constants, &callee),
+            ConstantIndex(0)
+        );
+        assert_eq!(
+            remap_constant(
+                ConstantIndex(99),
+                &mut constants,
+                &mut caller_constants,
+                &callee
+            ),
+            ConstantIndex(99)
+        );
+
+        let mut empty = FunctionBuilder::new(FunctionId(8), "empty", vec![], vec![Ty::Word]);
+        assert!(
+            empty
+                .terminate(Terminator::Return { values: vec![] })
+                .is_ok()
+        );
+        let empty = empty.finish();
+        let unchanged = remap_kind(
+            &OpKind::Const {
+                result: ConstantIndex(3),
+            },
+            &HashMap::new(),
+            &mut HashMap::new(),
+            &mut Vec::new(),
+            &empty,
+        );
+        assert_eq!(
+            unchanged,
+            OpKind::Const {
+                result: ConstantIndex(3)
+            }
+        );
+    }
+}

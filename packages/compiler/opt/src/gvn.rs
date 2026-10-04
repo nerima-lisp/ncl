@@ -376,3 +376,7 @@ impl FunctionPass for GlobalValueNumbering {
         Ok(changed)
     }
 }
+
+#[cfg(test)]
+#[path = "tests_gvn_private.rs"]
+mod tests;

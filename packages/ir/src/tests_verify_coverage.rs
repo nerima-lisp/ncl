@@ -294,3 +294,142 @@ fn verifier_reports_result_and_safepoint_errors() {
     );
     assert!(errors(&looped).contains(&VerifyError::SafepointWarning(BlockId(0))));
 }
+
+#[test]
+fn verifier_reports_reachable_detail_type_and_reference_errors() {
+    let object = finish(
+        "object-reference",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Object(ConstantIndex(9))],
+        vec![block(
+            0,
+            vec![op(
+                &[(0, Ty::Word)],
+                OpKind::Const {
+                    result: ConstantIndex(0),
+                },
+            )],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    assert_eq!(
+        errors(&object),
+        vec![VerifyError::ConstantOutOfBounds(BlockId(0))]
+    );
+
+    let bad_load_arg = finish(
+        "bad-load-arg",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(&[(0, Ty::Word)], OpKind::LoadArg { index: 0 })],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    assert_eq!(
+        errors(&bad_load_arg),
+        vec![VerifyError::TypeMismatch(BlockId(0))]
+    );
+
+    let bad_compare = finish(
+        "bad-compare",
+        vec![
+            Param {
+                name: "word".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "i64".into(),
+                ty: Ty::I64,
+            },
+        ],
+        Vec::new(),
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(2, Ty::Bool)],
+                OpKind::Compare {
+                    op: Compare::Eq,
+                    left: ValueId(0),
+                    right: ValueId(1),
+                },
+            )],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    assert_eq!(
+        errors(&bad_compare),
+        vec![VerifyError::TypeMismatch(BlockId(0))]
+    );
+
+    let bad_primitive = finish(
+        "bad-primitive-args",
+        vec![Param {
+            name: "word".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(1, Ty::Word)],
+                OpKind::Prim {
+                    op: Prim::Car,
+                    args: Vec::new(),
+                    condition: Some(BlockId(9)),
+                },
+            )],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    assert_eq!(
+        errors(&bad_primitive),
+        vec![
+            VerifyError::TypeMismatch(BlockId(0)),
+            VerifyError::MissingBlock(BlockId(9)),
+        ]
+    );
+
+    let bad_successor = finish(
+        "bad-successor-type",
+        vec![Param {
+            name: "word".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(
+                0,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(0)],
+                },
+            ),
+            BasicBlock {
+                id: BlockId(1),
+                params: vec![BlockParam {
+                    value: ValueId(1),
+                    ty: Ty::I64,
+                }],
+                ops: Vec::new(),
+                terminator: Terminator::Return { values: Vec::new() },
+            },
+        ],
+        Vec::new(),
+    );
+    assert_eq!(
+        errors(&bad_successor),
+        vec![VerifyError::SuccessorType(BlockId(0))]
+    );
+}

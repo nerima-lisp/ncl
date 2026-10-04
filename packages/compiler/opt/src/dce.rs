@@ -272,3 +272,114 @@ impl FunctionPass for DeadCodeElimination {
         Ok(changed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_ir::{BasicBlock, ConstantIndex, FunctionId, Op, Param, Prim, Ty};
+
+    fn function(blocks: Vec<BasicBlock>) -> Function {
+        Function {
+            id: FunctionId(9),
+            name: "dce-private".into(),
+            params: vec![Param {
+                name: "x".into(),
+                ty: Ty::Word,
+            }],
+            return_types: vec![],
+            blocks,
+            locals: vec![],
+            constants: vec![],
+            handler_regions: vec![],
+            debug: vec![],
+        }
+    }
+
+    #[test]
+    fn covers_reachability_operands_and_purity_shapes() {
+        let terminal = [
+            Terminator::CallReturn {
+                function: ValueId(0),
+                args: vec![ValueId(1)],
+            },
+            Terminator::TailCall {
+                function: ValueId(0),
+                args: vec![ValueId(1)],
+            },
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+            Terminator::Throw {
+                condition: ValueId(1),
+            },
+            Terminator::Unreachable,
+        ];
+        for term in terminal {
+            assert!(DeadCodeElimination::successors(&term).is_empty());
+            assert!(
+                !DeadCodeElimination::terminator_operands(&term).is_empty()
+                    || matches!(term, Terminator::Unreachable)
+            );
+        }
+        assert!(DeadCodeElimination::is_pure(&OpKind::Prim {
+            op: Prim::FixnumEq,
+            args: vec![],
+            condition: None
+        }));
+        assert!(!DeadCodeElimination::is_pure(&OpKind::Prim {
+            op: Prim::Car,
+            args: vec![],
+            condition: None
+        }));
+        assert!(!DeadCodeElimination::is_pure(&OpKind::Prim {
+            op: Prim::FixnumEq,
+            args: vec![],
+            condition: Some(BlockId(1))
+        }));
+        assert!(!DeadCodeElimination::is_pure(&OpKind::Store {
+            address: ValueId(0),
+            value: ValueId(1)
+        }));
+        assert_eq!(
+            DeadCodeElimination::operands(&OpKind::Const {
+                result: ConstantIndex(0)
+            }),
+            Vec::<ValueId>::new()
+        );
+
+        let blocks = vec![
+            BasicBlock {
+                id: BlockId(0),
+                params: vec![],
+                ops: vec![Op {
+                    results: vec![(ValueId(2), Ty::Word)],
+                    kind: OpKind::Move { value: ValueId(0) },
+                    loc: None,
+                }],
+                terminator: Terminator::Jump {
+                    target: BlockId(2),
+                    args: vec![],
+                },
+            },
+            BasicBlock {
+                id: BlockId(1),
+                params: vec![],
+                ops: vec![],
+                terminator: Terminator::Return { values: vec![] },
+            },
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![],
+                ops: vec![],
+                terminator: Terminator::Return { values: vec![] },
+            },
+        ];
+        let mut function = function(blocks);
+        let reachable = DeadCodeElimination::reachable_blocks(&function);
+        assert!(reachable.contains(&BlockId(0)));
+        assert!(reachable.contains(&BlockId(2)));
+        assert!(!reachable.contains(&BlockId(1)));
+        assert!(DeadCodeElimination::eliminate(&mut function, &reachable));
+        assert_eq!(function.blocks.len(), 2);
+    }
+}

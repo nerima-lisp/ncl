@@ -439,3 +439,7 @@ fn coerce_to_function(ctx: &ThreadContext, object: Word) -> Result<Word, ObjectE
         _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) only function designators convert.
     }
 }
+
+#[cfg(test)]
+#[path = "tests_builtins_private.rs"]
+mod tests;

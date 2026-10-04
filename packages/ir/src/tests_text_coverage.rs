@@ -434,3 +434,70 @@ fn parser_round_trips_constant_and_terminator_variants() {
     );
     assert_eq!(parse(&function.to_string()), Ok(function));
 }
+
+#[test]
+fn parser_preserves_optional_fields_and_boundary_values() {
+    let function = Function {
+        id: FunctionId(u32::MAX),
+        name: "name,with space".into(),
+        params: vec![Param {
+            name: "parameter".into(),
+            ty: Ty::Unit,
+        }],
+        return_types: vec![Ty::Bool],
+        constants: vec![Constant::StringBytes(vec![0, 0xff])],
+        blocks: vec![BasicBlock {
+            id: BlockId(u32::MAX),
+            params: vec![BlockParam {
+                value: ValueId(u32::MAX),
+                ty: Ty::Address,
+            }],
+            ops: vec![Op {
+                results: vec![(ValueId(u32::MAX), Ty::Word)],
+                loc: Some(DebugLocationId(u32::MAX)),
+                kind: OpKind::CallClosure {
+                    closure: ValueId(u32::MAX),
+                    named_symbol: Some(ValueId(u32::MAX)),
+                    args: vec![ValueId(u32::MAX)],
+                },
+            }],
+            terminator: Terminator::Return {
+                values: vec![ValueId(u32::MAX)],
+            },
+        }],
+        locals: vec![Local {
+            id: LocalId(u32::MAX),
+            name: "local".into(),
+            ty: Ty::F64,
+        }],
+        handler_regions: vec![HandlerRegion {
+            id: HandlerRegionId(u32::MAX),
+            kind: HandlerKind::Catch,
+            protected: vec![BlockId(u32::MAX)],
+            handler: BlockId(u32::MAX),
+            cleanup: Some(BlockId(u32::MAX)),
+            catch_tag: Some(ValueId(u32::MAX)),
+            binding_targets: vec![ValueId(u32::MAX)],
+            depth: u32::MAX,
+            parent: Some(HandlerRegionId(u32::MAX)),
+        }],
+        debug: vec![DebugLocation {
+            file: FileId(u32::MAX),
+            line: u32::MAX,
+            column: u32::MAX,
+            form: FormId(u32::MAX),
+        }],
+    };
+
+    let parsed = parse(&function.to_string()).expect("boundary fixture should parse");
+    assert_eq!(parsed, function);
+}
+
+#[test]
+fn parser_reports_capture_index_overflow_and_invalid_utf8() {
+    let capture_overflow = "fn @edge { 0,edge,0,0,0,1,0,0,1,0,ffffffffffffffff,14,100,7,0,0,0, }\n";
+    assert_eq!(parse_error(capture_overflow), "integer out of range");
+
+    let invalid_utf8 = minimal().to_string().replace(",edge,", ",edge_ff,");
+    assert_eq!(parse_error(&invalid_utf8), "invalid utf8");
+}

@@ -274,4 +274,116 @@ mod tests {
             Err(TypeError::InvalidForm)
         );
     }
+
+    #[test]
+    fn parses_compound_forms_and_deftype_arguments() {
+        let named = |name: &str| TypeForm::Symbol(name.into());
+        let integer = || TypeForm::Value(Value::Integer(3));
+        let cases = [
+            (
+                vec![named("OR"), named("INTEGER"), named("STRING")],
+                TypeSpecifier::Or(vec![
+                    TypeSpecifier::Named(crate::NamedType::Integer),
+                    TypeSpecifier::Named(crate::NamedType::String),
+                ]),
+            ),
+            (
+                vec![named("AND"), named("INTEGER")],
+                TypeSpecifier::And(vec![TypeSpecifier::Named(crate::NamedType::Integer)]),
+            ),
+            (
+                vec![named("VALUES"), named("INTEGER")],
+                TypeSpecifier::Values(vec![TypeSpecifier::Named(crate::NamedType::Integer)]),
+            ),
+            (
+                vec![named("NOT"), named("INTEGER")],
+                TypeSpecifier::Not(Box::new(TypeSpecifier::Named(crate::NamedType::Integer))),
+            ),
+            (
+                vec![named("MEMBER"), integer()],
+                TypeSpecifier::Member(vec![Value::Integer(3)]),
+            ),
+            (
+                vec![named("EQL"), integer()],
+                TypeSpecifier::Eql(Value::Integer(3)),
+            ),
+            (
+                vec![named("SATISFIES"), named("PREDICATE")],
+                TypeSpecifier::Satisfies("PREDICATE".into()),
+            ),
+            (
+                vec![named("CONS")],
+                TypeSpecifier::Cons {
+                    car: Box::new(TypeSpecifier::Named(crate::NamedType::T)),
+                    cdr: Box::new(TypeSpecifier::Named(crate::NamedType::T)),
+                },
+            ),
+            (
+                vec![named("ARRAY")],
+                TypeSpecifier::Array {
+                    element_type: None,
+                    dimensions: None,
+                    simple: false,
+                },
+            ),
+            (
+                vec![named("VECTOR")],
+                TypeSpecifier::Vector {
+                    element_type: None,
+                    size: None,
+                },
+            ),
+            (
+                vec![
+                    named("FUNCTION"),
+                    TypeForm::List(vec![named("INTEGER")]),
+                    named("STRING"),
+                ],
+                TypeSpecifier::Function {
+                    lambda_list: vec![TypeSpecifier::Named(crate::NamedType::Integer)],
+                    return_type: Box::new(TypeSpecifier::Named(crate::NamedType::String)),
+                },
+            ),
+            (
+                vec![named("CUSTOM"), TypeForm::Value(Value::Integer(3))],
+                TypeSpecifier::Deftype {
+                    name: "CUSTOM".into(),
+                    args: vec![Value::Integer(3)],
+                },
+            ),
+        ];
+
+        for (items, expected) in cases {
+            assert_eq!(parse_type_form(TypeForm::List(items)), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_arity_and_dimensions() {
+        let integer = TypeForm::Symbol("INTEGER".into());
+        assert_eq!(
+            parse_type_form(TypeForm::List(vec![
+                integer.clone(),
+                TypeForm::Value(Value::Integer(1)),
+                TypeForm::Value(Value::Integer(2)),
+                TypeForm::Value(Value::Integer(3))
+            ])),
+            Err(TypeError::InvalidForm)
+        );
+        assert_eq!(
+            parse_type_form(TypeForm::List(vec![
+                TypeForm::Symbol("FUNCTION".into()),
+                TypeForm::Value(Value::Integer(1))
+            ])),
+            Err(TypeError::InvalidForm)
+        );
+        assert_eq!(
+            parse_type_form(TypeForm::List(vec![
+                TypeForm::Symbol("ARRAY".into()),
+                TypeForm::Symbol("INTEGER".into()),
+                TypeForm::Value(Value::True)
+            ])),
+            Err(TypeError::InvalidForm)
+        );
+    }
 }

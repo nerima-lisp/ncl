@@ -4,8 +4,9 @@ use std::cell::Cell;
 use std::fmt::Debug;
 
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify, classify_object,
-    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
+    ObjectRef, Ratio, Runtime, ThreadContext, Word, car, cdr, classify, classify_object,
+    ratio_denominator, ratio_numerator, simple_vector_length, simple_vector_ref,
+    specialized_array_element_type, specialized_array_ref, string_length, string_ref, symbol_name,
 };
 
 use crate::dispatch::read_sharp;
@@ -409,10 +410,311 @@ fn embedded_token_and_number_paths_report_values() {
         .required()
         .required();
     assert_eq!(token.characters().len(), 2);
-    assert!(token.characters()[1].is_escaped());
+    assert!(
+        token
+            .characters()
+            .get(1)
+            .is_some_and(|character| character.is_escaped())
+    );
     assert_eq!(token.fold_name(&(0..2), ReadtableCase::Invert), "ab");
     assert_eq!(
         crate::token::read_token_chars(&ctx, &mut StringSource::new("\\"), &rt),
         Err(ReadError::UnexpectedEof)
+    );
+}
+
+#[test]
+fn embedded_readtable_edges_report_classification_and_copy_values() {
+    let (runtime, mut ctx, options) = setup();
+    let table = options.readtable();
+    assert_eq!(syntax_kind(&ctx, table, ' '), Ok(SyntaxKind::Whitespace));
+    assert_eq!(
+        syntax_kind(&ctx, table, '#'),
+        Ok(SyntaxKind::NonTerminatingMacro)
+    );
+    assert_eq!(syntax_kind(&ctx, table, '\\'), Ok(SyntaxKind::SingleEscape));
+    assert_eq!(
+        syntax_kind(&ctx, table, '|'),
+        Ok(SyntaxKind::MultipleEscape)
+    );
+    assert_eq!(
+        syntax_kind(&ctx, table, '('),
+        Ok(SyntaxKind::TerminatingMacro)
+    );
+    assert_eq!(
+        syntax_kind(&ctx, table, '\u{100}'),
+        Ok(SyntaxKind::Constituent)
+    );
+
+    crate::set_macro_character(
+        &mut ctx,
+        &runtime,
+        table,
+        '@',
+        Some(Word::fixnum(11)),
+        CustomMacroKind::NonTerminating,
+    )
+    .required();
+    assert_eq!(
+        syntax_kind(&ctx, table, '@'),
+        Ok(SyntaxKind::CustomMacro(CustomMacroKind::NonTerminating))
+    );
+    assert_eq!(
+        crate::get_macro_character(&mut ctx, table, '@').required(),
+        Some(Word::fixnum(11))
+    );
+    crate::set_macro_character(
+        &mut ctx,
+        &runtime,
+        table,
+        '@',
+        None,
+        CustomMacroKind::Terminating,
+    )
+    .required();
+    assert_eq!(syntax_kind(&ctx, table, '@'), Ok(SyntaxKind::Constituent));
+
+    crate::set_dispatch_macro_character(&mut ctx, &runtime, table, '#', 'q', Word::fixnum(13))
+        .required();
+    assert_eq!(
+        crate::get_dispatch_macro_character(&mut ctx, table, '#', 'q').required(),
+        Some(Word::fixnum(13))
+    );
+    assert_eq!(
+        crate::get_dispatch_macro_character(&mut ctx, table, '#', '\u{100}').required(),
+        None
+    );
+    assert_eq!(
+        crate::get_dispatch_macro_character(&mut ctx, table, '!', 'q'),
+        Err(ReadError::NotDispatchMacro('!'))
+    );
+    crate::make_dispatch_macro_character(&mut ctx, &runtime, table, '#').required();
+    assert_eq!(
+        crate::get_dispatch_macro_character(&mut ctx, table, '#', 'q').required(),
+        Some(Word::fixnum(13))
+    );
+
+    let copy = crate::copy_readtable(&mut ctx, &runtime, table).required();
+    assert_eq!(copy.case_mode(&ctx).required(), ReadtableCase::Upcase);
+    assert!(copy.syntax_table(&ctx).required() != Word::NIL);
+    assert!(copy.dispatch_table(&ctx).required() != Word::NIL);
+    crate::set_syntax_from_char(&mut ctx, '\u{100}', '(', table, table).required();
+    assert_eq!(
+        syntax_kind(&ctx, table, '\u{100}'),
+        Ok(SyntaxKind::Constituent)
+    );
+    assert!(crate::readtablep(&ctx, table.object().as_word()));
+    assert!(!crate::readtablep(&ctx, Word::NIL));
+}
+
+#[test]
+fn embedded_dispatch_edges_return_concrete_values() {
+    let (runtime, mut ctx, options) = setup();
+    let function = read_one(&runtime, &mut ctx, "#'(alpha)", &options);
+    assert_eq!(
+        symbol_text(&ctx, car(&ctx, function).required()),
+        "FUNCTION"
+    );
+    let vector = read_one(&runtime, &mut ctx, "#(4 5)", &options);
+    assert_eq!(simple_vector_length(&ctx, vector).required(), 2);
+    assert_eq!(
+        simple_vector_ref(&ctx, vector, 1).required().as_fixnum(),
+        Some(5)
+    );
+
+    let bits = read_one(&runtime, &mut ctx, "#*101", &options);
+    assert_eq!(
+        specialized_array_element_type(&ctx, bits).required(),
+        ncl_object::ArrayElementType::Bit
+    );
+    assert_eq!(
+        specialized_array_ref(&ctx, bits, 0).required().as_fixnum(),
+        Some(1)
+    );
+    assert_eq!(
+        specialized_array_ref(&ctx, bits, 1).required().as_fixnum(),
+        Some(0)
+    );
+    let uninterned = read_one(&runtime, &mut ctx, "#:fresh", &options);
+    assert_eq!(symbol_text(&ctx, uninterned), "FRESH");
+
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#+:missing 1 2", &options).as_fixnum(),
+        Some(2)
+    );
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#-:missing 3 4", &options).as_fixnum(),
+        Some(3)
+    );
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#| outer #| inner |# |# 8", &options).as_fixnum(),
+        Some(8)
+    );
+    for (input, expected) in [
+        ("#\\tab", 9),
+        ("#\\return", 13),
+        ("#\\page", 12),
+        ("#\\null", 0),
+        ("#\\escape", 27),
+        ("#\\rubout", 127),
+    ] {
+        assert_eq!(
+            read_one(&runtime, &mut ctx, input, &options).as_character(),
+            Some(expected),
+            "{input}"
+        );
+    }
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#\\!", &options).as_character(),
+        Some(33)
+    );
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#16rff", &options).as_fixnum(),
+        Some(255)
+    );
+    let complex = read_one(&runtime, &mut ctx, "#c(9)", &options);
+    assert!(matches!(
+        classify_object(&ctx, complex),
+        ObjectRef::Complex(_)
+    ));
+    let labelled = read_one(&runtime, &mut ctx, "(#3=(x) #3#)", &options);
+    assert_eq!(
+        classify(car(&ctx, labelled).required()),
+        classify(car(&ctx, cdr(&ctx, labelled).required()).required())
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "coverage fixture exercises reader boundary values"
+)]
+fn embedded_feature_number_reader_and_token_edges_return_values() {
+    let (runtime, mut ctx, mut options) = setup();
+    for (text, expected) in [
+        ("(and)", true),
+        ("(or)", false),
+        ("(and :x :missing)", false),
+        ("(or :missing :x)", true),
+        ("(not :missing)", true),
+    ] {
+        let form = read_one(&runtime, &mut ctx, text, &options);
+        assert_eq!(
+            eval_feature_expr(&mut ctx, &runtime, form, &["X".into()]).required(),
+            expected,
+            "{text}"
+        );
+    }
+    for text in ["(1)", "(:x)"] {
+        let form = read_one(&runtime, &mut ctx, text, &options);
+        assert_eq!(
+            eval_feature_expr(&mut ctx, &runtime, form, &[]),
+            Err(ReadError::InvalidFeatureExpression)
+        );
+    }
+
+    assert_eq!(
+        parse_number(&mut ctx, &runtime, &[], 10, FloatFormat::DoubleFloat).required(),
+        None
+    );
+    let ratio = parse_number(
+        &mut ctx,
+        &runtime,
+        &['-', '3', '/', '+', '2'],
+        10,
+        FloatFormat::DoubleFloat,
+    )
+    .required()
+    .required();
+    assert_eq!(
+        ratio_numerator(&ctx, Ratio::from_word(ratio))
+            .required()
+            .as_fixnum(),
+        Some(-3)
+    );
+    assert_eq!(
+        ratio_denominator(&ctx, Ratio::from_word(ratio))
+            .required()
+            .as_fixnum(),
+        Some(2)
+    );
+    assert!(
+        parse_number(
+            &mut ctx,
+            &runtime,
+            &['1', '.', '0', 'e', '+', '2'],
+            10,
+            FloatFormat::DoubleFloat
+        )
+        .required()
+        .is_some()
+    );
+    assert_eq!(
+        parse_number(
+            &mut ctx,
+            &runtime,
+            &['1', 'e'],
+            10,
+            FloatFormat::DoubleFloat
+        )
+        .required(),
+        None
+    );
+    let bignum_digits: Vec<_> = "9223372036854775808".chars().collect();
+    let bignum = parse_integer_chars(&mut ctx, &runtime, &bignum_digits, 10).required();
+    assert!(matches!(
+        classify_object(&ctx, bignum),
+        ObjectRef::Bignum(_)
+    ));
+    assert_eq!(
+        parse_integer(&mut ctx, &runtime, "  +1z", Some(36), None, None)
+            .required()
+            .0
+            .as_fixnum(),
+        Some(71)
+    );
+    assert_eq!(
+        parse_integer(&mut ctx, &runtime, "-", None, None, None),
+        Err(ReadError::InvalidNumber("-".into()))
+    );
+
+    let keyword = read_one(&runtime, &mut ctx, ":kw", &options);
+    assert_eq!(symbol_text(&ctx, keyword), "KW");
+    let exported = read_one(&runtime, &mut ctx, "COMMON-LISP:CAR", &options);
+    assert_eq!(symbol_text(&ctx, exported), "CAR");
+    let internal = read_one(&runtime, &mut ctx, "COMMON-LISP::CAR", &options);
+    assert_eq!(symbol_text(&ctx, internal), "CAR");
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "A:B:C", &options),
+        Err(ReadError::InvalidSymbolToken("A:B:C".into()))
+    );
+    let escaped = read_one(&runtime, &mut ctx, "a\\:b", &options);
+    assert_eq!(symbol_text(&ctx, escaped), "A:B");
+
+    let mut source = StringSource::new("a b");
+    assert_eq!(
+        crate::reader::read_preserving_whitespace(&mut ctx, &runtime, &mut source, &options)
+            .required()
+            .map(|word| symbol_text(&ctx, word)),
+        Some("A".into())
+    );
+    let delimited = crate::reader::read_delimited_list(
+        &mut ctx,
+        &runtime,
+        &mut StringSource::new("x y)"),
+        &options,
+    )
+    .required();
+    assert_eq!(
+        symbol_text(&ctx, ncl_object::car(&ctx, delimited).unwrap()),
+        "X"
+    );
+    let tail = ncl_object::cdr(&ctx, delimited).unwrap();
+    assert_eq!(symbol_text(&ctx, ncl_object::car(&ctx, tail).unwrap()), "Y");
+    assert_eq!(ncl_object::cdr(&ctx, tail).unwrap(), Word::NIL);
+    options.set_read_suppression(ReadSuppression::Discard);
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "; eof", &options),
+        Ok(None)
     );
 }

@@ -485,3 +485,7 @@ impl FunctionPass for Sccp {
         Ok(changed)
     }
 }
+
+#[cfg(test)]
+#[path = "tests_sccp_private.rs"]
+mod tests;

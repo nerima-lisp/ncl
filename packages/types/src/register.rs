@@ -153,3 +153,35 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::register;
+    use ncl_object::{Package, Runtime, ThreadContext, Word, symbol_is_constant};
+
+    #[test]
+    fn registers_owned_symbols_constants_classes_and_functions() {
+        let runtime = Runtime::new().expect("runtime");
+        register(&runtime).expect("type registration");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("thread context");
+        let package = runtime.find_package(&ctx, "COMMON-LISP").expect("package");
+        let package = Package::from_word(package);
+        for name in ["ARRAY", "TYPEP", "UPGRADED-COMPLEX-PART-TYPE"] {
+            assert!(package.intern(&mut ctx, &runtime, name).is_ok());
+        }
+        for name in ["NIL", "T"] {
+            let symbol = package
+                .intern(&mut ctx, &runtime, name)
+                .expect("constant")
+                .0;
+            assert!(symbol_is_constant(&ctx, symbol).expect("constant bit"));
+        }
+        assert_eq!(runtime.class(&mut ctx, "ARRAY"), Some(Word::fixnum(1)));
+        assert_eq!(
+            runtime.function(&mut ctx, "COMMON-LISP", "TYPEP"),
+            Some(Word::UNBOUND)
+        );
+    }
+}

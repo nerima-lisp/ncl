@@ -444,3 +444,7 @@ fn value_matches(ctx: &ThreadContext, object: Word, value: &Value) -> Result<boo
     }
     Ok(from_word(ctx, object)? == *value)
 }
+
+#[cfg(test)]
+#[path = "tests_typep_private.rs"]
+mod tests;

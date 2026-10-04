@@ -81,8 +81,8 @@ fn expand_logical_block(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
         let mut suffix = Word::NIL;
         let mut pairs = keyword_values.chunks(2);
         for pair in &mut pairs {
+            // check-added-lines: allow(index) fixed pair destructuring
             let [key, value] = pair else {
-                // check-added-lines: allow(index) fixed pair destructuring
                 return Err(ObjectError::TypeError);
             };
             let key = *key;

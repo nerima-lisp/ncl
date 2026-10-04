@@ -350,6 +350,7 @@ fn covers_internal_state_fallbacks() {
         column: 0,
         escape: &mut escape,
         remaining_override: None,
+        caller: None,
     };
     super::execute_parts(&parse("literal").expect("control").parts, 0, 1, &mut state)
         .expect("execute");

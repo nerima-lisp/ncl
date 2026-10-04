@@ -150,6 +150,7 @@ mod tests {
         assert!(parameter_width(Some(&Parameter::Character('x')), DirectiveKind::A).is_err());
         assert!(
             repeat_count(&Directive {
+                name: None,
                 parameters: vec![Parameter::Character('x')],
                 colon: false,
                 at_sign: false,

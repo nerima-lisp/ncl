@@ -9,6 +9,7 @@ fn parses_literals_directives_and_parameters() {
     assert_eq!(
         control.parts[1],
         ControlPart::Directive(ncl_lib_format::Directive {
+            name: None,
             parameters: vec![Parameter::Integer(10), Parameter::Character('x')],
             colon: false,
             at_sign: false,
@@ -18,6 +19,7 @@ fn parses_literals_directives_and_parameters() {
     assert_eq!(
         control.parts[2],
         ControlPart::Directive(ncl_lib_format::Directive {
+            name: None,
             parameters: Vec::new(),
             colon: false,
             at_sign: false,
@@ -32,6 +34,7 @@ fn parses_modifiers_and_relative_parameters() {
     assert_eq!(
         control.parts[0],
         ControlPart::Directive(ncl_lib_format::Directive {
+            name: None,
             parameters: vec![
                 Parameter::Relative,
                 Parameter::Unsupplied,
@@ -51,6 +54,7 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
         control.parts,
         vec![
             ControlPart::Directive(ncl_lib_format::Directive {
+                name: None,
                 parameters: vec![
                     Parameter::Integer(10),
                     Parameter::Unsupplied,
@@ -61,12 +65,14 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
                 kind: DirectiveKind::D,
             }),
             ControlPart::Directive(ncl_lib_format::Directive {
+                name: None,
                 parameters: vec![Parameter::Relative],
                 colon: false,
                 at_sign: true,
                 kind: DirectiveKind::S,
             }),
             ControlPart::Directive(ncl_lib_format::Directive {
+                name: None,
                 parameters: Vec::new(),
                 colon: false,
                 at_sign: false,
@@ -78,9 +84,24 @@ fn parses_simple_directives_with_parameters_and_modifiers() {
 
 #[test]
 fn parses_all_clhs_directives() {
-    for character in "RPCFEG$|<>*?()[]{}^;/_ITW".chars() {
+    for character in "RPCFEG$|<>*?()[]{}^;_ITW".chars() {
         assert!(parse(&format!("~{character}")).is_ok(), "~{character}");
     }
+}
+
+#[test]
+fn parses_user_function_directive_name() {
+    let control = parse("~:@/pkg:printer/").expect("valid user function directive");
+    assert_eq!(
+        control.parts[0],
+        ControlPart::Directive(ncl_lib_format::Directive {
+            name: Some("pkg:printer".to_owned()),
+            parameters: Vec::new(),
+            colon: true,
+            at_sign: true,
+            kind: DirectiveKind::Slash,
+        })
+    );
 }
 
 #[test]
@@ -117,54 +138,63 @@ fn parses_all_supported_directives_case_insensitively() {
         Ok(ncl_lib_format::FormatControl {
             parts: vec![
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::A,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::S,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::D,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::B,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::O,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::X,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::Percent,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::Ampersand,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,
@@ -182,12 +212,14 @@ fn parses_signed_parameters_and_rejects_integer_overflow() {
         Ok(ncl_lib_format::FormatControl {
             parts: vec![
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: vec![Parameter::Integer(7)],
                     colon: false,
                     at_sign: false,
                     kind: DirectiveKind::D,
                 }),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: vec![Parameter::Integer(-8)],
                     colon: false,
                     at_sign: false,
@@ -214,6 +246,7 @@ fn preserves_unicode_literal_before_a_directive() {
             parts: vec![
                 ControlPart::Literal("é".to_owned()),
                 ControlPart::Directive(ncl_lib_format::Directive {
+                    name: None,
                     parameters: Vec::new(),
                     colon: false,
                     at_sign: false,

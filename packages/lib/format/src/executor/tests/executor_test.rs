@@ -300,6 +300,7 @@ fn covers_parameter_and_printer_helpers() {
     );
     assert!(
         parameters::repeat_count(&crate::Directive {
+            name: None,
             parameters: vec![crate::Parameter::Character('x')],
             colon: false,
             at_sign: false,
@@ -309,6 +310,7 @@ fn covers_parameter_and_printer_helpers() {
     );
     assert!(
         parameters::repeat_count(&crate::Directive {
+            name: None,
             parameters: vec![crate::Parameter::Relative],
             colon: false,
             at_sign: false,
@@ -321,6 +323,7 @@ fn covers_parameter_and_printer_helpers() {
     assert!(
         parameters::repeat_count_for(
             &crate::Directive {
+                name: None,
                 parameters: vec![crate::Parameter::ArgumentCount],
                 colon: false,
                 at_sign: false,
@@ -335,7 +338,8 @@ fn covers_parameter_and_printer_helpers() {
                 line_start: &mut true,
                 column: 0,
                 escape: &mut escape,
-                remaining_override: None
+                remaining_override: None,
+                caller: None
             }
         )
         .is_ok()
@@ -493,8 +497,10 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
         column: 0,
         escape: &mut escape,
         remaining_override: None,
+        caller: None,
     };
     let fallback = crate::Directive {
+        name: None,
         parameters: Vec::new(),
         colon: false,
         at_sign: false,
@@ -513,6 +519,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     );
 
     let scaled = crate::Directive {
+        name: None,
         parameters: vec![
             crate::Parameter::Integer(0),
             crate::Parameter::Integer(2),
@@ -526,6 +533,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     assert!(value::execute_value_kind(&scaled, &mut state).is_err());
 
     let invalid_radix = crate::Directive {
+        name: None,
         parameters: vec![crate::Parameter::Integer(1)],
         colon: false,
         at_sign: false,
@@ -535,6 +543,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     assert!(value::execute_value_kind(&invalid_radix, &mut state).is_err());
 
     let padded = crate::Directive {
+        name: None,
         parameters: vec![
             crate::Parameter::Integer(8),
             crate::Parameter::Integer(2),

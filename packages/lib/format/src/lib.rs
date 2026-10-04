@@ -4,7 +4,7 @@
 mod executor;
 mod registration;
 
-pub use executor::{FormatError, execute};
+pub use executor::{FormatError, FormatFunctionCaller, execute, execute_with_caller};
 pub use registration::register;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,6 +20,7 @@ pub enum ControlPart {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Directive {
+    pub name: Option<String>,
     pub parameters: Vec<Parameter>,
     pub colon: bool,
     pub at_sign: bool,
@@ -206,13 +207,19 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                         offset: start,
                         kind,
                     })?;
+                    let name = if kind == DirectiveKind::Slash {
+                        parse_slash_name(&chars, &mut index)
+                    } else {
+                        index += 1;
+                        None
+                    };
                     parts.push(ControlPart::Directive(Directive {
+                        name,
                         parameters,
                         colon,
                         at_sign,
                         kind,
                     }));
-                    index += 1;
                     if other == '\n' {
                         while matches!(chars.get(index), Some(' ' | '\t')) {
                             index += 1;
@@ -304,6 +311,30 @@ fn validate_parameters(
         | DirectiveKind::I => nonnegative(parameters.first())?,
     }
     Ok(())
+}
+
+fn parse_slash_name(chars: &[char], index: &mut usize) -> Option<String> {
+    let name_start = index.saturating_add(1);
+    let Some(first) = chars.get(name_start).copied() else {
+        *index = index.saturating_add(1);
+        return None;
+    };
+    if first == '~' || first == '\n' {
+        *index = index.saturating_add(1);
+        return None;
+    }
+    let Some(length) = chars
+        .iter()
+        .skip(name_start)
+        .position(|character| *character == '/')
+    else {
+        *index = index.saturating_add(1);
+        return None;
+    };
+    let end = name_start + length;
+    let name = chars[name_start..end].iter().collect();
+    *index = end + 1;
+    Some(name)
 }
 
 const fn directive_kind(value: char) -> Result<DirectiveKind, ParseErrorKind> {

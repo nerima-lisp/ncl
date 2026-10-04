@@ -1,6 +1,9 @@
 #![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
 
-use ncl_lib_format::{FormatError, execute, parse};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use ncl_lib_format::{FormatError, FormatFunctionCaller, execute, execute_with_caller, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_double, make_string};
 use ncl_printer::{PrintError, StringSink};
 
@@ -13,6 +16,46 @@ fn context() -> (Runtime, ThreadContext) {
 
 fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
     make_string(ctx, runtime, &text.chars().collect::<Vec<char>>()).expect("string")
+}
+
+struct RecordingCaller;
+
+impl FormatFunctionCaller for RecordingCaller {
+    fn call_format_function(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        name: &str,
+        stream: &mut dyn ncl_printer::CharSink,
+        arguments: &[Word],
+        colon: bool,
+        at_sign: bool,
+        parameters: &[ncl_lib_format::Parameter],
+    ) -> Result<(), FormatError> {
+        let text = format!(
+            "{name}:{}:{colon}:{at_sign}:{}",
+            arguments.len(),
+            parameters.len()
+        );
+        stream.write_str(&text).map_err(FormatError::from)
+    }
+}
+
+#[test]
+fn executes_user_function_directive_through_callback_boundary() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    let caller = Rc::new(RefCell::new(RecordingCaller));
+    execute_with_caller(
+        &parse("~2:@/pkg:printer/").expect("control"),
+        &[Word::fixnum(7)],
+        &mut ctx,
+        &runtime,
+        Some(caller),
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "pkg:printer:1:true:true:1");
 }
 
 #[test]
@@ -297,6 +340,7 @@ fn executes_parameterized_float_formats_and_rejects_invalid_values() {
     assert_eq!(
         parse("~8,2F").expect("parse").parts[0],
         ncl_lib_format::ControlPart::Directive(ncl_lib_format::Directive {
+            name: None,
             parameters: vec![
                 ncl_lib_format::Parameter::Integer(8),
                 ncl_lib_format::Parameter::Integer(2)

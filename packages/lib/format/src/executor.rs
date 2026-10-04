@@ -1,9 +1,12 @@
 //! Execution of the typed FORMAT control representation.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use ncl_object::{Runtime, ThreadContext, Word, car, cdr};
 use ncl_printer::{CharSink, PrintError, StringSink};
 
-use crate::{ControlPart, Directive, DirectiveKind, FormatControl};
+use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter};
 
 mod compound;
 #[cfg(test)]
@@ -70,6 +73,26 @@ impl From<PrintError> for FormatError {
     }
 }
 
+/// Calls a user-defined `~/name/` FORMAT function.
+pub trait FormatFunctionCaller {
+    /// Resolve and call `name` through the embedding runtime.
+    ///
+    /// # Errors
+    /// Returns [`FormatError`] when the embedding cannot call the function.
+    #[allow(clippy::too_many_arguments)]
+    fn call_format_function(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: &str,
+        stream: &mut dyn CharSink,
+        arguments: &[Word],
+        colon: bool,
+        at_sign: bool,
+        parameters: &[Parameter],
+    ) -> Result<(), FormatError>;
+}
+
 /// Execute a parsed FORMAT control against `arguments` and `sink`.
 ///
 /// Arguments are borrowed, so execution does not create replacement Lisp
@@ -86,6 +109,21 @@ pub fn execute(
     runtime: &Runtime,
     sink: &mut dyn CharSink,
 ) -> Result<usize, FormatError> {
+    execute_with_caller(control, arguments, ctx, runtime, None, sink)
+}
+
+/// Execute a FORMAT control with an embedding-provided user-function caller.
+///
+/// # Errors
+/// Returns [`FormatError`] when a directive or callback fails.
+pub fn execute_with_caller(
+    control: &FormatControl,
+    arguments: &[Word],
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
+    sink: &mut dyn CharSink,
+) -> Result<usize, FormatError> {
     let arguments = arguments.to_vec();
     let mut argument_index = 0;
     let mut line_start = true;
@@ -100,6 +138,7 @@ pub fn execute(
         column: 0,
         escape: &mut escape,
         remaining_override: None,
+        caller,
     };
     execute_parts(&control.parts, 0, control.parts.len(), &mut state)?;
     Ok(argument_index)
@@ -261,6 +300,7 @@ fn execute_brace(
                 column: state.column,
                 escape: &mut iteration_escape,
                 remaining_override: None,
+                caller: state.caller.clone(),
             };
             execute_parts(parts, index + 1, close, &mut nested)?;
             repetitions += 1;
@@ -314,6 +354,7 @@ fn execute_brace(
             column: state.column,
             escape: &mut iteration_escape,
             remaining_override: Some(usize::from(next_item != Word::NIL)),
+            caller: state.caller.clone(),
         };
         execute_parts(parts, index + 1, close, &mut nested)?;
         if iteration_escape == Some(EscapeScope::All) {
@@ -353,6 +394,7 @@ fn execute_case_group(
         column: state.column,
         escape: state.escape,
         remaining_override: state.remaining_override,
+        caller: state.caller.clone(),
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
@@ -443,6 +485,7 @@ fn execute_nested(
         column: state.column,
         escape: state.escape,
         remaining_override: state.remaining_override,
+        caller: state.caller.clone(),
     };
     execute_parts(&nested.parts, 0, nested.parts.len(), &mut nested_state)?;
     Ok(Some(index + 1))
@@ -476,8 +519,25 @@ fn execute_directive(
         | DirectiveKind::Star
         | DirectiveKind::UpArrow => execute_control_kind(directive, state)?,
         DirectiveKind::C => execute_character(directive, state)?,
-        DirectiveKind::Newline | DirectiveKind::Slash => {
-            if directive.kind == DirectiveKind::Slash && !*state.line_start {
+        DirectiveKind::Slash => {
+            if let Some(name) = directive.name.as_deref() {
+                let caller = state
+                    .caller
+                    .clone()
+                    .ok_or(FormatError::InvalidParameter {
+                        directive: directive.kind,
+                    })?;
+                caller.borrow_mut().call_format_function(
+                    state.ctx,
+                    state.runtime,
+                    name,
+                    state.sink,
+                    state.arguments,
+                    directive.colon,
+                    directive.at_sign,
+                    &directive.parameters,
+                )?;
+            } else if !*state.line_start {
                 state.sink.write_char('\n').map_err(FormatError::from)?;
                 *state.line_start = true;
             }
@@ -488,7 +548,8 @@ fn execute_directive(
                 *state.line_start = true;
             }
         }
-        DirectiveKind::Less
+        DirectiveKind::Newline
+        | DirectiveKind::Less
         | DirectiveKind::ColonGreater
         | DirectiveKind::BraceOpen
         | DirectiveKind::BraceClose
@@ -512,6 +573,7 @@ struct ExecutionState<'a> {
     column: usize,
     escape: &'a mut Option<EscapeScope>,
     remaining_override: Option<usize>,
+    caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

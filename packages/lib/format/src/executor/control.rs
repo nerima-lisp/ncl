@@ -172,9 +172,8 @@ fn execute_up_arrow(
             }),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let remaining = state
-        .remaining_override
-        .unwrap_or_else(|| state.arguments.len().saturating_sub(*state.argument_index));
+    let default_remaining = state.arguments.len().saturating_sub(*state.argument_index);
+    let remaining = state.remaining_override.unwrap_or(default_remaining);
     let exhausted = remaining == 0;
     let terminate = match values.as_slice() {
         [] => exhausted,
@@ -307,8 +306,10 @@ mod tests {
             column: 0,
             escape: &mut escape,
             remaining_override: None,
+            caller: None,
         };
         let directive = Directive {
+            name: None,
             parameters: vec![crate::Parameter::Integer(0)],
             colon: false,
             at_sign: false,
@@ -316,6 +317,7 @@ mod tests {
         };
         assert!(tab_count(&directive, &state).is_err()); // check-added-lines: allow(panic) test assertion
         let directive = Directive {
+            name: None,
             parameters: vec![crate::Parameter::Integer(1), crate::Parameter::Integer(0)],
             colon: false,
             at_sign: false,

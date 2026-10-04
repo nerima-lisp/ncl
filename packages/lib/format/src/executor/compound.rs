@@ -62,6 +62,7 @@ pub(super) fn execute_justification(
             column: state.column,
             escape: state.escape,
             remaining_override: state.remaining_override,
+            caller: state.caller.clone(),
         };
         execute_parts(parts, start, segment_end, &mut nested)?;
         rendered.push(local.into_string());

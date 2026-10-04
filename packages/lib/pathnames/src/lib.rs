@@ -11,6 +11,7 @@ use ncl_object::{
 mod logical;
 mod operations;
 mod registration;
+mod wildcard;
 
 const OBJECT: Parameter = Parameter {
     name: BuiltinName::new("OBJECT"),
@@ -415,6 +416,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     direct("MAKE-PATHNAME", make_pathname_builtin, rest)?;
     register_accessors(&mut direct)?;
     registration::register_operations(&mut direct)?;
+    let translations = Package::from_word(package)
+        .intern(&mut ctx, runtime, "LOGICAL-PATHNAME-TRANSLATIONS")?
+        .0;
+    runtime.register_place_expander(
+        &ctx,
+        translations,
+        logical::logical_pathname_translations_place,
+    )?;
     Ok(())
 }
 #[cfg(test)]

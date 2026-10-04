@@ -1,12 +1,14 @@
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Package, Runtime, SLOTS, ThreadContext, Word, car,
-    cdr, component_string, directory_text, make_cons, make_pathname, make_string, namestring_value,
+    cdr, component_string, make_cons, make_pathname, make_string, namestring_value,
     pathname_designator, relative_directory, structure_ref, symbol_text, text, with_root,
 };
 use ncl_object::{FileError, LispError};
 use std::env;
 use std::fs;
 use std::path::Path;
+
+use super::wildcard::translate_wildcards;
 
 pub use super::logical::{
     compile_file_pathname_builtin, load_logical_pathname_translations_builtin,
@@ -26,7 +28,10 @@ pub fn has_wildcards(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectErro
         return Ok(value.contains('*') || value.contains('?'));
     }
     if let Ok(value) = symbol_text(ctx, word) {
-        return Ok(value.contains('*') || value.contains('?'));
+        return Ok(value.contains('*')
+            || value.contains('?')
+            || value.eq_ignore_ascii_case("WILD")
+            || value.eq_ignore_ascii_case("WILD-INFERIORS"));
     }
     let mut cursor = word;
     while cursor != Word::NIL {
@@ -73,10 +78,31 @@ pub fn pathname_component_match(
     value: Word,
 ) -> Result<bool, ObjectError> {
     if pattern == Word::NIL {
-        return Ok(value == Word::NIL);
+        return Ok(true);
     }
     if value == Word::NIL {
         return Ok(false);
+    }
+    if let Ok(name) = symbol_text(ctx, pattern) {
+        if name.eq_ignore_ascii_case("WILD") || name.eq_ignore_ascii_case("WILD-INFERIORS") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("NEWEST") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("UNSPECIFIC") {
+            return Ok(
+                symbol_text(ctx, value).is_ok_and(|value| value.eq_ignore_ascii_case("UNSPECIFIC"))
+            );
+        }
+    }
+    if let Ok(name) = symbol_text(ctx, value)
+        && name.eq_ignore_ascii_case("UNSPECIFIC")
+    {
+        return Ok(false);
+    }
+    if let (Ok(pattern), Ok(value)) = (symbol_text(ctx, pattern), symbol_text(ctx, value)) {
+        return Ok(pattern.eq_ignore_ascii_case(&value));
     }
     Ok(wildcard_match(&text(ctx, pattern)?, &text(ctx, value)?))
 }
@@ -89,10 +115,8 @@ pub fn pathname_match_builtin(
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
     let pattern = pathname_designator(ctx, runtime, args.required(1)?)?;
-    let directory = wildcard_match(
-        &directory_text(ctx, structure_ref(ctx, pattern, 2)?)?,
-        &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
-    );
+    let pattern_directory = structure_ref(ctx, pattern, 2)?;
+    let directory = directory_match(ctx, pattern_directory, structure_ref(ctx, pathname, 2)?)?;
     let matches = directory
         && (0..SLOTS)
             .filter(|index| *index != 2)
@@ -340,43 +364,6 @@ pub fn directory_builtin(
     let _ = pattern;
     list(ctx, runtime, &matches)
 }
-
-pub fn replace_wildcard(pattern: &str, value: &str) -> String {
-    if let Some(star) = pattern.find('*') {
-        let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-        let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-        if value.starts_with(prefix)
-            && value.ends_with(suffix)
-            && value.len() >= prefix.len() + suffix.len()
-        {
-            return format!(
-                "{}{}{}",
-                prefix,
-                &value[prefix.len()..value.len() - suffix.len()], // check-added-lines: allow(index) validated prefix and suffix lengths
-                suffix
-            );
-        }
-    }
-    value.to_owned()
-}
-
-pub fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
-    let star = pattern.find('*')?;
-    let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-    let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-    (value.starts_with(prefix)
-        && value.ends_with(suffix)
-        && value.len() >= prefix.len() + suffix.len())
-    .then(|| value[prefix.len()..value.len() - suffix.len()].to_owned()) // check-added-lines: allow(index) validated prefix and suffix lengths
-}
-
-pub fn substitute_wildcard(pattern: &str, capture: &str) -> String {
-    pattern.find('*').map_or_else(
-        || pattern.to_owned(),
-        |index| format!("{}{}{}", &pattern[..index], capture, &pattern[index + 1..]), // check-added-lines: allow(index) index came from find
-    )
-}
-
 pub fn translate_pathname_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -392,10 +379,8 @@ pub fn translate_pathname_builtin(
     if !wildcard_match(&from_name, &source_name) {
         return Err(ObjectError::TypeError);
     }
-    let translated = wildcard_capture(&from_name, &source_name).map_or_else(
-        || replace_wildcard(&to_name, &source_name),
-        |capture| substitute_wildcard(&to_name, &capture),
-    );
+    let translated =
+        translate_wildcards(&from_name, &to_name, &source_name).ok_or(ObjectError::TypeError)?;
     let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
     parse_namestring_value(ctx, runtime, string)
 }
@@ -407,10 +392,28 @@ pub fn wild_pathname_p_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
-    let wild = (0..SLOTS).try_fold(false, |found, index| {
-        Ok::<_, ObjectError>(found || has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?)
-    })?;
+    let wild = if let Some(field) = args.get(1) {
+        let field = super::keyword_name(ctx, field)?;
+        let index = match field.as_str() {
+            "HOST" => 0,
+            "DEVICE" => 1,
+            "DIRECTORY" | "WILD-INFERIORS" => 2,
+            "NAME" => 3,
+            "TYPE" => 4,
+            "VERSION" => 5,
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown field keys
+        };
+        has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?
+    } else {
+        (0..SLOTS).try_fold(false, |found, index| {
+            Ok::<_, ObjectError>(found || has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?)
+        })?
+    };
     Ok(if wild { Word::TRUE } else { Word::NIL })
+}
+
+fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bool, ObjectError> {
+    super::wildcard::directory_match(ctx, pattern, value)
 }
 
 pub fn merge_pathnames_builtin(
@@ -430,12 +433,42 @@ pub fn merge_pathnames_builtin(
         let value = structure_ref(ctx, pathname, index)?;
         let use_default_directory = index == 2 && relative_directory(ctx, value)?;
         *slot = if (value == Word::NIL || use_default_directory) && defaults != Word::NIL {
-            structure_ref(ctx, defaults, index)?
+            if use_default_directory {
+                let base = structure_ref(ctx, defaults, index)?;
+                append_relative_directory(ctx, runtime, base, value)?
+            } else {
+                structure_ref(ctx, defaults, index)?
+            }
         } else {
             value
         };
     }
     make_pathname(ctx, runtime, &slots)
+}
+
+fn append_relative_directory(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    base: Word,
+    relative: Word,
+) -> Result<Word, ObjectError> {
+    let mut values = Vec::new();
+    let mut cursor = base;
+    while cursor != Word::NIL {
+        values.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
+    }
+    let mut tail = relative;
+    let mut relative_values = Vec::new();
+    while tail != Word::NIL {
+        relative_values.push(car(ctx, tail)?);
+        tail = cdr(ctx, tail)?;
+    }
+    if !relative_values.is_empty() {
+        let _ = relative_values.remove(0);
+    }
+    values.extend(relative_values);
+    list(ctx, runtime, &values)
 }
 
 pub fn keyword_symbol(

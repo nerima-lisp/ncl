@@ -59,7 +59,7 @@ pub fn register_operations(
         (
             "LOGICAL-PATHNAME-TRANSLATIONS",
             logical_pathname_translations_builtin,
-            LambdaList::with_rest(&[PATHNAME], OBJECT),
+            LambdaList::with_optional(&[PATHNAME], &[OBJECT]),
         ),
         (
             "LOAD-LOGICAL-PATHNAME-TRANSLATIONS",
@@ -79,7 +79,7 @@ pub fn register_operations(
         (
             "WILD-PATHNAME-P",
             wild_pathname_p_builtin,
-            LambdaList::fixed(&[PATHNAME]),
+            LambdaList::with_optional(&[PATHNAME], &[OBJECT]),
         ),
         (
             "PATHNAME-MATCH-P",

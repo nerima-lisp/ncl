@@ -89,6 +89,7 @@ pub fn execute(
     let arguments = arguments.to_vec();
     let mut argument_index = 0;
     let mut line_start = true;
+    let mut escape = None;
     let mut state = ExecutionState {
         arguments: &arguments,
         argument_index: &mut argument_index,
@@ -97,6 +98,8 @@ pub fn execute(
         sink,
         line_start: &mut line_start,
         column: 0,
+        escape: &mut escape,
+        remaining_override: None,
     };
     execute_parts(&control.parts, 0, control.parts.len(), &mut state)?;
     Ok(argument_index)
@@ -127,9 +130,7 @@ fn execute_parts(
             ControlPart::Directive(directive) => {
                 let directive = resolve_directive(directive, state)?;
                 execute_directive(&directive, state)?;
-                if directive.kind == DirectiveKind::UpArrow
-                    && *state.argument_index >= state.arguments.len()
-                {
+                if state.escape.is_some() {
                     break;
                 }
             }
@@ -249,8 +250,26 @@ fn execute_brace(
             && limit.is_none_or(|limit| repetitions < limit)
         {
             let before = *state.argument_index;
-            execute_parts(parts, index + 1, close, state)?;
+            let mut iteration_escape = None;
+            let mut nested = ExecutionState {
+                arguments: state.arguments,
+                argument_index: state.argument_index,
+                ctx: state.ctx,
+                runtime: state.runtime,
+                sink: state.sink,
+                line_start: state.line_start,
+                column: state.column,
+                escape: &mut iteration_escape,
+                remaining_override: None,
+            };
+            execute_parts(parts, index + 1, close, &mut nested)?;
             repetitions += 1;
+            if iteration_escape == Some(EscapeScope::All) {
+                break;
+            }
+            if iteration_escape == Some(EscapeScope::Current) {
+                continue;
+            }
             if *state.argument_index == before {
                 break;
             }
@@ -280,7 +299,11 @@ fn execute_brace(
                     })?;
             }
         }
+        let next_item = cdr(state.ctx, item).map_err(|_| FormatError::InvalidParameter {
+            directive: DirectiveKind::BraceOpen,
+        })?;
         let mut nested_index = 0;
+        let mut iteration_escape = None;
         let mut nested = ExecutionState {
             arguments: &values,
             argument_index: &mut nested_index,
@@ -289,11 +312,14 @@ fn execute_brace(
             sink: state.sink,
             line_start: state.line_start,
             column: state.column,
+            escape: &mut iteration_escape,
+            remaining_override: Some(usize::from(next_item != Word::NIL)),
         };
         execute_parts(parts, index + 1, close, &mut nested)?;
-        item = cdr(state.ctx, item).map_err(|_| FormatError::InvalidParameter {
-            directive: DirectiveKind::BraceOpen,
-        })?;
+        if iteration_escape == Some(EscapeScope::All) {
+            break;
+        }
+        item = next_item;
         repetitions += 1;
         if limit.is_some_and(|limit| repetitions >= limit) {
             break;
@@ -325,6 +351,8 @@ fn execute_case_group(
         sink: &mut local,
         line_start: state.line_start,
         column: state.column,
+        escape: state.escape,
+        remaining_override: state.remaining_override,
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
@@ -413,6 +441,8 @@ fn execute_nested(
         sink: state.sink,
         line_start: state.line_start,
         column: state.column,
+        escape: state.escape,
+        remaining_override: state.remaining_override,
     };
     execute_parts(&nested.parts, 0, nested.parts.len(), &mut nested_state)?;
     Ok(Some(index + 1))
@@ -480,4 +510,12 @@ struct ExecutionState<'a> {
     sink: &'a mut dyn CharSink,
     line_start: &'a mut bool,
     column: usize,
+    escape: &'a mut Option<EscapeScope>,
+    remaining_override: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EscapeScope {
+    Current,
+    All,
 }

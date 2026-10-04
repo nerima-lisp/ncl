@@ -138,6 +138,8 @@ fn covers_conditional_iteration_indirection_and_case_forms() {
         "true"
     );
     assert_eq!(run("~@{~A,~}", &[one, two], &mut ctx, &runtime), "one,two,");
+    assert_eq!(run("~{~A~^,~}", &[list], &mut ctx, &runtime), "one,two");
+    assert_eq!(run("~@{~A~:^,~}", &[one, two], &mut ctx, &runtime), "one,two");
     assert_eq!(run("~:{~A,~}", &[lists], &mut ctx, &runtime), "one,");
     assert_eq!(
         run(
@@ -337,6 +339,7 @@ fn covers_internal_state_fallbacks() {
     let mut line_start = true;
     let mut sink = StringSink::new();
     let empty_arguments = Vec::new();
+    let mut escape = None;
     let mut state = ExecutionState {
         arguments: &empty_arguments,
         argument_index: &mut index,
@@ -345,6 +348,8 @@ fn covers_internal_state_fallbacks() {
         sink: &mut sink,
         line_start: &mut line_start,
         column: 0,
+        escape: &mut escape,
+        remaining_override: None,
     };
     super::execute_parts(&parse("literal").expect("control").parts, 0, 1, &mut state)
         .expect("execute");

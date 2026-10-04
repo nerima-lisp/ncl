@@ -2,7 +2,7 @@ use ncl_object::{ObjectRef, Word, classify_object};
 use ncl_printer::StringSink;
 
 use super::parameters::{parameter_i64, repeat_count_for};
-use super::{Directive, DirectiveKind, ExecutionState, FormatError};
+use super::{Directive, DirectiveKind, EscapeScope, ExecutionState, FormatError};
 
 pub(super) fn next_argument(
     directive: &Directive,
@@ -172,7 +172,10 @@ fn execute_up_arrow(
             }),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let exhausted = state.arguments.len() == *state.argument_index;
+    let remaining = state
+        .remaining_override
+        .unwrap_or_else(|| state.arguments.len().saturating_sub(*state.argument_index));
+    let exhausted = remaining == 0;
     let terminate = match values.as_slice() {
         [] => exhausted,
         [value] => *value == 0,
@@ -183,6 +186,11 @@ fn execute_up_arrow(
     };
     if terminate {
         *state.argument_index = state.arguments.len();
+        *state.escape = Some(if directive.colon {
+            EscapeScope::All
+        } else {
+            EscapeScope::Current
+        });
     }
     Ok(())
 }
@@ -288,6 +296,7 @@ mod tests {
         let mut argument_index = 0;
         let mut sink = StringSink::new();
         let mut line_start = true;
+        let mut escape = None;
         let state = ExecutionState {
             arguments: &arguments,
             argument_index: &mut argument_index,
@@ -296,6 +305,8 @@ mod tests {
             sink: &mut sink,
             line_start: &mut line_start,
             column: 0,
+            escape: &mut escape,
+            remaining_override: None,
         };
         let directive = Directive {
             parameters: vec![crate::Parameter::Integer(0)],

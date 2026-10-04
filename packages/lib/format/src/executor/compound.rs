@@ -60,6 +60,8 @@ pub(super) fn execute_justification(
             sink: &mut local,
             line_start: state.line_start,
             column: state.column,
+            escape: state.escape,
+            remaining_override: state.remaining_override,
         };
         execute_parts(parts, start, segment_end, &mut nested)?;
         rendered.push(local.into_string());

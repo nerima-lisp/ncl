@@ -72,7 +72,7 @@ fn covers_control_parameter_edges() {
         "1"
     );
     assert_eq!(run("~^tail", &[], &mut ctx, &runtime), "");
-    assert_eq!(run("~1^tail", &[], &mut ctx, &runtime), "");
+    assert_eq!(run("~1^tail", &[], &mut ctx, &runtime), "tail");
     assert!(
         execute(
             &crate::parse("~:P").unwrap(),
@@ -317,6 +317,7 @@ fn covers_parameter_and_printer_helpers() {
         .is_err()
     );
     let empty_arguments = Vec::new();
+    let mut escape = None;
     assert!(
         parameters::repeat_count_for(
             &crate::Directive {
@@ -332,7 +333,9 @@ fn covers_parameter_and_printer_helpers() {
                 runtime: &runtime,
                 sink: &mut StringSink::new(),
                 line_start: &mut true,
-                column: 0
+                column: 0,
+                escape: &mut escape,
+                remaining_override: None
             }
         )
         .is_ok()
@@ -479,6 +482,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
     let mut line_start = true;
     let float_word: Word = float.into();
     let float_arguments = vec![float_word];
+    let mut escape = None;
     let mut state = ExecutionState {
         arguments: &float_arguments,
         argument_index: &mut argument_index,
@@ -487,6 +491,8 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
         sink: &mut sink,
         line_start: &mut line_start,
         column: 0,
+        escape: &mut escape,
+        remaining_override: None,
     };
     let fallback = crate::Directive {
         parameters: Vec::new(),

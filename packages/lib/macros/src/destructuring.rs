@@ -482,4 +482,32 @@ mod tests {
         }));
         Ok(())
     }
+
+    #[test]
+    fn optional_specs_cover_bare_nested_and_dotted_tail_values()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let optional = symbol(&mut ctx, &runtime, "&OPTIONAL")?;
+        let bare = symbol(&mut ctx, &runtime, "BARE")?;
+        let nested_name = symbol(&mut ctx, &runtime, "NESTED")?;
+        let nested = list(&mut ctx, &runtime, &[nested_name])?;
+        let dotted_tail = symbol(&mut ctx, &runtime, "TAIL")?;
+        let pattern = list(&mut ctx, &runtime, &[optional, bare, nested])?;
+        let dotted = ncl_object::make_cons(&mut ctx, &runtime, pattern, dotted_tail)?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let expansion = expand_destructuring_bind(&mut ctx, &runtime, dotted, Word::NIL, &[body])?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+        let bindings = elements(&mut ctx, parts[1])?;
+        assert!(bindings.iter().any(|binding| {
+            elements(&mut ctx, *binding).is_ok_and(|pair| pair.first() == Some(&bare))
+        }));
+        assert!(bindings.iter().any(|binding| {
+            elements(&mut ctx, *binding).is_ok_and(|pair| pair.first() == Some(&nested_name))
+        }));
+        assert!(bindings.iter().any(|binding| {
+            elements(&mut ctx, *binding).is_ok_and(|pair| pair.first() == Some(&dotted_tail))
+        }));
+        Ok(())
+    }
 }

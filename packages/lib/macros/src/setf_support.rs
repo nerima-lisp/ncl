@@ -160,4 +160,22 @@ mod tests {
         assert_eq!(result, Word::TRUE);
         Ok(())
     }
+
+    #[test]
+    fn get_setf_expansion_values_returns_symbol_place_shape() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let place = crate::symbol(&mut ctx, &runtime, "PLACE")?;
+        let values = get_setf_expansion_values(&mut ctx, &runtime, place)?;
+        assert_eq!(crate::elements(&mut ctx, values[0])?, Vec::<Word>::new());
+        assert_eq!(crate::elements(&mut ctx, values[1])?, Vec::<Word>::new());
+        assert_eq!(crate::elements(&mut ctx, values[2])?.len(), 1);
+        assert_eq!(
+            crate::elements(&mut ctx, values[3])?[0],
+            crate::symbol(&mut ctx, &runtime, "SETQ")?
+        );
+        assert_eq!(values[4], place);
+        Ok(())
+    }
 }

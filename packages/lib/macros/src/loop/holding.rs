@@ -220,3 +220,91 @@ pub(super) fn hold_clauses(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::r#loop::{
+        AccumulatorKind, ConditionalKind, ForClause, HashClause, HashIterationKind, LimitDirection,
+        StepDirection,
+    };
+
+    #[test]
+    fn holds_all_clause_shapes_and_rejects_non_symbol_hash_variables()
+    -> std::result::Result<(), ncl_object::ObjectError> {
+        let runtime = ncl_object::Runtime::new()?;
+        let mut ctx = ncl_object::ThreadContext::new();
+        ctx.register(&runtime)?;
+        let mut symbol = |name| crate::symbol(&mut ctx, &runtime, name);
+        let x = symbol("X")?;
+        let y = symbol("Y")?;
+        let clauses = vec![
+            LoopClause::With {
+                variable: x,
+                init: y,
+            },
+            LoopClause::For(ForClause {
+                variable: x,
+                init: y,
+                step: Some(Word::fixnum(1)),
+                direction: Some(StepDirection::UpFrom),
+                limit: Some((LimitDirection::Below, Word::fixnum(3))),
+            }),
+            LoopClause::Hash(HashClause {
+                variable: x,
+                kind: HashIterationKind::Key,
+                table: y,
+                using: Some((HashIterationKind::Value, y)),
+            }),
+            LoopClause::EqualsThen {
+                variable: x,
+                init: y,
+                then: Word::fixnum(1),
+            },
+            LoopClause::In {
+                variable: x,
+                sequence: y,
+                on: true,
+                by: Some(y),
+            },
+            LoopClause::Across {
+                variable: x,
+                vector: y,
+            },
+            LoopClause::Repeat(y),
+            LoopClause::While(y),
+            LoopClause::Until(y),
+            LoopClause::Initially(vec![x]),
+            LoopClause::Finally(vec![x]),
+            LoopClause::Do(vec![x]),
+            LoopClause::Accumulate {
+                kind: AccumulatorKind::Sum,
+                form: y,
+                variable: Some(x),
+            },
+            LoopClause::Return(y),
+            LoopClause::Conditional {
+                kind: ConditionalKind::When,
+                test: y,
+                then: vec![LoopClause::Do(vec![x])],
+                otherwise: vec![],
+            },
+        ];
+        let held = hold_clauses(&mut ctx, &mut Vec::new(), &clauses)?;
+        assert_eq!(held.len(), clauses.len());
+        assert!(
+            hold_clauses(
+                &mut ctx,
+                &mut Vec::new(),
+                &[LoopClause::Hash(HashClause {
+                    variable: Word::fixnum(1),
+                    kind: HashIterationKind::Key,
+                    table: y,
+                    using: None
+                })]
+            )
+            .is_err()
+        );
+        Ok(())
+    }
+}

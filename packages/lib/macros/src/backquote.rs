@@ -330,4 +330,25 @@ mod tests {
         assert!(!nested_parts.is_empty());
         Ok(())
     }
+
+    #[test]
+    fn heading_distinguishes_atoms_wrong_markers_and_improper_lists() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let marker = symbol(&mut ctx, &runtime, "UNQUOTE")?;
+        let other = symbol(&mut ctx, &runtime, "OTHER")?;
+        let argument = Word::fixnum(7);
+        let proper = list(&mut ctx, &runtime, &[marker, argument])?;
+        let wrong = list(&mut ctx, &runtime, &[other, argument])?;
+        let too_long = list(&mut ctx, &runtime, &[marker, argument, Word::TRUE])?;
+        let improper = ncl_object::make_cons(&mut ctx, &runtime, marker, argument)?;
+
+        let mut held = vec![Word::fixnum(0), marker, proper, wrong, too_long, improper];
+        assert_eq!(heading(&ctx, &mut held, 0, 1)?, None);
+        assert_eq!(heading(&ctx, &mut held, 2, 1)?, Some(6));
+        assert_eq!(held[6], argument);
+        assert_eq!(heading(&ctx, &mut held, 3, 1)?, None);
+        assert_eq!(heading(&ctx, &mut held, 4, 1)?, None);
+        assert_eq!(heading(&ctx, &mut held, 5, 1)?, None);
+        Ok(())
+    }
 }

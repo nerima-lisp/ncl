@@ -325,3 +325,58 @@ fn expand_conditional(
     body.push(let_form);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    #[test]
+    fn conditional_helpers_find_nested_it_and_emit_when_unless_forms()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let it = symbol(&mut ctx, &runtime, "IT")?;
+        let nested = list(&mut ctx, &runtime, &[Word::fixnum(1), it])?;
+        assert_eq!(find_it_word(&ctx, nested)?, Some(it));
+        assert_eq!(find_it_word(&ctx, Word::NIL)?, None);
+        assert_eq!(find_it_word(&ctx, Word::fixnum(1))?, None);
+
+        for kind in [
+            ConditionalKind::When,
+            ConditionalKind::Unless,
+            ConditionalKind::If,
+        ] {
+            let test = symbol(&mut ctx, &runtime, "TEST")?;
+            let body_form = symbol(&mut ctx, &runtime, "BODY")?;
+            let mut held = vec![test, body_form];
+            let mut bindings = Vec::new();
+            let mut body = Vec::new();
+            let mut initialized = Vec::new();
+            let mut result = 0;
+            let mut result_kind = None;
+            let clause = HeldLoopClause::Do(vec![1]);
+            expand_conditional(
+                &mut ctx,
+                &runtime,
+                &mut held,
+                kind,
+                0,
+                &[clause],
+                &[],
+                None,
+                1,
+                None,
+                &mut bindings,
+                &mut body,
+                &mut initialized,
+                &mut result,
+                &mut result_kind,
+            )?;
+            let form = elements(&mut ctx, held[*body.first().expect("conditional body")])?;
+            assert_eq!(form[0], symbol(&mut ctx, &runtime, "LET")?);
+        }
+        Ok(())
+    }
+}

@@ -135,6 +135,24 @@ impl LowerEnv {
         })
     }
 
+    /// Return the currently visible lexical variables and their slots.
+    ///
+    /// Escaping control regions can be entered through a handler block that
+    /// does not have the ordinary entry block as a dominator. Their merge
+    /// block therefore needs every visible lexical value, not only cells that
+    /// were assigned in the protected body.
+    pub(super) fn visible_variables(&self) -> Vec<(SymbolRef, Slot)> {
+        let mut variables = Vec::new();
+        for scope in self.scopes.iter().rev() {
+            for entry in scope.variables.iter().rev() {
+                if !variables.iter().any(|(name, _)| name == &entry.name) {
+                    variables.push((entry.name.clone(), entry.slot));
+                }
+            }
+        }
+        variables
+    }
+
     /// Bind a local function in the innermost scope.
     pub(super) fn bind_function(&mut self, entry: FunctionEntry) {
         self.current().functions.push(entry);

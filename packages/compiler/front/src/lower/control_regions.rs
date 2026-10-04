@@ -4,7 +4,6 @@ use ncl_ir::{HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty
 
 use crate::ast::Expr;
 
-use super::super::capture;
 use super::super::env::Slot;
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
@@ -33,16 +32,9 @@ impl Context<'_> {
             capture: token_name,
         });
         let value = self.lower_body(f, body)?;
-        let assigned = capture::analyze(body).assigned_names();
-        let live = assigned
-            .iter()
-            .filter_map(|name| match f.env().lookup_variable(name) {
-                Some(slot @ Slot::Cell(_)) => Some((name, slot)),
-                Some(Slot::Value(_)) | None => None,
-            })
-            .collect::<Vec<_>>();
         self.targets.pop();
         f.env().pop();
+        let live = f.env().visible_variables();
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let protected = self
@@ -110,7 +102,7 @@ impl Context<'_> {
         f.position(exit)?;
         for ((name, slot), (_, value)) in live.into_iter().zip(exit_values) {
             f.env().rebind_variable(
-                name,
+                &name,
                 match slot {
                     Slot::Cell(_) => Slot::Cell(value),
                     Slot::Value(_) => Slot::Value(value),

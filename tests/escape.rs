@@ -212,6 +212,60 @@ fn non_local_escape_values_are_observable_through_the_cli() {
 }
 
 #[test]
+fn compiled_nested_handler_return_from_preserves_ir_values() {
+    let source = "(block aborted (let ((aborted nil) (result nil)) (flet ((run () (multiple-value-list (funcall (lambda () (error \\\"stop\\\")))))) (handler-bind ((error (lambda (condition) (setf aborted t) (setf result (list condition)) (return-from aborted nil)))) (run)))))";
+    let mut runtime = ncl_runtime::Runtime::new().expect("runtime initialization");
+    let value = runtime
+        .compile(source)
+        .unwrap_or_else(|error| panic!("compiled nested handler escape failed: {error:?}"));
+    assert_eq!(runtime.format_result(value), "NIL");
+}
+
+#[test]
+fn do_entry_nested_handler_return_from_compiles() {
+    let source = r#"
+        (defstruct (entry (:conc-name nil)) pend name props form test-function vals)
+        (defun do-entry-repro (entry &optional (s *standard-output*))
+          (catch '*in-test*
+            (setq *test* (name entry))
+            (setf (pend entry) t)
+            (let* ((*in-test* t) (aborted nil) r)
+              (block aborted
+                (setf r
+                      (flet ((%do ()
+                              (handler-bind
+                               ((style-warning (lambda (c) (muffle-warning c))))
+                               (cond
+                                (*compile-tests*
+                                 (multiple-value-list (funcall (compile-test-function entry))))
+                                (*expanded-eval*
+                                 (multiple-value-list (expanded-eval (form entry))))
+                                (t (multiple-value-list (eval (form entry))))))))
+                        (if *catch-errors*
+                            (handler-bind
+                             ((style-warning (lambda (c)
+                                               (if (has-note entry :do-not-muffle-warnings)
+                                                   c
+                                                   (muffle-warning c))))
+                              (error (lambda (c)
+                                       (setf aborted t)
+                                       (setf r (list c))
+                                       (return-from aborted nil))))
+                            (%do)))))
+              (setf (pend entry)
+                    (or aborted
+                        (not (equalp-with-case r (vals entry)))))
+              (when (pend entry)
+                (format s "~&failed~%"))))
+          nil))
+    "#;
+    let mut runtime = ncl_runtime::Runtime::new().expect("runtime initialization");
+    runtime
+        .compile(source)
+        .unwrap_or_else(|error| panic!("do-entry repro failed: {error:?}"));
+}
+
+#[test]
 fn loops_with_tagbody_and_closures_survive_gc_stress() {
     let mut runtime = ncl_runtime::Runtime::new()
         .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));

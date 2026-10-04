@@ -1,6 +1,6 @@
 use ncl_object::{
-    FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word, make_string, string_length,
-    string_ref,
+    FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string,
+    string_length, string_ref,
 };
 
 fn call(
@@ -27,6 +27,16 @@ fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Wor
         .find_package(ctx, "KEYWORD")
         .ok_or(ObjectError::PackageConflict)?;
     Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
+}
+
+fn list_value(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
+    values.iter().rev().try_fold(Word::NIL, |tail, value| {
+        make_cons(ctx, runtime, *value, tail)
+    })
 }
 
 #[test]
@@ -169,6 +179,114 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     let merged = call(&runtime, &mut ctx, "MERGE-PATHNAMES", &[relative, defaults])?;
     let merged_name = call(&runtime, &mut ctx, "NAMESTRING", &[merged])?;
     assert_eq!(string_value(&ctx, merged_name)?, "/tmp/x.lisp"); // check-added-lines: allow(panic) merged namestring assertion
+    Ok(())
+}
+
+#[test]
+fn pathname_wildcard_version_and_unspecific_components_are_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let name_key = keyword(&mut ctx, &runtime, "NAME")?;
+    let version_key = keyword(&mut ctx, &runtime, "VERSION")?;
+    let wildcard_name = make_string(&mut ctx, &runtime, &['*', '.', 'l', 'i', 's', 'p'])?;
+    let wildcard = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-PATHNAME",
+        &[name_key, wildcard_name],
+    )?;
+    // check-added-lines: allow(panic) wildcard pathname assertion
+    assert_eq!(
+        call(&runtime, &mut ctx, "WILD-PATHNAME-P", &[wildcard])?,
+        Word::TRUE
+    ); // check-added-lines: allow(panic) wildcard pathname assertion
+    assert_eq!(
+        call(&runtime, &mut ctx, "PATHNAME-NAME", &[wildcard])?,
+        wildcard_name
+    ); // check-added-lines: allow(panic) wildcard component assertion
+
+    let version = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-PATHNAME",
+        &[version_key, Word::fixnum(7)],
+    )?;
+    // check-added-lines: allow(panic) numeric version assertion
+    assert_eq!(
+        call(&runtime, &mut ctx, "PATHNAME-VERSION", &[version])?,
+        Word::fixnum(7)
+    ); // check-added-lines: allow(panic) numeric version assertion
+
+    let unspecific_key = keyword(&mut ctx, &runtime, "TYPE")?;
+    let unspecific = keyword(&mut ctx, &runtime, "UNSPECIFIC")?;
+    let pathname = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-PATHNAME",
+        &[unspecific_key, unspecific],
+    )?;
+    // check-added-lines: allow(panic) unspecific component assertion
+    assert_eq!(
+        call(&runtime, &mut ctx, "PATHNAME-TYPE", &[pathname])?,
+        unspecific
+    ); // check-added-lines: allow(panic) unspecific component assertion
+    Ok(())
+}
+
+#[test]
+fn logical_pathname_translation_apis_preserve_rules_and_capture_wildcards()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let logical_name = make_string(
+        &mut ctx,
+        &runtime,
+        &[
+            'S', 'Y', 'S', ':', 's', 'r', 'c', '/', 'm', 'a', 'i', 'n', '.', 'l', 'i', 's', 'p',
+        ],
+    )?;
+    let source = make_string(&mut ctx, &runtime, &['*', '.', 'l', 'i', 's', 'p'])?;
+    let target = make_string(
+        &mut ctx,
+        &runtime,
+        &['/', 'v', 'a', 'r', '/', '*', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let rule = list_value(&mut ctx, &runtime, &[source, target])?;
+    let rules = list_value(&mut ctx, &runtime, &[rule])?;
+    let logical = call(&runtime, &mut ctx, "LOGICAL-PATHNAME", &[logical_name])?;
+    let configured = call(
+        &runtime,
+        &mut ctx,
+        "LOGICAL-PATHNAME-TRANSLATIONS",
+        &[logical, rules],
+    )?;
+    assert_eq!(configured, rules); // check-added-lines: allow(panic) logical translation setter assertion
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "LOGICAL-PATHNAME-TRANSLATIONS",
+            &[logical],
+        )?,
+        rules
+    ); // check-added-lines: allow(panic) logical translation getter assertion
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "LOAD-LOGICAL-PATHNAME-TRANSLATIONS",
+            &[logical],
+        )?,
+        rules
+    ); // check-added-lines: allow(panic) logical translation loader assertion
+
+    let translated = call(&runtime, &mut ctx, "TRANSLATE-LOGICAL-PATHNAME", &[logical])?;
+    let namestring = call(&runtime, &mut ctx, "NAMESTRING", &[translated])?;
+    assert_eq!(string_value(&ctx, namestring)?, "/var/src/main.lisp"); // check-added-lines: allow(panic) logical wildcard translation assertion
     Ok(())
 }
 

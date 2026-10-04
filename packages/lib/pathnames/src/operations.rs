@@ -8,6 +8,8 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use super::wildcard::translate_wildcards;
+
 pub use super::logical::{
     compile_file_pathname_builtin, load_logical_pathname_translations_builtin,
     logical_pathname_builtin, logical_pathname_translations_builtin,
@@ -26,7 +28,10 @@ pub fn has_wildcards(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectErro
         return Ok(value.contains('*') || value.contains('?'));
     }
     if let Ok(value) = symbol_text(ctx, word) {
-        return Ok(value.contains('*') || value.contains('?'));
+        return Ok(value.contains('*')
+            || value.contains('?')
+            || value.eq_ignore_ascii_case("WILD")
+            || value.eq_ignore_ascii_case("WILD-INFERIORS"));
     }
     let mut cursor = word;
     while cursor != Word::NIL {
@@ -76,6 +81,24 @@ pub fn pathname_component_match(
         return Ok(value == Word::NIL);
     }
     if value == Word::NIL {
+        return Ok(false);
+    }
+    if let Ok(name) = symbol_text(ctx, pattern) {
+        if name.eq_ignore_ascii_case("WILD") || name.eq_ignore_ascii_case("WILD-INFERIORS") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("NEWEST") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("UNSPECIFIC") {
+            return Ok(
+                symbol_text(ctx, value).is_ok_and(|value| value.eq_ignore_ascii_case("UNSPECIFIC"))
+            );
+        }
+    }
+    if let Ok(name) = symbol_text(ctx, value)
+        && name.eq_ignore_ascii_case("UNSPECIFIC")
+    {
         return Ok(false);
     }
     Ok(wildcard_match(&text(ctx, pattern)?, &text(ctx, value)?))
@@ -340,43 +363,6 @@ pub fn directory_builtin(
     let _ = pattern;
     list(ctx, runtime, &matches)
 }
-
-pub fn replace_wildcard(pattern: &str, value: &str) -> String {
-    if let Some(star) = pattern.find('*') {
-        let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-        let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-        if value.starts_with(prefix)
-            && value.ends_with(suffix)
-            && value.len() >= prefix.len() + suffix.len()
-        {
-            return format!(
-                "{}{}{}",
-                prefix,
-                &value[prefix.len()..value.len() - suffix.len()], // check-added-lines: allow(index) validated prefix and suffix lengths
-                suffix
-            );
-        }
-    }
-    value.to_owned()
-}
-
-pub fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
-    let star = pattern.find('*')?;
-    let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-    let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-    (value.starts_with(prefix)
-        && value.ends_with(suffix)
-        && value.len() >= prefix.len() + suffix.len())
-    .then(|| value[prefix.len()..value.len() - suffix.len()].to_owned()) // check-added-lines: allow(index) validated prefix and suffix lengths
-}
-
-pub fn substitute_wildcard(pattern: &str, capture: &str) -> String {
-    pattern.find('*').map_or_else(
-        || pattern.to_owned(),
-        |index| format!("{}{}{}", &pattern[..index], capture, &pattern[index + 1..]), // check-added-lines: allow(index) index came from find
-    )
-}
-
 pub fn translate_pathname_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -392,10 +378,8 @@ pub fn translate_pathname_builtin(
     if !wildcard_match(&from_name, &source_name) {
         return Err(ObjectError::TypeError);
     }
-    let translated = wildcard_capture(&from_name, &source_name).map_or_else(
-        || replace_wildcard(&to_name, &source_name),
-        |capture| substitute_wildcard(&to_name, &capture),
-    );
+    let translated =
+        translate_wildcards(&from_name, &to_name, &source_name).ok_or(ObjectError::TypeError)?;
     let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
     parse_namestring_value(ctx, runtime, string)
 }

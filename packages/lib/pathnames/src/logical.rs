@@ -1,12 +1,11 @@
-use super::operations::{
-    parse_namestring_builtin, parse_namestring_value, replace_wildcard, substitute_wildcard,
-    wildcard_capture,
-};
+use super::operations::{parse_namestring_builtin, parse_namestring_value};
+use super::wildcard::translate_wildcards;
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Package, Runtime, SLOTS, ThreadContext, Word, car,
     cdr, component_string, make_cons, make_pathname, make_string, namestring_value,
     pathname_designator, set_symbol_value, structure_ref, symbol_value, text,
 };
+use ncl_object::SetfExpansion;
 
 pub fn logical_pathname_builtin(
     ctx: &mut ThreadContext,
@@ -67,6 +66,57 @@ pub fn logical_pathname_translations_builtin(
     Ok(Word::NIL)
 }
 
+fn call_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+    args: &[Word],
+) -> Result<Word, ObjectError> {
+    let package = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let operator = Package::from_word(package).intern(ctx, runtime, name)?.0;
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut result = Word::NIL;
+        for value in roots.iter().rev() {
+            result = ncl_object::with_root(ctx, &mut result, |ctx, result| {
+                make_cons(ctx, runtime, **value, *result)
+            })?;
+        }
+        ncl_object::with_root(ctx, &mut result, |ctx, result| {
+            make_cons(ctx, runtime, operator, *result)
+        })
+    })
+}
+
+pub fn logical_pathname_translations_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    let argument = *args.first().ok_or(ObjectError::TypeError)?;
+    if args.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let package = runtime.ensure_package(ctx, "NCL")?;
+    let temporary = Package::from_word(package).gensym(ctx, runtime)?;
+    let store = Package::from_word(package).gensym(ctx, runtime)?;
+    let access_form = call_form(ctx, runtime, "LOGICAL-PATHNAME-TRANSLATIONS", &[temporary])?;
+    let store_form = call_form(
+        ctx,
+        runtime,
+        "LOGICAL-PATHNAME-TRANSLATIONS",
+        &[temporary, store],
+    )?;
+    Ok(SetfExpansion {
+        temporary_variables: vec![temporary],
+        value_forms: vec![argument],
+        store_variables: vec![store],
+        store_form,
+        access_form,
+    })
+}
+
 pub fn load_logical_pathname_translations_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -98,10 +148,11 @@ pub fn translate_logical_pathname_builtin(
                 let source_name = namestring_value(ctx, source)?;
                 let target_name = namestring_value(ctx, target)?;
                 let value = namestring_value(ctx, pathname)?;
-                let translated = wildcard_capture(&source_name, &value).map_or_else(
-                    || replace_wildcard(&target_name, &value),
-                    |capture| substitute_wildcard(&target_name, &capture),
-                );
+                let Some(translated) = translate_wildcards(&source_name, &target_name, &value)
+                else {
+                    table = cdr(ctx, table)?;
+                    continue;
+                };
                 let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
                 return parse_namestring_value(ctx, runtime, string);
             }

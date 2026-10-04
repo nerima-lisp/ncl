@@ -227,6 +227,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         "MAKE-PATHNAME",
         &[directory_key, recursive_directory],
     )?;
+    // check-added-lines: allow(panic) wildcard recursive value assertion
     assert_eq!(
         // check-added-lines: allow(panic) wildcard recursive value assertion
         // check-added-lines: allow(panic) wildcard recursive value assertion
@@ -240,6 +241,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         Word::TRUE
     ); // check-added-lines: allow(panic) wild-inferiors matches zero or more directories
     let directory_field = keyword(&mut ctx, &runtime, "DIRECTORY")?;
+    // check-added-lines: allow(panic) wildcard field value assertion
     assert_eq!(
         // check-added-lines: allow(panic) wildcard field value assertion
         // check-added-lines: allow(panic) wildcard matching value assertion

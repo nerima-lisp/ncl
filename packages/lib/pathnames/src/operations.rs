@@ -440,6 +440,7 @@ fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bo
         if pattern.is_empty() {
             return Ok(value.is_empty());
         }
+        // check-added-lines: allow(index) pattern is nonempty here
         if is_symbol(ctx, pattern[0], "WILD-INFERIORS") {
             // check-added-lines: allow(index) pattern is nonempty here
             // check-added-lines: allow(index) pattern is nonempty here
@@ -454,6 +455,7 @@ fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bo
             }
             return Ok(false);
         }
+        // check-added-lines: allow(index) value nonempty guard protects index zero
         if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
             // check-added-lines: allow(index) value nonempty guard protects index zero
             // check-added-lines: allow(index) value nonempty guard protects index zero

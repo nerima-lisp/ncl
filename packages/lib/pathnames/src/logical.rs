@@ -50,6 +50,7 @@ pub fn logical_pathname_translations_builtin(
                 let rest = cdr(ctx, table)?;
                 let updated = make_cons(ctx, runtime, pair, rest)?;
                 set_symbol_value(ctx, symbol, updated)?;
+                return Ok(value);
             }
             return cdr(ctx, entry);
         }

@@ -179,6 +179,55 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
     let merged = call(&runtime, &mut ctx, "MERGE-PATHNAMES", &[relative, defaults])?;
     let merged_name = call(&runtime, &mut ctx, "NAMESTRING", &[merged])?;
     assert_eq!(string_value(&ctx, merged_name)?, "/tmp/x.lisp"); // check-added-lines: allow(panic) merged namestring assertion
+
+    let nested = make_string(
+        &mut ctx,
+        &runtime,
+        &['s', 'u', 'b', '/', 'x', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let nested = call(&runtime, &mut ctx, "PARSE-NAMESTRING", &[nested])?;
+    let nested_merged = call(&runtime, &mut ctx, "MERGE-PATHNAMES", &[nested, defaults])?;
+    let nested_name = call(&runtime, &mut ctx, "NAMESTRING", &[nested_merged])?;
+    assert_eq!(string_value(&ctx, nested_name)?, "/tmp/sub/x.lisp"); // check-added-lines: allow(panic) relative directory merge assertion
+
+    let name_key = keyword(&mut ctx, &runtime, "NAME")?;
+    let type_key = keyword(&mut ctx, &runtime, "TYPE")?;
+    let wildcard_name = make_string(&mut ctx, &runtime, &['*'])?;
+    let lisp_type = make_string(&mut ctx, &runtime, &['t', 'x', 't'])?;
+    let unspecified_pattern = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-PATHNAME",
+        &[name_key, wildcard_name, type_key, lisp_type],
+    )?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "PATHNAME-MATCH-P",
+            &[candidate, unspecified_pattern],
+        )?,
+        Word::TRUE
+    ); // check-added-lines: allow(panic) unspecified pattern components are wild
+    Ok(())
+}
+
+#[test]
+fn pathname_versions_round_trip_from_namestrings() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let input = make_string(
+        &mut ctx,
+        &runtime,
+        &['f', 'o', 'o', '.', 'l', 'i', 's', 'p', '.', '7'],
+    )?;
+    let pathname = call(&runtime, &mut ctx, "PATHNAME", &[input])?;
+    let version = call(&runtime, &mut ctx, "PATHNAME-VERSION", &[pathname])?;
+    assert_eq!(version, Word::fixnum(7)); // check-added-lines: allow(panic) parsed pathname version assertion
+    let type_ = call(&runtime, &mut ctx, "PATHNAME-TYPE", &[pathname])?;
+    assert_eq!(string_value(&ctx, type_)?, "lisp"); // check-added-lines: allow(panic) parsed pathname type assertion
     Ok(())
 }
 

@@ -20,9 +20,27 @@ fn parse_source(
     } else {
         parts.pop()
     };
-    let (name, type_) = filename.map_or((None, None), |file| match file.rsplit_once('.') {
-        Some((base, extension)) if !base.is_empty() => (Some(base), Some(extension)),
-        _ => (Some(file), None), // check-added-lines: allow(wildcard) filenames without an extension
+    let (name, type_, version) = filename.map_or((None, None, None), |file| {
+        let (stem, version) = file
+            .rsplit_once('.')
+            .map_or((file, None), |(stem, suffix)| {
+                if !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+                {
+                    (stem, suffix.parse::<i64>().ok())
+                } else {
+                    (file, None)
+                }
+            });
+        let (base, extension) = stem
+            .rsplit_once('.')
+            .map_or((stem, None), |(base, extension)| {
+                if base.is_empty() {
+                    (stem, None)
+                } else {
+                    (base, Some(extension))
+                }
+            });
+        (Some(base), extension, version)
     });
     let marker = keyword_symbol(ctx, runtime, if absolute { "ABSOLUTE" } else { "RELATIVE" })?;
     let components = std::iter::once(marker)
@@ -53,6 +71,7 @@ fn parse_source(
         make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
     })?;
     slots[4] = type_value; // check-added-lines: allow(index) fixed pathname slot layout
+    slots[5] = version.map_or(Word::NIL, Word::fixnum);
     make_pathname(ctx, runtime, &slots)
 }
 

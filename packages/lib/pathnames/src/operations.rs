@@ -78,7 +78,7 @@ pub fn pathname_component_match(
     value: Word,
 ) -> Result<bool, ObjectError> {
     if pattern == Word::NIL {
-        return Ok(value == Word::NIL);
+        return Ok(true);
     }
     if value == Word::NIL {
         return Ok(false);
@@ -112,10 +112,12 @@ pub fn pathname_match_builtin(
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
     let pattern = pathname_designator(ctx, runtime, args.required(1)?)?;
-    let directory = wildcard_match(
-        &directory_text(ctx, structure_ref(ctx, pattern, 2)?)?,
-        &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
-    );
+    let pattern_directory = structure_ref(ctx, pattern, 2)?;
+    let directory = pattern_directory == Word::NIL
+        || wildcard_match(
+            &directory_text(ctx, pattern_directory)?,
+            &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
+        );
     let matches = directory
         && (0..SLOTS)
             .filter(|index| *index != 2)
@@ -414,12 +416,42 @@ pub fn merge_pathnames_builtin(
         let value = structure_ref(ctx, pathname, index)?;
         let use_default_directory = index == 2 && relative_directory(ctx, value)?;
         *slot = if (value == Word::NIL || use_default_directory) && defaults != Word::NIL {
-            structure_ref(ctx, defaults, index)?
+            if use_default_directory {
+                let base = structure_ref(ctx, defaults, index)?;
+                append_relative_directory(ctx, runtime, base, value)?
+            } else {
+                structure_ref(ctx, defaults, index)?
+            }
         } else {
             value
         };
     }
     make_pathname(ctx, runtime, &slots)
+}
+
+fn append_relative_directory(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    base: Word,
+    relative: Word,
+) -> Result<Word, ObjectError> {
+    let mut values = Vec::new();
+    let mut cursor = base;
+    while cursor != Word::NIL {
+        values.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
+    }
+    let mut tail = relative;
+    let mut relative_values = Vec::new();
+    while tail != Word::NIL {
+        relative_values.push(car(ctx, tail)?);
+        tail = cdr(ctx, tail)?;
+    }
+    if !relative_values.is_empty() {
+        let _ = relative_values.remove(0);
+    }
+    values.extend(relative_values);
+    list(ctx, runtime, &values)
 }
 
 pub fn keyword_symbol(

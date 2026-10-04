@@ -288,12 +288,19 @@ fn read_feature_conditional(
     positive: bool,
 ) -> Result<Option<Word>, ReadError> {
     let features = runtime.features();
-    let Some(expression) = read_form(ctx, runtime, source, opts, rt, labels)? else {
+    let mut expression_options = opts.clone();
+    expression_options.set_read_suppression(crate::ReadSuppression::Keep);
+    let Some(expression) = read_form(ctx, runtime, source, &expression_options, rt, labels)? else {
         return Err(ReadError::InvalidFeatureExpression);
     };
     let present = eval_feature_expr(ctx, runtime, expression, &features)?;
     if present != positive {
-        let _ = read_form(ctx, runtime, source, opts, rt, labels)?;
+        let mut suppressed = opts.clone();
+        suppressed.set_read_suppression(crate::ReadSuppression::Discard);
+        let _ = read_form(ctx, runtime, source, &suppressed, rt, labels)?;
+        if source.peek_char().is_none_or(|character| character == ')') {
+            return Ok(None);
+        }
     }
     read_form(ctx, runtime, source, opts, rt, labels)
 }

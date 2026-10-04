@@ -146,6 +146,16 @@ fn hold_clause(
             held.push(test);
             HeldLoopClause::Until(index)
         }
+        LoopClause::Always(test) => {
+            let index = held.len();
+            held.push(test);
+            HeldLoopClause::Always(index)
+        }
+        LoopClause::Never(test) => {
+            let index = held.len();
+            held.push(test);
+            HeldLoopClause::Never(index)
+        }
         LoopClause::Initially(ref forms) => HeldLoopClause::Initially(
             forms
                 .iter()

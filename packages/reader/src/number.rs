@@ -93,7 +93,8 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
     }
 
     let mut has_exponent = false;
-    if base == 10
+    if (digits_before > 0 || has_digits_after_dot)
+        && base == 10
         && let Some(marker) = token.get(index).copied()
         && matches!(
             marker,

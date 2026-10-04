@@ -349,9 +349,14 @@ fn intern_symbol(
         }
     };
     let package_name_value = crate::PackageName::new(package_name.clone())?;
-    let mut package = resolver
-        .resolve_package(ctx, &package_name_value, opts.current_package())?
-        .ok_or_else(|| ReadError::PackageNotFound(package_name.clone()))?;
+    let Some(mut package) =
+        resolver.resolve_package(ctx, &package_name_value, opts.current_package())?
+    else {
+        if opts.read_suppression() == crate::ReadSuppression::Discard {
+            return Ok(Word::NIL);
+        }
+        return Err(ReadError::PackageNotFound(package_name));
+    };
     let package_token = push_root(ctx, &mut package);
     let result = Package::from_word(package)
         .intern(ctx, runtime, &symbol_name)

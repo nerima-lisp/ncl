@@ -8,6 +8,7 @@ pub const MACROS: &[&str] = &[
     "CCASE",
     "COND",
     "CTYPECASE",
+    "DECLAIM",
     "DECF",
     "DEFCONSTANT",
     "DEFINE-COMPILER-MACRO",

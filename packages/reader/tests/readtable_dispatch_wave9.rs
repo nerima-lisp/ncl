@@ -112,8 +112,23 @@ fn feature_conditionals_select_and_skip_nested_forms() {
         .unwrap();
     assert_eq!(classify(skipped), ObjectRef::Fixnum(72));
     assert_eq!(
+        read_from_string(
+            &mut ctx,
+            &runtime,
+            "#-wave9 missing-package::name 72",
+            &opts
+        )
+        .unwrap()
+        .unwrap(),
+        Word::fixnum(72)
+    );
+    assert_eq!(
         read_from_string(&mut ctx, &runtime, "#+(and wave9)", &opts).unwrap(),
         None
+    );
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "(#+missing 1)", &opts).unwrap(),
+        Some(Word::NIL)
     );
 }
 

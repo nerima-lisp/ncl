@@ -14,4 +14,14 @@ pub trait LoadPort: Send + Sync + std::fmt::Debug {
         args: &BuiltinArgs<'_>,
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError>;
+
+    fn compile_file(
+        &self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &BuiltinArgs<'_>,
+        _values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        Err(ObjectError::Layout)
+    }
 }

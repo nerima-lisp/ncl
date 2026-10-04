@@ -297,6 +297,9 @@ pub fn read_form(
                 if let Some(word) = read_macro_char(ctx, runtime, source, opts, rt, labels, c)? {
                     return Ok(apply_suppress(Some(word), opts));
                 }
+                if source.peek_char().is_none_or(|character| character == ')') {
+                    return Ok(None);
+                }
             }
             SyntaxKind::CustomMacro(_) | SyntaxKind::Invalid => {
                 return Err(ReadError::UninvocableMacroFunction(c));
@@ -481,7 +484,10 @@ fn read_list_inner(
         }
         let form = read_form(ctx, runtime, source, opts, rt, labels)?;
         let Some(form) = form else {
-            return Err(ReadError::UnexpectedEof);
+            if source.peek_char().is_none() {
+                return Err(ReadError::UnexpectedEof);
+            }
+            continue;
         };
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;
         if head.get() == Word::NIL {

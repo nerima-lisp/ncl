@@ -368,6 +368,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for name in [
         "*DEFAULT-PATHNAME-DEFAULTS*",
         "*LOAD-PATHNAME*",
+        "*LOAD-TRUENAME*",
         "*COMPILE-FILE-PATHNAME*",
     ] {
         let symbol = Package::from_word(package)

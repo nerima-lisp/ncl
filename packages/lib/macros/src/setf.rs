@@ -2,7 +2,10 @@
 #![allow(clippy::trivially_copy_pass_by_ref, clippy::chunks_exact_to_as_chunks)]
 
 use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
-use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
+use ncl_object::{
+    ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word, classify_object, string_length,
+    string_ref, symbol_name,
+};
 
 fn form(
     ctx: &mut ThreadContext,
@@ -92,9 +95,20 @@ fn place(
     }
     let parts = elements(ctx, place)?;
     let (operator, arguments) = parts.split_first().ok_or(ObjectError::TypeError)?;
-    let expansion = registry
-        .get(ctx, *operator)?
-        .ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)?;
+    let mut expansion = registry.get(ctx, *operator)?;
+    if expansion.is_none()
+        && let Ok(name_word) = symbol_name(ctx, *operator)
+        && let Ok(name) = (0..string_length(ctx, name_word)?)
+            .map(|i| string_ref(ctx, name_word, i))
+            .collect::<Result<String, _>>()
+        && let Some(common_lisp) = runtime.find_package(ctx, "COMMON-LISP")
+    {
+        let common_lisp_operator = Package::from_word(common_lisp)
+            .intern(ctx, runtime, &name)?
+            .0;
+        expansion = registry.get(ctx, common_lisp_operator)?;
+    }
+    let expansion = expansion.ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)?;
     validate_expansion(&expansion)?;
     Ok(expansion)
 }

@@ -34,6 +34,9 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "MINIMIZE"
                 | "INTO"
                 | "RETURN"
+                | "THEREIS"
+                | "ALWAYS"
+                | "NEVER"
                 | "FROM"
                 | "UPFROM"
                 | "DOWNFROM"
@@ -465,6 +468,17 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
             "REPEAT" => clauses.push(LoopClause::Repeat(required(input, &mut cursor)?)),
             "WHILE" => clauses.push(LoopClause::While(required(input, &mut cursor)?)),
             "UNTIL" => clauses.push(LoopClause::Until(required(input, &mut cursor)?)),
+            "THEREIS" => {
+                let test = required(input, &mut cursor)?;
+                clauses.push(LoopClause::Conditional {
+                    kind: ConditionalKind::When,
+                    test,
+                    then: vec![LoopClause::Return(test)],
+                    otherwise: Vec::new(),
+                });
+            }
+            "ALWAYS" => clauses.push(LoopClause::Always(required(input, &mut cursor)?)),
+            "NEVER" => clauses.push(LoopClause::Never(required(input, &mut cursor)?)),
             "INITIALLY" => clauses.push(LoopClause::Initially(take_forms(ctx, input, &mut cursor))),
             "FINALLY" => clauses.push(LoopClause::Finally(take_forms(ctx, input, &mut cursor))),
             "DO" => clauses.push(LoopClause::Do(take_forms(ctx, input, &mut cursor))),

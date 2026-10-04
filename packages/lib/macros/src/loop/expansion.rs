@@ -1,7 +1,7 @@
 use super::clause::HeldLoopClause;
 use super::conditional::{bind_for_variable, expand_selectable_clause, find_it_word};
 use super::hash::wrap_hash_iteration;
-use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
+use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list, held_symbol};
 use super::holding::hold_clauses;
 use super::{
     AccumulatorKind, LimitDirection, LoopAst, ObjectError, Result, Runtime, StepDirection,
@@ -229,6 +229,36 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 tests.push(held_form(ctx, runtime, &mut held, "NOT", &[test])?);
             }
             HeldLoopClause::Until(test) => tests.push(test),
+            HeldLoopClause::Always(test) | HeldLoopClause::Never(test) => {
+                let kind = if matches!(clause, HeldLoopClause::Always(_)) {
+                    super::ConditionalKind::Unless
+                } else {
+                    super::ConditionalKind::When
+                };
+                let conditional = HeldLoopClause::Conditional {
+                    kind,
+                    test,
+                    then: vec![HeldLoopClause::Return(nil)],
+                    otherwise: Vec::new(),
+                };
+                expand_selectable_clause(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &conditional,
+                    name,
+                    nil,
+                    it,
+                    &mut bindings,
+                    &mut body,
+                    &mut initialized_accumulators,
+                    &mut result,
+                    &mut result_kind,
+                )?;
+                if matches!(clause, HeldLoopClause::Always(_)) {
+                    result = held_symbol(ctx, runtime, &mut held, "T")?;
+                }
+            }
             HeldLoopClause::Initially(ref forms) => initially.extend(forms),
             HeldLoopClause::Finally(ref forms) => finally.extend(forms),
             HeldLoopClause::Do(_)

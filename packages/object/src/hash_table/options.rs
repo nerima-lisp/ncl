@@ -325,7 +325,11 @@ fn float_ratio(value: f64) -> Result<(u128, u32), ObjectError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_capacity, validate_rehash_size, validate_rehash_threshold};
+    use super::{
+        float_ratio, next_capacity_from_value, normalize_capacity, rehash_size_value,
+        rehash_threshold_value, validate_rehash_size, validate_rehash_threshold,
+    };
+    use crate::hash_table::{HashTable, HashTest, Weakness};
     use crate::{
         ObjectError, Runtime, ThreadContext, make_bignum_from_i128, make_double, make_ratio,
     };
@@ -344,6 +348,14 @@ mod tests {
         assert_eq!(normalize_capacity(1), Ok(8));
         assert_eq!(normalize_capacity(8), Ok(8));
         assert_eq!(normalize_capacity(9), Ok(16));
+        assert_eq!(
+            normalize_capacity((usize::MAX / 2 + 1) as u128),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            normalize_capacity(usize::MAX as u128),
+            Err(ObjectError::TypeError)
+        );
         assert_eq!(normalize_capacity(u128::MAX), Err(ObjectError::TypeError));
 
         let (runtime, mut ctx) = setup();
@@ -381,6 +393,67 @@ mod tests {
         assert_eq!(
             validate_rehash_threshold(&ctx, Word::TRUE),
             Err(ObjectError::TypeError)
+        );
+    }
+
+    #[test]
+    fn option_conversions_cover_numeric_forms_and_layout_errors() {
+        let (runtime, mut ctx) = setup();
+        let negative = make_bignum_from_i128(&mut ctx, &runtime, -1)
+            .unwrap_or_else(|error| panic!("negative bignum: {error:?}"));
+        let zero = make_bignum_from_i128(&mut ctx, &runtime, 0)
+            .unwrap_or_else(|error| panic!("zero bignum: {error:?}"));
+        assert_eq!(
+            validate_rehash_size(&ctx, negative.into()),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            validate_rehash_size(&ctx, zero.into()),
+            Err(ObjectError::TypeError)
+        );
+
+        let factor = make_double(&mut ctx, &runtime, 1.5)
+            .unwrap_or_else(|error| panic!("factor: {error:?}"));
+        assert!(
+            matches!(rehash_size_value(&ctx, factor.into(),), Ok(super::RehashSize::Multiply(value)) if (value - 1.5).abs() < f64::EPSILON)
+        );
+        assert!(matches!(
+            rehash_size_value(&ctx, Word::fixnum(3)),
+            Ok(super::RehashSize::Add(3))
+        ));
+        assert!(matches!(
+            rehash_size_value(&ctx, Word::NIL),
+            Err(ObjectError::Layout)
+        ));
+        assert!(matches!(
+            rehash_size_value(&ctx, Word::fixnum(0)),
+            Err(ObjectError::TypeError)
+        ));
+
+        let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(-1), Word::fixnum(2))
+            .unwrap_or_else(|error| panic!("ratio: {error:?}"));
+        assert_eq!(rehash_threshold_value(&ctx, ratio.into()), Ok(-0.5));
+        let bignum = make_bignum_from_i128(&mut ctx, &runtime, -17)
+            .unwrap_or_else(|error| panic!("threshold bignum: {error:?}"));
+        assert_eq!(rehash_threshold_value(&ctx, bignum.into()), Ok(-17.0));
+        assert_eq!(
+            rehash_threshold_value(&ctx, Word::NIL),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(float_ratio(4.0), Ok((1_u128 << 52, 50)));
+        assert_eq!(float_ratio(1.5), Ok((3_u128 << 51, 52)));
+        assert_eq!(float_ratio(f64::from_bits(1)), Ok((1, 1074)));
+
+        let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+            .unwrap_or_else(|error| panic!("table: {error:?}"));
+        assert_eq!(
+            next_capacity_from_value(&ctx, table, Word::fixnum(3)),
+            Ok(16)
+        );
+        assert_eq!(next_capacity_from_value(&ctx, table, factor.into()), Ok(16));
+        assert_eq!(
+            next_capacity_from_value(&ctx, table, Word::TRUE),
+            Err(ObjectError::Layout)
         );
     }
 }

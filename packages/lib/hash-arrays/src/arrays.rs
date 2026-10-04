@@ -1,6 +1,6 @@
 use ncl_object::array::{
     adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
-    fill_pointer, vector_pop, vector_push, vector_push_extend,
+    fill_pointer, set_fill_pointer, vector_pop, vector_push, vector_push_extend,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
@@ -139,6 +139,24 @@ fn fill_pointer_builtin(
             i64::try_from(value).map_err(|_| ObjectError::Layout)?,
         ))
     })
+}
+
+fn fill_pointer_set_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = args.required(0)?;
+    let value = args
+        .required(1)?
+        .as_fixnum()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(ObjectError::TypeError)?;
+    set_fill_pointer(ctx, array, value)?;
+    Ok(Word::fixnum(
+        i64::try_from(value).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 fn vector_push_builtin(
     ctx: &mut ThreadContext,

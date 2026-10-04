@@ -491,3 +491,7 @@ fn defstruct_macro_builtin(
     macro_push_handle(&mut scope, &mut forms, quoted_name);
     make_progn(&mut scope, runtime, &forms).map(|result| scope.get(result).as_word())
 }
+
+#[cfg(test)]
+#[path = "../tests/support/lib_defstruct_macro_tests.rs"]
+mod defstruct_macro_tests;

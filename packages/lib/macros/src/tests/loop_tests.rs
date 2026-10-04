@@ -956,3 +956,309 @@ fn rejects_duplicate_hash_iteration_during_expansion() -> Result<(), ObjectError
     );
     Ok(())
 }
+
+#[test]
+fn parses_every_numeric_iteration_direction_and_limit() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let cases = [
+        ("FROM", StepDirection::From, "TO", LimitDirection::To),
+        (
+            "UPFROM",
+            StepDirection::UpFrom,
+            "UPTO",
+            LimitDirection::UpTo,
+        ),
+        (
+            "DOWNFROM",
+            StepDirection::DownFrom,
+            "BELOW",
+            LimitDirection::Below,
+        ),
+        (
+            "DOWNFROM",
+            StepDirection::DownFrom,
+            "DOWNTO",
+            LimitDirection::DownTo,
+        ),
+        (
+            "UPFROM",
+            StepDirection::UpFrom,
+            "ABOVE",
+            LimitDirection::Above,
+        ),
+    ];
+
+    for (from_name, expected_direction, limit_name, expected_limit) in cases {
+        let from = symbol(&mut ctx, &runtime, from_name)?;
+        let limit = symbol(&mut ctx, &runtime, limit_name)?;
+        let by = symbol(&mut ctx, &runtime, "BY")?;
+        let ast = parse_loop(
+            &mut ctx,
+            &[
+                for_word,
+                x,
+                from,
+                Word::fixnum(10),
+                by,
+                Word::fixnum(2),
+                limit,
+                Word::fixnum(20),
+            ],
+        )?;
+        assert!(matches!(
+            ast.clauses.as_slice(),
+            [LoopClause::For(ForClause {
+                variable,
+                init,
+                step: Some(step),
+                direction: Some(direction),
+                limit: Some((limit_direction, limit_value)),
+            })]
+            if *variable == x
+                && *init == Word::fixnum(10)
+                && *step == Word::fixnum(2)
+                && *direction == expected_direction
+                && *limit_direction == expected_limit
+                && *limit_value == Word::fixnum(20)
+        ));
+    }
+
+    let by = symbol(&mut ctx, &runtime, "BY")?;
+    let default_ast = parse_loop(&mut ctx, &[for_word, x, by, Word::fixnum(3)])?;
+    assert!(matches!(
+        default_ast.clauses.as_slice(),
+        [LoopClause::For(ForClause {
+            init,
+            step: Some(step),
+            direction: None,
+            limit: None,
+            ..
+        })] if *init == Word::fixnum(0) && *step == Word::fixnum(3)
+    ));
+    Ok(())
+}
+
+#[test]
+fn numeric_iteration_expansion_uses_direction_and_limit_operators() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let downfrom = symbol(&mut ctx, &runtime, "DOWNFROM")?;
+    let by = symbol(&mut ctx, &runtime, "BY")?;
+    let above = symbol(&mut ctx, &runtime, "ABOVE")?;
+    let ast = parse_loop(
+        &mut ctx,
+        &[
+            for_word,
+            x,
+            downfrom,
+            Word::fixnum(10),
+            by,
+            Word::fixnum(2),
+            above,
+            Word::fixnum(3),
+        ],
+    )?;
+    let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let outer = elements(&mut ctx, expansion)?;
+    let block = elements(&mut ctx, outer[2])?;
+    let progn = elements(&mut ctx, block[2])?;
+    let tagbody = elements(&mut ctx, progn[1])?;
+    let stop = elements(&mut ctx, tagbody[2])?;
+    assert_eq!(stop[0], symbol(&mut ctx, &runtime, "WHEN")?);
+    let disjunction = elements(&mut ctx, stop[1])?;
+    let comparison = elements(&mut ctx, disjunction[1])?;
+    assert_eq!(comparison[0], symbol(&mut ctx, &runtime, "<=")?);
+    let go_end = elements(&mut ctx, stop[2])?;
+    assert_eq!(go_end[0], symbol(&mut ctx, &runtime, "GO")?);
+    let setq = elements(&mut ctx, tagbody[3])?;
+    let update = elements(&mut ctx, setq[2])?;
+    assert_eq!(update[0], symbol(&mut ctx, &runtime, "-")?);
+    Ok(())
+}
+
+#[test]
+fn parses_all_top_level_clause_families_and_conditional_branches() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let named = symbol(&mut ctx, &runtime, "NAMED")?;
+    let name = symbol(&mut ctx, &runtime, "DONE")?;
+    let with = symbol(&mut ctx, &runtime, "WITH")?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let initially = symbol(&mut ctx, &runtime, "INITIALLY")?;
+    let finally = symbol(&mut ctx, &runtime, "FINALLY")?;
+    let do_word = symbol(&mut ctx, &runtime, "DO")?;
+    let return_word = symbol(&mut ctx, &runtime, "RETURN")?;
+    let when = symbol(&mut ctx, &runtime, "WHEN")?;
+    let and = symbol(&mut ctx, &runtime, "AND")?;
+    let else_word = symbol(&mut ctx, &runtime, "ELSE")?;
+    let end = symbol(&mut ctx, &runtime, "END")?;
+    let collect = symbol(&mut ctx, &runtime, "COLLECT")?;
+    let into = symbol(&mut ctx, &runtime, "INTO")?;
+    let result = symbol(&mut ctx, &runtime, "RESULT")?;
+    let first = symbol(&mut ctx, &runtime, "FIRST")?;
+    let second = symbol(&mut ctx, &runtime, "SECOND")?;
+    let third = symbol(&mut ctx, &runtime, "THIRD")?;
+    let ast = parse_loop(
+        &mut ctx,
+        &[
+            named,
+            name,
+            with,
+            x,
+            equals,
+            Word::fixnum(1),
+            initially,
+            first,
+            finally,
+            second,
+            when,
+            x,
+            do_word,
+            third,
+            and,
+            collect,
+            x,
+            into,
+            result,
+            else_word,
+            return_word,
+            x,
+            end,
+        ],
+    )?;
+    assert_eq!(ast.name, Some(name));
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [
+            LoopClause::With { variable, init },
+            LoopClause::Initially(initially_forms),
+            LoopClause::Finally(finally_forms),
+            LoopClause::Conditional {
+                kind: ConditionalKind::When,
+                test,
+                then,
+                otherwise,
+            },
+        ] if *variable == x
+            && *init == Word::fixnum(1)
+            && initially_forms == &vec![first]
+            && finally_forms == &vec![second]
+            && *test == x
+            && matches!(then.as_slice(), [LoopClause::Do(forms), LoopClause::Accumulate { kind: AccumulatorKind::Collect, form, variable: Some(target) }] if forms == &vec![third] && *form == x && *target == result)
+            && matches!(otherwise.as_slice(), [LoopClause::Return(value)] if *value == x)
+    ));
+    Ok(())
+}
+
+#[test]
+fn parses_alias_control_and_accumulator_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let y = symbol(&mut ctx, &runtime, "Y")?;
+    let input = [
+        symbol(&mut ctx, &runtime, "AS")?,
+        y,
+        symbol(&mut ctx, &runtime, "FROM")?,
+        Word::fixnum(1),
+        symbol(&mut ctx, &runtime, "REPEAT")?,
+        Word::fixnum(2),
+        symbol(&mut ctx, &runtime, "WHILE")?,
+        symbol(&mut ctx, &runtime, "READY")?,
+        symbol(&mut ctx, &runtime, "UNTIL")?,
+        symbol(&mut ctx, &runtime, "DONE")?,
+        symbol(&mut ctx, &runtime, "UNLESS")?,
+        symbol(&mut ctx, &runtime, "SKIP")?,
+        symbol(&mut ctx, &runtime, "DO")?,
+        symbol(&mut ctx, &runtime, "ACTION")?,
+        symbol(&mut ctx, &runtime, "IF")?,
+        symbol(&mut ctx, &runtime, "KEEP")?,
+        symbol(&mut ctx, &runtime, "RETURN")?,
+        y,
+        symbol(&mut ctx, &runtime, "APPEND")?,
+        y,
+        symbol(&mut ctx, &runtime, "NCONC")?,
+        y,
+        symbol(&mut ctx, &runtime, "COUNT")?,
+        y,
+        symbol(&mut ctx, &runtime, "SUM")?,
+        y,
+        symbol(&mut ctx, &runtime, "MAXIMIZE")?,
+        y,
+        symbol(&mut ctx, &runtime, "MINIMIZE")?,
+        y,
+    ];
+    let ast = parse_loop(&mut ctx, &input)?;
+    assert_eq!(ast.clauses.len(), 12);
+    assert!(matches!(ast.clauses[0], LoopClause::For(ForClause { variable, .. }) if variable == y));
+    assert!(matches!(ast.clauses[1], LoopClause::Repeat(count) if count == Word::fixnum(2)));
+    assert!(matches!(ast.clauses[2], LoopClause::While(test) if test == input[7]));
+    assert!(matches!(ast.clauses[3], LoopClause::Until(test) if test == input[9]));
+    assert!(matches!(
+        ast.clauses[4],
+        LoopClause::Conditional {
+            kind: ConditionalKind::Unless,
+            ..
+        }
+    ));
+    assert!(matches!(
+        ast.clauses[5],
+        LoopClause::Conditional {
+            kind: ConditionalKind::If,
+            ..
+        }
+    ));
+    for (clause, kind) in ast.clauses[6..].iter().zip([
+        AccumulatorKind::Append,
+        AccumulatorKind::Nconc,
+        AccumulatorKind::Count,
+        AccumulatorKind::Sum,
+        AccumulatorKind::Maximize,
+        AccumulatorKind::Minimize,
+    ]) {
+        assert!(
+            matches!(clause, LoopClause::Accumulate { kind: actual, form, variable: None } if *actual == kind && *form == y)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_loop_clauses_report_type_errors() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let by = symbol(&mut ctx, &runtime, "BY")?;
+    let then = symbol(&mut ctx, &runtime, "THEN")?;
+    let do_word = symbol(&mut ctx, &runtime, "DO")?;
+    let unknown = symbol(&mut ctx, &runtime, "NOT-A-CLAUSE")?;
+    let when = symbol(&mut ctx, &runtime, "WHEN")?;
+    let and = symbol(&mut ctx, &runtime, "AND")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+
+    let malformed = [
+        vec![for_word],
+        vec![for_word, x, by],
+        vec![for_word, x, by, Word::fixnum(1), by, Word::fixnum(2)],
+        vec![for_word, x, then, Word::fixnum(1), then, Word::fixnum(2)],
+        vec![
+            for_word,
+            x,
+            equals,
+            Word::fixnum(1),
+            then,
+            Word::fixnum(2),
+            by,
+            Word::fixnum(3),
+        ],
+        vec![unknown],
+        vec![when, Word::fixnum(1), and],
+        vec![when, Word::fixnum(1), unknown],
+        vec![do_word, when],
+    ];
+    for input in malformed {
+        assert_eq!(parse_loop(&mut ctx, &input), Err(ObjectError::TypeError));
+    }
+    Ok(())
+}

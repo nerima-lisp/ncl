@@ -3,8 +3,8 @@
 
 use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word, classify_object, string_length,
-    string_ref, symbol_name,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr, classify_object, symbol_name,
+    symbol_plist,
 };
 
 fn form(
@@ -71,13 +71,13 @@ fn place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     registry: &PlaceRegistry,
-    place: Word,
+    place_word: Word,
 ) -> Result<SetfExpansion, ObjectError> {
     if !registry.belongs_to(runtime) {
         return Err(ObjectError::TypeError);
     }
-    if matches!(classify_object(ctx, place), ObjectRef::Symbol(_)) {
-        let mut place = place;
+    if matches!(classify_object(ctx, place_word), ObjectRef::Symbol(_)) {
+        let mut place = place_word;
         return ncl_object::with_root(ctx, &mut place, |ctx, place| {
             let store = fresh_symbol(ctx, runtime)?;
             let store_form = form(ctx, runtime, "SETQ", &[*place, store])?;
@@ -90,27 +90,77 @@ fn place(
             })
         });
     }
-    if !place.is_cons() {
+    if !place_word.is_cons() {
         return Err(ObjectError::TypeError);
     }
-    let parts = elements(ctx, place)?;
+    let parts = elements(ctx, place_word)?;
     let (operator, arguments) = parts.split_first().ok_or(ObjectError::TypeError)?;
-    let mut expansion = registry.get(ctx, *operator)?;
-    if expansion.is_none()
-        && let Ok(name_word) = symbol_name(ctx, *operator)
-        && let Ok(name) = (0..string_length(ctx, name_word)?)
-            .map(|i| string_ref(ctx, name_word, i))
-            .collect::<Result<String, _>>()
-        && let Some(common_lisp) = runtime.find_package(ctx, "COMMON-LISP")
-    {
-        let common_lisp_operator = Package::from_word(common_lisp)
-            .intern(ctx, runtime, &name)?
-            .0;
-        expansion = registry.get(ctx, common_lisp_operator)?;
+    if *operator == symbol(ctx, runtime, "THE")? {
+        let wrapped_place = arguments.get(1).copied().ok_or(ObjectError::TypeError)?;
+        return place(ctx, runtime, registry, wrapped_place);
     }
-    let expansion = expansion.ok_or(ObjectError::UndefinedFunction)?(ctx, runtime, arguments)?;
+    let expansion = if let Some(expander) = registry.get(ctx, *operator)? {
+        expander(ctx, runtime, arguments)?
+    } else {
+        expand_defined_setf(ctx, runtime, *operator, arguments)?
+    };
     validate_expansion(&expansion)?;
     Ok(expansion)
+}
+
+fn expand_defined_setf(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    operator: Word,
+    arguments: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    let property = symbol(ctx, runtime, "NCL::DEFINITION")?;
+    let mut plist = symbol_plist(ctx, operator)?;
+    let mut definition = None;
+    while plist != Word::NIL {
+        if !plist.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        let key = car(ctx, plist)?;
+        let rest = cdr(ctx, plist)?;
+        if !rest.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        if key == property {
+            definition = Some(car(ctx, rest)?);
+            break;
+        }
+        plist = cdr(ctx, rest)?;
+    }
+    let Some(definition) = definition else {
+        return Err(ObjectError::UndefinedFunction);
+    };
+    let definition = elements(ctx, definition)?;
+    if definition.len() != 3 {
+        return Err(ObjectError::TypeError);
+    }
+    let temporary_variables = elements(ctx, *definition.first().ok_or(ObjectError::TypeError)?)?;
+    let store_variables = elements(ctx, *definition.get(1).ok_or(ObjectError::TypeError)?)?;
+    let store_form = definition.get(2).ok_or(ObjectError::TypeError)?;
+    if temporary_variables.len() != arguments.len() || store_variables.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    for variable in temporary_variables.iter().chain(store_variables.iter()) {
+        symbol_name(ctx, *variable)?;
+    }
+    let access_form = ncl_object::with_roots(ctx, &temporary_variables, |ctx, roots| {
+        let mut values = Vec::with_capacity(roots.len() + 1);
+        values.push(operator);
+        values.extend(roots.iter().map(|root| **root));
+        list(ctx, runtime, &values)
+    })?;
+    Ok(SetfExpansion {
+        temporary_variables,
+        value_forms: arguments.to_vec(),
+        store_variables,
+        store_form: *store_form,
+        access_form,
+    })
 }
 
 const fn validate_expansion(expansion: &SetfExpansion) -> Result<(), ObjectError> {

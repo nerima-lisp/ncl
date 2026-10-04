@@ -376,40 +376,5 @@ impl Runtime {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn package_registry_boundaries_preserve_values() -> Result<(), ObjectError> {
-        let runtime = Runtime::new()?;
-        let mut context = ThreadContext::new();
-        context.register(&runtime)?;
-
-        let common_lisp = runtime.ensure_package(&mut context, "COMMON-LISP")?;
-        assert_eq!(runtime.ensure_package(&mut context, "CL")?, common_lisp);
-        assert_eq!(
-            runtime.find_package(&context, "COMMON-LISP"),
-            Some(common_lisp)
-        );
-
-        let package = runtime.ensure_package(&mut context, "REGISTRY-BOUNDARY")?;
-        assert_eq!(
-            runtime.ensure_package(&mut context, "REGISTRY-BOUNDARY")?,
-            package
-        );
-        assert!(runtime.all_packages(&context)?.contains(&package));
-
-        assert_eq!(runtime.class(&mut context, "REGISTRY-MISSING"), None);
-        runtime.define_class(&mut context, "REGISTRY-BOUNDARY-CLASS", Word::TRUE)?;
-        assert_eq!(
-            runtime.class(&mut context, "REGISTRY-BOUNDARY-CLASS"),
-            Some(Word::TRUE)
-        );
-
-        assert!(runtime.delete_package(&mut context, Package::from_word(package))?);
-        assert_eq!(runtime.find_package(&context, "REGISTRY-BOUNDARY"), None);
-        assert!(!runtime.delete_package(&mut context, Package::from_word(package))?);
-        assert!(!runtime.all_packages(&context)?.contains(&package));
-        Ok(())
-    }
-}
+#[path = "../tests/support/registry_extensions_tests.rs"]
+mod tests;

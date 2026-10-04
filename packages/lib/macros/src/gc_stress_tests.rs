@@ -164,6 +164,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut prog_variables);
     let mut destructuring_lambda_list = list(&mut ctx, &runtime, &[x])?;
     root!(&mut destructuring_lambda_list);
+    let mut multiple_value_variables = list(&mut ctx, &runtime, &[x, y])?;
+    root!(&mut multiple_value_variables);
     let mut dolist_spec = list(&mut ctx, &runtime, &[x, Word::NIL])?;
     root!(&mut dolist_spec);
     let mut dotimes_spec = list(&mut ctx, &runtime, &[x, one])?;
@@ -272,6 +274,11 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         [destructuring_lambda_list, x, x]
     );
     case!("MULTIPLE-VALUE-LIST", "MULTIPLE-VALUE-LIST", [x]);
+    case!(
+        "MULTIPLE-VALUE-SETQ",
+        "MULTIPLE-VALUE-SETQ",
+        [multiple_value_variables, x]
+    );
     case!("NTH-VALUE", "NTH-VALUE", [Word::fixnum(0), x]);
     case!("OR", "OR", [x, y]);
     case!("POP", "POP", [x]);
@@ -287,6 +294,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("REMF", "REMF", [x, y]);
     case!("RETURN", "RETURN", [x]);
     case!("SETF", "SETF", [x, one]);
+    case!("SHIFTF", "SHIFTF", [x, one]);
+    case!("ROTATEF", "ROTATEF", [x, y]);
     case!("TYPECASE", "TYPECASE", [x, type_clause]);
     case!("UNLESS", "UNLESS", [x, y]);
     case!("WHEN", "WHEN", [x, y]);

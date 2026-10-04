@@ -48,7 +48,10 @@ fn function_definitions_preserve_lambda_body() -> Result<(), ObjectError> {
     let function = elements(&mut ctx, setf[2])?;
     let lambda = elements(&mut ctx, function[1])?;
     assert_eq!(lambda[1], Word::NIL);
-    assert_eq!(lambda[2], body);
+    let block = elements(&mut ctx, lambda[2])?;
+    assert_eq!(block[0], symbol(&mut ctx, &runtime, "BLOCK")?);
+    assert_eq!(block[1], name);
+    assert_eq!(block[2], body);
     Ok(())
 }
 

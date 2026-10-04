@@ -382,6 +382,9 @@ fn logical_pathname_translation_apis_preserve_rules_and_capture_wildcards()
     let translated = call(&runtime, &mut ctx, "TRANSLATE-LOGICAL-PATHNAME", &[logical])?;
     let namestring = call(&runtime, &mut ctx, "NAMESTRING", &[translated])?;
     assert_eq!(string_value(&ctx, namestring)?, "/var/src/main.lisp"); // check-added-lines: allow(panic) logical wildcard translation assertion
+    let missing = make_string(&mut ctx, &runtime, &['U', 'N', 'K', ':', 'x'])?;
+    let missing = call(&runtime, &mut ctx, "LOGICAL-PATHNAME", &[missing])?;
+    assert!(call(&runtime, &mut ctx, "TRANSLATE-LOGICAL-PATHNAME", &[missing]).is_err()); // check-added-lines: allow(panic) undefined logical host must signal an error
     Ok(())
 }
 

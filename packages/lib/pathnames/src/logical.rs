@@ -141,8 +141,8 @@ pub fn translate_logical_pathname_builtin(
     while table != Word::NIL {
         let entry = car(ctx, table)?;
         if text(ctx, car(ctx, entry)?)?.eq_ignore_ascii_case(&host) {
-            let rules = cdr(ctx, entry)?;
-            if rules != Word::NIL {
+            let mut rules = cdr(ctx, entry)?;
+            while rules != Word::NIL {
                 let rule = car(ctx, rules)?;
                 let source = pathname_designator(ctx, runtime, car(ctx, rule)?)?;
                 let target = pathname_designator(ctx, runtime, car(ctx, cdr(ctx, rule)?)?)?;
@@ -151,7 +151,7 @@ pub fn translate_logical_pathname_builtin(
                 let value = namestring_value(ctx, pathname)?;
                 let Some(translated) = translate_wildcards(&source_name, &target_name, &value)
                 else {
-                    table = cdr(ctx, table)?;
+                    rules = cdr(ctx, rules)?;
                     continue;
                 };
                 let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
@@ -160,7 +160,7 @@ pub fn translate_logical_pathname_builtin(
         }
         table = cdr(ctx, table)?;
     }
-    Ok(pathname)
+    Err(ObjectError::TypeError)
 }
 
 pub fn compile_file_pathname_builtin(

@@ -364,6 +364,30 @@ fn fasl_headers_and_payload_shape_errors_are_rejected() {
 }
 
 #[test]
+fn fasl_payload_rejects_each_truncated_header_and_range_shape() {
+    let payload = encode_payload(b"42").expect("payload encoding");
+    for end in 0..payload.len().min(27) {
+        assert!(
+            decode_payload(&payload[..end]).is_err(),
+            "truncation at {end}"
+        );
+    }
+
+    let mut oversized = payload.clone();
+    oversized[11..19].copy_from_slice(&u64::MAX.to_le_bytes());
+    assert!(
+        decode_payload(&oversized)
+            .expect_err("oversized source must be rejected")
+            .to_string()
+            .contains("runtime FASL source length overflow")
+    );
+
+    let mut truncated_range = payload;
+    truncated_range.truncate(24);
+    assert!(decode_payload(&truncated_range).is_err());
+}
+
+#[test]
 fn read_forms_collects_forms_and_propagates_reader_errors() {
     let object = ObjectRuntime::new().expect("object runtime");
     let mut context = ThreadContext::new();

@@ -366,6 +366,71 @@ fn word_magnitude(ctx: &ThreadContext, value: Word) -> Result<(bool, u128), FfiE
     Ok((negative, magnitude))
 }
 
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+#[allow(clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::alien::parse_type_name;
+
+    #[test]
+    fn marshals_scalar_boundaries_and_rejects_wrong_values() {
+        let ctx = ThreadContext::new();
+        assert_eq!(
+            marshal_argument(&ctx, &AlienType::Boolean, Word::TRUE),
+            Ok(vec![1])
+        );
+        assert_eq!(
+            marshal_argument(&ctx, &AlienType::Int, Word::fixnum(-2)),
+            Ok(vec![254, 255, 255, 255])
+        );
+        assert_eq!(
+            marshal_argument(&ctx, &AlienType::UnsignedShort, Word::fixnum(258)),
+            Ok(vec![2, 1])
+        );
+        assert!(marshal_argument(&ctx, &AlienType::Boolean, Word::fixnum(2)).is_err());
+        assert!(marshal_argument(&ctx, &AlienType::UnsignedChar, Word::character(256)).is_err());
+        assert_eq!(
+            marshal_argument(&ctx, &AlienType::Void, Word::NIL),
+            Err(FfiError::UnsupportedType("void"))
+        );
+        assert_eq!(parse_type_name("int"), Ok(AlienType::Int));
+    }
+
+    #[test]
+    fn unmarshals_scalars_pointers_and_rejects_wrong_widths() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization: {error}"));
+        let mut ctx = ThreadContext::new();
+        assert_eq!(
+            unmarshal_result(&mut ctx, &runtime, &AlienType::Boolean, &[0]),
+            Ok(Word::NIL)
+        );
+        assert_eq!(
+            unmarshal_result(&mut ctx, &runtime, &AlienType::Boolean, &[1]),
+            Ok(Word::TRUE)
+        );
+        assert_eq!(
+            unmarshal_result(&mut ctx, &runtime, &AlienType::Int, &[254, 255, 255, 255]),
+            Ok(Word::fixnum(-2))
+        );
+        assert_eq!(
+            unmarshal_result(
+                &mut ctx,
+                &runtime,
+                &AlienType::Pointer(Box::new(AlienType::Int)),
+                &[0; 8]
+            ),
+            Ok(Word::NIL)
+        );
+        assert!(unmarshal_result(&mut ctx, &runtime, &AlienType::Int, &[0]).is_err());
+        assert_eq!(
+            unmarshal_result(&mut ctx, &runtime, &AlienType::Void, &[]),
+            Ok(Word::NIL)
+        );
+    }
+}
+
 /// Build a Lisp integer from an `i128`, using a bignum outside fixnum range.
 fn i128_to_word(ctx: &mut ThreadContext, runtime: &Runtime, value: i128) -> Result<Word, FfiError> {
     if (MOST_NEGATIVE_FIXNUM..=MOST_POSITIVE_FIXNUM).contains(&value) {

@@ -129,6 +129,19 @@ mod tests {
     }
 
     #[test]
+    fn multiple_value_area_clamps_to_fixed_capacity() {
+        let mut thread = Thread::new();
+        let values = vec![Word::fixnum(7); super::MULTIPLE_VALUE_AREA_WORDS + 1];
+        thread.set_multiple_value_area(&values);
+        assert_eq!(thread.mv_count(), super::MULTIPLE_VALUE_AREA_WORDS);
+        assert_eq!(
+            thread.multiple_values().len(),
+            super::MULTIPLE_VALUE_AREA_WORDS
+        );
+        assert_eq!(thread.multiple_values().last(), Some(&Word::fixnum(7)));
+    }
+
+    #[test]
     fn control_depth_counters_track_pushes_and_pops() {
         let mut thread = Thread::new();
         thread.push_control_depth(ControlFrameKind::Catch);

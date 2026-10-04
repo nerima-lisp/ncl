@@ -84,6 +84,10 @@ def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
             "chapter": chapter.name,
             "lane": LANES.get(chapter.name, "other"),
             "deftests": deftest_count(chapter),
+            "passed": 0,
+            "failed": 0,
+            "error": 0,
+            "unexecuted": deftest_count(chapter),
             "status": "timeout",
             "diagnostic": cluster(output),
         }
@@ -94,6 +98,10 @@ def run_chapter(ncl: str, chapter: Path, timeout: float) -> dict[str, Any]:
         "chapter": chapter.name,
         "lane": LANES.get(chapter.name, "other"),
         "deftests": deftest_count(chapter),
+        "passed": deftest_count(chapter) if status == "passed" else 0,
+        "failed": 0,
+        "error": 0,
+        "unexecuted": 0 if status == "passed" else deftest_count(chapter),
         "status": status,
         "returncode": result.returncode,
         "diagnostic": cluster(result.stderr + "\n" + result.stdout),
@@ -106,6 +114,11 @@ def main() -> int:
     parser.add_argument("--ansi-dir", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="write the JSON scoreboard to this path as well as stdout",
+    )
     args = parser.parse_args()
     ncl = str(Path(args.ncl).resolve())
 
@@ -141,7 +154,7 @@ def main() -> int:
     ).stdout.strip()
     total_deftests = sum(result["deftests"] for result in results)
     chapter_passed = counts["passed"]
-    print(json.dumps({
+    report = {
         "unit": "deftest",
         "commit": commit,
         "total": total_deftests,
@@ -165,7 +178,12 @@ def main() -> int:
             "blocked_by": "rt.lsp LOOP for ... = ... TypeError" if chapter_passed != len(results) else None,
         },
         "results": results,
-    }, sort_keys=True))
+    }
+    rendered = json.dumps(report, sort_keys=True)
+    print(rendered)
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered + "\n")
     return 0
 
 

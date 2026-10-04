@@ -91,7 +91,6 @@ fn required(input: &[Word], cursor: &mut usize) -> Result<Word> {
 #[allow(clippy::too_many_lines)]
 fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<LoopClause> {
     let variable = required(input, cursor)?;
-    symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
     let mut has_init = false;
     let mut has_equals = false;
@@ -190,6 +189,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
     } else if has_equals && step.is_none() && direction.is_none() && limit.is_none() {
         Ok(LoopClause::Equals { variable, init })
     } else {
+        symbol_name(ctx, variable)?;
         // ANSI CL: when no from-type preposition (`=`/`from`/`upfrom`/`downfrom`)
         // is present, the index starts at 0.
         if !has_init {

@@ -67,7 +67,6 @@ fn hold_clause(
             }
         }
         LoopClause::Equals { variable, init } => {
-            symbol_name(ctx, variable)?;
             let variable_index = held.len();
             held.push(variable);
             let init_index = held.len();
@@ -82,7 +81,6 @@ fn hold_clause(
             init,
             then,
         } => {
-            symbol_name(ctx, variable)?;
             let variable_index = held.len();
             held.push(variable);
             let init_index = held.len();

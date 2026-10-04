@@ -1,4 +1,5 @@
 use ncl_object::{ObjectRef, Word, classify_object};
+use ncl_printer::StringSink;
 
 use super::parameters::{parameter_i64, repeat_count_for};
 use super::{Directive, DirectiveKind, ExecutionState, FormatError};
@@ -130,11 +131,16 @@ fn execute_argument_skip(
     state: &mut ExecutionState<'_>,
 ) -> Result<(), FormatError> {
     let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
-    let current =
-        i128::try_from(*state.argument_index).map_err(|_| FormatError::InvalidParameter {
-            directive: directive.kind,
-        })?;
-    let target_value = (current + i128::from(offset)).max(0);
+    let current = i128::try_from(*state.argument_index).map_err(|_| FormatError::InvalidParameter {
+        directive: directive.kind,
+    })?;
+    let target_value = if directive.at_sign {
+        i128::from(offset).max(0)
+    } else if directive.colon {
+        (current - i128::from(offset)).max(0)
+    } else {
+        (current + i128::from(offset)).max(0)
+    };
     let target = usize::try_from(target_value).unwrap_or(usize::MAX);
     *state.argument_index = target.min(state.arguments.len());
     Ok(())
@@ -161,8 +167,8 @@ pub(super) fn execute_character(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
 ) -> Result<(), FormatError> {
-    let value = next_argument(directive, state)?;
-    let ObjectRef::Character(value) = classify_object(state.ctx, value) else {
+    let object = next_argument(directive, state)?;
+    let ObjectRef::Character(value) = classify_object(state.ctx, object) else {
         return Err(FormatError::InvalidParameter {
             directive: directive.kind,
         });
@@ -170,10 +176,41 @@ pub(super) fn execute_character(
     let character = char::from_u32(value).ok_or(FormatError::InvalidParameter {
         directive: directive.kind,
     })?;
-    state
-        .sink
-        .write_char(character)
-        .map_err(FormatError::from)?;
+    if directive.at_sign {
+        state.sink.write_str("#\\").map_err(FormatError::from)?;
+        let mut rendered = StringSink::new();
+        ncl_printer::write(
+            state.ctx,
+            state.runtime,
+            object,
+            &mut rendered,
+            &ncl_printer::PrintOptions::new().with_escape(true),
+        )?;
+        let rendered = rendered.into_string();
+        state
+            .sink
+            .write_str(rendered.strip_prefix("#\\").unwrap_or(&rendered))
+            .map_err(FormatError::from)?;
+    } else if directive.colon {
+        let mut rendered = StringSink::new();
+        ncl_printer::write(
+            state.ctx,
+            state.runtime,
+            object,
+            &mut rendered,
+            &ncl_printer::PrintOptions::new().with_escape(true),
+        )?;
+        let rendered = rendered.into_string();
+        state
+            .sink
+            .write_str(rendered.strip_prefix("#\\").unwrap_or(&rendered))
+            .map_err(FormatError::from)?;
+    } else {
+        state
+            .sink
+            .write_char(character)
+            .map_err(FormatError::from)?;
+    }
     *state.line_start = false;
     Ok(())
 }
@@ -211,7 +248,7 @@ mod tests {
                 at_sign: false,
                 kind: DirectiveKind::T,
             };
-            assert!(tab_count(&directive).is_err()); // check-added-lines: allow(panic)
+            assert!(tab_count(&directive).is_err()); // check-added-lines: allow(panic) test assertion
         }
     }
 }

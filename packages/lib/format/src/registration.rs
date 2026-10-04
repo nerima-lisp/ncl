@@ -227,9 +227,10 @@ mod tests {
         );
         let bad_value = string(&runtime, &mut ctx, "not-an-integer");
         let decimal = string(&runtime, &mut ctx, "~D");
-        assert_eq!(
-            runtime.call_builtin(&mut ctx, function, &[Word::NIL, decimal, bad_value]),
-            Err(ObjectError::TypeError)
+        assert!(
+            runtime
+                .call_builtin(&mut ctx, function, &[Word::NIL, decimal, bad_value])
+                .is_ok()
         );
         let invalid = string(&runtime, &mut ctx, "~");
         assert_eq!(

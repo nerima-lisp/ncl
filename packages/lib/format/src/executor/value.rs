@@ -296,9 +296,32 @@ fn execute_value_with_argument(
             | DirectiveKind::R
     ) && !is_integer(state.ctx, value)
     {
-        return Err(FormatError::NonInteger {
-            directive: directive.kind,
-        });
+        let mut readable = PrintOptions::new().with_escape(false).with_base(10);
+        if directive.kind == DirectiveKind::R {
+            readable = readable.with_base(radix_parameter(directive)?);
+        }
+        let mut fallback = StringSink::new();
+        write(state.ctx, state.runtime, value, &mut fallback, &readable)?;
+        let rendered = fallback.into_string();
+        let width = parameter_width(directive.parameters.first(), directive.kind)?;
+        let padding = width.saturating_sub(rendered.chars().count());
+        let pad = directive
+            .parameters
+            .get(1)
+            .and_then(|parameter| match parameter {
+                Parameter::Character(value) => Some(*value),
+                Parameter::Integer(_)
+                | Parameter::Relative
+                | Parameter::ArgumentCount
+                | Parameter::Unsupplied => None,
+            })
+            .unwrap_or(' ');
+        for _ in 0..padding {
+            state.sink.write_char(pad).map_err(FormatError::from)?;
+        }
+        state.sink.write_str(&rendered).map_err(FormatError::from)?;
+        *state.line_start = false;
+        return Ok(());
     }
     let mut rendered = StringSink::new();
     write(state.ctx, state.runtime, value, &mut rendered, &options)?;
@@ -319,14 +342,15 @@ fn execute_value_with_argument(
         }
     }
     let width = if directive.kind == DirectiveKind::R {
-        0
+        parameter_width(directive.parameters.get(1), directive.kind)?
     } else {
         parameter_width(directive.parameters.first(), directive.kind)?
     };
+    let pad_index = usize::from(directive.kind == DirectiveKind::R) + 1;
     let padding = width.saturating_sub(rendered.chars().count());
     let pad = directive
         .parameters
-        .get(1)
+        .get(pad_index)
         .and_then(|parameter| match parameter {
             Parameter::Character(value) => Some(*value),
             Parameter::Integer(_)
@@ -355,9 +379,11 @@ fn execute_value_with_argument(
 }
 
 fn group_integer(directive: &Directive, rendered: &str) -> Result<String, FormatError> {
+    let comma_index = if directive.kind == DirectiveKind::R { 3 } else { 2 };
+    let interval_index = if directive.kind == DirectiveKind::R { 4 } else { 3 };
     let comma = directive
         .parameters
-        .get(2)
+        .get(comma_index)
         .and_then(|parameter| match parameter {
             Parameter::Character(value) => Some(*value),
             Parameter::Integer(_)
@@ -366,7 +392,7 @@ fn group_integer(directive: &Directive, rendered: &str) -> Result<String, Format
             | Parameter::Unsupplied => None,
         })
         .unwrap_or(',');
-    let interval = parameter_usize(directive.parameters.get(3), directive.kind)?.unwrap_or(3);
+    let interval = parameter_usize(directive.parameters.get(interval_index), directive.kind)?.unwrap_or(3);
     if interval == 0 {
         return Err(FormatError::InvalidParameter {
             directive: directive.kind,

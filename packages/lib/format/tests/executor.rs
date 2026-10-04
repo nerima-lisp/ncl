@@ -71,10 +71,29 @@ fn rejects_missing_and_non_integer_arguments() {
     let value = string(&runtime, &mut ctx, "not an integer");
     assert_eq!(
         execute(&non_integer, &[value], &mut ctx, &runtime, &mut sink),
-        Err(FormatError::NonInteger {
-            directive: ncl_lib_format::DirectiveKind::D,
-        })
+        Ok(1)
     );
+    assert_eq!(sink.into_string(), "not an integer");
+}
+
+#[test]
+fn executes_character_name_and_reader_syntax_modifiers() {
+    let (runtime, mut ctx) = context();
+    let control = parse("~:C/~@C/~:@C").expect("control");
+    let mut sink = StringSink::new();
+    execute(
+        &control,
+        &[
+            Word::character(u32::from(' ')),
+            Word::character(u32::from('A')),
+            Word::character(u32::from('\n')),
+        ],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "Space/#\\A/#\\Newline");
 }
 
 #[test]
@@ -205,6 +224,38 @@ fn executes_parameter_count_and_argument_navigation() {
     )
     .expect("execute");
     assert_eq!(sink.into_string(), "  11");
+}
+
+#[test]
+fn argument_skip_supports_backward_and_absolute_forms() {
+    let (runtime, mut ctx) = context();
+    let one = string(&runtime, &mut ctx, "one");
+    let two = string(&runtime, &mut ctx, "two");
+    let mut sink = StringSink::new();
+    execute(
+        &parse("~A~:*~A/~1@*~A").expect("control"),
+        &[one, two],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "oneone/two");
+}
+
+#[test]
+fn radix_directive_applies_width_and_padding_parameters() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    execute(
+        &parse("~3,5,'0R").expect("control"),
+        &[Word::fixnum(12)],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "00110");
 }
 
 #[test]

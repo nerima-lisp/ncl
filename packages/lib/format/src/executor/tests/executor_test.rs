@@ -240,7 +240,7 @@ fn covers_value_formats_and_invalid_inputs() {
             &runtime,
             &mut StringSink::new()
         )
-        .is_err()
+        .is_ok()
     );
     assert!(
         execute(

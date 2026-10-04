@@ -472,4 +472,24 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
 #[allow(clippy::unwrap_used, reason = "record tests assert on codec values")]
 mod tests {
     include!("../tests/support/record_codec.rs");
+
+    #[test]
+    fn reference_codec_preserves_tag_and_alignment_values() {
+        let values = [
+            Ref::Immediate(0x0102_0304_0506_0708),
+            Ref::Object(0x090a_0b0c),
+        ];
+        let mut bytes = Vec::new();
+        super::put_refs(&mut bytes, &values).unwrap();
+
+        assert_eq!(
+            bytes,
+            [
+                2, 0, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0x0c, 0x0b, 0x0a, 9,
+            ]
+        );
+        let mut reader = crate::format::Reader::new(&bytes);
+        assert_eq!(super::get_refs(&mut reader).unwrap(), values);
+        assert_eq!(reader.take(0).unwrap(), &[]);
+    }
 }

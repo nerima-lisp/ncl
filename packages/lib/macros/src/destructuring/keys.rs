@@ -188,4 +188,42 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn key_walker_covers_bare_allow_other_keys_and_malformed_specs()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let bare = symbol(&mut ctx, &runtime, "BARE")?;
+        let allow = symbol(&mut ctx, &runtime, "&ALLOW-OTHER-KEYS")?;
+        let aux = symbol(&mut ctx, &runtime, "&AUX")?;
+        let value = symbol(&mut ctx, &runtime, "VALUE")?;
+        let specs = list(&mut ctx, &runtime, &[bare, allow])?;
+        let mut held = vec![specs, value];
+        let mut bindings = Vec::new();
+        walk_key(&mut ctx, &runtime, &mut held, 0, 1, &mut bindings)?;
+        assert!(
+            bindings
+                .iter()
+                .any(|(target, _)| held_get(&held, *target) == Ok(bare))
+        );
+        assert_eq!(
+            walk_key(&mut ctx, &runtime, &mut held, 0, 1, &mut Vec::new(),),
+            Ok(())
+        );
+        let bad_specs = list(&mut ctx, &runtime, &[aux])?;
+        let mut bad_held = vec![bad_specs, value];
+        assert_eq!(
+            walk_key(&mut ctx, &runtime, &mut bad_held, 0, 1, &mut Vec::new()),
+            Err(ObjectError::TypeError)
+        );
+        let dotted = ncl_object::make_cons(&mut ctx, &runtime, bare, value)?;
+        let mut dotted_held = vec![dotted, value];
+        assert_eq!(
+            walk_key(&mut ctx, &runtime, &mut dotted_held, 0, 1, &mut Vec::new()),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
 }

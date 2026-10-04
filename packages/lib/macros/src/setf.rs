@@ -410,6 +410,32 @@ pub fn expand_get_setf_expansion(
 }
 
 #[cfg(test)]
+mod coverage_tests_extra {
+    use super::*;
+
+    #[test]
+    fn empty_parallel_setf_and_single_rotatef_have_value_forms() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let registry = PlaceRegistry::new(&runtime);
+        let empty = expand_psetf(&mut ctx, &runtime, &registry, &[])?;
+        let empty_parts = elements(&mut ctx, empty)?;
+        assert_eq!(empty_parts[0], symbol(&mut ctx, &runtime, "PROGN")?);
+        assert_eq!(empty_parts.len(), 1);
+
+        let place = symbol(&mut ctx, &runtime, "PLACE")?;
+        let rotated = expand_rotatef(&mut ctx, &runtime, &registry, &[place])?;
+        let rotated_parts = elements(&mut ctx, rotated)?;
+        assert_eq!(rotated_parts[0], symbol(&mut ctx, &runtime, "LET*")?);
+        let body = elements(&mut ctx, rotated_parts[2])?;
+        assert_eq!(body[0], symbol(&mut ctx, &runtime, "PROGN")?);
+        assert_eq!(body.len(), 3);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 #[path = "setf_tests.rs"]
 mod tests;
 

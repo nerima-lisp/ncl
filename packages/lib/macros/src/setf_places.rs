@@ -322,4 +322,28 @@ mod coverage_tests {
         ));
         Ok(())
     }
+
+    #[test]
+    fn every_registered_place_preserves_argument_values_in_expansion() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let target = symbol(&mut ctx, &runtime, "TARGET")?;
+        let index = Word::fixnum(2);
+        let cases: [(
+            fn(&mut ThreadContext, &Runtime, &[Word]) -> Result<SetfExpansion, ObjectError>,
+            &[Word],
+        ); 3] = [
+            (nth_place, &[index, target]),
+            (aref_place, &[target, index]),
+            (gethash_place, &[target, index]),
+        ];
+        for (expand, args) in cases {
+            let expansion = expand(&mut ctx, &runtime, args)?;
+            assert_eq!(expansion.value_forms, args);
+            assert_eq!(expansion.temporary_variables.len(), args.len());
+            assert_eq!(expansion.store_variables.len(), 1);
+        }
+        Ok(())
+    }
 }

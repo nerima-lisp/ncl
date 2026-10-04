@@ -433,3 +433,36 @@ pub(super) fn expand_assert(ctx: &mut ThreadContext, runtime: &Runtime, values: 
     )?;
     Ok(scope.get(unless_form).as_word())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, symbol};
+
+    fn fixture() -> Result<(Runtime, ThreadContext)> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    #[test]
+    fn restart_case_check_type_and_assert_build_unless_forms() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let place = symbol(&mut ctx, &runtime, "PLACE")?;
+        let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+        let check = expand_check_type(&mut ctx, &runtime, &[place, integer])?;
+        assert_eq!(
+            elements(&mut ctx, check)?[0],
+            symbol(&mut ctx, &runtime, "UNLESS")?
+        );
+        let test = symbol(&mut ctx, &runtime, "TEST")?;
+        let datum = symbol(&mut ctx, &runtime, "DATUM")?;
+        let assertion = expand_assert(&mut ctx, &runtime, &[test, Word::NIL, datum])?;
+        let assertion_parts = elements(&mut ctx, assertion)?;
+        assert_eq!(assertion_parts[0], symbol(&mut ctx, &runtime, "UNLESS")?);
+        let restart_case = elements(&mut ctx, assertion_parts[2])?;
+        assert_eq!(restart_case[0], symbol(&mut ctx, &runtime, "BLOCK")?);
+        Ok(())
+    }
+}

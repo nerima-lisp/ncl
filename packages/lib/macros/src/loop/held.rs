@@ -131,3 +131,44 @@ pub(super) fn expand_body(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    fn fixture() -> std::result::Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    #[test]
+    fn held_builders_report_invalid_indexes_and_rewrite_return_forms()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let value = symbol(&mut ctx, &runtime, "VALUE")?;
+        let target = symbol(&mut ctx, &runtime, "TARGET")?;
+        let finish = symbol(&mut ctx, &runtime, "FINISH")?;
+        let go = list(&mut ctx, &runtime, &[finish])?;
+        let mut held = vec![value, target, go];
+        assert_eq!(held_get(&held, 9), Err(ObjectError::TypeError));
+        assert_eq!(held_form(&mut ctx, &runtime, &mut held, "CAR", &[0])?, 3);
+        assert_eq!(
+            elements(&mut ctx, held[3])?[0],
+            symbol(&mut ctx, &runtime, "CAR")?
+        );
+        assert_eq!(held_list(&mut ctx, &runtime, &mut held, &[0, 1])?, 4);
+        let finish_index = held_symbol(&mut ctx, &runtime, &mut held, "FINISH")?;
+        let replacement = expand_body(&mut ctx, &runtime, &mut held, &[2, 0], finish_index)?;
+        assert_eq!(replacement.len(), 2);
+        let replacement_form = elements(&mut ctx, held[replacement[0]])?;
+        assert_eq!(
+            ncl_object::string_ref(&ctx, ncl_object::symbol_name(&ctx, replacement_form[0])?, 0)?,
+            'F'
+        );
+        assert_eq!(replacement[1], 0);
+        Ok(())
+    }
+}

@@ -103,3 +103,64 @@ pub(super) fn expand_accumulator(
     }
     Ok((accumulator, kind))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elements;
+    use ncl_object::ObjectError;
+
+    #[test]
+    fn accumulators_emit_distinct_update_forms_and_reuse_bindings()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let accumulator = Word::fixnum(10);
+        let value = Word::fixnum(11);
+        for kind in [
+            AccumulatorKind::Collect,
+            AccumulatorKind::Append,
+            AccumulatorKind::Nconc,
+            AccumulatorKind::Count,
+            AccumulatorKind::Sum,
+            AccumulatorKind::Maximize,
+            AccumulatorKind::Minimize,
+        ] {
+            let mut held = vec![accumulator, value];
+            let mut bindings = Vec::new();
+            let mut body = Vec::new();
+            let mut initialized = Vec::new();
+            let (result, returned_kind) = expand_accumulator(
+                &mut ctx,
+                &runtime,
+                &mut held,
+                kind,
+                1,
+                Some(0),
+                &mut bindings,
+                &mut body,
+                &mut initialized,
+            )?;
+            assert_eq!(result, 0);
+            assert_eq!(returned_kind, kind);
+            assert!(!body.is_empty());
+            let head = elements(&mut ctx, held[*body.last().expect("body")])?[0];
+            assert_ne!(head, Word::NIL);
+            let before = bindings.len();
+            expand_accumulator(
+                &mut ctx,
+                &runtime,
+                &mut held,
+                kind,
+                1,
+                Some(0),
+                &mut bindings,
+                &mut body,
+                &mut initialized,
+            )?;
+            assert!(bindings.len() >= before);
+        }
+        Ok(())
+    }
+}

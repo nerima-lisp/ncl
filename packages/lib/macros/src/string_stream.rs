@@ -477,4 +477,52 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn string_stream_expansions_cover_defaults_invalid_specs_and_adapters() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let stream = symbol(&mut ctx, &runtime, "STREAM")?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let text = ncl_object::make_string(&mut ctx, &runtime, &['x'])?;
+        let spec = list(&mut ctx, &runtime, &[stream, text])?;
+        let output = expand_output(&mut ctx, &runtime, &[spec, body])?;
+        let output_parts = elements(&mut ctx, output)?;
+        assert_eq!(output_parts[0], symbol(&mut ctx, &runtime, "LET")?);
+        let input = expand_input(&mut ctx, &runtime, &[spec, body])?;
+        let input_parts = elements(&mut ctx, input)?;
+        assert_eq!(input_parts[0], symbol(&mut ctx, &runtime, "LET")?);
+        assert_eq!(elements(&mut ctx, input_parts[1])?.len(), 1);
+
+        let element_type = keyword(&mut ctx, &runtime, "ELEMENT-TYPE")?;
+        let bad_type = list(&mut ctx, &runtime, &[stream, element_type, Word::NIL])?;
+        assert_eq!(
+            expand_output(&mut ctx, &runtime, &[bad_type, body]),
+            Err(ObjectError::TypeError)
+        );
+        let unknown = symbol(&mut ctx, &runtime, "NOT-A-KEYWORD")?;
+        let bad_input = list(&mut ctx, &runtime, &[stream, text, unknown, Word::TRUE])?;
+        assert_eq!(
+            expand_input(&mut ctx, &runtime, &[bad_input, body]),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            expand_output_adapter(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[]),
+                &mut MultipleValues::new()
+            ),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            expand_input_adapter(
+                &mut ctx,
+                &runtime,
+                &BuiltinArgs::new(&[]),
+                &mut MultipleValues::new()
+            ),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
 }

@@ -22,10 +22,8 @@ pub(super) fn execute_float_directive(
     } else {
         2
     };
-    let scale = match parameter_i64(directive.parameters.get(scale_index)) {
-        Some(value) => value,
-        None => i64::from(directive.kind == DirectiveKind::E),
-    };
+    let scale = parameter_i64(directive.parameters.get(scale_index))
+        .map_or_else(|| i64::from(directive.kind == DirectiveKind::E), |value| value);
     let scaled = directive.kind == DirectiveKind::F
         || directive.kind == DirectiveKind::E
         || (directive.kind == DirectiveKind::G && g_uses_exponential(value));

@@ -486,3 +486,105 @@ fn rational_and_float_operations_cover_exact_values() {
         Ok(Word::fixnum(1))
     );
 }
+
+#[test]
+fn remainder_rounding_and_roots_cover_signed_results() {
+    let (runtime, mut ctx) = setup();
+    let negative = Word::fixnum(-7);
+    let positive = Word::fixnum(3);
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "MOD", &[negative, positive]),
+        2
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "REM", &[negative, positive]),
+        -1
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "ISQRT", &[Word::fixnum(15)]),
+        3
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "ISQRT", &[Word::fixnum(16)]),
+        4
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "GCD", &[negative, positive]),
+        1
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "LCM", &[negative, positive]),
+        21
+    );
+
+    let value = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+    assert_eq!(call_float(&runtime, &mut ctx, "FFLOOR", &[value]), -3.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "FCEILING", &[value]), -2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "FTRUNCATE", &[value]), -2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "FROUND", &[value]), -2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "FLOOR", &[value]), -3.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "CEILING", &[value]), -2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "TRUNCATE", &[value]), -2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "ROUND", &[value]), -2.0);
+}
+
+#[test]
+fn transcendental_real_and_complex_values_follow_identities() {
+    let (runtime, mut ctx) = setup();
+    let one = Word::fixnum(1);
+    let zero = Word::fixnum(0);
+    assert!((call_float(&runtime, &mut ctx, "EXP", &[zero]) - 1.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "LOG", &[one]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "SQRT", &[Word::fixnum(9)]) - 3.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "SIN", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "COS", &[zero]) - 1.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "TAN", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ASIN", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ACOS", &[one]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ATAN", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "SINH", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "COSH", &[zero]) - 1.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "TANH", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ASINH", &[zero]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ACOSH", &[one]) - 0.0).abs() < 1e-12);
+    assert!((call_float(&runtime, &mut ctx, "ATANH", &[zero]) - 0.0).abs() < 1e-12);
+    assert_eq!(
+        call_integer(
+            &runtime,
+            &mut ctx,
+            "EXPT",
+            &[Word::fixnum(2), Word::fixnum(3)]
+        ),
+        8
+    );
+    assert!(
+        (call_float(
+            &runtime,
+            &mut ctx,
+            "LOG",
+            &[Word::fixnum(8), Word::fixnum(2)]
+        ) - 3.0)
+            .abs()
+            < 1e-12
+    );
+    let real = make_double(&mut ctx, &runtime, 1.0).unwrap();
+    let imag = make_double(&mut ctx, &runtime, 0.5).unwrap();
+    let complex = make_complex(&mut ctx, &runtime, real.into(), imag.into())
+        .unwrap()
+        .into();
+    for name in [
+        "EXP", "SQRT", "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "SINH", "COSH", "TANH",
+        "ASINH", "ACOSH", "ATANH",
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[complex]).unwrap();
+        let (real, imag) = complex_parts(&ctx, result);
+        assert!(real.is_finite() && imag.is_finite(), "{name}");
+    }
+    let atan = call_float(
+        &runtime,
+        &mut ctx,
+        "ATAN",
+        &[Word::fixnum(1), Word::fixnum(1)],
+    );
+    assert!((atan - std::f64::consts::FRAC_PI_4).abs() < 1e-12);
+}

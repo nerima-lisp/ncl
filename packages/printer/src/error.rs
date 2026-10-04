@@ -49,3 +49,32 @@ impl From<ObjectError> for PrintError {
         Self::Object(value)
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use std::error::Error;
+
+    use super::PrintError;
+    use ncl_object::ObjectError;
+
+    #[test]
+    fn display_and_source_cover_error_variants() {
+        let object = PrintError::Object(ObjectError::Layout);
+        assert!(object.to_string().contains("object error"));
+        assert!(object.source().is_some());
+        assert_eq!(
+            PrintError::Sink("full".into()).to_string(),
+            "print: sink error: full"
+        );
+        assert_eq!(
+            PrintError::NotReadable.to_string(),
+            "print: object is not readable"
+        );
+        assert!(PrintError::Circularity.to_string().contains("circular"));
+        assert!(PrintError::Sink("full".into()).source().is_none());
+    }
+}

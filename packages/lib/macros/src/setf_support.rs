@@ -90,3 +90,74 @@ pub fn with_expansion_roots<T>(
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expansion_values_preserves_all_five_fields() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let expansion = SetfExpansion {
+            temporary_variables: vec![Word::fixnum(1)],
+            value_forms: vec![Word::fixnum(2)],
+            store_variables: vec![Word::fixnum(3)],
+            store_form: Word::fixnum(4),
+            access_form: Word::fixnum(5),
+        };
+        let values = expansion_values(&mut ctx, &runtime, &expansion)?;
+        assert_eq!(crate::elements(&mut ctx, values[0])?, vec![Word::fixnum(1)]);
+        assert_eq!(crate::elements(&mut ctx, values[1])?, vec![Word::fixnum(2)]);
+        assert_eq!(crate::elements(&mut ctx, values[2])?, vec![Word::fixnum(3)]);
+        assert_eq!(values[3], Word::fixnum(4));
+        assert_eq!(values[4], Word::fixnum(5));
+        Ok(())
+    }
+
+    #[test]
+    fn with_expansion_roots_rejects_mismatched_shapes() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let expansion = SetfExpansion {
+            temporary_variables: vec![Word::fixnum(1)],
+            value_forms: vec![],
+            store_variables: vec![],
+            store_form: Word::NIL,
+            access_form: Word::NIL,
+        };
+        let result = with_expansion_roots(&mut ctx, &expansion, |_, _, _, _, _, _| Ok(()));
+        assert!(matches!(result, Err(ObjectError::TypeError)));
+        Ok(())
+    }
+
+    #[test]
+    fn with_expansion_roots_passes_rooted_fields_to_callback() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let expansion = SetfExpansion {
+            temporary_variables: vec![Word::fixnum(1), Word::fixnum(2)],
+            value_forms: vec![Word::fixnum(3), Word::fixnum(4)],
+            store_variables: vec![Word::fixnum(5)],
+            store_form: Word::fixnum(6),
+            access_form: Word::fixnum(7),
+        };
+        let result = with_expansion_roots(
+            &mut ctx,
+            &expansion,
+            |_, temporary, values, stores, store, access| {
+                assert_eq!(temporary, &[Word::fixnum(1), Word::fixnum(2)]);
+                assert_eq!(values, &[Word::fixnum(3), Word::fixnum(4)]);
+                assert_eq!(stores, &[Word::fixnum(5)]);
+                assert_eq!(store, Word::fixnum(6));
+                assert_eq!(access, Word::fixnum(7));
+                Ok(Word::TRUE)
+            },
+        )?;
+        assert_eq!(result, Word::TRUE);
+        Ok(())
+    }
+}

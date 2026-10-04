@@ -181,4 +181,103 @@ mod runtime_tests {
             assert_eq!(runtime.format_result(value), "7");
         }
     }
+
+    #[test]
+    fn evaluates_fast_arithmetic_entries_and_comparisons() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        for (source, expected) in [("(+ 40 2)", "42"), ("(- 44 2)", "42"), ("(* 6 7)", "42")] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+        for (source, expected) in [("(< 1 2)", "T"), ("(< 2 1)", "NIL")] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+    }
+
+    #[test]
+    fn eval_when_selects_execute_and_compile_toplevel_situations() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let executed = runtime
+            .eval("(eval-when (:execute) 41 42)")
+            .unwrap_or_else(|error| panic!("execute eval-when failed: {error}"));
+        assert_eq!(runtime.format_result(executed), "42");
+
+        let skipped = runtime
+            .eval("(eval-when (:compile-toplevel) 42)")
+            .unwrap_or_else(|error| panic!("skipped eval-when failed: {error}"));
+        assert_eq!(runtime.format_result(skipped), "NIL");
+    }
+
+    #[test]
+    fn compile_file_selects_compile_toplevel_and_rejects_bad_eval_when() {
+        let path =
+            std::env::temp_dir().join(format!("ncl-runtime-eval-when-{}.lisp", std::process::id()));
+        if let Err(error) = fs::write(&path, "(eval-when (:compile-toplevel) 42)") {
+            panic!("source file creation failed: {error}");
+        }
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let value = runtime
+            .compile_file(&path)
+            .unwrap_or_else(|error| panic!("compile_file failed: {error}"));
+        assert_eq!(runtime.format_result(value), "42");
+
+        let malformed = runtime.eval("(eval-when (:unknown) 42)");
+        assert!(matches!(malformed, Err(RuntimeError::Front(_))));
+        if let Err(error) = fs::remove_file(path) {
+            panic!("source cleanup failed: {error}");
+        }
+    }
+
+    #[test]
+    fn evaluates_numeric_fallbacks_and_multiple_value_results() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        for (source, expected) in [
+            ("(+ 1.5 2.5)", "4.0"),
+            ("(- 10 3/2)", "17/2"),
+            ("(* 2 3/2)", "3"),
+            ("(< 1.5 2.5)", "T"),
+            ("(multiple-value-list (floor 7 2))", "(3 1)"),
+        ] {
+            let value = runtime
+                .eval(source)
+                .unwrap_or_else(|error| panic!("{source} failed: {error}"));
+            assert_eq!(runtime.format_result(value), expected, "source: {source}");
+        }
+    }
+
+    #[test]
+    fn load_options_and_undefined_function_report_values() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let missing = runtime.eval("(load \"missing-runtime-test-file\" :if-does-not-exist nil)");
+        assert_eq!(
+            missing.map_or_else(
+                |error| panic!("missing load failed: {error}"),
+                |value| runtime.format_result(value),
+            ),
+            "NIL"
+        );
+        let undefined = runtime.eval("(no-such-runtime-function)");
+        assert!(matches!(
+            undefined,
+            Err(RuntimeError::UndefinedFunction { .. })
+        ));
+    }
+
+    #[test]
+    fn format_result_handles_true_and_readable_objects() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+        let true_value = runtime
+            .eval("t")
+            .unwrap_or_else(|error| panic!("t: {error}"));
+        assert_eq!(runtime.format_result(true_value), "T");
+        let list = runtime
+            .eval("(list 1 2)")
+            .unwrap_or_else(|error| panic!("list: {error}"));
+        assert_eq!(runtime.format_result(list), "(1 2)");
+    }
 }

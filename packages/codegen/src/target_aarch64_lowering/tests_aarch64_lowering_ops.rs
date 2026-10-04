@@ -49,6 +49,19 @@ fn instruction_texts(assembler: Assembler) -> Vec<String> {
         .collect()
 }
 
+fn encoded(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+    let mut assembler = Assembler::new();
+    for instruction in instructions {
+        assembler
+            .emit(&instruction)
+            .unwrap_or_else(|error| panic!("expected AArch64 encoding: {error:?}"));
+    }
+    assembler
+        .finish()
+        .unwrap_or_else(|error| panic!("AArch64 instruction encoding: {error:?}"))
+        .bytes
+}
+
 fn operation(kind: OpKind, result: Option<ValueId>) -> Op {
     Op {
         results: result.map_or_else(Vec::new, |value| vec![(value, Ty::Word)]),
@@ -240,5 +253,35 @@ fn lower_op_emits_exact_aarch64_memory_and_compare_templates() {
             "and x16, x16, #0xfffffffffffffff8",
             "str x17, [x16, #32]",
         ]
+    );
+}
+
+#[test]
+fn lower_op_move_matches_the_exact_encoded_register_copy() {
+    let mut assembler = Assembler::new();
+    lower_op(
+        &mut assembler,
+        &operation(OpKind::Move { value: ValueId(0) }, Some(ValueId(1))),
+        &function(),
+        &allocation(),
+        &TestAbi,
+    )
+    .unwrap_or_else(|error| panic!("AArch64 move lowering: {error:?}"));
+
+    assert_eq!(
+        assembler
+            .finish()
+            .unwrap_or_else(|error| panic!("AArch64 instruction encoding: {error:?}"))
+            .bytes,
+        encoded([
+            Inst::Mov {
+                rd: RegOrSp::Reg(Reg(16)),
+                rn: RegOrSp::Reg(Reg(1)),
+            },
+            Inst::Mov {
+                rd: RegOrSp::Reg(Reg(2)),
+                rn: RegOrSp::Reg(Reg(16)),
+            },
+        ])
     );
 }

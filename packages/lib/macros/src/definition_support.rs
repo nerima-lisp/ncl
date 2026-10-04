@@ -342,7 +342,6 @@ pub fn register_runtime_support(
     }
     Ok(())
 }
-
 #[cfg(test)]
 #[path = "tests/definition_support_tests.rs"]
 mod tests;

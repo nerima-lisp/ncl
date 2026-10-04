@@ -87,6 +87,24 @@ impl<'a> FunctionArguments<'a> {
     }
 }
 
+#[cfg(test)]
+mod argument_tests {
+    use super::FunctionArguments;
+    use crate::Word;
+
+    #[test]
+    fn arguments_expose_length_empty_get_and_slice() {
+        let words = [Word::fixnum(4), Word::TRUE];
+        let arguments = FunctionArguments::new(&words);
+        assert_eq!(arguments.len(), 2);
+        assert!(!arguments.is_empty());
+        assert_eq!(arguments.get(0), Some(Word::fixnum(4)));
+        assert_eq!(arguments.get(2), None);
+        assert_eq!(arguments.as_slice(), &words);
+        assert!(FunctionArguments::new(&[]).is_empty());
+    }
+}
+
 /// Calls a Lisp function while retaining the runtime-specific implementation
 /// outside `ncl-object`.
 pub trait FunctionCaller {

@@ -10,7 +10,6 @@ use ncl_sys::Word;
 const DEFAULT_CAPACITY: usize = 8;
 const DEFAULT_REHASH_SIZE: f64 = 1.5;
 const DEFAULT_REHASH_THRESHOLD: f64 = 0.75;
-
 pub(super) fn refresh_forwarded_field(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -18,6 +17,12 @@ pub(super) fn refresh_forwarded_field(
     slot: usize,
 ) -> Result<Word, ObjectError> {
     let value = get(ctx, table.as_word(), widetag::HASH_TABLE, slot)?;
+    if matches!(
+        crate::classify(value),
+        ObjectRef::Fixnum(_) | ObjectRef::Character(_) | ObjectRef::Immediate(_)
+    ) {
+        return Ok(value);
+    }
     let forwarded = runtime
         .heap
         .forwarded_word(value)
@@ -27,13 +32,11 @@ pub(super) fn refresh_forwarded_field(
     }
     Ok(forwarded)
 }
-
 #[derive(Clone, Copy, Debug)]
 enum RehashSize {
     Add(usize),
     Multiply(f64),
 }
-
 impl HashTable {
     /// Allocate an empty heap hash table.
     ///
@@ -106,7 +109,6 @@ impl HashTable {
         finish_root(ctx, size_token, result)
     }
 }
-
 fn positive_integer(ctx: &ThreadContext, word: Word) -> Result<u128, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) if value > 0 => {
@@ -134,7 +136,6 @@ fn positive_integer(ctx: &ThreadContext, word: Word) -> Result<u128, ObjectError
         _ => Err(ObjectError::TypeError),
     }
 }
-
 fn normalize_capacity(size: u128) -> Result<usize, ObjectError> {
     let requested = usize::try_from(size).map_err(|_| ObjectError::TypeError)?;
     let requested = requested.max(DEFAULT_CAPACITY);
@@ -147,7 +148,6 @@ fn normalize_capacity(size: u128) -> Result<usize, ObjectError> {
         Ok(capacity)
     }
 }
-
 fn validate_rehash_size(ctx: &ThreadContext, word: Word) -> Result<(), ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => validate_positive_integer(ctx, Word::fixnum(value)),
@@ -164,7 +164,6 @@ fn validate_rehash_size(ctx: &ThreadContext, word: Word) -> Result<(), ObjectErr
         _ => Err(ObjectError::TypeError),
     }
 }
-
 fn validate_positive_integer(ctx: &ThreadContext, word: Word) -> Result<(), ObjectError> {
     let value = positive_integer(ctx, word)?;
     if value > 0 {
@@ -182,7 +181,6 @@ fn validate_rehash_threshold(ctx: &ThreadContext, word: Word) -> Result<(), Obje
         Err(ObjectError::TypeError)
     }
 }
-
 fn rehash_size_value(ctx: &ThreadContext, word: Word) -> Result<RehashSize, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(RehashSize::Add(
@@ -342,7 +340,6 @@ mod tests {
             .unwrap_or_else(|error| panic!("register: {error:?}"));
         (runtime, ctx)
     }
-
     #[test]
     fn option_values_validate_numeric_boundaries() {
         assert_eq!(normalize_capacity(1), Ok(8));
@@ -357,7 +354,6 @@ mod tests {
             Err(ObjectError::TypeError)
         );
         assert_eq!(normalize_capacity(u128::MAX), Err(ObjectError::TypeError));
-
         let (runtime, mut ctx) = setup();
         let positive_bignum = make_bignum_from_i128(&mut ctx, &runtime, 17)
             .unwrap_or_else(|error| panic!("bignum: {error:?}"));
@@ -378,7 +374,6 @@ mod tests {
             validate_rehash_size(&ctx, Word::TRUE),
             Err(ObjectError::TypeError)
         );
-
         let half = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
             .unwrap_or_else(|error| panic!("ratio: {error:?}"));
         assert_eq!(validate_rehash_threshold(&ctx, half.into()), Ok(()));
@@ -395,7 +390,6 @@ mod tests {
             Err(ObjectError::TypeError)
         );
     }
-
     #[test]
     fn option_conversions_cover_numeric_forms_and_layout_errors() {
         let (runtime, mut ctx) = setup();
@@ -411,7 +405,6 @@ mod tests {
             validate_rehash_size(&ctx, zero.into()),
             Err(ObjectError::TypeError)
         );
-
         let factor = make_double(&mut ctx, &runtime, 1.5)
             .unwrap_or_else(|error| panic!("factor: {error:?}"));
         assert!(
@@ -429,7 +422,6 @@ mod tests {
             rehash_size_value(&ctx, Word::fixnum(0)),
             Err(ObjectError::TypeError)
         ));
-
         let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(-1), Word::fixnum(2))
             .unwrap_or_else(|error| panic!("ratio: {error:?}"));
         assert_eq!(rehash_threshold_value(&ctx, ratio.into()), Ok(-0.5));
@@ -443,7 +435,6 @@ mod tests {
         assert_eq!(float_ratio(4.0), Ok((1_u128 << 52, 50)));
         assert_eq!(float_ratio(1.5), Ok((3_u128 << 51, 52)));
         assert_eq!(float_ratio(f64::from_bits(1)), Ok((1, 1074)));
-
         let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
             .unwrap_or_else(|error| panic!("table: {error:?}"));
         assert_eq!(
@@ -455,5 +446,55 @@ mod tests {
             next_capacity_from_value(&ctx, table, Word::TRUE),
             Err(ObjectError::Layout)
         );
+        assert_eq!(rehash_threshold_value(&ctx, Word::fixnum(3)), Ok(3.0));
+        let positive_threshold = make_double(&mut ctx, &runtime, 0.75)
+            .unwrap_or_else(|error| panic!("threshold: {error:?}"));
+        assert_eq!(
+            validate_rehash_threshold(&ctx, positive_threshold.into()),
+            Ok(())
+        );
+        let too_large_threshold = make_double(&mut ctx, &runtime, 1.5)
+            .unwrap_or_else(|error| panic!("threshold: {error:?}"));
+        assert_eq!(
+            validate_rehash_threshold(&ctx, too_large_threshold.into()),
+            Err(ObjectError::TypeError)
+        );
+        let invalid_factor = make_double(&mut ctx, &runtime, 1.0)
+            .unwrap_or_else(|error| panic!("factor: {error:?}"));
+        assert!(matches!(
+            rehash_size_value(&ctx, invalid_factor.into()),
+            Err(ObjectError::Layout)
+        ));
+        assert_eq!(float_ratio(2.0), Ok((1_u128 << 52, 51)));
+    }
+    #[test]
+    fn table_options_are_stored_and_defaults_are_observable() {
+        let (runtime, mut ctx) = setup();
+        let default_table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::Key)
+            .unwrap_or_else(|error| panic!("default table: {error:?}"));
+        assert_eq!(default_table.test(&ctx), Ok(HashTest::Equalp));
+        assert_eq!(default_table.weakness(&ctx), Ok(Weakness::Key));
+        assert_eq!(default_table.capacity(&ctx), Ok(8));
+        assert_eq!(default_table.count(&ctx), Ok(0));
+        let size = Word::fixnum(9);
+        let rehash_size = Word::fixnum(3);
+        let rehash_threshold = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+            .unwrap_or_else(|error| panic!("threshold: {error:?}"));
+        let table = HashTable::new_with_options(
+            &mut ctx,
+            &runtime,
+            HashTest::Eq,
+            Weakness::Value,
+            size,
+            Some(rehash_size),
+            Some(rehash_threshold.into()),
+        )
+        .unwrap_or_else(|error| panic!("configured table: {error:?}"));
+        assert_eq!(table.capacity(&ctx), Ok(16));
+        assert_eq!(table.rehash_size(&ctx), Ok(rehash_size));
+        let threshold = table
+            .rehash_threshold(&ctx)
+            .unwrap_or_else(|error| panic!("threshold field: {error:?}"));
+        assert_eq!(rehash_threshold_value(&ctx, threshold), Ok(0.5));
     }
 }

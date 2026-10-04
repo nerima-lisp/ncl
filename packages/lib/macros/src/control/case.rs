@@ -119,3 +119,43 @@ pub(super) fn case(
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expands_key_lists_and_otherwise() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let value = Word::fixnum(2);
+        let one = Word::fixnum(1);
+        let two = Word::fixnum(2);
+        let keys = list(&mut ctx, &runtime, &[one, two])?;
+        let body = list(&mut ctx, &runtime, &[Word::fixnum(20)])?;
+        let otherwise = symbol(&mut ctx, &runtime, "OTHERWISE")?;
+        let default_body = list(&mut ctx, &runtime, &[Word::fixnum(0)])?;
+        let clauses = [
+            list(&mut ctx, &runtime, &[keys, body])?,
+            list(&mut ctx, &runtime, &[otherwise, default_body])?,
+        ];
+        let expansion = case(&mut ctx, &runtime, &[value, clauses[0], clauses[1]], false)?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET")?);
+        Ok(())
+    }
+
+    #[test]
+    fn ecase_without_match_builds_type_error_branch() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let key = Word::fixnum(1);
+        let clause = list(&mut ctx, &runtime, &[key, Word::fixnum(10)])?;
+        let expansion = case(&mut ctx, &runtime, &[Word::fixnum(2), clause], true)?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET")?);
+        Ok(())
+    }
+}

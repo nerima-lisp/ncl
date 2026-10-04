@@ -17,10 +17,7 @@ pub(super) fn store(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: 
 #[rustfmt::skip]
 pub(super) const fn compare_condition(op: Compare) -> Cond { match op { Compare::Eq => Cond::E, Compare::Ne => Cond::Ne, Compare::Lt => Cond::L, Compare::Le => Cond::Le, Compare::Gt => Cond::G, Compare::Ge => Cond::Ge } }
 
-pub(super) fn constant_value(
-    constant: &Constant,
-    abi: &dyn RuntimeAbi,
-) -> Result<i64, CodegenError> {
+pub fn constant_value(constant: &Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
     match constant {
         Constant::Fixnum(value) => Ok(i64::from_ne_bytes(
             ncl_sys::Word::fixnum(*value).bits().to_ne_bytes(),

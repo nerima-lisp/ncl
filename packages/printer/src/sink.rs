@@ -66,3 +66,26 @@ impl CharSink for StringSink {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::{CharSink, StringSink};
+
+    #[test]
+    fn string_sink_supports_character_and_string_writes() {
+        let mut sink = StringSink::new();
+        sink.write_char('a').unwrap();
+        sink.write_str("bc").unwrap();
+        assert_eq!(sink.as_str(), "abc");
+        assert_eq!(sink.clone().into_string(), "abc");
+    }
+
+    #[test]
+    fn default_string_sink_is_empty() {
+        assert_eq!(StringSink::default().into_string(), "");
+    }
+}

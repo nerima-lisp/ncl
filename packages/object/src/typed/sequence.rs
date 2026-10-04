@@ -59,6 +59,24 @@ impl FunctionDesignator {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn function_designator_rejects_non_function_words_by_value() {
+        let context = ThreadContext::new();
+        assert_eq!(
+            FunctionDesignator::try_from_word(&context, Word::fixnum(4)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            FunctionDesignator::try_from_word(&context, Word::character('f' as u32)),
+            Err(ObjectError::TypeError)
+        );
+    }
+}
 /// A package designator view.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PackageDesignator {

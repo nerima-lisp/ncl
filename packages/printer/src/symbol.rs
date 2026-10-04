@@ -100,3 +100,7 @@ fn needs_escape(name: &str, case: PrintCase) -> bool {
             .chars()
             .all(|character| character.is_ascii_digit() || matches!(character, '+' | '-' | '.'))
 }
+
+#[cfg(test)]
+#[path = "symbol/tests/coverage.rs"]
+mod tests;

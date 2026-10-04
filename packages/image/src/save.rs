@@ -385,3 +385,88 @@ const fn invalid(field: &'static str) -> ImageError {
 const fn unsupported(kind: &'static str) -> ImageError {
     ImageError::UnsupportedKind { kind }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "save tests assert on valid fixture construction"
+)]
+mod tests {
+    use super::save;
+    use crate::format::{HEADER_SIZE, ImageFile};
+    use crate::record::{Record, Ref};
+    use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_simple_vector, make_string};
+
+    #[test]
+    fn save_records_shared_graph_values_and_round_trips_bytes() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let string = make_string(&mut ctx, &runtime, &['a', 'l', 'i', 'g', 'n']).unwrap();
+        let vector = make_simple_vector(&mut ctx, &runtime, &[string, Word::fixnum(42)]).unwrap();
+        let cons = make_cons(&mut ctx, &runtime, vector, vector).unwrap();
+
+        let bytes = save(&runtime, &mut ctx, &[cons, vector, Word::NIL], &[]).unwrap();
+        let image = ImageFile::from_bytes(&bytes).unwrap();
+        assert_eq!(image.roots.len(), 3);
+        assert_eq!(image.roots[2], Ref::Immediate(Word::NIL.bits()));
+
+        let Ref::Object(cons_id) = image.roots[0] else {
+            panic!("cons root")
+        };
+        let Ref::Object(vector_id) = image.roots[1] else {
+            panic!("vector root")
+        };
+        assert_eq!(
+            image.objects[cons_id as usize],
+            Record::Cons {
+                car: Ref::Object(vector_id),
+                cdr: Ref::Object(vector_id),
+            }
+        );
+        assert_eq!(
+            image.objects[vector_id as usize],
+            Record::Vector(vec![
+                Ref::Object(vector_id + 1),
+                Ref::Immediate(Word::fixnum(42).bits()),
+            ])
+        );
+        assert_eq!(
+            image.objects[vector_id as usize + 1],
+            Record::String("align".to_owned())
+        );
+
+        let decoded_vector = match &image.objects[vector_id as usize] {
+            Record::Vector(elements) => elements,
+            other => panic!("expected vector, got {other:?}"),
+        };
+        assert_eq!(decoded_vector.len(), 2);
+        assert_eq!(
+            bytes.len(),
+            HEADER_SIZE + u32::from_le_bytes(bytes[44..48].try_into().unwrap()) as usize
+        );
+    }
+
+    #[test]
+    fn save_capture_helpers_preserve_values_after_load() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let string = make_string(&mut ctx, &runtime, &['v', 'a', 'l', 'u', 'e']).unwrap();
+        let vector = make_simple_vector(&mut ctx, &runtime, &[string, Word::fixnum(-7)]).unwrap();
+        let bytes = save(&runtime, &mut ctx, &[vector], &[]).unwrap();
+        let image = ImageFile::from_bytes(&bytes).unwrap();
+        let Record::Vector(elements) = &image.objects[0] else {
+            panic!("vector record")
+        };
+        assert_eq!(elements.len(), 2);
+        let Ref::Object(string_id) = elements[0] else {
+            panic!("string reference")
+        };
+        assert!(matches!(
+            image.objects[string_id as usize],
+            Record::String(_)
+        ));
+        assert_eq!(elements[1], Ref::Immediate(Word::fixnum(-7).bits()));
+    }
+}

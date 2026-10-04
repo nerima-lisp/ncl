@@ -210,3 +210,63 @@ pub fn unwind(ctx: &mut ThreadContext) {
     records::set_cleanup_head(ctx, Word::NIL);
     ctx.set_non_local_exit(true);
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        reason = "coverage tests assert on restart helpers"
+    )]
+
+    use super::*;
+    use ncl_object::make_string;
+
+    fn setup() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn restart_tokens_round_trip_and_missing_names_are_reported() {
+        let (runtime, mut ctx) = setup();
+        let name = make_string(&mut ctx, &runtime, &['R']).unwrap();
+        let restart = push_restart(
+            &mut ctx,
+            &runtime,
+            name,
+            Word::fixnum(7),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .unwrap();
+        let token = RestartRecord::from_word(restart.as_word());
+
+        assert_eq!(token.as_word(), restart.as_word());
+        assert_eq!(restart_name(&ctx, token.as_word()), Ok(name));
+        assert_eq!(
+            invoke_restart_by_name(&mut ctx, name, &[]),
+            Ok(Word::fixnum(7))
+        );
+        assert!(ctx.take_non_local_exit());
+        let missing = make_string(&mut ctx, &runtime, &['M']).unwrap();
+        assert_eq!(
+            invoke_restart_by_name(&mut ctx, missing, &[]),
+            Err(ConditionError::RestartNotFound)
+        );
+        pop_restart(&mut ctx, restart);
+    }
+
+    #[test]
+    fn unwind_clears_cleanup_state_and_sets_non_local_exit() {
+        let (runtime, mut ctx) = setup();
+        let cleanup = push_cleanup(&mut ctx, &runtime, Word::fixnum(1)).unwrap();
+        assert_ne!(records::cleanup_head(&ctx), Word::NIL);
+        unwind(&mut ctx);
+        assert_eq!(records::cleanup_head(&ctx), Word::NIL);
+        assert!(ctx.take_non_local_exit());
+        pop_cleanup(&mut ctx, cleanup);
+    }
+}

@@ -372,3 +372,109 @@ pub fn expand_input_adapter(
     arguments.remove(0);
     expand_input(ctx, runtime, &arguments)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    fn fixture() -> std::result::Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word> {
+        let package = runtime.ensure_package(ctx, "KEYWORD")?;
+        Ok(ncl_object::Package::from_word(package)
+            .intern(ctx, runtime, name)?
+            .0)
+    }
+
+    #[test]
+    fn output_expansion_writes_initial_text_and_accepts_unknown_keys() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let stream = symbol(&mut ctx, &runtime, "STREAM")?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let initial = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b'])?;
+        let element_type = keyword(&mut ctx, &runtime, "ELEMENT-TYPE")?;
+        let allow = keyword(&mut ctx, &runtime, "ALLOW-OTHER-KEYS")?;
+        let unknown = keyword(&mut ctx, &runtime, "UNKNOWN")?;
+        let character = symbol(&mut ctx, &runtime, "CHARACTER")?;
+        let quote = symbol(&mut ctx, &runtime, "QUOTE")?;
+        let element_value = list(&mut ctx, &runtime, &[quote, character])?;
+        let spec = list(
+            &mut ctx,
+            &runtime,
+            &[
+                stream,
+                initial,
+                element_type,
+                element_value,
+                unknown,
+                Word::TRUE,
+                allow,
+                Word::TRUE,
+            ],
+        )?;
+        let expansion = expand_output(&mut ctx, &runtime, &[spec, body])?;
+        let parts = elements(&mut ctx, expansion)?;
+        let let_symbol = symbol(&mut ctx, &runtime, "LET")?;
+        let progn_symbol = symbol(&mut ctx, &runtime, "PROGN")?;
+        let output_symbol = symbol(&mut ctx, &runtime, "GET-OUTPUT-STREAM-STRING")?;
+        assert_eq!(parts[0], let_symbol);
+        let result = elements(&mut ctx, parts[2])?;
+        assert_eq!(result[0], progn_symbol);
+        assert_eq!(result.len(), 3);
+        assert_eq!(elements(&mut ctx, result[2])?[0], output_symbol);
+        assert!(ctx.take_pending_lisp_error().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn input_expansion_covers_ranges_index_and_keyword_errors() -> Result<()> {
+        let (runtime, mut ctx) = fixture()?;
+        let stream = symbol(&mut ctx, &runtime, "STREAM")?;
+        let index = symbol(&mut ctx, &runtime, "INDEX")?;
+        let text = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c'])?;
+        let start = keyword(&mut ctx, &runtime, "START")?;
+        let end = keyword(&mut ctx, &runtime, "END")?;
+        let index_key = keyword(&mut ctx, &runtime, "INDEX")?;
+        let spec = list(
+            &mut ctx,
+            &runtime,
+            &[
+                stream,
+                text,
+                start,
+                Word::fixnum(1),
+                end,
+                Word::fixnum(3),
+                index_key,
+                index,
+            ],
+        )?;
+        let body = symbol(&mut ctx, &runtime, "BODY")?;
+        let expansion = expand_input(&mut ctx, &runtime, &[spec, body])?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET")?);
+        assert_eq!(elements(&mut ctx, parts[1])?.len(), 2);
+        assert_eq!(
+            elements(&mut ctx, parts[2])?[0],
+            symbol(&mut ctx, &runtime, "PROG1")?
+        );
+
+        let bad_key = symbol(&mut ctx, &runtime, "NOT-KEYWORD")?;
+        let bad_spec = list(&mut ctx, &runtime, &[stream, text, bad_key, Word::TRUE])?;
+        assert_eq!(
+            expand_input(&mut ctx, &runtime, &[bad_spec, body]),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            ctx.take_pending_lisp_error(),
+            Some(LispError::ProgramError(ProgramError::UnknownKeyword))
+        );
+        Ok(())
+    }
+}

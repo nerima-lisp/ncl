@@ -41,6 +41,10 @@ fn types_have_stable_display_and_primitive_effects() {
     assert!(Prim::FixnumAdd.is_pure()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert!(!Prim::FixnumAdd.reads_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
     assert!(!Prim::FixnumAdd.invalidates_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    let character_predicate = Prim::CharacterPredicate("alpha-char-p".into());
+    assert!(character_predicate.is_pure()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert!(!character_predicate.reads_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    assert!(!character_predicate.invalidates_memory()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
 }
 
 #[test]

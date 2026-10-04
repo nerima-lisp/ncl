@@ -59,3 +59,22 @@ pub fn get_function(ctx: &ThreadContext, object: Word, slot: usize) -> Result<Wo
         _ => Err(ObjectError::TypeError),
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fix_and_get_reject_invalid_values_with_observable_errors() {
+        assert_eq!(fix(7), Ok(Word::fixnum(7)));
+        assert_eq!(
+            get(&ThreadContext::new(), Word::NIL, 0, 0),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            get_function(&ThreadContext::new(), Word::NIL, 0),
+            Err(ObjectError::TypeError)
+        );
+    }
+}

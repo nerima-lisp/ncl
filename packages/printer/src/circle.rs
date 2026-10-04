@@ -222,3 +222,54 @@ pub fn array_total(ctx: &ThreadContext, array: Word) -> Option<usize> {
         .ok()
         .map(|dimensions| dimensions.iter().product())
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::{CircleLabel, CircleState, array_total, labelable};
+    use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_simple_vector, rplacd};
+
+    fn context() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn circle_state_labels_shared_and_cyclic_cons_cells() {
+        let (runtime, mut ctx) = context();
+        let shared = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap();
+        let root = make_cons(&mut ctx, &runtime, shared, shared).unwrap();
+        let mut state = CircleState::scan(&ctx, root, false);
+        assert!(state.has_label(shared.address()));
+        assert_eq!(
+            state.enter(shared.address()),
+            Some(CircleLabel::Definition(1))
+        );
+        assert_eq!(
+            state.enter(shared.address()),
+            Some(CircleLabel::Reference(1))
+        );
+        assert_eq!(state.enter(Word::fixnum(1).address()), None);
+
+        let cycle = make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).unwrap();
+        rplacd(&mut ctx, cycle, cycle).unwrap();
+        let only_cycle = CircleState::scan(&ctx, cycle, true);
+        assert!(only_cycle.has_label(cycle.address()));
+        assert!(labelable(&ctx, cycle));
+        assert!(!labelable(&ctx, Word::character(u32::from('x'))));
+    }
+
+    #[test]
+    fn circle_scanning_handles_vectors_and_array_helpers() {
+        let (runtime, mut ctx) = context();
+        let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)]).unwrap();
+        let state = CircleState::scan(&ctx, vector, false);
+        assert!(!state.has_label(vector.address()));
+        assert_eq!(array_total(&ctx, Word::NIL), None);
+    }
+}

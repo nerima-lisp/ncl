@@ -67,7 +67,7 @@ fn remap_helpers_cover_ir_shapes() {
         OpKind::CallClosure {
             closure: ValueId(0),
             args: vec![ValueId(0)],
-            named_symbol: None,
+            named_symbol: Some(ValueId(0)),
         },
         OpKind::SetMultipleValues {
             values: vec![ValueId(0)],
@@ -97,6 +97,29 @@ fn remap_helpers_cover_ir_shapes() {
             &values,
         );
     }
+    let remapped = remap_kind(
+        &OpKind::Move { value: ValueId(0) },
+        &values,
+        &mut constants,
+        &mut caller_constants,
+        &callee,
+    );
+    assert_eq!(remapped, OpKind::Move { value: ValueId(9) });
+    let unchanged = remap_kind(
+        &OpKind::Const {
+            result: ConstantIndex(99),
+        },
+        &values,
+        &mut constants,
+        &mut caller_constants,
+        &callee,
+    );
+    assert_eq!(
+        unchanged,
+        OpKind::Const {
+            result: ConstantIndex(99)
+        }
+    );
     let mut terms = vec![
         Terminator::Jump {
             target: ncl_ir::BlockId(1),

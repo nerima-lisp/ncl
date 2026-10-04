@@ -257,6 +257,7 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
+    clippy::cast_possible_truncation,
     reason = "format tests assert on round-trip results"
 )]
 mod tests {
@@ -432,5 +433,39 @@ mod tests {
             super::invalid("field"),
             crate::ImageError::InvalidLayout { field: "field" }
         );
+    }
+
+    #[test]
+    fn image_header_counts_and_payload_offset_match_encoded_values() {
+        let image = ImageFile {
+            architecture: architecture(),
+            gc_epoch: 0x0102_0304_0506_0708,
+            objects: vec![Record::String("aligned".to_owned())],
+            roots: vec![Ref::Object(0), Ref::Immediate(0x1122_3344_5566_7788)],
+            code: Vec::new(),
+            features: vec!["FEATURE".to_owned()],
+        };
+        let bytes = image.to_bytes().unwrap();
+
+        assert_eq!(&bytes[0..8], b"NCLIMAGE");
+        assert_eq!(
+            u16::from_le_bytes([bytes[8], bytes[9]]),
+            super::FORMAT_VERSION
+        );
+        assert_eq!(bytes[13], super::HEADER_SIZE as u8);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 1);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 0);
+        assert_eq!(u32::from_le_bytes(bytes[28..32].try_into().unwrap()), 1);
+        assert_eq!(
+            u64::from_le_bytes(bytes[32..40].try_into().unwrap()),
+            image.gc_epoch
+        );
+        assert_eq!(u32::from_le_bytes(bytes[40..44].try_into().unwrap()), 64);
+        assert_eq!(
+            u32::from_le_bytes(bytes[44..48].try_into().unwrap()) as usize,
+            bytes.len() - super::HEADER_SIZE
+        );
+        assert_eq!(ImageFile::from_bytes(&bytes).unwrap(), image);
     }
 }

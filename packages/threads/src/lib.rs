@@ -42,6 +42,10 @@ mod thread_object;
 mod time;
 mod timer;
 
+#[cfg(test)]
+#[path = "tests/coverage.rs"]
+mod tests;
+
 pub use error::ThreadError;
 pub use mutex::{
     get_mutex, holding_mutex_p, make_mutex, make_rwlock, mutex_name, mutex_owner, mutex_value,

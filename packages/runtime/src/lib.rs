@@ -13,6 +13,8 @@ mod local_macro;
 mod native_error;
 mod nonlocal;
 mod support;
+#[cfg(test)]
+mod support_tests;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;

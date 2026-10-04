@@ -403,3 +403,7 @@ fn register_ncl_ext_builtins(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/restart_builtins_tests.rs"]
+mod tests;

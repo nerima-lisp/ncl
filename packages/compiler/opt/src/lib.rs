@@ -413,9 +413,6 @@ mod manager_tests;
 #[path = "tests_optimization_edge_cases.rs"]
 mod optimization_edge_cases_tests;
 #[cfg(test)]
-#[path = "remap_tests.rs"]
-mod remap_tests;
-#[cfg(test)]
 #[path = "tests_sccp.rs"]
 mod sccp_tests;
 #[cfg(test)]
@@ -424,6 +421,9 @@ mod sccp_unreachable_blocks_tests;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "tests_remap.rs"]
+mod tests_remap;
 #[cfg(test)]
 #[path = "tests_support.rs"]
 mod tests_support;

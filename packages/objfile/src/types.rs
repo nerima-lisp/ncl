@@ -1,5 +1,9 @@
 use crate::ObjectError;
 
+#[cfg(test)]
+#[path = "tests/types.rs"]
+mod coverage_tests;
+
 pub fn target_usize(
     value: u64,
     field: &'static str,

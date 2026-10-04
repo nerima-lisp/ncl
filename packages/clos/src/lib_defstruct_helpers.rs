@@ -193,6 +193,17 @@ mod defstruct_helper_tests {
         let (_, _, is_read_only) = defstruct_slot_spec(&mut scope, &nil_read_only_fields)?;
         assert!(!is_read_only);
 
+        let read_only_without_colon = intern(&runtime, scope.context_mut(), "READ-ONLY");
+        let read_only_value = list(
+            scope.context_mut(),
+            &runtime,
+            &[slot, Word::NIL, read_only_without_colon, Word::TRUE],
+        );
+        let read_only_fields =
+            scope.list_to_handle_vec(ncl_object::Local::from_word(read_only_value))?;
+        let (_, _, is_read_only) = defstruct_slot_spec(&mut scope, &read_only_fields)?;
+        assert!(is_read_only);
+
         let empty_fields = scope.list_to_handle_vec(ncl_object::Local::from_word(Word::NIL))?;
         assert_eq!(
             defstruct_slot_spec(&mut scope, &empty_fields),
@@ -201,6 +212,13 @@ mod defstruct_helper_tests {
         assert!(defstruct_is_nil(scope.context(), Word::NIL)?);
         assert!(!defstruct_is_nil(scope.context(), Word::fixnum(7))?);
         assert!(!defstruct_is_nil(scope.context(), slot)?);
+        let common_lisp = runtime
+            .find_package(scope.context_mut(), COMMON_LISP)
+            .ok_or(ObjectError::TypeError)?;
+        let common_lisp_nil = Package::from_word(common_lisp)
+            .intern(scope.context_mut(), &runtime, "NIL")?
+            .0;
+        assert!(defstruct_is_nil(scope.context(), common_lisp_nil)?);
         assert_eq!(defstruct_name_or_nil(&scope, Word::NIL)?, None);
         assert_eq!(
             defstruct_name_or_nil(&scope, slot)?,

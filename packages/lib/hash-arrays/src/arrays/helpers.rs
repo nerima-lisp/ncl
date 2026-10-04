@@ -64,7 +64,10 @@ pub(super) fn array_shape(ctx: &ThreadContext, value: Word) -> Result<Vec<usize>
 /// Read one level of a `:initial-contents` nested structure as a flat
 /// sequence of elements. Lists, simple vectors, and strings are accepted,
 /// matching the sequence types CLHS permits at each level of nesting.
-fn sequence_elements(ctx: &ThreadContext, value: Word) -> Result<Vec<Word>, ObjectError> {
+pub(super) fn sequence_elements(
+    ctx: &ThreadContext,
+    value: Word,
+) -> Result<Vec<Word>, ObjectError> {
     match ncl_object::classify_object(ctx, value) {
         ObjectRef::SimpleVector(vector) => (0..simple_vector_length(ctx, vector)?)
             .map(|index| simple_vector_ref(ctx, vector, index))

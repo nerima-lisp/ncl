@@ -480,3 +480,7 @@ fn find_class_builtin(
 mod tests {
     include!("dispatch_tests.rs");
 }
+
+#[cfg(test)]
+#[path = "tests/inline_dispatch_tests.rs"]
+mod inline_dispatch_tests;

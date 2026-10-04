@@ -241,3 +241,59 @@ impl<'a> Parser<'a> {
         Ok(arguments)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::panic)]
+mod tests {
+    use super::{AlienType, parse_type_name, parse_type_specifier};
+    use crate::alien::size_of;
+
+    #[test]
+    fn parses_atomic_aliases_and_rejects_unknown_names() {
+        assert_eq!(
+            parse_type_name(" UNSIGNED__LONG-LONG "),
+            Ok(AlienType::UnsignedLongLong)
+        );
+        assert_eq!(parse_type_name("float"), Ok(AlienType::SingleFloat));
+        assert_eq!(parse_type_name("sap"), Ok(AlienType::SystemAreaPointer));
+        assert!(parse_type_name("not-a-c-type").is_err());
+    }
+
+    #[test]
+    fn parses_compound_records_enums_functions_and_arrays() {
+        let pointer = parse_type_specifier("(pointer unsigned-int)")
+            .unwrap_or_else(|error| panic!("pointer type: {error}"));
+        assert!(matches!(pointer, AlienType::Pointer(inner) if *inner == AlienType::UnsignedInt));
+        let array = parse_type_specifier("(array (pointer int) 3)")
+            .unwrap_or_else(|error| panic!("array type: {error}"));
+        assert_eq!(size_of(&array), 24);
+        let record = parse_type_specifier("(struct point (x int) (label c-string))")
+            .unwrap_or_else(|error| panic!("record type: {error}"));
+        assert!(
+            matches!(record, AlienType::Structure(ref record) if record.name() == "point" && record.fields().len() == 2)
+        );
+        let enumeration = parse_type_specifier("(enum color (red 1) (blue 2))")
+            .unwrap_or_else(|error| panic!("enumeration type: {error}"));
+        assert!(
+            matches!(enumeration, AlienType::Enumeration(ref enumeration) if enumeration.variant_value("blue") == Some(2))
+        );
+        let function = parse_type_specifier("(function int (int (name double)))")
+            .unwrap_or_else(|error| panic!("function type: {error}"));
+        assert!(
+            matches!(function, AlienType::Function(ref function) if function.result() == &AlienType::Int && function.arguments().len() == 2)
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_compound_specifiers() {
+        for source in [
+            "",
+            "(",
+            "(array int nope)",
+            "(struct name (x))",
+            "int extra",
+        ] {
+            assert!(parse_type_specifier(source).is_err(), "accepted {source:?}");
+        }
+    }
+}

@@ -152,3 +152,31 @@ fn format_float(value: f64) -> String {
         format!("{text}.0")
     }
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "coverage tests assert on setup and output"
+)]
+mod tests {
+    use super::{digit_character, format_float, format_integer, format_limbs};
+
+    #[test]
+    fn integer_and_limb_formatting_handles_edges_and_radices() {
+        assert_eq!(format_integer(0, 1), "0");
+        assert_eq!(format_integer(i64::MIN, 36), "-1Y2P0IJ32E8E8");
+        assert_eq!(format_integer(255, 16), "FF");
+        assert_eq!(format_limbs(&[0, 0], false, 10), "0");
+        assert_eq!(format_limbs(&[u32::MAX], true, 16), "-FFFFFFFF");
+        assert_eq!(digit_character(35), 'Z');
+    }
+
+    #[test]
+    fn float_formatting_handles_special_and_integral_values() {
+        assert_eq!(format_float(f64::NAN), "#<DOUBLE-FLOAT NaN>");
+        assert_eq!(format_float(f64::INFINITY), "#<DOUBLE-FLOAT Infinity>");
+        assert_eq!(format_float(f64::NEG_INFINITY), "#<DOUBLE-FLOAT -Infinity>");
+        assert_eq!(format_float(2.0), "2.0");
+        assert_eq!(format_float(1.5), "1.5");
+    }
+}

@@ -456,3 +456,7 @@ fn rewrite_method_form<'ctx>(
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 #[path = "../tests/support/lib_macros_tests.rs"]
 mod macro_tests;
+
+#[cfg(test)]
+#[path = "tests/inline_macro_tests.rs"]
+mod inline_macro_tests;

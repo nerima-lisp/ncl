@@ -455,3 +455,7 @@ fn install_hierarchy(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), O
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/register_tests.rs"]
+mod tests;

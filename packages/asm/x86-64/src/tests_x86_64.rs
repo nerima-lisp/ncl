@@ -312,3 +312,34 @@ fn sse_dispatch_rejects_non_sse_instructions() {
         Err(EncodeError::InvalidOperand("not an SSE instruction"))
     );
 }
+
+#[test]
+fn every_sse_opcode_and_direction_has_an_exact_encoding() {
+    let mut a = Assembler::new();
+    for instruction in [
+        Inst::MovsdRM(Xmm(8), Mem::base(Reg::R12, 8)),
+        Inst::MovsdMR(Mem::base(Reg::R13, -8), Xmm(15)),
+        Inst::MovqXR(Xmm(8), Reg::R15),
+        Inst::MovqRX(Reg::R15, Xmm(8)),
+        Inst::Sse(SseOp::Subsd, Xmm(1), Xmm(2)),
+        Inst::Sse(SseOp::Mulsd, Xmm(1), Xmm(2)),
+        Inst::Sse(SseOp::Divsd, Xmm(1), Xmm(2)),
+        Inst::Sse(SseOp::Ucomisd, Xmm(1), Xmm(2)),
+        Inst::Sse(SseOp::Sqrtsd, Xmm(1), Xmm(2)),
+        Inst::Xorpd(Xmm(1), Xmm(2)),
+    ] {
+        assert!(
+            a.emit(&instruction).is_ok(),
+            "failed to encode {instruction:?}"
+        );
+    }
+    assert_eq!(
+        a.bytes(),
+        [
+            0xf2, 0x45, 0x0f, 0x10, 0x44, 0x24, 0x08, 0xf2, 0x45, 0x0f, 0x11, 0x7d, 0xf8, 0x66,
+            0x45, 0x0f, 0x6e, 0xc7, 0x66, 0x45, 0x0f, 0x7e, 0xc7, 0xf2, 0x0f, 0x5c, 0xca, 0xf2,
+            0x0f, 0x59, 0xca, 0xf2, 0x0f, 0x5e, 0xca, 0xf2, 0x0f, 0x2e, 0xca, 0xf2, 0x0f, 0x51,
+            0xca, 0x66, 0x0f, 0x57, 0xca,
+        ]
+    );
+}

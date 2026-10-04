@@ -125,3 +125,45 @@ pub fn specialized_array_set(
         layout::widetag::SPECIALIZED_ARRAY,
     )
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn specialized_array_accessors_validate_type_and_bounds() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let array = make_specialized_array(
+            &mut ctx,
+            &runtime,
+            ArrayElementType::Bit,
+            &[Word::fixnum(0), Word::fixnum(1)],
+        )
+        .expect("array");
+        assert_eq!(
+            specialized_array_element_type(&ctx, array),
+            Ok(ArrayElementType::Bit)
+        );
+        assert_eq!(specialized_array_ref(&ctx, array, 1), Ok(Word::fixnum(1)));
+        assert_eq!(
+            specialized_array_set(&mut ctx, array, 0, Word::fixnum(1)),
+            Ok(())
+        );
+        assert_eq!(specialized_array_ref(&ctx, array, 0), Ok(Word::fixnum(1)));
+        assert_eq!(
+            specialized_array_set(&mut ctx, array, 0, Word::fixnum(2)),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            specialized_array_ref(&ctx, array, 2),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            make_specialized_array(&mut ctx, &runtime, ArrayElementType::T, &[]),
+            Err(ObjectError::TypeError)
+        );
+    }
+}

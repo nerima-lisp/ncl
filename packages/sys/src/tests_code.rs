@@ -376,6 +376,79 @@ fn registry_frame_scan_forwards_frame_and_register_roots() {
     assert_eq!(registers[3], Word::fixnum(13));
 }
 
+#[test]
+fn frame_scans_reject_unresolvable_return_pcs_and_register_mismatches() {
+    let mut bytes = vec![0; 16];
+    bytes[0..4].copy_from_slice(&4_u32.to_le_bytes());
+    bytes[4..6].copy_from_slice(&4_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    bytes.push(0b0000_0100);
+    let map_set = SafepointMap::decode(&bytes, 1).unwrap_or_default();
+    let mut frame = [
+        Word::from_bits(0),
+        Word::from_bits(3),
+        Word::fixnum(1),
+        Word::NIL,
+    ];
+    assert_eq!(
+        scan_frame_chain(&mut frame, 0, 4, &map_set, |word| word),
+        None
+    );
+    assert_eq!(
+        scan_frame_with_registers(
+            &mut frame,
+            0,
+            &Safepoint {
+                register_mask: 0,
+                register_ids: vec![3],
+                ..map_set.entries()[0].clone()
+            },
+            &mut [Word::NIL; 4],
+            |word| word,
+        ),
+        None
+    );
+}
+
+#[test]
+fn registry_frame_scan_rejects_unknown_code_and_safepoint_offsets() {
+    let mut code = alloc_code(16).unwrap_or_else(|error| panic!("alloc code: {error:?}"));
+    assert_eq!(publish_code(&mut code), Ok(()));
+    let mut registry = CodeRegistry::default();
+    assert_eq!(
+        registry.register(
+            &code,
+            CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 4,
+                function_name: "lookup-rejection".to_owned(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: SafepointMap::default(),
+                debug_table: Vec::new(),
+            },
+        ),
+        Ok(())
+    );
+    let mut frame = [
+        Word::from_bits(0),
+        Word::from_bits(code.address() as u64),
+        Word::fixnum(1),
+        Word::NIL,
+    ];
+    assert_eq!(
+        scan_frame_chain_with_registry(&mut frame, 0, &registry, &mut [], |word| word,),
+        None
+    );
+    frame[1] = Word::from_bits((code.address() + code.len()) as u64);
+    assert_eq!(
+        scan_frame_chain_with_registry(&mut frame, 0, &registry, &mut [], |word| word),
+        None
+    );
+}
+
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[test]
 fn published_machine_code_returns_42() {

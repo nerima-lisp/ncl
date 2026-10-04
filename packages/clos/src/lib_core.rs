@@ -446,6 +446,10 @@ fn class_name_builtin(
     class_name(ctx, args.required(0)?)
 }
 
+#[cfg(test)]
+#[path = "tests/core_tests.rs"]
+mod core_tests;
+
 // Dispatch metadata is kept in a symbol plist rather than in a Rust-side
 // registry. The latter would retain moving heap words without a GC root and
 // would also duplicate the runtime's function registry.

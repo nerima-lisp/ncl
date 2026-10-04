@@ -96,3 +96,30 @@ impl From<ncl_compiler_front::LowerError> for RuntimeError {
         Self::Lower(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeError;
+    use ncl_reader::ReadError;
+
+    #[test]
+    fn displays_simple_runtime_error_variants() {
+        assert_eq!(
+            RuntimeError::Native("broken entry".to_owned()).to_string(),
+            "native error: broken entry"
+        );
+        assert_eq!(
+            RuntimeError::UndefinedFunction {
+                name: "MISSING".to_owned(),
+            }
+            .to_string(),
+            "undefined function UNDEFINED-FUNCTION: MISSING"
+        );
+    }
+
+    #[test]
+    fn only_unexpected_eof_is_an_incomplete_read() {
+        assert!(RuntimeError::Read(ReadError::UnexpectedEof).is_incomplete_read());
+        assert!(!RuntimeError::Read(ReadError::UnmatchedRightParen).is_incomplete_read());
+    }
+}

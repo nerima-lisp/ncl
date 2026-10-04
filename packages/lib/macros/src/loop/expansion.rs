@@ -298,3 +298,98 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     let expansion = held_form(ctx, runtime, &mut held, "LET", &[binding_list, block])?;
     held_get(&held, expansion)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::r#loop::{ConditionalKind, HashClause, HashIterationKind, LoopClause};
+    use crate::{elements, list, symbol};
+
+    fn fixture() -> std::result::Result<(Runtime, ThreadContext), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        Ok((runtime, ctx))
+    }
+
+    fn contains(ctx: &mut ThreadContext, form: Word, needle: Word) -> bool {
+        if form == needle {
+            return true;
+        }
+        if !form.is_cons() {
+            return false;
+        }
+        ncl_object::car(ctx, form).is_ok_and(|head| contains(ctx, head, needle))
+            || ncl_object::cdr(ctx, form).is_ok_and(|tail| contains(ctx, tail, needle))
+    }
+
+    #[test]
+    fn expands_hash_conditional_destructuring_and_sequence_drivers()
+    -> std::result::Result<(), ObjectError> {
+        let (runtime, mut ctx) = fixture()?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let y = symbol(&mut ctx, &runtime, "Y")?;
+        let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+        let table = symbol(&mut ctx, &runtime, "TABLE")?;
+        let it = symbol(&mut ctx, &runtime, "IT")?;
+        let pair = list(&mut ctx, &runtime, &[x, y])?;
+        let expansion = expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![
+                    LoopClause::Hash(HashClause {
+                        variable: x,
+                        kind: HashIterationKind::Key,
+                        table,
+                        using: Some((HashIterationKind::Value, y)),
+                    }),
+                    LoopClause::Conditional {
+                        kind: ConditionalKind::When,
+                        test: it,
+                        then: vec![LoopClause::Do(vec![pair])],
+                        otherwise: vec![LoopClause::Return(y)],
+                    },
+                ],
+            },
+        )?;
+        let maphash = symbol(&mut ctx, &runtime, "MAPHASH")?;
+        let if_symbol = symbol(&mut ctx, &runtime, "IF")?;
+        assert!(contains(&mut ctx, expansion, maphash));
+        assert!(contains(&mut ctx, expansion, if_symbol));
+        assert!(contains(&mut ctx, expansion, it));
+
+        let nested = list(&mut ctx, &runtime, &[x, y])?;
+        let sequence_expansion = expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![
+                    LoopClause::In {
+                        variable: nested,
+                        sequence,
+                        on: false,
+                        by: None,
+                    },
+                    LoopClause::Across {
+                        variable: y,
+                        vector: sequence,
+                    },
+                    LoopClause::Repeat(Word::fixnum(2)),
+                    LoopClause::Do(vec![x]),
+                ],
+            },
+        )?;
+        for name in ["CAR", "CDR", "ARRAY-TOTAL-SIZE", "AREF", "<=", "-", "SETQ"] {
+            let name_symbol = symbol(&mut ctx, &runtime, name)?;
+            assert!(
+                contains(&mut ctx, sequence_expansion, name_symbol),
+                "missing {name}"
+            );
+        }
+        assert_ne!(elements(&mut ctx, sequence_expansion)?, Vec::<Word>::new());
+        Ok(())
+    }
+}

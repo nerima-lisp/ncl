@@ -62,3 +62,27 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
         &[lambda_form, value],
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_variables_and_builds_multiple_value_call() -> Result<()> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let x = symbol(&mut ctx, &runtime, "X")?;
+        let variables = list(&mut ctx, &runtime, &[x])?;
+        let expansion = expand(&mut ctx, &runtime, &[variables, Word::fixnum(1), x])?;
+        assert_eq!(
+            elements(&mut ctx, expansion)?[0],
+            symbol(&mut ctx, &runtime, "MULTIPLE-VALUE-CALL")?
+        );
+        assert_eq!(
+            expand(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(1)]),
+            Err(ObjectError::TypeError)
+        );
+        Ok(())
+    }
+}

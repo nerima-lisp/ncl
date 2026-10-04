@@ -449,3 +449,7 @@ fn make_class_descriptor(
     let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
     make_simple_vector(ctx, runtime, &[name_word, Word::NIL, Word::NIL])
 }
+
+#[cfg(test)]
+#[path = "tests/class_tests.rs"]
+mod tests;

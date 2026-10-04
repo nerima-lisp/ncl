@@ -222,3 +222,25 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+
+    #[test]
+    fn production_registration_exposes_classes_and_all_macro_entries() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        register(&runtime)?;
+        let mut context = ThreadContext::new();
+        context.register(&runtime)?;
+        assert_ne!(runtime.class(&mut context, "T"), Some(Word::UNBOUND));
+        assert!(runtime.class(&mut context, "INTEGER").is_some());
+
+        let names = production_function_names();
+        assert!(names.iter().any(|id| id.package == BuiltinPackage::CommonLisp && id.name.as_str() == "DEFCLASS"));
+        assert!(names.iter().any(|id| id.package == BuiltinPackage::CommonLisp && id.name.as_str() == "%STRUCTURE-MAKE"));
+        assert!(names.iter().any(|id| id.package == BuiltinPackage::NclMop && id.name.as_str() == "CLASS-NAME"));
+        assert!(names.len() > DIRECT_BUILTINS.len());
+        Ok(())
+    }
+}

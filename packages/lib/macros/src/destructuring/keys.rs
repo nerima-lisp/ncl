@@ -150,3 +150,42 @@ pub(super) fn walk_key(
         remaining = tail;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{elements, list, symbol};
+
+    #[test]
+    fn key_walker_builds_default_and_explicit_lookup_bindings()
+    -> std::result::Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let name = symbol(&mut ctx, &runtime, "NAME")?;
+        let supplied = symbol(&mut ctx, &runtime, "SUPPLIED")?;
+        let explicit_name = symbol(&mut ctx, &runtime, "EXPLICIT-NAME")?;
+        let explicit_keyword = symbol(&mut ctx, &runtime, "KEYWORD::EXPLICIT")?;
+        let default = Word::fixnum(42);
+        let explicit_pair = list(&mut ctx, &runtime, &[explicit_keyword, explicit_name])?;
+        let first = list(&mut ctx, &runtime, &[name, default, supplied])?;
+        let second = list(&mut ctx, &runtime, &[explicit_pair])?;
+        let value = symbol(&mut ctx, &runtime, "VALUE")?;
+        let specs = list(&mut ctx, &runtime, &[first, second])?;
+        let mut held = vec![specs, value];
+        let cursor = held_push(&mut held, value);
+        let mut bindings = Vec::new();
+        walk_key(&mut ctx, &runtime, &mut held, 0, cursor, &mut bindings)?;
+        assert!(bindings.len() >= 5);
+        let name_binding = bindings
+            .iter()
+            .map(|(target, form)| (held_get(&held, *target), held_get(&held, *form)))
+            .find(|(target, _)| target.as_ref().is_ok_and(|word| *word == name))
+            .ok_or(ObjectError::TypeError)?;
+        assert_eq!(
+            elements(&mut ctx, name_binding.1?)?[0],
+            symbol(&mut ctx, &runtime, "IF")?
+        );
+        Ok(())
+    }
+}

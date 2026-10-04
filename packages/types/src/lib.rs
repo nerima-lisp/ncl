@@ -27,3 +27,7 @@ pub use typep::typep;
 
 /// Serialize a type-specifier value at the object-layer boundary.
 pub use adapter::serialize_value;
+
+#[cfg(test)]
+#[path = "tests/coverage.rs"]
+mod tests;

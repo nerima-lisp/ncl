@@ -234,3 +234,57 @@ fn set_symbol_flag(
     ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::FLAGS);
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::{Runtime, make_string, make_symbol};
+
+    #[test]
+    fn symbol_cells_and_flags_round_trip_values() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register");
+        let name = make_string(&mut ctx, &runtime, &['S']).expect("name");
+        let symbol = make_symbol(&mut ctx, &runtime, name).expect("symbol");
+        assert_eq!(symbol_value(&ctx, Word::NIL), Ok(Word::NIL));
+        assert_eq!(symbol_name(&ctx, symbol), Ok(name));
+        assert_eq!(symbol_package(&ctx, symbol), Ok(Word::NIL));
+        assert_eq!(symbol_plist(&ctx, symbol), Ok(Word::NIL));
+        assert_eq!(symbol_function(&ctx, symbol), Ok(Word::UNBOUND));
+        assert_eq!(symbol_flags(&ctx, symbol), Ok(0));
+        assert!(!symbol_is_special(&ctx, symbol).expect("special"));
+        assert!(!symbol_is_constant(&ctx, symbol).expect("constant"));
+        assert!(!symbol_is_macro(&ctx, symbol).expect("macro"));
+        assert!(!symbol_is_package_locked(&ctx, symbol).expect("locked"));
+        set_symbol_value(&mut ctx, symbol, Word::fixnum(9)).expect("value");
+        assert_eq!(bound_symbol_value(&mut ctx, symbol), Ok(Word::fixnum(9)));
+        set_symbol_plist(&mut ctx, symbol, Word::TRUE).expect("plist");
+        assert_eq!(symbol_plist(&ctx, symbol), Ok(Word::TRUE));
+        set_symbol_special(&mut ctx, symbol, true).expect("special");
+        set_symbol_constant(&mut ctx, symbol, true).expect("constant");
+        set_symbol_macro(&mut ctx, symbol, true).expect("macro");
+        set_symbol_package_locked(&mut ctx, symbol, true).expect("locked");
+        assert_eq!(symbol_flags(&ctx, symbol), Ok(15));
+        assert!(symbol_is_special(&ctx, symbol).expect("special"));
+        assert!(symbol_is_constant(&ctx, symbol).expect("constant"));
+        assert!(symbol_is_macro(&ctx, symbol).expect("macro"));
+        assert!(symbol_is_package_locked(&ctx, symbol).expect("locked"));
+        set_symbol_macro(&mut ctx, symbol, false).expect("clear macro");
+        assert!(!symbol_is_macro(&ctx, symbol).expect("macro"));
+        assert_eq!(
+            symbol_name(&ctx, Word::fixnum(1)),
+            Err(ObjectError::TypeError)
+        );
+        let unbound = make_symbol(&mut ctx, &runtime, name).expect("unbound symbol");
+        assert_eq!(
+            bound_symbol_value(&mut ctx, unbound),
+            Err(ObjectError::TypeError)
+        );
+        assert!(matches!(
+            ctx.take_pending_lisp_error(),
+            Some(LispError::CellError(_))
+        ));
+    }
+}

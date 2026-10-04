@@ -26,6 +26,17 @@ fn builder_allocates_ids_and_edits_selected_blocks() {
     builder
         .terminate(Terminator::Return { values: Vec::new() })
         .expect("the entry block is selected");
+    builder.add_handler_region(HandlerRegion {
+        id: HandlerRegionId(0),
+        kind: HandlerKind::Catch,
+        protected: vec![BlockId(0)],
+        handler: BlockId(1),
+        cleanup: None,
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
 
     let function = builder.finish();
     assert_eq!(function.name, "builder");
@@ -36,6 +47,8 @@ fn builder_allocates_ids_and_edits_selected_blocks() {
         function.blocks[1].ops[0].results,
         vec![(ValueId(11), Ty::Word)]
     );
+    assert_eq!(function.handler_regions.len(), 1);
+    assert_eq!(function.handler_regions[0].handler, BlockId(1));
 }
 
 #[test]

@@ -238,6 +238,14 @@ mod tests {
         assert!(!equal(&context, HashTest::Equal, left_string, right_string, 0).unwrap());
         assert!(equal(&context, HashTest::Equalp, left_string, right_string, 0).unwrap());
         assert!(!equal(&context, HashTest::Equalp, left_string, Word::NIL, 0).unwrap());
+        assert!(equal(&context, HashTest::Eq, Word::NIL, Word::NIL, 0).unwrap());
+        assert!(!equal(&context, HashTest::Eq, Word::NIL, Word::TRUE, 0).unwrap());
+        assert!(!equal(&context, HashTest::Eql, Word::fixnum(1), Word::fixnum(2), 0).unwrap());
+        let short_string = make_string(&mut context, &runtime, &['a']).unwrap_or(Word::NIL);
+        let mixed_case_string =
+            make_string(&mut context, &runtime, &['a', 'C']).unwrap_or(Word::NIL);
+        assert!(!equal(&context, HashTest::Equal, left_string, short_string, 0).unwrap());
+        assert!(!equal(&context, HashTest::Equal, left_string, mixed_case_string, 0).unwrap());
         assert_eq!(
             equal(&context, HashTest::Equal, Word::NIL, Word::NIL, 65),
             Ok(false)
@@ -297,6 +305,14 @@ mod tests {
         assert_eq!(
             hash_key(&context, HashTest::Eq, Word::fixnum(4)),
             Ok(crate::hash_table::sxhash(Word::fixnum(4)))
+        );
+        assert_ne!(
+            hash_key(&context, HashTest::Equal, left_string),
+            hash_key(&context, HashTest::Equalp, left_string)
+        );
+        assert_eq!(
+            hash_key(&context, HashTest::Eql, Word::NIL),
+            Ok(crate::hash_table::sxhash(Word::NIL))
         );
     }
 }

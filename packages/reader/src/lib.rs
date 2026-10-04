@@ -35,6 +35,10 @@ mod reader;
 mod readtable;
 pub(crate) mod token;
 
+#[cfg(test)]
+#[path = "tests/coverage.rs"]
+mod tests;
+
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext};
 
 pub use error::ReadError;

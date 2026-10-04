@@ -1,18 +1,30 @@
 //! Registration of the printer's owned symbols and its dispatch table.
 
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
+
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
     make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, simple_vector_ref,
-    structure_layout, symbol_plist, symbol_value, with_root, with_roots,
+    structure_layout, symbol_name, symbol_plist, symbol_value, with_root, with_roots,
 };
 
-use crate::{PrintError, PrintOptions, write_to_string};
+use crate::{NewlineKind, PrintError, PrintOptions, write_to_string};
+
+#[derive(Default)]
+struct LayoutState {
+    column: usize,
+    indent: usize,
+    pending: Option<NewlineKind>,
+}
+
+static LAYOUT_STATES: OnceLock<Mutex<HashMap<usize, LayoutState>>> = OnceLock::new();
 
 /// The `(package, name)` functions `ncl-printer` owns.
-const FUNCTIONS: [(&str, &str); 20] = [
+const FUNCTIONS: [(&str, &str); 23] = [
     ("COMMON-LISP", "COPY-PPRINT-DISPATCH"),
     ("COMMON-LISP", "PPRINT"),
     ("COMMON-LISP", "PPRINT-DISPATCH"),
@@ -33,6 +45,9 @@ const FUNCTIONS: [(&str, &str); 20] = [
     ("COMMON-LISP", "WRITE-TO-STRING"),
     ("NCL-EXT", "PRINT-SYMBOL-WITH-PREFIX"),
     ("NCL-EXT", "PRINT-UNREADABLY"),
+    ("NCL-EXT", "PPRINT-LOGICAL-BLOCK"),
+    ("NCL-EXT", "PPRINT-POP"),
+    ("NCL-EXT", "PPRINT-EXIT-IF-LIST-EXHAUSTED"),
 ];
 
 const OBJECT_PARAMETER: Parameter = Parameter {
@@ -45,8 +60,15 @@ const STREAM_PARAMETER: Parameter = Parameter {
 };
 
 /// The `(package, name)` special variables `ncl-printer` owns.
-const VARIABLES: [(&str, &str); 4] = [
+const VARIABLES: [(&str, &str); 11] = [
     ("COMMON-LISP", "*PRINT-PPRINT-DISPATCH*"),
+    ("COMMON-LISP", "*PRINT-PRETTY*"),
+    ("COMMON-LISP", "*PRINT-RIGHT-MARGIN*"),
+    ("COMMON-LISP", "*PRINT-MISER-WIDTH*"),
+    ("COMMON-LISP", "*PRINT-LENGTH*"),
+    ("COMMON-LISP", "*PRINT-LEVEL*"),
+    ("COMMON-LISP", "*PRINT-LINES*"),
+    ("COMMON-LISP", "*PRINT-CIRCLE*"),
     ("COMMON-LISP", "*PRINT-READABLY*"),
     ("NCL-EXT", "*PRINT-CIRCLE-NOT-SHARED*"),
     ("NCL-EXT", "*PRINT-VECTOR-LENGTH*"),
@@ -72,6 +94,26 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         Package::from_word(package_word).intern(ctx, runtime, name)?;
         if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
             register_print_builtin(ctx, runtime, name)?;
+        } else if matches!(
+            (package, name),
+            (
+                "COMMON-LISP",
+                "COPY-PPRINT-DISPATCH"
+                    | "PPRINT"
+                    | "PPRINT-DISPATCH"
+                    | "PPRINT-FILL"
+                    | "PPRINT-INDENT"
+                    | "PPRINT-LINEAR"
+                    | "PPRINT-NEWLINE"
+                    | "PPRINT-TAB"
+                    | "PPRINT-TABULAR"
+                    | "SET-PPRINT-DISPATCH"
+            ) | (
+                "NCL-EXT",
+                "PPRINT-LOGICAL-BLOCK" | "PPRINT-POP" | "PPRINT-EXIT-IF-LIST-EXHAUSTED"
+            )
+        ) {
+            register_pprint_builtin(ctx, runtime, name)?;
         } else {
             runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) placeholder for unimplemented printer surface
         }
@@ -86,6 +128,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     }
     Ok(())
 }
+
+include!("pprint.rs");
 
 fn register_print_builtin(
     ctx: &mut ThreadContext,
@@ -391,101 +435,12 @@ fn initialise_variable(
     set_symbol_special(ctx, symbol, true)?;
     let value = if name == "*PRINT-PPRINT-DISPATCH*" {
         default_table(ctx, runtime)?
+    } else if name == "*PRINT-RIGHT-MARGIN*" {
+        Word::fixnum(80)
     } else {
         Word::NIL
     };
     set_symbol_value(ctx, symbol, value)
-}
-
-/// Build a dispatch table whose default entry has no function.
-///
-/// The table is a list of `(type-specifier . function)` entries. The default
-/// entry's specifier is `T`, which matches every object.
-///
-/// # Errors
-///
-/// Returns an [`ObjectError`] when an entry cannot be allocated.
-pub fn default_table(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
-    let mut entry = make_cons(ctx, runtime, Word::TRUE, Word::NIL)?;
-    let token = push_root(ctx, &mut entry);
-    let result = make_cons(ctx, runtime, entry, Word::NIL);
-    let _ = pop_root(ctx, token);
-    result
-}
-
-/// Return the function `table` associates with `object`, or `NIL`.
-///
-/// A `T` entry matches every object; any other specifier matches by identity.
-/// Type-specifier matching needs `ncl-types`, which is not on `main` yet, so
-/// non-`T` entries compare with `eq`.
-///
-/// # Errors
-///
-/// Returns an [`ObjectError`] when a list accessor fails.
-#[must_use = "the dispatch function is the result"]
-pub fn pprint_dispatch(
-    ctx: &mut ThreadContext,
-    object: Word,
-    table: Word,
-) -> Result<Word, ObjectError> {
-    let mut cursor = table;
-    while cursor != Word::NIL {
-        let entry = car(ctx, cursor)?;
-        if entry.is_cons() {
-            let specifier = car(ctx, entry)?;
-            let function = cdr(ctx, entry)?;
-            if specifier == Word::TRUE || specifier == object {
-                return Ok(function);
-            }
-        }
-        cursor = cdr(ctx, cursor)?;
-    }
-    Ok(Word::NIL)
-}
-
-/// Return `table` with `(type_specifier . function)` prepended.
-///
-/// The new entry shadows any earlier entry with the same specifier, because
-/// lookup returns the first match.
-///
-/// # Errors
-///
-/// Returns an [`ObjectError`] when an entry cannot be allocated.
-#[must_use = "the updated table is the result"]
-pub fn set_pprint_dispatch(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    type_specifier: Word,
-    function: Word,
-    table: Word,
-) -> Result<Word, ObjectError> {
-    let mut entry = make_cons(ctx, runtime, type_specifier, function)?;
-    let token = push_root(ctx, &mut entry);
-    let result = make_cons(ctx, runtime, entry, table);
-    let _ = pop_root(ctx, token);
-    result
-}
-
-/// Return a shallow copy of a dispatch table.
-///
-/// # Errors
-///
-/// Returns an [`ObjectError`] when an entry cannot be allocated.
-#[must_use = "the copied table is the result"]
-pub fn copy_pprint_dispatch(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    table: Word,
-) -> Result<Word, ObjectError> {
-    let mut source = table;
-    let mut copied = Word::NIL;
-    let source_token = push_root(ctx, &mut source);
-    let copied_token = push_root(ctx, &mut copied);
-    let result = copy_entries(ctx, runtime, &mut source, &mut copied);
-    let _ = pop_root(ctx, copied_token);
-    let _ = pop_root(ctx, source_token);
-    result?;
-    Ok(copied)
 }
 
 include!("pprint_dispatch.rs");

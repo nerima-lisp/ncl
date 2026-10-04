@@ -14,6 +14,7 @@ mod r#loop;
 mod owned_macros;
 mod packaging;
 mod place;
+mod pprint;
 mod psetq;
 mod setf;
 mod setf_places;
@@ -301,6 +302,9 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DOTIMES" => Some(iteration::expand_dotimes_adapter),
         "LOOP" => Some(r#loop::expand_loop_callback),
         "QUASIQUOTE" => Some(backquote::expand_quasiquote_adapter),
+        "PPRINT-LOGICAL-BLOCK" => Some(pprint::expand_logical_block_adapter),
+        "PPRINT-POP" => Some(pprint::expand_pop_adapter),
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED" => Some(pprint::expand_exit_if_list_exhausted_adapter),
         _ => None,
     }
 }

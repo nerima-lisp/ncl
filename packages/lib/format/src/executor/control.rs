@@ -77,7 +77,10 @@ pub(super) fn execute_control_kind(
                 .first()
                 .and_then(|parameter| match parameter {
                     crate::Parameter::Integer(value) => isize::try_from(*value).ok(),
-                    _ => None,
+                    crate::Parameter::Character(_)
+                    | crate::Parameter::Relative
+                    | crate::Parameter::ArgumentCount
+                    | crate::Parameter::Unsupplied => None,
                 })
                 .unwrap_or(0);
             if let Some(pretty) = state.pretty.as_ref() {

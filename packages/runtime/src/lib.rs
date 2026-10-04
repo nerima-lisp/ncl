@@ -14,6 +14,7 @@ mod native_error;
 mod nonlocal;
 mod pathname_binding;
 mod support;
+mod time;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
@@ -72,6 +73,7 @@ impl Runtime {
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
         load::register_builtin(&mut context, &object)?;
+        time::register(&mut context, &object)?;
         Ok(Self {
             object,
             context,

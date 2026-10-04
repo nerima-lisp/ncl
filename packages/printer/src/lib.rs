@@ -21,7 +21,10 @@ mod sink;
 mod string;
 mod symbol;
 
-pub use builtins::{copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch};
+pub use builtins::{
+    copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch,
+    set_pprint_dispatch_with_priority,
+};
 pub use error::PrintError;
 pub use options::{
     ArrayMode, CircleMode, CircleSharingMode, EscapeMode, GensymMode, NonNegative, PrettyMode,

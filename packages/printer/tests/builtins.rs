@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin output")]
 #![allow(missing_docs)]
 
-use ncl_object::{FunctionObject, Runtime, ThreadContext, Word, make_string};
+use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, make_string};
 
 fn function(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
     FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap()
@@ -80,5 +80,32 @@ fn pprint_dispatch_builtins_use_the_ambient_table() {
     assert_eq!(
         call(&runtime, &mut ctx, "PPRINT-DISPATCH", &[object]),
         Word::NIL
+    );
+}
+
+#[test]
+fn priority_dispatch_matches_basic_type_specifiers() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    let table = call(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH", &[]);
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let integer = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "INTEGER")
+        .unwrap()
+        .0;
+    let table = ncl_printer::set_pprint_dispatch_with_priority(
+        &mut ctx,
+        &runtime,
+        integer,
+        Word::fixnum(11),
+        10,
+        table,
+    )
+    .unwrap();
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, Word::fixnum(4), table).unwrap(),
+        Word::fixnum(11)
     );
 }

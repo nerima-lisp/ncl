@@ -6,7 +6,7 @@ use ncl_object::{
     FunctionDesignator, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
     make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, simple_vector_ref,
-    structure_layout, symbol_plist, symbol_value, with_root, with_roots,
+    structure_layout, symbol_name, symbol_plist, symbol_value, with_root, with_roots,
 };
 
 use crate::{PrintError, PrintOptions, write_to_string};
@@ -243,7 +243,9 @@ fn set_pprint_dispatch_builtin(
     let function = args.required(1)?;
     let table = dispatch_table(ctx, runtime, args.get(3))?;
     let _priority = args.get(2);
-    let updated = set_pprint_dispatch(ctx, runtime, type_specifier, function, table)?;
+    let priority = args.get(2).and_then(Word::as_fixnum).unwrap_or(0);
+    let updated =
+        set_pprint_dispatch_with_priority(ctx, runtime, type_specifier, function, priority, table)?;
     if args.get(3).is_none() {
         let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
         with_root(ctx, &mut package.clone(), |ctx, package| {
@@ -630,9 +632,16 @@ pub fn pprint_dispatch(
         let entry = car(ctx, cursor)?;
         if entry.is_cons() {
             let specifier = car(ctx, entry)?;
-            let function = cdr(ctx, entry)?;
-            if specifier == Word::TRUE || specifier == object {
-                return Ok(function);
+            if matches_type_specifier(ctx, object, specifier)? {
+                let payload = cdr(ctx, entry)?;
+                if payload.is_cons() {
+                    let candidate = car(ctx, payload)?;
+                    let rest = cdr(ctx, payload)?;
+                    if rest.as_fixnum().is_some() {
+                        return Ok(candidate);
+                    }
+                }
+                return Ok(payload);
             }
         }
         cursor = cdr(ctx, cursor)?;
@@ -661,6 +670,103 @@ pub fn set_pprint_dispatch(
     let result = make_cons(ctx, runtime, entry, table);
     let _ = pop_root(ctx, token);
     result
+}
+
+/// Add a priority-aware dispatch entry. Higher priorities are consulted first.
+///
+/// # Errors
+///
+/// Returns an [`ObjectError`] if the table cannot be traversed or a new entry
+/// cannot be allocated.
+pub fn set_pprint_dispatch_with_priority(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    type_specifier: Word,
+    function: Word,
+    priority: i64,
+    table: Word,
+) -> Result<Word, ObjectError> {
+    let mut payload = make_cons(ctx, runtime, function, Word::fixnum(priority))?;
+    let payload_token = push_root(ctx, &mut payload);
+    let mut entry = make_cons(ctx, runtime, type_specifier, payload)?;
+    let entry_token = push_root(ctx, &mut entry);
+    let mut head = table;
+    let head_token = push_root(ctx, &mut head);
+    let mut cursor = table;
+    while cursor != Word::NIL {
+        let existing = car(ctx, cursor)?;
+        let existing_payload = cdr(ctx, existing)?;
+        let existing_priority = if existing_payload.is_cons() {
+            let rest = cdr(ctx, existing_payload)?;
+            rest.as_fixnum().unwrap_or(0)
+        } else {
+            0
+        };
+        if priority > existing_priority {
+            break;
+        }
+        cursor = cdr(ctx, cursor)?;
+    }
+    if cursor == table {
+        head = make_cons(ctx, runtime, entry, table)?;
+    } else {
+        let mut prefix = Word::NIL;
+        let mut source = table;
+        while source != cursor {
+            let item = car(ctx, source)?;
+            let token = push_root(ctx, &mut prefix);
+            prefix = make_cons(ctx, runtime, item, prefix)?;
+            let _ = pop_root(ctx, token);
+            source = cdr(ctx, source)?;
+        }
+        let mut inserted = make_cons(ctx, runtime, entry, cursor)?;
+        let token = push_root(ctx, &mut inserted);
+        let mut reversed = prefix;
+        while reversed != Word::NIL {
+            let item = car(ctx, reversed)?;
+            inserted = make_cons(ctx, runtime, item, inserted)?;
+            reversed = cdr(ctx, reversed)?;
+        }
+        let _ = pop_root(ctx, token);
+        head = inserted;
+    }
+    let _ = pop_root(ctx, head_token);
+    let _ = pop_root(ctx, entry_token);
+    let _ = pop_root(ctx, payload_token);
+    Ok(head)
+}
+
+fn matches_type_specifier(
+    ctx: &ThreadContext,
+    object: Word,
+    specifier: Word,
+) -> Result<bool, ObjectError> {
+    if specifier == Word::TRUE || specifier == object {
+        return Ok(true);
+    }
+    let Ok(name) = symbol_name(ctx, specifier) else {
+        return Ok(false);
+    };
+    let length = ncl_object::string_length(ctx, name)?;
+    let mut text = String::with_capacity(length);
+    for index in 0..length {
+        text.push(ncl_object::string_ref(ctx, name, index)?);
+    }
+    let is_cons = object.is_cons();
+    Ok(match text.to_ascii_uppercase().as_str() {
+        "CONS" => is_cons,
+        "LIST" => is_cons || object == Word::NIL,
+        "ATOM" => !is_cons,
+        "SYMBOL" => matches!(
+            ncl_object::classify_object(ctx, object),
+            ncl_object::ObjectRef::Symbol(_)
+        ),
+        "INTEGER" => matches!(
+            ncl_object::classify_object(ctx, object),
+            ncl_object::ObjectRef::Fixnum(_) | ncl_object::ObjectRef::Bignum(_)
+        ),
+        _ => false,
+    })
 }
 
 /// Return a shallow copy of a dispatch table.

@@ -57,7 +57,10 @@ flushes before writing its suffix.
 `PrintOptions::from_specials` reads the ambient variables when they are interned
 and special, and keeps the default otherwise. The dispatch functions operate on
 the `*print-pprint-dispatch*` table, a list of `(type-specifier . function)`
-entries whose `T` entry is the default.
+entries whose `T` entry is the default. Priority-aware entries use an internal
+`(type-specifier function . priority)` representation and are ordered from
+highest to lowest priority. Basic `CONS`, `LIST`, `ATOM`, `SYMBOL`, and
+`INTEGER` specifiers are recognized.
 
 ## Printed forms
 
@@ -119,9 +122,8 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-PRETTY*`,
   stream-backed `PrettyPrinter` state adapter.
 - **CL pretty-printer connection**: `PrettyPrinter` is the Rust boundary for
   FORMAT and stream integrations; it is now also a nested `CharSink`.
-- **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
-  matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
-  `eq`.
+- **Standard dispatch**: operator-specific entries for `QUOTE`, `LET`, and
+  `DEFUN` and full Common Lisp type-specifier dispatch remain to be added.
 
 ## Verification
 

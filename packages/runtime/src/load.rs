@@ -256,6 +256,16 @@ pub fn register_builtin(
         )
         .with_nested_evaluation(),
     )?;
+    let common_lisp = object
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let compile_file_truename = Package::from_word(common_lisp)
+        .intern(ctx, object, "*COMPILE-FILE-TRUENAME*")?
+        .0;
+    ncl_object::set_symbol_special(ctx, compile_file_truename, true)?;
+    if symbol_value(ctx, compile_file_truename)? == Word::UNBOUND {
+        set_symbol_value(ctx, compile_file_truename, Word::NIL)?;
+    }
     Ok(())
 }
 
@@ -312,7 +322,10 @@ pub fn source_forms_with_mode(
     let loaded = (|| {
         while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
             let package = in_package_name(&runtime.context, form)?;
-            result = eval_top_level(runtime, &mut options, form, mode)?;
+            result = match eval_top_level(runtime, &mut options, form, mode) {
+                Ok(result) => result,
+                Err(error) => return Err(error),
+            };
             if let Some(package) = package {
                 options.set_current_package(package)?;
             }

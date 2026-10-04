@@ -474,6 +474,20 @@ fn options_come_from_the_ambient_variables() {
 }
 
 #[test]
+fn print_circle_comes_from_the_ambient_variable() {
+    let (runtime, mut ctx) = context();
+    let circle = intern(&runtime, &mut ctx, "COMMON-LISP", "*PRINT-CIRCLE*");
+    set_symbol_special(&mut ctx, circle, true).unwrap();
+    set_symbol_value(&mut ctx, circle, Word::TRUE).unwrap();
+    let node = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap();
+    rplacd(&mut ctx, node, node).unwrap();
+
+    let options = PrintOptions::from_specials(&mut ctx, &runtime);
+    assert!(options.circle());
+    assert_eq!(print(&runtime, &mut ctx, node, &options), "#1=(1 . #1#)");
+}
+
+#[test]
 fn print_lines_stops_output_with_two_dots() {
     let options = PrintOptions::new()
         .with_pretty(true)

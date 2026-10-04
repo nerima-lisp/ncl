@@ -180,6 +180,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut input_stream_spec);
     let mut output_stream_spec = list(&mut ctx, &runtime, &[x])?;
     root!(&mut output_stream_spec);
+    let mut logical_block_spec = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut logical_block_spec);
     // A `(name (var) body)`-shaped clause, the common shape for both
     // `HANDLER-CASE` and `RESTART-CASE` clauses.
     let mut binding_clause = list(&mut ctx, &runtime, &[x, destructuring_lambda_list, x])?;
@@ -234,11 +236,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
     case!("HANDLER-CASE", "HANDLER-CASE", [x, binding_clause]);
     case!("IGNORE-ERRORS", "IGNORE-ERRORS", [x]);
-    case!(
-        "RESTART-BIND",
-        "RESTART-BIND",
-        [restart_bind_clauses, x]
-    );
+    case!("RESTART-BIND", "RESTART-BIND", [restart_bind_clauses, x]);
     case!("RESTART-CASE", "RESTART-CASE", [x, binding_clause]);
     case!(
         "WITH-SIMPLE-RESTART",
@@ -299,6 +297,17 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         "WITH-OUTPUT-TO-STRING",
         "WITH-OUTPUT-TO-STRING",
         [output_stream_spec, x]
+    );
+    case!(
+        "PPRINT-LOGICAL-BLOCK",
+        "PPRINT-LOGICAL-BLOCK",
+        [logical_block_spec, x]
+    );
+    case!("PPRINT-POP", "PPRINT-POP", []);
+    case!(
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED",
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED",
+        []
     );
     assert_eq!(cases.len(), MACROS.len());
     ctx.set_gc_stress(true);

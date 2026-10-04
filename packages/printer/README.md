@@ -26,19 +26,22 @@ by printer integrations. Conditional breaks remain pending until the next
 text is emitted, so a caller can construct a block without pre-measuring each
 item.
 
-`PrettyPrinter` also implements `CharSink`. A FORMAT or logical-block
-adapter owns one instance for the output operation, passes it to nested
-`ncl_printer::write` calls, and calls `finish()` before returning:
+`PrettyPrinter` also implements `CharSink`. For nested FORMAT execution,
+wrap it in `SharedPrettyPrinter` and pass a `PrettyPrinterAdapter` to each
+consumer. The adapter forwards all layout and object writes to the same
+lifecycle-safe state; call `finish()` on the shared handle before returning:
 
 ```text
 let mut layout = PrettyPrinter::with_options(&mut sink, right_margin, miser_width);
+let shared = layout.into_shared();
+let mut layout = shared.adapter();
 layout.start_logical_block(prefix, per_line_prefix)?;
 ncl_printer::write(ctx, runtime, object, &mut layout, &options)?;
 layout.newline(NewlineKind::Linear)?;
 layout.indent(IndentMode::Block, amount);
 layout.tab(TabKind::Relative, column, increment)?;
 layout.end_logical_block(suffix)?;
-layout.finish()?;
+shared.finish()?;
 ```
 
 `finish()` flushes a trailing conditional break. `end_logical_block()` also
@@ -53,6 +56,8 @@ flushes before writing its suffix.
 | `NonNegative` | validated non-negative limit value used by length and level options. |
 | `PrintCase` | `:upcase`, `:downcase`, `:capitalize`. |
 | `PrintError` | `Object`, `Sink`, `NotReadable`, `Circularity`. |
+| `SharedPrettyPrinter` | Reference-counted, borrow-checked layout state shared by nested FORMAT/printer operations. |
+| `PrettyPrinterAdapter` | `CharSink` bridge exposing newline, indent, tab, object, logical-block, and finish operations. |
 
 `PrintOptions::from_specials` reads the ambient variables when they are interned
 and special, and keeps the default otherwise. The dispatch functions operate on
@@ -120,8 +125,9 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-PRETTY*`,
   `COPY-PPRINT-DISPATCH` are callable and use the registered output stream or
   ambient dispatch table. The remaining layout primitives still need a
   stream-backed `PrettyPrinter` state adapter.
-- **CL pretty-printer connection**: `PrettyPrinter` is the Rust boundary for
-  FORMAT and stream integrations; it is now also a nested `CharSink`.
+- **CL pretty-printer connection**: `SharedPrettyPrinter` and
+  `PrettyPrinterAdapter` are the Rust boundary for FORMAT and stream
+  integrations; nested operations share one state and one finish lifecycle.
 - **Standard dispatch**: operator-specific entries for `QUOTE`, `LET`, and
   `DEFUN` and full Common Lisp type-specifier dispatch remain to be added.
 

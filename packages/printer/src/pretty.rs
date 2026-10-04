@@ -2,6 +2,8 @@
 
 use crate::{CharSink, PrintError};
 
+pub use crate::pretty_bridge::{PrettyPrinterAdapter, PrettyPrinterState, SharedPrettyPrinter};
+
 /// The four Common Lisp pretty-printer newline policies.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NewlineKind {
@@ -91,6 +93,18 @@ impl<'a> PrettyPrinter<'a> {
             blocks: Vec::new(),
             line_count: 1,
         }
+    }
+
+    /// Move this printer into a shared state handle for nested output users.
+    #[must_use]
+    pub fn into_shared(self) -> SharedPrettyPrinter<'a> {
+        SharedPrettyPrinter::new(self)
+    }
+
+    /// Move this printer into shared lifecycle state.
+    #[must_use]
+    pub fn shared(self) -> PrettyPrinterState<'a> {
+        self.into_shared()
     }
 
     /// Return the current zero-based column.

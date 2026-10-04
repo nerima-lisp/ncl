@@ -134,6 +134,12 @@ pub struct PrintOptions {
     circle_not_shared: CircleSharingMode,
     /// `NCL-EXT:*PRINT-VECTOR-LENGTH*`: maximum length for arrays.
     vector_length: Option<NonNegative>,
+    /// `*print-right-margin*`: preferred output width.
+    right_margin: NonNegative,
+    /// `*print-miser-width*`: width at which miser breaks become active.
+    miser_width: NonNegative,
+    /// `*print-lines*`: maximum number of output lines.
+    print_lines: Option<NonNegative>,
 }
 
 impl PrintOptions {
@@ -155,6 +161,9 @@ impl PrintOptions {
             gensym: GensymMode::WithPrefix,
             circle_not_shared: CircleSharingMode::AllOccurrences,
             vector_length: None,
+            right_margin: NonNegative::new(80),
+            miser_width: NonNegative::new(0),
+            print_lines: None,
         }
     }
 
@@ -271,6 +280,30 @@ impl PrintOptions {
         self
     }
 
+    /// Return a copy with `*print-right-margin*` replaced.
+    #[must_use]
+    pub const fn with_right_margin(mut self, margin: usize) -> Self {
+        self.right_margin = NonNegative::new(if margin == 0 { 1 } else { margin });
+        self
+    }
+
+    /// Return a copy with `*print-miser-width*` replaced.
+    #[must_use]
+    pub const fn with_miser_width(mut self, width: usize) -> Self {
+        self.miser_width = NonNegative::new(width);
+        self
+    }
+
+    /// Return a copy with `*print-lines*` replaced.
+    #[must_use]
+    pub const fn with_print_lines(mut self, lines: Option<usize>) -> Self {
+        self.print_lines = match lines {
+            Some(value) => Some(NonNegative::new(value)),
+            None => None,
+        };
+        self
+    }
+
     /// Return whether character and string escaping is enabled.
     #[must_use]
     pub const fn escape(self) -> bool {
@@ -330,6 +363,24 @@ impl PrintOptions {
     #[must_use]
     pub const fn vector_length(self) -> Option<NonNegative> {
         self.vector_length
+    }
+
+    /// Return the preferred output width.
+    #[must_use]
+    pub const fn right_margin(self) -> usize {
+        self.right_margin.get()
+    }
+
+    /// Return the miser width.
+    #[must_use]
+    pub const fn miser_width(self) -> usize {
+        self.miser_width.get()
+    }
+
+    /// Return the maximum output line count.
+    #[must_use]
+    pub const fn print_lines(self) -> Option<NonNegative> {
+        self.print_lines
     }
 
     /// Return the current escape mode.

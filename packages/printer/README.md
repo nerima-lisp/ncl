@@ -17,6 +17,15 @@ set_pprint_dispatch(&mut ThreadContext, &Runtime, Word, Word, Word) -> Result<Wo
 copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectError>
 ```
 
+The low-level layout API is exposed by `PrettyPrinter`. It provides
+`start_logical_block`/`end_logical_block`, `newline` with `Linear`, `Fill`,
+`Miser`, and `Mandatory` policies, block/current `indent`, relative/absolute
+`tab`, and `column`/`line_count` inspection. `PrintOptions` supplies the
+`with_right_margin`, `with_miser_width`, and `with_print_lines` settings used
+by printer integrations. Conditional breaks remain pending until the next
+text is emitted, so a caller can construct a block without pre-measuring each
+item.
+
 | item | role |
 | --- | --- |
 | `CharSink` | output trait: `write_char`, `write_str`. `ncl-lib-streams` adapts streams to it. |
@@ -86,6 +95,9 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
   placeholder; callable function objects and the `pprint` stream arguments need
   the runtime and stream layers. The `pprint-*` functions have no Rust-side
   entry points yet; `write` with `*print-pretty*` is the working path.
+- **CL pretty-printer connection**: `PrettyPrinter` is the Rust boundary for
+  FORMAT and stream integrations. The Lisp `pprint-*` builtins still need
+  stream-aware wrappers and dynamic special-variable bindings.
 - **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
   matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
   `eq`.

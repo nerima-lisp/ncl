@@ -15,6 +15,7 @@ mod error;
 mod number;
 mod opaque;
 mod options;
+mod pretty;
 mod print;
 mod sink;
 mod string;
@@ -26,5 +27,6 @@ pub use options::{
     ArrayMode, CircleMode, CircleSharingMode, EscapeMode, GensymMode, NonNegative, PrettyMode,
     PrintBase, PrintCase, PrintOptions, RadixMode, ReadabilityMode,
 };
+pub use pretty::{IndentMode, NewlineKind, PrettyPrinter, TabKind};
 pub use print::{write, write_to_string};
 pub use sink::{CharSink, StringSink};

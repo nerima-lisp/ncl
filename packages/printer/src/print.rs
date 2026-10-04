@@ -13,9 +13,6 @@ use crate::error::PrintError;
 use crate::options::PrintOptions;
 use crate::sink::{CharSink, StringSink};
 
-/// The column at which the pretty printer starts a new line.
-const DEFAULT_MARGIN: usize = 80;
-
 /// The printer state for one [`write()`] call.
 pub struct Printer<'a> {
     pub(crate) ctx: &'a mut ThreadContext,
@@ -46,6 +43,7 @@ impl<'a> Printer<'a> {
         if options.readably() {
             options = options.with_escape(true);
         }
+        let margin = options.right_margin();
         Self {
             ctx,
             runtime,
@@ -53,7 +51,7 @@ impl<'a> Printer<'a> {
             options,
             depth: 0,
             column: 0,
-            margin: DEFAULT_MARGIN,
+            margin,
             circle: None,
             active: HashSet::new(),
         }

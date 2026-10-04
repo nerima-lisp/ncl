@@ -336,6 +336,17 @@ fn block_comments_are_skipped() {
 }
 
 #[test]
+fn block_comments_before_list_terminators_are_skipped() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let form = read_one(&runtime, &mut ctx, "(list 1 #| trailing comment |#)");
+    assert_eq!(name_of(&ctx, car(&ctx, form).unwrap()), "LIST");
+    let rest = cdr(&ctx, form).unwrap();
+    assert_eq!(classify(car(&ctx, rest).unwrap()), ObjectRef::Fixnum(1));
+}
+
+#[test]
 fn feature_conditionals_select_forms() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

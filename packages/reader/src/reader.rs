@@ -281,11 +281,15 @@ pub fn read_form(
     rt: &Cell<Word>,
     labels: &Cell<Word>,
 ) -> Result<Option<Word>, ReadError> {
+    let mut skipped_comment = false;
     loop {
         skip_whitespace(ctx, source, opts, rt)?;
         let Some(c) = source.peek_char() else {
             return Ok(None);
         };
+        if skipped_comment && c == ')' {
+            return Ok(None);
+        }
         let kind = syntax_kind(ctx, readtable_from_word(rt.get())?, c)?;
         match kind {
             SyntaxKind::Constituent | SyntaxKind::SingleEscape | SyntaxKind::MultipleEscape => {
@@ -297,6 +301,7 @@ pub fn read_form(
                 if let Some(word) = read_macro_char(ctx, runtime, source, opts, rt, labels, c)? {
                     return Ok(apply_suppress(Some(word), opts));
                 }
+                skipped_comment = true;
             }
             SyntaxKind::CustomMacro(_) | SyntaxKind::Invalid => {
                 return Err(ReadError::UninvocableMacroFunction(c));
@@ -481,6 +486,10 @@ fn read_list_inner(
         }
         let form = read_form(ctx, runtime, source, opts, rt, labels)?;
         let Some(form) = form else {
+            if source.peek_char() == Some(')') {
+                source.read_char();
+                break;
+            }
             return Err(ReadError::UnexpectedEof);
         };
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;

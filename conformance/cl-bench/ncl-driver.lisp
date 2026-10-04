@@ -38,6 +38,13 @@
          (runs (third benchmark))
          (setup (fourth benchmark))
          (samples nil))
+    (with-open-file (progress "/tmp/c2-clbench-bench-progress"
+                              :direction :output
+                              :if-exists :append
+                              :if-does-not-exist :create)
+      (format progress "BENCH ~A status=started~%" name))
+    (format *error-output* "BENCH ~A status=started~%" name)
+    (finish-output *error-output*)
     (dotimes (run runs)
       (declare (ignore run))
       (when setup (funcall setup))
@@ -46,6 +53,15 @@
         (funcall function)
         (push (elapsed-seconds start (get-internal-real-time)) samples)))
     (push (list name (nreverse samples)) *results*)
+    (with-open-file (progress "/tmp/c2-clbench-bench-progress"
+                              :direction :output
+                              :if-exists :append
+                              :if-does-not-exist :create)
+      (format progress "BENCH ~A status=passed seconds=~{~A~^,~}~%"
+              name (nreverse samples)))
+    (format *error-output* "BENCH ~A status=passed seconds=~{~A~^,~}~%"
+            name (nreverse samples))
+    (finish-output *error-output*)
     (car (last samples))))
 
 (defun bench-run ()
@@ -59,6 +75,8 @@
 (defun load-benchmark-file (file)
   (let ((start (get-internal-real-time)))
     ;; The fixed cl-bench layout is a relative namestring accepted by LOAD.
+    (format *error-output* "LOAD ~A status=started~%" file)
+    (finish-output *error-output*)
     (load (concatenate 'string *misc-dir* file))
     (push (list file :loaded
                 (elapsed-seconds start (get-internal-real-time)))

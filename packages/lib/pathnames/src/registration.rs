@@ -79,7 +79,7 @@ pub fn register_operations(
         (
             "WILD-PATHNAME-P",
             wild_pathname_p_builtin,
-            LambdaList::fixed(&[PATHNAME]),
+            LambdaList::with_optional(&[PATHNAME], &[OBJECT]),
         ),
         (
             "PATHNAME-MATCH-P",

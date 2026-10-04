@@ -210,6 +210,36 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         )?,
         Word::TRUE
     ); // check-added-lines: allow(panic) unspecified pattern components are wild
+    let wild_inferiors = keyword(&mut ctx, &runtime, "WILD-INFERIORS")?;
+    let directory_key = keyword(&mut ctx, &runtime, "DIRECTORY")?;
+    let absolute = keyword(&mut ctx, &runtime, "ABSOLUTE")?;
+    let recursive_directory = list_value(&mut ctx, &runtime, &[absolute, wild_inferiors])?;
+    let recursive_pattern = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-PATHNAME",
+        &[directory_key, recursive_directory],
+    )?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "PATHNAME-MATCH-P",
+            &[candidate, recursive_pattern]
+        )?,
+        Word::TRUE
+    ); // check-added-lines: allow(panic) wild-inferiors matches zero or more directories
+    let directory_field = keyword(&mut ctx, &runtime, "DIRECTORY")?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "WILD-PATHNAME-P",
+            &[recursive_pattern, directory_field]
+        )?,
+        Word::TRUE
+    ); // check-added-lines: allow(panic) field-key selects directory wildness
+
     Ok(())
 }
 

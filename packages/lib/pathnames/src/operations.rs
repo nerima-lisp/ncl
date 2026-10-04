@@ -1,6 +1,6 @@
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Package, Runtime, SLOTS, ThreadContext, Word, car,
-    cdr, component_string, directory_text, make_cons, make_pathname, make_string, namestring_value,
+    cdr, component_string, make_cons, make_pathname, make_string, namestring_value,
     pathname_designator, relative_directory, structure_ref, symbol_text, text, with_root,
 };
 use ncl_object::{FileError, LispError};
@@ -101,6 +101,9 @@ pub fn pathname_component_match(
     {
         return Ok(false);
     }
+    if let (Ok(pattern), Ok(value)) = (symbol_text(ctx, pattern), symbol_text(ctx, value)) {
+        return Ok(pattern.eq_ignore_ascii_case(&value));
+    }
     Ok(wildcard_match(&text(ctx, pattern)?, &text(ctx, value)?))
 }
 
@@ -113,11 +116,7 @@ pub fn pathname_match_builtin(
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
     let pattern = pathname_designator(ctx, runtime, args.required(1)?)?;
     let pattern_directory = structure_ref(ctx, pattern, 2)?;
-    let directory = pattern_directory == Word::NIL
-        || wildcard_match(
-            &directory_text(ctx, pattern_directory)?,
-            &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
-        );
+    let directory = directory_match(ctx, pattern_directory, structure_ref(ctx, pathname, 2)?)?;
     let matches = directory
         && (0..SLOTS)
             .filter(|index| *index != 2)
@@ -393,10 +392,68 @@ pub fn wild_pathname_p_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
-    let wild = (0..SLOTS).try_fold(false, |found, index| {
-        Ok::<_, ObjectError>(found || has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?)
-    })?;
+    let wild = if let Some(field) = args.get(1) {
+        let field = super::keyword_name(ctx, field)?;
+        let index = match field.as_str() {
+            "HOST" => 0,
+            "DEVICE" => 1,
+            "DIRECTORY" | "WILD-INFERIORS" => 2,
+            "NAME" => 3,
+            "TYPE" => 4,
+            "VERSION" => 5,
+            _ => return Err(ObjectError::TypeError),
+        };
+        has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?
+    } else {
+        (0..SLOTS).try_fold(false, |found, index| {
+            Ok::<_, ObjectError>(found || has_wildcards(ctx, structure_ref(ctx, pathname, index)?)?)
+        })?
+    };
     Ok(if wild { Word::TRUE } else { Word::NIL })
+}
+
+fn directory_parts(ctx: &ThreadContext, directory: Word) -> Result<Vec<Word>, ObjectError> {
+    let mut parts = Vec::new();
+    let mut cursor = directory;
+    while cursor != Word::NIL {
+        parts.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
+    }
+    Ok(parts)
+}
+
+fn is_symbol(ctx: &ThreadContext, word: Word, name: &str) -> bool {
+    symbol_text(ctx, word).is_ok_and(|value| value.eq_ignore_ascii_case(name))
+}
+
+fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bool, ObjectError> {
+    if pattern == Word::NIL {
+        return Ok(true);
+    }
+    let pattern = directory_parts(ctx, pattern)?;
+    let value = directory_parts(ctx, value)?;
+    fn match_parts(
+        ctx: &ThreadContext,
+        pattern: &[Word],
+        value: &[Word],
+    ) -> Result<bool, ObjectError> {
+        if pattern.is_empty() {
+            return Ok(value.is_empty());
+        }
+        if is_symbol(ctx, pattern[0], "WILD-INFERIORS") {
+            for consumed in 0..=value.len() {
+                if match_parts(ctx, &pattern[1..], &value[consumed..])? {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+        if value.is_empty() || !pathname_component_match(ctx, pattern[0], value[0])? {
+            return Ok(false);
+        }
+        match_parts(ctx, &pattern[1..], &value[1..])
+    }
+    match_parts(ctx, &pattern, &value)
 }
 
 pub fn merge_pathnames_builtin(

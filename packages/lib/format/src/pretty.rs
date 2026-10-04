@@ -125,3 +125,29 @@ impl PrettyPrinter for NoopPrettyPrinter {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noop_printer_accepts_every_format_layout_operation() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context");
+        let mut printer = NoopPrettyPrinter;
+
+        printer.write_char('x').expect("character");
+        printer.newline(PrettyNewline::Miser).expect("newline");
+        printer.indent(PrettyIndent::Current, 2);
+        printer.tab(PrettyTab::Absolute, 3, 4).expect("tabulation");
+        printer
+            .write_object(&mut ctx, &runtime, Word::fixnum(0), PrintOptions::new())
+            .expect("object");
+        printer
+            .logical_block(&[String::from("item")], true, true)
+            .expect("logical block");
+        printer.finish().expect("finish");
+    }
+}

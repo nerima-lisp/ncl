@@ -63,6 +63,8 @@ pub const MACROS: &[&str] = &[
     "UNLESS",
     "WHEN",
     "WITH-INPUT-FROM-STRING",
+    "WITH-OPEN-FILE",
+    "WITH-OPEN-STREAM",
     "WITH-OUTPUT-TO-STRING",
 ];
 

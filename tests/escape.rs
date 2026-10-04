@@ -82,6 +82,11 @@ fn non_local_escape_values_are_observable_through_the_cli() {
             expected: "18",
         },
         Case {
+            name: "nested-handler-flet-return-from",
+            source: "(block aborted (let ((result nil)) (handler-bind nil (flet ((run () (handler-bind ((error (lambda (condition) (setf result (list condition)) (return-from aborted nil)))) (error \"stop\")))) (run))) result))",
+            expected: "NIL",
+        },
+        Case {
             name: "lambda-go",
             source: "(let ((result 0)) (tagbody (funcall (lambda () (go done))) done (setq result 13)) result)",
             expected: "13",

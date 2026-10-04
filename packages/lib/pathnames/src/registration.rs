@@ -73,7 +73,7 @@ pub fn register_operations(
         ),
         (
             "COMPILE-FILE-PATHNAME",
-            compile_file_pathname_builtin,
+            compile_file_pathname_builtin as ncl_object::RustBuiltin,
             LambdaList::with_rest(&[PATHNAME], OBJECT),
         ),
         (
@@ -107,7 +107,7 @@ fn register_file_operations(
     for (name, function, lambda_list) in [
         (
             "COMPILE-FILE-PATHNAME",
-            compile_file_pathname_builtin,
+            compile_file_pathname_builtin as ncl_object::RustBuiltin,
             LambdaList::with_rest(&[PATHNAME], OBJECT),
         ),
         (

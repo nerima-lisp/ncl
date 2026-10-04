@@ -6,6 +6,7 @@ mod control;
 mod defining;
 mod definition_support;
 pub(crate) mod destructuring;
+mod file_stream;
 mod form;
 mod function_call;
 mod functions;
@@ -307,6 +308,8 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "ASSERT" => Some(control::expand_assert_adapter),
         "DEFINE-CONDITION" => Some(control::expand_define_condition_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
+        "WITH-OPEN-FILE" => Some(file_stream::expand_file_adapter),
+        "WITH-OPEN-STREAM" => Some(file_stream::expand_stream_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),

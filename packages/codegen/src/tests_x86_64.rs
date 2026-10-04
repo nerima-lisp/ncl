@@ -11,7 +11,7 @@ use ncl_ir::{Constant, FunctionBuilder, OpKind, Prim, Terminator, Ty};
 
 #[test]
 #[cfg(test)]
-fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
+fn x86_64_lowering_spills_values_across_safepoints() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(71),
         "allocated-root",
@@ -36,17 +36,16 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
     let Some(Location::Spill(spill)) = allocation.location(value) else {
-        return Err("safepoint-crossing value was allocated to a register".into());
+        panic!("safepoint-crossing value was allocated to a register");
     };
-    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => unreachable!("{error:?}"),
-    };
-    let Some(map) = compiled.safepoint_maps.first() else {
-        return Err("safepoint map missing".into());
-    };
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
+        .expect("safepoint-crossing function compiles");
+    let map = compiled
+        .safepoint_maps
+        .first()
+        .expect("safepoint map exists");
     assert!(map.registers.is_empty()); // check-added-lines: allow(panic) test-only assertion
-    let slot = 4 + 1 + usize::try_from(spill).map_err(|_| "spill slot overflow")?;
+    let slot = 4 + 1 + usize::try_from(spill).expect("spill slot fits usize");
     let slot_is_live = map
         .bitmap
         .get(slot / 8)
@@ -55,11 +54,10 @@ fn x86_64_lowering_spills_values_across_safepoints() -> Result<(), String> {
     // check-added-lines: allow(panic) test-only assertion
     assert!(slot_is_live, "{}", slot_message); // check-added-lines: allow(panic) test-only assertion
     assert!(!compiled.code.is_empty());
-    Ok(())
 }
 
 #[test]
-fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
+fn x86_64_lowering_reserves_allocator_spills_in_frame() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(72),
         "allocated-spills",
@@ -84,15 +82,14 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert!(allocation.spill_words > 0);
-    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => unreachable!("{error:?}"),
-    };
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
+        .expect("spill-reserving function compiles");
     assert!(compiled.frame_size >= (4 + 8 + allocation.spill_words) * 8);
     assert!(compiled.safepoint_maps[0].bitmap.len() > 1);
-    let Some(map) = compiled.safepoint_maps.first() else {
-        return Err("safepoint map missing".into());
-    };
+    let map = compiled
+        .safepoint_maps
+        .first()
+        .expect("safepoint map exists");
     for interval in &allocation.intervals {
         if interval.ty != Ty::Word || interval.start > 8 || 8 > interval.end {
             continue;
@@ -100,7 +97,7 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
         let Some(Location::Spill(spill)) = allocation.location(interval.value) else {
             continue;
         };
-        let spill = usize::try_from(spill).map_err(|_| "spill slot")?;
+        let spill = usize::try_from(spill).expect("spill slot fits usize");
         let slot = 4 + 8 + spill; // check-added-lines: allow(panic) regression assertion for map coverage.
         assert!(
             map.bitmap
@@ -109,7 +106,6 @@ fn x86_64_lowering_reserves_allocator_spills_in_frame() -> Result<(), String> {
             "spill slot {slot} is missing from the header-inclusive map"
         );
     }
-    Ok(())
 }
 
 #[test]
@@ -186,12 +182,8 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() -> Result<(), String> {
             })
             .is_ok()
     );
-    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => {
-            unreachable!("{error:?}");
-        }
-    };
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .expect("closure and handler function compiles");
     assert!(!compiled.code.is_empty());
     assert!(compiled.safepoint_maps.len() >= 4);
     Ok(())
@@ -428,7 +420,7 @@ fn cleanup_dispatch_function() -> Result<ncl_ir::Function, String> {
 }
 
 #[test]
-fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), String> {
+fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(73),
         "tail-call",
@@ -436,21 +428,17 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), S
         vec![Ty::Word],
     );
     let callee = builder.add_constant(Constant::Fixnum(74));
-    let Some(callee) = builder
+    let callee = builder
         .push_op(OpKind::Const { result: callee }, &[Ty::Word])
         .ok()
         .and_then(|values| values.first().copied())
-    else {
-        unreachable!("callee result")
-    };
+        .expect("callee result");
     let argc = builder.add_constant(Constant::Fixnum(0));
-    let Some(argc) = builder
+    let argc = builder
         .push_op(OpKind::Const { result: argc }, &[Ty::Word])
         .ok()
         .and_then(|values| values.first().copied())
-    else {
-        return Err("argc result missing".to_owned());
-    };
+        .expect("argc result");
     assert!(
         builder
             .terminate(Terminator::TailCall {
@@ -460,10 +448,8 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), S
             .is_ok()
     );
 
-    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => return Err(format!("tail-call lowering: {error:?}")),
-    };
+    let compiled =
+        compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi).expect("tail-call lowering");
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0;
     // mov [rbp+24], r11; sub rsp, 32
     assert_eq!(
@@ -484,7 +470,6 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() -> Result<(), S
         ]
     );
     assert!(compiled.safepoint_maps.is_empty());
-    Ok(())
 }
 
 #[test]
@@ -520,10 +505,7 @@ fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
         allocation.location(ncl_ir::ValueId(1)),
         Some(Location::Register(12))
     );
-    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => unreachable!("argc lowering: {error:?}"),
-    };
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi).expect("argc lowering");
     assert!(
         compiled
             .code
@@ -563,10 +545,8 @@ fn x86_64_prologue_loads_overflow_arguments_from_r9() {
         allocation.location(ncl_ir::ValueId(4)),
         Some(Location::Spill(_))
     ));
-    let compiled = match compile_function_x86_64(&function, &X86_64FixtureAbi) {
-        Ok(compiled) => compiled,
-        Err(error) => unreachable!("overflow argument lowering: {error:?}"),
-    };
+    let compiled =
+        compile_function_x86_64(&function, &X86_64FixtureAbi).expect("overflow argument lowering");
     assert!(
         compiled
             .code

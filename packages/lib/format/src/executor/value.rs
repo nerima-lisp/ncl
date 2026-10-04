@@ -271,7 +271,6 @@ fn write_padded(
     *state.line_start = false;
     Ok(())
 }
-
 fn execute_value_directive(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -280,7 +279,6 @@ fn execute_value_directive(
     let value = next_argument(directive, state)?;
     execute_value_with_argument(directive, state, options, value)
 }
-
 fn execute_value_with_argument(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -402,7 +400,6 @@ fn execute_pretty_write(
         .write_object(state.ctx, state.runtime, value, options)?;
     Ok(())
 }
-
 fn write_character_value(
     state: &mut ExecutionState<'_>,
     directive: &Directive,
@@ -498,12 +495,6 @@ fn group_integer(directive: &Directive, rendered: &str) -> Result<String, Format
 
 fn radix_parameter(directive: &Directive) -> Result<u32, FormatError> {
     let value = parameter_i64(directive.parameters.first()).unwrap_or(10);
-    if !(2..=36).contains(&value) {
-        return Err(FormatError::InvalidParameter {
-            directive: directive.kind,
-        });
-    }
-    u32::try_from(value).map_err(|_| FormatError::InvalidParameter {
-        directive: directive.kind,
-    })
+    if !(2..=36).contains(&value) { return Err(FormatError::InvalidParameter { directive: directive.kind }); }
+    u32::try_from(value).map_err(|_| FormatError::InvalidParameter { directive: directive.kind })
 }

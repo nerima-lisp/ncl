@@ -4,11 +4,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use ncl_object::{Runtime, ThreadContext, Word, car, cdr};
-use ncl_printer::{CharSink, PrintError, StringSink};
+use ncl_printer::{CharSink, PrintError};
 
 use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter, PrettyPrinter};
 
 mod compound;
+mod case;
+mod directive;
 #[cfg(test)]
 #[path = "executor/tests/compound_test.rs"]
 mod compound_tests;
@@ -24,6 +26,8 @@ use compound::{execute_justification, matching, split_branches};
 use control::{execute_character, execute_control_kind, next_argument, next_argument_kind};
 use parameters::{object_string, parameter_i64, parameter_usize, resolve_directive};
 use value::execute_value_kind;
+use case::execute_case_group;
+use directive::execute_directive;
 
 /// A failure while executing a FORMAT control.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -164,7 +168,7 @@ pub fn execute_with_options(
     Ok(argument_index)
 }
 
-fn execute_parts(
+pub fn execute_parts(
     parts: &[ControlPart],
     mut index: usize,
     end: usize,
@@ -391,82 +395,6 @@ fn execute_brace(
     Ok(Some(close + 1))
 }
 
-fn execute_case_group(
-    parts: &[ControlPart],
-    index: usize,
-    end: usize,
-    directive: &Directive,
-    state: &mut ExecutionState<'_>,
-) -> Result<Option<usize>, FormatError> {
-    let close = matching(
-        parts,
-        index,
-        end,
-        DirectiveKind::ParenOpen,
-        DirectiveKind::ParenClose,
-    )?;
-    let mut local = StringSink::new();
-    let mut nested = ExecutionState {
-        arguments: state.arguments,
-        argument_index: state.argument_index,
-        ctx: state.ctx,
-        runtime: state.runtime,
-        sink: &mut local,
-        line_start: state.line_start,
-        column: state.column,
-        escape: state.escape,
-        remaining_override: state.remaining_override,
-        caller: state.caller.clone(),
-        pretty: state.pretty.clone(),
-    };
-    execute_parts(parts, index + 1, close, &mut nested)?;
-    let text = local.into_string();
-    let text = match (directive.colon, directive.at_sign) {
-        (false, false) => text.to_lowercase(),
-        (true, false) => capitalize_words(&text),
-        (false, true) => capitalize_first_word(&text),
-        (true, true) => text.to_uppercase(),
-    };
-    state.sink.write_str(&text).map_err(FormatError::from)?;
-    *state.line_start = text.ends_with('\n');
-    Ok(Some(close + 1))
-}
-
-fn capitalize_words(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut word_start = true;
-    for character in text.chars() {
-        if character.is_alphabetic() {
-            if word_start {
-                result.extend(character.to_uppercase());
-                word_start = false;
-            } else {
-                result.extend(character.to_lowercase());
-            }
-        } else {
-            word_start = !character.is_alphanumeric();
-            result.push(character);
-        }
-    }
-    result
-}
-
-fn capitalize_first_word(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut first = true;
-    for character in text.chars() {
-        if first && character.is_alphabetic() {
-            result.extend(character.to_uppercase());
-            first = false;
-        } else if !first && character.is_alphabetic() {
-            result.extend(character.to_lowercase());
-        } else {
-            result.push(character);
-        }
-    }
-    result
-}
-
 fn execute_nested(
     _parts: &[ControlPart],
     index: usize,
@@ -515,94 +443,22 @@ fn execute_nested(
     Ok(Some(index + 1))
 }
 
-fn execute_directive(
-    directive: &Directive,
-    state: &mut ExecutionState<'_>,
-) -> Result<(), FormatError> {
-    match directive.kind {
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::R
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::W => execute_value_kind(directive, state)?,
-        DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Tilde
-        | DirectiveKind::Bar
-        | DirectiveKind::Underscore
-        | DirectiveKind::I
-        | DirectiveKind::T
-        | DirectiveKind::P
-        | DirectiveKind::Star
-        | DirectiveKind::UpArrow => execute_control_kind(directive, state)?,
-        DirectiveKind::C => execute_character(directive, state)?,
-        DirectiveKind::Slash => {
-            if let Some(name) = directive.name.as_deref() {
-                let caller = state
-                    .caller
-                    .clone()
-                    .ok_or(FormatError::InvalidParameter {
-                        directive: directive.kind,
-                    })?;
-                caller.borrow_mut().call_format_function(
-                    state.ctx,
-                    state.runtime,
-                    name,
-                    state.sink,
-                    state.arguments,
-                    directive.colon,
-                    directive.at_sign,
-                    &directive.parameters,
-                )?;
-            } else if !*state.line_start {
-                state.sink.write_char('\n').map_err(FormatError::from)?;
-                *state.line_start = true;
-            }
-        }
-        DirectiveKind::Greater => {
-            if directive.colon && !*state.line_start {
-                state.sink.write_char('\n').map_err(FormatError::from)?;
-                *state.line_start = true;
-            }
-        }
-        DirectiveKind::Newline
-        | DirectiveKind::Less
-        | DirectiveKind::ColonGreater
-        | DirectiveKind::BraceOpen
-        | DirectiveKind::BraceClose
-        | DirectiveKind::Question
-        | DirectiveKind::ParenOpen
-        | DirectiveKind::ParenClose
-        | DirectiveKind::BracketOpen
-        | DirectiveKind::BracketClose
-        | DirectiveKind::Semicolon => {}
-    }
-    Ok(())
-}
-
-struct ExecutionState<'a> {
-    arguments: &'a Vec<Word>,
-    argument_index: &'a mut usize,
-    ctx: &'a mut ThreadContext,
-    runtime: &'a Runtime,
-    sink: &'a mut dyn CharSink,
-    line_start: &'a mut bool,
-    column: usize,
-    escape: &'a mut Option<EscapeScope>,
-    remaining_override: Option<usize>,
-    caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
-    pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
+pub struct ExecutionState<'a> {
+    pub(super) arguments: &'a Vec<Word>,
+    pub(super) argument_index: &'a mut usize,
+    pub(super) ctx: &'a mut ThreadContext,
+    pub(super) runtime: &'a Runtime,
+    pub(super) sink: &'a mut dyn CharSink,
+    pub(super) line_start: &'a mut bool,
+    pub(super) column: usize,
+    pub(super) escape: &'a mut Option<EscapeScope>,
+    pub(super) remaining_override: Option<usize>,
+    pub(super) caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
+    pub(super) pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EscapeScope {
+pub enum EscapeScope {
     Current,
     All,
 }

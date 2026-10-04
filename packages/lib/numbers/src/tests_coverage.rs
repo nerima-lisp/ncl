@@ -106,6 +106,111 @@ fn call_ratio(
 }
 
 #[test]
+fn numeric_float_and_ratio_boundaries_have_specified_results() {
+    let (runtime, mut ctx) = setup();
+    let zero = Word::fixnum(0);
+    let one = Word::fixnum(1);
+    let minus_one = Word::fixnum(-1);
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(-6), Word::fixnum(4))
+        .unwrap()
+        .into();
+    let positive = make_double(&mut ctx, &runtime, 2.5).unwrap().into();
+    let negative = make_double(&mut ctx, &runtime, -2.5).unwrap().into();
+    assert_eq!(
+        call_ratio(&runtime, &mut ctx, "RATIONAL", &[positive]),
+        (5, 2)
+    );
+    assert_eq!(
+        call_ratio(&runtime, &mut ctx, "RATIONAL", &[negative]),
+        (-5, 2)
+    );
+    assert_eq!(
+        call_ratio(&runtime, &mut ctx, "RATIONALIZE", &[positive]),
+        (5, 2)
+    );
+    assert_eq!(
+        call_ratio(&runtime, &mut ctx, "RATIONALIZE", &[negative]),
+        (-5, 2)
+    );
+    assert_eq!(call_integer(&runtime, &mut ctx, "NUMERATOR", &[ratio]), -6);
+    assert_eq!(call_integer(&runtime, &mut ctx, "DENOMINATOR", &[ratio]), 4);
+    assert_eq!(call_float(&runtime, &mut ctx, "FLOAT", &[ratio]), -1.5);
+    assert_eq!(call_float(&runtime, &mut ctx, "FFLOOR", &[positive]), 2.0);
+    assert_eq!(
+        call_float(&runtime, &mut ctx, "FCEILING", &[negative]),
+        -2.0
+    );
+    assert_eq!(
+        call_float(&runtime, &mut ctx, "FTRUNCATE", &[negative]),
+        -2.0
+    );
+    assert_eq!(call_float(&runtime, &mut ctx, "FROUND", &[positive]), 2.0);
+    assert_eq!(call_float(&runtime, &mut ctx, "FROUND", &[negative]), -2.0);
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "+", &[zero, minus_one]),
+        -1
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "*", &[minus_one, minus_one]),
+        1
+    );
+    assert_eq!(call_integer(&runtime, &mut ctx, "ABS", &[minus_one]), 1);
+    assert_eq!(call_integer(&runtime, &mut ctx, "SIGNUM", &[minus_one]), -1);
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "GCD", &[Word::fixnum(0), one]),
+        1
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "LCM", &[Word::fixnum(0), one]),
+        0
+    );
+}
+
+#[test]
+fn numeric_special_values_and_bit_boundaries_are_checked() {
+    let (runtime, mut ctx) = setup();
+    let huge = make_bignum_from_i128(&mut ctx, &runtime, i128::MAX)
+        .unwrap()
+        .into();
+    let negative_huge = make_bignum_from_i128(&mut ctx, &runtime, i128::MIN + 1)
+        .unwrap()
+        .into();
+    assert_eq!(call_integer(&runtime, &mut ctx, "LOGCOUNT", &[huge]), 127);
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "INTEGER-LENGTH", &[negative_huge]),
+        127
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "LOGAND", &[huge, negative_huge]),
+        1
+    );
+    assert_eq!(
+        call_integer(
+            &runtime,
+            &mut ctx,
+            "ASH",
+            &[Word::fixnum(1), Word::fixnum(63)]
+        ),
+        1_i128 << 63
+    );
+    let spec = call(
+        &runtime,
+        &mut ctx,
+        "BYTE",
+        &[Word::fixnum(3), Word::fixnum(2)],
+    )
+    .unwrap();
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "LDB", &[spec, Word::fixnum(0b11100)]),
+        7
+    );
+    assert_eq!(
+        call_integer(&runtime, &mut ctx, "MASK-FIELD", &[spec, Word::fixnum(-1)]),
+        0b11100
+    );
+}
+
+#[test]
 fn predicates_cover_number_kinds_and_signs() {
     let (runtime, mut ctx) = setup();
     let float_value = make_double(&mut ctx, &runtime, -2.5).unwrap().into();

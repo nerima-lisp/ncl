@@ -14,3 +14,7 @@ mod builtins_coverage_tests;
 #[cfg(test)]
 #[path = "../tests/callbacks.rs"]
 mod callbacks_coverage_tests;
+
+#[cfg(test)]
+#[path = "tests_coverage.rs"]
+mod tests_coverage;

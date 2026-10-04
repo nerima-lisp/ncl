@@ -137,8 +137,8 @@ fn defstruct_macro_builtin(
     if copier_name.is_none() {
         copier_name = Some(format!("COPY-{name_text}"));
     }
-    let mut predicate_name = predicate_name.ok_or(ObjectError::Layout)?;
-    let mut copier_name = copier_name.ok_or(ObjectError::Layout)?;
+    let mut predicate_name = predicate_name.unwrap_or_default();
+    let mut copier_name = copier_name.unwrap_or_default();
     let mut index = option_index;
     while let Some(option) = parts.as_slice().get(index).copied() {
         let option_name = symbol_name_string(scope.context(), scope.get(option).as_word())?;
@@ -338,15 +338,12 @@ fn defstruct_macro_builtin(
             let mut lambda = scope.root_many(&[ncl_object::Local::from_word(
                 scope.get(key_marker).as_word(),
             )]);
-            for slot in effective_names.iter().copied() {
+            for (slot_index, slot) in effective_names.iter().copied().enumerate() {
                 let slot_word = scope.get(slot).as_word();
                 let descriptor = ncl_object::simple_vector_ref(
                     scope.context(),
                     scope.get(effective).as_word(),
-                    effective_names
-                        .iter()
-                        .position(|name| scope.get(*name).as_word() == slot_word)
-                        .ok_or(ObjectError::Layout)?,
+                    slot_index,
                 )?;
                 let initform = ncl_object::simple_vector_ref(scope.context(), descriptor, 1)?;
                 if initform == Word::NIL {
@@ -372,7 +369,7 @@ fn defstruct_macro_builtin(
             ncl_object::Local::from_word(scope.get(make).as_word()),
             ncl_object::Local::from_word(layout_word),
         ]);
-        for slot in effective_names.iter().copied() {
+        for (slot_index, slot) in effective_names.iter().copied().enumerate() {
             let slot_word = scope.get(slot).as_word();
             let slot_name = symbol_name_string(scope.context(), slot_word)?;
             let value = if boa_lambda.is_none() {
@@ -383,14 +380,10 @@ fn defstruct_macro_builtin(
                     .find(|(name, _)| name == &slot_name)
                     .map_or_else(
                         || {
-                            let index = effective_names
-                                .iter()
-                                .position(|name| scope.get(*name).as_word() == slot_word)
-                                .ok_or(ObjectError::Layout)?;
                             let descriptor = ncl_object::simple_vector_ref(
                                 scope.context(),
                                 scope.get(effective).as_word(),
-                                index,
+                                slot_index,
                             )?;
                             ncl_object::simple_vector_ref(scope.context(), descriptor, 1)
                         },

@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
 
 use ncl_lib_format::{execute, parse};
-use ncl_object::{make_string, Runtime, ThreadContext, Word};
+use ncl_object::{Runtime, ThreadContext, Word, make_string};
 use ncl_printer::StringSink;
 
 fn context() -> (Runtime, ThreadContext) {

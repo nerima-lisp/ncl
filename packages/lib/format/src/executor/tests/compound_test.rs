@@ -139,7 +139,10 @@ fn covers_conditional_iteration_indirection_and_case_forms() {
     );
     assert_eq!(run("~@{~A,~}", &[one, two], &mut ctx, &runtime), "one,two,");
     assert_eq!(run("~{~A~^,~}", &[list], &mut ctx, &runtime), "one,two");
-    assert_eq!(run("~@{~A~:^,~}", &[one, two], &mut ctx, &runtime), "one,two");
+    assert_eq!(
+        run("~@{~A~:^,~}", &[one, two], &mut ctx, &runtime),
+        "one,two"
+    );
     assert_eq!(run("~:{~A,~}", &[lists], &mut ctx, &runtime), "one,");
     assert_eq!(
         run(

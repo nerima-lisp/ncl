@@ -31,6 +31,7 @@ pub(super) fn next_argument_kind(
     Ok(value)
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn execute_control_kind(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -85,7 +86,11 @@ pub(super) fn execute_control_kind(
                 .unwrap_or(0);
             if let Some(pretty) = state.pretty.as_ref() {
                 pretty.borrow_mut().indent(
-                    if directive.at_sign { PrettyIndent::Current } else { PrettyIndent::Block },
+                    if directive.at_sign {
+                        PrettyIndent::Current
+                    } else {
+                        PrettyIndent::Block
+                    },
                     amount,
                 );
             } else {
@@ -100,7 +105,11 @@ pub(super) fn execute_control_kind(
             let (column, increment) = tab_parameters(directive)?;
             if let Some(pretty) = state.pretty.as_ref() {
                 pretty.borrow_mut().tab(
-                    if directive.at_sign { PrettyTab::Absolute } else { PrettyTab::Relative },
+                    if directive.at_sign {
+                        PrettyTab::Absolute
+                    } else {
+                        PrettyTab::Relative
+                    },
                     column,
                     increment,
                 )?;
@@ -157,9 +166,7 @@ fn execute_repeated_control(
     Ok(())
 }
 
-fn tab_parameters(
-    directive: &Directive,
-) -> Result<(usize, usize), FormatError> {
+fn tab_parameters(directive: &Directive) -> Result<(usize, usize), FormatError> {
     let column = directive
         .parameters
         .first()
@@ -208,9 +215,10 @@ fn execute_argument_skip(
     state: &mut ExecutionState<'_>,
 ) -> Result<(), FormatError> {
     let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
-    let current = i128::try_from(*state.argument_index).map_err(|_| FormatError::InvalidParameter {
-        directive: directive.kind,
-    })?;
+    let current =
+        i128::try_from(*state.argument_index).map_err(|_| FormatError::InvalidParameter {
+            directive: directive.kind,
+        })?;
     let target_value = if directive.at_sign {
         i128::from(offset).max(0)
     } else if directive.colon {
@@ -232,7 +240,8 @@ fn execute_up_arrow(
         .iter()
         .map(|parameter| match parameter {
             crate::Parameter::Integer(value) => Ok(*value),
-            crate::Parameter::Unsupplied | crate::Parameter::Character(_)
+            crate::Parameter::Unsupplied
+            | crate::Parameter::Character(_)
             | crate::Parameter::Relative
             | crate::Parameter::ArgumentCount => Err(FormatError::InvalidParameter {
                 directive: directive.kind,

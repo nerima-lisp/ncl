@@ -212,9 +212,10 @@ fn render_exponential(
     let sign = if value.is_sign_negative() { "-" } else { "" };
     let exponent_sign = if exponent < 0 { "-" } else { "+" };
     let exponent_digits = exponent.unsigned_abs().to_string();
-    let exponent_digits = exponent_width.map_or_else(|| exponent_digits.clone(), |width| {
-        format!("{exponent_digits:0>width$}")
-    });
+    let exponent_digits = exponent_width.map_or_else(
+        || exponent_digits.clone(),
+        |width| format!("{exponent_digits:0>width$}"),
+    );
     format!(
         "{sign}{mantissa}{}{exponent_sign}{exponent_digits}",
         exponent_char.unwrap_or('e')

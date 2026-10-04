@@ -8,13 +8,13 @@ use ncl_printer::{CharSink, PrintError};
 
 use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter, PrettyPrinter};
 
-mod compound;
 mod case;
-mod directive;
+mod compound;
 #[cfg(test)]
 #[path = "executor/tests/compound_test.rs"]
 mod compound_tests;
 mod control;
+mod directive;
 mod float;
 mod parameters;
 #[cfg(test)]
@@ -22,12 +22,12 @@ mod parameters;
 mod tests;
 mod value;
 
+use case::execute_case_group;
 use compound::{execute_justification, matching, split_branches};
 use control::{execute_character, execute_control_kind, next_argument, next_argument_kind};
+use directive::execute_directive;
 use parameters::{object_string, parameter_i64, parameter_usize, resolve_directive};
 use value::execute_value_kind;
-use case::execute_case_group;
-use directive::execute_directive;
 
 /// A failure while executing a FORMAT control.
 #[derive(Clone, Debug, Eq, PartialEq)]

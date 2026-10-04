@@ -2,7 +2,9 @@ use ncl_object::Word;
 use ncl_printer::{PrintOptions, StringSink, write};
 
 use super::float::{execute_currency_directive, execute_float_directive};
-use super::parameters::{is_integer, parameter_i64, parameter_usize, parameter_width};
+use super::parameters::{
+    group_integer, is_integer, parameter_usize, parameter_width, radix_parameter,
+};
 use super::{ExecutionState, FormatError, next_argument};
 use crate::{Directive, DirectiveKind, Parameter};
 
@@ -452,49 +454,4 @@ fn write_character_value(
     }
     *state.line_start = false;
     Ok(())
-}
-
-fn group_integer(directive: &Directive, rendered: &str) -> Result<String, FormatError> {
-    let comma_index = if directive.kind == DirectiveKind::R { 3 } else { 2 };
-    let interval_index = if directive.kind == DirectiveKind::R { 4 } else { 3 };
-    let comma = directive
-        .parameters
-        .get(comma_index)
-        .and_then(|parameter| match parameter {
-            Parameter::Character(value) => Some(*value),
-            Parameter::Integer(_)
-            | Parameter::Relative
-            | Parameter::ArgumentCount
-            | Parameter::Unsupplied => None,
-        })
-        .unwrap_or(',');
-    let interval = parameter_usize(directive.parameters.get(interval_index), directive.kind)?.unwrap_or(3);
-    if interval == 0 {
-        return Err(FormatError::InvalidParameter {
-            directive: directive.kind,
-        });
-    }
-    let (sign, digits) = rendered
-        .strip_prefix('-')
-        .map_or(("", rendered), |digits| ("-", digits));
-    let digit_chars: Vec<char> = digits.chars().collect();
-    let mut grouped = String::with_capacity(rendered.len() + digit_chars.len() / interval);
-    grouped.push_str(sign);
-    let first = digit_chars.len() % interval;
-    if first != 0 {
-        grouped.extend(digit_chars.iter().take(first));
-    }
-    for (index, digit) in digit_chars.iter().skip(first).enumerate() {
-        if index % interval == 0 && (first != 0 || index != 0) {
-            grouped.push(comma);
-        }
-        grouped.push(*digit);
-    }
-    Ok(grouped)
-}
-
-fn radix_parameter(directive: &Directive) -> Result<u32, FormatError> {
-    let value = parameter_i64(directive.parameters.first()).unwrap_or(10);
-    if !(2..=36).contains(&value) { return Err(FormatError::InvalidParameter { directive: directive.kind }); }
-    u32::try_from(value).map_err(|_| FormatError::InvalidParameter { directive: directive.kind })
 }

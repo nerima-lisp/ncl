@@ -46,7 +46,8 @@ impl PrettyPrinter for RecordingPretty {
     }
 
     fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize) -> Result<(), PrintError> {
-        self.events.push(format!("tab:{kind:?}:{column}:{increment}"));
+        self.events
+            .push(format!("tab:{kind:?}:{column}:{increment}"));
         Ok(())
     }
 
@@ -61,8 +62,14 @@ impl PrettyPrinter for RecordingPretty {
         Ok(())
     }
 
-    fn logical_block(&mut self, segments: &[String], colon: bool, at_sign: bool) -> Result<(), PrintError> {
-        self.events.push(format!("block:{}:{colon}:{at_sign}", segments.len()));
+    fn logical_block(
+        &mut self,
+        segments: &[String],
+        colon: bool,
+        at_sign: bool,
+    ) -> Result<(), PrintError> {
+        self.events
+            .push(format!("block:{}:{colon}:{at_sign}", segments.len()));
         Ok(())
     }
 

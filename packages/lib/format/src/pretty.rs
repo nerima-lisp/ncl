@@ -43,8 +43,7 @@ pub trait PrettyPrinter: CharSink {
     ///
     /// # Errors
     /// Returns a sink error when padding cannot be written.
-    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize)
-        -> Result<(), PrintError>;
+    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize) -> Result<(), PrintError>;
 
     /// Print an object through the printer's dispatch and layout state.
     ///
@@ -62,8 +61,12 @@ pub trait PrettyPrinter: CharSink {
     ///
     /// # Errors
     /// Returns a sink error when block output cannot be written.
-    fn logical_block(&mut self, segments: &[String], colon: bool, at_sign: bool)
-        -> Result<(), PrintError>;
+    fn logical_block(
+        &mut self,
+        segments: &[String],
+        colon: bool,
+        at_sign: bool,
+    ) -> Result<(), PrintError>;
 
     /// Flush a pending conditional break before FORMAT returns.
     ///
@@ -90,7 +93,12 @@ impl PrettyPrinter for NoopPrettyPrinter {
 
     fn indent(&mut self, _mode: PrettyIndent, _amount: isize) {}
 
-    fn tab(&mut self, _kind: PrettyTab, _column: usize, _increment: usize) -> Result<(), PrintError> {
+    fn tab(
+        &mut self,
+        _kind: PrettyTab,
+        _column: usize,
+        _increment: usize,
+    ) -> Result<(), PrintError> {
         Ok(())
     }
 
@@ -104,7 +112,12 @@ impl PrettyPrinter for NoopPrettyPrinter {
         Ok(())
     }
 
-    fn logical_block(&mut self, _segments: &[String], _colon: bool, _at_sign: bool) -> Result<(), PrintError> {
+    fn logical_block(
+        &mut self,
+        _segments: &[String],
+        _colon: bool,
+        _at_sign: bool,
+    ) -> Result<(), PrintError> {
         Ok(())
     }
 

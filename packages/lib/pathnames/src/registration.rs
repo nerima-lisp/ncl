@@ -13,10 +13,6 @@ use super::{
     file_namestring_builtin, namestring_builtin,
 };
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "operation table is kept in one auditable registration block"
-)]
 pub fn register_operations(
     direct: &mut impl FnMut(
         &'static str,
@@ -63,7 +59,7 @@ pub fn register_operations(
         (
             "LOGICAL-PATHNAME-TRANSLATIONS",
             logical_pathname_translations_builtin,
-            LambdaList::with_rest(&[PATHNAME], OBJECT),
+            LambdaList::with_optional(&[PATHNAME], &[OBJECT]),
         ),
         (
             "LOAD-LOGICAL-PATHNAME-TRANSLATIONS",
@@ -73,6 +69,11 @@ pub fn register_operations(
         (
             "TRANSLATE-LOGICAL-PATHNAME",
             translate_logical_pathname_builtin,
+            LambdaList::with_rest(&[PATHNAME], OBJECT),
+        ),
+        (
+            "COMPILE-FILE-PATHNAME",
+            compile_file_pathname_builtin,
             LambdaList::with_rest(&[PATHNAME], OBJECT),
         ),
         (
@@ -90,6 +91,20 @@ pub fn register_operations(
             merge_pathnames_builtin,
             LambdaList::with_optional(&[PATHNAME], &[PATHNAME]),
         ),
+    ] {
+        direct(name, function, lambda_list)?;
+    }
+    register_file_operations(direct)
+}
+
+fn register_file_operations(
+    direct: &mut impl FnMut(
+        &'static str,
+        ncl_object::RustBuiltin,
+        LambdaList,
+    ) -> Result<ncl_object::FunctionObject, ObjectError>,
+) -> Result<(), ObjectError> {
+    for (name, function, lambda_list) in [
         (
             "COMPILE-FILE-PATHNAME",
             compile_file_pathname_builtin,
@@ -97,7 +112,7 @@ pub fn register_operations(
         ),
         (
             "PROBE-FILE",
-            probe_file_builtin,
+            probe_file_builtin as ncl_object::RustBuiltin,
             LambdaList::fixed(&[PATHNAME]),
         ),
         ("TRUENAME", truename_builtin, LambdaList::fixed(&[PATHNAME])),

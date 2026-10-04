@@ -8,6 +8,14 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use super::wildcard::translate_wildcards;
+
+pub use super::logical::{
+    compile_file_pathname_builtin, load_logical_pathname_translations_builtin,
+    logical_pathname_builtin, logical_pathname_translations_builtin,
+    translate_logical_pathname_builtin,
+};
+
 #[path = "parse.rs"]
 mod parse;
 pub use parse::{parse_namestring_builtin, parse_namestring_value};
@@ -20,7 +28,10 @@ pub fn has_wildcards(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectErro
         return Ok(value.contains('*') || value.contains('?'));
     }
     if let Ok(value) = symbol_text(ctx, word) {
-        return Ok(value.contains('*') || value.contains('?'));
+        return Ok(value.contains('*')
+            || value.contains('?')
+            || value.eq_ignore_ascii_case("WILD")
+            || value.eq_ignore_ascii_case("WILD-INFERIORS"));
     }
     let mut cursor = word;
     while cursor != Word::NIL {
@@ -67,9 +78,27 @@ pub fn pathname_component_match(
     value: Word,
 ) -> Result<bool, ObjectError> {
     if pattern == Word::NIL {
-        return Ok(value == Word::NIL);
+        return Ok(true);
     }
     if value == Word::NIL {
+        return Ok(false);
+    }
+    if let Ok(name) = symbol_text(ctx, pattern) {
+        if name.eq_ignore_ascii_case("WILD") || name.eq_ignore_ascii_case("WILD-INFERIORS") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("NEWEST") {
+            return Ok(true);
+        }
+        if name.eq_ignore_ascii_case("UNSPECIFIC") {
+            return Ok(
+                symbol_text(ctx, value).is_ok_and(|value| value.eq_ignore_ascii_case("UNSPECIFIC"))
+            );
+        }
+    }
+    if let Ok(name) = symbol_text(ctx, value)
+        && name.eq_ignore_ascii_case("UNSPECIFIC")
+    {
         return Ok(false);
     }
     Ok(wildcard_match(&text(ctx, pattern)?, &text(ctx, value)?))
@@ -83,10 +112,12 @@ pub fn pathname_match_builtin(
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
     let pattern = pathname_designator(ctx, runtime, args.required(1)?)?;
-    let directory = wildcard_match(
-        &directory_text(ctx, structure_ref(ctx, pattern, 2)?)?,
-        &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
-    );
+    let pattern_directory = structure_ref(ctx, pattern, 2)?;
+    let directory = pattern_directory == Word::NIL
+        || wildcard_match(
+            &directory_text(ctx, pattern_directory)?,
+            &directory_text(ctx, structure_ref(ctx, pathname, 2)?)?,
+        );
     let matches = directory
         && (0..SLOTS)
             .filter(|index| *index != 2)
@@ -280,11 +311,18 @@ pub fn enough_namestring_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
-    make_string(
-        ctx,
-        runtime,
-        &namestring_value(ctx, pathname)?.chars().collect::<Vec<_>>(),
-    )
+    let full = namestring_value(ctx, pathname)?;
+    let result = if let Some(defaults) = args.get(1) {
+        let defaults = pathname_designator(ctx, runtime, defaults)?;
+        let base = namestring_value(ctx, defaults)?;
+        full.strip_prefix(&base)
+            .unwrap_or(&full)
+            .trim_start_matches('/')
+            .to_owned()
+    } else {
+        full
+    };
+    make_string(ctx, runtime, &result.chars().collect::<Vec<_>>())
 }
 
 pub fn user_homedir_pathname_builtin(
@@ -327,43 +365,6 @@ pub fn directory_builtin(
     let _ = pattern;
     list(ctx, runtime, &matches)
 }
-
-fn replace_wildcard(pattern: &str, value: &str) -> String {
-    if let Some(star) = pattern.find('*') {
-        let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-        let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-        if value.starts_with(prefix)
-            && value.ends_with(suffix)
-            && value.len() >= prefix.len() + suffix.len()
-        {
-            return format!(
-                "{}{}{}",
-                prefix,
-                &value[prefix.len()..value.len() - suffix.len()], // check-added-lines: allow(index) validated prefix and suffix lengths
-                suffix
-            );
-        }
-    }
-    value.to_owned()
-}
-
-fn wildcard_capture(pattern: &str, value: &str) -> Option<String> {
-    let star = pattern.find('*')?;
-    let prefix = &pattern[..star]; // check-added-lines: allow(index) star came from find
-    let suffix = &pattern[star + 1..]; // check-added-lines: allow(index) star came from find
-    (value.starts_with(prefix)
-        && value.ends_with(suffix)
-        && value.len() >= prefix.len() + suffix.len())
-    .then(|| value[prefix.len()..value.len() - suffix.len()].to_owned()) // check-added-lines: allow(index) validated prefix and suffix lengths
-}
-
-fn substitute_wildcard(pattern: &str, capture: &str) -> String {
-    pattern.find('*').map_or_else(
-        || pattern.to_owned(),
-        |index| format!("{}{}{}", &pattern[..index], capture, &pattern[index + 1..]), // check-added-lines: allow(index) index came from find
-    )
-}
-
 pub fn translate_pathname_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -379,50 +380,10 @@ pub fn translate_pathname_builtin(
     if !wildcard_match(&from_name, &source_name) {
         return Err(ObjectError::TypeError);
     }
-    let translated = wildcard_capture(&from_name, &source_name).map_or_else(
-        || replace_wildcard(&to_name, &source_name),
-        |capture| substitute_wildcard(&to_name, &capture),
-    );
+    let translated =
+        translate_wildcards(&from_name, &to_name, &source_name).ok_or(ObjectError::TypeError)?;
     let string = make_string(ctx, runtime, &translated.chars().collect::<Vec<_>>())?;
     parse_namestring_value(ctx, runtime, string)
-}
-
-pub fn logical_pathname_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    parse_namestring_builtin(ctx, runtime, args, values)
-}
-
-pub fn logical_pathname_translations_builtin(
-    _: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _ = args.required(0)?;
-    Ok(Word::NIL)
-}
-
-pub fn load_logical_pathname_translations_builtin(
-    _: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _ = args.required(0)?;
-    Ok(Word::NIL)
-}
-
-pub fn translate_logical_pathname_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    logical_pathname_builtin(ctx, runtime, args, values)
 }
 
 pub fn wild_pathname_p_builtin(
@@ -455,7 +416,12 @@ pub fn merge_pathnames_builtin(
         let value = structure_ref(ctx, pathname, index)?;
         let use_default_directory = index == 2 && relative_directory(ctx, value)?;
         *slot = if (value == Word::NIL || use_default_directory) && defaults != Word::NIL {
-            structure_ref(ctx, defaults, index)?
+            if use_default_directory {
+                let base = structure_ref(ctx, defaults, index)?;
+                append_relative_directory(ctx, runtime, base, value)?
+            } else {
+                structure_ref(ctx, defaults, index)?
+            }
         } else {
             value
         };
@@ -463,23 +429,29 @@ pub fn merge_pathnames_builtin(
     make_pathname(ctx, runtime, &slots)
 }
 
-pub fn compile_file_pathname_builtin(
+fn append_relative_directory(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
+    base: Word,
+    relative: Word,
 ) -> Result<Word, ObjectError> {
-    let input = pathname_designator(ctx, runtime, args.required(0)?)?;
-    let type_ = make_string(ctx, runtime, &['f', 'a', 's', 'l'])?;
-    let mut slots = [Word::NIL; SLOTS];
-    for (index, slot) in slots.iter_mut().enumerate() {
-        *slot = if index == 4 {
-            type_
-        } else {
-            structure_ref(ctx, input, index)?
-        };
+    let mut values = Vec::new();
+    let mut cursor = base;
+    while cursor != Word::NIL {
+        values.push(car(ctx, cursor)?);
+        cursor = cdr(ctx, cursor)?;
     }
-    make_pathname(ctx, runtime, &slots)
+    let mut tail = relative;
+    let mut relative_values = Vec::new();
+    while tail != Word::NIL {
+        relative_values.push(car(ctx, tail)?);
+        tail = cdr(ctx, tail)?;
+    }
+    if !relative_values.is_empty() {
+        let _ = relative_values.remove(0);
+    }
+    values.extend(relative_values);
+    list(ctx, runtime, &values)
 }
 
 pub fn keyword_symbol(

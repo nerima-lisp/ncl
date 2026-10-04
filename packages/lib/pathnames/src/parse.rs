@@ -1,16 +1,14 @@
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Runtime, SLOTS, ThreadContext, Word, keyword_symbol,
-    list, make_pathname, make_string, text,
+    list, make_pathname, make_string, relative_directory, structure_ref, text,
 };
 use crate::is_pathname;
-use ncl_object::string_length;
-
-pub fn parse_namestring_value(
+fn parse_source(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    input: Word,
+    source: &str,
+    host: Word,
 ) -> Result<Word, ObjectError> {
-    let source = text(ctx, input)?;
     let absolute = source.starts_with('/');
     let trimmed = source.trim_start_matches('/');
     let mut parts = trimmed
@@ -22,9 +20,27 @@ pub fn parse_namestring_value(
     } else {
         parts.pop()
     };
-    let (name, type_) = filename.map_or((None, None), |file| match file.rsplit_once('.') {
-        Some((base, extension)) if !base.is_empty() => (Some(base), Some(extension)),
-        _ => (Some(file), None), // check-added-lines: allow(wildcard) filenames without an extension
+    let (name, type_, version) = filename.map_or((None, None, None), |file| {
+        let (stem, version) = file
+            .rsplit_once('.')
+            .map_or((file, None), |(stem, suffix)| {
+                if !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+                {
+                    (stem, suffix.parse::<i64>().ok())
+                } else {
+                    (file, None)
+                }
+            });
+        let (base, extension) = stem
+            .rsplit_once('.')
+            .map_or((stem, None), |(base, extension)| {
+                if base.is_empty() {
+                    (stem, None)
+                } else {
+                    (base, Some(extension))
+                }
+            });
+        (Some(base), extension, version)
     });
     let marker = keyword_symbol(ctx, runtime, if absolute { "ABSOLUTE" } else { "RELATIVE" })?;
     let components = std::iter::once(marker)
@@ -43,18 +59,42 @@ pub fn parse_namestring_value(
         )
     })?;
     let mut slots = [Word::NIL; SLOTS];
+    slots[0] = host; // check-added-lines: allow(index) fixed pathname slot layout
     slots[2] = directory; // check-added-lines: allow(index) fixed pathname slot layout
     slots[3] = name.map_or(Ok(Word::NIL), |value| {
         // check-added-lines: allow(index) fixed pathname slot layout
         make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
     })?;
-    // check-added-lines: allow(index) fixed pathname slot layout
-    slots[4] = type_.map_or(Ok(Word::NIL), |value| {
+    let type_value = type_.map_or(Ok(Word::NIL), |value| {
         // check-added-lines: allow(index) fixed pathname slot layout
         // check-added-lines: allow(index) fixed pathname slot layout
         make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
     })?;
+    slots[4] = type_value; // check-added-lines: allow(index) fixed pathname slot layout
+    slots[5] = version.map_or(Word::NIL, Word::fixnum); // check-added-lines: allow(index) fixed pathname slot layout
     make_pathname(ctx, runtime, &slots)
+}
+
+pub fn parse_namestring_value(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    input: Word,
+) -> Result<Word, ObjectError> {
+    let mut source = text(ctx, input)?;
+    let host = if let Some((prefix, rest)) = source
+        .split_once(':')
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+    {
+        if !prefix.contains('/') && !prefix.is_empty() {
+            source = rest;
+            make_string(ctx, runtime, &prefix.chars().collect::<Vec<_>>())?
+        } else {
+            Word::NIL
+        }
+    } else {
+        Word::NIL
+    };
+    parse_source(ctx, runtime, &source, host)
 }
 
 pub fn parse_namestring_builtin(
@@ -64,13 +104,48 @@ pub fn parse_namestring_builtin(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let input = args.required(0)?;
-    let pathname = if is_pathname(ctx, runtime, input) {
-        input
-    } else {
-        parse_namestring_value(ctx, runtime, input)?
+    if is_pathname(ctx, runtime, input) {
+        values.set(&[input, Word::fixnum(0), Word::NIL]);
+        return Ok(input);
+    }
+    let source = text(ctx, input)?;
+    let start = usize::try_from(args.get(3).and_then(Word::as_fixnum).unwrap_or(0))
+        .map_err(|_| ObjectError::TypeError)?;
+    let end_value = match args.get(4).and_then(Word::as_fixnum) {
+        Some(value) => value,
+        None => i64::try_from(source.chars().count()).map_err(|_| ObjectError::Layout)?,
     };
-    let position =
-        Word::fixnum(i64::try_from(string_length(ctx, input)?).map_err(|_| ObjectError::Layout)?);
-    values.set(&[pathname, position, Word::NIL]);
+    let end = usize::try_from(end_value).map_err(|_| ObjectError::TypeError)?;
+    let chars = source.chars().collect::<Vec<_>>();
+    if start > end || end > chars.len() {
+        return Err(ObjectError::TypeError);
+    }
+    let sliced = make_string(ctx, runtime, &chars[start..end])?; // check-added-lines: allow(index) bounds checked above
+    let mut pathname = parse_namestring_value(ctx, runtime, sliced)?;
+    let mut slots = [Word::NIL; SLOTS];
+    for (index, slot) in slots.iter_mut().enumerate() {
+        *slot = structure_ref(ctx, pathname, index)?;
+    }
+    if let Some(host) = args.get(1).filter(|value| *value != Word::NIL) {
+        slots[0] = host; // check-added-lines: allow(index) fixed pathname slot layout
+    }
+    if let Some(defaults) = args.get(2).filter(|value| *value != Word::NIL) {
+        let defaults = if is_pathname(ctx, runtime, defaults) {
+            defaults
+        } else {
+            return Err(ObjectError::TypeError);
+        };
+        for (index, slot) in slots.iter_mut().enumerate() {
+            if *slot == Word::NIL || (index == 2 && relative_directory(ctx, *slot)?) {
+                *slot = structure_ref(ctx, defaults, index)?;
+            }
+        }
+    }
+    pathname = make_pathname(ctx, runtime, &slots)?;
+    values.set(&[
+        pathname,
+        Word::fixnum(i64::try_from(end).map_err(|_| ObjectError::Layout)?),
+        Word::NIL,
+    ]);
     Ok(pathname)
 }

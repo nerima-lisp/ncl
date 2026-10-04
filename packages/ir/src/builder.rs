@@ -148,6 +148,47 @@ impl FunctionBuilder {
         Ok(())
     }
 
+    /// Whether a block is the entry block or already has a CFG predecessor.
+    pub fn is_reachable(&self, block: BlockId) -> bool {
+        if self
+            .function
+            .blocks
+            .first()
+            .is_some_and(|entry| entry.id == block)
+        {
+            return true;
+        }
+        self.function
+            .blocks
+            .iter()
+            .any(|candidate| match &candidate.terminator {
+                Terminator::Jump { target, .. } => *target == block,
+                Terminator::Branch {
+                    then_target,
+                    else_target,
+                    ..
+                } => *then_target == block || *else_target == block,
+                Terminator::Switch { cases, default, .. } => {
+                    *default == block || cases.iter().any(|(_, target, _)| *target == block)
+                }
+                Terminator::CallReturn { .. }
+                | Terminator::TailCall { .. }
+                | Terminator::Return { .. }
+                | Terminator::Throw { .. }
+                | Terminator::Unreachable => false,
+            })
+    }
+
+    /// Return the SSA values carried by the current block's parameters.
+    pub fn block_parameters(&self, block: BlockId) -> Vec<ValueId> {
+        self.function
+            .blocks
+            .iter()
+            .find(|candidate| candidate.id == block)
+            .map(|candidate| candidate.params.iter().map(|param| param.value).collect())
+            .unwrap_or_default()
+    }
+
     /// Adds an exception handler region.
     pub fn add_handler_region(&mut self, region: HandlerRegion) {
         self.function.handler_regions.push(region);

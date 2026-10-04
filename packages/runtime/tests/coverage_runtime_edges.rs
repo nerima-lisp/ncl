@@ -25,6 +25,14 @@ fn top_level_wrappers_return_the_last_form() {
 }
 
 #[test]
+fn destructive_benchmark_function_compiles() {
+    let mut runtime = Runtime::new().unwrap();
+    runtime
+        .eval(include_str!("fixtures/destructive.lisp"))
+        .unwrap();
+}
+
+#[test]
 fn local_macro_expander_calls_a_compiled_function() {
     let mut runtime = Runtime::new().unwrap();
 

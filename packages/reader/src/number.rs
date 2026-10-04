@@ -100,6 +100,9 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
             'e' | 'E' | 's' | 'S' | 'f' | 'F' | 'd' | 'D' | 'l' | 'L'
         )
     {
+        if digits_before == 0 && !has_dot {
+            return None;
+        }
         has_exponent = true;
         index += 1;
         if matches!(token.get(index), Some('+' | '-')) {

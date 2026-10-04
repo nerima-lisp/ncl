@@ -69,6 +69,15 @@ fn reads_fixnums() {
 }
 
 #[test]
+fn exponent_marker_without_a_mantissa_is_a_symbol() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let word = read_one(&runtime, &mut ctx, "e1");
+    assert_eq!(name_of(&ctx, word), "E1");
+}
+
+#[test]
 fn reads_a_bignum_beyond_fixnum() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

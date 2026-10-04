@@ -139,9 +139,9 @@ pub enum StreamError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum FileError {
-    NotFound,
-    PermissionDenied,
-    InvalidPath,
+    NotFound { pathname: Word },
+    PermissionDenied { pathname: Word },
+    InvalidPath { pathname: Word },
 }
 impl From<TypeError> for LispError {
     fn from(error: TypeError) -> Self {

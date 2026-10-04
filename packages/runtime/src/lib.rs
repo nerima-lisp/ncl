@@ -12,6 +12,7 @@ pub(crate) mod load;
 mod local_macro;
 mod native_error;
 mod nonlocal;
+mod pathname_binding;
 mod support;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
@@ -20,7 +21,7 @@ use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
     Function, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
-    make_simple_vector, slot_ref, symbol_name,
+    make_simple_vector, make_string, slot_ref, symbol_name,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
@@ -121,7 +122,22 @@ impl Runtime {
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
-        let result = compile::file(self, path.as_ref());
+        let path = path.as_ref();
+        let source = make_string(
+            &mut self.context,
+            &self.object,
+            &path.to_string_lossy().chars().collect::<Vec<_>>(),
+        )?;
+        let pathname =
+            pathname_binding::pathname_from_designator(&mut self.context, &self.object, source)?;
+        let (variable, previous) = pathname_binding::bind_pathname_variable(
+            &mut self.context,
+            &self.object,
+            "*COMPILE-FILE-PATHNAME*",
+            pathname,
+        )?;
+        let result = compile::file(self, path);
+        ncl_object::set_symbol_value(&mut self.context, variable, previous)?;
         self.context.clear_evaluator_runtime();
         result
     }

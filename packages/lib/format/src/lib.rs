@@ -332,7 +332,11 @@ fn parse_slash_name(chars: &[char], index: &mut usize) -> Option<String> {
         return None;
     };
     let end = name_start + length;
-    let name = chars[name_start..end].iter().collect();
+    let name = chars
+        .iter()
+        .skip(name_start)
+        .take(end - name_start)
+        .collect();
     *index = end + 1;
     Some(name)
 }

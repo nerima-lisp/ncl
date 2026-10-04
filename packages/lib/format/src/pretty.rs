@@ -1,60 +1,114 @@
 use ncl_object::{Runtime, ThreadContext, Word};
 use ncl_printer::{CharSink, PrintError, PrintOptions};
 
-use crate::Directive;
-
-/// A pretty-print operation emitted by FORMAT's layout directives.
-#[derive(Debug)]
-pub enum PrettyOperation<'a> {
-    /// Request a `pprint-newline` operation for `~_`.
-    Newline(&'a Directive),
-    /// Request a `pprint-indent` operation for `~I`.
-    Indent(&'a Directive),
-    /// Request a printer-controlled `~W` write.
-    Write {
-        /// The object being printed.
-        object: Word,
-        /// The print options selected by the directive.
-        options: PrintOptions,
-    },
-    /// Request a logical block for `~<~:>`.
-    LogicalBlock {
-        /// Rendered logical-block segments.
-        segments: &'a [String], // check-added-lines: allow(index) This is a slice type, not indexing.
-        /// Whether the directive has its colon modifier.
-        colon: bool,
-        /// Whether the directive has its at-sign modifier.
-        at_sign: bool,
-    },
+/// Pretty-printer newline policy, matching `ncl_printer::NewlineKind`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrettyNewline {
+    Linear,
+    Fill,
+    Miser,
+    Mandatory,
 }
 
-/// Connection point for the runtime's pretty printer.
-pub trait PrettyPrinter {
-    /// Handle an operation and return whether it replaced FORMAT's fallback.
+/// Pretty-printer indentation origin, matching `ncl_printer::IndentMode`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrettyIndent {
+    Block,
+    Current,
+}
+
+/// Pretty-printer tab origin, matching `ncl_printer::TabKind`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrettyTab {
+    Relative,
+    Absolute,
+}
+
+/// Connection point for the printer-side pretty-printer state machine.
+///
+/// The object owns the output sink and is itself a `CharSink`, as required by
+/// the printer contract. FORMAT only supplies layout requests and object
+/// writes; the adapter decides how those requests affect its state.
+pub trait PrettyPrinter: CharSink {
+    /// Apply a FORMAT newline request.
     ///
     /// # Errors
-    /// Returns [`PrintError`] when the pretty printer cannot write to `stream`.
-    fn handle(
+    /// Returns a sink error when layout output cannot be written.
+    fn newline(&mut self, kind: PrettyNewline) -> Result<(), PrintError>;
+
+    /// Apply a FORMAT indentation request.
+    fn indent(&mut self, mode: PrettyIndent, amount: isize);
+
+    /// Apply a FORMAT tabulation request.
+    ///
+    /// # Errors
+    /// Returns a sink error when padding cannot be written.
+    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize)
+        -> Result<(), PrintError>;
+
+    /// Print an object through the printer's dispatch and layout state.
+    ///
+    /// # Errors
+    /// Returns a printer error when the object cannot be written.
+    fn write_object(
         &mut self,
-        operation: PrettyOperation<'_>,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
-        stream: &mut dyn CharSink,
-    ) -> Result<bool, PrintError>;
+        object: Word,
+        options: PrintOptions,
+    ) -> Result<(), PrintError>;
+
+    /// Render a `~<...~:>` logical block.
+    ///
+    /// # Errors
+    /// Returns a sink error when block output cannot be written.
+    fn logical_block(&mut self, segments: &[String], colon: bool, at_sign: bool)
+        -> Result<(), PrintError>;
+
+    /// Flush a pending conditional break before FORMAT returns.
+    ///
+    /// # Errors
+    /// Returns a sink error when pending layout cannot be written.
+    fn finish(&mut self) -> Result<(), PrintError>;
 }
 
-/// Temporary fallback until the printer-side pprint state machine lands.
+/// Adapter used until the printer-side implementation is supplied by the
+/// embedding runtime. It deliberately preserves FORMAT's fallback behavior.
 #[derive(Debug, Default)]
 pub struct NoopPrettyPrinter;
 
+impl CharSink for NoopPrettyPrinter {
+    fn write_char(&mut self, _character: char) -> Result<(), PrintError> {
+        Ok(())
+    }
+}
+
 impl PrettyPrinter for NoopPrettyPrinter {
-    fn handle(
+    fn newline(&mut self, _kind: PrettyNewline) -> Result<(), PrintError> {
+        Ok(())
+    }
+
+    fn indent(&mut self, _mode: PrettyIndent, _amount: isize) {}
+
+    fn tab(&mut self, _kind: PrettyTab, _column: usize, _increment: usize) -> Result<(), PrintError> {
+        Ok(())
+    }
+
+    fn write_object(
         &mut self,
-        _operation: PrettyOperation<'_>,
         _ctx: &mut ThreadContext,
         _runtime: &Runtime,
-        _stream: &mut dyn CharSink,
-    ) -> Result<bool, PrintError> {
-        Ok(false)
+        _object: Word,
+        _options: PrintOptions,
+    ) -> Result<(), PrintError> {
+        Ok(())
+    }
+
+    fn logical_block(&mut self, _segments: &[String], _colon: bool, _at_sign: bool) -> Result<(), PrintError> {
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), PrintError> {
+        Ok(())
     }
 }

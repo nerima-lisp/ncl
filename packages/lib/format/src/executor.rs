@@ -6,7 +6,7 @@ use std::rc::Rc;
 use ncl_object::{Runtime, ThreadContext, Word, car, cdr};
 use ncl_printer::{CharSink, PrintError, StringSink};
 
-use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter};
+use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter, PrettyPrinter};
 
 mod compound;
 #[cfg(test)]
@@ -109,7 +109,7 @@ pub fn execute(
     runtime: &Runtime,
     sink: &mut dyn CharSink,
 ) -> Result<usize, FormatError> {
-    execute_with_caller(control, arguments, ctx, runtime, None, sink)
+    execute_with_options(control, arguments, ctx, runtime, None, None, sink)
 }
 
 /// Execute a FORMAT control with an embedding-provided user-function caller.
@@ -122,6 +122,22 @@ pub fn execute_with_caller(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
+    sink: &mut dyn CharSink,
+) -> Result<usize, FormatError> {
+    execute_with_options(control, arguments, ctx, runtime, caller, None, sink)
+}
+
+/// Execute a FORMAT control with user-function and pretty-printer adapters.
+///
+/// # Errors
+/// Returns [`FormatError`] when a directive, callback, or printer fails.
+pub fn execute_with_options(
+    control: &FormatControl,
+    arguments: &[Word],
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
+    pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
     sink: &mut dyn CharSink,
 ) -> Result<usize, FormatError> {
     let arguments = arguments.to_vec();
@@ -139,8 +155,12 @@ pub fn execute_with_caller(
         escape: &mut escape,
         remaining_override: None,
         caller,
+        pretty,
     };
     execute_parts(&control.parts, 0, control.parts.len(), &mut state)?;
+    if let Some(pretty) = state.pretty.as_ref() {
+        pretty.borrow_mut().finish()?;
+    }
     Ok(argument_index)
 }
 
@@ -301,6 +321,7 @@ fn execute_brace(
                 escape: &mut iteration_escape,
                 remaining_override: None,
                 caller: state.caller.clone(),
+                pretty: state.pretty.clone(),
             };
             execute_parts(parts, index + 1, close, &mut nested)?;
             repetitions += 1;
@@ -355,6 +376,7 @@ fn execute_brace(
             escape: &mut iteration_escape,
             remaining_override: Some(usize::from(next_item != Word::NIL)),
             caller: state.caller.clone(),
+            pretty: state.pretty.clone(),
         };
         execute_parts(parts, index + 1, close, &mut nested)?;
         if iteration_escape == Some(EscapeScope::All) {
@@ -395,6 +417,7 @@ fn execute_case_group(
         escape: state.escape,
         remaining_override: state.remaining_override,
         caller: state.caller.clone(),
+        pretty: state.pretty.clone(),
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
@@ -486,6 +509,7 @@ fn execute_nested(
         escape: state.escape,
         remaining_override: state.remaining_override,
         caller: state.caller.clone(),
+        pretty: state.pretty.clone(),
     };
     execute_parts(&nested.parts, 0, nested.parts.len(), &mut nested_state)?;
     Ok(Some(index + 1))
@@ -574,6 +598,7 @@ struct ExecutionState<'a> {
     escape: &'a mut Option<EscapeScope>,
     remaining_override: Option<usize>,
     caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
+    pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

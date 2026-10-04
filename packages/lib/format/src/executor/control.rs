@@ -3,6 +3,7 @@ use ncl_printer::StringSink;
 
 use super::parameters::{parameter_i64, repeat_count_for};
 use super::{Directive, DirectiveKind, EscapeScope, ExecutionState, FormatError};
+use crate::{PrettyIndent, PrettyNewline, PrettyTab};
 
 pub(super) fn next_argument(
     directive: &Directive,
@@ -50,18 +51,61 @@ pub(super) fn execute_control_kind(
             state.column = 0;
             *state.line_start = true;
         }
-        DirectiveKind::Underscore | DirectiveKind::I => {
-            for _ in 0..repeat_count_for(directive, state)? {
-                state.sink.write_char(' ').map_err(FormatError::from)?;
-                state.column += 1;
+        DirectiveKind::Underscore => {
+            let count = repeat_count_for(directive, state)?;
+            let kind = match (directive.colon, directive.at_sign) {
+                (false, false) => PrettyNewline::Linear,
+                (true, false) => PrettyNewline::Fill,
+                (false, true) => PrettyNewline::Mandatory,
+                (true, true) => PrettyNewline::Miser,
+            };
+            if let Some(pretty) = state.pretty.as_ref() {
+                for _ in 0..count {
+                    pretty.borrow_mut().newline(kind)?;
+                }
+            } else {
+                for _ in 0..count {
+                    state.sink.write_char(' ').map_err(FormatError::from)?;
+                    state.column += 1;
+                }
+            }
+            *state.line_start = false;
+        }
+        DirectiveKind::I => {
+            let amount = directive
+                .parameters
+                .first()
+                .and_then(|parameter| match parameter {
+                    crate::Parameter::Integer(value) => isize::try_from(*value).ok(),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            if let Some(pretty) = state.pretty.as_ref() {
+                pretty.borrow_mut().indent(
+                    if directive.at_sign { PrettyIndent::Current } else { PrettyIndent::Block },
+                    amount,
+                );
+            } else {
+                for _ in 0..repeat_count_for(directive, state)? {
+                    state.sink.write_char(' ').map_err(FormatError::from)?;
+                    state.column += 1;
+                }
             }
             *state.line_start = false;
         }
         DirectiveKind::T => {
-            let count = tab_count(directive, state)?;
-            for _ in 0..count {
-                state.sink.write_char(' ').map_err(FormatError::from)?;
-                state.column += 1;
+            let (column, increment) = tab_parameters(directive)?;
+            if let Some(pretty) = state.pretty.as_ref() {
+                pretty.borrow_mut().tab(
+                    if directive.at_sign { PrettyTab::Absolute } else { PrettyTab::Relative },
+                    column,
+                    increment,
+                )?;
+            } else {
+                for _ in 0..tab_count(directive, state)? {
+                    state.sink.write_char(' ').map_err(FormatError::from)?;
+                    state.column += 1;
+                }
             }
             *state.line_start = false;
         }
@@ -108,6 +152,26 @@ fn execute_repeated_control(
         *state.line_start = false;
     }
     Ok(())
+}
+
+fn tab_parameters(
+    directive: &Directive,
+) -> Result<(usize, usize), FormatError> {
+    let column = directive
+        .parameters
+        .first()
+        .map(|parameter| super::parameters::parameter_usize(Some(parameter), directive.kind))
+        .transpose()?
+        .flatten()
+        .unwrap_or(1);
+    let increment = directive
+        .parameters
+        .get(1)
+        .map(|parameter| super::parameters::parameter_usize(Some(parameter), directive.kind))
+        .transpose()?
+        .flatten()
+        .unwrap_or(1);
+    Ok((column, increment))
 }
 
 fn execute_plural_control(
@@ -307,6 +371,7 @@ mod tests {
             escape: &mut escape,
             remaining_override: None,
             caller: None,
+            pretty: None,
         };
         let directive = Directive {
             name: None,
@@ -323,6 +388,6 @@ mod tests {
             at_sign: false,
             kind: DirectiveKind::T,
         };
-        assert_eq!(tab_count(&directive, &state).unwrap_or(usize::MAX), 1);
+        assert_eq!(tab_count(&directive, &state).unwrap_or(usize::MAX), 1); // check-added-lines: allow(panic) test assertion
     }
 }

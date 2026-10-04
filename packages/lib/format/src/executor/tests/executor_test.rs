@@ -230,7 +230,7 @@ fn covers_value_formats_and_invalid_inputs() {
             &mut ctx,
             &runtime
         ),
-        "   12.35/    1.23e2/    12.3/  12.345"
+        "   12.35/   1.23e+2/    12.3/  12.345"
     );
     assert!(
         execute(
@@ -339,7 +339,8 @@ fn covers_parameter_and_printer_helpers() {
                 column: 0,
                 escape: &mut escape,
                 remaining_override: None,
-                caller: None
+                caller: None,
+                pretty: None
             }
         )
         .is_ok()
@@ -416,7 +417,7 @@ fn covers_value_padding_scales_and_direct_parameter_edges() {
     let float = make_double(&mut ctx, &runtime, 1.25).expect("float");
     assert_eq!(
         run("~8,2,,1E", &[float.into()], &mut ctx, &runtime),
-        "  1.25e1"
+        " 1.25e+1"
     );
     assert_eq!(
         run("~8,2,1F", &[float.into()], &mut ctx, &runtime),
@@ -498,6 +499,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
         escape: &mut escape,
         remaining_override: None,
         caller: None,
+        pretty: None,
     };
     let fallback = crate::Directive {
         name: None,

@@ -3,7 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ncl_lib_format::{FormatError, FormatFunctionCaller, execute, execute_with_caller, parse};
+use ncl_lib_format::{
+    FormatError, FormatFunctionCaller, PrettyIndent, PrettyNewline, PrettyPrinter, PrettyTab,
+    execute, execute_with_caller, execute_with_options, parse,
+};
 use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_double, make_string};
 use ncl_printer::{PrintError, StringSink};
 
@@ -19,6 +22,84 @@ fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
 }
 
 struct RecordingCaller;
+
+#[derive(Default)]
+struct RecordingPretty {
+    events: Vec<String>,
+}
+
+impl ncl_printer::CharSink for RecordingPretty {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        self.events.push(format!("char:{character}"));
+        Ok(())
+    }
+}
+
+impl PrettyPrinter for RecordingPretty {
+    fn newline(&mut self, kind: PrettyNewline) -> Result<(), PrintError> {
+        self.events.push(format!("newline:{kind:?}"));
+        Ok(())
+    }
+
+    fn indent(&mut self, mode: PrettyIndent, amount: isize) {
+        self.events.push(format!("indent:{mode:?}:{amount}"));
+    }
+
+    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize) -> Result<(), PrintError> {
+        self.events.push(format!("tab:{kind:?}:{column}:{increment}"));
+        Ok(())
+    }
+
+    fn write_object(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _object: Word,
+        _options: ncl_printer::PrintOptions,
+    ) -> Result<(), PrintError> {
+        self.events.push("write".to_owned());
+        Ok(())
+    }
+
+    fn logical_block(&mut self, segments: &[String], colon: bool, at_sign: bool) -> Result<(), PrintError> {
+        self.events.push(format!("block:{}:{colon}:{at_sign}", segments.len()));
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), PrintError> {
+        self.events.push("finish".to_owned());
+        Ok(())
+    }
+}
+
+#[test]
+fn connects_layout_directives_to_the_pretty_printer_boundary() {
+    let (runtime, mut ctx) = context();
+    let pretty = Rc::new(RefCell::new(RecordingPretty::default()));
+    let mut sink = StringSink::new();
+    execute_with_options(
+        &parse("~_~I~T~W~<~A;~A~:>").expect("control"),
+        &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        &mut ctx,
+        &runtime,
+        None,
+        Some(pretty.clone()),
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "");
+    assert_eq!(
+        pretty.borrow().events,
+        [
+            "newline:Linear",
+            "indent:Block:0",
+            "tab:Relative:1:1",
+            "write",
+            "block:1:true:false",
+            "finish",
+        ]
+    );
+}
 
 impl FormatFunctionCaller for RecordingCaller {
     fn call_format_function(
@@ -358,7 +439,7 @@ fn executes_parameterized_float_formats_and_rejects_invalid_values() {
         &mut sink,
     )
     .expect("execute");
-    assert_eq!(sink.into_string(), "   12.35/    1.23e2/    12.3/  12.345");
+    assert_eq!(sink.into_string(), "   12.35/   1.23e+2/    12.3/  12.345");
 
     let mut sink = StringSink::new();
     assert!(

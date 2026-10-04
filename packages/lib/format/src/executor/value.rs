@@ -287,6 +287,11 @@ fn execute_value_with_argument(
     options: PrintOptions,
     value: Word,
 ) -> Result<(), FormatError> {
+    if directive.kind == DirectiveKind::W && state.pretty.is_some() {
+        execute_pretty_write(state, value, options)?;
+        *state.line_start = false;
+        return Ok(());
+    }
     if matches!(
         directive.kind,
         DirectiveKind::D
@@ -381,6 +386,20 @@ fn execute_value_with_argument(
         }
     }
     *state.line_start = false;
+    Ok(())
+}
+
+fn execute_pretty_write(
+    state: &mut ExecutionState<'_>,
+    value: Word,
+    options: PrintOptions,
+) -> Result<(), FormatError> {
+    let pretty = state.pretty.as_ref().ok_or(FormatError::InvalidParameter {
+        directive: DirectiveKind::W,
+    })?;
+    pretty
+        .borrow_mut()
+        .write_object(state.ctx, state.runtime, value, options)?;
     Ok(())
 }
 

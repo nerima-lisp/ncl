@@ -5,8 +5,8 @@ mod executor;
 mod pretty;
 mod registration;
 
-pub use executor::{FormatError, FormatFunctionCaller, execute, execute_with_caller};
-pub use pretty::{NoopPrettyPrinter, PrettyOperation, PrettyPrinter};
+pub use executor::{FormatError, FormatFunctionCaller, execute, execute_with_caller, execute_with_options};
+pub use pretty::{NoopPrettyPrinter, PrettyIndent, PrettyNewline, PrettyPrinter, PrettyTab};
 pub use registration::register;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

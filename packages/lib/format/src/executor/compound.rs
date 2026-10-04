@@ -63,6 +63,7 @@ pub(super) fn execute_justification(
             escape: state.escape,
             remaining_override: state.remaining_override,
             caller: state.caller.clone(),
+            pretty: state.pretty.clone(),
         };
         execute_parts(parts, start, segment_end, &mut nested)?;
         rendered.push(local.into_string());
@@ -83,6 +84,17 @@ pub(super) fn execute_justification(
             | crate::Parameter::Unsupplied => None,
         })
         .unwrap_or(' ');
+    let logical_block = matches!(
+        parts.get(close),
+        Some(ControlPart::Directive(close_directive)) if close_directive.colon
+    );
+    if logical_block && let Some(pretty) = state.pretty.as_ref() {
+        pretty
+            .borrow_mut()
+            .logical_block(&rendered, true, directive.at_sign)?;
+        *state.line_start = false;
+        return Ok(Some(close + 1));
+    }
     let content_width: usize = rendered.iter().map(|text| text.chars().count()).sum();
     let required = content_width + minpad.saturating_mul(rendered.len().saturating_sub(1));
     let width = if required <= mincol {

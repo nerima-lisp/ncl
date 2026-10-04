@@ -317,7 +317,7 @@ fn covers_justification_and_parameterized_float_edges() {
     );
     assert_eq!(
         run("~9,2,,1,,'*E", &[float.into()], &mut ctx, &runtime),
-        "***3.14e1"
+        "**3.14e+1"
     );
     assert_eq!(run("~F", &[float.into()], &mut ctx, &runtime), "3.14159");
     assert_eq!(
@@ -351,6 +351,7 @@ fn covers_internal_state_fallbacks() {
         escape: &mut escape,
         remaining_override: None,
         caller: None,
+        pretty: None,
     };
     super::execute_parts(&parse("literal").expect("control").parts, 0, 1, &mut state)
         .expect("execute");

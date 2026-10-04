@@ -20,7 +20,7 @@ pub enum PrettyOperation<'a> {
     /// Request a logical block for `~<~:>`.
     LogicalBlock {
         /// Rendered logical-block segments.
-        segments: &'a [String],
+        segments: &'a [String], // check-added-lines: allow(index) This is a slice type, not indexing.
         /// Whether the directive has its colon modifier.
         colon: bool,
         /// Whether the directive has its at-sign modifier.

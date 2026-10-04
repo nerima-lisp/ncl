@@ -3,7 +3,36 @@ use ncl_printer::StringSink;
 use crate::{ControlPart, Directive, DirectiveKind};
 
 use super::parameters::{parameter_usize, parameter_width};
-use super::{ExecutionState, FormatError, execute_parts, matching};
+use super::{ExecutionState, FormatError, execute_parts};
+
+pub(super) fn matching(
+    parts: &[ControlPart],
+    start: usize,
+    end: usize,
+    opening: DirectiveKind,
+    closing: DirectiveKind,
+) -> Result<usize, FormatError> {
+    let mut depth = 0usize;
+    for (offset, part) in parts
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .take(end.saturating_sub(start + 1))
+    {
+        if let ControlPart::Directive(directive) = part {
+            if directive.kind == opening {
+                depth += 1;
+            }
+            if directive.kind == closing {
+                if depth == 0 {
+                    return Ok(offset);
+                }
+                depth -= 1;
+            }
+        }
+    }
+    Err(FormatError::InvalidParameter { directive: opening })
+}
 
 pub(super) fn execute_justification(
     parts: &[ControlPart],
@@ -30,6 +59,7 @@ pub(super) fn execute_justification(
             runtime: state.runtime,
             sink: &mut local,
             line_start: state.line_start,
+            column: state.column,
         };
         execute_parts(parts, start, segment_end, &mut nested)?;
         rendered.push(local.into_string());

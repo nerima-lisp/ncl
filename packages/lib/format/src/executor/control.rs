@@ -42,22 +42,26 @@ pub(super) fn execute_control_kind(
             if !*state.line_start {
                 state.sink.write_char('\n').map_err(FormatError::from)?;
             }
+            state.column = 0;
             *state.line_start = true;
         }
         DirectiveKind::Bar => {
             state.sink.write_char('\u{c}').map_err(FormatError::from)?;
+            state.column = 0;
             *state.line_start = true;
         }
         DirectiveKind::Underscore | DirectiveKind::I => {
             for _ in 0..repeat_count_for(directive, state)? {
                 state.sink.write_char(' ').map_err(FormatError::from)?;
+                state.column += 1;
             }
             *state.line_start = false;
         }
         DirectiveKind::T => {
-            let count = tab_count(directive)?;
+            let count = tab_count(directive, state)?;
             for _ in 0..count {
                 state.sink.write_char(' ').map_err(FormatError::from)?;
+                state.column += 1;
             }
             *state.line_start = false;
         }
@@ -68,7 +72,7 @@ pub(super) fn execute_control_kind(
             execute_argument_skip(directive, state)?;
         }
         DirectiveKind::UpArrow => {
-            execute_up_arrow(directive, state);
+            execute_up_arrow(directive, state)?;
         }
         // check-added-lines: allow(wildcard) non-control directives
         _ => {
@@ -96,7 +100,13 @@ fn execute_repeated_control(
             .write_char(character)
             .map_err(FormatError::from)?;
     }
-    *state.line_start = directive.kind == DirectiveKind::Percent && count > 0;
+    if directive.kind == DirectiveKind::Percent && count > 0 {
+        state.column = 0;
+        *state.line_start = true;
+    } else {
+        state.column += count;
+        *state.line_start = false;
+    }
     Ok(())
 }
 
@@ -146,21 +156,34 @@ fn execute_argument_skip(
     Ok(())
 }
 
-fn execute_up_arrow(directive: &Directive, state: &mut ExecutionState<'_>) {
+fn execute_up_arrow(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<(), FormatError> {
+    let values = directive
+        .parameters
+        .iter()
+        .map(|parameter| match parameter {
+            crate::Parameter::Integer(value) => Ok(*value),
+            crate::Parameter::Unsupplied | crate::Parameter::Character(_)
+            | crate::Parameter::Relative
+            | crate::Parameter::ArgumentCount => Err(FormatError::InvalidParameter {
+                directive: directive.kind,
+            }),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let exhausted = state.arguments.len() == *state.argument_index;
-    let terminate = directive.parameters.is_empty() && exhausted
-        || directive
-            .parameters
-            .first()
-            .and_then(|parameter| parameter_i64(Some(parameter)))
-            .is_some_and(|limit| {
-                i64::try_from(state.arguments.len()).is_ok_and(|len| {
-                    len - i64::try_from(*state.argument_index).unwrap_or(i64::MAX) <= limit
-                })
-            });
+    let terminate = match values.as_slice() {
+        [] => exhausted,
+        [value] => *value == 0,
+        [left, right] => left == right,
+        [low, middle, high] => low <= middle && middle <= high,
+        _ => false,
+    };
     if terminate {
         *state.argument_index = state.arguments.len();
     }
+    Ok(())
 }
 
 pub(super) fn execute_character(
@@ -215,10 +238,10 @@ pub(super) fn execute_character(
     Ok(())
 }
 
-fn tab_count(directive: &Directive) -> Result<usize, FormatError> {
+fn tab_count(directive: &Directive, state: &ExecutionState<'_>) -> Result<usize, FormatError> {
     let column = parameter_i64(directive.parameters.first()).unwrap_or(1);
-    let increment = parameter_i64(directive.parameters.get(1)).unwrap_or(8);
-    if column < 1 || increment < 1 {
+    let increment = parameter_i64(directive.parameters.get(1)).unwrap_or(1);
+    if column < 1 || increment < 0 {
         return Err(FormatError::InvalidParameter {
             directive: directive.kind,
         });
@@ -229,26 +252,63 @@ fn tab_count(directive: &Directive) -> Result<usize, FormatError> {
     let increment = usize::try_from(increment).map_err(|_| FormatError::InvalidParameter {
         directive: directive.kind,
     })?;
-    Ok(column.div_ceil(increment))
+    if directive.at_sign {
+        let relative = column;
+        let after_relative = state.column.saturating_add(relative);
+        let alignment = if increment == 0 {
+            0
+        } else {
+            (increment - after_relative % increment) % increment
+        };
+        Ok(relative + alignment)
+    } else if state.column < column {
+        Ok(column - state.column)
+    } else if increment == 0 {
+        Ok(0)
+    } else {
+        let remainder = (state.column - column) % increment;
+        Ok(increment - remainder)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+    use ncl_object::{Runtime, ThreadContext};
+
     use super::*;
 
     #[test]
     fn rejects_nonpositive_tab_parameters() {
-        for parameters in [
-            vec![crate::Parameter::Integer(0)],
-            vec![crate::Parameter::Integer(1), crate::Parameter::Integer(0)],
-        ] {
-            let directive = Directive {
-                parameters,
-                colon: false,
-                at_sign: false,
-                kind: DirectiveKind::T,
-            };
-            assert!(tab_count(&directive).is_err()); // check-added-lines: allow(panic) test assertion
-        }
+        let runtime = Runtime::new().expect("runtime"); // check-added-lines: allow(panic) test setup
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("register"); // check-added-lines: allow(panic) test setup
+        let arguments = Vec::new();
+        let mut argument_index = 0;
+        let mut sink = StringSink::new();
+        let mut line_start = true;
+        let state = ExecutionState {
+            arguments: &arguments,
+            argument_index: &mut argument_index,
+            ctx: &mut ctx,
+            runtime: &runtime,
+            sink: &mut sink,
+            line_start: &mut line_start,
+            column: 0,
+        };
+        let directive = Directive {
+            parameters: vec![crate::Parameter::Integer(0)],
+            colon: false,
+            at_sign: false,
+            kind: DirectiveKind::T,
+        };
+        assert!(tab_count(&directive, &state).is_err()); // check-added-lines: allow(panic) test assertion
+        let directive = Directive {
+            parameters: vec![crate::Parameter::Integer(1), crate::Parameter::Integer(0)],
+            colon: false,
+            at_sign: false,
+            kind: DirectiveKind::T,
+        };
+        assert_eq!(tab_count(&directive, &state).unwrap_or(usize::MAX), 1);
     }
 }

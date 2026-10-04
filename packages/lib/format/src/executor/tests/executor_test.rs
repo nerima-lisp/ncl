@@ -34,7 +34,7 @@ fn covers_control_parameter_edges() {
     assert_eq!(run("~3%x", &[], &mut ctx, &runtime), "\n\n\nx");
     assert_eq!(run("a~&b", &[], &mut ctx, &runtime), "a\nb");
     assert_eq!(run("~2I~2_", &[], &mut ctx, &runtime), "    ");
-    assert_eq!(run("~3,2T", &[], &mut ctx, &runtime), "  ");
+    assert_eq!(run("~3,2T", &[], &mut ctx, &runtime), "   ");
     assert_eq!(
         run(
             "~P/~P",
@@ -230,7 +230,7 @@ fn covers_value_formats_and_invalid_inputs() {
             &mut ctx,
             &runtime
         ),
-        "   12.35/    1.23e1/    12.3/  12.345"
+        "   12.35/    1.23e2/    12.3/  12.345"
     );
     assert!(
         execute(
@@ -331,7 +331,8 @@ fn covers_parameter_and_printer_helpers() {
                 ctx: &mut ctx,
                 runtime: &runtime,
                 sink: &mut StringSink::new(),
-                line_start: &mut true
+                line_start: &mut true,
+                column: 0
             }
         )
         .is_ok()
@@ -399,7 +400,7 @@ fn covers_control_directive_variants() {
         )
         .is_err()
     );
-    assert!(crate::parse("~1,0T").is_err());
+    assert!(crate::parse("~1,0T").is_ok());
 }
 
 #[test]
@@ -485,6 +486,7 @@ fn covers_internal_dispatch_fallbacks_and_currency_alignment() {
         runtime: &runtime,
         sink: &mut sink,
         line_start: &mut line_start,
+        column: 0,
     };
     let fallback = crate::Directive {
         parameters: Vec::new(),

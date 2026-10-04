@@ -21,7 +21,7 @@ pub(super) fn execute_value_kind(
             return execute_unparameterized_radix(directive, state);
         }
         DirectiveKind::R => PrintOptions::new().with_base(radix_parameter(directive)?),
-        DirectiveKind::W => PrintOptions::new().with_readably(true),
+        DirectiveKind::W => PrintOptions::new().with_pretty(directive.colon),
         DirectiveKind::F | DirectiveKind::E | DirectiveKind::G => {
             return execute_float_directive(directive, state);
         }
@@ -326,6 +326,12 @@ fn execute_value_with_argument(
     let mut rendered = StringSink::new();
     write(state.ctx, state.runtime, value, &mut rendered, &options)?;
     let mut rendered = rendered.into_string();
+    if matches!(directive.kind, DirectiveKind::A | DirectiveKind::S) {
+        if directive.colon && value == Word::NIL {
+            "()".clone_into(&mut rendered);
+        }
+        return write_character_value(state, directive, &rendered);
+    }
     if matches!(
         directive.kind,
         DirectiveKind::D
@@ -370,6 +376,60 @@ fn execute_value_with_argument(
     }
     state.sink.write_str(&rendered).map_err(FormatError::from)?;
     if right_pad {
+        for _ in 0..padding {
+            state.sink.write_char(pad).map_err(FormatError::from)?;
+        }
+    }
+    *state.line_start = false;
+    Ok(())
+}
+
+fn write_character_value(
+    state: &mut ExecutionState<'_>,
+    directive: &Directive,
+    rendered: &str,
+) -> Result<(), FormatError> {
+    let mincol = parameter_width(directive.parameters.first(), directive.kind)?;
+    let colinc = if matches!(directive.parameters.get(1), Some(Parameter::Character(_))) {
+        1
+    } else {
+        parameter_usize(directive.parameters.get(1), directive.kind)?.unwrap_or(1)
+    };
+    if colinc == 0 {
+        return Err(FormatError::InvalidParameter {
+            directive: directive.kind,
+        });
+    }
+    let minpad = parameter_usize(directive.parameters.get(2), directive.kind)?.unwrap_or(0);
+    let pad_parameter = directive.parameters.get(3).or_else(|| {
+        directive
+            .parameters
+            .get(1)
+            .filter(|parameter| matches!(parameter, Parameter::Character(_)))
+    });
+    let pad = match pad_parameter {
+        None | Some(Parameter::Unsupplied) => ' ',
+        Some(Parameter::Character(value)) => *value,
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::ArgumentCount) => {
+            return Err(FormatError::InvalidParameter {
+                directive: directive.kind,
+            });
+        }
+    };
+    let shortfall = mincol.saturating_sub(rendered.chars().count());
+    let width_padding = if shortfall == 0 {
+        0
+    } else {
+        shortfall.div_ceil(colinc) * colinc
+    };
+    let padding = minpad.max(width_padding);
+    if directive.at_sign {
+        for _ in 0..padding {
+            state.sink.write_char(pad).map_err(FormatError::from)?;
+        }
+    }
+    state.sink.write_str(rendered).map_err(FormatError::from)?;
+    if !directive.at_sign {
         for _ in 0..padding {
             state.sink.write_char(pad).map_err(FormatError::from)?;
         }

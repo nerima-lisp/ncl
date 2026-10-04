@@ -3,6 +3,44 @@ use ncl_object::{ObjectRef, ThreadContext, Word, classify_object, string_length,
 use super::{ExecutionState, FormatError};
 use crate::{Directive, DirectiveKind, Parameter};
 
+pub(super) fn resolve_directive(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+) -> Result<Directive, FormatError> {
+    let mut resolved = directive.clone();
+    for parameter in &mut resolved.parameters {
+        if !matches!(parameter, Parameter::Relative | Parameter::ArgumentCount) {
+            continue;
+        }
+        if matches!(parameter, Parameter::ArgumentCount) {
+            *parameter = Parameter::Integer(
+                i64::try_from(state.arguments.len().saturating_sub(*state.argument_index))
+                    .map_err(|_| FormatError::InvalidParameter {
+                        directive: directive.kind,
+                    })?,
+            );
+            continue;
+        }
+        let value = state.arguments.get(*state.argument_index).copied().ok_or(
+            FormatError::MissingArgument {
+                directive: directive.kind,
+            },
+        )?;
+        *state.argument_index += 1;
+        *parameter = if let Some(value) = value.as_character().and_then(char::from_u32) {
+            Parameter::Character(value)
+        } else {
+            let Some(value) = value.as_fixnum() else {
+                return Err(FormatError::InvalidParameter {
+                    directive: directive.kind,
+                });
+            };
+            Parameter::Integer(value)
+        };
+    }
+    Ok(resolved)
+}
+
 pub(super) const fn parameter_i64(parameter: Option<&Parameter>) -> Option<i64> {
     if let Some(Parameter::Integer(value)) = parameter {
         Some(*value)

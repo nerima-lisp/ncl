@@ -254,7 +254,7 @@ fn validate_parameters(
         DirectiveKind::T => {
             for parameter in parameters.iter().take(2) {
                 if let Parameter::Integer(value) = parameter
-                    && *value < 1
+                    && *value < 0
                 {
                     return Err(ParseErrorKind::InvalidParameter);
                 }
@@ -355,7 +355,7 @@ mod tests {
     fn covers_parser_parameter_validation_edges() {
         assert!(parse("~,A").is_err());
         assert!(parse("~37R").is_err());
-        assert!(parse("~0T").is_err());
+        assert!(parse("~0T").is_ok());
         assert!(parse("~-1A").is_err());
         assert!(parse("~-1%").is_err());
         assert!(parse("~9223372036854775808A").is_err());
@@ -364,7 +364,7 @@ mod tests {
         assert_eq!(directive_kind('?'), Ok(DirectiveKind::Question));
         assert_eq!(directive_kind('!'), Err(ParseErrorKind::UnknownDirective));
         assert!(validate_parameters(DirectiveKind::R, &[Parameter::Integer(1)]).is_err());
-        assert!(validate_parameters(DirectiveKind::T, &[Parameter::Integer(0)]).is_err());
+        assert!(validate_parameters(DirectiveKind::T, &[Parameter::Integer(0)]).is_ok());
         assert!(validate_parameters(DirectiveKind::A, &[Parameter::Integer(-1)]).is_err());
         assert!(validate_parameters(DirectiveKind::C, &[]).is_ok());
     }

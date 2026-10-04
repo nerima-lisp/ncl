@@ -196,7 +196,7 @@ fn covers_conditional_and_iteration_edge_paths() {
     );
     assert_eq!(
         run("before~1^after", &[Word::fixnum(1)], &mut ctx, &runtime),
-        "before"
+        "beforeafter"
     );
     assert_eq!(
         run(
@@ -344,6 +344,7 @@ fn covers_internal_state_fallbacks() {
         runtime: &runtime,
         sink: &mut sink,
         line_start: &mut line_start,
+        column: 0,
     };
     super::execute_parts(&parse("literal").expect("control").parts, 0, 1, &mut state)
         .expect("execute");

@@ -22,7 +22,12 @@ pub(super) fn execute_float_directive(
     } else {
         2
     };
-    if let Some(scale) = parameter_i64(directive.parameters.get(scale_index)) {
+    let scale = parameter_i64(directive.parameters.get(scale_index))
+        .unwrap_or_else(|| i64::from(directive.kind == DirectiveKind::E));
+    let scaled = directive.kind == DirectiveKind::F
+        || directive.kind == DirectiveKind::E
+        || (directive.kind == DirectiveKind::G && g_uses_exponential(value));
+    if scaled {
         value *= 10_f64.powi(
             i32::try_from(scale).map_err(|_| FormatError::InvalidParameter {
                 directive: directive.kind,
@@ -67,6 +72,10 @@ pub(super) fn execute_float_directive(
     state.sink.write_str(&rendered).map_err(FormatError::from)?;
     *state.line_start = false;
     Ok(())
+}
+
+fn g_uses_exponential(value: f64) -> bool {
+    value.abs() >= 1_000_000_f64 || (value != 0.0 && value.abs() < 0.0001)
 }
 
 pub(super) fn execute_currency_directive(
@@ -136,27 +145,77 @@ fn render_float(
         return Ok(sink.into_string());
     };
     if directive.kind == DirectiveKind::E {
-        let mut rendered = format!("{value:.digits$e}");
-        if let Some(width) = parameter_usize(directive.parameters.get(2), directive.kind)?
-            && let Some((mantissa, exponent)) = rendered.split_once('e')
+        if directive.parameters.get(1).is_none()
+            && directive.parameters.get(2).is_none()
+            && directive.parameters.get(3).is_none()
         {
-            let sign = exponent.strip_prefix('+').map_or("", |_| "+");
-            let digits = exponent.trim_start_matches(['+', '-']);
-            let sign = if exponent.starts_with('-') { "-" } else { sign };
-            rendered = format!("{mantissa}e{sign}{digits:0>width$}");
+            let mut sink = StringSink::new();
+            ncl_printer::write(
+                state.ctx,
+                state.runtime,
+                object,
+                &mut sink,
+                &PrintOptions::new(),
+            )?;
+            return Ok(sink.into_string());
         }
-        Ok(rendered)
+        Ok(render_exponential(
+            value,
+            digits,
+            parameter_usize(directive.parameters.get(2), directive.kind)?,
+            parameter_char(directive, 6)?,
+        ))
     } else if directive.kind == DirectiveKind::G
         && (value.abs() >= 1_000_000_f64 || (value != 0.0 && value.abs() < 0.0001))
     {
-        let mut rendered = format!("{value:.digits$e}");
-        if let Some(character) = parameter_char(directive, 6)? {
-            rendered = rendered.replace('e', &character.to_string());
-        }
-        Ok(rendered)
+        Ok(render_exponential(
+            value,
+            digits,
+            parameter_usize(directive.parameters.get(2), directive.kind)?,
+            parameter_char(directive, 6)?,
+        ))
     } else {
         Ok(format!("{value:.digits$}"))
     }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn render_exponential(
+    value: f64,
+    digits: usize,
+    exponent_width: Option<usize>,
+    exponent_char: Option<char>,
+) -> String {
+    if !value.is_finite() {
+        return value.to_string();
+    }
+    let magnitude = value.abs();
+    let mut exponent = if magnitude == 0.0 {
+        0
+    } else {
+        magnitude.log10().floor() as i32
+    };
+    let mut coefficient = if magnitude == 0.0 {
+        0.0
+    } else {
+        magnitude / 10_f64.powi(exponent)
+    };
+    let mut mantissa = format!("{coefficient:.digits$}");
+    if coefficient >= 9.5 && mantissa.starts_with("10") {
+        exponent += 1;
+        coefficient /= 10.0;
+        mantissa = format!("{coefficient:.digits$}");
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    let exponent_sign = if exponent < 0 { "-" } else { "" };
+    let exponent_digits = exponent.unsigned_abs().to_string();
+    let exponent_digits = exponent_width.map_or_else(|| exponent_digits.clone(), |width| {
+        format!("{exponent_digits:0>width$}")
+    });
+    format!(
+        "{sign}{mantissa}{}{exponent_sign}{exponent_digits}",
+        exponent_char.unwrap_or('e')
+    )
 }
 
 fn parameter_char(directive: &Directive, index: usize) -> Result<Option<char>, FormatError> {

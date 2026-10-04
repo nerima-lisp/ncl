@@ -142,7 +142,7 @@ fn rejects_character_and_relative_repeat_parameters() {
     assert_eq!(
         execute(
             &parse("~v~").expect("control"),
-            &[],
+            &[Word::character(u32::from('x'))],
             &mut ctx,
             &runtime,
             &mut sink,
@@ -259,6 +259,37 @@ fn radix_directive_applies_width_and_padding_parameters() {
 }
 
 #[test]
+fn resolves_v_and_hash_parameters_before_directive_execution() {
+    let (runtime, mut ctx) = context();
+    let value = string(&runtime, &mut ctx, "x");
+    let mut sink = StringSink::new();
+    execute(
+        &parse("~vA/~#_").expect("control"),
+        &[Word::fixnum(4), value, value],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "x   / ");
+}
+
+#[test]
+fn tabulation_uses_current_column_and_relative_mode() {
+    let (runtime, mut ctx) = context();
+    let mut sink = StringSink::new();
+    execute(
+        &parse("abc~8Tz/~3,8@Tq").expect("control"),
+        &[],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(sink.into_string(), "abc     z/      q");
+}
+
+#[test]
 fn executes_parameterized_float_formats_and_rejects_invalid_values() {
     let (runtime, mut ctx) = context();
     let float = make_double(&mut ctx, &runtime, 12.345).expect("float");
@@ -283,7 +314,7 @@ fn executes_parameterized_float_formats_and_rejects_invalid_values() {
         &mut sink,
     )
     .expect("execute");
-    assert_eq!(sink.into_string(), "   12.35/    1.23e1/    12.3/  12.345");
+    assert_eq!(sink.into_string(), "   12.35/    1.23e2/    12.3/  12.345");
 
     let mut sink = StringSink::new();
     assert!(
@@ -382,7 +413,7 @@ fn exercises_early_termination_case_variants_and_parameter_errors() {
     )
     .expect("execute");
     assert_eq!(sink.into_string(), "Hello");
-    assert!(parse("~2,0T").is_err());
+    assert!(parse("~2,0T").is_ok());
     assert!(parse("~-1A").is_err());
 }
 

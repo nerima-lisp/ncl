@@ -17,9 +17,9 @@ mod parameters;
 mod tests;
 mod value;
 
-use compound::{execute_justification, split_branches};
+use compound::{execute_justification, matching, split_branches};
 use control::{execute_character, execute_control_kind, next_argument, next_argument_kind};
-use parameters::{object_string, parameter_i64, parameter_usize};
+use parameters::{object_string, parameter_i64, parameter_usize, resolve_directive};
 use value::execute_value_kind;
 
 /// A failure while executing a FORMAT control.
@@ -96,6 +96,7 @@ pub fn execute(
         runtime,
         sink,
         line_start: &mut line_start,
+        column: 0,
     };
     execute_parts(&control.parts, 0, control.parts.len(), &mut state)?;
     Ok(argument_index)
@@ -116,10 +117,16 @@ fn execute_parts(
         match part {
             ControlPart::Literal(text) => {
                 state.sink.write_str(text).map_err(FormatError::from)?;
+                if let Some((_, suffix)) = text.rsplit_once('\n') {
+                    state.column = suffix.chars().count();
+                } else {
+                    state.column += text.chars().count();
+                }
                 *state.line_start = text.ends_with('\n') || (*state.line_start && text.is_empty());
             }
             ControlPart::Directive(directive) => {
-                execute_directive(directive, state)?;
+                let directive = resolve_directive(directive, state)?;
+                execute_directive(&directive, state)?;
                 if directive.kind == DirectiveKind::UpArrow
                     && *state.argument_index >= state.arguments.len()
                 {
@@ -142,11 +149,26 @@ fn execute_compound(
         return Ok(None);
     };
     let next = match directive.kind {
-        DirectiveKind::BracketOpen => execute_bracket(parts, index, end, directive, state)?,
-        DirectiveKind::BraceOpen => execute_brace(parts, index, end, directive, state)?,
-        DirectiveKind::ParenOpen => execute_case_group(parts, index, end, directive, state)?,
-        DirectiveKind::Less => execute_justification(parts, index, end, directive, state)?,
-        DirectiveKind::Question => execute_nested(parts, index, directive, state)?,
+        DirectiveKind::BracketOpen => {
+            let resolved = resolve_directive(directive, state)?;
+            execute_bracket(parts, index, end, &resolved, state)?
+        }
+        DirectiveKind::BraceOpen => {
+            let resolved = resolve_directive(directive, state)?;
+            execute_brace(parts, index, end, &resolved, state)?
+        }
+        DirectiveKind::ParenOpen => {
+            let resolved = resolve_directive(directive, state)?;
+            execute_case_group(parts, index, end, &resolved, state)?
+        }
+        DirectiveKind::Less => {
+            let resolved = resolve_directive(directive, state)?;
+            execute_justification(parts, index, end, &resolved, state)?
+        }
+        DirectiveKind::Question => {
+            let resolved = resolve_directive(directive, state)?;
+            execute_nested(parts, index, &resolved, state)?
+        }
         _ => None, // check-added-lines: allow(wildcard) non-compound directives
     };
     Ok(next)
@@ -266,6 +288,7 @@ fn execute_brace(
             runtime: state.runtime,
             sink: state.sink,
             line_start: state.line_start,
+            column: state.column,
         };
         execute_parts(parts, index + 1, close, &mut nested)?;
         item = cdr(state.ctx, item).map_err(|_| FormatError::InvalidParameter {
@@ -301,6 +324,7 @@ fn execute_case_group(
         runtime: state.runtime,
         sink: &mut local,
         line_start: state.line_start,
+        column: state.column,
     };
     execute_parts(parts, index + 1, close, &mut nested)?;
     let text = local.into_string();
@@ -388,38 +412,10 @@ fn execute_nested(
         runtime: state.runtime,
         sink: state.sink,
         line_start: state.line_start,
+        column: state.column,
     };
     execute_parts(&nested.parts, 0, nested.parts.len(), &mut nested_state)?;
     Ok(Some(index + 1))
-}
-
-fn matching(
-    parts: &[ControlPart],
-    start: usize,
-    end: usize,
-    opening: DirectiveKind,
-    closing: DirectiveKind,
-) -> Result<usize, FormatError> {
-    let mut depth = 0usize;
-    for (offset, part) in parts
-        .iter()
-        .enumerate()
-        .skip(start + 1)
-        .take(end.saturating_sub(start + 1))
-    {
-        if let ControlPart::Directive(directive) = part {
-            if directive.kind == opening {
-                depth += 1;
-            }
-            if directive.kind == closing {
-                if depth == 0 {
-                    return Ok(offset);
-                }
-                depth -= 1;
-            }
-        }
-    }
-    Err(FormatError::InvalidParameter { directive: opening })
 }
 
 fn execute_directive(
@@ -483,4 +479,5 @@ struct ExecutionState<'a> {
     runtime: &'a Runtime,
     sink: &'a mut dyn CharSink,
     line_start: &'a mut bool,
+    column: usize,
 }

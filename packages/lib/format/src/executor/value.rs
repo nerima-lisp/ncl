@@ -10,7 +10,7 @@ use crate::{Directive, DirectiveKind, Parameter};
 
 pub(super) fn execute_value_kind(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let options = match directive.kind {
         DirectiveKind::A => PrintOptions::new().with_escape(false),
@@ -40,7 +40,7 @@ pub(super) fn execute_value_kind(
 
 fn execute_unparameterized_radix(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let value = next_argument(directive, state)?;
     if !is_integer(state.ctx, value) {
@@ -249,7 +249,7 @@ fn roman(value: i128, old: bool) -> String {
 }
 
 fn write_padded(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     directive: &Directive,
     rendered: &str,
 ) -> Result<(), FormatError> {
@@ -275,7 +275,7 @@ fn write_padded(
 }
 fn execute_value_directive(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     options: PrintOptions,
 ) -> Result<(), FormatError> {
     let value = next_argument(directive, state)?;
@@ -283,7 +283,7 @@ fn execute_value_directive(
 }
 fn execute_value_with_argument(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     options: PrintOptions,
     value: Word,
 ) -> Result<(), FormatError> {
@@ -390,7 +390,7 @@ fn execute_value_with_argument(
 }
 
 fn execute_pretty_write(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     value: Word,
     options: PrintOptions,
 ) -> Result<(), FormatError> {
@@ -403,7 +403,7 @@ fn execute_pretty_write(
     Ok(())
 }
 fn write_character_value(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     directive: &Directive,
     rendered: &str,
 ) -> Result<(), FormatError> {

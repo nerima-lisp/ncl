@@ -13,9 +13,6 @@ use crate::error::PrintError;
 use crate::options::PrintOptions;
 use crate::sink::{CharSink, StringSink};
 
-/// The column at which the pretty printer starts a new line.
-const DEFAULT_MARGIN: usize = 80;
-
 /// The printer state for one [`write()`] call.
 pub struct Printer<'a> {
     pub(crate) ctx: &'a mut ThreadContext,
@@ -36,6 +33,47 @@ pub struct Printer<'a> {
     active: HashSet<usize>,
 }
 
+struct LineLimitSink<'a> {
+    sink: &'a mut dyn CharSink,
+    limit: usize,
+    lines: usize,
+    truncated: bool,
+}
+
+impl LineLimitSink<'_> {
+    fn write_limited_char(&mut self, character: char) -> Result<(), PrintError> {
+        if self.truncated {
+            if matches!(character, ')' | ']' | '}') {
+                return self.sink.write_char(character);
+            }
+            return Ok(());
+        }
+        if character == '\n' && self.lines >= self.limit {
+            self.sink.write_str("..")?;
+            self.truncated = true;
+            return Ok(());
+        }
+        self.sink.write_char(character)?;
+        if character == '\n' {
+            self.lines += 1;
+        }
+        Ok(())
+    }
+}
+
+impl CharSink for LineLimitSink<'_> {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        self.write_limited_char(character)
+    }
+
+    fn write_str(&mut self, text: &str) -> Result<(), PrintError> {
+        for character in text.chars() {
+            self.write_limited_char(character)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> Printer<'a> {
     pub fn new(
         ctx: &'a mut ThreadContext,
@@ -46,6 +84,7 @@ impl<'a> Printer<'a> {
         if options.readably() {
             options = options.with_escape(true);
         }
+        let margin = options.right_margin();
         Self {
             ctx,
             runtime,
@@ -53,7 +92,7 @@ impl<'a> Printer<'a> {
             options,
             depth: 0,
             column: 0,
-            margin: DEFAULT_MARGIN,
+            margin,
             circle: None,
             active: HashSet::new(),
         }
@@ -303,7 +342,20 @@ pub fn write(
     sink: &mut dyn CharSink,
     options: &PrintOptions,
 ) -> Result<(), PrintError> {
-    let mut printer = Printer::new(ctx, runtime, sink, *options);
+    let mut limited_sink = options
+        .print_lines()
+        .filter(|_| options.pretty())
+        .map(|limit| LineLimitSink {
+            sink,
+            limit: limit.get(),
+            lines: 1,
+            truncated: false,
+        });
+    let output: &mut dyn CharSink = match limited_sink.as_mut() {
+        Some(limited) => limited,
+        None => sink,
+    };
+    let mut printer = Printer::new(ctx, runtime, output, *options);
     if options.circle() {
         printer.enable_circle(object);
     }

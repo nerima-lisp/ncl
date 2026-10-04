@@ -4,6 +4,54 @@ mod runtime_tests {
     use std::fs;
 
     #[test]
+    fn pprint_logical_block_runs_a_fill_style_traversal() {
+        let mut runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime initialization failed: {error}"),
+        };
+        let source = r#"
+            (progn
+              (setf common-lisp::*print-length* 2)
+              (with-output-to-string (s)
+                (pprint-logical-block (s '(1 2 3) :prefix "(" :suffix ")")
+                  (pprint-exit-if-list-exhausted)
+                  (prin1 (pprint-pop) s)
+                  (pprint-newline :fill)
+                  (pprint-exit-if-list-exhausted)
+                  (write-string " " s)
+                  (prin1 (pprint-pop) s)
+                  (pprint-exit-if-list-exhausted)
+                  (write-string " " s)
+                  (prin1 (pprint-pop) s))))
+        "#;
+        let value = match runtime.eval(source) {
+            Ok(value) => value,
+            Err(error) => panic!("pprint logical block evaluation failed: {error}"),
+        };
+        assert_eq!(runtime.format_result(value), "\"(1 2)\"");
+    }
+
+    #[test]
+    fn pprint_logical_block_exposes_a_dotted_tail_once() {
+        let mut runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime initialization failed: {error}"),
+        };
+        let value = match runtime.eval(
+            r#"(with-output-to-string (s)
+                  (pprint-logical-block (s '(1 . 2) :prefix "(" :suffix ")")
+                    (prin1 (pprint-pop) s)
+                    (pprint-exit-if-list-exhausted)
+                    (write-string " . " s)
+                    (prin1 (pprint-pop) s)))"#,
+        ) {
+            Ok(value) => value,
+            Err(error) => panic!("dotted logical block evaluation failed: {error}"),
+        };
+        assert_eq!(runtime.format_result(value), "\"(1 . 2)\"");
+    }
+
+    #[test]
     fn evaluates_a_literal_through_native_code() {
         let mut runtime = match Runtime::new() {
             Ok(runtime) => runtime,

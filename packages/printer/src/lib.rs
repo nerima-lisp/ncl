@@ -15,16 +15,25 @@ mod error;
 mod number;
 mod opaque;
 mod options;
+mod pretty;
+mod pretty_bridge;
 mod print;
 mod sink;
 mod string;
 mod symbol;
 
-pub use builtins::{copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch};
+pub use builtins::{
+    copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch,
+    set_pprint_dispatch_with_priority,
+};
 pub use error::PrintError;
 pub use options::{
     ArrayMode, CircleMode, CircleSharingMode, EscapeMode, GensymMode, NonNegative, PrettyMode,
     PrintBase, PrintCase, PrintOptions, RadixMode, ReadabilityMode,
+};
+pub use pretty::{
+    IndentMode, NewlineKind, PrettyPrinter, PrettyPrinterAdapter, PrettyPrinterState,
+    SharedPrettyPrinter, TabKind,
 };
 pub use print::{write, write_to_string};
 pub use sink::{CharSink, StringSink};

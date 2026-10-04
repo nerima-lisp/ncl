@@ -7,7 +7,7 @@ use crate::{Directive, DirectiveKind, Parameter};
 
 pub(super) fn execute_float_directive(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let object = next_argument(directive, state)?;
     let ObjectRef::DoubleFloat(number) = classify_object(state.ctx, object) else {
@@ -82,7 +82,7 @@ fn g_uses_exponential(value: f64) -> bool {
 
 pub(super) fn execute_currency_directive(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let object = next_argument(directive, state)?;
     let ObjectRef::DoubleFloat(number) = classify_object(state.ctx, object) else {
@@ -130,7 +130,7 @@ pub(super) fn execute_currency_directive(
 }
 
 fn render_float(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     value: f64,
     object: Word,
     directive: &Directive,

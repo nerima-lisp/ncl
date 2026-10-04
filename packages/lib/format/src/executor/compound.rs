@@ -39,7 +39,7 @@ pub(super) fn execute_justification(
     index: usize,
     end: usize,
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
         parts,
@@ -138,7 +138,7 @@ pub(super) fn execute_justification(
 }
 
 fn write_padding(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     count: usize,
     character: char,
 ) -> Result<(), FormatError> {

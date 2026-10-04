@@ -1,10 +1,9 @@
 //! Print options mirroring the Common Lisp `*print-*` variables.
 
+mod from_specials;
 mod specials;
 
 use ncl_object::{Runtime, ThreadContext};
-
-use self::specials::{base_special, bool_special, case_special, length_special};
 
 /// A validated radix accepted by the printer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -134,6 +133,12 @@ pub struct PrintOptions {
     circle_not_shared: CircleSharingMode,
     /// `NCL-EXT:*PRINT-VECTOR-LENGTH*`: maximum length for arrays.
     vector_length: Option<NonNegative>,
+    /// `*print-right-margin*`: preferred output width.
+    right_margin: NonNegative,
+    /// `*print-miser-width*`: width at which miser breaks become active.
+    miser_width: NonNegative,
+    /// `*print-lines*`: maximum number of output lines.
+    print_lines: Option<NonNegative>,
 }
 
 impl PrintOptions {
@@ -155,6 +160,9 @@ impl PrintOptions {
             gensym: GensymMode::WithPrefix,
             circle_not_shared: CircleSharingMode::AllOccurrences,
             vector_length: None,
+            right_margin: NonNegative::new(80),
+            miser_width: NonNegative::new(0),
+            print_lines: None,
         }
     }
 
@@ -271,6 +279,30 @@ impl PrintOptions {
         self
     }
 
+    /// Return a copy with `*print-right-margin*` replaced.
+    #[must_use]
+    pub const fn with_right_margin(mut self, margin: usize) -> Self {
+        self.right_margin = NonNegative::new(if margin == 0 { 1 } else { margin });
+        self
+    }
+
+    /// Return a copy with `*print-miser-width*` replaced.
+    #[must_use]
+    pub const fn with_miser_width(mut self, width: usize) -> Self {
+        self.miser_width = NonNegative::new(width);
+        self
+    }
+
+    /// Return a copy with `*print-lines*` replaced.
+    #[must_use]
+    pub const fn with_print_lines(mut self, lines: Option<usize>) -> Self {
+        self.print_lines = match lines {
+            Some(value) => Some(NonNegative::new(value)),
+            None => None,
+        };
+        self
+    }
+
     /// Return whether character and string escaping is enabled.
     #[must_use]
     pub const fn escape(self) -> bool {
@@ -330,6 +362,24 @@ impl PrintOptions {
     #[must_use]
     pub const fn vector_length(self) -> Option<NonNegative> {
         self.vector_length
+    }
+
+    /// Return the preferred output width.
+    #[must_use]
+    pub const fn right_margin(self) -> usize {
+        self.right_margin.get()
+    }
+
+    /// Return the miser width.
+    #[must_use]
+    pub const fn miser_width(self) -> usize {
+        self.miser_width.get()
+    }
+
+    /// Return the maximum output line count.
+    #[must_use]
+    pub const fn print_lines(self) -> Option<NonNegative> {
+        self.print_lines
     }
 
     /// Return the current escape mode.
@@ -417,61 +467,10 @@ impl PrintOptions {
     ///
     /// Most `*print-*` variables belong to `ncl-lib-streams`; a variable that
     /// is absent, unbound, or holds an unexpected type leaves the default in
-    /// place instead of failing. This reads the symbol's value cell, not a
-    /// dynamic binding, because `ThreadContext` exposes no binding lookup yet.
+    /// place instead of failing.
     #[must_use]
     pub fn from_specials(ctx: &mut ThreadContext, runtime: &Runtime) -> Self {
-        let mut options = Self::new();
-        options.escape = EscapeMode::from_bool(bool_special(
-            ctx,
-            runtime,
-            "*PRINT-ESCAPE*",
-            options.escape(),
-        ));
-        options.readably = ReadabilityMode::from_bool(bool_special(
-            ctx,
-            runtime,
-            "*PRINT-READABLY*",
-            options.readably(),
-        ));
-        options.radix =
-            RadixMode::from_bool(bool_special(ctx, runtime, "*PRINT-RADIX*", options.radix()));
-        options.circle = CircleMode::from_bool(bool_special(
-            ctx,
-            runtime,
-            "*PRINT-CIRCLE*",
-            options.circle(),
-        ));
-        options.pretty = PrettyMode::from_bool(bool_special(
-            ctx,
-            runtime,
-            "*PRINT-PRETTY*",
-            options.pretty(),
-        ));
-        options.array =
-            ArrayMode::from_bool(bool_special(ctx, runtime, "*PRINT-ARRAY*", options.array()));
-        options.gensym = GensymMode::from_bool(bool_special(
-            ctx,
-            runtime,
-            "*PRINT-GENSYM*",
-            options.gensym(),
-        ));
-        options.base = base_special(ctx, runtime, options.base);
-        options.case = case_special(ctx, runtime, options.case);
-        options.length = length_special(ctx, runtime, "*PRINT-LENGTH*");
-        options.level = length_special(ctx, runtime, "*PRINT-LEVEL*");
-        options.circle_not_shared = if bool_special(
-            ctx,
-            runtime,
-            "NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*",
-            matches!(options.circle_not_shared, CircleSharingMode::OnlyShared),
-        ) {
-            CircleSharingMode::OnlyShared
-        } else {
-            CircleSharingMode::AllOccurrences
-        };
-        options.vector_length = length_special(ctx, runtime, "NCL-EXT:*PRINT-VECTOR-LENGTH*");
-        options
+        from_specials::from_specials(ctx, runtime)
     }
 }
 

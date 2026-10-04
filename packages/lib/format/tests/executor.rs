@@ -8,7 +8,7 @@ use ncl_lib_format::{
     execute, execute_with_caller, execute_with_options, parse,
 };
 use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_double, make_string};
-use ncl_printer::{PrintError, StringSink};
+use ncl_printer::{CharSink, PrintError, StringSink};
 
 fn context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().expect("runtime");
@@ -211,6 +211,29 @@ fn fake_pretty_sink_applies_margin_and_indent_to_layout_breaks() {
     )
     .expect("execute");
     assert_eq!(pretty.borrow().output, "    1");
+}
+
+#[test]
+fn actual_pretty_printer_adapter_handles_format_layout_directives() {
+    let (runtime, mut ctx) = context();
+    let mut output = StringSink::new();
+    let shared = ncl_printer::PrettyPrinter::with_options(&mut output, 4, 0).into_shared();
+    let pretty = Rc::new(RefCell::new(shared.adapter()));
+    pretty.borrow_mut().write_str("x").expect("prefix");
+    let mut fallback = StringSink::new();
+    execute_with_options(
+        &parse("~_~I~2T~W~<~A~:>").expect("control"),
+        &[Word::fixnum(1), Word::fixnum(2)],
+        &mut ctx,
+        &runtime,
+        None,
+        Some(pretty.clone()),
+        &mut fallback,
+    )
+    .expect("execute");
+    drop(pretty);
+    drop(shared);
+    assert_eq!(output.into_string(), "x   12");
 }
 
 #[test]

@@ -135,14 +135,14 @@ pub fn execute_with_caller(
 ///
 /// # Errors
 /// Returns [`FormatError`] when a directive, callback, or printer fails.
-pub fn execute_with_options(
+pub fn execute_with_options<'a, 'p>(
     control: &FormatControl,
     arguments: &[Word],
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
-    pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
-    sink: &mut dyn CharSink,
+    pretty: Option<Rc<RefCell<dyn PrettyPrinter + 'p>>>,
+    sink: &'a mut dyn CharSink,
 ) -> Result<usize, FormatError> {
     let arguments = arguments.to_vec();
     let mut argument_index = 0;
@@ -172,7 +172,7 @@ pub fn execute_parts(
     parts: &[ControlPart],
     mut index: usize,
     end: usize,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     while index < end {
         if let Some(next) = execute_compound(parts, index, end, state)? {
@@ -207,7 +207,7 @@ fn execute_compound(
     parts: &[ControlPart],
     index: usize,
     end: usize,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let Some(ControlPart::Directive(directive)) = parts.get(index) else {
         return Ok(None);
@@ -243,7 +243,7 @@ fn execute_bracket(
     index: usize,
     end: usize,
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
         parts,
@@ -297,7 +297,7 @@ fn execute_brace(
     index: usize,
     end: usize,
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
         parts,
@@ -399,7 +399,7 @@ fn execute_nested(
     _parts: &[ControlPart],
     index: usize,
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let control_word = next_argument_kind(state, DirectiveKind::Question)?;
     let control = object_string(state.ctx, control_word).ok_or(FormatError::InvalidParameter {
@@ -443,7 +443,7 @@ fn execute_nested(
     Ok(Some(index + 1))
 }
 
-pub struct ExecutionState<'a> {
+pub struct ExecutionState<'a, 'p> {
     pub(super) arguments: &'a Vec<Word>,
     pub(super) argument_index: &'a mut usize,
     pub(super) ctx: &'a mut ThreadContext,
@@ -454,7 +454,7 @@ pub struct ExecutionState<'a> {
     pub(super) escape: &'a mut Option<EscapeScope>,
     pub(super) remaining_override: Option<usize>,
     pub(super) caller: Option<Rc<RefCell<dyn FormatFunctionCaller>>>,
-    pub(super) pretty: Option<Rc<RefCell<dyn PrettyPrinter>>>,
+    pub(super) pretty: Option<Rc<RefCell<dyn PrettyPrinter + 'p>>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

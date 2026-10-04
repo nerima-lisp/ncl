@@ -9,7 +9,7 @@ pub(super) fn execute_case_group(
     index: usize,
     end: usize,
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Option<usize>, FormatError> {
     let close = matching(
         parts,

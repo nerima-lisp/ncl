@@ -17,6 +17,36 @@ set_pprint_dispatch(&mut ThreadContext, &Runtime, Word, Word, Word) -> Result<Wo
 copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectError>
 ```
 
+The low-level layout API is exposed by `PrettyPrinter`. It provides
+`start_logical_block`/`end_logical_block`, `newline` with `Linear`, `Fill`,
+`Miser`, and `Mandatory` policies, block/current `indent`, relative/absolute
+`tab`, and `column`/`line_count` inspection. `PrintOptions` supplies the
+`with_right_margin`, `with_miser_width`, and `with_print_lines` settings used
+by printer integrations. Conditional breaks remain pending until the next
+text is emitted, so a caller can construct a block without pre-measuring each
+item.
+
+`PrettyPrinter` also implements `CharSink`. For nested FORMAT execution,
+wrap it in `SharedPrettyPrinter` and pass a `PrettyPrinterAdapter` to each
+consumer. The adapter forwards all layout and object writes to the same
+lifecycle-safe state; call `finish()` on the shared handle before returning:
+
+```text
+let mut layout = PrettyPrinter::with_options(&mut sink, right_margin, miser_width);
+let shared = layout.into_shared();
+let mut layout = shared.adapter();
+layout.start_logical_block(prefix, per_line_prefix)?;
+ncl_printer::write(ctx, runtime, object, &mut layout, &options)?;
+layout.newline(NewlineKind::Linear)?;
+layout.indent(IndentMode::Block, amount);
+layout.tab(TabKind::Relative, column, increment)?;
+layout.end_logical_block(suffix)?;
+shared.finish()?;
+```
+
+`finish()` flushes a trailing conditional break. `end_logical_block()` also
+flushes before writing its suffix.
+
 | item | role |
 | --- | --- |
 | `CharSink` | output trait: `write_char`, `write_str`. `ncl-lib-streams` adapts streams to it. |
@@ -26,11 +56,16 @@ copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectE
 | `NonNegative` | validated non-negative limit value used by length and level options. |
 | `PrintCase` | `:upcase`, `:downcase`, `:capitalize`. |
 | `PrintError` | `Object`, `Sink`, `NotReadable`, `Circularity`. |
+| `SharedPrettyPrinter` | Reference-counted, borrow-checked layout state shared by nested FORMAT/printer operations. |
+| `PrettyPrinterAdapter` | `CharSink` bridge exposing newline, indent, tab, object, logical-block, and finish operations. |
 
 `PrintOptions::from_specials` reads the ambient variables when they are interned
 and special, and keeps the default otherwise. The dispatch functions operate on
 the `*print-pprint-dispatch*` table, a list of `(type-specifier . function)`
-entries whose `T` entry is the default.
+entries whose `T` entry is the default. Priority-aware entries use an internal
+`(type-specifier function . priority)` representation and are ordered from
+highest to lowest priority. Basic `CONS`, `LIST`, `ATOM`, `SYMBOL`, and
+`INTEGER` specifiers are recognized.
 
 ## Printed forms
 
@@ -63,7 +98,9 @@ the line reaches the margin.
 `PPRINT-TAB`, `PPRINT-TABULAR`, `PPRINT-INDENT`, `PPRINT-NEWLINE`,
 `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, `COPY-PPRINT-DISPATCH`, and the
 `NCL-EXT` functions `PRINT-SYMBOL-WITH-PREFIX`, `PRINT-UNREADABLY`; and the
-special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
+special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-PRETTY*`,
+`*PRINT-RIGHT-MARGIN*`, `*PRINT-MISER-WIDTH*`, `*PRINT-LINES*`,
+`*PRINT-CIRCLE*`, `*PRINT-READABLY*`,
 `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*`, `NCL-EXT:*PRINT-VECTOR-LENGTH*`.
 `*PRINT-PPRINT-DISPATCH*` starts as an empty dispatch table, the rest as `NIL`.
 
@@ -80,15 +117,19 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
 - **Reader round trip**: `ncl-reader` (L2) is not on `main` yet, so the round
   trip test is deferred. Readable output is checked against fixed expected
   strings until the reader lands.
-- **Dynamic bindings**: `ThreadContext` exposes no binding lookup, so
-  `PrintOptions::from_specials` reads value cells, not dynamic bindings.
-- **Builtin bodies**: `register` installs function names with an unbound
-  placeholder; callable function objects and the `pprint` stream arguments need
-  the runtime and stream layers. The `pprint-*` functions have no Rust-side
-  entry points yet; `write` with `*print-pretty*` is the working path.
-- **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
-  matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
-  `eq`.
+- **Dynamic bindings**: `progv`/special binding machinery updates the symbol
+  value cell for the dynamic extent, which `PrintOptions::from_specials` reads.
+  A direct binding-stack lookup is still unnecessary for the current runtime
+  path but may be needed if value-cell mutation is changed.
+- **Builtin bodies**: `PPRINT`, `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, and
+  `COPY-PPRINT-DISPATCH` are callable and use the registered output stream or
+  ambient dispatch table. The remaining layout primitives still need a
+  stream-backed `PrettyPrinter` state adapter.
+- **CL pretty-printer connection**: `SharedPrettyPrinter` and
+  `PrettyPrinterAdapter` are the Rust boundary for FORMAT and stream
+  integrations; nested operations share one state and one finish lifecycle.
+- **Standard dispatch**: operator-specific entries for `QUOTE`, `LET`, and
+  `DEFUN` and full Common Lisp type-specifier dispatch remain to be added.
 
 ## Verification
 

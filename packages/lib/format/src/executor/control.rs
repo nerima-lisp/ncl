@@ -7,7 +7,7 @@ use crate::{PrettyIndent, PrettyNewline, PrettyTab};
 
 pub(super) fn next_argument(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Word, FormatError> {
     let value = state.arguments.get(*state.argument_index).copied().ok_or(
         FormatError::MissingArgument {
@@ -19,7 +19,7 @@ pub(super) fn next_argument(
 }
 
 pub(super) fn next_argument_kind(
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
     directive: DirectiveKind,
 ) -> Result<Word, FormatError> {
     let value = state
@@ -34,7 +34,7 @@ pub(super) fn next_argument_kind(
 #[allow(clippy::too_many_lines)]
 pub(super) fn execute_control_kind(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     match directive.kind {
         DirectiveKind::Percent | DirectiveKind::Tilde => {
@@ -142,7 +142,7 @@ pub(super) fn execute_control_kind(
 
 fn execute_repeated_control(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let count = repeat_count_for(directive, state)?;
     let character = if directive.kind == DirectiveKind::Percent {
@@ -186,7 +186,7 @@ fn tab_parameters(directive: &Directive) -> Result<(usize, usize), FormatError> 
 
 fn execute_plural_control(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let value = if directive.colon {
         state
@@ -212,7 +212,7 @@ fn execute_plural_control(
 
 fn execute_argument_skip(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let offset = parameter_i64(directive.parameters.first()).unwrap_or(1);
     let current =
@@ -233,7 +233,7 @@ fn execute_argument_skip(
 
 fn execute_up_arrow(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let values = directive
         .parameters
@@ -272,7 +272,7 @@ fn execute_up_arrow(
 
 pub(super) fn execute_character(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     let object = next_argument(directive, state)?;
     let ObjectRef::Character(value) = classify_object(state.ctx, object) else {
@@ -322,7 +322,7 @@ pub(super) fn execute_character(
     Ok(())
 }
 
-fn tab_count(directive: &Directive, state: &ExecutionState<'_>) -> Result<usize, FormatError> {
+fn tab_count(directive: &Directive, state: &ExecutionState<'_, '_>) -> Result<usize, FormatError> {
     let column = parameter_i64(directive.parameters.first()).unwrap_or(1);
     let increment = parameter_i64(directive.parameters.get(1)).unwrap_or(1);
     if column < 1 || increment < 0 {

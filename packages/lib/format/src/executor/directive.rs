@@ -6,7 +6,7 @@ use super::{
 
 pub(super) fn execute_directive(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<(), FormatError> {
     match directive.kind {
         DirectiveKind::A

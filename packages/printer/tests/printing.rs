@@ -249,6 +249,57 @@ fn prints_quote_abbreviations() {
 }
 
 #[test]
+fn quote_abbreviation_requires_common_lisp_operator() {
+    let (runtime, mut ctx) = context();
+    let package = runtime.ensure_package(&mut ctx, "OTHER").unwrap();
+    let quote = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "QUOTE")
+        .unwrap()
+        .0;
+    let form = list(&runtime, &mut ctx, &[quote, Word::fixnum(1)]);
+    assert_eq!(
+        print(&runtime, &mut ctx, form, &PrintOptions::new()),
+        "(OTHER:QUOTE 1)"
+    );
+}
+
+#[test]
+fn pretty_prints_standard_operator_forms_with_indent() {
+    let (runtime, mut ctx) = context();
+    let let_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "LET");
+    let car_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "CAR");
+    let bindings = list(&runtime, &mut ctx, &[]);
+    let body = list(&runtime, &mut ctx, &[car_symbol, Word::fixnum(1)]);
+    let form = list(&runtime, &mut ctx, &[let_symbol, bindings, body]);
+    let output = print(
+        &runtime,
+        &mut ctx,
+        form,
+        &PrintOptions::new().with_pretty(true).with_right_margin(8),
+    );
+    assert_eq!(output, "(LET NIL\n  (CAR 1))");
+
+    let defun_symbol = intern(&runtime, &mut ctx, "COMMON-LISP", "DEFUN");
+    let function_name = intern(&runtime, &mut ctx, "COMMON-LISP-USER", "F");
+    let lambda_list = list(&runtime, &mut ctx, &[car_symbol]);
+    let defun = list(
+        &runtime,
+        &mut ctx,
+        &[defun_symbol, function_name, lambda_list, body],
+    );
+    let output = print(
+        &runtime,
+        &mut ctx,
+        defun,
+        &PrintOptions::new().with_pretty(true).with_right_margin(8),
+    );
+    assert_eq!(
+        output,
+        "(DEFUN COMMON-LISP-USER:F\n  (CAR) (CAR\n         1))"
+    );
+}
+
+#[test]
 fn print_level_truncates_nesting() {
     let (runtime, mut ctx) = context();
     let options = PrintOptions::new();
@@ -420,6 +471,48 @@ fn options_come_from_the_ambient_variables() {
     let options = PrintOptions::from_specials(&mut ctx, &runtime);
     assert!(!options.escape());
     assert_eq!(options.base().get(), 16);
+}
+
+#[test]
+fn print_circle_comes_from_the_ambient_variable() {
+    let (runtime, mut ctx) = context();
+    let circle = intern(&runtime, &mut ctx, "COMMON-LISP", "*PRINT-CIRCLE*");
+    set_symbol_special(&mut ctx, circle, true).unwrap();
+    set_symbol_value(&mut ctx, circle, Word::TRUE).unwrap();
+    let node = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap();
+    rplacd(&mut ctx, node, node).unwrap();
+
+    let options = PrintOptions::from_specials(&mut ctx, &runtime);
+    assert!(options.circle());
+    assert_eq!(print(&runtime, &mut ctx, node, &options), "#1=(1 . #1#)");
+}
+
+#[test]
+fn print_lines_stops_output_with_two_dots() {
+    let options = PrintOptions::new()
+        .with_pretty(true)
+        .with_right_margin(2)
+        .with_print_lines(Some(1));
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let first = Word::fixnum(1);
+    let second = Word::fixnum(2);
+    let list = make_cons(&mut ctx, &runtime, second, Word::NIL).unwrap();
+    let list = make_cons(&mut ctx, &runtime, first, list).unwrap();
+    let output = print(&runtime, &mut ctx, list, &options);
+    assert_eq!(output, "(1..)");
+}
+
+#[test]
+fn print_lines_only_limits_pretty_output() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL).unwrap();
+    let list = make_cons(&mut ctx, &runtime, Word::fixnum(1), tail).unwrap();
+    let options = PrintOptions::new().with_print_lines(Some(1));
+    assert_eq!(print(&runtime, &mut ctx, list, &options), "(1 2)");
 }
 
 #[test]

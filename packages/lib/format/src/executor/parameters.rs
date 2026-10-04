@@ -65,7 +65,7 @@ pub(super) fn radix_parameter(directive: &Directive) -> Result<u32, FormatError>
 
 pub(super) fn resolve_directive(
     directive: &Directive,
-    state: &mut ExecutionState<'_>,
+    state: &mut ExecutionState<'_, '_>,
 ) -> Result<Directive, FormatError> {
     let mut resolved = directive.clone();
     for parameter in &mut resolved.parameters {
@@ -178,7 +178,7 @@ pub(super) fn repeat_count(directive: &Directive) -> Result<usize, FormatError> 
 
 pub(super) fn repeat_count_for(
     directive: &Directive,
-    state: &ExecutionState<'_>,
+    state: &ExecutionState<'_, '_>,
 ) -> Result<usize, FormatError> {
     if matches!(directive.parameters.first(), Some(Parameter::ArgumentCount)) {
         return Ok(state.arguments.len().saturating_sub(*state.argument_index));

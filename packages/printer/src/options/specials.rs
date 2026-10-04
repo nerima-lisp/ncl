@@ -81,6 +81,17 @@ pub(super) fn length_special(
         .map(NonNegative::new)
 }
 
+pub(super) fn usize_special(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    qualified: &str,
+) -> Option<usize> {
+    special_value(ctx, runtime, qualified).and_then(|value| match value {
+        SpecialValue::Fixnum(value) => usize::try_from(value).ok(),
+        SpecialValue::Nil | SpecialValue::Symbol(_) | SpecialValue::Other(_) => None,
+    })
+}
+
 pub(super) fn base_special(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

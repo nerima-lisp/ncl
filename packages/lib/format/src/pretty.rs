@@ -126,28 +126,88 @@ impl PrettyPrinter for NoopPrettyPrinter {
     }
 }
 
+impl PrettyPrinter for ncl_printer::PrettyPrinterAdapter<'_> {
+    fn newline(&mut self, kind: PrettyNewline) -> Result<(), PrintError> {
+        self.newline(match kind {
+            PrettyNewline::Linear => ncl_printer::NewlineKind::Linear,
+            PrettyNewline::Fill => ncl_printer::NewlineKind::Fill,
+            PrettyNewline::Miser => ncl_printer::NewlineKind::Miser,
+            PrettyNewline::Mandatory => ncl_printer::NewlineKind::Mandatory,
+        })
+    }
+
+    fn indent(&mut self, mode: PrettyIndent, amount: isize) {
+        self.indent(
+            match mode {
+                PrettyIndent::Block => ncl_printer::IndentMode::Block,
+                PrettyIndent::Current => ncl_printer::IndentMode::Current,
+            },
+            amount,
+        );
+    }
+
+    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize) -> Result<(), PrintError> {
+        self.tab(
+            match kind {
+                PrettyTab::Relative => ncl_printer::TabKind::Relative,
+                PrettyTab::Absolute => ncl_printer::TabKind::Absolute,
+            },
+            column,
+            increment,
+        )
+    }
+
+    fn write_object(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        object: Word,
+        options: PrintOptions,
+    ) -> Result<(), PrintError> {
+        self.write_object(ctx, runtime, object, options)
+    }
+
+    fn logical_block(
+        &mut self,
+        segments: &[String],
+        colon: bool,
+        at_sign: bool,
+    ) -> Result<(), PrintError> {
+        self.logical_block(segments, colon, at_sign)
+    }
+
+    fn finish(&mut self) -> Result<(), PrintError> {
+        self.finish()
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn noop_printer_accepts_every_format_layout_operation() {
-        let runtime = Runtime::new().expect("runtime");
+    fn noop_printer_accepts_every_format_layout_operation() -> Result<(), String> {
+        let runtime = Runtime::new().map_err(|error| error.to_string())?;
         let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("context");
+        ctx.register(&runtime).map_err(|error| error.to_string())?;
         let mut printer = NoopPrettyPrinter;
 
-        printer.write_char('x').expect("character");
-        printer.newline(PrettyNewline::Miser).expect("newline");
+        printer.write_char('x').map_err(|error| error.to_string())?;
+        printer
+            .newline(PrettyNewline::Miser)
+            .map_err(|error| error.to_string())?;
         printer.indent(PrettyIndent::Current, 2);
-        printer.tab(PrettyTab::Absolute, 3, 4).expect("tabulation");
+        printer
+            .tab(PrettyTab::Absolute, 3, 4)
+            .map_err(|error| error.to_string())?;
         printer
             .write_object(&mut ctx, &runtime, Word::fixnum(0), PrintOptions::new())
-            .expect("object");
+            .map_err(|error| error.to_string())?;
         printer
             .logical_block(&[String::from("item")], true, true)
-            .expect("logical block");
-        printer.finish().expect("finish");
+            .map_err(|error| error.to_string())?;
+        printer.finish().map_err(|error| error.to_string())?;
+        Ok(())
     }
 }

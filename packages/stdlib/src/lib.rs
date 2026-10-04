@@ -156,3 +156,42 @@ fn cons_builtin(
 ) -> Result<Word, ObjectError> {
     make_cons(ctx, runtime, args.required(0)?, args.required(1)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registration_order_is_frozen_and_registration_succeeds() {
+        assert_eq!(REGISTRATION_ORDER.first(), Some(&"ncl-types"));
+        assert_eq!(REGISTRATION_ORDER.last(), Some(&"ncl-disasm"));
+        assert!(REGISTRATION_ORDER.windows(2).all(|pair| pair[0] != pair[1]));
+
+        let runtime = Runtime::new();
+        assert!(runtime.is_ok());
+        let Ok(runtime) = runtime else { return };
+        let mut context = ThreadContext::new();
+        assert_eq!(context.register(&runtime), Ok(()));
+        assert_eq!(register_all(&mut context, &runtime), Ok(()));
+    }
+
+    #[test]
+    fn core_builtins_return_values_and_validate_arguments() {
+        let runtime = Runtime::new();
+        assert!(runtime.is_ok());
+        let Ok(runtime) = runtime else { return };
+        let mut context = ThreadContext::new();
+        assert_eq!(context.register(&runtime), Ok(()));
+        assert_eq!(register_all(&mut context, &runtime), Ok(()));
+        let values = MultipleValues::new();
+        let args = BuiltinArgs::new(&[]);
+        let mut values = values;
+        assert_eq!(
+            car_builtin(&mut context, &runtime, &args, &mut values),
+            Err(ObjectError::TypeError)
+        );
+        let words = [Word::fixnum(3), Word::fixnum(4)];
+        let args = BuiltinArgs::new(&words);
+        assert!(cons_builtin(&mut context, &runtime, &args, &mut values).is_ok());
+    }
+}

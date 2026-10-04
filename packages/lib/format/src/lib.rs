@@ -2,9 +2,11 @@
 #![allow(missing_docs)]
 
 mod executor;
+mod pretty;
 mod registration;
 
 pub use executor::{FormatError, FormatFunctionCaller, execute, execute_with_caller};
+pub use pretty::{NoopPrettyPrinter, PrettyOperation, PrettyPrinter};
 pub use registration::register;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

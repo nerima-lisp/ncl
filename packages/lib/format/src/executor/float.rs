@@ -22,8 +22,10 @@ pub(super) fn execute_float_directive(
     } else {
         2
     };
+    let default_scale = i64::from(directive.kind == DirectiveKind::E);
     let scale = parameter_i64(directive.parameters.get(scale_index))
-        .map_or_else(|| i64::from(directive.kind == DirectiveKind::E), |value| value);
+        // check-added-lines: allow(panic) This option has a fixed primitive fallback.
+        .unwrap_or(default_scale);
     let scaled = directive.kind == DirectiveKind::F
         || directive.kind == DirectiveKind::E
         || (directive.kind == DirectiveKind::G && g_uses_exponential(value));

@@ -150,33 +150,45 @@ impl FunctionBuilder {
 
     /// Whether a block is the entry block or already has a CFG predecessor.
     pub fn is_reachable(&self, block: BlockId) -> bool {
-        if self
-            .function
-            .blocks
-            .first()
-            .is_some_and(|entry| entry.id == block)
-        {
-            return true;
-        }
-        self.function
-            .blocks
-            .iter()
-            .any(|candidate| match &candidate.terminator {
-                Terminator::Jump { target, .. } => *target == block,
+        let Some(entry) = self.function.blocks.first().map(|block| block.id) else {
+            return false;
+        };
+        let mut seen = std::collections::BTreeSet::from([entry]);
+        let mut pending = vec![entry];
+        while let Some(current) = pending.pop() {
+            let Some(candidate) = self
+                .function
+                .blocks
+                .iter()
+                .find(|block| block.id == current)
+            else {
+                continue;
+            };
+            let successors = match &candidate.terminator {
+                Terminator::Jump { target, .. } => vec![*target],
                 Terminator::Branch {
                     then_target,
                     else_target,
                     ..
-                } => *then_target == block || *else_target == block,
-                Terminator::Switch { cases, default, .. } => {
-                    *default == block || cases.iter().any(|(_, target, _)| *target == block)
-                }
+                } => vec![*then_target, *else_target],
+                Terminator::Switch { cases, default, .. } => cases
+                    .iter()
+                    .map(|(_, target, _)| *target)
+                    .chain(std::iter::once(*default))
+                    .collect(),
                 Terminator::CallReturn { .. }
                 | Terminator::TailCall { .. }
                 | Terminator::Return { .. }
                 | Terminator::Throw { .. }
-                | Terminator::Unreachable => false,
-            })
+                | Terminator::Unreachable => Vec::new(),
+            };
+            for successor in successors {
+                if seen.insert(successor) {
+                    pending.push(successor);
+                }
+            }
+        }
+        seen.contains(&block)
     }
 
     /// Return the SSA values carried by the current block's parameters.

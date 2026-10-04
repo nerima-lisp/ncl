@@ -98,10 +98,6 @@ impl FunctionLowerer {
         self.builder.is_reachable(self.current)
     }
 
-    pub(super) fn block_parameters(&self) -> Vec<ValueId> {
-        self.builder.block_parameters(self.current)
-    }
-
     /// Allocate a fresh SSA value identity.
     pub(super) const fn fresh_value(&mut self) -> ValueId {
         self.builder.fresh_value()

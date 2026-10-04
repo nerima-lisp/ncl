@@ -58,20 +58,24 @@ impl Context<'_> {
         if normal_path {
             f.position(body_end)?;
             self.leave(f, region_id)?;
-            let live_args = f.block_parameters();
-            let live_args: Vec<ValueId> = if live_args.len() == live.len() + 1 {
-                live_args.into_iter().skip(1).collect()
-            } else {
-                live.iter()
-                    .filter_map(|(name, _)| f.env().lookup_variable(name))
-                    .map(|slot| match slot {
-                        Slot::Cell(value) | Slot::Value(value) => value,
-                    })
-                    .collect()
-            };
+            let normal_live = live
+                .iter()
+                .map(|(name, _)| {
+                    f.env()
+                        .lookup_variable(name)
+                        .map(|slot| (name.clone(), slot))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| LowerError::Ir {
+                    detail: "escaping block lost a live lexical binding".to_owned(),
+                })?;
             f.terminate(Terminator::Jump {
                 target: exit,
-                args: std::iter::once(value).chain(live_args).collect(),
+                args: std::iter::once(value)
+                    .chain(normal_live.iter().map(|(_, slot)| match slot {
+                        Slot::Cell(value) | Slot::Value(value) => *value,
+                    }))
+                    .collect(),
             })?;
         } else if !f.is_terminated() {
             f.position(body_end)?;
@@ -170,20 +174,24 @@ impl Context<'_> {
         if normal_path {
             f.position(body_end)?;
             self.leave(f, region_id)?;
-            let block_values = f.block_parameters();
-            let live_args: Vec<ValueId> = if block_values.len() == live.len() + 1 {
-                block_values.into_iter().skip(1).collect()
-            } else {
-                live.iter()
-                    .filter_map(|(name, _)| f.env().lookup_variable(name))
-                    .map(|slot| match slot {
-                        Slot::Cell(value) | Slot::Value(value) => value,
-                    })
-                    .collect()
-            };
+            let normal_live = live
+                .iter()
+                .map(|(name, _)| {
+                    f.env()
+                        .lookup_variable(name)
+                        .map(|slot| (name.clone(), slot))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| LowerError::Ir {
+                    detail: "catch lost a live lexical binding".to_owned(),
+                })?;
             f.terminate(Terminator::Jump {
                 target: exit,
-                args: std::iter::once(value).chain(live_args).collect(),
+                args: std::iter::once(value)
+                    .chain(normal_live.iter().map(|(_, slot)| match slot {
+                        Slot::Cell(value) | Slot::Value(value) => *value,
+                    }))
+                    .collect(),
             })?;
         }
         let caught = f.fresh_value();

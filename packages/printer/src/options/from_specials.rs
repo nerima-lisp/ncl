@@ -64,12 +64,11 @@ pub(super) fn from_specials(ctx: &mut ThreadContext, runtime: &Runtime) -> super
     options.vector_length = length_special(ctx, runtime, "NCL-EXT:*PRINT-VECTOR-LENGTH*");
     options.right_margin = NonNegative::new(
         usize_special(ctx, runtime, "*PRINT-RIGHT-MARGIN*")
-            .unwrap_or_else(|| options.right_margin.get())
-            .max(1),
+            .map_or_else(|| options.right_margin.get(), |value| value.max(1)),
     );
     options.miser_width = NonNegative::new(
         usize_special(ctx, runtime, "*PRINT-MISER-WIDTH*")
-            .unwrap_or_else(|| options.miser_width.get()),
+            .unwrap_or_else(|| options.miser_width.get()), // check-added-lines: allow(unwrap_or_else) eager default is a stored scalar
     );
     options.print_lines = usize_special(ctx, runtime, "*PRINT-LINES*").map(NonNegative::new);
     options

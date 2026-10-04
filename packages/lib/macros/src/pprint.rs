@@ -71,15 +71,21 @@ fn expand_logical_block(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
         if spec.len() < 2 {
             return Err(ObjectError::TypeError);
         }
-        let stream = stream_form(ctx, runtime, spec[0])?;
-        let object = spec[1];
+        let (stream_word, object, keyword_values) = match spec.as_slice() {
+            [stream, object, rest @ ..] => (*stream, *object, rest),
+            _ => return Err(ObjectError::TypeError),
+        };
+        let stream = stream_form(ctx, runtime, stream_word)?;
         let mut prefix = Word::NIL;
         let mut per_line_prefix = Word::NIL;
         let mut suffix = Word::NIL;
-        let mut cursor = 2;
-        while cursor < spec.len() {
-            let key = spec[cursor];
-            let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+        let mut pairs = keyword_values.chunks(2);
+        for pair in &mut pairs {
+            let [key, value] = pair else {
+                return Err(ObjectError::TypeError);
+            };
+            let key = *key;
+            let value = *value;
             if is_keyword(ctx, runtime, key, "PREFIX")? {
                 if prefix != Word::NIL {
                     return Err(ObjectError::TypeError);
@@ -100,15 +106,16 @@ fn expand_logical_block(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Wo
             } else {
                 return Err(ObjectError::TypeError);
             }
-            cursor += 2;
         }
 
-        let body_values = roots[1..].iter().map(|root| **root).collect::<Vec<_>>();
+        let body_values = roots.iter().skip(1).map(|root| **root).collect::<Vec<_>>();
         let body = form(ctx, runtime, "PROGN", &body_values)?;
         let pop_name = symbol(ctx, runtime, "PPRINT-POP")?;
         let exit_name = symbol(ctx, runtime, "PPRINT-EXIT-IF-LIST-EXHAUSTED")?;
-        let pop_body = form(ctx, runtime, "NCL-EXT::PPRINT-POP", &[])?;
-        let exit_body = form(ctx, runtime, "NCL-EXT::PPRINT-EXIT-IF-LIST-EXHAUSTED", &[])?;
+        let pop_call = form(ctx, runtime, "NCL-EXT::PPRINT-POP", &[])?;
+        let exit_call = form(ctx, runtime, "NCL-EXT::PPRINT-EXIT-IF-LIST-EXHAUSTED", &[])?;
+        let pop_body = form(ctx, runtime, "QUOTE", &[pop_call])?;
+        let exit_body = form(ctx, runtime, "QUOTE", &[exit_call])?;
         let pop_definition = list(ctx, runtime, &[pop_name, Word::NIL, pop_body])?;
         let exit_definition = list(ctx, runtime, &[exit_name, Word::NIL, exit_body])?;
         let definitions = list(ctx, runtime, &[pop_definition, exit_definition])?;

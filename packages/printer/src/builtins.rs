@@ -1,6 +1,6 @@
 //! Registration of the printer's owned symbols and its dispatch table.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use ncl_object::{
@@ -24,7 +24,7 @@ struct LayoutState {
 static LAYOUT_STATES: OnceLock<Mutex<HashMap<usize, LayoutState>>> = OnceLock::new();
 
 /// The `(package, name)` functions `ncl-printer` owns.
-const FUNCTIONS: [(&str, &str); 20] = [
+const FUNCTIONS: [(&str, &str); 23] = [
     ("COMMON-LISP", "COPY-PPRINT-DISPATCH"),
     ("COMMON-LISP", "PPRINT"),
     ("COMMON-LISP", "PPRINT-DISPATCH"),
@@ -45,6 +45,9 @@ const FUNCTIONS: [(&str, &str); 20] = [
     ("COMMON-LISP", "WRITE-TO-STRING"),
     ("NCL-EXT", "PRINT-SYMBOL-WITH-PREFIX"),
     ("NCL-EXT", "PRINT-UNREADABLY"),
+    ("NCL-EXT", "PPRINT-LOGICAL-BLOCK"),
+    ("NCL-EXT", "PPRINT-POP"),
+    ("NCL-EXT", "PPRINT-EXIT-IF-LIST-EXHAUSTED"),
 ];
 
 const OBJECT_PARAMETER: Parameter = Parameter {
@@ -57,11 +60,13 @@ const STREAM_PARAMETER: Parameter = Parameter {
 };
 
 /// The `(package, name)` special variables `ncl-printer` owns.
-const VARIABLES: [(&str, &str); 9] = [
+const VARIABLES: [(&str, &str); 11] = [
     ("COMMON-LISP", "*PRINT-PPRINT-DISPATCH*"),
     ("COMMON-LISP", "*PRINT-PRETTY*"),
     ("COMMON-LISP", "*PRINT-RIGHT-MARGIN*"),
     ("COMMON-LISP", "*PRINT-MISER-WIDTH*"),
+    ("COMMON-LISP", "*PRINT-LENGTH*"),
+    ("COMMON-LISP", "*PRINT-LEVEL*"),
     ("COMMON-LISP", "*PRINT-LINES*"),
     ("COMMON-LISP", "*PRINT-CIRCLE*"),
     ("COMMON-LISP", "*PRINT-READABLY*"),
@@ -89,9 +94,10 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         Package::from_word(package_word).intern(ctx, runtime, name)?;
         if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
             register_print_builtin(ctx, runtime, name)?;
-        } else if package == "COMMON-LISP"
-            && matches!(
-                name,
+        } else if matches!(
+            (package, name),
+            (
+                "COMMON-LISP",
                 "COPY-PPRINT-DISPATCH"
                     | "PPRINT"
                     | "PPRINT-DISPATCH"
@@ -102,8 +108,11 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
                     | "PPRINT-TAB"
                     | "PPRINT-TABULAR"
                     | "SET-PPRINT-DISPATCH"
+            ) | (
+                "NCL-EXT",
+                "PPRINT-LOGICAL-BLOCK" | "PPRINT-POP" | "PPRINT-EXIT-IF-LIST-EXHAUSTED"
             )
-        {
+        ) {
             register_pprint_builtin(ctx, runtime, name)?;
         } else {
             runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) placeholder for unimplemented printer surface

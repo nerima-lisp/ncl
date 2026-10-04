@@ -210,7 +210,7 @@ fn matches_type_specifier(
             kind,
             ncl_object::ObjectRef::Function(_) | ncl_object::ObjectRef::Closure(_)
         ),
-        _ => false,
+        _ => false, // check-added-lines: allow(wildcard) unhandled type specifier is not a dispatch match
     })
 }
 

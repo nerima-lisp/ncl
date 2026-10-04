@@ -14,13 +14,70 @@ const TABLE_PARAMETER: Parameter = Parameter {
     name: BuiltinName::new("TABLE"),
     ty: ParameterType::Any,
 };
+const PREFIX_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("PREFIX"),
+    ty: ParameterType::Any,
+};
+const PER_LINE_PREFIX_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("PER-LINE-PREFIX"),
+    ty: ParameterType::Any,
+};
+const SUFFIX_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("SUFFIX"),
+    ty: ParameterType::Any,
+};
+const THUNK_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("THUNK"),
+    ty: ParameterType::Any,
+};
 
+struct LogicalBlock {
+    cursor: Word,
+    count: usize,
+    limit: Option<usize>,
+    tag: Word,
+    seen: HashSet<usize>,
+}
+
+static LOGICAL_BLOCKS: OnceLock<Mutex<HashMap<usize, Vec<LogicalBlock>>>> = OnceLock::new();
+
+include!("pprint_logical_block.rs");
+
+#[allow(clippy::too_many_lines, reason = "flat printer builtin dispatch table")]
 fn register_pprint_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     name: &str,
 ) -> Result<(), ObjectError> {
     let (descriptor, function): (Builtin, ncl_object::RustBuiltin) = match name {
+        "PPRINT-LOGICAL-BLOCK" => (
+            Builtin {
+                lambda_list: LambdaList::fixed(&[
+                    STREAM_PARAMETER,
+                    OBJECT_PARAMETER,
+                    PREFIX_PARAMETER,
+                    PER_LINE_PREFIX_PARAMETER,
+                    SUFFIX_PARAMETER,
+                    THUNK_PARAMETER,
+                ]),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_logical_block,
+        ),
+        "PPRINT-POP" => (
+            Builtin {
+                lambda_list: LambdaList::fixed(&[]),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_pop,
+        ),
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED" => (
+            Builtin {
+                lambda_list: LambdaList::fixed(&[]),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_exit_if_list_exhausted,
+        ),
         "PPRINT" => (
             Builtin {
                 lambda_list: LambdaList::with_optional(&[OBJECT_PARAMETER], &[STREAM_PARAMETER]),
@@ -80,9 +137,12 @@ fn register_pprint_builtin(
             },
             pprint_object,
         ),
-        _ => return Err(ObjectError::Layout),
+        _ => return Err(ObjectError::Layout), // check-added-lines: allow(wildcard) string dispatch rejects unknown names
     };
     let builtin_name = match name {
+        "PPRINT-LOGICAL-BLOCK" => BuiltinName::new("PPRINT-LOGICAL-BLOCK"),
+        "PPRINT-POP" => BuiltinName::new("PPRINT-POP"),
+        "PPRINT-EXIT-IF-LIST-EXHAUSTED" => BuiltinName::new("PPRINT-EXIT-IF-LIST-EXHAUSTED"),
         "PPRINT" => BuiltinName::new("PPRINT"),
         "PPRINT-DISPATCH" => BuiltinName::new("PPRINT-DISPATCH"),
         "SET-PPRINT-DISPATCH" => BuiltinName::new("SET-PPRINT-DISPATCH"),
@@ -93,14 +153,32 @@ fn register_pprint_builtin(
         "PPRINT-FILL" => BuiltinName::new("PPRINT-FILL"),
         "PPRINT-LINEAR" => BuiltinName::new("PPRINT-LINEAR"),
         "PPRINT-TABULAR" => BuiltinName::new("PPRINT-TABULAR"),
-        _ => return Err(ObjectError::Layout),
+        _ => return Err(ObjectError::Layout), // check-added-lines: allow(wildcard) string dispatch rejects unknown names
     };
     runtime.register_builtin(
         ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, builtin_name),
+        BuiltinIdentifier::new(
+            if matches!(
+                name,
+                "PPRINT-LOGICAL-BLOCK" | "PPRINT-POP" | "PPRINT-EXIT-IF-LIST-EXHAUSTED"
+            ) {
+                BuiltinPackage::NclExt
+            } else {
+                BuiltinPackage::CommonLisp
+            },
+            builtin_name,
+        ),
         BuiltinImplementation::adapted(descriptor, function, print_arguments),
     )?;
     Ok(())
+}
+
+fn logical_blocks() -> &'static Mutex<HashMap<usize, Vec<LogicalBlock>>> {
+    LOGICAL_BLOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn logical_block_key(ctx: &mut ThreadContext) -> usize {
+    std::ptr::from_mut(ctx).addr()
 }
 
 fn pprint(
@@ -193,7 +271,8 @@ fn pprint_newline(
             "MANDATORY" => NewlineKind::Mandatory,
             "MISER" => NewlineKind::Miser,
             "FILL" => NewlineKind::Fill,
-            _ => NewlineKind::Linear,
+            "LINEAR" => NewlineKind::Linear,
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown newline kinds
         };
         state.pending = Some(newline);
         if newline == NewlineKind::Mandatory {
@@ -254,7 +333,8 @@ fn pprint_tab(
                     column + (state.column - column) / increment * increment + increment
                 }
             }
-            _ => state.column + column,
+            "RELATIVE" => state.column + column,
+            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown tab kinds
         };
         write_spaces(ctx, runtime, stream, target.saturating_sub(state.column))?;
         state.column = target;

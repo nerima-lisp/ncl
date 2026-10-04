@@ -66,12 +66,21 @@ fn hold_clause(
                 using,
             }
         }
+        LoopClause::Equals { variable, init } => {
+            let variable_index = held.len();
+            held.push(variable);
+            let init_index = held.len();
+            held.push(init);
+            HeldLoopClause::Equals {
+                variable: variable_index,
+                init: init_index,
+            }
+        }
         LoopClause::EqualsThen {
             variable,
             init,
             then,
         } => {
-            symbol_name(ctx, variable)?;
             let variable_index = held.len();
             held.push(variable);
             let init_index = held.len();
@@ -134,6 +143,16 @@ fn hold_clause(
             let index = held.len();
             held.push(test);
             HeldLoopClause::Until(index)
+        }
+        LoopClause::Always(test) => {
+            let index = held.len();
+            held.push(test);
+            HeldLoopClause::Always(index)
+        }
+        LoopClause::Never(test) => {
+            let index = held.len();
+            held.push(test);
+            HeldLoopClause::Never(index)
         }
         LoopClause::Initially(ref forms) => HeldLoopClause::Initially(
             forms

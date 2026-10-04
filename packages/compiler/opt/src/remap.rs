@@ -66,6 +66,9 @@ pub fn remap_kind(
             name: name.clone(),
             args: args.iter().map(|x| v(*x)).collect(),
         },
+        OpKind::SetMultipleValues { values } => OpKind::SetMultipleValues {
+            values: values.iter().map(|x| v(*x)).collect(),
+        },
         OpKind::Prim {
             op,
             args,

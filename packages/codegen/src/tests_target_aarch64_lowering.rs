@@ -154,18 +154,15 @@ fn lowering_helpers_cover_spills_runtime_calls_and_abi_boundaries() {
         ],
     );
     let mut assembler = Assembler::new();
-    assert!(matches!(
-        lower_runtime_builtin(
-            &mut assembler,
-            RuntimeFunction::MakeValueCell,
-            &[1, 2, 3, 4],
-            &[ValueId(0)],
-            &allocation,
-            &abi,
-        ),
-        Err(CodegenError::Unsupported(message))
-            if message == "AArch64 runtime calls support at most four arguments"
-    ));
+    lower_runtime_builtin(
+        &mut assembler,
+        RuntimeFunction::MakeValueCell,
+        &[1, 2, 3, 4],
+        &[ValueId(0)],
+        &allocation,
+        &abi,
+    )
+    .unwrap_or_else(|error| panic!("runtime builtin overflow: {error:?}"));
     let mut assembler = Assembler::new();
     assert!(matches!(
         lower_runtime_builtin(
@@ -279,16 +276,14 @@ fn lowering_helpers_cover_spills_runtime_calls_and_abi_boundaries() {
         ],
     );
     let mut assembler = Assembler::new();
-    assert!(matches!(
-        lower_builtin(
-            &mut assembler,
-            "identity",
-            &[ValueId(0), ValueId(0), ValueId(0), ValueId(0), ValueId(0)],
-            &allocation,
-            &abi,
-        ),
-        Err(CodegenError::Unsupported(_))
-    ));
+    lower_builtin(
+        &mut assembler,
+        "identity",
+        &[ValueId(0), ValueId(0), ValueId(0), ValueId(0), ValueId(0)],
+        &allocation,
+        &abi,
+    )
+    .unwrap_or_else(|error| panic!("builtin overflow: {error:?}"));
     let mut assembler = Assembler::new();
     assert!(matches!(
         lower_builtin(&mut assembler, "make-rest-list", &[], &allocation, &abi),

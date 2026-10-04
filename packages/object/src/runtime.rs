@@ -255,6 +255,22 @@ impl Runtime {
         port.load(ctx, self, args, values)
     }
 
+    pub fn compile_file_port(
+        &self,
+        ctx: &mut ThreadContext,
+        args: &crate::BuiltinArgs<'_>,
+        values: &mut crate::MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let port = self
+            .load_port
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .cloned()
+            .ok_or(ObjectError::Layout)?;
+        port.compile_file(ctx, self, args, values)
+    }
+
     /// Return whether a registered builtin may recursively evaluate forms.
     #[must_use]
     pub fn builtin_allows_nested_evaluation(&self, function: crate::FunctionObject) -> bool {

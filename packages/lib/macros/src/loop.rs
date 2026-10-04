@@ -78,6 +78,10 @@ pub enum LoopClause {
     },
     For(ForClause),
     Hash(HashClause),
+    Equals {
+        variable: Word,
+        init: Word,
+    },
     EqualsThen {
         variable: Word,
         init: Word,
@@ -96,6 +100,8 @@ pub enum LoopClause {
     Repeat(Word),
     While(Word),
     Until(Word),
+    Always(Word),
+    Never(Word),
     Initially(Vec<Word>),
     Finally(Vec<Word>),
     Do(Vec<Word>),

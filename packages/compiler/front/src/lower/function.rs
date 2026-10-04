@@ -94,6 +94,10 @@ impl FunctionLowerer {
         self.terminated
     }
 
+    pub(super) fn is_reachable(&self) -> bool {
+        self.builder.is_reachable(self.current)
+    }
+
     /// Allocate a fresh SSA value identity.
     pub(super) const fn fresh_value(&mut self) -> ValueId {
         self.builder.fresh_value()

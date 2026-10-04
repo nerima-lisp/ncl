@@ -96,6 +96,11 @@ const CASES: &[Case] = &[
         expected: "(3 7)",
     },
     Case {
+        name: "loop-destructuring-equals-variable",
+        source: "(loop for (a b) = '(2) do (return (list a b)))",
+        expected: "(2 NIL)",
+    },
+    Case {
         name: "loop-when-collect",
         source: "(loop for i from 1 to 10 when (oddp i) collect i)",
         expected: "(1 3 5 7 9)",

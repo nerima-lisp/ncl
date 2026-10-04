@@ -1,6 +1,6 @@
 //! `setf`-place expanders for the standard Common Lisp accessors that do not
 //! need bespoke expansion logic: variable assignment is handled directly in
-//! [`crate::setf`], and this module covers `CAR`/`CDR`/`FIRST`/`REST`/`NTH`
+//! [`crate::setf`], and this module covers `CAR`/`CDR`/`FIRST`/`REST`/`NTH`/`CADR`
 //! (which reuse the existing `RPLACA`/`RPLACD`/`NTHCDR` builtins wrapped in a
 //! `PROGN` that returns the new value) plus `SYMBOL-VALUE` (which calls the
 //! existing `SET` builtin, which already returns the new value).
@@ -160,6 +160,18 @@ fn nth_place(
     })
 }
 
+fn cadr_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let nth_args = [Word::fixnum(1), args[0]]; // check-added-lines: allow(index) length is validated above
+    nth_place(ctx, runtime, &nth_args)
+}
+
 fn car_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -194,6 +206,20 @@ fn symbol_value_place(
     args: &[Word],
 ) -> Result<SetfExpansion, ObjectError> {
     setter_place(ctx, runtime, args, "SYMBOL-VALUE", "SET")
+}
+
+fn fill_pointer_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    setter_place(
+        ctx,
+        runtime,
+        args,
+        "FILL-POINTER",
+        "NCL-EXT::FILL-POINTER-SET",
+    )
 }
 
 fn aref_place(
@@ -233,7 +259,9 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("FIRST", first_place as PlaceExpander),
         ("REST", rest_place as PlaceExpander),
         ("NTH", nth_place as PlaceExpander),
+        ("CADR", cadr_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
+        ("FILL-POINTER", fill_pointer_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),
         ("GETHASH", gethash_place as PlaceExpander),

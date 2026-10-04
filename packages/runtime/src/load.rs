@@ -5,10 +5,10 @@ use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FileError, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, car, cdr, classify_object, make_cons, pop_heap_root, push_heap_root,
-    symbol_name, symbol_package,
+    BuiltinPackage, FileError, FunctionObject, LambdaList, LispError, MultipleValues, ObjectError,
+    ObjectRef, ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable,
+    Runtime as ObjectRuntime, ThreadContext, Word, car, cdr, classify_object, make_cons,
+    pop_heap_root, push_heap_root, set_symbol_value, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -46,6 +46,49 @@ impl ncl_object::LoadPort for RuntimeLoadPort {
             load_with_runtime(ctx, object, runtime, args, values)
         })
     }
+
+    fn compile_file(
+        &self,
+        ctx: &mut ThreadContext,
+        object: &ObjectRuntime,
+        args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let Some(pointer) = ctx.evaluator_runtime() else {
+            return Err(ObjectError::Layout);
+        };
+        ncl_sys::with_opaque_mut(pointer, |runtime: &mut Runtime| {
+            let path_word = args.required(0)?;
+            let path = path_from_word(ctx, object, path_word)?;
+            let value =
+                compile::file(runtime, Path::new(&path)).map_err(|_| ObjectError::TypeError)?;
+            values.set(&[value]);
+            Ok(value)
+        })
+    }
+}
+
+fn path_from_word(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    path_word: Word,
+) -> Result<String, ObjectError> {
+    if matches!(classify_object(ctx, path_word), ObjectRef::Structure(_)) {
+        let function = object
+            .function(ctx, "COMMON-LISP", "NAMESTRING")
+            .ok_or(ObjectError::UndefinedFunction)?;
+        let function = FunctionObject::try_from(function)?;
+        let namestring = object.call_builtin(ctx, function, &[path_word])?;
+        ncl_compiler_front::form::word_string(ctx, namestring).map_err(|_| ObjectError::TypeError)
+    } else if matches!(classify_object(ctx, path_word), ObjectRef::String(_)) {
+        ncl_compiler_front::form::word_string(ctx, path_word).map_err(|_| ObjectError::TypeError)
+    } else {
+        ctx.set_pending_lisp_error(LispError::TypeError {
+            datum: path_word,
+            expected: ObjectType::String,
+        });
+        Err(ObjectError::TypeError)
+    }
 }
 
 fn load_with_runtime(
@@ -56,15 +99,24 @@ fn load_with_runtime(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let path_word = args.required(0)?;
-    let ObjectRef::String(_) = classify_object(ctx, path_word) else {
+    let pathname = crate::pathname_binding::pathname_from_designator(ctx, object, path_word)?;
+    let path = if matches!(classify_object(ctx, path_word), ObjectRef::Structure(_)) {
+        let function = object
+            .function(ctx, "COMMON-LISP", "NAMESTRING")
+            .ok_or(ObjectError::UndefinedFunction)?;
+        let function = FunctionObject::try_from(function)?;
+        let namestring = object.call_builtin(ctx, function, &[path_word])?;
+        ncl_compiler_front::form::word_string(ctx, namestring)
+            .map_err(|_| ObjectError::TypeError)?
+    } else if matches!(classify_object(ctx, path_word), ObjectRef::String(_)) {
+        ncl_compiler_front::form::word_string(ctx, path_word).map_err(|_| ObjectError::TypeError)?
+    } else {
         ctx.set_pending_lisp_error(LispError::TypeError {
             datum: path_word,
             expected: ObjectType::String,
         });
         return Err(ObjectError::TypeError);
     };
-    let path = ncl_compiler_front::form::word_string(ctx, path_word)
-        .map_err(|_| ObjectError::TypeError)?;
     let mut if_missing = true;
     for index in (1..args.len()).step_by(2) {
         let keyword = args.get(index).ok_or(ObjectError::Layout)?;
@@ -91,7 +143,11 @@ fn load_with_runtime(
             }
         }
     }
-    match file(runtime, Path::new(&path)) {
+    let (variable, previous) =
+        crate::pathname_binding::bind_pathname_variable(ctx, object, "*LOAD-PATHNAME*", pathname)?;
+    let result = file(runtime, Path::new(&path));
+    set_symbol_value(ctx, variable, previous)?;
+    match result {
         Ok(value) => {
             values.set(&[value]);
             Ok(value)
@@ -103,7 +159,9 @@ fn load_with_runtime(
             Ok(Word::NIL)
         }
         Err(RuntimeError::Io { error, .. }) if error.kind() == std::io::ErrorKind::NotFound => {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound {
+                pathname: path_word,
+            }));
             Err(ObjectError::TypeError)
         }
         Err(
@@ -116,7 +174,9 @@ fn load_with_runtime(
             | RuntimeError::UndefinedFunction { .. }
             | RuntimeError::NativeFailure { .. },
         ) => {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
+            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath {
+                pathname: path_word,
+            }));
             Err(ObjectError::TypeError)
         }
     }
@@ -143,7 +203,7 @@ pub fn keyword_name(
 
 const LOAD_PATH: &[Parameter] = &[Parameter {
     name: BuiltinName::new("PATHNAME"),
-    ty: ParameterType::StringDesignator,
+    ty: ParameterType::Any,
 }];
 const LOAD_REST: Parameter = Parameter {
     name: BuiltinName::new("OPTIONS"),
@@ -167,6 +227,19 @@ pub fn register_builtin(
         )
         .with_nested_evaluation(),
     )?;
+    object.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("COMPILE-FILE")),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::fixed(LOAD_PATH),
+                convention: BuiltinConvention::Adapted,
+            },
+            compile_file_builtin,
+            validate_compile_file_arguments,
+        )
+        .with_nested_evaluation(),
+    )?;
     Ok(())
 }
 
@@ -179,8 +252,24 @@ fn load_builtin(
     object.load_port(ctx, args, values)
 }
 
+fn compile_file_builtin(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    object.compile_file_port(ctx, args, values)
+}
+
 fn validate_load_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     if args.is_empty() || args.len().is_multiple_of(2) {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(args.as_slice().to_vec())
+}
+
+fn validate_compile_file_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    if args.len() != 1 {
         return Err(ObjectError::TypeError);
     }
     Ok(args.as_slice().to_vec())

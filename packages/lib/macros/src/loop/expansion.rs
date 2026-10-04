@@ -1,11 +1,11 @@
 use super::clause::HeldLoopClause;
 use super::conditional::{bind_for_variable, expand_selectable_clause, find_it_word};
 use super::hash::wrap_hash_iteration;
-use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
+use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list, held_symbol};
 use super::holding::hold_clauses;
 use super::{
     AccumulatorKind, LimitDirection, LoopAst, ObjectError, Result, Runtime, StepDirection,
-    ThreadContext, Word,
+    ThreadContext, Word, symbol_name,
 };
 
 /// Expand a parsed LOOP AST into portable CL primitive forms.
@@ -119,14 +119,58 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 }
                 hash_iteration = Some((variable, kind, table, using));
             }
+            HeldLoopClause::Equals { variable, init } => {
+                if held_get(&held, variable)?.is_cons() {
+                    let source = held_fresh_symbol(ctx, runtime, &mut held)?;
+                    bindings.push(held_list(ctx, runtime, &mut held, &[source, nil])?);
+                    body.push(held_form(ctx, runtime, &mut held, "SETQ", &[source, init])?);
+                    bind_for_variable(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        variable,
+                        source,
+                        nil,
+                        &mut bindings,
+                        &mut body,
+                    )?;
+                } else {
+                    symbol_name(ctx, held_get(&held, variable)?)?;
+                    bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                    body.push(held_form(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        "SETQ",
+                        &[variable, init],
+                    )?);
+                }
+            }
             HeldLoopClause::EqualsThen {
                 variable,
                 init,
                 then,
             } => {
                 has_iteration_driver = true;
-                bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
-                updates.extend([variable, then]);
+                if held_get(&held, variable)?.is_cons() {
+                    let source = held_fresh_symbol(ctx, runtime, &mut held)?;
+                    bindings.push(held_list(ctx, runtime, &mut held, &[source, init])?);
+                    bind_for_variable(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        variable,
+                        source,
+                        nil,
+                        &mut bindings,
+                        &mut body,
+                    )?;
+                    updates.extend([source, then]);
+                } else {
+                    symbol_name(ctx, held_get(&held, variable)?)?;
+                    bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
+                    updates.extend([variable, then]);
+                }
             }
             HeldLoopClause::In {
                 variable,
@@ -145,6 +189,11 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 } else {
                     held_form(ctx, runtime, &mut held, "CAR", &[cursor])?
                 };
+                let next = if let Some(by) = by {
+                    held_form(ctx, runtime, &mut held, "FUNCALL", &[by, cursor])?
+                } else {
+                    held_form(ctx, runtime, &mut held, "CDR", &[cursor])?
+                };
                 bind_for_variable(
                     ctx,
                     runtime,
@@ -155,11 +204,6 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     &mut bindings,
                     &mut body,
                 )?;
-                let next = if let Some(by) = by {
-                    held_form(ctx, runtime, &mut held, "FUNCALL", &[by, cursor])?
-                } else {
-                    held_form(ctx, runtime, &mut held, "CDR", &[cursor])?
-                };
                 updates.extend([cursor, next]);
             }
             HeldLoopClause::Across { variable, vector } => {
@@ -219,6 +263,36 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 tests.push(held_form(ctx, runtime, &mut held, "NOT", &[test])?);
             }
             HeldLoopClause::Until(test) => tests.push(test),
+            HeldLoopClause::Always(test) | HeldLoopClause::Never(test) => {
+                let kind = if matches!(clause, HeldLoopClause::Always(_)) {
+                    super::ConditionalKind::Unless
+                } else {
+                    super::ConditionalKind::When
+                };
+                let conditional = HeldLoopClause::Conditional {
+                    kind,
+                    test,
+                    then: vec![HeldLoopClause::Return(nil)],
+                    otherwise: Vec::new(),
+                };
+                expand_selectable_clause(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &conditional,
+                    name,
+                    nil,
+                    it,
+                    &mut bindings,
+                    &mut body,
+                    &mut initialized_accumulators,
+                    &mut result,
+                    &mut result_kind,
+                )?;
+                if matches!(clause, HeldLoopClause::Always(_)) {
+                    result = held_symbol(ctx, runtime, &mut held, "T")?;
+                }
+            }
             HeldLoopClause::Initially(ref forms) => initially.extend(forms),
             HeldLoopClause::Finally(ref forms) => finally.extend(forms),
             HeldLoopClause::Do(_)

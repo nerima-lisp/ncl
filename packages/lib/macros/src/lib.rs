@@ -6,6 +6,7 @@ mod control;
 mod defining;
 mod definition_support;
 pub(crate) mod destructuring;
+mod file_stream;
 mod form;
 mod function_call;
 mod functions;
@@ -51,6 +52,16 @@ const PLACE: Parameter = Parameter {
 };
 fn expansion_arg(args: &[Word]) -> Result<Word, ObjectError> {
     args.first().copied().ok_or(ObjectError::TypeError)
+}
+
+fn declaim_callback(
+    _runtime: &Runtime,
+    _ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    expansion_arg(args)?;
+    Ok(Word::NIL)
 }
 
 type LegacyBuiltin = fn(
@@ -238,7 +249,8 @@ adapters!
      pop_adapter => pop_callback,
      remf_adapter => remf_callback,
      shiftf_adapter => shiftf_callback,
-     rotatef_adapter => rotatef_callback);
+     rotatef_adapter => rotatef_callback,
+     declaim_adapter => declaim_callback);
 
 fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
     match name {
@@ -257,6 +269,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DEFVAR" => Some(defining::defvar_adapter),
         "DEFPARAMETER" => Some(defining::defparameter_adapter),
         "DEFCONSTANT" => Some(defining::defconstant_adapter),
+        "DECLAIM" => Some(declaim_adapter),
         "DEFINE-SYMBOL-MACRO" => Some(defining::define_symbol_macro_adapter),
         "DEFINE-COMPILER-MACRO" => Some(defining::define_compiler_macro_adapter),
         "DEFSETF" => Some(defining::defsetf_adapter),
@@ -295,6 +308,8 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "ASSERT" => Some(control::expand_assert_adapter),
         "DEFINE-CONDITION" => Some(control::expand_define_condition_adapter),
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
+        "WITH-OPEN-FILE" => Some(file_stream::expand_file_adapter),
+        "WITH-OPEN-STREAM" => Some(file_stream::expand_stream_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DOLIST" => Some(iteration::expand_dolist_adapter),

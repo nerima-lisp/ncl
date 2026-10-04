@@ -34,6 +34,9 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "MINIMIZE"
                 | "INTO"
                 | "RETURN"
+                | "THEREIS"
+                | "ALWAYS"
+                | "NEVER"
                 | "FROM"
                 | "UPFROM"
                 | "DOWNFROM"
@@ -88,9 +91,9 @@ fn required(input: &[Word], cursor: &mut usize) -> Result<Word> {
 #[allow(clippy::too_many_lines)]
 fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<LoopClause> {
     let variable = required(input, cursor)?;
-    symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
     let mut has_init = false;
+    let mut has_equals = false;
     let mut step = None;
     let mut then = None;
     let mut direction = None;
@@ -104,6 +107,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             "=" => {
                 init = next;
                 has_init = true;
+                has_equals = true;
                 *cursor += 2;
             }
             "FROM" | "UPFROM" | "DOWNFROM" => {
@@ -182,7 +186,10 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             init,
             then,
         })
+    } else if has_equals && step.is_none() && direction.is_none() && limit.is_none() {
+        Ok(LoopClause::Equals { variable, init })
     } else {
+        symbol_name(ctx, variable)?;
         // ANSI CL: when no from-type preposition (`=`/`from`/`upfrom`/`downfrom`)
         // is present, the index starts at 0.
         if !has_init {
@@ -197,7 +204,6 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
         }))
     }
 }
-
 fn parse_sequence_for(
     ctx: &ThreadContext,
     input: &[Word],
@@ -390,7 +396,6 @@ fn parse_conditional(
         otherwise,
     })
 }
-
 /// Parse the body of a LOOP form (the operator itself is not included).
 #[allow(clippy::too_many_lines)]
 pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
@@ -398,6 +403,10 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
     let mut name = None;
     let mut clauses = Vec::new();
     while cursor < input.len() {
+        if !is_keyword(ctx, input[cursor]) && input[cursor].is_cons() {
+            clauses.push(LoopClause::Do(input[cursor..].to_vec()));
+            break;
+        }
         let keyword = word_name(ctx, required(input, &mut cursor)?)?;
         match keyword.as_str() {
             "NAMED" => {
@@ -462,6 +471,17 @@ pub fn parse_loop(ctx: &mut ThreadContext, input: &[Word]) -> Result<LoopAst> {
             "REPEAT" => clauses.push(LoopClause::Repeat(required(input, &mut cursor)?)),
             "WHILE" => clauses.push(LoopClause::While(required(input, &mut cursor)?)),
             "UNTIL" => clauses.push(LoopClause::Until(required(input, &mut cursor)?)),
+            "THEREIS" => {
+                let test = required(input, &mut cursor)?;
+                clauses.push(LoopClause::Conditional {
+                    kind: ConditionalKind::When,
+                    test,
+                    then: vec![LoopClause::Return(test)],
+                    otherwise: Vec::new(),
+                });
+            }
+            "ALWAYS" => clauses.push(LoopClause::Always(required(input, &mut cursor)?)),
+            "NEVER" => clauses.push(LoopClause::Never(required(input, &mut cursor)?)),
             "INITIALLY" => clauses.push(LoopClause::Initially(take_forms(ctx, input, &mut cursor))),
             "FINALLY" => clauses.push(LoopClause::Finally(take_forms(ctx, input, &mut cursor))),
             "DO" => clauses.push(LoopClause::Do(take_forms(ctx, input, &mut cursor))),

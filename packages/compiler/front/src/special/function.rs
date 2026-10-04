@@ -48,9 +48,35 @@ fn function_form(
     };
     if argument.is_cons() {
         let head = car(expander.ctx(), *argument)?;
-        if expander.is_named(head, "LAMBDA")? {
+        if expander.is_named(head, "LAMBDA")?
+            || expander.symbol(head)?.name.eq_ignore_ascii_case("LAMBDA")
+        {
             let lambda = expander.expand_lambda(*argument)?;
             return Ok(Expr::Function(FunctionDesignator::Lambda(Box::new(lambda))));
+        }
+        if (expander.is_named(head, "FUNCTION")?
+            || expander.symbol(head)?.name.eq_ignore_ascii_case("FUNCTION"))
+            && let [function, name] = expander.elements(*argument)?.as_slice()
+            && (expander.is_named(*function, "FUNCTION")?
+                || expander
+                    .symbol(*function)?
+                    .name
+                    .eq_ignore_ascii_case("FUNCTION"))
+        {
+            if name.is_cons()
+                && let nested_head = car(expander.ctx(), *name)?
+                && (expander.is_named(nested_head, "LAMBDA")?
+                    || expander
+                        .symbol(nested_head)?
+                        .name
+                        .eq_ignore_ascii_case("LAMBDA"))
+            {
+                let lambda = expander.expand_lambda(*name)?;
+                return Ok(Expr::Function(FunctionDesignator::Lambda(Box::new(lambda))));
+            }
+            return Ok(Expr::Function(FunctionDesignator::Name(
+                expander.symbol(*name)?,
+            )));
         }
         return Err(FrontError::MalformedForm {
             operator: kind.symbol(),

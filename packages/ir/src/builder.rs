@@ -148,6 +148,59 @@ impl FunctionBuilder {
         Ok(())
     }
 
+    /// Whether a block is the entry block or already has a CFG predecessor.
+    pub fn is_reachable(&self, block: BlockId) -> bool {
+        let Some(entry) = self.function.blocks.first().map(|block| block.id) else {
+            return false;
+        };
+        let mut seen = std::collections::BTreeSet::from([entry]);
+        let mut pending = vec![entry];
+        while let Some(current) = pending.pop() {
+            let Some(candidate) = self
+                .function
+                .blocks
+                .iter()
+                .find(|block| block.id == current)
+            else {
+                continue;
+            };
+            let successors = match &candidate.terminator {
+                Terminator::Jump { target, .. } => vec![*target],
+                Terminator::Branch {
+                    then_target,
+                    else_target,
+                    ..
+                } => vec![*then_target, *else_target],
+                Terminator::Switch { cases, default, .. } => cases
+                    .iter()
+                    .map(|(_, target, _)| *target)
+                    .chain(std::iter::once(*default))
+                    .collect(),
+                Terminator::CallReturn { .. }
+                | Terminator::TailCall { .. }
+                | Terminator::Return { .. }
+                | Terminator::Throw { .. }
+                | Terminator::Unreachable => Vec::new(),
+            };
+            for successor in successors {
+                if seen.insert(successor) {
+                    pending.push(successor);
+                }
+            }
+        }
+        seen.contains(&block)
+    }
+
+    /// Return the SSA values carried by the current block's parameters.
+    pub fn block_parameters(&self, block: BlockId) -> Vec<ValueId> {
+        self.function
+            .blocks
+            .iter()
+            .find(|candidate| candidate.id == block)
+            .map(|candidate| candidate.params.iter().map(|param| param.value).collect())
+            .unwrap_or_default()
+    }
+
     /// Adds an exception handler region.
     pub fn add_handler_region(&mut self, region: HandlerRegion) {
         self.function.handler_regions.push(region);

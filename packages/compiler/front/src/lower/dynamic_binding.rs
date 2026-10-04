@@ -149,6 +149,7 @@ impl Context<'_> {
             Ty::Word,
         )?;
         let result = f.fresh_value();
+        let live = f.env().visible_variables();
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
         let start = f.current_block();
@@ -162,13 +163,35 @@ impl Context<'_> {
             .collect::<Vec<_>>();
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
-        let merge = self.block(f, vec![(Ty::Word, result)]);
+        let live_values = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
+        let merge = self.block(
+            f,
+            std::iter::once((Ty::Word, result))
+                .chain(live_values.iter().copied().map(|value| (Ty::Word, value)))
+                .collect(),
+        );
         if normal_path {
             f.position(body_end)?;
             self.leave(f, region_id)?;
+            let normal_live = live
+                .iter()
+                .map(|(name, _)| {
+                    f.env()
+                        .lookup_variable(name)
+                        .map(|slot| (name.clone(), slot))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| LowerError::Ir {
+                    detail: "dynamic binding lost a live lexical binding".to_owned(),
+                })?;
             f.terminate(Terminator::Jump {
                 target: merge,
-                args: vec![inner],
+                args: std::iter::once(inner)
+                    .chain(normal_live.iter().map(|(_, slot)| match slot {
+                        super::super::env::Slot::Cell(value)
+                        | super::super::env::Slot::Value(value) => *value,
+                    }))
+                    .collect(),
             })?;
         }
         let handler = self.block(f, Vec::new());
@@ -189,6 +212,15 @@ impl Context<'_> {
             parent: None,
         });
         f.position(merge)?;
+        for ((name, slot), value) in live.into_iter().zip(live_values) {
+            f.env().rebind_variable(
+                &name,
+                match slot {
+                    super::super::env::Slot::Cell(_) => super::super::env::Slot::Cell(value),
+                    super::super::env::Slot::Value(_) => super::super::env::Slot::Value(value),
+                },
+            );
+        }
         Ok(result)
     }
 }

@@ -43,11 +43,8 @@ fn builtin_call_with_keywords_and_eight_arguments_does_not_lowering_error() {
 }
 
 #[test]
-fn make_pathname_reports_an_explicit_unimplemented_condition() {
+fn make_pathname_accepts_keyword_components() {
     let output =
         run_ncl("(make-pathname :directory '(:relative :wild) :name :wild :type \"fasl\")");
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("undefined function UNDEFINED-FUNCTION: MAKE-PATHNAME"));
-    assert!(!stderr.contains("lowering error"));
+    assert!(output.status.success());
 }

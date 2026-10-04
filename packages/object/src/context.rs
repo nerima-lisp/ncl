@@ -7,6 +7,7 @@ use ncl_sys::{RootToken, StorageCondition, Thread, Word};
 
 pub type ConditionHandlerInvoker =
     fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, &[Word]) -> Result<Word, ObjectError>;
+pub type ReaderEvaluator = fn(std::ptr::NonNull<()>, Word) -> Result<Word, ObjectError>;
 
 #[derive(Debug)]
 pub struct ThreadContext {
@@ -29,6 +30,7 @@ pub struct ThreadContext {
     pub(crate) frames: Vec<crate::nonlocal::DynamicFrame>,
     pub(crate) pending_unwind: Vec<crate::nonlocal::PendingExit>,
     evaluator_runtime: Option<std::ptr::NonNull<()>>,
+    reader_evaluator: Option<ReaderEvaluator>,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -52,6 +54,7 @@ impl ThreadContext {
             frames: Vec::new(),
             pending_unwind: Vec::new(),
             evaluator_runtime: None,
+            reader_evaluator: None,
         }
     }
 
@@ -63,6 +66,33 @@ impl ThreadContext {
     /// Clear the evaluator association after an outer evaluation returns.
     pub const fn clear_evaluator_runtime(&mut self) {
         self.evaluator_runtime = None;
+    }
+
+    pub const fn set_reader_evaluator(&mut self, evaluator: ReaderEvaluator) {
+        self.reader_evaluator = Some(evaluator);
+    }
+
+    pub const fn clear_reader_evaluator(&mut self) {
+        self.reader_evaluator = None;
+    }
+
+    #[must_use]
+    pub const fn reader_evaluator_available(&self) -> bool {
+        self.reader_evaluator.is_some() && self.evaluator_runtime.is_some()
+    }
+
+    /// Evaluates a form read by the dispatch macro reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ObjectError::Layout`] when the evaluator callback or runtime
+    /// handle has not been registered, or the callback's error otherwise.
+    pub fn evaluate_reader_form(&self, form: Word) -> Result<Word, ObjectError> {
+        let Some(evaluator) = self.reader_evaluator else {
+            return Err(ObjectError::Layout);
+        };
+        let runtime = self.evaluator_runtime.ok_or(ObjectError::Layout)?;
+        evaluator(runtime, form)
     }
 
     #[must_use]

@@ -441,6 +441,25 @@ fn make_array_element_types_are_table_driven_and_preserve_contents() -> Result<(
 }
 
 #[test]
+fn make_array_accepts_registered_class_element_types() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = setup()?;
+    runtime.define_class(&mut ctx, "CLASS-0-0", Word::NIL)?;
+    let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;
+    let class = common_lisp_symbol(&runtime, &mut ctx, "CLASS-0-0")?;
+    let array = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[Word::fixnum(1), element_type, class],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[array])?,
+        common_lisp_symbol(&runtime, &mut ctx, "T")?
+    );
+    Ok(())
+}
+
+#[test]
 fn make_array_rejects_invalid_option_combinations_with_exact_errors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
     let element_type = keyword(&runtime, &mut ctx, "ELEMENT-TYPE")?;

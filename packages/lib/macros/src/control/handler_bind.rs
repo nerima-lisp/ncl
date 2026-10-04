@@ -93,7 +93,12 @@ pub(crate) fn bindings(
 }
 
 pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let clauses = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let clause_form = values.first().copied().ok_or(ObjectError::TypeError)?;
+    let clauses = if clause_form == Word::NIL || symbol_named(ctx, clause_form, "NIL") {
+        Vec::new()
+    } else {
+        elements(ctx, clause_form)?
+    };
     let mut flattened: Vec<(Word, Word)> = Vec::new();
     for clause in clauses {
         let parts = elements(ctx, clause)?;
@@ -119,18 +124,6 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 let token = fresh_symbol(ctx, runtime)?;
                 let bindings = bindings(ctx, runtime, &[(token, push)])?;
                 let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;
-                // `unwind-protect` would be the ANSI-correct wrapper here (a
-                // non-local exit out of `result` should still pop this
-                // handler), but pairing `unwind-protect` with a `lambda`
-                // that performs `return-from` to an enclosing block
-                // currently trips a front-end/codegen defect (observed:
-                // `EscapingControl`/`inline-direct-calls` failures, outside
-                // this lane's conditions/macros scope, not chased further
-                // here). `prog1`, not `progn`: the handler-bind form's value
-                // is `result`'s (primary) value, not `pop`'s; the handler is
-                // popped on normal exit either way, and stays installed
-                // (harmlessly stale, per the pre-existing contract) if
-                // `result` transfers control past this form.
                 let body = form(ctx, runtime, "PROG1", &[*result, pop])?;
                 ncl_object::with_roots(ctx, &[bindings, body], |ctx, roots| {
                     let bindings = roots.first().ok_or(ObjectError::Layout)?;

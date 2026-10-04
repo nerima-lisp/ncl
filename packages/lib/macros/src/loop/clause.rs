@@ -19,6 +19,10 @@ pub(super) enum HeldLoopClause {
         table: usize,
         using: Option<(HashIterationKind, usize)>,
     },
+    Equals {
+        variable: usize,
+        init: usize,
+    },
     EqualsThen {
         variable: usize,
         init: usize,
@@ -37,6 +41,8 @@ pub(super) enum HeldLoopClause {
     Repeat(usize),
     While(usize),
     Until(usize),
+    Always(usize),
+    Never(usize),
     Initially(Vec<usize>),
     Finally(Vec<usize>),
     Do(Vec<usize>),

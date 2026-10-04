@@ -479,21 +479,18 @@ fn builtin_lowering_reports_arity_and_stages_generated_lambda_arguments() {
         results: Vec::new(),
         kind: OpKind::Builtin {
             name: "identity".into(),
-            args: (0..=4).map(ValueId).collect(),
+            args: vec![ValueId(0); 5],
         },
         loc: None,
     };
-    assert!(matches!(
-        lower_op(
-            &mut assembler,
-            &too_many_arguments,
-            &function,
-            &slots,
-            &X86_64Abi,
-        ),
-        Err(CodegenError::Unsupported(message))
-            if message == "x86-64 builtins support at most four arguments"
-    ));
+    lower_op(
+        &mut assembler,
+        &too_many_arguments,
+        &function,
+        &slots,
+        &X86_64FixtureAbi,
+    )
+    .unwrap_or_else(|error| panic!("builtin overflow: {error:?}"));
 
     let rest_builtin = Op {
         results: Vec::new(),

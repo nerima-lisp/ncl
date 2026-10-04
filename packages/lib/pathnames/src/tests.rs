@@ -196,3 +196,20 @@ fn pathname_file_operations_return_observable_values() -> Result<(), ObjectError
     assert_eq!(call(&runtime, &mut ctx, "PATHNAMEP", &[home])?, Word::TRUE); // check-added-lines: allow(panic) pathname predicate assertion
     Ok(())
 }
+
+#[test]
+fn compile_file_pathname_returns_input_designator() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let input = make_string(
+        &mut ctx,
+        &runtime,
+        &['i', 'n', 'i', 't', '.', 'l', 'i', 's', 'p'],
+    )?;
+    let output = call(&runtime, &mut ctx, "COMPILE-FILE-PATHNAME", &[input])?;
+    let namestring = call(&runtime, &mut ctx, "NAMESTRING", &[output])?;
+    assert_eq!(string_value(&ctx, namestring)?, "init.fasl"); // check-added-lines: allow(panic) compile pathname value assertion
+    Ok(())
+}

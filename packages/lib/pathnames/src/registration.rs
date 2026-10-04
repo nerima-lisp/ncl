@@ -1,8 +1,8 @@
 use super::operations::{
-    delete_file_builtin, directory_builtin, enough_namestring_builtin,
-    ensure_directories_exist_builtin, file_author_builtin, file_error_pathname_builtin,
-    file_length_builtin, file_write_date_builtin, host_namestring_builtin,
-    load_logical_pathname_translations_builtin, logical_pathname_builtin,
+    compile_file_pathname_builtin, delete_file_builtin, directory_builtin,
+    enough_namestring_builtin, ensure_directories_exist_builtin, file_author_builtin,
+    file_error_pathname_builtin, file_length_builtin, file_write_date_builtin,
+    host_namestring_builtin, load_logical_pathname_translations_builtin, logical_pathname_builtin,
     logical_pathname_translations_builtin, merge_pathnames_builtin, parse_namestring_builtin,
     pathname_match_builtin, probe_file_builtin, rename_file_builtin,
     translate_logical_pathname_builtin, translate_pathname_builtin, truename_builtin,
@@ -89,6 +89,11 @@ pub fn register_operations(
             "MERGE-PATHNAMES",
             merge_pathnames_builtin,
             LambdaList::with_optional(&[PATHNAME], &[PATHNAME]),
+        ),
+        (
+            "COMPILE-FILE-PATHNAME",
+            compile_file_pathname_builtin,
+            LambdaList::with_rest(&[PATHNAME], OBJECT),
         ),
         (
             "PROBE-FILE",

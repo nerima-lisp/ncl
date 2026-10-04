@@ -463,6 +463,25 @@ pub fn merge_pathnames_builtin(
     make_pathname(ctx, runtime, &slots)
 }
 
+pub fn compile_file_pathname_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let input = pathname_designator(ctx, runtime, args.required(0)?)?;
+    let type_ = make_string(ctx, runtime, &['f', 'a', 's', 'l'])?;
+    let mut slots = [Word::NIL; SLOTS];
+    for (index, slot) in slots.iter_mut().enumerate() {
+        *slot = if index == 4 {
+            type_
+        } else {
+            structure_ref(ctx, input, index)?
+        };
+    }
+    make_pathname(ctx, runtime, &slots)
+}
+
 pub fn keyword_symbol(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

@@ -2,9 +2,13 @@
 #![allow(missing_docs)]
 
 mod executor;
+mod pretty;
 mod registration;
 
-pub use executor::{FormatError, execute};
+pub use executor::{
+    FormatError, FormatFunctionCaller, execute, execute_with_caller, execute_with_options,
+};
+pub use pretty::{NoopPrettyPrinter, PrettyIndent, PrettyNewline, PrettyPrinter, PrettyTab};
 pub use registration::register;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,6 +24,7 @@ pub enum ControlPart {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Directive {
+    pub name: Option<String>,
     pub parameters: Vec<Parameter>,
     pub colon: bool,
     pub at_sign: bool,
@@ -31,6 +36,7 @@ pub enum Parameter {
     Integer(i64),
     Character(char),
     Relative,
+    ArgumentCount,
     Unsupplied,
 }
 
@@ -38,41 +44,40 @@ pub enum Parameter {
 pub enum DirectiveKind {
     A,
     S,
+    C,
+    R,
     D,
     B,
     O,
     X,
-    Percent,
-    Ampersand,
-    Tilde,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum UnsupportedDirectiveKind {
-    R,
-    P,
-    C,
-    I,
     F,
     E,
     G,
-    T,
-    W,
     Dollar,
-    Bar,
-    TildeOpen,
-    TildeClose,
+    W,
+    Underscore,
+    Less,
+    Greater,
+    ColonGreater,
+    I,
+    Slash,
+    T,
     Star,
-    Question,
-    ParenOpen,
-    ParenClose,
     BracketOpen,
     BracketClose,
     BraceOpen,
     BraceClose,
-    UpArrow,
+    Question,
+    ParenOpen,
+    ParenClose,
+    P,
+    Bar,
     Semicolon,
-    Slash,
+    UpArrow,
+    Newline,
+    Percent,
+    Ampersand,
+    Tilde,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -87,7 +92,6 @@ pub enum ParseErrorKind {
     InvalidParameter,
     MissingDirective,
     UnknownDirective,
-    UnsupportedDirective { directive: UnsupportedDirectiveKind },
 }
 
 /// Parse a FORMAT control string into typed parts.
@@ -120,6 +124,7 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
         let mut parameters = Vec::new();
         let mut colon = false;
         let mut at_sign = false;
+        let mut comma_pending = false;
         loop {
             let current = chars.get(index).copied().ok_or(ParseError {
                 offset: start,
@@ -128,7 +133,12 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
             match current {
                 ':' => colon = true,
                 '@' => at_sign = true,
-                ',' => parameters.push(Parameter::Unsupplied),
+                ',' => {
+                    if comma_pending {
+                        parameters.push(Parameter::Unsupplied);
+                    }
+                    comma_pending = true;
+                }
                 '\'' => {
                     index += 1;
                     let value = chars.get(index).copied().ok_or(ParseError {
@@ -136,6 +146,7 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                         kind: ParseErrorKind::InvalidParameter,
                     })?;
                     parameters.push(Parameter::Character(value));
+                    comma_pending = false;
                 }
                 '+' | '-' | '0'..='9' => {
                     let sign = if current == '-' { -1 } else { 1 };
@@ -173,27 +184,51 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
                                 kind: ParseErrorKind::InvalidParameter,
                             })?;
                     }
-                    parameters.push(Parameter::Integer(value.checked_mul(sign).ok_or(
-                        ParseError {
-                            offset: digit_start,
-                            kind: ParseErrorKind::InvalidParameter,
-                        },
-                    )?));
+                    parameters.push(Parameter::Integer(value * sign));
+                    comma_pending = false;
                     continue;
                 }
-                'v' | 'V' => parameters.push(Parameter::Relative),
+                'v' | 'V' => {
+                    parameters.push(Parameter::Relative);
+                    comma_pending = false;
+                }
+                '#' => {
+                    parameters.push(Parameter::ArgumentCount);
+                    comma_pending = false;
+                }
                 other => {
+                    if comma_pending {
+                        return Err(ParseError {
+                            offset: index,
+                            kind: ParseErrorKind::InvalidParameter,
+                        });
+                    }
                     let kind = directive_kind(other).map_err(|kind| ParseError {
                         offset: index,
                         kind,
                     })?;
+                    validate_parameters(kind, &parameters).map_err(|kind| ParseError {
+                        offset: start,
+                        kind,
+                    })?;
+                    let name = if kind == DirectiveKind::Slash {
+                        parse_slash_name(&chars, &mut index)
+                    } else {
+                        index += 1;
+                        None
+                    };
                     parts.push(ControlPart::Directive(Directive {
+                        name,
                         parameters,
                         colon,
                         at_sign,
                         kind,
                     }));
-                    index += 1;
+                    if other == '\n' {
+                        while matches!(chars.get(index), Some(' ' | '\t')) {
+                            index += 1;
+                        }
+                    }
                     break;
                 }
             }
@@ -206,89 +241,170 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
     Ok(FormatControl { parts })
 }
 
+fn validate_parameters(
+    directive: DirectiveKind,
+    parameters: &[Parameter],
+) -> Result<(), ParseErrorKind> {
+    let nonnegative = |parameter: Option<&Parameter>| {
+        if let Some(Parameter::Integer(value)) = parameter
+            && *value < 0
+        {
+            Err(ParseErrorKind::InvalidParameter)
+        } else {
+            Ok(())
+        }
+    };
+    match directive {
+        DirectiveKind::R => {
+            if let Some(Parameter::Integer(value)) = parameters.first()
+                && !(2..=36).contains(value)
+            {
+                return Err(ParseErrorKind::InvalidParameter);
+            }
+        }
+        DirectiveKind::T => {
+            for parameter in parameters.iter().take(2) {
+                if let Parameter::Integer(value) = parameter
+                    && *value < 0
+                {
+                    return Err(ParseErrorKind::InvalidParameter);
+                }
+            }
+        }
+        DirectiveKind::A
+        | DirectiveKind::S
+        | DirectiveKind::B
+        | DirectiveKind::O
+        | DirectiveKind::X
+        | DirectiveKind::F
+        | DirectiveKind::E
+        | DirectiveKind::G
+        | DirectiveKind::Dollar
+        | DirectiveKind::W => {
+            nonnegative(parameters.first())?;
+            if matches!(
+                directive,
+                DirectiveKind::F | DirectiveKind::E | DirectiveKind::G
+            ) {
+                nonnegative(parameters.get(1))?;
+            }
+        }
+        DirectiveKind::D
+        | DirectiveKind::C
+        | DirectiveKind::Slash
+        | DirectiveKind::Star
+        | DirectiveKind::BracketOpen
+        | DirectiveKind::BracketClose
+        | DirectiveKind::BraceOpen
+        | DirectiveKind::BraceClose
+        | DirectiveKind::Question
+        | DirectiveKind::ParenOpen
+        | DirectiveKind::ParenClose
+        | DirectiveKind::P
+        | DirectiveKind::Semicolon
+        | DirectiveKind::UpArrow
+        | DirectiveKind::Newline
+        | DirectiveKind::Less
+        | DirectiveKind::Greater
+        | DirectiveKind::ColonGreater => {}
+        DirectiveKind::Percent
+        | DirectiveKind::Ampersand
+        | DirectiveKind::Tilde
+        | DirectiveKind::Bar
+        | DirectiveKind::Underscore
+        | DirectiveKind::I => nonnegative(parameters.first())?,
+    }
+    Ok(())
+}
+
+fn parse_slash_name(chars: &[char], index: &mut usize) -> Option<String> {
+    let name_start = index.saturating_add(1);
+    let Some(first) = chars.get(name_start).copied() else {
+        *index = index.saturating_add(1);
+        return None;
+    };
+    if first == '~' || first == '\n' {
+        *index = index.saturating_add(1);
+        return None;
+    }
+    let Some(length) = chars
+        .iter()
+        .skip(name_start)
+        .position(|character| *character == '/')
+    else {
+        *index = index.saturating_add(1);
+        return None;
+    };
+    let end = name_start + length;
+    let name = chars
+        .iter()
+        .skip(name_start)
+        .take(end - name_start)
+        .collect();
+    *index = end + 1;
+    Some(name)
+}
+
 const fn directive_kind(value: char) -> Result<DirectiveKind, ParseErrorKind> {
     match value.to_ascii_uppercase() {
+        '\n' => Ok(DirectiveKind::Newline),
         'A' => Ok(DirectiveKind::A),
         'S' => Ok(DirectiveKind::S),
+        'C' => Ok(DirectiveKind::C),
+        'R' => Ok(DirectiveKind::R),
         'D' => Ok(DirectiveKind::D),
         'B' => Ok(DirectiveKind::B),
         'O' => Ok(DirectiveKind::O),
         'X' => Ok(DirectiveKind::X),
+        'F' => Ok(DirectiveKind::F),
+        'E' => Ok(DirectiveKind::E),
+        'G' => Ok(DirectiveKind::G),
+        '$' => Ok(DirectiveKind::Dollar),
+        'W' => Ok(DirectiveKind::W),
+        '_' => Ok(DirectiveKind::Underscore),
+        '<' => Ok(DirectiveKind::Less),
+        '>' => Ok(DirectiveKind::Greater),
+        'I' => Ok(DirectiveKind::I),
+        '/' => Ok(DirectiveKind::Slash),
+        'T' => Ok(DirectiveKind::T),
+        '*' => Ok(DirectiveKind::Star),
+        '[' => Ok(DirectiveKind::BracketOpen),
+        ']' => Ok(DirectiveKind::BracketClose),
+        '{' => Ok(DirectiveKind::BraceOpen),
+        '}' => Ok(DirectiveKind::BraceClose),
+        '?' => Ok(DirectiveKind::Question),
+        '(' => Ok(DirectiveKind::ParenOpen),
+        ')' => Ok(DirectiveKind::ParenClose),
+        'P' => Ok(DirectiveKind::P),
+        '|' => Ok(DirectiveKind::Bar),
+        ';' => Ok(DirectiveKind::Semicolon),
+        '^' => Ok(DirectiveKind::UpArrow),
         '%' => Ok(DirectiveKind::Percent),
         '&' => Ok(DirectiveKind::Ampersand),
         '~' => Ok(DirectiveKind::Tilde),
-        'R' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::R,
-        }),
-        'P' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::P,
-        }),
-        'C' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::C,
-        }),
-        'I' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::I,
-        }),
-        'F' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::F,
-        }),
-        'E' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::E,
-        }),
-        'G' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::G,
-        }),
-        'T' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::T,
-        }),
-        'W' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::W,
-        }),
-        '$' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Dollar,
-        }),
-        '|' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Bar,
-        }),
-        '<' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::TildeOpen,
-        }),
-        '>' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::TildeClose,
-        }),
-        '*' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Star,
-        }),
-        '?' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Question,
-        }),
-        '(' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::ParenOpen,
-        }),
-        ')' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::ParenClose,
-        }),
-        '[' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::BracketOpen,
-        }),
-        ']' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::BracketClose,
-        }),
-        '{' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::BraceOpen,
-        }),
-        '}' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::BraceClose,
-        }),
-        '^' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::UpArrow,
-        }),
-        ';' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Semicolon,
-        }),
-        '/' => Err(ParseErrorKind::UnsupportedDirective {
-            directive: UnsupportedDirectiveKind::Slash,
-        }),
         _other => Err(ParseErrorKind::UnknownDirective),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn covers_parser_parameter_validation_edges() {
+        assert!(parse("~,A").is_err());
+        assert!(parse("~37R").is_err());
+        assert!(parse("~0T").is_ok());
+        assert!(parse("~-1A").is_err());
+        assert!(parse("~-1%").is_err());
+        assert!(parse("~9223372036854775808A").is_err());
+        assert!(parse("~\n  tail").is_ok());
+        assert_eq!(directive_kind('\n'), Ok(DirectiveKind::Newline));
+        assert_eq!(directive_kind('?'), Ok(DirectiveKind::Question));
+        assert_eq!(directive_kind('!'), Err(ParseErrorKind::UnknownDirective));
+        assert!(validate_parameters(DirectiveKind::R, &[Parameter::Integer(1)]).is_err());
+        assert!(validate_parameters(DirectiveKind::T, &[Parameter::Integer(0)]).is_ok());
+        assert!(validate_parameters(DirectiveKind::A, &[Parameter::Integer(-1)]).is_err());
+        assert!(validate_parameters(DirectiveKind::C, &[]).is_ok());
     }
 }

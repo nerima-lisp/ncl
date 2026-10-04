@@ -175,4 +175,5 @@ mod coverage_recovery;
 mod gc_stress_tests;
 mod iteration_tests;
 mod loop_tests;
+mod pprint_tests;
 mod string_stream_tests;

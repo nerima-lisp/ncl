@@ -92,13 +92,9 @@ fn format_builtin(
                 let output = sink.into_string();
                 let mut writer = WriteCharSink::new(ctx, runtime, *stream)?;
                 for character in output.chars() {
-                    writer.write_char(character).map_err(|error| match error {
-                        PrintError::Object(error) => error,
-                        PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
-                            ObjectError::TypeError
-                        }
-                        _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) non-exhaustive error mapping
-                    })?;
+                    writer
+                        .write_char(character)
+                        .map_err(|error| print_error_to_object_error(&error))?;
                 }
                 Ok(Word::NIL)
             })
@@ -143,6 +139,16 @@ const fn format_error_to_object_error(error: &crate::FormatError) -> ObjectError
     }
 }
 
+const fn print_error_to_object_error(error: &PrintError) -> ObjectError {
+    match error {
+        PrintError::Object(error) => *error,
+        PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
+            ObjectError::TypeError
+        }
+        _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) non-exhaustive error mapping
+    }
+}
+
 struct WriteCharSink<'a> {
     ctx: &'a mut ThreadContext,
     runtime: &'a Runtime,
@@ -179,5 +185,91 @@ impl CharSink for WriteCharSink<'_> {
                 .map(|_| ())
         })
         .map_err(PrintError::Object)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use super::*;
+
+    fn setup() -> (Runtime, ThreadContext, FunctionObject) {
+        let runtime = Runtime::new().expect("runtime"); // check-added-lines: allow(panic)
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context"); // check-added-lines: allow(panic)
+        ncl_lib_streams::register(&runtime).expect("streams"); // check-added-lines: allow(panic)
+        register(&runtime).expect("format"); // check-added-lines: allow(panic)
+        let function = FunctionObject::try_from(
+            runtime
+                .function(&mut ctx, "COMMON-LISP", "FORMAT")
+                .expect("FORMAT"), // check-added-lines: allow(panic)
+        )
+        .expect("function"); // check-added-lines: allow(panic)
+        (runtime, ctx, function)
+    }
+
+    fn string(runtime: &Runtime, ctx: &mut ThreadContext, value: &str) -> Word {
+        make_string(ctx, runtime, &value.chars().collect::<Vec<_>>()).expect("string") // check-added-lines: allow(panic)
+    }
+
+    #[test]
+    fn covers_format_builtin_error_paths() {
+        let (runtime, mut ctx, function) = setup();
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[]),
+            Err(ObjectError::TypeError)
+        );
+        let control = string(&runtime, &mut ctx, "~A");
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[Word::NIL, control]),
+            Err(ObjectError::TypeError)
+        );
+        let bad_value = string(&runtime, &mut ctx, "not-an-integer");
+        let decimal = string(&runtime, &mut ctx, "~D");
+        assert!(
+            runtime
+                .call_builtin(&mut ctx, function, &[Word::NIL, decimal, bad_value])
+                .is_ok()
+        );
+        let invalid = string(&runtime, &mut ctx, "~");
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, function, &[Word::NIL, invalid]),
+            Err(ObjectError::TypeError)
+        );
+    }
+
+    #[test]
+    fn maps_format_errors_to_object_errors() {
+        assert_eq!(
+            format_error_to_object_error(&crate::FormatError::MissingArgument {
+                directive: crate::DirectiveKind::A,
+            }),
+            ObjectError::TypeError
+        );
+        assert_eq!(
+            format_error_to_object_error(&crate::FormatError::Print(PrintError::Sink(
+                "closed".to_owned(),
+            ))),
+            ObjectError::TypeError
+        );
+        assert_eq!(
+            format_error_to_object_error(&crate::FormatError::Print(PrintError::Object(
+                ObjectError::TypeError,
+            ))),
+            ObjectError::TypeError
+        );
+        assert_eq!(
+            format_error_to_object_error(&crate::FormatError::Print(PrintError::NotReadable)),
+            ObjectError::TypeError
+        );
+        assert_eq!(
+            print_error_to_object_error(&PrintError::Object(ObjectError::TypeError)),
+            ObjectError::TypeError
+        );
+        assert_eq!(
+            print_error_to_object_error(&PrintError::Circularity),
+            ObjectError::TypeError
+        );
     }
 }

@@ -175,6 +175,15 @@ fn format_writes_to_a_stream_and_rejects_invalid_destinations() {
         runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::TRUE]),
         Err(ncl_object::ObjectError::TypeError)
     );
+    let bad_control = string(&runtime, &mut ctx, "~");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, bad_control]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::character(u32::MAX)],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }
 
 #[test]
@@ -199,9 +208,10 @@ fn format_reports_public_type_errors_for_invalid_controls_and_arguments() {
 
     let non_integer = string(&runtime, &mut ctx, "~D");
     let text = string(&runtime, &mut ctx, "not an integer");
-    assert_eq!(
-        runtime.call_builtin(&mut ctx, format, &[Word::NIL, non_integer, text]),
-        Err(ncl_object::ObjectError::TypeError)
+    assert!(
+        runtime
+            .call_builtin(&mut ctx, format, &[Word::NIL, non_integer, text])
+            .is_ok()
     );
 
     let invalid_parameter = string(&runtime, &mut ctx, "~-1%");

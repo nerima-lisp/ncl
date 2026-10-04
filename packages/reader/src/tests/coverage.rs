@@ -409,7 +409,10 @@ fn embedded_token_and_number_paths_report_values() {
         .required()
         .required();
     assert_eq!(token.characters().len(), 2);
-    assert!(token.characters()[1].is_escaped());
+    assert!(matches!(
+        token.characters().get(1),
+        Some(character) if character.is_escaped()
+    ));
     assert_eq!(token.fold_name(&(0..2), ReadtableCase::Invert), "ab");
     assert_eq!(
         crate::token::read_token_chars(&ctx, &mut StringSource::new("\\"), &rt),

@@ -233,10 +233,7 @@ fn lowering_constants_and_control_flow_preserves_values() {
         declarations: vec![],
         body: vec![Expr::If {
             test: Box::new(Expr::Variable(x.clone())),
-            then: Box::new(Expr::Setq(vec![(
-                x.clone(),
-                Expr::Constant(Literal::fixnum(2)),
-            )])),
+            then: Box::new(Expr::Setq(vec![(x, Expr::Constant(Literal::fixnum(2)))])),
             otherwise: Some(Box::new(Expr::Constant(Literal::Nil))),
         }],
     };
@@ -342,7 +339,6 @@ fn type_specifier_and_literal_helpers_return_their_values() {
     assert!(Literal::fixnum(1).is_self_evaluating());
     assert!(!Literal::Symbol(symbol("X")).is_self_evaluating());
     assert!(
-        Literal::Cons(Box::new(Literal::fixnum(1)), Box::new(Literal::Nil)).is_self_evaluating()
-            == false
+        !Literal::Cons(Box::new(Literal::fixnum(1)), Box::new(Literal::Nil)).is_self_evaluating()
     );
 }

@@ -72,7 +72,9 @@ the line reaches the margin.
 `PPRINT-TAB`, `PPRINT-TABULAR`, `PPRINT-INDENT`, `PPRINT-NEWLINE`,
 `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, `COPY-PPRINT-DISPATCH`, and the
 `NCL-EXT` functions `PRINT-SYMBOL-WITH-PREFIX`, `PRINT-UNREADABLY`; and the
-special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
+special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-PRETTY*`,
+`*PRINT-RIGHT-MARGIN*`, `*PRINT-MISER-WIDTH*`, `*PRINT-LINES*`,
+`*PRINT-CIRCLE*`, `*PRINT-READABLY*`,
 `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*`, `NCL-EXT:*PRINT-VECTOR-LENGTH*`.
 `*PRINT-PPRINT-DISPATCH*` starts as an empty dispatch table, the rest as `NIL`.
 
@@ -91,13 +93,13 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
   strings until the reader lands.
 - **Dynamic bindings**: `ThreadContext` exposes no binding lookup, so
   `PrintOptions::from_specials` reads value cells, not dynamic bindings.
-- **Builtin bodies**: `register` installs function names with an unbound
-  placeholder; callable function objects and the `pprint` stream arguments need
-  the runtime and stream layers. The `pprint-*` functions have no Rust-side
-  entry points yet; `write` with `*print-pretty*` is the working path.
+- **Builtin bodies**: `PPRINT`, `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, and
+  `COPY-PPRINT-DISPATCH` are callable and use the registered output stream or
+  ambient dispatch table. The remaining layout primitives still need a
+  stream-backed `PrettyPrinter` state adapter.
 - **CL pretty-printer connection**: `PrettyPrinter` is the Rust boundary for
-  FORMAT and stream integrations. The Lisp `pprint-*` builtins still need
-  stream-aware wrappers and dynamic special-variable bindings.
+  FORMAT and stream integrations. Dynamic special lookup still reads value
+  cells until `ThreadContext` exposes the active binding stack.
 - **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
   matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
   `eq`.

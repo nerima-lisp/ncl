@@ -4,7 +4,7 @@ mod specials;
 
 use ncl_object::{Runtime, ThreadContext};
 
-use self::specials::{base_special, bool_special, case_special, length_special};
+use self::specials::{base_special, bool_special, case_special, length_special, usize_special};
 
 /// A validated radix accepted by the printer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -522,6 +522,16 @@ impl PrintOptions {
             CircleSharingMode::AllOccurrences
         };
         options.vector_length = length_special(ctx, runtime, "NCL-EXT:*PRINT-VECTOR-LENGTH*");
+        options.right_margin = NonNegative::new(
+            usize_special(ctx, runtime, "*PRINT-RIGHT-MARGIN*")
+                .unwrap_or_else(|| options.right_margin.get())
+                .max(1),
+        );
+        options.miser_width = NonNegative::new(
+            usize_special(ctx, runtime, "*PRINT-MISER-WIDTH*")
+                .unwrap_or_else(|| options.miser_width.get()),
+        );
+        options.print_lines = usize_special(ctx, runtime, "*PRINT-LINES*").map(NonNegative::new);
         options
     }
 }

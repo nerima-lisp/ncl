@@ -53,3 +53,32 @@ fn printer_builtin_keeps_object_result() {
     let result = call(&runtime, &mut ctx, "PRINC", &[object, stream]);
     assert_eq!(result, object);
 }
+
+#[test]
+fn pprint_dispatch_builtins_use_the_ambient_table() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    ncl_lib_streams::register(&runtime).unwrap();
+
+    let object = Word::fixnum(7);
+    let table = call(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH", &[]);
+    assert_eq!(
+        call(&runtime, &mut ctx, "PPRINT-DISPATCH", &[object, table]),
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "SET-PPRINT-DISPATCH",
+            &[Word::TRUE, Word::NIL]
+        ),
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "PPRINT-DISPATCH", &[object]),
+        Word::NIL
+    );
+}

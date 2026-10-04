@@ -45,8 +45,13 @@ const STREAM_PARAMETER: Parameter = Parameter {
 };
 
 /// The `(package, name)` special variables `ncl-printer` owns.
-const VARIABLES: [(&str, &str); 4] = [
+const VARIABLES: [(&str, &str); 9] = [
     ("COMMON-LISP", "*PRINT-PPRINT-DISPATCH*"),
+    ("COMMON-LISP", "*PRINT-PRETTY*"),
+    ("COMMON-LISP", "*PRINT-RIGHT-MARGIN*"),
+    ("COMMON-LISP", "*PRINT-MISER-WIDTH*"),
+    ("COMMON-LISP", "*PRINT-LINES*"),
+    ("COMMON-LISP", "*PRINT-CIRCLE*"),
     ("COMMON-LISP", "*PRINT-READABLY*"),
     ("NCL-EXT", "*PRINT-CIRCLE-NOT-SHARED*"),
     ("NCL-EXT", "*PRINT-VECTOR-LENGTH*"),
@@ -72,6 +77,22 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         Package::from_word(package_word).intern(ctx, runtime, name)?;
         if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
             register_print_builtin(ctx, runtime, name)?;
+        } else if package == "COMMON-LISP"
+            && matches!(
+                name,
+                "COPY-PPRINT-DISPATCH"
+                    | "PPRINT"
+                    | "PPRINT-DISPATCH"
+                    | "PPRINT-FILL"
+                    | "PPRINT-INDENT"
+                    | "PPRINT-LINEAR"
+                    | "PPRINT-NEWLINE"
+                    | "PPRINT-TAB"
+                    | "PPRINT-TABULAR"
+                    | "SET-PPRINT-DISPATCH"
+            )
+        {
+            register_pprint_builtin(ctx, runtime, name)?;
         } else {
             runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) placeholder for unimplemented printer surface
         }
@@ -85,6 +106,180 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         result?;
     }
     Ok(())
+}
+
+const TYPE_SPECIFIER_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("TYPE-SPECIFIER"),
+    ty: ParameterType::Any,
+};
+const FUNCTION_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("FUNCTION"),
+    ty: ParameterType::Any,
+};
+const PRIORITY_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("PRIORITY"),
+    ty: ParameterType::Any,
+};
+const TABLE_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("TABLE"),
+    ty: ParameterType::Any,
+};
+
+fn register_pprint_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<(), ObjectError> {
+    let (descriptor, function): (Builtin, ncl_object::RustBuiltin) = match name {
+        "PPRINT" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[OBJECT_PARAMETER], &[STREAM_PARAMETER]),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint,
+        ),
+        "PPRINT-DISPATCH" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[OBJECT_PARAMETER], &[TABLE_PARAMETER]),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_dispatch_builtin,
+        ),
+        "SET-PPRINT-DISPATCH" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(
+                    &[TYPE_SPECIFIER_PARAMETER, FUNCTION_PARAMETER],
+                    &[PRIORITY_PARAMETER, TABLE_PARAMETER],
+                ),
+                convention: BuiltinConvention::Adapted,
+            },
+            set_pprint_dispatch_builtin,
+        ),
+        "COPY-PPRINT-DISPATCH" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[], &[TABLE_PARAMETER]),
+                convention: BuiltinConvention::Adapted,
+            },
+            copy_pprint_dispatch_builtin,
+        ),
+        "PPRINT-NEWLINE" | "PPRINT-INDENT" | "PPRINT-TAB" | "PPRINT-FILL" | "PPRINT-LINEAR"
+        | "PPRINT-TABULAR" => (
+            Builtin {
+                lambda_list: LambdaList::with_rest(&[], OBJECT_PARAMETER),
+                convention: BuiltinConvention::Adapted,
+            },
+            pprint_primitive,
+        ),
+        _ => return Err(ObjectError::Layout),
+    };
+    let builtin_name = match name {
+        "PPRINT" => BuiltinName::new("PPRINT"),
+        "PPRINT-DISPATCH" => BuiltinName::new("PPRINT-DISPATCH"),
+        "SET-PPRINT-DISPATCH" => BuiltinName::new("SET-PPRINT-DISPATCH"),
+        "COPY-PPRINT-DISPATCH" => BuiltinName::new("COPY-PPRINT-DISPATCH"),
+        "PPRINT-NEWLINE" => BuiltinName::new("PPRINT-NEWLINE"),
+        "PPRINT-INDENT" => BuiltinName::new("PPRINT-INDENT"),
+        "PPRINT-TAB" => BuiltinName::new("PPRINT-TAB"),
+        "PPRINT-FILL" => BuiltinName::new("PPRINT-FILL"),
+        "PPRINT-LINEAR" => BuiltinName::new("PPRINT-LINEAR"),
+        "PPRINT-TABULAR" => BuiltinName::new("PPRINT-TABULAR"),
+        _ => return Err(ObjectError::Layout),
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, builtin_name),
+        BuiltinImplementation::adapted(descriptor, function, print_arguments),
+    )?;
+    Ok(())
+}
+
+fn pprint(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let options = PrintOptions::from_specials(ctx, runtime).with_pretty(true);
+    let _ = print_object(ctx, runtime, args, options, false)?;
+    Ok(Word::NIL)
+}
+
+fn dispatch_table(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    supplied: Option<Word>,
+) -> Result<Word, ObjectError> {
+    supplied.filter(|table| *table != Word::NIL).map_or_else(
+        || {
+            let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
+            with_root(ctx, &mut package.clone(), |ctx, package| {
+                let (mut symbol, _) =
+                    Package::from_word(*package).intern(ctx, runtime, "*PRINT-PPRINT-DISPATCH*")?;
+                with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
+            })
+        },
+        Ok,
+    )
+}
+
+fn pprint_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let object = args.required(0)?;
+    let table = dispatch_table(ctx, runtime, args.get(1))?;
+    pprint_dispatch(ctx, object, table)
+}
+
+fn set_pprint_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let type_specifier = args.required(0)?;
+    let function = args.required(1)?;
+    let table = dispatch_table(ctx, runtime, args.get(3))?;
+    let _priority = args.get(2);
+    let updated = set_pprint_dispatch(ctx, runtime, type_specifier, function, table)?;
+    if args.get(3).is_none() {
+        let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
+        with_root(ctx, &mut package.clone(), |ctx, package| {
+            let (mut symbol, _) =
+                Package::from_word(*package).intern(ctx, runtime, "*PRINT-PPRINT-DISPATCH*")?;
+            with_root(ctx, &mut symbol, |ctx, symbol| {
+                set_symbol_value(ctx, *symbol, updated)
+            })
+        })?;
+    }
+    Ok(Word::NIL)
+}
+
+fn copy_pprint_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let table = dispatch_table(ctx, runtime, args.get(0))?;
+    copy_pprint_dispatch(ctx, runtime, table)
+}
+
+#[allow(
+    clippy::missing_const_for_fn,
+    clippy::unnecessary_wraps,
+    reason = "The shared builtin entry ABI requires a fallible, non-const function."
+)]
+fn pprint_primitive(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let _ = args;
+    Ok(Word::NIL)
 }
 
 fn register_print_builtin(
@@ -391,6 +586,8 @@ fn initialise_variable(
     set_symbol_special(ctx, symbol, true)?;
     let value = if name == "*PRINT-PPRINT-DISPATCH*" {
         default_table(ctx, runtime)?
+    } else if name == "*PRINT-RIGHT-MARGIN*" {
+        Word::fixnum(80)
     } else {
         Word::NIL
     };

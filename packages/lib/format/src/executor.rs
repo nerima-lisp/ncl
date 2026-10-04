@@ -10,6 +10,7 @@ mod compound;
 #[path = "executor/tests/compound_test.rs"]
 mod compound_tests;
 mod control;
+mod float;
 mod parameters;
 #[cfg(test)]
 #[path = "executor/tests/executor_test.rs"]

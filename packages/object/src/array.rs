@@ -494,3 +494,7 @@ mod tests;
 #[cfg(test)]
 #[path = "array_boundary_tests.rs"]
 mod boundary_tests;
+
+#[cfg(test)]
+#[path = "tests_array_behavior.rs"]
+mod behavior_tests;

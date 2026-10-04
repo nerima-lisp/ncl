@@ -414,4 +414,50 @@ mod tests {
             Some(LispError::PackageError(PackageError::Locked))
         );
     }
+
+    #[test]
+    fn package_lists_update_use_shadow_and_import_memberships() {
+        let (runtime, mut ctx, package) = setup();
+        let source = super::super::Package::new(&mut ctx, &runtime, "SOURCE-LISTS-OK")
+            .unwrap_or_else(|error| panic!("source: {error:?}"));
+        assert_eq!(
+            package.use_package(&mut ctx, &runtime, source.as_word()),
+            Ok(true)
+        );
+        assert_eq!(
+            package.use_package(&mut ctx, &runtime, source.as_word()),
+            Ok(false)
+        );
+        assert_eq!(package.unuse_package(&mut ctx, source.as_word()), Ok(true));
+        assert_eq!(package.unuse_package(&mut ctx, source.as_word()), Ok(false));
+
+        let shadow_name = crate::make_string(&mut ctx, &runtime, &['S', 'H'])
+            .unwrap_or_else(|error| panic!("shadow name: {error:?}"));
+        package
+            .shadow(&mut ctx, &runtime, shadow_name)
+            .unwrap_or_else(|error| panic!("shadow: {error:?}"));
+        package
+            .shadow(&mut ctx, &runtime, shadow_name)
+            .unwrap_or_else(|error| panic!("duplicate shadow: {error:?}"));
+        assert_eq!(package.remove_nickname(&mut ctx, shadow_name), Ok(false));
+
+        let imported_name = crate::make_string(&mut ctx, &runtime, &['I', 'M'])
+            .unwrap_or_else(|error| panic!("import name: {error:?}"));
+        let symbol = crate::make_symbol(&mut ctx, &runtime, imported_name)
+            .unwrap_or_else(|error| panic!("symbol: {error:?}"));
+        package
+            .shadowing_import(&mut ctx, &runtime, symbol)
+            .unwrap_or_else(|error| panic!("shadowing import: {error:?}"));
+        package
+            .shadowing_import(&mut ctx, &runtime, symbol)
+            .unwrap_or_else(|error| panic!("duplicate import: {error:?}"));
+        assert_eq!(
+            package.unintern(&mut ctx, &runtime, imported_name),
+            Ok(true)
+        );
+        assert_eq!(
+            package.unintern(&mut ctx, &runtime, imported_name),
+            Ok(false)
+        );
+    }
 }

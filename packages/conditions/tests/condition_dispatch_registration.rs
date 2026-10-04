@@ -202,7 +202,12 @@ fn conversion_variant_matrix_maps_specific_condition_classes() {
             "PACKAGE-ERROR",
         ),
         (LispError::StreamError(StreamError::Closed), "STREAM-ERROR"),
-        (LispError::FileError(FileError::NotFound), "FILE-ERROR"),
+        (
+            LispError::FileError(FileError::NotFound {
+                pathname: Word::NIL,
+            }),
+            "FILE-ERROR",
+        ),
     ];
     for (error, expected) in cases {
         let condition = condition_from_lisp_error(&mut ctx, &runtime, error).unwrap();

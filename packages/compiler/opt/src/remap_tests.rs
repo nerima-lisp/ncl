@@ -81,13 +81,21 @@ fn remap_helpers_cover_ir_shapes() {
         },
     ];
     for kind in kinds {
-        let _ = remap_kind(
+        let remapped = remap_kind(
             &kind,
             &values,
             &mut constants,
             &mut caller_constants,
             &callee,
         );
+        if matches!(kind, OpKind::SetMultipleValues { .. }) {
+            assert_eq!(
+                remapped,
+                OpKind::SetMultipleValues {
+                    values: vec![ValueId(9)]
+                }
+            );
+        }
         remap_op_values(
             &mut Op {
                 results: vec![],

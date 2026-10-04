@@ -79,6 +79,119 @@ impl PrettyPrinter for RecordingPretty {
     }
 }
 
+struct WidthPretty {
+    output: String,
+    margin: usize,
+    column: usize,
+    indent: usize,
+    pending_break: bool,
+}
+
+impl WidthPretty {
+    const fn new(margin: usize) -> Self {
+        Self {
+            output: String::new(),
+            margin,
+            column: 0,
+            indent: 0,
+            pending_break: false,
+        }
+    }
+
+    fn write_text(&mut self, text: &str) {
+        if self.pending_break {
+            self.pending_break = false;
+            if self.column + 1 + text.chars().count() > self.margin {
+                self.output.push('\n');
+                self.output.extend(std::iter::repeat_n(' ', self.indent));
+                self.column = self.indent;
+            } else {
+                self.output.push(' ');
+                self.column += 1;
+            }
+        }
+        self.output.push_str(text);
+        self.column += text.chars().count();
+    }
+}
+
+impl ncl_printer::CharSink for WidthPretty {
+    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+        self.write_text(&character.to_string());
+        Ok(())
+    }
+
+    fn write_str(&mut self, text: &str) -> Result<(), PrintError> {
+        self.write_text(text);
+        Ok(())
+    }
+}
+
+impl PrettyPrinter for WidthPretty {
+    fn newline(&mut self, _kind: PrettyNewline) -> Result<(), PrintError> {
+        self.pending_break = true;
+        Ok(())
+    }
+
+    fn indent(&mut self, _mode: PrettyIndent, amount: isize) {
+        self.indent = usize::try_from(amount).unwrap_or(0);
+    }
+
+    fn tab(
+        &mut self,
+        _kind: PrettyTab,
+        _column: usize,
+        _increment: usize,
+    ) -> Result<(), PrintError> {
+        Ok(())
+    }
+
+    fn write_object(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _object: Word,
+        _options: ncl_printer::PrintOptions,
+    ) -> Result<(), PrintError> {
+        self.write_text("item");
+        Ok(())
+    }
+
+    fn logical_block(
+        &mut self,
+        segments: &[String],
+        _colon: bool,
+        _at_sign: bool,
+    ) -> Result<(), PrintError> {
+        self.write_text(&segments.join(" "));
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), PrintError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn fake_pretty_sink_applies_margin_and_indent_to_layout_breaks() {
+    let (runtime, mut ctx) = context();
+    for (margin, expected) in [(10, " item"), (4, "\n  item")] {
+        let pretty = Rc::new(RefCell::new(WidthPretty::new(margin)));
+        let mut sink = StringSink::new();
+        execute_with_options(
+            &parse("~_~2I~W").expect("control"),
+            &[Word::fixnum(1)],
+            &mut ctx,
+            &runtime,
+            None,
+            Some(pretty.clone()),
+            &mut sink,
+        )
+        .expect("execute");
+        assert_eq!(pretty.borrow().output, expected);
+    }
+}
+
 #[test]
 fn connects_layout_directives_to_the_pretty_printer_boundary() {
     let (runtime, mut ctx) = context();

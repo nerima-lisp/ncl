@@ -1,21 +1,22 @@
+use super::wildcard::translate_wildcards;
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Package, Runtime, SLOTS, ThreadContext, Word, car,
     cdr, component_string, make_cons, make_pathname, make_string, namestring_value,
-    pathname_designator, relative_directory, structure_ref, symbol_text, text, with_root,
+    pathname_designator, relative_directory, structure_ref, symbol_text, symbol_value, text,
+    with_root,
 };
 use ncl_object::{FileError, LispError};
 use std::env;
 use std::fs;
 use std::path::Path;
-
-use super::wildcard::translate_wildcards;
-
+#[path = "file_ops.rs"]
+mod file_ops;
 pub use super::logical::{
     compile_file_pathname_builtin, load_logical_pathname_translations_builtin,
     logical_pathname_builtin, logical_pathname_translations_builtin,
     translate_logical_pathname_builtin,
 };
-
+pub use file_ops::file_error_pathname_builtin;
 #[path = "parse.rs"]
 mod parse;
 pub use parse::{parse_namestring_builtin, parse_namestring_value};
@@ -116,7 +117,8 @@ pub fn pathname_match_builtin(
     let pathname = pathname_designator(ctx, runtime, args.required(0)?)?;
     let pattern = pathname_designator(ctx, runtime, args.required(1)?)?;
     let pattern_directory = structure_ref(ctx, pattern, 2)?;
-    let directory = directory_match(ctx, pattern_directory, structure_ref(ctx, pathname, 2)?)?;
+    let directory =
+        super::wildcard::directory_match(ctx, pattern_directory, structure_ref(ctx, pathname, 2)?)?;
     let matches = directory
         && (0..SLOTS)
             .filter(|index| *index != 2)
@@ -277,16 +279,6 @@ pub fn file_author_builtin(
     Ok(Word::NIL)
 }
 
-pub fn file_error_pathname_builtin(
-    _: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _ = args.required(0)?;
-    Ok(Word::NIL)
-}
-
 pub fn host_namestring_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -412,10 +404,6 @@ pub fn wild_pathname_p_builtin(
     Ok(if wild { Word::TRUE } else { Word::NIL })
 }
 
-fn directory_match(ctx: &ThreadContext, pattern: Word, value: Word) -> Result<bool, ObjectError> {
-    super::wildcard::directory_match(ctx, pattern, value)
-}
-
 pub fn merge_pathnames_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -426,7 +414,18 @@ pub fn merge_pathnames_builtin(
     let defaults = if let Some(value) = args.get(1) {
         pathname_designator(ctx, runtime, value)?
     } else {
-        Word::NIL
+        let package = runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ObjectError::PackageConflict)?;
+        let symbol = Package::from_word(package)
+            .intern(ctx, runtime, "*DEFAULT-PATHNAME-DEFAULTS*")?
+            .0;
+        let value = symbol_value(ctx, symbol)?;
+        if value == Word::NIL {
+            Word::NIL
+        } else {
+            pathname_designator(ctx, runtime, value)?
+        }
     };
     let mut slots = [Word::NIL; SLOTS];
     for (index, slot) in slots.iter_mut().enumerate() {

@@ -449,13 +449,13 @@ fn group_integer(directive: &Directive, rendered: &str) -> Result<String, Format
     grouped.push_str(sign);
     let first = digit_chars.len() % interval;
     if first != 0 {
-        grouped.extend(digit_chars[..first].iter());
+        grouped.extend(digit_chars.iter().take(first));
     }
-    for (index, chunk) in digit_chars[first..].chunks(interval).enumerate() {
-        if first != 0 || index != 0 {
+    for (index, digit) in digit_chars.iter().skip(first).enumerate() {
+        if index % interval == 0 && (first != 0 || index != 0) {
             grouped.push(comma);
         }
-        grouped.extend(chunk.iter());
+        grouped.push(*digit);
     }
     Ok(grouped)
 }

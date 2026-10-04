@@ -137,12 +137,19 @@ impl PrettyPrinter for WidthPretty {
         self.indent = usize::try_from(amount).unwrap_or(0);
     }
 
-    fn tab(
-        &mut self,
-        _kind: PrettyTab,
-        _column: usize,
-        _increment: usize,
-    ) -> Result<(), PrintError> {
+    fn tab(&mut self, kind: PrettyTab, column: usize, increment: usize) -> Result<(), PrintError> {
+        let count = match kind {
+            PrettyTab::Relative if self.column < column => column - self.column,
+            PrettyTab::Relative if increment == 0 => 0,
+            PrettyTab::Relative => increment - (self.column - column) % increment,
+            PrettyTab::Absolute => {
+                let after_relative = self.column + column;
+                column + (increment.saturating_sub(after_relative % increment)) % increment
+            }
+        };
+        for _ in 0..count {
+            self.write_text(" ");
+        }
         Ok(())
     }
 
@@ -190,6 +197,20 @@ fn fake_pretty_sink_applies_margin_and_indent_to_layout_breaks() {
         .expect("execute");
         assert_eq!(pretty.borrow().output, expected);
     }
+
+    let pretty = Rc::new(RefCell::new(WidthPretty::new(20)));
+    let mut sink = StringSink::new();
+    execute_with_options(
+        &parse("x~4,4T~<~A~:>").expect("control"),
+        &[Word::fixnum(1)],
+        &mut ctx,
+        &runtime,
+        None,
+        Some(pretty.clone()),
+        &mut sink,
+    )
+    .expect("execute");
+    assert_eq!(pretty.borrow().output, "    1");
 }
 
 #[test]

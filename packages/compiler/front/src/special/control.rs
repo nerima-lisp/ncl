@@ -49,8 +49,17 @@ fn block(
     let name = expander.symbol(*name)?;
     expander.env_mut().push_scope();
     expander.env_mut().bind_block(name.clone());
-    let body = expander.expand_all(body)?;
+    let body = expander.expand_declared_body(body)?;
+    expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
+    let body = if body.declarations.is_empty() {
+        body.forms
+    } else {
+        vec![Expr::Locally {
+            declarations: body.declarations,
+            body: body.forms,
+        }]
+    };
     Ok(Expr::Block { name, body })
 }
 

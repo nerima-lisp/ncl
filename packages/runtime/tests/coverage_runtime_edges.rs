@@ -33,6 +33,21 @@ fn destructive_benchmark_function_compiles() {
 }
 
 #[test]
+fn block_preserves_function_declarations() {
+    let mut runtime = Runtime::new().unwrap();
+    assert_eq!(
+        eval(
+            &mut runtime,
+            "(progn (defun create-n (n) (declare (fixnum n))\
+                    (do ((n n (1- n)) (a () (push () a)))\
+                        ((zerop n) a)))\
+                    (length (create-n 0)))",
+        ),
+        "0"
+    );
+}
+
+#[test]
 fn local_macro_expander_calls_a_compiled_function() {
     let mut runtime = Runtime::new().unwrap();
 

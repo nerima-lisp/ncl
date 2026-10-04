@@ -200,6 +200,7 @@ fn pathname_matching_and_merging_assert_values() -> Result<(), ObjectError> {
         "MAKE-PATHNAME",
         &[name_key, wildcard_name, type_key, lisp_type],
     )?;
+    // check-added-lines: allow(panic) wildcard matching assertion
     assert_eq!(
         call(
             &runtime,

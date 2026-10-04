@@ -71,7 +71,7 @@ fn parse_source(
         make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
     })?;
     slots[4] = type_value; // check-added-lines: allow(index) fixed pathname slot layout
-    slots[5] = version.map_or(Word::NIL, Word::fixnum);
+    slots[5] = version.map_or(Word::NIL, Word::fixnum); // check-added-lines: allow(index) fixed pathname slot layout
     make_pathname(ctx, runtime, &slots)
 }
 

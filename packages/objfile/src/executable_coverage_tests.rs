@@ -1,289 +1,323 @@
 use super::*;
 
-#[test]
-fn private_elf_segment_parser_skips_non_load_segments() {
-    let mut bytes = vec![0; 56];
-    bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
-    assert_eq!(
-        validate_elf_segments(&bytes, 0, 56, 1, 0),
-        Ok((false, false))
-    );
-}
+#[cfg(test)]
+mod wave2_tests {
+    use super::*;
 
-#[test]
-fn private_elf_header_parser_rejects_truncated_and_wrong_class_inputs() {
-    assert_eq!(
-        validate_elf_executable_header(&[0; 63], Architecture::X86_64),
-        Err(ObjectError::InvalidStructure(
-            "not a little-endian ELF64 executable",
-        ))
-    );
-    let mut bytes = vec![0; 64];
-    bytes[0..4].copy_from_slice(b"\x7fELF");
-    bytes[4] = 2;
-    bytes[5] = 1;
-    bytes[16..18].copy_from_slice(&2u16.to_le_bytes());
-    bytes[18..20].copy_from_slice(&62u16.to_le_bytes());
-    assert_eq!(
-        validate_elf_executable_header(&bytes, Architecture::X86_64),
-        Ok(())
-    );
-    bytes[16..18].copy_from_slice(&1u16.to_le_bytes());
-    assert_eq!(
-        validate_elf_executable_header(&bytes, Architecture::X86_64),
-        Err(ObjectError::InvalidStructure("not an ELF executable"))
-    );
-}
-
-#[test]
-fn private_mach_writer_reports_unrepresentable_fields() {
-    let mut header = [0; 24];
-    assert_eq!(
-        write_mach_header(&mut header, MachArchitecture::X86_64, usize::MAX),
-        Err(ObjectError::InvalidField {
-            field: "Mach-O command size",
-            value: u64::MAX,
-        })
-    );
-
-    let mut out = vec![0; 300];
-    let segment = ExecSegment {
-        at: 0,
-        segment: "__TEXT",
-        vmaddr: 0,
-        fileoff: 1,
-        vmsize: 0,
-        filesize: 0,
-        maxprot: 0,
-        initprot: 0,
-        section_offset: (u32::MAX as usize) + 1,
-        section_size: 0,
-        section_name: "__text",
-        section_segment: "__TEXT",
-    };
-    assert_eq!(
-        write_exec_segment(&mut out, &segment),
-        Err(ObjectError::InvalidField {
-            field: "Mach-O section offset",
-            value: u64::MAX,
-        })
-    );
-}
-
-#[test]
-fn private_executable_helpers_accept_valid_layouts() {
-    let image = ExecutableImage {
-        architecture: Architecture::X86_64,
-        code: vec![0xc3],
-        metadata: vec![1, 2],
-    };
-    let layout_result = executable_layout(&image);
-    assert!(layout_result.is_ok());
-    let Ok((mut output, layout)) = layout_result else {
-        return;
-    };
-    let header_result = write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands);
-    assert!(header_result.is_ok());
-    let segment = ExecSegment {
-        at: 32,
-        segment: "__TEXT",
-        vmaddr: 0x1_0000_0000,
-        fileoff: 0,
-        vmsize: layout.data_offset as u64,
-        filesize: layout.code_end as u64,
-        maxprot: 7,
-        initprot: 5,
-        section_offset: layout.code_offset,
-        section_size: image.code.len(),
-        section_name: "__text",
-        section_segment: "__TEXT",
-    };
-    let segment_result = write_exec_segment(&mut output, &segment);
-    assert!(segment_result.is_ok());
-    assert_eq!(output[0..4], 0xfeed_facf_u32.to_le_bytes());
-    let elf_result = write_elf_executable(&image);
-    assert!(elf_result.is_ok());
-    let Ok(elf) = elf_result else { return };
-    let phoff = 64;
-    assert_eq!(
-        validate_elf_segments(&elf, phoff, 56, 2, 0x0040_1000),
-        Ok((true, true))
-    );
-}
-
-#[test]
-fn private_elf_segment_parser_checks_each_load_segment_property() {
-    let mut bytes = vec![0; 112];
-    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
-    for at in [0usize, 56] {
-        // check-added-lines: allow(panic,index,as-cast) test
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        bytes[at + 4..at + 8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        bytes[at + 16..at + 24].copy_from_slice(&0x1000u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        bytes[at + 32..at + 40].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    #[test]
+    fn private_elf_segment_parser_skips_non_load_segments() {
+        let mut bytes = vec![0; 56];
+        bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
+        assert_eq!(
+            validate_elf_segments(&bytes, 0, 56, 1, 0),
+            Ok((false, false))
+        );
     }
-    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
-        Ok((true, false))
-    );
 
-    bytes[56 + 4..56 + 8].copy_from_slice(&6u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
-        Ok((true, true))
-    );
+    #[test]
+    fn private_elf_header_parser_rejects_truncated_and_wrong_class_inputs() {
+        assert_eq!(
+            validate_elf_executable_header(&[0; 63], Architecture::X86_64),
+            Err(ObjectError::InvalidStructure(
+                "not a little-endian ELF64 executable",
+            ))
+        );
+        let mut bytes = vec![0; 64];
+        bytes[0..4].copy_from_slice(b"\x7fELF");
+        bytes[4] = 2;
+        bytes[5] = 1;
+        bytes[16..18].copy_from_slice(&2u16.to_le_bytes());
+        bytes[18..20].copy_from_slice(&62u16.to_le_bytes());
+        assert_eq!(
+            validate_elf_executable_header(&bytes, Architecture::X86_64),
+            Ok(())
+        );
+        bytes[16..18].copy_from_slice(&1u16.to_le_bytes());
+        assert_eq!(
+            validate_elf_executable_header(&bytes, Architecture::X86_64),
+            Err(ObjectError::InvalidStructure("not an ELF executable"))
+        );
+    }
 
-    bytes[0..4].copy_from_slice(&2u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
-        Ok((false, true))
-    );
-}
+    #[test]
+    fn private_mach_writer_reports_unrepresentable_fields() {
+        let mut header = [0; 24];
+        assert_eq!(
+            write_mach_header(&mut header, MachArchitecture::X86_64, usize::MAX),
+            Err(ObjectError::InvalidField {
+                field: "Mach-O command size",
+                value: u64::MAX,
+            })
+        );
 
-#[test]
-fn private_elf_segment_parser_rejects_entry_before_text_address() {
-    let mut bytes = vec![0; 56];
-    bytes[0..4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    bytes[4..8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    bytes[32..40].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    bytes[16..24].copy_from_slice(&0x1000u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_segments(&bytes, 0, 56, 1, 0xfff),
-        Err(ObjectError::InvalidStructure(
-            "ELF entry is outside executable segment"
-        ))
-    );
-}
+        let mut out = vec![0; 300];
+        let segment = ExecSegment {
+            at: 0,
+            segment: "__TEXT",
+            vmaddr: 0,
+            fileoff: 1,
+            vmsize: 0,
+            filesize: 0,
+            maxprot: 0,
+            initprot: 0,
+            section_offset: (u32::MAX as usize) + 1,
+            section_size: 0,
+            section_name: "__text",
+            section_segment: "__TEXT",
+        };
+        assert_eq!(
+            write_exec_segment(&mut out, &segment),
+            Err(ObjectError::InvalidField {
+                field: "Mach-O section offset",
+                value: u64::MAX,
+            })
+        );
+    }
 
-#[test]
-fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
-    let image = ExecutableImage {
-        architecture: Architecture::Aarch64,
-        code: vec![1, 2],
-        metadata: vec![3],
-    };
-    let elf_result = write_elf_executable(&image);
-    assert!(elf_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    let elf = elf_result.unwrap_or_default();
-    assert_eq!(validate_elf_executable(&elf, Architecture::Aarch64), Ok(())); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_executable(&elf, Architecture::X86_64),
-        Err(ObjectError::InvalidField {
-            field: "ELF machine",
-            value: 183
-        })
-    );
+    #[test]
+    fn private_executable_helpers_accept_valid_layouts() {
+        let image = ExecutableImage {
+            architecture: Architecture::X86_64,
+            code: vec![0xc3],
+            metadata: vec![1, 2],
+        };
+        let layout_result = executable_layout(&image);
+        assert!(layout_result.is_ok());
+        let Ok((mut output, layout)) = layout_result else {
+            return;
+        };
+        let header_result =
+            write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands);
+        assert!(header_result.is_ok());
+        let segment = ExecSegment {
+            at: 32,
+            segment: "__TEXT",
+            vmaddr: 0x1_0000_0000,
+            fileoff: 0,
+            vmsize: layout.data_offset as u64,
+            filesize: layout.code_end as u64,
+            maxprot: 7,
+            initprot: 5,
+            section_offset: layout.code_offset,
+            section_size: image.code.len(),
+            section_name: "__text",
+            section_segment: "__TEXT",
+        };
+        let segment_result = write_exec_segment(&mut output, &segment);
+        assert!(segment_result.is_ok());
+        assert_eq!(output[0..4], 0xfeed_facf_u32.to_le_bytes());
+        let elf_result = write_elf_executable(&image);
+        assert!(elf_result.is_ok());
+        let Ok(elf) = elf_result else { return };
+        let phoff = 64;
+        assert_eq!(
+            validate_elf_segments(&elf, phoff, 56, 2, 0x0040_1000),
+            Ok((true, true))
+        );
+    }
 
-    let macho_result = write_mach_executable(&image, MachArchitecture::Arm64);
-    assert!(macho_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    let macho = macho_result.unwrap_or_default();
-    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        crate::validate_mach_executable(&macho, MachArchitecture::Arm64),
-        Ok(())
-    );
-    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        write_mach_executable(&image, MachArchitecture::X86_64),
-        Err(ObjectError::InvalidField {
-            field: "architecture",
-            value: 2
-        })
-    );
+    #[test]
+    fn private_elf_segment_parser_checks_each_load_segment_property() {
+        let mut bytes = vec![0; 112];
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+        for at in [0usize, 56] {
+            // check-added-lines: allow(panic,index,as-cast) test
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            bytes[at + 4..at + 8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            bytes[at + 16..at + 24].copy_from_slice(&0x1000u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            bytes[at + 32..at + 40].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        }
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+            Ok((true, false))
+        );
 
-    let mut bad_headers = elf.clone();
-    bad_headers[54..56].copy_from_slice(&32u16.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_executable(&bad_headers, Architecture::Aarch64),
-        Err(ObjectError::InvalidStructure("invalid ELF program headers"))
-    );
-    let mut bad_entry = elf;
-    bad_entry[24..32].copy_from_slice(&0u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        validate_elf_executable(&bad_entry, Architecture::Aarch64),
-        Err(ObjectError::InvalidStructure(
-            "ELF entry is outside executable segment"
-        ))
-    );
-}
+        bytes[56 + 4..56 + 8].copy_from_slice(&6u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+            Ok((true, true))
+        );
 
-#[test]
-fn public_elf_validator_reports_missing_segments_and_bounds() {
-    let image = ExecutableImage {
-        architecture: Architecture::X86_64,
-        code: vec![1],
-        metadata: vec![2],
-    };
-    let bytes = write_elf_executable(&image).unwrap_or_default();
-    let mut short_table = bytes.clone();
-    short_table[56..58].copy_from_slice(&1u16.to_le_bytes());
-    assert_eq!(
-        validate_elf_executable(&short_table, Architecture::X86_64),
-        Err(ObjectError::InvalidStructure("invalid ELF program headers"))
-    );
-    let mut out_of_bounds = bytes.clone();
-    out_of_bounds[64 + 8..64 + 16].copy_from_slice(&u64::MAX.to_le_bytes());
-    assert_eq!(
-        validate_elf_executable(&out_of_bounds, Architecture::X86_64),
-        Err(ObjectError::OutOfBounds {
-            section: "ELF load segment",
-            offset: u64::MAX as u64,
-            size: 1
-        })
-    );
-    let mut no_metadata = bytes;
-    no_metadata[64 + 56 + 32..64 + 56 + 40].copy_from_slice(&0u64.to_le_bytes());
-    assert_eq!(
-        validate_elf_executable(&no_metadata, Architecture::X86_64),
-        Err(ObjectError::InvalidStructure(
-            "missing NCL executable segments"
-        ))
-    );
-}
+        bytes[0..4].copy_from_slice(&2u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 2, 0x1000),
+            Ok((false, true))
+        );
+    }
 
-#[test]
-fn private_elf_segments_reject_short_and_invalid_load_fields() {
-    let mut bytes = vec![0; 56];
-    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
-    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
-    bytes[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
-    assert_eq!(
-        validate_elf_segments(&bytes, 0, 56, 1, 0),
-        Err(ObjectError::OutOfBounds {
-            section: "ELF load segment",
-            offset: u64::MAX,
-            size: 0
-        })
-    );
-    let mut bytes = vec![0; 56];
-    bytes[0..4].copy_from_slice(&1u32.to_le_bytes());
-    bytes[4..8].copy_from_slice(&5u32.to_le_bytes());
-    bytes[8..16].copy_from_slice(&1u64.to_le_bytes());
-    bytes[32..40].copy_from_slice(&u64::MAX.to_le_bytes());
-    assert_eq!(
-        validate_elf_segments(&bytes, 0, 56, 1, 0),
-        Err(ObjectError::OutOfBounds {
-            section: "ELF load segment",
-            offset: 1,
-            size: u64::MAX
-        })
-    );
+    #[test]
+    fn private_elf_segment_parser_rejects_entry_before_text_address() {
+        let mut bytes = vec![0; 56];
+        bytes[0..4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[4..8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[32..40].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[16..24].copy_from_slice(&0x1000u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 1, 0xfff),
+            Err(ObjectError::InvalidStructure(
+                "ELF entry is outside executable segment"
+            ))
+        );
+    }
+
+    #[test]
+    fn public_executable_paths_cover_both_64_bit_targets_and_rejections() {
+        let image = ExecutableImage {
+            architecture: Architecture::Aarch64,
+            code: vec![1, 2],
+            metadata: vec![3],
+        };
+        let elf_result = write_elf_executable(&image);
+        assert!(elf_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let elf = elf_result.unwrap_or_default();
+        assert_eq!(validate_elf_executable(&elf, Architecture::Aarch64), Ok(())); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&elf, Architecture::X86_64),
+            Err(ObjectError::InvalidField {
+                field: "ELF machine",
+                value: 183
+            })
+        );
+
+        let macho_result = write_mach_executable(&image, MachArchitecture::Arm64);
+        assert!(macho_result.is_ok()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let macho = macho_result.unwrap_or_default();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            crate::validate_mach_executable(&macho, MachArchitecture::Arm64),
+            Ok(())
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            write_mach_executable(&image, MachArchitecture::X86_64),
+            Err(ObjectError::InvalidField {
+                field: "architecture",
+                value: 2
+            })
+        );
+
+        let mut bad_headers = elf.clone();
+        bad_headers[54..56].copy_from_slice(&32u16.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&bad_headers, Architecture::Aarch64),
+            Err(ObjectError::InvalidStructure("invalid ELF program headers"))
+        );
+        let mut bad_entry = elf;
+        bad_entry[24..32].copy_from_slice(&0u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&bad_entry, Architecture::Aarch64),
+            Err(ObjectError::InvalidStructure(
+                "ELF entry is outside executable segment"
+            ))
+        );
+    }
+
+    #[test]
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    fn public_elf_validator_reports_missing_segments_and_bounds() {
+        let image = ExecutableImage {
+            architecture: Architecture::X86_64,
+            code: vec![1],
+            metadata: vec![2],
+        };
+        let bytes = write_elf_executable(&image).unwrap_or_default();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut short_table = bytes.clone(); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        short_table[56..58].copy_from_slice(&1u16.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&short_table, Architecture::X86_64),
+            Err(ObjectError::InvalidStructure("invalid ELF program headers"))
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut out_of_bounds = bytes.clone(); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        out_of_bounds[64 + 8..64 + 16].copy_from_slice(&u64::MAX.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&out_of_bounds, Architecture::X86_64),
+            Err(ObjectError::OutOfBounds {
+                section: "ELF load segment",
+                offset: u64::MAX as u64, // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+                size: 1
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut no_metadata = bytes; // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        no_metadata[64 + 56 + 32..64 + 56 + 40].copy_from_slice(&0u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_executable(&no_metadata, Architecture::X86_64),
+            Err(ObjectError::InvalidStructure(
+                "missing NCL executable segments"
+            ))
+        );
+    }
+
+    #[test]
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    fn private_elf_segments_reject_short_and_invalid_load_fields() {
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bytes = vec![0; 56]; // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[0..4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[4..8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[8..16].copy_from_slice(&u64::MAX.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 1, 0),
+            Err(ObjectError::OutOfBounds {
+                section: "ELF load segment",
+                offset: u64::MAX,
+                size: 0
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bytes = vec![0; 56]; // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[0..4].copy_from_slice(&1u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[4..8].copy_from_slice(&5u32.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[8..16].copy_from_slice(&1u64.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bytes[32..40].copy_from_slice(&u64::MAX.to_le_bytes()); // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            validate_elf_segments(&bytes, 0, 56, 1, 0),
+            Err(ObjectError::OutOfBounds {
+                section: "ELF load segment",
+                offset: 1,
+                size: u64::MAX
+            })
+        );
+    }
 }

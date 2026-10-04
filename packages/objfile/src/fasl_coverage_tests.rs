@@ -1,296 +1,323 @@
 use super::*;
 
-#[test]
-fn malformed_private_fasl_ranges_are_rejected() {
-    assert_eq!(
-        decode_relocations(&[0; 15]),
-        Err(ObjectError::InvalidField {
-            field: "relocation size",
-            value: 15,
-        })
-    );
-    assert_eq!(
-        range(&[], "u32", u32::MAX, u32::MAX),
-        Err(ObjectError::OutOfBounds {
-            section: "u32",
-            offset: u64::from(u32::MAX),
-            size: u64::from(u32::MAX),
-        })
-    );
-    assert_eq!(
-        validate_section_order(&[("overflow", u32::MAX, 1)]),
-        Err(ObjectError::OutOfBounds {
-            section: "overflow",
-            offset: u64::from(u32::MAX),
-            size: 1,
-        })
-    );
-}
+#[cfg(test)]
+mod wave2_tests {
+    use super::*;
 
-#[test]
-fn private_wire_helpers_cover_integer_boundaries() {
-    assert_eq!(
-        u16_at(&[1], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 2
-        })
-    );
-    assert_eq!(
-        u32_at(&[1, 2], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 4
-        })
-    );
-    assert_eq!(
-        u64_at(&[1, 2], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 8
-        })
-    );
-    assert_eq!(
-        number_kind(99),
-        Err(ObjectError::InvalidField {
-            field: "relocation kind",
-            value: 99,
-        })
-    );
-    assert_eq!(kind_number(RelocKind::ExternalSymbol), 8);
-}
-
-#[test]
-fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
-    for length in [24usize, 28, 32, 36, 40, 44, 48, 52, 56, 60] {
-        assert!(matches!(
-            read_fasl_ranges(&vec![0; length]),
-            Err(ObjectError::Truncated { needed: 4, .. })
-        ));
+    #[test]
+    fn malformed_private_fasl_ranges_are_rejected() {
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            decode_relocations(&[0; 15]),
+            Err(ObjectError::InvalidField {
+                field: "relocation size",
+                value: 15,
+            })
+        );
+        assert_eq!(
+            range(&[], "u32", u32::MAX, u32::MAX),
+            Err(ObjectError::OutOfBounds {
+                section: "u32",
+                offset: u64::from(u32::MAX),
+                size: u64::from(u32::MAX),
+            })
+        );
+        assert_eq!(
+            validate_section_order(&[("overflow", u32::MAX, 1)]),
+            Err(ObjectError::OutOfBounds {
+                section: "overflow",
+                offset: u64::from(u32::MAX),
+                size: 1,
+            })
+        );
     }
-    let mut bytes = vec![0; 64];
-    bytes[24..28].copy_from_slice(&64u32.to_le_bytes());
-    bytes[28..32].copy_from_slice(&1u32.to_le_bytes());
-    assert!(matches!(
-        read_fasl_ranges(&bytes),
-        Err(ObjectError::OutOfBounds {
-            section: "code",
-            offset: 64,
-            size: 1,
-        })
-    ));
-    let mut huge_relocation_count = vec![0; 64];
-    huge_relocation_count[32..36].copy_from_slice(&64u32.to_le_bytes());
-    huge_relocation_count[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
-    assert!(matches!(
-        read_fasl_ranges(&huge_relocation_count),
-        Err(ObjectError::InvalidField {
-            field: "relocation size",
-            value: u64::MAX,
-        })
-    ));
-    assert_eq!(
-        validate_section_order(&[("first", 64, 2), ("second", 65, 0)]),
-        Err(ObjectError::Overlap {
-            first: "previous FASL section",
-            second: "second",
-        })
-    );
-}
 
-#[test]
-fn private_fasl_helpers_round_trip_payload_and_relocations() {
-    let value = Fasl {
-        header: FaslHeader {
-            architecture: Architecture::Aarch64,
-            features: 3,
-        },
-        sections: FaslSection {
-            code: vec![1, 2],
-            relocations: vec![Relocation {
-                section: SectionId(0),
-                offset: 1,
-                kind: RelocKind::Add12,
-                symbol: SymbolRef::Local(0),
-                addend: -2,
-            }],
-            constants: vec![3],
-            symbols: vec![4],
-            stack_maps: vec![5],
-            debug: vec![6],
-        },
-    };
-    let bytes_result = FaslWriter::write(&value);
-    assert!(bytes_result.is_ok());
-    let Ok(bytes) = bytes_result else { return };
-    let ranges_result = read_fasl_ranges(&bytes);
-    assert!(ranges_result.is_ok());
-    let Ok(ranges) = ranges_result else { return };
-    assert_eq!(ranges.code, &[1, 2]);
-    assert_eq!(ranges.constants, &[3]);
-    assert_eq!(ranges.symbols, &[4]);
-    assert_eq!(ranges.stack, &[5]);
-    assert_eq!(
-        &bytes[usize::try_from(ranges.debug_start).unwrap_or(0)..],
-        &[6]
-    );
-    assert_eq!(
-        decode_relocations(ranges.reloc).map_or(0, |relocations| relocations.len()),
-        1
-    );
-    assert_eq!(
-        validate_section_order(&[("code", 64, 2), ("next", 66, 1)]),
-        Ok(())
-    );
-}
-
-#[test]
-fn private_fasl_writer_rejects_non_i32_addends() {
-    let value = Fasl {
-        header: FaslHeader {
-            architecture: Architecture::X86_64,
-            features: 0,
-        },
-        sections: FaslSection {
-            code: vec![1],
-            relocations: vec![Relocation {
-                section: SectionId(0),
+    #[test]
+    fn private_wire_helpers_cover_integer_boundaries() {
+        assert_eq!(
+            u16_at(&[1], 0),
+            Err(ObjectError::Truncated {
                 offset: 0,
-                kind: RelocKind::Abs64,
-                symbol: SymbolRef::Local(0),
-                addend: i64::MAX,
-            }],
-            constants: vec![],
-            symbols: vec![],
-            stack_maps: vec![],
-            debug: vec![],
-        },
-    };
-    // check-added-lines: allow(panic,index,as-cast) test fixture assertion
-    assert_eq!(
-        // check-added-lines: allow(panic,index,as-cast) test
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        FaslWriter::write(&value),
-        Err(ObjectError::InvalidField {
-            field: "relocation addend",
-            value: i64::MAX as u64, // check-added-lines: allow(panic,index,as-cast) test fixture assertions
-        })
-    );
-}
+                needed: 2
+            })
+        );
+        assert_eq!(
+            u32_at(&[1, 2], 0),
+            Err(ObjectError::Truncated {
+                offset: 0,
+                needed: 4
+            })
+        );
+        assert_eq!(
+            u64_at(&[1, 2], 0),
+            Err(ObjectError::Truncated {
+                offset: 0,
+                needed: 8
+            })
+        );
+        assert_eq!(
+            number_kind(99),
+            Err(ObjectError::InvalidField {
+                field: "relocation kind",
+                value: 99,
+            })
+        );
+        assert_eq!(kind_number(RelocKind::ExternalSymbol), 8);
+    }
 
-#[test]
-fn fasl_reader_rejects_relocations_outside_code_and_unknown_sections() {
-    let value = Fasl {
-        header: FaslHeader {
-            architecture: Architecture::X86_64,
-            features: 0,
-        },
-        sections: FaslSection {
-            code: vec![1],
-            relocations: vec![Relocation {
-                section: SectionId(0),
+    #[test]
+    fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
+        for length in [24usize, 28, 32, 36, 40, 44, 48, 52, 56, 60] {
+            assert!(matches!(
+                read_fasl_ranges(&vec![0; length]),
+                Err(ObjectError::Truncated { needed: 4, .. })
+            ));
+        }
+        let mut bytes = vec![0; 64];
+        bytes[24..28].copy_from_slice(&64u32.to_le_bytes());
+        bytes[28..32].copy_from_slice(&1u32.to_le_bytes());
+        assert!(matches!(
+            read_fasl_ranges(&bytes),
+            Err(ObjectError::OutOfBounds {
+                section: "code",
+                offset: 64,
+                size: 1,
+            })
+        ));
+        let mut huge_relocation_count = vec![0; 64];
+        huge_relocation_count[32..36].copy_from_slice(&64u32.to_le_bytes());
+        huge_relocation_count[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            read_fasl_ranges(&huge_relocation_count),
+            Err(ObjectError::InvalidField {
+                field: "relocation size",
+                value: u64::MAX,
+            })
+        ));
+        assert_eq!(
+            validate_section_order(&[("first", 64, 2), ("second", 65, 0)]),
+            Err(ObjectError::Overlap {
+                first: "previous FASL section",
+                second: "second",
+            })
+        );
+    }
+
+    #[test]
+    fn private_fasl_helpers_round_trip_payload_and_relocations() {
+        let value = Fasl {
+            header: FaslHeader {
+                architecture: Architecture::Aarch64,
+                features: 3,
+            },
+            sections: FaslSection {
+                code: vec![1, 2],
+                relocations: vec![Relocation {
+                    section: SectionId(0),
+                    offset: 1,
+                    kind: RelocKind::Add12,
+                    symbol: SymbolRef::Local(0),
+                    addend: -2,
+                }],
+                constants: vec![3],
+                symbols: vec![4],
+                stack_maps: vec![5],
+                debug: vec![6],
+            },
+        };
+        let bytes_result = FaslWriter::write(&value);
+        assert!(bytes_result.is_ok());
+        let Ok(bytes) = bytes_result else { return };
+        let ranges_result = read_fasl_ranges(&bytes);
+        assert!(ranges_result.is_ok());
+        let Ok(ranges) = ranges_result else { return };
+        assert_eq!(ranges.code, &[1, 2]);
+        assert_eq!(ranges.constants, &[3]);
+        assert_eq!(ranges.symbols, &[4]);
+        assert_eq!(ranges.stack, &[5]);
+        assert_eq!(
+            &bytes[usize::try_from(ranges.debug_start).unwrap_or(0)..],
+            &[6]
+        );
+        assert_eq!(
+            decode_relocations(ranges.reloc).map_or(0, |relocations| relocations.len()),
+            1
+        );
+        assert_eq!(
+            validate_section_order(&[("code", 64, 2), ("next", 66, 1)]),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn private_fasl_writer_rejects_non_i32_addends() {
+        let value = Fasl {
+            header: FaslHeader {
+                architecture: Architecture::X86_64,
+                features: 0,
+            },
+            sections: FaslSection {
+                code: vec![1],
+                relocations: vec![Relocation {
+                    section: SectionId(0),
+                    offset: 0,
+                    kind: RelocKind::Abs64,
+                    symbol: SymbolRef::Local(0),
+                    addend: i64::MAX,
+                }],
+                constants: vec![],
+                symbols: vec![],
+                stack_maps: vec![],
+                debug: vec![],
+            },
+        };
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertion
+        assert_eq!(
+            // check-added-lines: allow(panic,index,as-cast) test
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            FaslWriter::write(&value),
+            Err(ObjectError::InvalidField {
+                field: "relocation addend",
+                value: i64::MAX as u64, // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+            })
+        );
+    }
+
+    #[test]
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    fn fasl_reader_rejects_relocations_outside_code_and_unknown_sections() {
+        let value = Fasl {
+            header: FaslHeader {
+                architecture: Architecture::X86_64,
+                features: 0,
+            },
+            sections: FaslSection {
+                code: vec![1],
+                relocations: vec![Relocation {
+                    section: SectionId(0),
+                    offset: 1,
+                    kind: RelocKind::Abs64,
+                    symbol: SymbolRef::Local(0),
+                    addend: 0,
+                }],
+                constants: vec![],
+                symbols: vec![],
+                stack_maps: vec![],
+                debug: vec![],
+            },
+        };
+        let bytes = FaslWriter::write(&value).unwrap_or_default();
+        assert_eq!(
+            FaslReader::read(&bytes, Architecture::X86_64, 0),
+            Err(ObjectError::OutOfBounds {
+                section: "FASL relocation",
                 offset: 1,
-                kind: RelocKind::Abs64,
-                symbol: SymbolRef::Local(0),
-                addend: 0,
-            }],
-            constants: vec![],
-            symbols: vec![],
-            stack_maps: vec![],
-            debug: vec![],
-        },
-    };
-    let bytes = FaslWriter::write(&value).unwrap_or_default();
-    assert_eq!(
-        FaslReader::read(&bytes, Architecture::X86_64, 0),
-        Err(ObjectError::OutOfBounds {
-            section: "FASL relocation",
-            offset: 1,
-            size: 1,
-        })
-    );
+                size: 1,
+            })
+        );
 
-    let mut value = value;
-    value.sections.relocations[0].offset = 0;
-    value.sections.relocations[0].section = SectionId(2);
-    let bytes = FaslWriter::write(&value).unwrap_or_default();
-    assert_eq!(
-        FaslReader::read(&bytes, Architecture::X86_64, 0),
-        Err(ObjectError::InvalidReference {
-            kind: "FASL relocation section",
-            index: 2,
-        })
-    );
-}
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut value = value;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        value.sections.relocations[0].offset = 0;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        value.sections.relocations[0].section = SectionId(2);
+        let bytes = FaslWriter::write(&value).unwrap_or_default();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bytes, Architecture::X86_64, 0),
+            Err(ObjectError::InvalidReference {
+                kind: "FASL relocation section",
+                index: 2,
+            })
+        );
+    }
 
-#[test]
-fn fasl_reader_rejects_each_header_mismatch() {
-    let value = Fasl {
-        header: FaslHeader {
-            architecture: Architecture::X86_64,
-            features: 7,
-        },
-        sections: FaslSection {
-            code: vec![],
-            relocations: vec![],
-            constants: vec![],
-            symbols: vec![],
-            stack_maps: vec![],
-            debug: vec![],
-        },
-    };
-    let bytes = FaslWriter::write(&value).unwrap_or_default();
-    assert_eq!(
-        FaslReader::read(&bytes[..63], Architecture::X86_64, 7),
-        Err(ObjectError::Truncated {
-            offset: 63,
-            needed: 64
-        })
-    );
-    let mut bad = bytes.clone();
-    bad[0] = b'X';
-    assert_eq!(
-        FaslReader::read(&bad, Architecture::X86_64, 7),
-        Err(ObjectError::InvalidField {
-            field: "magic",
-            value: 0
-        })
-    );
-    let mut bad = bytes.clone();
-    bad[8] = 2;
-    assert_eq!(
-        FaslReader::read(&bad, Architecture::X86_64, 7),
-        Err(ObjectError::InvalidField {
-            field: "version",
-            value: 2
-        })
-    );
-    let mut bad = bytes.clone();
-    bad[11] = 4;
-    assert_eq!(
-        FaslReader::read(&bad, Architecture::X86_64, 7),
-        Err(ObjectError::InvalidField {
-            field: "pointer width",
-            value: 4
-        })
-    );
-    let mut bad = bytes.clone();
-    bad[14] = 1;
-    assert_eq!(
-        FaslReader::read(&bad, Architecture::X86_64, 7),
-        Err(ObjectError::InvalidField {
-            field: "reserved",
-            value: 1
-        })
-    );
-    let mut bad = bytes;
-    bad[16] = 8;
-    assert_eq!(
-        FaslReader::read(&bad, Architecture::X86_64, 7),
-        Err(ObjectError::InvalidField {
-            field: "feature bitmap",
-            value: 8
-        })
-    );
+    #[test]
+    // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+    fn fasl_reader_rejects_each_header_mismatch() {
+        let value = Fasl {
+            header: FaslHeader {
+                architecture: Architecture::X86_64,
+                features: 7,
+            },
+            sections: FaslSection {
+                code: vec![],
+                relocations: vec![],
+                constants: vec![],
+                symbols: vec![],
+                stack_maps: vec![],
+                debug: vec![],
+            },
+        };
+        let bytes = FaslWriter::write(&value).unwrap_or_default();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bytes[..63], Architecture::X86_64, 7),
+            Err(ObjectError::Truncated {
+                offset: 63,
+                needed: 64
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bad = bytes.clone();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bad[0] = b'X';
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bad, Architecture::X86_64, 7),
+            Err(ObjectError::InvalidField {
+                field: "magic",
+                value: 0
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bad = bytes.clone();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bad[8] = 2;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bad, Architecture::X86_64, 7),
+            Err(ObjectError::InvalidField {
+                field: "version",
+                value: 2
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bad = bytes.clone();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bad[11] = 4;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bad, Architecture::X86_64, 7),
+            Err(ObjectError::InvalidField {
+                field: "pointer width",
+                value: 4
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bad = bytes.clone();
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bad[14] = 1;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        assert_eq!(
+            FaslReader::read(&bad, Architecture::X86_64, 7),
+            Err(ObjectError::InvalidField {
+                field: "reserved",
+                value: 1
+            })
+        );
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        let mut bad = bytes;
+        // check-added-lines: allow(panic,index,as-cast) test fixture assertions
+        bad[16] = 8;
+        assert_eq!(
+            FaslReader::read(&bad, Architecture::X86_64, 7),
+            Err(ObjectError::InvalidField {
+                field: "feature bitmap",
+                value: 8
+            })
+        );
+    }
 }

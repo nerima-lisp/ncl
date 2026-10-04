@@ -109,15 +109,16 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-PRETTY*`,
 - **Reader round trip**: `ncl-reader` (L2) is not on `main` yet, so the round
   trip test is deferred. Readable output is checked against fixed expected
   strings until the reader lands.
-- **Dynamic bindings**: `ThreadContext` exposes no binding lookup, so
-  `PrintOptions::from_specials` reads value cells, not dynamic bindings.
+- **Dynamic bindings**: `progv`/special binding machinery updates the symbol
+  value cell for the dynamic extent, which `PrintOptions::from_specials` reads.
+  A direct binding-stack lookup is still unnecessary for the current runtime
+  path but may be needed if value-cell mutation is changed.
 - **Builtin bodies**: `PPRINT`, `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, and
   `COPY-PPRINT-DISPATCH` are callable and use the registered output stream or
   ambient dispatch table. The remaining layout primitives still need a
   stream-backed `PrettyPrinter` state adapter.
 - **CL pretty-printer connection**: `PrettyPrinter` is the Rust boundary for
-  FORMAT and stream integrations. Dynamic special lookup still reads value
-  cells until `ThreadContext` exposes the active binding stack.
+  FORMAT and stream integrations; it is now also a nested `CharSink`.
 - **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
   matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
   `eq`.

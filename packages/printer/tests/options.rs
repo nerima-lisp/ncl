@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used, reason = "tests assert on option setup")]
 
-use ncl_object::{Package, Runtime, ThreadContext, Word, set_symbol_value};
+use ncl_object::{Package, Runtime, ThreadContext, Word, make_cons, set_symbol_value};
 use ncl_printer::{PrintBase, PrintCase, PrintOptions};
 
 #[test]
@@ -57,4 +57,25 @@ fn options_read_pretty_layout_specials() {
         options.print_lines().map(ncl_printer::NonNegative::get),
         Some(2)
     );
+}
+
+#[test]
+fn options_read_dynamic_progv_specials() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let symbol = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "*PRINT-RIGHT-MARGIN*")
+        .unwrap()
+        .0;
+    let symbols = make_cons(&mut ctx, &runtime, symbol, Word::NIL).unwrap();
+    let values = make_cons(&mut ctx, &runtime, Word::fixnum(12), Word::NIL).unwrap();
+    ctx.enter_progv(symbols, values).unwrap();
+    assert_eq!(
+        PrintOptions::from_specials(&mut ctx, &runtime).right_margin(),
+        12
+    );
+    ctx.leave_progv().unwrap();
 }

@@ -753,17 +753,68 @@ fn matches_type_specifier(
         text.push(ncl_object::string_ref(ctx, name, index)?);
     }
     let is_cons = object.is_cons();
+    let kind = ncl_object::classify_object(ctx, object);
+    let is_number = matches!(
+        kind,
+        ncl_object::ObjectRef::Fixnum(_)
+            | ncl_object::ObjectRef::Bignum(_)
+            | ncl_object::ObjectRef::Ratio(_)
+            | ncl_object::ObjectRef::DoubleFloat(_)
+            | ncl_object::ObjectRef::Complex(_)
+    );
+    let is_real = matches!(
+        kind,
+        ncl_object::ObjectRef::Fixnum(_)
+            | ncl_object::ObjectRef::Bignum(_)
+            | ncl_object::ObjectRef::Ratio(_)
+            | ncl_object::ObjectRef::DoubleFloat(_)
+    );
+    let is_rational = matches!(
+        kind,
+        ncl_object::ObjectRef::Fixnum(_)
+            | ncl_object::ObjectRef::Bignum(_)
+            | ncl_object::ObjectRef::Ratio(_)
+    );
     Ok(match text.to_ascii_uppercase().as_str() {
         "CONS" => is_cons,
         "LIST" => is_cons || object == Word::NIL,
+        "SEQUENCE" => {
+            is_cons
+                || object == Word::NIL
+                || matches!(
+                    kind,
+                    ncl_object::ObjectRef::SimpleVector(_)
+                        | ncl_object::ObjectRef::SpecializedArray(_)
+                        | ncl_object::ObjectRef::Array(_)
+                )
+        }
+        "NULL" => object == Word::NIL,
         "ATOM" => !is_cons,
-        "SYMBOL" => matches!(
-            ncl_object::classify_object(ctx, object),
-            ncl_object::ObjectRef::Symbol(_)
-        ),
+        "SYMBOL" => matches!(kind, ncl_object::ObjectRef::Symbol(_)),
         "INTEGER" => matches!(
-            ncl_object::classify_object(ctx, object),
+            kind,
             ncl_object::ObjectRef::Fixnum(_) | ncl_object::ObjectRef::Bignum(_)
+        ),
+        "RATIONAL" => is_rational,
+        "REAL" => is_real,
+        "NUMBER" => is_number,
+        "COMPLEX" => matches!(kind, ncl_object::ObjectRef::Complex(_)),
+        "FLOAT" | "DOUBLE-FLOAT" => matches!(kind, ncl_object::ObjectRef::DoubleFloat(_)),
+        "CHARACTER" => object.as_character().is_some(),
+        "STRING" => matches!(kind, ncl_object::ObjectRef::String(_)),
+        "VECTOR" => matches!(
+            kind,
+            ncl_object::ObjectRef::SimpleVector(_) | ncl_object::ObjectRef::SpecializedArray(_)
+        ),
+        "ARRAY" => matches!(
+            kind,
+            ncl_object::ObjectRef::SimpleVector(_)
+                | ncl_object::ObjectRef::SpecializedArray(_)
+                | ncl_object::ObjectRef::Array(_)
+        ),
+        "FUNCTION" => matches!(
+            kind,
+            ncl_object::ObjectRef::Function(_) | ncl_object::ObjectRef::Closure(_)
         ),
         _ => false,
     })

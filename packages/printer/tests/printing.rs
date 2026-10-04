@@ -249,6 +249,21 @@ fn prints_quote_abbreviations() {
 }
 
 #[test]
+fn quote_abbreviation_requires_common_lisp_operator() {
+    let (runtime, mut ctx) = context();
+    let package = runtime.ensure_package(&mut ctx, "OTHER").unwrap();
+    let quote = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "QUOTE")
+        .unwrap()
+        .0;
+    let form = list(&runtime, &mut ctx, &[quote, Word::fixnum(1)]);
+    assert_eq!(
+        print(&runtime, &mut ctx, form, &PrintOptions::new()),
+        "(OTHER:QUOTE 1)"
+    );
+}
+
+#[test]
 fn print_level_truncates_nesting() {
     let (runtime, mut ctx) = context();
     let options = PrintOptions::new();
@@ -436,7 +451,18 @@ fn print_lines_stops_output_with_two_dots() {
     let list = make_cons(&mut ctx, &runtime, second, Word::NIL).unwrap();
     let list = make_cons(&mut ctx, &runtime, first, list).unwrap();
     let output = print(&runtime, &mut ctx, list, &options);
-    assert!(output.contains(".."), "output was {output:?}");
+    assert_eq!(output, "(1..)");
+}
+
+#[test]
+fn print_lines_only_limits_pretty_output() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL).unwrap();
+    let list = make_cons(&mut ctx, &runtime, Word::fixnum(1), tail).unwrap();
+    let options = PrintOptions::new().with_print_lines(Some(1));
+    assert_eq!(print(&runtime, &mut ctx, list, &options), "(1 2)");
 }
 
 #[test]

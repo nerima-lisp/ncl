@@ -1,6 +1,6 @@
 //! List printing.
 
-use ncl_object::{ObjectRef, Word, car, cdr, classify_object};
+use ncl_object::{ObjectRef, Word, car, cdr, classify_object, symbol_package};
 
 use crate::error::PrintError;
 use crate::print::Printer;
@@ -61,9 +61,14 @@ impl Printer<'_> {
         if tail == Word::NIL || !tail.is_cons() || cdr(self.ctx, tail)? != Word::NIL {
             return Ok(None);
         }
-        match self.symbol_text(head)?.as_str() {
-            "QUOTE" => Ok(Some("'")),
-            "FUNCTION" => Ok(Some("#'")),
+        let name = self.symbol_text(head)?;
+        let package = symbol_package(&*self.ctx, head).ok();
+        let common_lisp = package.is_some_and(|package| {
+            self.runtime.find_package(&*self.ctx, "COMMON-LISP") == Some(package)
+        });
+        match (common_lisp, name.as_str()) {
+            (true, "QUOTE") => Ok(Some("'")),
+            (true, "FUNCTION") => Ok(Some("#'")),
             _ => Ok(None),
         }
     }

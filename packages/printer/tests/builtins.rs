@@ -1,7 +1,10 @@
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin output")]
 #![allow(missing_docs)]
 
-use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, make_string};
+use ncl_object::{
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_double, make_ratio,
+    make_simple_vector, make_string,
+};
 
 fn function(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
     FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap()
@@ -107,5 +110,44 @@ fn priority_dispatch_matches_basic_type_specifiers() {
     assert_eq!(
         ncl_printer::pprint_dispatch(&mut ctx, Word::fixnum(4), table).unwrap(),
         Word::fixnum(11)
+    );
+}
+
+#[test]
+fn dispatch_matches_common_numeric_and_sequence_specifiers() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    let table = call(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH", &[]);
+    let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let number = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "NUMBER")
+        .unwrap()
+        .0;
+    let sequence = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "SEQUENCE")
+        .unwrap()
+        .0;
+    let ratio = make_ratio(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2)).unwrap();
+    let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)]).unwrap();
+    let table =
+        ncl_printer::set_pprint_dispatch(&mut ctx, &runtime, number, Word::fixnum(1), table)
+            .unwrap();
+    let table =
+        ncl_printer::set_pprint_dispatch(&mut ctx, &runtime, sequence, Word::fixnum(2), table)
+            .unwrap();
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, ratio.as_word(), table).unwrap(),
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, vector, table).unwrap(),
+        Word::fixnum(2)
+    );
+    let float = make_double(&mut ctx, &runtime, 1.0).unwrap();
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, float.as_word(), table).unwrap(),
+        Word::fixnum(1)
     );
 }

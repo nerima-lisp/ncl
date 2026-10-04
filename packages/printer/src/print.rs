@@ -43,6 +43,9 @@ struct LineLimitSink<'a> {
 impl LineLimitSink<'_> {
     fn write_limited_char(&mut self, character: char) -> Result<(), PrintError> {
         if self.truncated {
+            if matches!(character, ')' | ']' | '}') {
+                return self.sink.write_char(character);
+            }
             return Ok(());
         }
         if character == '\n' && self.lines >= self.limit {
@@ -339,12 +342,15 @@ pub fn write(
     sink: &mut dyn CharSink,
     options: &PrintOptions,
 ) -> Result<(), PrintError> {
-    let mut limited_sink = options.print_lines().map(|limit| LineLimitSink {
-        sink,
-        limit: limit.get(),
-        lines: 1,
-        truncated: false,
-    });
+    let mut limited_sink = options
+        .print_lines()
+        .filter(|_| options.pretty())
+        .map(|limit| LineLimitSink {
+            sink,
+            limit: limit.get(),
+            lines: 1,
+            truncated: false,
+        });
     let output: &mut dyn CharSink = match limited_sink.as_mut() {
         Some(limited) => limited,
         None => sink,

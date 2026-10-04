@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::too_many_lines)]
 
-use super::{decode, Architecture};
+use super::{Architecture, decode};
 
 fn aarch64_words(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
@@ -290,9 +290,11 @@ fn aarch64_decodes_encoded_instruction_families() {
         decode(Architecture::Aarch64, &aarch64_encoded(&instructions), 0).expect("decode");
     assert_eq!(decoded.len(), instructions.len());
     assert!(decoded.iter().all(|instruction| instruction.size == 4));
-    assert!(decoded
-        .iter()
-        .all(|instruction| instruction.branch_target.is_none()));
+    assert!(
+        decoded
+            .iter()
+            .all(|instruction| instruction.branch_target.is_none())
+    );
     assert_eq!(decoded[0].text, "dmb ish");
     assert_eq!(decoded[1].text, "brk #7");
     assert_eq!(decoded[2].text, "ret x0");

@@ -1,0 +1,231 @@
+package	symbol	present	external	kind	lambda-list
+ASDF	*ASDF-VERBOSE*	yes	yes	variable	-
+ASDF	*CENTRAL-REGISTRY*	yes	yes	variable	-
+ASDF	*COMPILE-FILE-FAILURE-BEHAVIOUR*	yes	yes	variable	-
+ASDF	*COMPILE-FILE-WARNINGS-BEHAVIOUR*	yes	yes	variable	-
+ASDF	*DEFAULT-ENCODING*	yes	yes	variable	-
+ASDF	*DEFAULT-SOURCE-REGISTRIES*	yes	yes	variable	-
+ASDF	*ENCODING-DETECTION-HOOK*	yes	yes	variable	-
+ASDF	*ENCODING-EXTERNAL-FORMAT-HOOK*	yes	yes	variable	-
+ASDF	*OUTPUT-TRANSLATIONS-PARAMETER*	yes	yes	variable	-
+ASDF	*RESOLVE-SYMLINKS*	yes	yes	variable	-
+ASDF	*SOURCE-REGISTRY-PARAMETER*	yes	yes	variable	-
+ASDF	*SYSTEM-DEFINITION-SEARCH-FUNCTIONS*	yes	yes	variable	-
+ASDF	*USER-CACHE*	yes	yes	variable	-
+ASDF	*UTF-8-EXTERNAL-FORMAT*	yes	yes	variable	-
+ASDF	*VERBOSE-OUT*	yes	yes	variable	-
+ASDF	*WARNINGS-FILE-TYPE*	yes	yes	variable	-
+ASDF	ACCEPT	yes	yes	other	-
+ASDF	ACTION-DESCRIPTION	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	ADDITIONAL-INPUT-FILES	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	ALREADY-LOADED-SYSTEMS	yes	yes	function	()
+ASDF	APPLY-OUTPUT-TRANSLATIONS	yes	yes	function	(asdf/output-translations::path)
+ASDF	ASDF-MESSAGE	yes	yes	function	(asdf/upgrade::format-string &rest asdf/upgrade::format-args)
+ASDF	ASDF-VERSION	yes	yes	function	()
+ASDF	BAD-SYSTEM-NAME	yes	yes	class+condition+type	-
+ASDF	BASIC-COMPILE-BUNDLE-OP	yes	yes	class+type	-
+ASDF	BUILD-OP	yes	yes	class+type	-
+ASDF	BUNDLE-OP	yes	yes	class+type	-
+ASDF	BUNDLE-SYSTEM	yes	yes	other	-
+ASDF	C-SOURCE-FILE	yes	yes	class+type	-
+ASDF	CHILD-COMPONENT	yes	yes	class+type	-
+ASDF	CIRCULAR-DEPENDENCY	yes	yes	class+condition+type	-
+ASDF	CL-SOURCE-FILE	yes	yes	class+type	-
+ASDF	CL-SOURCE-FILE.CL	yes	yes	class+type	-
+ASDF	CL-SOURCE-FILE.LSP	yes	yes	class+type	-
+ASDF	CLEAR-CONFIGURATION	yes	yes	function	()
+ASDF	CLEAR-CONFIGURATION-AND-RETRY	yes	yes	other	-
+ASDF	CLEAR-OUTPUT-TRANSLATIONS	yes	yes	function	()
+ASDF	CLEAR-SOURCE-REGISTRY	yes	yes	function	()
+ASDF	CLEAR-SYSTEM	yes	yes	function	(asdf/system:system)
+ASDF	COERCE-ENTRY-TO-DIRECTORY	yes	yes	other	-
+ASDF	COERCE-NAME	yes	yes	function	(asdf/component:name)
+ASDF	COMPILE-BUNDLE-OP	yes	yes	class+type	-
+ASDF	COMPILE-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	COMPILE-CONDITION	yes	yes	class+condition+type	-
+ASDF	COMPILE-ERROR	yes	yes	class+condition+type	-
+ASDF	COMPILE-FAILED	yes	yes	class+condition+type	-
+ASDF	COMPILE-FAILED-ERROR	yes	yes	class+condition+type	-
+ASDF	COMPILE-FAILED-WARNING	yes	yes	class+condition+type	-
+ASDF	COMPILE-FILE*	yes	yes	function	(uiop/lisp-build::input-file &rest uiop/lisp-build::keys &key (uiop/lisp-build::compile-check uiop/lisp-build:*compile-check*) uiop/lisp-build::output-file uiop/lisp-build::warnings-file uiop/lisp-build::emit-cfasl &allow-other-keys)
+ASDF	COMPILE-FILE-ERROR	yes	yes	class+condition+type	-
+ASDF	COMPILE-FILE-PATHNAME*	yes	yes	function	(uiop/lisp-build::input-file &rest uiop/lisp-build::keys &key uiop/lisp-build::output-file &allow-other-keys)
+ASDF	COMPILE-OP	yes	yes	class+type	-
+ASDF	COMPILE-SYSTEM	yes	yes	function	(asdf/system:system &rest asdf/operate::args &key asdf/operate::force asdf/operate::force-not asdf/operate::verbose asdf/component:version &allow-other-keys)
+ASDF	COMPILE-WARNED	yes	yes	class+condition+type	-
+ASDF	COMPILE-WARNED-ERROR	yes	yes	class+condition+type	-
+ASDF	COMPILE-WARNED-WARNING	yes	yes	class+condition+type	-
+ASDF	COMPILED-FILE	yes	yes	class+type	-
+ASDF	COMPONENT	yes	yes	class+type	-
+ASDF	COMPONENT-CHILDREN	yes	yes	function	(sb-pcl::object)
+ASDF	COMPONENT-CHILDREN-BY-NAME	yes	yes	function	(sb-pcl::object)
+ASDF	COMPONENT-DEPENDS-ON	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	COMPONENT-ENCODING	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-EXTERNAL-FORMAT	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-FIND-PATH	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-LOAD-DEPENDENCIES	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-LOADED-P	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-NAME	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-PARENT	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-PATHNAME	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-PROPERTY	yes	yes	function	(asdf/component:component asdf/backward-interface::property)
+ASDF	COMPONENT-RELATIVE-PATHNAME	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-SIDEWAY-DEPENDENCIES	yes	yes	function	(sb-pcl::object)
+ASDF	COMPONENT-SYSTEM	yes	yes	function	(asdf/component:component)
+ASDF	COMPONENT-VERSION	yes	yes	function	(asdf/component:component)
+ASDF	COMPUTE-SOURCE-REGISTRY	yes	yes	function	(&optional (asdf/source-registry::parameter asdf/source-registry:*source-registry-parameter*) (asdf/source-registry::registry asdf/source-registry:*source-registry*))
+ASDF	CONCATENATE-SOURCE-OP	yes	yes	class+type	-
+ASDF	DEFINE-OP	yes	yes	class+type	-
+ASDF	DEFSYSTEM	yes	yes	macro	(asdf/component:name &body asdf/parse-defsystem::options)
+ASDF	DELIVER-ASD-OP	yes	yes	class+type	-
+ASDF	DISABLE-DEFERRED-WARNINGS-CHECK	yes	yes	function	()
+ASDF	DISABLE-OUTPUT-TRANSLATIONS	yes	yes	function	()
+ASDF	DLL-OP	yes	yes	class+type	-
+ASDF	DOC-FILE	yes	yes	class+type	-
+ASDF	DOWNWARD-OPERATION	yes	yes	function+class+type	(sb-pcl::object)
+ASDF	DUPLICATE-NAMES	yes	yes	class+condition+type	-
+ASDF	ENABLE-ASDF-BINARY-LOCATIONS-COMPATIBILITY	yes	yes	function	(&key (asdf/backward-interface::centralize-lisp-binaries . #1=(nil)) (asdf/backward-interface::default-toplevel-directory (uiop/pathname:subpathname (user-homedir-pathname) #A((7) base-char . ".fasls/"))) (asdf/backward-interface::include-per-user-information . #1#) (asdf/backward-interface::map-all-source-files (or . #1#)) (asdf/backward-interface::source-to-target-mappings . #1#) (asdf/backward-interface::file-types (sb-int:quasiquote (#S(sb-impl::comma :expr (uiop/lisp-build:compile-file-type) :kind 0) #A((12) base-char . "build-report") #A((5) base-char . "cfasl") #A((13) base-char . "sbcl-warnings")))))
+ASDF	ENABLE-DEFERRED-WARNINGS-CHECK	yes	yes	function	()
+ASDF	ENSURE-OUTPUT-TRANSLATIONS	yes	yes	function	()
+ASDF	ENSURE-SOURCE-REGISTRY	yes	yes	function	(&optional asdf/source-registry::parameter)
+ASDF	ERROR-COMPONENT	yes	yes	function	(condition)
+ASDF	ERROR-NAME	yes	yes	function	(condition)
+ASDF	ERROR-OPERATION	yes	yes	function	(condition)
+ASDF	ERROR-PATHNAME	yes	yes	function	(condition)
+ASDF	EXPLAIN	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	FEATURE	yes	yes	other	-
+ASDF	FILE-COMPONENT	yes	yes	class+type	-
+ASDF	FILE-TYPE	yes	yes	function	(sb-pcl::object)
+ASDF	FIND-COMPONENT	yes	yes	function	(asdf/component::base asdf/component::path &key asdf/component::registered)
+ASDF	FIND-OPERATION	yes	yes	function	(asdf/operation::context asdf/operation::spec)
+ASDF	FIND-SYSTEM	yes	yes	function	(asdf/system:system &optional asdf/system::error-p)
+ASDF	HOSTNAME	yes	yes	function	()
+ASDF	HTML-FILE	yes	yes	class+type	-
+ASDF	IMAGE-OP	yes	yes	class+type	-
+ASDF	IMPLEMENTATION-IDENTIFIER	yes	yes	function	()
+ASDF	IMPLEMENTATION-TYPE	yes	yes	function	()
+ASDF	INITIALIZE-OUTPUT-TRANSLATIONS	yes	yes	function	(&optional (asdf/output-translations::parameter asdf/output-translations:*output-translations-parameter*))
+ASDF	INITIALIZE-SOURCE-REGISTRY	yes	yes	function	(&optional (asdf/source-registry::parameter asdf/source-registry:*source-registry-parameter*))
+ASDF	INPUT-FILES	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	JAVA-SOURCE-FILE	yes	yes	class+type	-
+ASDF	LIB-OP	yes	yes	class+type	-
+ASDF	LOAD-ASD	yes	yes	function	(pathname &key asdf/component:name)
+ASDF	LOAD-BUNDLE-OP	yes	yes	class+type	-
+ASDF	LOAD-COMPILED-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	LOAD-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	LOAD-OP	yes	yes	class+type	-
+ASDF	LOAD-SOURCE-OP	yes	yes	class+type	-
+ASDF	LOAD-SYSTEM	yes	yes	function	(asdf/system:system &rest asdf/operate::keys &key asdf/operate::force asdf/operate::force-not asdf/operate::verbose asdf/component:version &allow-other-keys)
+ASDF	LOAD-SYSTEM-DEFINITION-ERROR	yes	yes	class+condition+type	-
+ASDF	LOAD-SYSTEMS	yes	yes	function	(&rest asdf/operate::systems)
+ASDF	LOAD-SYSTEMS*	yes	yes	function	(asdf/operate::systems &rest asdf/operate::keys)
+ASDF	LOCATE-SYSTEM	yes	yes	function	(asdf/component:name)
+ASDF	MAKE	yes	yes	function	(asdf/system:system &rest asdf/operate::keys)
+ASDF	MAKE-OPERATION	yes	yes	function	(asdf/operation::operation-class)
+ASDF	MAKE-PLAN	yes	yes	function	(asdf/plan::plan-class asdf/operation:operation asdf/component:component &key &allow-other-keys)
+ASDF	MAP-SYSTEMS	yes	yes	function	(asdf/system-registry::fn)
+ASDF	MISSING-COMPONENT	yes	yes	class+condition+type	-
+ASDF	MISSING-COMPONENT-OF-VERSION	yes	yes	class+condition+type	-
+ASDF	MISSING-DEPENDENCY	yes	yes	class+condition+type	-
+ASDF	MISSING-DEPENDENCY-OF-VERSION	yes	yes	class+condition+type	-
+ASDF	MODULE	yes	yes	class+type	-
+ASDF	MODULE-COMPONENTS	yes	yes	function	(sb-pcl::object)
+ASDF	MONOLITHIC-BUNDLE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-COMPILE-BUNDLE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-COMPILE-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-CONCATENATE-SOURCE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-DELIVER-ASD-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-DLL-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-LIB-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-LOAD-BUNDLE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-LOAD-COMPILED-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	MONOLITHIC-LOAD-CONCATENATED-SOURCE-OP	yes	yes	class+type	-
+ASDF	NEEDED-IN-IMAGE-P	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	NON-PROPAGATING-OPERATION	yes	yes	class+type	-
+ASDF	NON-SYSTEM-SYSTEM	yes	yes	class+condition+type	-
+ASDF	NON-TOPLEVEL-SYSTEM	yes	yes	class+condition+type	-
+ASDF	OOS	yes	yes	function	(asdf/operation:operation asdf/component:component &rest asdf/operate::args &key &allow-other-keys)
+ASDF	OPERATE	yes	yes	function	(asdf/operation:operation asdf/component:component &key asdf/operate::plan-class asdf/operate::plan-options asdf/component:version asdf/operate::verbose asdf/operate::on-warnings asdf/operate::on-failure &allow-other-keys)
+ASDF	OPERATION	yes	yes	class+type	-
+ASDF	OPERATION-DEFINITION-ERROR	yes	yes	class+condition+type	-
+ASDF	OPERATION-DEFINITION-WARNING	yes	yes	class+condition+type	-
+ASDF	OPERATION-DONE-P	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	OPERATION-ERROR	yes	yes	class+condition+type	-
+ASDF	OPERATION-MONOLITHIC-P	yes	yes	function	(asdf/bundle::op)
+ASDF	OPERATION-ON-FAILURE	yes	yes	function	(asdf/operation:operation)
+ASDF	OPERATION-ON-WARNINGS	yes	yes	function	(asdf/operation:operation)
+ASDF	OUTPUT-FILE	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	OUTPUT-FILES	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	PACKAGE-INFERRED-SYSTEM	yes	yes	class+type	-
+ASDF	PACKAGE-INFERRED-SYSTEM-MISSING-PACKAGE-ERROR	yes	yes	class+condition+type	-
+ASDF	PACKAGE-SYSTEM	yes	yes	class+type	-
+ASDF	PARENT-COMPONENT	yes	yes	class+type	-
+ASDF	PERFORM	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	PERFORM-PLAN	yes	yes	function	(asdf/plan:plan &key)
+ASDF	PERFORM-WITH-RESTARTS	yes	yes	function	(asdf/operation:operation asdf/component:component)
+ASDF	PRECOMPILED-SYSTEM	yes	yes	class+type	-
+ASDF	PREPARE-BUNDLE-OP	yes	yes	class+type	-
+ASDF	PREPARE-OP	yes	yes	class+type	-
+ASDF	PREPARE-SOURCE-OP	yes	yes	class+type	-
+ASDF	PRIMARY-SYSTEM-NAME	yes	yes	function	(asdf/system::system-designator)
+ASDF	PROCESS-SOURCE-REGISTRY	yes	yes	function	(asdf/source-registry::spec &key asdf/source-registry::inherit asdf/source-registry::register)
+ASDF	PROGRAM-OP	yes	yes	class+type	-
+ASDF	PROGRAM-SYSTEM	yes	yes	class+type	-
+ASDF	REGISTER-IMMUTABLE-SYSTEM	yes	yes	function	(asdf/system-registry::system-name &rest asdf/system-registry::keys)
+ASDF	REGISTER-PRELOADED-SYSTEM	yes	yes	function	(asdf/system-registry::system-name &rest asdf/system-registry::keys &key (asdf/component:version t) &allow-other-keys)
+ASDF	REGISTER-SYSTEM-PACKAGES	yes	yes	function	(asdf/system:system asdf/package-inferred-system::packages)
+ASDF	REGISTERED-SYSTEM	yes	yes	function	(asdf/component:name)
+ASDF	REGISTERED-SYSTEMS	yes	yes	function	()
+ASDF	REMOVE-ENTRY-FROM-REGISTRY	yes	yes	other	-
+ASDF	REQUIRE-SYSTEM	yes	yes	function+class+type	(asdf/system:system &rest asdf/backward-interface::keys &key &allow-other-keys)
+ASDF	REQUIRED-COMPONENTS	yes	yes	function	(asdf/system:system &rest asdf/plan::keys &key (asdf/plan::goal-operation (quote asdf/lisp-action:load-op)) &allow-other-keys)
+ASDF	RESOLVE-LOCATION	yes	yes	function	(uiop/configuration::x &key uiop/configuration::ensure-directory uiop/pathname:wilden directory)
+ASDF	RETRY	yes	yes	other	-
+ASDF	RUN-SHELL-COMMAND	yes	yes	function	(asdf/backward-interface::control-string &rest asdf/backward-interface::args)
+ASDF	SEARCH-FOR-SYSTEM-DEFINITION	yes	yes	function	(asdf/system:system)
+ASDF	SELFWARD-OPERATION	yes	yes	function+class+type	(sb-pcl::object)
+ASDF	SEQUENTIAL-PLAN	yes	yes	class+type	-
+ASDF	SIDEWAY-OPERATION	yes	yes	function+class+type	(sb-pcl::object)
+ASDF	SOURCE-FILE	yes	yes	class+type	-
+ASDF	SOURCE-FILE-TYPE	yes	yes	function	(asdf/component:component asdf/component::system)
+ASDF	STATIC-FILE	yes	yes	class+type	-
+ASDF	SYSDEF-IMMUTABLE-SYSTEM-SEARCH	yes	yes	function	(asdf/system-registry::requested)
+ASDF	SYSDEF-PRELOADED-SYSTEM-SEARCH	yes	yes	function	(asdf/system-registry::requested)
+ASDF	SYSTEM	yes	yes	class+type	-
+ASDF	SYSTEM-AUTHOR	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-BUG-TRACKER	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-DEFINITION-ERROR	yes	yes	class+condition+type	-
+ASDF	SYSTEM-DEFINITION-PATHNAME	yes	yes	function	(asdf/backward-interface::x)
+ASDF	SYSTEM-DEFSYSTEM-DEPENDS-ON	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-DEPENDS-ON	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-DESCRIPTION	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-HOMEPAGE	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-LICENCE	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-LICENSE	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-LONG-DESCRIPTION	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-LONG-NAME	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-MAILTO	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-MAINTAINER	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-OUT-OF-DATE	yes	yes	class+condition+type	-
+ASDF	SYSTEM-OUTPUT-TRANSLATIONS-DIRECTORY-PATHNAME	yes	yes	function	(&key (asdf/output-translations::direction :input))
+ASDF	SYSTEM-OUTPUT-TRANSLATIONS-PATHNAME	yes	yes	function	(&key (asdf/output-translations::direction :input))
+ASDF	SYSTEM-REGISTERED-P	yes	yes	function	(asdf/component:name)
+ASDF	SYSTEM-RELATIVE-PATHNAME	yes	yes	function	(asdf/system:system asdf/component:name &key type)
+ASDF	SYSTEM-SOURCE-CONTROL	yes	yes	function	(sb-pcl::object)
+ASDF	SYSTEM-SOURCE-DIRECTORY	yes	yes	function	(asdf/system::system-designator)
+ASDF	SYSTEM-SOURCE-FILE	yes	yes	function	(asdf/system:system)
+ASDF	SYSTEM-SOURCE-REGISTRY	yes	yes	function	(&key (asdf/source-registry::direction :input))
+ASDF	SYSTEM-SOURCE-REGISTRY-DIRECTORY	yes	yes	function	(&key (asdf/source-registry::direction :input))
+ASDF	SYSTEM-WEAKLY-DEPENDS-ON	yes	yes	function	(sb-pcl::object)
+ASDF	TEST-OP	yes	yes	class+type	-
+ASDF	TEST-SYSTEM	yes	yes	function	(asdf/system:system &rest asdf/operate::args &key asdf/operate::force asdf/operate::force-not asdf/operate::verbose asdf/component:version &allow-other-keys)
+ASDF	TRAVERSE	yes	yes	function	(asdf/operation:operation asdf/component:component &key asdf/backward-interface::plan-class &allow-other-keys)
+ASDF	TRY-RECOMPILING	yes	yes	other	-
+ASDF	UPGRADE-ASDF	yes	yes	function	()
+ASDF	UPWARD-OPERATION	yes	yes	function+class+type	(sb-pcl::object)
+ASDF	USER-OUTPUT-TRANSLATIONS-DIRECTORY-PATHNAME	yes	yes	function	(&key (asdf/output-translations::direction :input))
+ASDF	USER-OUTPUT-TRANSLATIONS-PATHNAME	yes	yes	function	(&key (asdf/output-translations::direction :input))
+ASDF	USER-SOURCE-REGISTRY	yes	yes	function	(&key (asdf/source-registry::direction :input))
+ASDF	USER-SOURCE-REGISTRY-DIRECTORY	yes	yes	function	(&key (asdf/source-registry::direction :input))
+ASDF	VERSION	yes	yes	other	-
+ASDF	VERSION-SATISFIES	yes	yes	function	(asdf/component:component asdf/component:version)

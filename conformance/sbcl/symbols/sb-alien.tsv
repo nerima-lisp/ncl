@@ -1,0 +1,63 @@
+package	symbol	present	external	kind	lambda-list
+SB-ALIEN	*	yes	yes	function+variable+type	(&rest sb-kernel::numbers)
+SB-ALIEN	ADDR	yes	yes	macro	(sb-alien::expr)
+SB-ALIEN	ALIEN	yes	yes	other	-
+SB-ALIEN	ALIEN-CALLABLE	yes	yes	other	-
+SB-ALIEN	ALIEN-CALLABLE-FUNCTION	yes	yes	function	(sb-alien::name)
+SB-ALIEN	ALIEN-FUNCALL	yes	yes	function	(alien &rest sb-alien::args)
+SB-ALIEN	ALIEN-SAP	yes	yes	function	(alien)
+SB-ALIEN	ALIEN-SIZE	yes	yes	macro	(type &optional (sb-alien::units :bits))
+SB-ALIEN	ARRAY	yes	yes	class+type	-
+SB-ALIEN	BOOLEAN	yes	yes	type	-
+SB-ALIEN	C-STRING	yes	yes	other	-
+SB-ALIEN	CAST	yes	yes	macro+class+type	(alien type)
+SB-ALIEN	CHAR	yes	yes	function	(string sb-int:index)
+SB-ALIEN	DEFINE-ALIEN-CALLABLE	yes	yes	macro	(sb-alien::name sb-alien::result-type sb-alien::typed-lambda-list &body sb-alien::body)
+SB-ALIEN	DEFINE-ALIEN-ROUTINE	yes	yes	macro	(sb-alien::name sb-alien::result-type &rest sb-alien::args)
+SB-ALIEN	DEFINE-ALIEN-TYPE	yes	yes	macro	(sb-alien::name type)
+SB-ALIEN	DEFINE-ALIEN-VARIABLE	yes	yes	macro	(sb-alien::name type)
+SB-ALIEN	DEREF	yes	yes	function	(alien &rest sb-alien::indices)
+SB-ALIEN	DOUBLE	yes	yes	other	-
+SB-ALIEN	DOUBLE-FLOAT	yes	yes	class+type	-
+SB-ALIEN	ENUM	yes	yes	other	-
+SB-ALIEN	EXTERN-ALIEN	yes	yes	macro	(sb-alien::name type)
+SB-ALIEN	FLOAT	yes	yes	function+class+type	(number &optional (sb-kernel::other nil sb-kernel::otherp))
+SB-ALIEN	FREE-ALIEN	yes	yes	function	(alien)
+SB-ALIEN	FUNCTION	yes	yes	special-operator+class+type	-
+SB-ALIEN	GET-ERRNO	yes	yes	function	()
+SB-ALIEN	INT	yes	yes	other	-
+SB-ALIEN	INTEGER	yes	yes	class+type	-
+SB-ALIEN	LOAD-1-FOREIGN	yes	yes	function	(&rest sb-impl::args)
+SB-ALIEN	LOAD-FOREIGN	yes	yes	function	(&rest sb-impl::args)
+SB-ALIEN	LOAD-SHARED-OBJECT	yes	yes	function	(pathname &key sb-alien::dont-save)
+SB-ALIEN	LONG	yes	yes	other	-
+SB-ALIEN	LONG-FLOAT	yes	yes	type	-
+SB-ALIEN	LONG-LONG	yes	yes	other	-
+SB-ALIEN	MAKE-ALIEN	yes	yes	macro	(type &optional sb-alien::size)
+SB-ALIEN	MAKE-ALIEN-STRING	yes	yes	function	(string &rest rest &key (sb-alien::start 0) sb-alien::end (sb-alien::external-format :default) (sb-alien::null-terminate t))
+SB-ALIEN	NULL-ALIEN	yes	yes	function	(sb-alien::x)
+SB-ALIEN	OFF-T	yes	yes	other	-
+SB-ALIEN	SAP-ALIEN	yes	yes	macro	(sb-alien::sap type)
+SB-ALIEN	SET-ERRNO	yes	yes	function	(sb-impl::new-errno)
+SB-ALIEN	SHORT	yes	yes	other	-
+SB-ALIEN	SIGNED	yes	yes	other	-
+SB-ALIEN	SINGLE-FLOAT	yes	yes	class+type	-
+SB-ALIEN	SIZE-T	yes	yes	other	-
+SB-ALIEN	SLOT	yes	yes	function	(alien slot)
+SB-ALIEN	SSIZE-T	yes	yes	other	-
+SB-ALIEN	STRUCT	yes	yes	other	-
+SB-ALIEN	SYSTEM-AREA-POINTER	yes	yes	class+type	-
+SB-ALIEN	UNDEFINED-ALIEN-ERROR	yes	yes	class+condition+type	-
+SB-ALIEN	UNION	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+SB-ALIEN	UNLOAD-SHARED-OBJECT	yes	yes	function	(pathname)
+SB-ALIEN	UNSIGNED	yes	yes	other	-
+SB-ALIEN	UNSIGNED-CHAR	yes	yes	other	-
+SB-ALIEN	UNSIGNED-INT	yes	yes	other	-
+SB-ALIEN	UNSIGNED-LONG	yes	yes	other	-
+SB-ALIEN	UNSIGNED-LONG-LONG	yes	yes	other	-
+SB-ALIEN	UNSIGNED-SHORT	yes	yes	other	-
+SB-ALIEN	UTF8-STRING	yes	yes	other	-
+SB-ALIEN	VALUES	yes	yes	function	(&rest values)
+SB-ALIEN	VOID	yes	yes	other	-
+SB-ALIEN	WITH-ALIEN	yes	yes	macro	(sb-alien::bindings &body sb-alien::body)
+SB-ALIEN	WITH-ALIEN-CALLABLE	yes	yes	macro	(sb-alien::definitions &body sb-alien::body)

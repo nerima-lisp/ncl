@@ -1,0 +1,10 @@
+package	symbol	present	external	kind	lambda-list
+SB-CLTL2	AUGMENT-ENVIRONMENT	yes	yes	function	(sb-cltl2::env &key variable sb-cltl2::symbol-macro function sb-cltl2::macro declare)
+SB-CLTL2	COMPILER-LET	yes	yes	special-operator	-
+SB-CLTL2	DECLARATION-INFORMATION	yes	yes	function	(sb-cltl2::declaration-name &optional sb-cltl2::env)
+SB-CLTL2	DEFINE-DECLARATION	yes	yes	macro	(sb-cltl2::decl-name sb-cltl2::lambda-list &body sb-cltl2::body)
+SB-CLTL2	ENCLOSE	yes	yes	function	(sb-cltl2::lambda-expression &optional sb-cltl2::environment)
+SB-CLTL2	FUNCTION-INFORMATION	yes	yes	function	(sb-cltl2::name &optional sb-cltl2::env)
+SB-CLTL2	MACROEXPAND-ALL	yes	yes	function	(sb-walker::form &optional sb-walker::environment)
+SB-CLTL2	PARSE-MACRO	yes	yes	function	(sb-cltl2::name sb-cltl2::lambda-list sb-cltl2::body &optional sb-cltl2::env)
+SB-CLTL2	VARIABLE-INFORMATION	yes	yes	function	(sb-cltl2::name &optional sb-cltl2::env)

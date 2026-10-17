@@ -1,0 +1,103 @@
+package	symbol	present	external	kind	lambda-list
+SB-MOP	ACCESSOR-METHOD-SLOT-DEFINITION	yes	yes	function	(sb-mop:standard-accessor-method)
+SB-MOP	ADD-DEPENDENT	yes	yes	function	(sb-mop:metaobject sb-pcl::dependent)
+SB-MOP	ADD-DIRECT-METHOD	yes	yes	function	(sb-mop:specializer method)
+SB-MOP	ADD-DIRECT-SUBCLASS	yes	yes	function	(class sb-pcl::subclass)
+SB-MOP	ADD-METHOD	yes	yes	function	(generic-function method)
+SB-MOP	ALLOCATE-INSTANCE	yes	yes	function	(class &rest sb-pcl::initargs)
+SB-MOP	BUILT-IN-CLASS	yes	yes	class+type	-
+SB-MOP	CLASS	yes	yes	class+type	-
+SB-MOP	CLASS-DEFAULT-INITARGS	yes	yes	function	(class)
+SB-MOP	CLASS-DIRECT-DEFAULT-INITARGS	yes	yes	function	(class)
+SB-MOP	CLASS-DIRECT-SLOTS	yes	yes	function	(class)
+SB-MOP	CLASS-DIRECT-SUBCLASSES	yes	yes	function	(class)
+SB-MOP	CLASS-DIRECT-SUPERCLASSES	yes	yes	function	(class)
+SB-MOP	CLASS-FINALIZED-P	yes	yes	function	(class)
+SB-MOP	CLASS-NAME	yes	yes	function	(class)
+SB-MOP	CLASS-PRECEDENCE-LIST	yes	yes	function	(sb-pcl::pcl-class)
+SB-MOP	CLASS-PROTOTYPE	yes	yes	function	(class)
+SB-MOP	CLASS-SLOTS	yes	yes	function	(class)
+SB-MOP	COMPUTE-APPLICABLE-METHODS	yes	yes	function	(generic-function sb-pcl::arguments)
+SB-MOP	COMPUTE-APPLICABLE-METHODS-USING-CLASSES	yes	yes	function	(generic-function sb-pcl::classes)
+SB-MOP	COMPUTE-CLASS-PRECEDENCE-LIST	yes	yes	function	(sb-pcl::root)
+SB-MOP	COMPUTE-DEFAULT-INITARGS	yes	yes	function	(class)
+SB-MOP	COMPUTE-DISCRIMINATING-FUNCTION	yes	yes	function	(sb-pcl::gf)
+SB-MOP	COMPUTE-EFFECTIVE-METHOD	yes	yes	function	(generic-function sb-pcl::combin sb-pcl::applicable-methods)
+SB-MOP	COMPUTE-EFFECTIVE-SLOT-DEFINITION	yes	yes	function	(class sb-pcl::name sb-pcl::dslotds)
+SB-MOP	COMPUTE-SLOTS	yes	yes	function	(class)
+SB-MOP	DIRECT-SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	DIRECT-SLOT-DEFINITION-CLASS	yes	yes	function	(class &rest sb-pcl::initargs)
+SB-MOP	EFFECTIVE-SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	EFFECTIVE-SLOT-DEFINITION-CLASS	yes	yes	function	(class &rest sb-pcl::initargs)
+SB-MOP	ENSURE-CLASS	yes	yes	function	(sb-pcl::name &rest sb-pcl::args)
+SB-MOP	ENSURE-CLASS-USING-CLASS	yes	yes	function	(class sb-pcl::name &rest sb-pcl::args &key &allow-other-keys)
+SB-MOP	ENSURE-GENERIC-FUNCTION	yes	yes	function	(sb-pcl::fun-name &rest sb-pcl::all-keys)
+SB-MOP	ENSURE-GENERIC-FUNCTION-USING-CLASS	yes	yes	function	(generic-function sb-pcl::fun-name &key sb-pcl::generic-function-class sb-pcl::environment &allow-other-keys)
+SB-MOP	EQL-SPECIALIZER	yes	yes	class+type	-
+SB-MOP	EQL-SPECIALIZER-OBJECT	yes	yes	function	(sb-mop:eql-specializer)
+SB-MOP	EXTRACT-LAMBDA-LIST	yes	yes	function	(sb-pcl::lambda-list)
+SB-MOP	EXTRACT-SPECIALIZER-NAMES	yes	yes	function	(sb-pcl::lambda-list)
+SB-MOP	FINALIZE-INHERITANCE	yes	yes	function	(class)
+SB-MOP	FIND-METHOD-COMBINATION	yes	yes	function	(generic-function type sb-pcl::options)
+SB-MOP	FORWARD-REFERENCED-CLASS	yes	yes	class+type	-
+SB-MOP	FUNCALLABLE-STANDARD-CLASS	yes	yes	class+type	-
+SB-MOP	FUNCALLABLE-STANDARD-INSTANCE-ACCESS	yes	yes	function	(sb-kernel:instance sb-pcl::location)
+SB-MOP	FUNCALLABLE-STANDARD-OBJECT	yes	yes	class+type	-
+SB-MOP	FUNCTION	yes	yes	special-operator+class+type	-
+SB-MOP	GENERIC-FUNCTION	yes	yes	class+type	-
+SB-MOP	GENERIC-FUNCTION-ARGUMENT-PRECEDENCE-ORDER	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-DECLARATIONS	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-LAMBDA-LIST	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-METHOD-CLASS	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-METHOD-COMBINATION	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-METHODS	yes	yes	function	(generic-function)
+SB-MOP	GENERIC-FUNCTION-NAME	yes	yes	function	(generic-function)
+SB-MOP	INTERN-EQL-SPECIALIZER	yes	yes	function	(sb-pcl::object)
+SB-MOP	MAKE-INSTANCE	yes	yes	function	(class &rest sb-pcl::initargs &key &allow-other-keys)
+SB-MOP	MAKE-METHOD-LAMBDA	yes	yes	function	(sb-pcl::proto-generic-function sb-pcl::proto-method sb-pcl::lambda-expression sb-pcl::environment)
+SB-MOP	MAP-DEPENDENTS	yes	yes	function	(sb-mop:metaobject function)
+SB-MOP	METAOBJECT	yes	yes	class+type	-
+SB-MOP	METHOD	yes	yes	class+type	-
+SB-MOP	METHOD-COMBINATION	yes	yes	class+type	-
+SB-MOP	METHOD-FUNCTION	yes	yes	function	(method)
+SB-MOP	METHOD-GENERIC-FUNCTION	yes	yes	function	(standard-method)
+SB-MOP	METHOD-LAMBDA-LIST	yes	yes	function	(sb-pcl::m)
+SB-MOP	METHOD-QUALIFIERS	yes	yes	function	(sb-pcl::m)
+SB-MOP	METHOD-SPECIALIZERS	yes	yes	function	(sb-pcl::m)
+SB-MOP	READER-METHOD-CLASS	yes	yes	function	(class sb-pcl::direct-slot &rest sb-pcl::initargs)
+SB-MOP	REMOVE-DEPENDENT	yes	yes	function	(sb-mop:metaobject sb-pcl::dependent)
+SB-MOP	REMOVE-DIRECT-METHOD	yes	yes	function	(sb-mop:specializer method)
+SB-MOP	REMOVE-DIRECT-SUBCLASS	yes	yes	function	(class sb-pcl::subclass)
+SB-MOP	REMOVE-METHOD	yes	yes	function	(generic-function method)
+SB-MOP	SET-FUNCALLABLE-INSTANCE-FUNCTION	yes	yes	function	(sb-pcl::fin sb-pcl::new-value)
+SB-MOP	SLOT-BOUNDP-USING-CLASS	yes	yes	function	(class sb-pcl::object sb-pcl::slotd)
+SB-MOP	SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	SLOT-DEFINITION-ALLOCATION	yes	yes	function	(sb-pcl::slotd)
+SB-MOP	SLOT-DEFINITION-INITARGS	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-INITFORM	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-INITFUNCTION	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-LOCATION	yes	yes	function	(sb-mop:standard-effective-slot-definition)
+SB-MOP	SLOT-DEFINITION-NAME	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-READERS	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-TYPE	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-DEFINITION-WRITERS	yes	yes	function	(sb-mop:slot-definition)
+SB-MOP	SLOT-MAKUNBOUND-USING-CLASS	yes	yes	function	(class sb-pcl::object sb-pcl::slotd)
+SB-MOP	SLOT-VALUE-USING-CLASS	yes	yes	function	(class sb-pcl::object sb-pcl::slotd)
+SB-MOP	SPECIALIZER	yes	yes	class+type	-
+SB-MOP	SPECIALIZER-DIRECT-GENERIC-FUNCTIONS	yes	yes	function	(sb-mop:specializer)
+SB-MOP	SPECIALIZER-DIRECT-METHODS	yes	yes	function	(sb-mop:specializer)
+SB-MOP	STANDARD-ACCESSOR-METHOD	yes	yes	class+type	-
+SB-MOP	STANDARD-CLASS	yes	yes	class+type	-
+SB-MOP	STANDARD-DIRECT-SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	STANDARD-EFFECTIVE-SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	STANDARD-GENERIC-FUNCTION	yes	yes	class+type	-
+SB-MOP	STANDARD-INSTANCE-ACCESS	yes	yes	function	(sb-kernel:instance sb-pcl::location)
+SB-MOP	STANDARD-METHOD	yes	yes	class+type	-
+SB-MOP	STANDARD-OBJECT	yes	yes	class+type	-
+SB-MOP	STANDARD-READER-METHOD	yes	yes	class+type	-
+SB-MOP	STANDARD-SLOT-DEFINITION	yes	yes	class+type	-
+SB-MOP	STANDARD-WRITER-METHOD	yes	yes	class+type	-
+SB-MOP	T	yes	yes	constant+class+type	-
+SB-MOP	UPDATE-DEPENDENT	yes	yes	function	(sb-mop:metaobject sb-pcl::dependent &rest sb-pcl::initargs)
+SB-MOP	VALIDATE-SUPERCLASS	yes	yes	function	(class sb-pcl::superclass)
+SB-MOP	WRITER-METHOD-CLASS	yes	yes	function	(class sb-pcl::direct-slot &rest sb-pcl::initargs)

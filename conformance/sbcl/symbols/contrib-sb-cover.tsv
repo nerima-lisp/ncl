@@ -1,0 +1,14 @@
+package	symbol	present	external	kind	lambda-list
+SB-COVER	CLEAR-COVERAGE	yes	yes	function	()
+SB-COVER	ENABLE-COVERAGE-LOGGING	yes	yes	function	()
+SB-COVER	GET-COVERAGE	yes	yes	function	(sb-cover::code)
+SB-COVER	LCOV-REPORT	yes	yes	function	(pathname)
+SB-COVER	MERGE-COVERAGE	yes	yes	function	(sb-cover::coverage-state)
+SB-COVER	MERGE-COVERAGE-FROM-FILE	yes	yes	function	(pathname)
+SB-COVER	REPORT	yes	yes	function	(directory &key ((:form-mode sb-cover::*source-path-mode*) :whole) (sb-cover::if-matches (quote identity)) (sb-cover::external-format :default))
+SB-COVER	RESET-COVERAGE	yes	yes	function	(&optional sb-cover::object)
+SB-COVER	RESTORE-COVERAGE	yes	yes	function	(sb-cover::coverage-state)
+SB-COVER	RESTORE-COVERAGE-FROM-FILE	yes	yes	function	(pathname)
+SB-COVER	SAVE-COVERAGE	yes	yes	function	()
+SB-COVER	SAVE-COVERAGE-IN-FILE	yes	yes	function	(pathname)
+SB-COVER	STORE-COVERAGE-DATA	yes	yes	other	-

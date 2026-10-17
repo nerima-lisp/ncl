@@ -1,0 +1,112 @@
+package	symbol	present	external	kind	lambda-list
+SB-SYS	%PRIMITIVE	yes	yes	special-operator	-
+SB-SYS	%STANDARD-CHAR-P	yes	yes	function	(sb-impl::thing)
+SB-SYS	*ALLOW-WITH-INTERRUPTS*	yes	yes	variable	-
+SB-SYS	*EXIT-ERROR-HANDLER*	yes	yes	variable	-
+SB-SYS	*EXIT-IN-PROGRESS*	yes	yes	variable	-
+SB-SYS	*INTERRUPT-PENDING*	yes	yes	variable	-
+SB-SYS	*INTERRUPTS-ENABLED*	yes	yes	variable	-
+SB-SYS	*LINKAGE-INFO*	yes	yes	variable	-
+SB-SYS	*LONG-SITE-NAME*	yes	yes	variable	-
+SB-SYS	*MACHINE-VERSION*	yes	yes	other	-
+SB-SYS	*PERIODIC-POLLING-FUNCTION*	yes	yes	variable	-
+SB-SYS	*PERIODIC-POLLING-PERIOD*	yes	yes	variable	-
+SB-SYS	*RUNTIME-DLHANDLE*	yes	yes	variable	-
+SB-SYS	*SHARED-OBJECTS*	yes	yes	variable	-
+SB-SYS	*SHORT-SITE-NAME*	yes	yes	variable	-
+SB-SYS	*STDERR*	yes	yes	variable	-
+SB-SYS	*STDIN*	yes	yes	variable	-
+SB-SYS	*STDOUT*	yes	yes	variable	-
+SB-SYS	*TTY*	yes	yes	variable	-
+SB-SYS	ADD-FD-HANDLER	yes	yes	function	(sb-impl::fd sb-impl::direction function)
+SB-SYS	ALLOCATE-SYSTEM-MEMORY	yes	yes	function	(sb-vm::bytes)
+SB-SYS	ALLOW-WITH-INTERRUPTS	yes	yes	macro	(&body sb-unix::body)
+SB-SYS	BEEP	yes	yes	function	(stream)
+SB-SYS	BREAKPOINT-ERROR	yes	yes	class+condition+type	-
+SB-SYS	CANCEL-DEADLINE	yes	yes	function	(&optional condition)
+SB-SYS	CLOSE-SHARED-OBJECTS	yes	yes	function	()
+SB-SYS	DEADLINE-TIMEOUT	yes	yes	class+condition+type	-
+SB-SYS	DEALLOCATE-SYSTEM-MEMORY	yes	yes	function	(addr sb-vm::bytes)
+SB-SYS	DECODE-INTERNAL-TIME	yes	yes	function	(time)
+SB-SYS	DECODE-TIMEOUT	yes	yes	function	(sb-impl::seconds)
+SB-SYS	DEFER-DEADLINE	yes	yes	function	(sb-impl::seconds &optional condition)
+SB-SYS	DLOPEN-OR-LOSE	yes	yes	function	(&optional (sb-alien::obj nil sb-alien::objp))
+SB-SYS	ELAPSED-CYCLES	yes	yes	function	(sb-impl::h0 sb-impl::l0 sb-impl::h1 sb-impl::l1)
+SB-SYS	ENABLE-INTERRUPT	yes	yes	function	(signal sb-unix::handler)
+SB-SYS	EXIT-CODE	yes	yes	type	-
+SB-SYS	EXTERN-ALIEN-NAME	yes	yes	function	(sb-alien::name)
+SB-SYS	FD-STREAM	yes	yes	class+type	-
+SB-SYS	FD-STREAM-FD	yes	yes	function	(sb-kernel:instance)
+SB-SYS	FD-STREAM-P	yes	yes	function	(sb-kernel::object)
+SB-SYS	FIND-DYNAMIC-FOREIGN-SYMBOL-ADDRESS	yes	yes	function	(symbol)
+SB-SYS	FIND-FOREIGN-SYMBOL-ADDRESS	yes	yes	function	(sb-impl::name)
+SB-SYS	FOREIGN-SYMBOL-ADDRESS	yes	yes	function	(sb-impl::name &optional sb-impl::datap)
+SB-SYS	FOREIGN-SYMBOL-DATAREF-SAP	yes	yes	other	-
+SB-SYS	FOREIGN-SYMBOL-SAP	yes	yes	function	(symbol &optional sb-impl::datap)
+SB-SYS	GET-MACHINE-VERSION	yes	yes	function	()
+SB-SYS	GET-SYSTEM-INFO	yes	yes	function	()
+SB-SYS	IN-INTERRUPTION	yes	yes	macro	((&key) &body sb-unix::body)
+SB-SYS	INT-SAP	yes	yes	function	(sb-impl::x)
+SB-SYS	INTERACTIVE-INTERRUPT	yes	yes	class+condition+type	-
+SB-SYS	INVALIDATE-DESCRIPTOR	yes	yes	function	(sb-impl::fd)
+SB-SYS	INVOKE-INTERRUPTION	yes	yes	function	(function)
+SB-SYS	IO-TIMEOUT	yes	yes	class+condition+type	-
+SB-SYS	MACRO	yes	yes	other	-
+SB-SYS	MAKE-FD-STREAM	yes	yes	function	(sb-impl::fd &key (class (quote sb-sys:fd-stream)) (sb-impl::input nil sb-impl::input-p) (sb-impl::output nil sb-impl::output-p) (sb-impl::element-type (quote base-char)) (sb-impl::buffering :full) (sb-impl::external-format :default) sb-impl::serve-events timeout sb-impl::file sb-impl::original sb-impl::delete-original pathname sb-impl::input-buffer-p sb-impl::dual-channel-p (sb-impl::name (if sb-impl::file (format nil #A((7) base-char . "file ~A") sb-impl::file) (format nil #A((13) base-char . "descriptor ~W") sb-impl::fd))) sb-impl::auto-close)
+SB-SYS	MEMMOVE	yes	yes	function	(sb-impl::dest sb-impl::src sb-impl::n)
+SB-SYS	MEMORY-FAULT-ERROR	yes	yes	function+class+condition+type	(sb-kernel::context-sap sb-kernel::address-sap)
+SB-SYS	NLX-PROTECT	yes	yes	special-operator	-
+SB-SYS	OS-COLD-INIT-OR-REINIT	yes	yes	function	()
+SB-SYS	OS-CONTEXT-T	yes	yes	other	-
+SB-SYS	OS-DEINIT	yes	yes	function	()
+SB-SYS	OS-EXIT	yes	yes	function	(sb-unix::code &key abort)
+SB-SYS	READ-CYCLE-COUNTER	yes	yes	function	()
+SB-SYS	READ-N-BYTES	yes	yes	function	(stream sb-impl::buffer sb-impl::start sb-impl::end &optional (sb-impl::eof-error-p t))
+SB-SYS	REMOVE-FD-HANDLER	yes	yes	function	(sb-impl::handler)
+SB-SYS	REOPEN-SHARED-OBJECTS	yes	yes	function	()
+SB-SYS	SAP+	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SAP-FOREIGN-SYMBOL	yes	yes	function	(sb-impl::sap)
+SB-SYS	SAP-INT	yes	yes	function	(sb-impl::x)
+SB-SYS	SAP-REF-16	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-32	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-64	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-8	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-DOUBLE	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-LISPOBJ	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-LONG	yes	yes	other	-
+SB-SYS	SAP-REF-SAP	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-SINGLE	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP-REF-WORD	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SAP<	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SAP<=	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SAP=	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SAP>	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SAP>=	yes	yes	function	(sb-impl::x sb-impl::y)
+SB-SYS	SCRUB-CONTROL-STACK	yes	yes	function	()
+SB-SYS	SERVE-ALL-EVENTS	yes	yes	function	(&optional timeout)
+SB-SYS	SERVE-EVENT	yes	yes	function	(&optional timeout)
+SB-SYS	SIGNAL-DEADLINE	yes	yes	function	()
+SB-SYS	SIGNED-SAP-REF-16	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SIGNED-SAP-REF-32	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SIGNED-SAP-REF-64	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SIGNED-SAP-REF-8	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SIGNED-SAP-REF-WORD	yes	yes	function	(sb-impl::sap sb-impl::offset)
+SB-SYS	SYSTEM-AREA-POINTER	yes	yes	class+type	-
+SB-SYS	SYSTEM-AREA-POINTER-P	yes	yes	function	(sb-impl::object)
+SB-SYS	SYSTEM-CONDITION	yes	yes	class+condition+type	-
+SB-SYS	SYSTEM-CONDITION-ADDRESS	yes	yes	function	(condition)
+SB-SYS	SYSTEM-CONDITION-CONTEXT	yes	yes	function	(condition)
+SB-SYS	SYSTEM-INTERNAL-RUN-TIME	yes	yes	function	()
+SB-SYS	UPDATE-ALIEN-LINKAGE-TABLE	yes	yes	function	(sb-impl::full-scan)
+SB-SYS	VECTOR-SAP	yes	yes	function	(sb-impl::x)
+SB-SYS	WAIT-UNTIL-FD-USABLE	yes	yes	function	(sb-impl::fd sb-impl::direction &optional timeout (sb-impl::serve-events t))
+SB-SYS	WITH-CODE-PAGES-PINNED	yes	yes	macro	((space) &body sb-vm::body)
+SB-SYS	WITH-DEADLINE	yes	yes	macro	((&key sb-impl::seconds sb-impl::override) &body sb-impl::body)
+SB-SYS	WITH-FD-HANDLER	yes	yes	macro	((sb-impl::fd sb-impl::direction function) &rest sb-impl::body)
+SB-SYS	WITH-INTERRUPT-BINDINGS	yes	yes	macro	(&body sb-unix::body)
+SB-SYS	WITH-INTERRUPTS	yes	yes	macro	(&body sb-unix::body)
+SB-SYS	WITH-LOCAL-INTERRUPTS	yes	yes	macro	(&body sb-unix::body)
+SB-SYS	WITH-PINNED-OBJECTS	yes	yes	macro	((&rest sb-vm::objects) &body sb-vm::body)
+SB-SYS	WITHOUT-GCING	yes	yes	macro	(&body sb-impl::body)
+SB-SYS	WITHOUT-INTERRUPTS	yes	yes	macro	(&body sb-unix::body)

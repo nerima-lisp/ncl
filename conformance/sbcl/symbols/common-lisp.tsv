@@ -1,0 +1,979 @@
+package	symbol	present	external	kind	lambda-list
+COMMON-LISP	&ALLOW-OTHER-KEYS	yes	yes	other	-
+COMMON-LISP	&AUX	yes	yes	other	-
+COMMON-LISP	&BODY	yes	yes	other	-
+COMMON-LISP	&ENVIRONMENT	yes	yes	other	-
+COMMON-LISP	&KEY	yes	yes	other	-
+COMMON-LISP	&OPTIONAL	yes	yes	other	-
+COMMON-LISP	&REST	yes	yes	other	-
+COMMON-LISP	&WHOLE	yes	yes	other	-
+COMMON-LISP	*	yes	yes	function+variable+type	(&rest sb-kernel::numbers)
+COMMON-LISP	**	yes	yes	variable	-
+COMMON-LISP	***	yes	yes	variable	-
+COMMON-LISP	*BREAK-ON-SIGNALS*	yes	yes	variable	-
+COMMON-LISP	*COMPILE-FILE-PATHNAME*	yes	yes	variable	-
+COMMON-LISP	*COMPILE-FILE-TRUENAME*	yes	yes	variable	-
+COMMON-LISP	*COMPILE-PRINT*	yes	yes	variable	-
+COMMON-LISP	*COMPILE-VERBOSE*	yes	yes	variable	-
+COMMON-LISP	*DEBUG-IO*	yes	yes	variable	-
+COMMON-LISP	*DEBUGGER-HOOK*	yes	yes	variable	-
+COMMON-LISP	*DEFAULT-PATHNAME-DEFAULTS*	yes	yes	variable	-
+COMMON-LISP	*ERROR-OUTPUT*	yes	yes	variable	-
+COMMON-LISP	*FEATURES*	yes	yes	variable	-
+COMMON-LISP	*GENSYM-COUNTER*	yes	yes	variable	-
+COMMON-LISP	*LOAD-PATHNAME*	yes	yes	variable	-
+COMMON-LISP	*LOAD-PRINT*	yes	yes	variable	-
+COMMON-LISP	*LOAD-TRUENAME*	yes	yes	variable	-
+COMMON-LISP	*LOAD-VERBOSE*	yes	yes	variable	-
+COMMON-LISP	*MACROEXPAND-HOOK*	yes	yes	variable	-
+COMMON-LISP	*MODULES*	yes	yes	variable	-
+COMMON-LISP	*PACKAGE*	yes	yes	variable	-
+COMMON-LISP	*PRINT-ARRAY*	yes	yes	variable	-
+COMMON-LISP	*PRINT-BASE*	yes	yes	variable	-
+COMMON-LISP	*PRINT-CASE*	yes	yes	variable	-
+COMMON-LISP	*PRINT-CIRCLE*	yes	yes	variable	-
+COMMON-LISP	*PRINT-ESCAPE*	yes	yes	variable	-
+COMMON-LISP	*PRINT-GENSYM*	yes	yes	variable	-
+COMMON-LISP	*PRINT-LENGTH*	yes	yes	variable	-
+COMMON-LISP	*PRINT-LEVEL*	yes	yes	variable	-
+COMMON-LISP	*PRINT-LINES*	yes	yes	variable	-
+COMMON-LISP	*PRINT-MISER-WIDTH*	yes	yes	variable	-
+COMMON-LISP	*PRINT-PPRINT-DISPATCH*	yes	yes	variable	-
+COMMON-LISP	*PRINT-PRETTY*	yes	yes	variable	-
+COMMON-LISP	*PRINT-RADIX*	yes	yes	variable	-
+COMMON-LISP	*PRINT-READABLY*	yes	yes	variable	-
+COMMON-LISP	*PRINT-RIGHT-MARGIN*	yes	yes	variable	-
+COMMON-LISP	*QUERY-IO*	yes	yes	variable	-
+COMMON-LISP	*RANDOM-STATE*	yes	yes	variable	-
+COMMON-LISP	*READ-BASE*	yes	yes	variable	-
+COMMON-LISP	*READ-DEFAULT-FLOAT-FORMAT*	yes	yes	variable	-
+COMMON-LISP	*READ-EVAL*	yes	yes	variable	-
+COMMON-LISP	*READ-SUPPRESS*	yes	yes	variable	-
+COMMON-LISP	*READTABLE*	yes	yes	variable	-
+COMMON-LISP	*STANDARD-INPUT*	yes	yes	variable	-
+COMMON-LISP	*STANDARD-OUTPUT*	yes	yes	variable	-
+COMMON-LISP	*TERMINAL-IO*	yes	yes	variable	-
+COMMON-LISP	*TRACE-OUTPUT*	yes	yes	variable	-
+COMMON-LISP	+	yes	yes	function+variable	(&rest sb-kernel::numbers)
+COMMON-LISP	++	yes	yes	variable	-
+COMMON-LISP	+++	yes	yes	variable	-
+COMMON-LISP	-	yes	yes	function+variable	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	/	yes	yes	function+variable	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	//	yes	yes	variable	-
+COMMON-LISP	///	yes	yes	variable	-
+COMMON-LISP	/=	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	1+	yes	yes	function	(number)
+COMMON-LISP	1-	yes	yes	function	(number)
+COMMON-LISP	<	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	<=	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	=	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	>	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	>=	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	ABORT	yes	yes	function	(&optional condition)
+COMMON-LISP	ABS	yes	yes	function	(number)
+COMMON-LISP	ACONS	yes	yes	function	(sb-impl::key sb-impl::datum sb-impl::alist)
+COMMON-LISP	ACOS	yes	yes	function	(number)
+COMMON-LISP	ACOSH	yes	yes	function	(number)
+COMMON-LISP	ADD-METHOD	yes	yes	function	(generic-function method)
+COMMON-LISP	ADJOIN	yes	yes	function	(sb-impl::item list &key sb-impl::key (sb-impl::test (function eql) sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	ADJUST-ARRAY	yes	yes	function	(array sb-vm::dimensions &key (sb-vm::element-type (array-element-type array) sb-vm::element-type-p) (sb-vm::initial-element nil sb-vm::element-p) (sb-vm::initial-contents nil sb-vm::contents-p) fill-pointer sb-vm::displaced-to (sb-vm::displaced-index-offset 0 sb-vm::offset-p))
+COMMON-LISP	ADJUSTABLE-ARRAY-P	yes	yes	function	(array)
+COMMON-LISP	ALLOCATE-INSTANCE	yes	yes	function	(class &rest sb-pcl::initargs)
+COMMON-LISP	ALPHA-CHAR-P	yes	yes	function	(char)
+COMMON-LISP	ALPHANUMERICP	yes	yes	function	(char)
+COMMON-LISP	AND	yes	yes	macro	(&rest sb-impl::forms)
+COMMON-LISP	APPEND	yes	yes	function	(&rest sb-impl::lists)
+COMMON-LISP	APPLY	yes	yes	function	(function sb-impl::arg &rest sb-impl::arguments)
+COMMON-LISP	APROPOS	yes	yes	function	(sb-kernel:string-designator &optional package sb-impl::external-only)
+COMMON-LISP	APROPOS-LIST	yes	yes	function	(sb-kernel:string-designator &optional sb-kernel:package-designator sb-impl::external-only &aux (string (the simple-string (sb-impl::stringify-string-designator sb-kernel:string-designator))))
+COMMON-LISP	AREF	yes	yes	function	(array &rest sb-vm::subscripts)
+COMMON-LISP	ARITHMETIC-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	ARITHMETIC-ERROR-OPERANDS	yes	yes	function	(condition)
+COMMON-LISP	ARITHMETIC-ERROR-OPERATION	yes	yes	function	(condition)
+COMMON-LISP	ARRAY	yes	yes	class+type	-
+COMMON-LISP	ARRAY-DIMENSION	yes	yes	function	(array sb-vm::axis-number)
+COMMON-LISP	ARRAY-DIMENSION-LIMIT	yes	yes	constant	-
+COMMON-LISP	ARRAY-DIMENSIONS	yes	yes	function	(array)
+COMMON-LISP	ARRAY-DISPLACEMENT	yes	yes	function	(array)
+COMMON-LISP	ARRAY-ELEMENT-TYPE	yes	yes	function	(array)
+COMMON-LISP	ARRAY-HAS-FILL-POINTER-P	yes	yes	function	(array)
+COMMON-LISP	ARRAY-IN-BOUNDS-P	yes	yes	function	(array &rest sb-vm::subscripts)
+COMMON-LISP	ARRAY-RANK	yes	yes	function	(array)
+COMMON-LISP	ARRAY-RANK-LIMIT	yes	yes	constant	-
+COMMON-LISP	ARRAY-ROW-MAJOR-INDEX	yes	yes	function	(array &rest sb-vm::subscripts)
+COMMON-LISP	ARRAY-TOTAL-SIZE	yes	yes	function	(array)
+COMMON-LISP	ARRAY-TOTAL-SIZE-LIMIT	yes	yes	constant	-
+COMMON-LISP	ARRAYP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	ASH	yes	yes	function	(integer count)
+COMMON-LISP	ASIN	yes	yes	function	(number)
+COMMON-LISP	ASINH	yes	yes	function	(number)
+COMMON-LISP	ASSERT	yes	yes	macro	(sb-impl::test-form &optional sb-impl::places sb-impl::datum &rest sb-impl::arguments)
+COMMON-LISP	ASSOC	yes	yes	function	(sb-impl::item sb-impl::alist &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	ASSOC-IF	yes	yes	function	(sb-impl::predicate sb-impl::alist &key sb-impl::key)
+COMMON-LISP	ASSOC-IF-NOT	yes	yes	function	(sb-impl::predicate sb-impl::alist &key sb-impl::key)
+COMMON-LISP	ATAN	yes	yes	function	(sb-kernel::y &optional (sb-kernel::x nil sb-kernel::xp))
+COMMON-LISP	ATANH	yes	yes	function	(number)
+COMMON-LISP	ATOM	yes	yes	function+type	(sb-impl::object)
+COMMON-LISP	BASE-CHAR	yes	yes	type	-
+COMMON-LISP	BASE-STRING	yes	yes	class+type	-
+COMMON-LISP	BIGNUM	yes	yes	class+type	-
+COMMON-LISP	BIT	yes	yes	function+type	(sb-vm::bit-array &rest sb-vm::subscripts)
+COMMON-LISP	BIT-AND	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-ANDC1	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-ANDC2	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-EQV	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-IOR	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-NAND	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-NOR	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-NOT	yes	yes	function	(sb-vm::bit-array &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-ORC1	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-ORC2	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BIT-VECTOR	yes	yes	class+type	-
+COMMON-LISP	BIT-VECTOR-P	yes	yes	function	(sb-impl::object)
+COMMON-LISP	BIT-XOR	yes	yes	function	(sb-vm::bit-array-1 sb-vm::bit-array-2 &optional sb-vm::result-bit-array)
+COMMON-LISP	BLOCK	yes	yes	special-operator	-
+COMMON-LISP	BOOLE	yes	yes	function	(sb-kernel::op sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	BOOLE-1	yes	yes	constant	-
+COMMON-LISP	BOOLE-2	yes	yes	constant	-
+COMMON-LISP	BOOLE-AND	yes	yes	constant	-
+COMMON-LISP	BOOLE-ANDC1	yes	yes	constant	-
+COMMON-LISP	BOOLE-ANDC2	yes	yes	constant	-
+COMMON-LISP	BOOLE-C1	yes	yes	constant	-
+COMMON-LISP	BOOLE-C2	yes	yes	constant	-
+COMMON-LISP	BOOLE-CLR	yes	yes	constant	-
+COMMON-LISP	BOOLE-EQV	yes	yes	constant	-
+COMMON-LISP	BOOLE-IOR	yes	yes	constant	-
+COMMON-LISP	BOOLE-NAND	yes	yes	constant	-
+COMMON-LISP	BOOLE-NOR	yes	yes	constant	-
+COMMON-LISP	BOOLE-ORC1	yes	yes	constant	-
+COMMON-LISP	BOOLE-ORC2	yes	yes	constant	-
+COMMON-LISP	BOOLE-SET	yes	yes	constant	-
+COMMON-LISP	BOOLE-XOR	yes	yes	constant	-
+COMMON-LISP	BOOLEAN	yes	yes	type	-
+COMMON-LISP	BOTH-CASE-P	yes	yes	function	(char)
+COMMON-LISP	BOUNDP	yes	yes	function	(symbol)
+COMMON-LISP	BREAK	yes	yes	function	(&optional (sb-kernel::datum #A((5) base-char . "break")) &rest sb-kernel::arguments)
+COMMON-LISP	BROADCAST-STREAM	yes	yes	class+type	-
+COMMON-LISP	BROADCAST-STREAM-STREAMS	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	BUILT-IN-CLASS	yes	yes	class+type	-
+COMMON-LISP	BUTLAST	yes	yes	function	(list &optional (sb-impl::n 1))
+COMMON-LISP	BYTE	yes	yes	function	(sb-kernel::size position)
+COMMON-LISP	BYTE-POSITION	yes	yes	function	(sb-kernel::bytespec)
+COMMON-LISP	BYTE-SIZE	yes	yes	function	(sb-kernel::bytespec)
+COMMON-LISP	CAAAAR	yes	yes	function	(list)
+COMMON-LISP	CAAADR	yes	yes	function	(list)
+COMMON-LISP	CAAAR	yes	yes	function	(list)
+COMMON-LISP	CAADAR	yes	yes	function	(list)
+COMMON-LISP	CAADDR	yes	yes	function	(list)
+COMMON-LISP	CAADR	yes	yes	function	(list)
+COMMON-LISP	CAAR	yes	yes	function	(list)
+COMMON-LISP	CADAAR	yes	yes	function	(list)
+COMMON-LISP	CADADR	yes	yes	function	(list)
+COMMON-LISP	CADAR	yes	yes	function	(list)
+COMMON-LISP	CADDAR	yes	yes	function	(list)
+COMMON-LISP	CADDDR	yes	yes	function	(list)
+COMMON-LISP	CADDR	yes	yes	function	(list)
+COMMON-LISP	CADR	yes	yes	function	(list)
+COMMON-LISP	CALL-ARGUMENTS-LIMIT	yes	yes	constant	-
+COMMON-LISP	CALL-METHOD	yes	yes	macro	(&rest sb-pcl::args)
+COMMON-LISP	CALL-NEXT-METHOD	yes	yes	other	-
+COMMON-LISP	CAR	yes	yes	function	(list)
+COMMON-LISP	CASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	CATCH	yes	yes	special-operator	-
+COMMON-LISP	CCASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	CDAAAR	yes	yes	function	(list)
+COMMON-LISP	CDAADR	yes	yes	function	(list)
+COMMON-LISP	CDAAR	yes	yes	function	(list)
+COMMON-LISP	CDADAR	yes	yes	function	(list)
+COMMON-LISP	CDADDR	yes	yes	function	(list)
+COMMON-LISP	CDADR	yes	yes	function	(list)
+COMMON-LISP	CDAR	yes	yes	function	(list)
+COMMON-LISP	CDDAAR	yes	yes	function	(list)
+COMMON-LISP	CDDADR	yes	yes	function	(list)
+COMMON-LISP	CDDAR	yes	yes	function	(list)
+COMMON-LISP	CDDDAR	yes	yes	function	(list)
+COMMON-LISP	CDDDDR	yes	yes	function	(list)
+COMMON-LISP	CDDDR	yes	yes	function	(list)
+COMMON-LISP	CDDR	yes	yes	function	(list)
+COMMON-LISP	CDR	yes	yes	function	(list)
+COMMON-LISP	CEILING	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	CELL-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	CELL-ERROR-NAME	yes	yes	function	(condition)
+COMMON-LISP	CERROR	yes	yes	function	(sb-kernel::continue-string sb-kernel::datum &rest sb-kernel::arguments)
+COMMON-LISP	CHANGE-CLASS	yes	yes	function	(sb-kernel:instance sb-pcl::new-class-name &rest sb-pcl::initargs &key &allow-other-keys)
+COMMON-LISP	CHAR	yes	yes	function	(string sb-int:index)
+COMMON-LISP	CHAR-CODE	yes	yes	function	(char)
+COMMON-LISP	CHAR-CODE-LIMIT	yes	yes	constant	-
+COMMON-LISP	CHAR-DOWNCASE	yes	yes	function	(char)
+COMMON-LISP	CHAR-EQUAL	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-GREATERP	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-INT	yes	yes	function	(char)
+COMMON-LISP	CHAR-LESSP	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-NAME	yes	yes	function	(character)
+COMMON-LISP	CHAR-NOT-EQUAL	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-NOT-GREATERP	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-NOT-LESSP	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR-UPCASE	yes	yes	function	(char)
+COMMON-LISP	CHAR/=	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR<	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR<=	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR=	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR>	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHAR>=	yes	yes	function	(character &rest sb-impl::more-characters)
+COMMON-LISP	CHARACTER	yes	yes	function+class+type	(sb-impl::object)
+COMMON-LISP	CHARACTERP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	CHECK-TYPE	yes	yes	macro	(sb-impl::place type &optional sb-impl::type-string)
+COMMON-LISP	CIS	yes	yes	function	(sb-kernel::theta)
+COMMON-LISP	CLASS	yes	yes	class+type	-
+COMMON-LISP	CLASS-NAME	yes	yes	function	(class)
+COMMON-LISP	CLASS-OF	yes	yes	function	(sb-pcl::x)
+COMMON-LISP	CLEAR-INPUT	yes	yes	function	(&optional (stream *standard-input*))
+COMMON-LISP	CLEAR-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+COMMON-LISP	CLOSE	yes	yes	function	(stream &key abort)
+COMMON-LISP	CLRHASH	yes	yes	function	(hash-table)
+COMMON-LISP	CODE-CHAR	yes	yes	function	(sb-impl::code)
+COMMON-LISP	COERCE	yes	yes	function	(sb-impl::object sb-impl::output-type-spec)
+COMMON-LISP	COMPILATION-SPEED	yes	yes	other	-
+COMMON-LISP	COMPILE	yes	yes	function	(sb-c::name &optional (sb-c::definition (or (and (symbolp . #1=(sb-c::name)) (macro-function . #1#)) (fdefinition . #1#)) sb-c::defp))
+COMMON-LISP	COMPILE-FILE	yes	yes	function	(sb-c::input-file &key (sb-c::output-file #A((0) base-char . "") sb-c::output-file-p) ((:verbose . #1=(*compile-verbose*)) . #1#) ((:print . #2=(*compile-print*)) . #2#) (sb-c::external-format :default) ((:progress . #3=(*compile-progress*)) . #3#) (sb-c::trace-file . #4=(nil)) ((:block-compile sb-c::*block-compile-argument*) *block-compile-default*) ((:entry-points sb-c::*entry-points-argument*) . #4#) (sb-c::emit-cfasl sb-c::*emit-cfasl*))
+COMMON-LISP	COMPILE-FILE-PATHNAME	yes	yes	function	(sb-c::input-file &key (sb-c::output-file nil sb-c::output-file-p) &allow-other-keys)
+COMMON-LISP	COMPILED-FUNCTION	yes	yes	type	-
+COMMON-LISP	COMPILED-FUNCTION-P	yes	yes	function	(sb-impl::object)
+COMMON-LISP	COMPILER-MACRO	yes	yes	other	-
+COMMON-LISP	COMPILER-MACRO-FUNCTION	yes	yes	function	(sb-impl::name &optional sb-impl::env)
+COMMON-LISP	COMPLEMENT	yes	yes	function	(function)
+COMMON-LISP	COMPLEX	yes	yes	function+class+type	(realpart &optional (imagpart 0))
+COMMON-LISP	COMPLEXP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	COMPUTE-APPLICABLE-METHODS	yes	yes	function	(generic-function sb-pcl::arguments)
+COMMON-LISP	COMPUTE-RESTARTS	yes	yes	function	(&optional condition)
+COMMON-LISP	CONCATENATE	yes	yes	function	(sb-impl::result-type &rest sb-impl::sequences)
+COMMON-LISP	CONCATENATED-STREAM	yes	yes	class+type	-
+COMMON-LISP	CONCATENATED-STREAM-STREAMS	yes	yes	function	(stream)
+COMMON-LISP	COND	yes	yes	macro	(&rest sb-impl::clauses)
+COMMON-LISP	CONDITION	yes	yes	class+condition+type	-
+COMMON-LISP	CONJUGATE	yes	yes	function	(number)
+COMMON-LISP	CONS	yes	yes	function+class+type	(sb-impl::se1 sb-impl::se2)
+COMMON-LISP	CONSP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	CONSTANTLY	yes	yes	function	(sb-impl::value)
+COMMON-LISP	CONSTANTP	yes	yes	function	(sb-kernel:form &optional (sb-c::environment nil sb-c::envp))
+COMMON-LISP	CONTINUE	yes	yes	function	(&optional condition)
+COMMON-LISP	CONTROL-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	COPY-ALIST	yes	yes	function	(sb-impl::alist)
+COMMON-LISP	COPY-LIST	yes	yes	function	(list)
+COMMON-LISP	COPY-PPRINT-DISPATCH	yes	yes	function	(&optional (sb-pretty::table *print-pprint-dispatch*))
+COMMON-LISP	COPY-READTABLE	yes	yes	function	(&optional (sb-impl::from-readtable *readtable*) sb-impl::to-readtable)
+COMMON-LISP	COPY-SEQ	yes	yes	function	(sequence)
+COMMON-LISP	COPY-STRUCTURE	yes	yes	function	(structure)
+COMMON-LISP	COPY-SYMBOL	yes	yes	function	(symbol &optional (sb-impl::copy-props nil))
+COMMON-LISP	COPY-TREE	yes	yes	function	(sb-impl::object)
+COMMON-LISP	COS	yes	yes	function	(number)
+COMMON-LISP	COSH	yes	yes	function	(number)
+COMMON-LISP	COUNT	yes	yes	function	(sb-impl::item sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (sb-impl::key . #1#) (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p))
+COMMON-LISP	COUNT-IF	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (sb-impl::key . #1#))
+COMMON-LISP	COUNT-IF-NOT	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (sb-impl::key . #1#))
+COMMON-LISP	CTYPECASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	DEBUG	yes	yes	other	-
+COMMON-LISP	DECF	yes	yes	macro	(sb-impl::place &optional (sb-impl::delta 1))
+COMMON-LISP	DECLAIM	yes	yes	macro	(&rest sb-impl::specs)
+COMMON-LISP	DECLARATION	yes	yes	other	-
+COMMON-LISP	DECLARE	yes	yes	other	-
+COMMON-LISP	DECODE-FLOAT	yes	yes	function	(sb-kernel::f)
+COMMON-LISP	DECODE-UNIVERSAL-TIME	yes	yes	function	(sb-impl::universal-time &optional sb-impl::time-zone)
+COMMON-LISP	DEFCLASS	yes	yes	macro	(sb-pcl::name sb-pcl::direct-superclasses sb-pcl::direct-slots &rest sb-pcl::options)
+COMMON-LISP	DEFCONSTANT	yes	yes	macro	(sb-impl::name sb-impl::value &optional (sb-impl::doc nil))
+COMMON-LISP	DEFGENERIC	yes	yes	macro	(sb-pcl::fun-name sb-pcl::lambda-list &body sb-pcl::options)
+COMMON-LISP	DEFINE-COMPILER-MACRO	yes	yes	macro	(sb-impl::name sb-impl::lambda-list &body sb-impl::body)
+COMMON-LISP	DEFINE-CONDITION	yes	yes	macro	(sb-kernel::name (&rest sb-kernel::parent-types) (&rest sb-kernel::slot-specs) &body sb-kernel::options)
+COMMON-LISP	DEFINE-METHOD-COMBINATION	yes	yes	macro	(sb-pcl::name . sb-pcl::args)
+COMMON-LISP	DEFINE-MODIFY-MACRO	yes	yes	macro	(sb-impl::name sb-impl::lambda-list function &optional sb-impl::doc-string)
+COMMON-LISP	DEFINE-SETF-EXPANDER	yes	yes	macro	(sb-impl::access-fn sb-impl::lambda-list &body sb-impl::body)
+COMMON-LISP	DEFINE-SYMBOL-MACRO	yes	yes	macro	(sb-impl::name sb-impl::expansion)
+COMMON-LISP	DEFMACRO	yes	yes	macro	(sb-c::name sb-c::lambda-list &body sb-c::body)
+COMMON-LISP	DEFMETHOD	yes	yes	macro	(sb-pcl::name &rest sb-pcl::args)
+COMMON-LISP	DEFPACKAGE	yes	yes	macro	(package &rest sb-impl::options)
+COMMON-LISP	DEFPARAMETER	yes	yes	macro	(sb-impl::var sb-impl::val &optional (sb-impl::doc nil))
+COMMON-LISP	DEFSETF	yes	yes	macro	(sb-impl::access-fn &rest rest)
+COMMON-LISP	DEFSTRUCT	yes	yes	macro	(sb-kernel::name-and-options &rest sb-kernel::slot-descriptions)
+COMMON-LISP	DEFTYPE	yes	yes	macro	(sb-impl::name sb-impl::lambda-list &body sb-impl::body)
+COMMON-LISP	DEFUN	yes	yes	macro	(sb-impl::name sb-impl::lambda-list &body sb-impl::body)
+COMMON-LISP	DEFVAR	yes	yes	macro	(sb-impl::var &optional (sb-impl::val . #1=(nil)) (sb-impl::doc . #1#))
+COMMON-LISP	DELETE	yes	yes	function	(sb-impl::item sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	DELETE-DUPLICATES	yes	yes	function	(sequence &rest sb-impl::args &key (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start 0) (sb-impl::end . #1=(nil)) sb-impl::from-end (sb-impl::key . #1#))
+COMMON-LISP	DELETE-FILE	yes	yes	function	(sb-impl::file)
+COMMON-LISP	DELETE-IF	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::key . #1=(nil)) (sb-impl::end . #1#) (count . #1#))
+COMMON-LISP	DELETE-IF-NOT	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (sb-impl::key . #1#) (count . #1#))
+COMMON-LISP	DELETE-PACKAGE	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	DENOMINATOR	yes	yes	function	(number)
+COMMON-LISP	DEPOSIT-FIELD	yes	yes	function	(sb-kernel::newbyte sb-kernel::bytespec integer)
+COMMON-LISP	DESCRIBE	yes	yes	function	(sb-impl::object &optional (sb-kernel:stream-designator *standard-output*))
+COMMON-LISP	DESCRIBE-OBJECT	yes	yes	function	(sb-impl::object stream)
+COMMON-LISP	DESTRUCTURING-BIND	yes	yes	macro	(sb-impl::lambda-list sb-impl::expression &body sb-impl::body)
+COMMON-LISP	DIGIT-CHAR	yes	yes	function	(sb-impl::weight &optional (sb-impl::radix 10))
+COMMON-LISP	DIGIT-CHAR-P	yes	yes	function	(char &optional (sb-impl::radix 10))
+COMMON-LISP	DIRECTORY	yes	yes	function	(sb-impl::pathspec &key (sb-impl::resolve-symlinks t))
+COMMON-LISP	DIRECTORY-NAMESTRING	yes	yes	function	(pathname)
+COMMON-LISP	DISASSEMBLE	yes	yes	function	(sb-disassem::object &key (stream *standard-output*) (sb-disassem::use-labels t))
+COMMON-LISP	DIVISION-BY-ZERO	yes	yes	class+condition+type	-
+COMMON-LISP	DO	yes	yes	macro	(sb-impl::varlist sb-impl::endlist &body sb-impl::body)
+COMMON-LISP	DO*	yes	yes	macro	(sb-impl::varlist sb-impl::endlist &body sb-impl::body)
+COMMON-LISP	DO-ALL-SYMBOLS	yes	yes	macro	((sb-impl::var &optional sb-impl::result-form) &body sb-impl::body-decls)
+COMMON-LISP	DO-EXTERNAL-SYMBOLS	yes	yes	macro	((sb-impl::var &optional (package (quote *package*)) sb-impl::result-form) &body sb-impl::body-decls)
+COMMON-LISP	DO-SYMBOLS	yes	yes	macro	((sb-impl::var &optional (package (quote *package*)) sb-impl::result-form) &body sb-impl::body-decls)
+COMMON-LISP	DOCUMENTATION	yes	yes	function	(sb-pcl::object sb-pcl::doc-type)
+COMMON-LISP	DOLIST	yes	yes	macro	((sb-impl::var list &optional (sb-impl::result nil)) &body sb-impl::body)
+COMMON-LISP	DOTIMES	yes	yes	macro	((sb-impl::var count &optional (sb-impl::result nil)) &body sb-impl::body)
+COMMON-LISP	DOUBLE-FLOAT	yes	yes	class+type	-
+COMMON-LISP	DOUBLE-FLOAT-EPSILON	yes	yes	constant	-
+COMMON-LISP	DOUBLE-FLOAT-NEGATIVE-EPSILON	yes	yes	constant	-
+COMMON-LISP	DPB	yes	yes	function	(sb-kernel::newbyte sb-kernel::bytespec integer)
+COMMON-LISP	DRIBBLE	yes	yes	function	(&optional pathname &key (sb-impl::if-exists :append))
+COMMON-LISP	DYNAMIC-EXTENT	yes	yes	other	-
+COMMON-LISP	ECASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	ECHO-STREAM	yes	yes	class+type	-
+COMMON-LISP	ECHO-STREAM-INPUT-STREAM	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	ECHO-STREAM-OUTPUT-STREAM	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	ED	yes	yes	function	(&optional sb-impl::x)
+COMMON-LISP	EIGHTH	yes	yes	function	(list)
+COMMON-LISP	ELT	yes	yes	function	(sequence sb-int:index)
+COMMON-LISP	ENCODE-UNIVERSAL-TIME	yes	yes	function	(second sb-impl::minute sb-impl::hour sb-impl::date sb-impl::month sb-impl::year &optional sb-impl::time-zone)
+COMMON-LISP	END-OF-FILE	yes	yes	class+condition+type	-
+COMMON-LISP	ENDP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	ENOUGH-NAMESTRING	yes	yes	function	(pathname &optional (sb-impl::defaults *default-pathname-defaults*))
+COMMON-LISP	ENSURE-DIRECTORIES-EXIST	yes	yes	function	(sb-impl::pathspec &key sb-impl::verbose (sb-impl::mode 511))
+COMMON-LISP	ENSURE-GENERIC-FUNCTION	yes	yes	function	(sb-pcl::fun-name &rest sb-pcl::all-keys)
+COMMON-LISP	EQ	yes	yes	function	(sb-impl::obj1 sb-impl::obj2)
+COMMON-LISP	EQL	yes	yes	function+type	(sb-impl::x sb-impl::y)
+COMMON-LISP	EQUAL	yes	yes	function	(sb-impl::x sb-impl::y)
+COMMON-LISP	EQUALP	yes	yes	function	(sb-impl::x sb-impl::y)
+COMMON-LISP	ERROR	yes	yes	function+class+condition+type	(sb-kernel::datum &rest sb-kernel::arguments)
+COMMON-LISP	ETYPECASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	EVAL	yes	yes	function	(sb-impl::original-exp)
+COMMON-LISP	EVAL-WHEN	yes	yes	special-operator	-
+COMMON-LISP	EVENP	yes	yes	function	(integer)
+COMMON-LISP	EVERY	yes	yes	function	(sb-impl::pred sb-impl::first-seq &rest sb-impl::more-seqs)
+COMMON-LISP	EXP	yes	yes	function	(number)
+COMMON-LISP	EXPORT	yes	yes	function	(sb-impl::symbols &optional (package (sb-int:sane-package)))
+COMMON-LISP	EXPT	yes	yes	function	(sb-kernel::base sb-kernel::power)
+COMMON-LISP	EXTENDED-CHAR	yes	yes	type	-
+COMMON-LISP	FBOUNDP	yes	yes	function	(sb-impl::name)
+COMMON-LISP	FCEILING	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	FDEFINITION	yes	yes	function	(sb-impl::name)
+COMMON-LISP	FFLOOR	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	FIFTH	yes	yes	function	(list)
+COMMON-LISP	FILE-AUTHOR	yes	yes	function	(sb-impl::pathspec)
+COMMON-LISP	FILE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	FILE-ERROR-PATHNAME	yes	yes	function	(condition)
+COMMON-LISP	FILE-LENGTH	yes	yes	function	(stream)
+COMMON-LISP	FILE-NAMESTRING	yes	yes	function	(pathname)
+COMMON-LISP	FILE-POSITION	yes	yes	function	(stream &optional (position 0 sb-impl::suppliedp))
+COMMON-LISP	FILE-STREAM	yes	yes	class+type	-
+COMMON-LISP	FILE-STRING-LENGTH	yes	yes	function	(stream sb-impl::object)
+COMMON-LISP	FILE-WRITE-DATE	yes	yes	function	(sb-impl::pathspec)
+COMMON-LISP	FILL	yes	yes	function	(sequence sb-impl::item &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	FILL-POINTER	yes	yes	function	(vector)
+COMMON-LISP	FIND	yes	yes	function	(sb-impl::item sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key sb-impl::test sb-impl::test-not)
+COMMON-LISP	FIND-ALL-SYMBOLS	yes	yes	function	(sb-kernel:string-designator)
+COMMON-LISP	FIND-CLASS	yes	yes	function	(symbol &optional (sb-pcl::errorp t) sb-pcl::environment)
+COMMON-LISP	FIND-IF	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key)
+COMMON-LISP	FIND-IF-NOT	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key)
+COMMON-LISP	FIND-METHOD	yes	yes	function	(generic-function sb-pcl::qualifiers sb-pcl::specializers &optional sb-pcl::errorp)
+COMMON-LISP	FIND-PACKAGE	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	FIND-RESTART	yes	yes	function	(sb-kernel::identifier &optional condition)
+COMMON-LISP	FIND-SYMBOL	yes	yes	function	(sb-impl::name &optional (package (sb-int:sane-package)))
+COMMON-LISP	FINISH-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+COMMON-LISP	FIRST	yes	yes	function	(list)
+COMMON-LISP	FIXNUM	yes	yes	class+type	-
+COMMON-LISP	FLET	yes	yes	special-operator	-
+COMMON-LISP	FLOAT	yes	yes	function+class+type	(number &optional (sb-kernel::other nil sb-kernel::otherp))
+COMMON-LISP	FLOAT-DIGITS	yes	yes	function	(sb-kernel::f)
+COMMON-LISP	FLOAT-PRECISION	yes	yes	function	(sb-kernel::f)
+COMMON-LISP	FLOAT-RADIX	yes	yes	function	(sb-kernel::x)
+COMMON-LISP	FLOAT-SIGN	yes	yes	function	(sb-kernel::float1 &optional (sb-kernel::float2 (float 1 sb-kernel::float1)))
+COMMON-LISP	FLOATING-POINT-INEXACT	yes	yes	class+condition+type	-
+COMMON-LISP	FLOATING-POINT-INVALID-OPERATION	yes	yes	class+condition+type	-
+COMMON-LISP	FLOATING-POINT-OVERFLOW	yes	yes	class+condition+type	-
+COMMON-LISP	FLOATING-POINT-UNDERFLOW	yes	yes	class+condition+type	-
+COMMON-LISP	FLOATP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	FLOOR	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	FMAKUNBOUND	yes	yes	function	(sb-impl::name)
+COMMON-LISP	FORCE-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+COMMON-LISP	FORMAT	yes	yes	function	(sb-format::destination sb-format::control-string &rest sb-format::format-arguments)
+COMMON-LISP	FORMATTER	yes	yes	macro	(sb-format::control-string)
+COMMON-LISP	FOURTH	yes	yes	function	(list)
+COMMON-LISP	FRESH-LINE	yes	yes	function	(&optional (stream *standard-output*))
+COMMON-LISP	FROUND	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	FTRUNCATE	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	FTYPE	yes	yes	other	-
+COMMON-LISP	FUNCALL	yes	yes	function	(function &rest sb-impl::arguments)
+COMMON-LISP	FUNCTION	yes	yes	special-operator+class+type	-
+COMMON-LISP	FUNCTION-KEYWORDS	yes	yes	function	(method)
+COMMON-LISP	FUNCTION-LAMBDA-EXPRESSION	yes	yes	function	(sb-impl::fun)
+COMMON-LISP	FUNCTIONP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	GCD	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	GENERIC-FUNCTION	yes	yes	class+type	-
+COMMON-LISP	GENSYM	yes	yes	function	(&optional (sb-impl::thing #A((1) base-char . "G")))
+COMMON-LISP	GENTEMP	yes	yes	function	(&optional (sb-impl::prefix #A((1) base-char . "T")) (package (sb-int:sane-package)))
+COMMON-LISP	GET	yes	yes	function	(symbol sb-impl::indicator &optional (sb-impl::default nil))
+COMMON-LISP	GET-DECODED-TIME	yes	yes	function	()
+COMMON-LISP	GET-DISPATCH-MACRO-CHARACTER	yes	yes	function	(sb-impl::disp-char sb-impl::sub-char &optional (sb-impl::rt-designator *readtable*))
+COMMON-LISP	GET-INTERNAL-REAL-TIME	yes	yes	function	()
+COMMON-LISP	GET-INTERNAL-RUN-TIME	yes	yes	function	()
+COMMON-LISP	GET-MACRO-CHARACTER	yes	yes	function	(char &optional (sb-impl::rt-designator *readtable*))
+COMMON-LISP	GET-OUTPUT-STREAM-STRING	yes	yes	function	(stream)
+COMMON-LISP	GET-PROPERTIES	yes	yes	function	(sb-impl::place sb-impl::indicator-list)
+COMMON-LISP	GET-SETF-EXPANSION	yes	yes	function	(sb-kernel:form &optional sb-impl::environment)
+COMMON-LISP	GET-UNIVERSAL-TIME	yes	yes	function	()
+COMMON-LISP	GETF	yes	yes	function	(sb-impl::place sb-impl::indicator &optional (sb-impl::default nil))
+COMMON-LISP	GETHASH	yes	yes	function	(sb-impl::key hash-table &optional sb-impl::default)
+COMMON-LISP	GO	yes	yes	special-operator	-
+COMMON-LISP	GRAPHIC-CHAR-P	yes	yes	function	(char)
+COMMON-LISP	HANDLER-BIND	yes	yes	macro	(sb-kernel::bindings &body sb-kernel::forms)
+COMMON-LISP	HANDLER-CASE	yes	yes	macro	(sb-kernel:form &rest sb-kernel::cases)
+COMMON-LISP	HASH-TABLE	yes	yes	class+type	-
+COMMON-LISP	HASH-TABLE-COUNT	yes	yes	function	(hash-table)
+COMMON-LISP	HASH-TABLE-P	yes	yes	function	(sb-kernel::object)
+COMMON-LISP	HASH-TABLE-REHASH-SIZE	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	HASH-TABLE-REHASH-THRESHOLD	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	HASH-TABLE-SIZE	yes	yes	function	(hash-table)
+COMMON-LISP	HASH-TABLE-TEST	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	HOST-NAMESTRING	yes	yes	function	(pathname)
+COMMON-LISP	IDENTITY	yes	yes	function	(sb-impl::thing)
+COMMON-LISP	IF	yes	yes	special-operator	-
+COMMON-LISP	IGNORABLE	yes	yes	other	-
+COMMON-LISP	IGNORE	yes	yes	other	-
+COMMON-LISP	IGNORE-ERRORS	yes	yes	macro	(&rest sb-kernel::forms)
+COMMON-LISP	IMAGPART	yes	yes	function	(number)
+COMMON-LISP	IMPORT	yes	yes	function	(sb-impl::symbols &optional (package (sb-int:sane-package)))
+COMMON-LISP	IN-PACKAGE	yes	yes	macro	(sb-kernel:string-designator)
+COMMON-LISP	INCF	yes	yes	macro	(sb-impl::place &optional (sb-impl::delta 1))
+COMMON-LISP	INITIALIZE-INSTANCE	yes	yes	function	(sb-kernel:instance &rest sb-pcl::initargs &key sb-pcl::name sb-pcl::initform sb-pcl::initfunction type sb-pcl::allocation sb-pcl::initargs documentation sb-pcl::readers sb-pcl::writers sb-pcl::lambda-list sb-pcl::argument-precedence-order &allow-other-keys)
+COMMON-LISP	INLINE	yes	yes	other	-
+COMMON-LISP	INPUT-STREAM-P	yes	yes	function	(stream)
+COMMON-LISP	INSPECT	yes	yes	function	(sb-impl::object)
+COMMON-LISP	INTEGER	yes	yes	class+type	-
+COMMON-LISP	INTEGER-DECODE-FLOAT	yes	yes	function	(sb-kernel::x)
+COMMON-LISP	INTEGER-LENGTH	yes	yes	function	(integer)
+COMMON-LISP	INTEGERP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	INTERACTIVE-STREAM-P	yes	yes	function	(stream)
+COMMON-LISP	INTERN	yes	yes	function	(sb-impl::name &optional (package (sb-int:sane-package)))
+COMMON-LISP	INTERNAL-TIME-UNITS-PER-SECOND	yes	yes	constant	-
+COMMON-LISP	INTERSECTION	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	INVALID-METHOD-ERROR	yes	yes	function	(method sb-kernel:format-control &rest sb-pcl::format-arguments)
+COMMON-LISP	INVOKE-DEBUGGER	yes	yes	function	(condition)
+COMMON-LISP	INVOKE-RESTART	yes	yes	function	(restart &rest values)
+COMMON-LISP	INVOKE-RESTART-INTERACTIVELY	yes	yes	function	(restart)
+COMMON-LISP	ISQRT	yes	yes	function	(sb-kernel::n)
+COMMON-LISP	KEYWORD	yes	yes	type	-
+COMMON-LISP	KEYWORDP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	LABELS	yes	yes	special-operator	-
+COMMON-LISP	LAMBDA	yes	yes	macro	(sb-impl::args &body sb-impl::body)
+COMMON-LISP	LAMBDA-LIST-KEYWORDS	yes	yes	constant	-
+COMMON-LISP	LAMBDA-PARAMETERS-LIMIT	yes	yes	constant	-
+COMMON-LISP	LAST	yes	yes	function	(list &optional (sb-impl::n 1))
+COMMON-LISP	LCM	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	LDB	yes	yes	function	(sb-kernel::bytespec integer)
+COMMON-LISP	LDB-TEST	yes	yes	function	(sb-kernel::bytespec integer)
+COMMON-LISP	LDIFF	yes	yes	function	(list sb-impl::object)
+COMMON-LISP	LEAST-NEGATIVE-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-NORMALIZED-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-NORMALIZED-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-NORMALIZED-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-NORMALIZED-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-NEGATIVE-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-NORMALIZED-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-NORMALIZED-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-NORMALIZED-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-NORMALIZED-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	LEAST-POSITIVE-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	LENGTH	yes	yes	function	(sequence)
+COMMON-LISP	LET	yes	yes	special-operator	-
+COMMON-LISP	LET*	yes	yes	special-operator	-
+COMMON-LISP	LISP-IMPLEMENTATION-TYPE	yes	yes	function	()
+COMMON-LISP	LISP-IMPLEMENTATION-VERSION	yes	yes	function	()
+COMMON-LISP	LIST	yes	yes	function+class+type	(&rest sb-impl::args)
+COMMON-LISP	LIST*	yes	yes	function	(sb-impl::arg &rest sb-impl::others)
+COMMON-LISP	LIST-ALL-PACKAGES	yes	yes	function	()
+COMMON-LISP	LIST-LENGTH	yes	yes	function	(list)
+COMMON-LISP	LISTEN	yes	yes	function	(&optional (stream *standard-input*))
+COMMON-LISP	LISTP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	LOAD	yes	yes	function	(sb-fasl::filespec &key (sb-fasl::verbose *load-verbose*) (print *load-print*) (sb-fasl::if-does-not-exist :error) (sb-fasl::external-format :default))
+COMMON-LISP	LOAD-LOGICAL-PATHNAME-TRANSLATIONS	yes	yes	function	(sb-kernel:host)
+COMMON-LISP	LOAD-TIME-VALUE	yes	yes	special-operator	-
+COMMON-LISP	LOCALLY	yes	yes	special-operator	-
+COMMON-LISP	LOG	yes	yes	function	(number &optional (sb-kernel::base nil sb-kernel::base-p))
+COMMON-LISP	LOGAND	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	LOGANDC1	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGANDC2	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGBITP	yes	yes	function	(sb-int:index integer)
+COMMON-LISP	LOGCOUNT	yes	yes	function	(integer)
+COMMON-LISP	LOGEQV	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	LOGICAL-PATHNAME	yes	yes	function+class+type	(sb-impl::pathspec)
+COMMON-LISP	LOGICAL-PATHNAME-TRANSLATIONS	yes	yes	function	(sb-kernel:host)
+COMMON-LISP	LOGIOR	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	LOGNAND	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGNOR	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGNOT	yes	yes	function	(number)
+COMMON-LISP	LOGORC1	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGORC2	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGTEST	yes	yes	function	(sb-kernel::integer1 sb-kernel::integer2)
+COMMON-LISP	LOGXOR	yes	yes	function	(&rest sb-kernel::integers)
+COMMON-LISP	LONG-FLOAT	yes	yes	type	-
+COMMON-LISP	LONG-FLOAT-EPSILON	yes	yes	constant	-
+COMMON-LISP	LONG-FLOAT-NEGATIVE-EPSILON	yes	yes	constant	-
+COMMON-LISP	LONG-SITE-NAME	yes	yes	function	()
+COMMON-LISP	LOOP	yes	yes	macro	(&rest sb-loop::keywords-and-forms)
+COMMON-LISP	LOOP-FINISH	yes	yes	macro	()
+COMMON-LISP	LOWER-CASE-P	yes	yes	function	(char)
+COMMON-LISP	MACHINE-INSTANCE	yes	yes	function	()
+COMMON-LISP	MACHINE-TYPE	yes	yes	function	()
+COMMON-LISP	MACHINE-VERSION	yes	yes	function	()
+COMMON-LISP	MACRO-FUNCTION	yes	yes	function	(symbol &optional sb-c::env)
+COMMON-LISP	MACROEXPAND	yes	yes	function	(sb-kernel:form &optional sb-impl::env)
+COMMON-LISP	MACROEXPAND-1	yes	yes	function	(sb-kernel:form &optional sb-impl::env)
+COMMON-LISP	MACROLET	yes	yes	special-operator	-
+COMMON-LISP	MAKE-ARRAY	yes	yes	function	(sb-vm::dimensions &rest sb-vm::args &key (sb-vm::element-type t) sb-vm::initial-element sb-vm::initial-contents sb-vm::adjustable fill-pointer sb-vm::displaced-to sb-vm::displaced-index-offset)
+COMMON-LISP	MAKE-BROADCAST-STREAM	yes	yes	function	(&rest sb-impl::streams)
+COMMON-LISP	MAKE-CONCATENATED-STREAM	yes	yes	function	(&rest sb-impl::streams)
+COMMON-LISP	MAKE-CONDITION	yes	yes	function	(type &rest sb-kernel::initargs)
+COMMON-LISP	MAKE-DISPATCH-MACRO-CHARACTER	yes	yes	function	(char &optional (sb-impl::non-terminating-p nil) (sb-impl::rt *readtable*))
+COMMON-LISP	MAKE-ECHO-STREAM	yes	yes	function	(sb-impl::input-stream sb-impl::output-stream)
+COMMON-LISP	MAKE-HASH-TABLE	yes	yes	function	(&key (sb-impl::test (quote eql)) (sb-impl::size 7) (sb-impl::rehash-size 1.5) (sb-impl::rehash-threshold 1) (sb-impl::hash-function nil sb-impl::user-hashfun-p) (sb-impl::weakness nil) (sb-impl::synchronized))
+COMMON-LISP	MAKE-INSTANCE	yes	yes	function	(class &rest sb-pcl::initargs &key &allow-other-keys)
+COMMON-LISP	MAKE-INSTANCES-OBSOLETE	yes	yes	function	(class)
+COMMON-LISP	MAKE-LIST	yes	yes	function	(sb-impl::size &key sb-impl::initial-element)
+COMMON-LISP	MAKE-LOAD-FORM	yes	yes	function	(sb-pcl::object &optional sb-pcl::environment)
+COMMON-LISP	MAKE-LOAD-FORM-SAVING-SLOTS	yes	yes	function	(sb-kernel::object &key (sb-kernel::slot-names nil sb-kernel::slot-names-p) sb-kernel::environment)
+COMMON-LISP	MAKE-METHOD	yes	yes	other	-
+COMMON-LISP	MAKE-PACKAGE	yes	yes	function	(sb-impl::name &key (sb-impl::use (quote nil)) sb-impl::nicknames (sb-impl::internal-symbols . #1=(10)) (sb-impl::external-symbols . #1#))
+COMMON-LISP	MAKE-PATHNAME	yes	yes	function	(&key sb-kernel:host (sb-impl::device nil sb-impl::devp) (directory nil sb-impl::dirp) (sb-impl::name nil sb-impl::namep) (type nil typep) (sb-impl::version nil sb-impl::versionp) sb-impl::defaults (case :local))
+COMMON-LISP	MAKE-RANDOM-STATE	yes	yes	function	(&optional sb-kernel::state)
+COMMON-LISP	MAKE-SEQUENCE	yes	yes	function	(sb-impl::result-type length &key (sb-impl::initial-element nil sb-impl::iep))
+COMMON-LISP	MAKE-STRING	yes	yes	function	(count &key (sb-impl::element-type (quote character)) (sb-impl::initial-element nil sb-impl::iep))
+COMMON-LISP	MAKE-STRING-INPUT-STREAM	yes	yes	function	(string &optional (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	MAKE-STRING-OUTPUT-STREAM	yes	yes	function	(&key (sb-impl::element-type (quote character)))
+COMMON-LISP	MAKE-SYMBOL	yes	yes	function	(string)
+COMMON-LISP	MAKE-SYNONYM-STREAM	yes	yes	function	(symbol)
+COMMON-LISP	MAKE-TWO-WAY-STREAM	yes	yes	function	(sb-impl::input-stream sb-impl::output-stream)
+COMMON-LISP	MAKUNBOUND	yes	yes	function	(symbol)
+COMMON-LISP	MAP	yes	yes	function	(sb-impl::result-type function sb-impl::first-sequence &rest sb-impl::more-sequences)
+COMMON-LISP	MAP-INTO	yes	yes	function	(sb-impl::result-sequence function &rest sb-impl::sequences)
+COMMON-LISP	MAPC	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MAPCAN	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MAPCAR	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MAPCON	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MAPHASH	yes	yes	function	(sb-kernel:function-designator hash-table)
+COMMON-LISP	MAPL	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MAPLIST	yes	yes	function	(function list &rest sb-impl::more-lists)
+COMMON-LISP	MASK-FIELD	yes	yes	function	(sb-kernel::bytespec integer)
+COMMON-LISP	MAX	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	MEMBER	yes	yes	function	(sb-impl::item list &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	MEMBER-IF	yes	yes	function	(sb-impl::test list &key sb-impl::key)
+COMMON-LISP	MEMBER-IF-NOT	yes	yes	function	(sb-impl::test list &key sb-impl::key)
+COMMON-LISP	MERGE	yes	yes	function	(sb-impl::result-type sb-impl::sequence1 sb-impl::sequence2 sb-impl::predicate &key sb-impl::key)
+COMMON-LISP	MERGE-PATHNAMES	yes	yes	function	(pathname &optional (sb-impl::defaults *default-pathname-defaults*) (sb-impl::default-version :newest))
+COMMON-LISP	METHOD	yes	yes	class+type	-
+COMMON-LISP	METHOD-COMBINATION	yes	yes	class+type	-
+COMMON-LISP	METHOD-COMBINATION-ERROR	yes	yes	function	(sb-kernel:format-control &rest sb-pcl::format-arguments)
+COMMON-LISP	METHOD-QUALIFIERS	yes	yes	function	(sb-pcl::m)
+COMMON-LISP	MIN	yes	yes	function	(number &rest sb-kernel::more-numbers)
+COMMON-LISP	MINUSP	yes	yes	function	(number)
+COMMON-LISP	MISMATCH	yes	yes	function	(sb-impl::sequence1 sb-impl::sequence2 &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start1 . #1=(0)) (sb-impl::end1 . #2=(nil)) (sb-impl::start2 . #1#) (sb-impl::end2 . #2#) (sb-impl::key . #2#))
+COMMON-LISP	MOD	yes	yes	function+type	(number sb-kernel::divisor)
+COMMON-LISP	MOST-NEGATIVE-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-NEGATIVE-FIXNUM	yes	yes	constant	-
+COMMON-LISP	MOST-NEGATIVE-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-NEGATIVE-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-NEGATIVE-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-POSITIVE-DOUBLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-POSITIVE-FIXNUM	yes	yes	constant	-
+COMMON-LISP	MOST-POSITIVE-LONG-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-POSITIVE-SHORT-FLOAT	yes	yes	constant	-
+COMMON-LISP	MOST-POSITIVE-SINGLE-FLOAT	yes	yes	constant	-
+COMMON-LISP	MUFFLE-WARNING	yes	yes	function	(&optional condition)
+COMMON-LISP	MULTIPLE-VALUE-BIND	yes	yes	macro	(sb-impl::vars sb-impl::value-form &body sb-impl::body)
+COMMON-LISP	MULTIPLE-VALUE-CALL	yes	yes	special-operator	-
+COMMON-LISP	MULTIPLE-VALUE-LIST	yes	yes	macro	(sb-impl::value-form)
+COMMON-LISP	MULTIPLE-VALUE-PROG1	yes	yes	special-operator	-
+COMMON-LISP	MULTIPLE-VALUE-SETQ	yes	yes	macro	(sb-impl::vars sb-impl::value-form)
+COMMON-LISP	MULTIPLE-VALUES-LIMIT	yes	yes	constant	-
+COMMON-LISP	NAME-CHAR	yes	yes	function	(sb-unicode::name)
+COMMON-LISP	NAMESTRING	yes	yes	function	(pathname)
+COMMON-LISP	NBUTLAST	yes	yes	function	(list &optional (sb-impl::n 1))
+COMMON-LISP	NCONC	yes	yes	function	(&rest sb-impl::lists)
+COMMON-LISP	NEXT-METHOD-P	yes	yes	other	-
+COMMON-LISP	NIL	yes	yes	constant+type	-
+COMMON-LISP	NINTERSECTION	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	NINTH	yes	yes	function	(list)
+COMMON-LISP	NO-APPLICABLE-METHOD	yes	yes	function	(generic-function &rest sb-pcl::args)
+COMMON-LISP	NO-NEXT-METHOD	yes	yes	function	(generic-function method &rest sb-pcl::args)
+COMMON-LISP	NOT	yes	yes	function	(sb-impl::object)
+COMMON-LISP	NOTANY	yes	yes	function	(sb-impl::pred sb-impl::first-seq &rest sb-impl::more-seqs)
+COMMON-LISP	NOTEVERY	yes	yes	function	(sb-impl::pred sb-impl::first-seq &rest sb-impl::more-seqs)
+COMMON-LISP	NOTINLINE	yes	yes	other	-
+COMMON-LISP	NRECONC	yes	yes	function	(sb-impl::x sb-impl::y)
+COMMON-LISP	NREVERSE	yes	yes	function	(sequence)
+COMMON-LISP	NSET-DIFFERENCE	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	NSET-EXCLUSIVE-OR	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test #1=(function eql) sb-impl::testp) (sb-impl::test-not #1# sb-impl::notp))
+COMMON-LISP	NSTRING-CAPITALIZE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	NSTRING-DOWNCASE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	NSTRING-UPCASE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	NSUBLIS	yes	yes	function	(sb-impl::alist sb-impl::tree &key sb-impl::key (sb-impl::test #1=(function eql) sb-impl::testp) (sb-impl::test-not #1# sb-impl::notp))
+COMMON-LISP	NSUBST	yes	yes	function	(sb-impl::new sb-impl::old sb-impl::tree &key sb-impl::key (sb-impl::test #1=(function eql) sb-impl::testp) (sb-impl::test-not #1# sb-impl::notp))
+COMMON-LISP	NSUBST-IF	yes	yes	function	(sb-impl::new sb-impl::test sb-impl::tree &key sb-impl::key)
+COMMON-LISP	NSUBST-IF-NOT	yes	yes	function	(sb-impl::new sb-impl::test sb-impl::tree &key sb-impl::key)
+COMMON-LISP	NSUBSTITUTE	yes	yes	function	(sb-impl::new sb-impl::old sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#) (sb-impl::start 0))
+COMMON-LISP	NSUBSTITUTE-IF	yes	yes	function	(sb-impl::new sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	NSUBSTITUTE-IF-NOT	yes	yes	function	(sb-impl::new sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	NTH	yes	yes	function	(sb-impl::n list)
+COMMON-LISP	NTH-VALUE	yes	yes	macro	(sb-impl::n sb-kernel:form)
+COMMON-LISP	NTHCDR	yes	yes	function	(sb-impl::n list)
+COMMON-LISP	NULL	yes	yes	function+class+type	(sb-impl::object)
+COMMON-LISP	NUMBER	yes	yes	class+type	-
+COMMON-LISP	NUMBERP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	NUMERATOR	yes	yes	function	(number)
+COMMON-LISP	NUNION	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	ODDP	yes	yes	function	(integer)
+COMMON-LISP	OPEN	yes	yes	function	(sb-kernel:filename &key (sb-impl::direction :input) (sb-impl::element-type (quote character)) (sb-impl::if-exists nil sb-impl::if-exists-given) (sb-impl::if-does-not-exist nil sb-impl::if-does-not-exist-given) (sb-impl::external-format :default) (class (quote sb-sys:fd-stream)))
+COMMON-LISP	OPEN-STREAM-P	yes	yes	function	(stream)
+COMMON-LISP	OPTIMIZE	yes	yes	other	-
+COMMON-LISP	OR	yes	yes	macro	(&rest sb-impl::forms)
+COMMON-LISP	OTHERWISE	yes	yes	other	-
+COMMON-LISP	OUTPUT-STREAM-P	yes	yes	function	(stream)
+COMMON-LISP	PACKAGE	yes	yes	class+type	-
+COMMON-LISP	PACKAGE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	PACKAGE-ERROR-PACKAGE	yes	yes	function	(condition)
+COMMON-LISP	PACKAGE-NAME	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	PACKAGE-NICKNAMES	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	PACKAGE-SHADOWING-SYMBOLS	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	PACKAGE-USE-LIST	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	PACKAGE-USED-BY-LIST	yes	yes	function	(sb-kernel:package-designator)
+COMMON-LISP	PACKAGEP	yes	yes	function	(sb-kernel::object)
+COMMON-LISP	PAIRLIS	yes	yes	function	(sb-impl::keys sb-impl::data &optional (sb-impl::alist (quote nil)))
+COMMON-LISP	PARSE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	PARSE-INTEGER	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end (sb-impl::radix 10) sb-impl::junk-allowed)
+COMMON-LISP	PARSE-NAMESTRING	yes	yes	function	(sb-impl::thing &optional sb-kernel:host (sb-impl::defaults *default-pathname-defaults*) &key (sb-impl::start 0) sb-impl::end sb-impl::junk-allowed)
+COMMON-LISP	PATHNAME	yes	yes	function+class+type	(sb-impl::pathspec)
+COMMON-LISP	PATHNAME-DEVICE	yes	yes	function	(pathname &key (case :local))
+COMMON-LISP	PATHNAME-DIRECTORY	yes	yes	function	(pathname &key (case :local))
+COMMON-LISP	PATHNAME-HOST	yes	yes	function	(pathname &key (case :local))
+COMMON-LISP	PATHNAME-MATCH-P	yes	yes	function	(sb-impl::in-pathname sb-impl::in-wildname)
+COMMON-LISP	PATHNAME-NAME	yes	yes	function	(pathname &key (case :local))
+COMMON-LISP	PATHNAME-TYPE	yes	yes	function	(pathname &key (case :local))
+COMMON-LISP	PATHNAME-VERSION	yes	yes	function	(pathname)
+COMMON-LISP	PATHNAMEP	yes	yes	function	(sb-kernel::object)
+COMMON-LISP	PEEK-CHAR	yes	yes	function	(&optional (sb-impl::peek-type nil) (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+COMMON-LISP	PHASE	yes	yes	function	(number)
+COMMON-LISP	PI	yes	yes	constant	-
+COMMON-LISP	PLUSP	yes	yes	function	(number)
+COMMON-LISP	POP	yes	yes	macro	(sb-impl::place)
+COMMON-LISP	POSITION	yes	yes	function	(sb-impl::item sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key sb-impl::test sb-impl::test-not)
+COMMON-LISP	POSITION-IF	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key)
+COMMON-LISP	POSITION-IF-NOT	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) sb-impl::end sb-impl::key)
+COMMON-LISP	PPRINT	yes	yes	function	(sb-impl::object &optional stream)
+COMMON-LISP	PPRINT-DISPATCH	yes	yes	function	(sb-pretty::object &optional (sb-pretty::table *print-pprint-dispatch*))
+COMMON-LISP	PPRINT-EXIT-IF-LIST-EXHAUSTED	yes	yes	macro	()
+COMMON-LISP	PPRINT-FILL	yes	yes	function	(stream list &optional (sb-pretty::colon? t) sb-pretty::atsign?)
+COMMON-LISP	PPRINT-INDENT	yes	yes	function	(sb-pretty::relative-to sb-pretty::n &optional stream)
+COMMON-LISP	PPRINT-LINEAR	yes	yes	function	(stream list &optional (sb-pretty::colon? t) sb-pretty::atsign?)
+COMMON-LISP	PPRINT-LOGICAL-BLOCK	yes	yes	macro	((sb-pretty::stream-symbol sb-pretty::object &rest sb-pretty::keys &key (sb-pretty::prefix . #1=(nil)) (sb-pretty::per-line-prefix . #1#) (sb-pretty::suffix #A((0) base-char . ""))) &body sb-pretty::body)
+COMMON-LISP	PPRINT-NEWLINE	yes	yes	function	(sb-pretty::kind &optional stream)
+COMMON-LISP	PPRINT-POP	yes	yes	macro	()
+COMMON-LISP	PPRINT-TAB	yes	yes	function	(sb-pretty::kind sb-pretty::colnum sb-pretty::colinc &optional stream)
+COMMON-LISP	PPRINT-TABULAR	yes	yes	function	(stream list &optional (sb-pretty::colon? t) sb-pretty::atsign? sb-pretty::tabsize)
+COMMON-LISP	PRIN1	yes	yes	function	(sb-impl::object &optional stream)
+COMMON-LISP	PRIN1-TO-STRING	yes	yes	function	(sb-impl::object)
+COMMON-LISP	PRINC	yes	yes	function	(sb-impl::object &optional stream)
+COMMON-LISP	PRINC-TO-STRING	yes	yes	function	(sb-impl::object)
+COMMON-LISP	PRINT	yes	yes	function	(sb-impl::object &optional stream)
+COMMON-LISP	PRINT-NOT-READABLE	yes	yes	class+condition+type	-
+COMMON-LISP	PRINT-NOT-READABLE-OBJECT	yes	yes	function	(condition)
+COMMON-LISP	PRINT-OBJECT	yes	yes	function	(sb-pcl::object stream)
+COMMON-LISP	PRINT-UNREADABLE-OBJECT	yes	yes	macro	((sb-impl::object stream &key type identity) &body sb-impl::body)
+COMMON-LISP	PROBE-FILE	yes	yes	function	(sb-impl::pathspec)
+COMMON-LISP	PROCLAIM	yes	yes	function	(sb-c::raw-form)
+COMMON-LISP	PROG	yes	yes	macro	(sb-impl::varlist &body sb-impl::body-decls)
+COMMON-LISP	PROG*	yes	yes	macro	(sb-impl::varlist &body sb-impl::body-decls)
+COMMON-LISP	PROG1	yes	yes	macro	(sb-impl::result &body sb-impl::body)
+COMMON-LISP	PROG2	yes	yes	macro	(sb-impl::form1 sb-impl::result &body sb-impl::body)
+COMMON-LISP	PROGN	yes	yes	special-operator	-
+COMMON-LISP	PROGRAM-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	PROGV	yes	yes	special-operator	-
+COMMON-LISP	PROVIDE	yes	yes	function	(sb-impl::module-name)
+COMMON-LISP	PSETF	yes	yes	macro	(&rest sb-impl::pairs)
+COMMON-LISP	PSETQ	yes	yes	macro	(&rest sb-impl::pairs)
+COMMON-LISP	PUSH	yes	yes	macro	(sb-impl::obj sb-impl::place)
+COMMON-LISP	PUSHNEW	yes	yes	macro	(sb-impl::obj sb-impl::place &key sb-impl::key sb-impl::test sb-impl::test-not)
+COMMON-LISP	QUOTE	yes	yes	special-operator	-
+COMMON-LISP	RANDOM	yes	yes	function	(sb-kernel::arg &optional (sb-kernel::state *random-state*))
+COMMON-LISP	RANDOM-STATE	yes	yes	class+type	-
+COMMON-LISP	RANDOM-STATE-P	yes	yes	function	(sb-kernel::object)
+COMMON-LISP	RASSOC	yes	yes	function	(sb-impl::item sb-impl::alist &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	RASSOC-IF	yes	yes	function	(sb-impl::predicate sb-impl::alist &key sb-impl::key)
+COMMON-LISP	RASSOC-IF-NOT	yes	yes	function	(sb-impl::predicate sb-impl::alist &key sb-impl::key)
+COMMON-LISP	RATIO	yes	yes	class+type	-
+COMMON-LISP	RATIONAL	yes	yes	function+class+type	(sb-kernel::x)
+COMMON-LISP	RATIONALIZE	yes	yes	function	(sb-kernel::x)
+COMMON-LISP	RATIONALP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	READ	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) (sb-impl::eof-value . #1=(nil)) (sb-impl::recursive-p . #1#))
+COMMON-LISP	READ-BYTE	yes	yes	function	(stream &optional (sb-impl::eof-error-p t) sb-impl::eof-value)
+COMMON-LISP	READ-CHAR	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+COMMON-LISP	READ-CHAR-NO-HANG	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+COMMON-LISP	READ-DELIMITED-LIST	yes	yes	function	(sb-impl::endchar &optional (sb-impl::input-stream *standard-input*) sb-impl::recursive-p)
+COMMON-LISP	READ-FROM-STRING	yes	yes	function	(string &optional (sb-impl::eof-error-p t) sb-impl::eof-value &key (sb-impl::start 0) sb-impl::end sb-impl::preserve-whitespace)
+COMMON-LISP	READ-LINE	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+COMMON-LISP	READ-PRESERVING-WHITESPACE	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) (sb-impl::eof-value . #1=(nil)) (sb-impl::recursive-p . #1#))
+COMMON-LISP	READ-SEQUENCE	yes	yes	function	(sb-impl::seq stream &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	READER-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	READTABLE	yes	yes	class+type	-
+COMMON-LISP	READTABLE-CASE	yes	yes	function	(readtable)
+COMMON-LISP	READTABLEP	yes	yes	function	(sb-kernel::object)
+COMMON-LISP	REAL	yes	yes	class+type	-
+COMMON-LISP	REALP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	REALPART	yes	yes	function	(number)
+COMMON-LISP	REDUCE	yes	yes	function	(function sequence &rest sb-impl::args &key sb-impl::key sb-impl::from-end (sb-impl::start 0) sb-impl::end (sb-impl::initial-value nil sb-impl::ivp))
+COMMON-LISP	REINITIALIZE-INSTANCE	yes	yes	function	(sb-kernel:instance &rest sb-pcl::initargs &key sb-pcl::direct-superclasses sb-pcl::lambda-list sb-pcl::argument-precedence-order &allow-other-keys)
+COMMON-LISP	REM	yes	yes	function	(number sb-kernel::divisor)
+COMMON-LISP	REMF	yes	yes	macro	(sb-impl::place sb-impl::indicator)
+COMMON-LISP	REMHASH	yes	yes	function	(sb-impl::key hash-table)
+COMMON-LISP	REMOVE	yes	yes	function	(sb-impl::item sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	REMOVE-DUPLICATES	yes	yes	function	(sequence &rest sb-impl::args &key (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start 0) (sb-impl::end . #1=(nil)) sb-impl::from-end (sb-impl::key . #1#))
+COMMON-LISP	REMOVE-IF	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	REMOVE-IF-NOT	yes	yes	function	(sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	REMOVE-METHOD	yes	yes	function	(generic-function method)
+COMMON-LISP	REMPROP	yes	yes	function	(symbol sb-impl::indicator)
+COMMON-LISP	RENAME-FILE	yes	yes	function	(sb-impl::file sb-impl::new-name)
+COMMON-LISP	RENAME-PACKAGE	yes	yes	function	(sb-kernel:package-designator sb-impl::name &optional (sb-impl::nicknames nil))
+COMMON-LISP	REPLACE	yes	yes	function	(sb-impl::target-sequence1 sb-impl::source-sequence2 &rest sb-impl::args &key (sb-impl::start1 . #1=(0)) (sb-impl::end1 . #2=(nil)) (sb-impl::start2 . #1#) (sb-impl::end2 . #2#))
+COMMON-LISP	REQUIRE	yes	yes	function	(sb-impl::module-name &optional sb-impl::pathnames)
+COMMON-LISP	REST	yes	yes	function	(list)
+COMMON-LISP	RESTART	yes	yes	class+type	-
+COMMON-LISP	RESTART-BIND	yes	yes	macro	(sb-kernel::bindings &body sb-kernel::forms)
+COMMON-LISP	RESTART-CASE	yes	yes	macro	(sb-kernel::expression &body sb-kernel::clauses)
+COMMON-LISP	RESTART-NAME	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	RETURN	yes	yes	macro	(&optional (sb-impl::value nil))
+COMMON-LISP	RETURN-FROM	yes	yes	special-operator	-
+COMMON-LISP	REVAPPEND	yes	yes	function	(sb-impl::x sb-impl::y)
+COMMON-LISP	REVERSE	yes	yes	function	(sequence)
+COMMON-LISP	ROOM	yes	yes	function	(&optional (sb-vm::verbosity :default))
+COMMON-LISP	ROTATEF	yes	yes	macro	(&rest sb-impl::args)
+COMMON-LISP	ROUND	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	ROW-MAJOR-AREF	yes	yes	function	(array sb-int:index)
+COMMON-LISP	RPLACA	yes	yes	function	(cons sb-impl::x)
+COMMON-LISP	RPLACD	yes	yes	function	(cons sb-impl::x)
+COMMON-LISP	SAFETY	yes	yes	other	-
+COMMON-LISP	SATISFIES	yes	yes	other	-
+COMMON-LISP	SBIT	yes	yes	function	(sb-vm::simple-bit-array &rest sb-vm::subscripts)
+COMMON-LISP	SCALE-FLOAT	yes	yes	function	(sb-kernel::f sb-kernel::ex)
+COMMON-LISP	SCHAR	yes	yes	function	(string sb-int:index)
+COMMON-LISP	SEARCH	yes	yes	function	(sb-impl::sub-sequence1 sb-impl::main-sequence2 &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start1 . #1=(0)) (sb-impl::end1 . #2=(nil)) (sb-impl::start2 . #1#) (sb-impl::end2 . #2#) (sb-impl::key . #2#))
+COMMON-LISP	SECOND	yes	yes	function	(list)
+COMMON-LISP	SEQUENCE	yes	yes	class+type	-
+COMMON-LISP	SERIOUS-CONDITION	yes	yes	class+condition+type	-
+COMMON-LISP	SET	yes	yes	function	(symbol sb-impl::new-value)
+COMMON-LISP	SET-DIFFERENCE	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	yes	yes	function	(sb-impl::disp-char sb-impl::sub-char function &optional (sb-impl::rt-designator *readtable*))
+COMMON-LISP	SET-EXCLUSIVE-OR	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	SET-MACRO-CHARACTER	yes	yes	function	(char function &optional (sb-impl::non-terminatingp nil) (sb-impl::rt-designator *readtable*))
+COMMON-LISP	SET-PPRINT-DISPATCH	yes	yes	function	(type function &optional (sb-pretty::priority 0) (sb-pretty::table *print-pprint-dispatch*))
+COMMON-LISP	SET-SYNTAX-FROM-CHAR	yes	yes	function	(sb-impl::to-char sb-impl::from-char &optional (sb-impl::to-readtable *readtable*) (sb-impl::from-readtable nil))
+COMMON-LISP	SETF	yes	yes	macro	(&rest sb-impl::args)
+COMMON-LISP	SETQ	yes	yes	special-operator	-
+COMMON-LISP	SEVENTH	yes	yes	function	(list)
+COMMON-LISP	SHADOW	yes	yes	function	(sb-impl::symbols &optional (package (sb-int:sane-package)))
+COMMON-LISP	SHADOWING-IMPORT	yes	yes	function	(sb-impl::symbols &optional (package (sb-int:sane-package)))
+COMMON-LISP	SHARED-INITIALIZE	yes	yes	function	(sb-kernel:instance sb-pcl::slot-names &rest sb-pcl::initargs &key sb-pcl::direct-superclasses sb-pcl::direct-slots sb-pcl::direct-default-initargs sb-pcl::name sb-pcl::allocation sb-pcl::allocation-class sb-pcl::qualifiers sb-pcl::lambda-list sb-pcl::specializers function documentation sb-pcl::slot-name sb-mop:slot-definition ((sb-pcl::method-cell sb-pcl::method-cell)) sb-pcl::argument-precedence-order sb-pcl::declarations sb-pcl::method-class method-combination &allow-other-keys)
+COMMON-LISP	SHIFTF	yes	yes	macro	(&rest sb-impl::args)
+COMMON-LISP	SHORT-FLOAT	yes	yes	type	-
+COMMON-LISP	SHORT-FLOAT-EPSILON	yes	yes	constant	-
+COMMON-LISP	SHORT-FLOAT-NEGATIVE-EPSILON	yes	yes	constant	-
+COMMON-LISP	SHORT-SITE-NAME	yes	yes	function	()
+COMMON-LISP	SIGNAL	yes	yes	function	(sb-kernel::datum &rest sb-kernel::arguments)
+COMMON-LISP	SIGNED-BYTE	yes	yes	type	-
+COMMON-LISP	SIGNUM	yes	yes	function	(number)
+COMMON-LISP	SIMPLE-ARRAY	yes	yes	class+type	-
+COMMON-LISP	SIMPLE-BASE-STRING	yes	yes	class+type	-
+COMMON-LISP	SIMPLE-BIT-VECTOR	yes	yes	class+type	-
+COMMON-LISP	SIMPLE-BIT-VECTOR-P	yes	yes	function	(sb-impl::object)
+COMMON-LISP	SIMPLE-CONDITION	yes	yes	class+condition+type	-
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-ARGUMENTS	yes	yes	function	(condition)
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-CONTROL	yes	yes	function	(condition)
+COMMON-LISP	SIMPLE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	SIMPLE-STRING	yes	yes	class+type	-
+COMMON-LISP	SIMPLE-STRING-P	yes	yes	function	(sb-impl::object)
+COMMON-LISP	SIMPLE-TYPE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	SIMPLE-VECTOR	yes	yes	class+type	-
+COMMON-LISP	SIMPLE-VECTOR-P	yes	yes	function	(sb-impl::object)
+COMMON-LISP	SIMPLE-WARNING	yes	yes	class+condition+type	-
+COMMON-LISP	SIN	yes	yes	function	(number)
+COMMON-LISP	SINGLE-FLOAT	yes	yes	class+type	-
+COMMON-LISP	SINGLE-FLOAT-EPSILON	yes	yes	constant	-
+COMMON-LISP	SINGLE-FLOAT-NEGATIVE-EPSILON	yes	yes	constant	-
+COMMON-LISP	SINH	yes	yes	function	(number)
+COMMON-LISP	SIXTH	yes	yes	function	(list)
+COMMON-LISP	SLEEP	yes	yes	function	(sb-impl::seconds)
+COMMON-LISP	SLOT-BOUNDP	yes	yes	function	(sb-pcl::object sb-pcl::slot-name)
+COMMON-LISP	SLOT-EXISTS-P	yes	yes	function	(sb-pcl::object sb-pcl::slot-name)
+COMMON-LISP	SLOT-MAKUNBOUND	yes	yes	function	(sb-pcl::object sb-pcl::slot-name)
+COMMON-LISP	SLOT-MISSING	yes	yes	function	(class sb-kernel:instance sb-pcl::slot-name sb-pcl::operation &optional sb-pcl::new-value)
+COMMON-LISP	SLOT-UNBOUND	yes	yes	function	(class sb-kernel:instance sb-pcl::slot-name)
+COMMON-LISP	SLOT-VALUE	yes	yes	function	(sb-pcl::object sb-pcl::slot-name)
+COMMON-LISP	SOFTWARE-TYPE	yes	yes	function	()
+COMMON-LISP	SOFTWARE-VERSION	yes	yes	function	()
+COMMON-LISP	SOME	yes	yes	function	(sb-impl::pred sb-impl::first-seq &rest sb-impl::more-seqs)
+COMMON-LISP	SORT	yes	yes	function	(sequence sb-impl::predicate &rest sb-impl::args &key sb-impl::key)
+COMMON-LISP	SPACE	yes	yes	other	-
+COMMON-LISP	SPECIAL	yes	yes	other	-
+COMMON-LISP	SPECIAL-OPERATOR-P	yes	yes	function	(symbol)
+COMMON-LISP	SPEED	yes	yes	other	-
+COMMON-LISP	SQRT	yes	yes	function	(number)
+COMMON-LISP	STABLE-SORT	yes	yes	function	(sequence sb-impl::predicate &rest sb-impl::args &key sb-impl::key)
+COMMON-LISP	STANDARD	yes	yes	other	-
+COMMON-LISP	STANDARD-CHAR	yes	yes	type	-
+COMMON-LISP	STANDARD-CHAR-P	yes	yes	function	(char)
+COMMON-LISP	STANDARD-CLASS	yes	yes	class+type	-
+COMMON-LISP	STANDARD-GENERIC-FUNCTION	yes	yes	class+type	-
+COMMON-LISP	STANDARD-METHOD	yes	yes	class+type	-
+COMMON-LISP	STANDARD-OBJECT	yes	yes	class+type	-
+COMMON-LISP	STEP	yes	yes	macro	(sb-kernel:form)
+COMMON-LISP	STORAGE-CONDITION	yes	yes	class+condition+type	-
+COMMON-LISP	STORE-VALUE	yes	yes	function	(sb-kernel::value &optional condition)
+COMMON-LISP	STREAM	yes	yes	class+type	-
+COMMON-LISP	STREAM-ELEMENT-TYPE	yes	yes	function	(stream)
+COMMON-LISP	STREAM-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	STREAM-ERROR-STREAM	yes	yes	function	(condition)
+COMMON-LISP	STREAM-EXTERNAL-FORMAT	yes	yes	function	(stream)
+COMMON-LISP	STREAMP	yes	yes	function	(stream)
+COMMON-LISP	STRING	yes	yes	function+class+type	(sb-impl::x)
+COMMON-LISP	STRING-CAPITALIZE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	STRING-DOWNCASE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	STRING-EQUAL	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-GREATERP	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-LEFT-TRIM	yes	yes	function	(sb-impl::char-bag string)
+COMMON-LISP	STRING-LESSP	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-NOT-EQUAL	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-NOT-GREATERP	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-NOT-LESSP	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING-RIGHT-TRIM	yes	yes	function	(sb-impl::char-bag string)
+COMMON-LISP	STRING-STREAM	yes	yes	class+type	-
+COMMON-LISP	STRING-TRIM	yes	yes	function	(sb-impl::char-bag string)
+COMMON-LISP	STRING-UPCASE	yes	yes	function	(string &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	STRING/=	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING<	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING<=	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING=	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING>	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRING>=	yes	yes	function	(sb-impl::string1 sb-impl::string2 &key (sb-impl::start1 . #1=(0)) sb-impl::end1 (sb-impl::start2 . #1#) sb-impl::end2)
+COMMON-LISP	STRINGP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	STRUCTURE	yes	yes	other	-
+COMMON-LISP	STRUCTURE-CLASS	yes	yes	class+type	-
+COMMON-LISP	STRUCTURE-OBJECT	yes	yes	class+type	-
+COMMON-LISP	STYLE-WARNING	yes	yes	class+condition+type	-
+COMMON-LISP	SUBLIS	yes	yes	function	(sb-impl::alist sb-impl::tree &key sb-impl::key (sb-impl::test #1=(function eql) sb-impl::testp) (sb-impl::test-not #1# sb-impl::notp))
+COMMON-LISP	SUBSEQ	yes	yes	function	(sequence sb-impl::start &optional sb-impl::end)
+COMMON-LISP	SUBSETP	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test (function eql) sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	SUBST	yes	yes	function	(sb-impl::new sb-impl::old sb-impl::tree &key sb-impl::key (sb-impl::test #1=(function eql) sb-impl::testp) (sb-impl::test-not #1# sb-impl::notp))
+COMMON-LISP	SUBST-IF	yes	yes	function	(sb-impl::new sb-impl::test sb-impl::tree &key sb-impl::key)
+COMMON-LISP	SUBST-IF-NOT	yes	yes	function	(sb-impl::new sb-impl::test sb-impl::tree &key sb-impl::key)
+COMMON-LISP	SUBSTITUTE	yes	yes	function	(sb-impl::new sb-impl::old sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::test (function eql) sb-impl::test-p) (sb-impl::test-not nil sb-impl::test-not-p) (sb-impl::start 0) (count . #1=(nil)) (sb-impl::end . #1#) (sb-impl::key . #1#))
+COMMON-LISP	SUBSTITUTE-IF	yes	yes	function	(sb-impl::new sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	SUBSTITUTE-IF-NOT	yes	yes	function	(sb-impl::new sb-impl::predicate sequence &rest sb-impl::args &key sb-impl::from-end (sb-impl::start 0) (sb-impl::end . #1=(nil)) (count . #1#) (sb-impl::key . #1#))
+COMMON-LISP	SUBTYPEP	yes	yes	function	(sb-kernel::type1 sb-kernel::type2 &optional sb-kernel::environment)
+COMMON-LISP	SVREF	yes	yes	function	(simple-vector sb-int:index)
+COMMON-LISP	SXHASH	yes	yes	function	(sb-impl::x)
+COMMON-LISP	SYMBOL	yes	yes	class+type	-
+COMMON-LISP	SYMBOL-FUNCTION	yes	yes	function	(symbol)
+COMMON-LISP	SYMBOL-MACROLET	yes	yes	special-operator	-
+COMMON-LISP	SYMBOL-NAME	yes	yes	function	(symbol)
+COMMON-LISP	SYMBOL-PACKAGE	yes	yes	function	(symbol)
+COMMON-LISP	SYMBOL-PLIST	yes	yes	function	(symbol)
+COMMON-LISP	SYMBOL-VALUE	yes	yes	function	(symbol)
+COMMON-LISP	SYMBOLP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	SYNONYM-STREAM	yes	yes	class+type	-
+COMMON-LISP	SYNONYM-STREAM-SYMBOL	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	T	yes	yes	constant+class+type	-
+COMMON-LISP	TAGBODY	yes	yes	special-operator	-
+COMMON-LISP	TAILP	yes	yes	function	(sb-impl::object list)
+COMMON-LISP	TAN	yes	yes	function	(number)
+COMMON-LISP	TANH	yes	yes	function	(number)
+COMMON-LISP	TENTH	yes	yes	function	(list)
+COMMON-LISP	TERPRI	yes	yes	function	(&optional (stream *standard-output*))
+COMMON-LISP	THE	yes	yes	special-operator	-
+COMMON-LISP	THIRD	yes	yes	function	(list)
+COMMON-LISP	THROW	yes	yes	special-operator	-
+COMMON-LISP	TIME	yes	yes	macro	(sb-kernel:form)
+COMMON-LISP	TRACE	yes	yes	macro	(&rest sb-debug::specs)
+COMMON-LISP	TRANSLATE-LOGICAL-PATHNAME	yes	yes	function	(pathname &key)
+COMMON-LISP	TRANSLATE-PATHNAME	yes	yes	function	(sb-impl::source sb-impl::from-wildname sb-impl::to-wildname &key)
+COMMON-LISP	TREE-EQUAL	yes	yes	function	(sb-impl::x sb-impl::y &key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	TRUENAME	yes	yes	function	(sb-impl::pathspec)
+COMMON-LISP	TRUNCATE	yes	yes	function	(number &optional (sb-kernel::divisor 1))
+COMMON-LISP	TWO-WAY-STREAM	yes	yes	class+type	-
+COMMON-LISP	TWO-WAY-STREAM-INPUT-STREAM	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	TWO-WAY-STREAM-OUTPUT-STREAM	yes	yes	function	(sb-kernel:instance)
+COMMON-LISP	TYPE	yes	yes	other	-
+COMMON-LISP	TYPE-ERROR	yes	yes	class+condition+type	-
+COMMON-LISP	TYPE-ERROR-DATUM	yes	yes	function	(condition)
+COMMON-LISP	TYPE-ERROR-EXPECTED-TYPE	yes	yes	function	(condition)
+COMMON-LISP	TYPE-OF	yes	yes	function	(sb-impl::object)
+COMMON-LISP	TYPECASE	yes	yes	macro	(sb-impl::keyform &body sb-impl::cases)
+COMMON-LISP	TYPEP	yes	yes	function	(sb-kernel::object type &optional sb-kernel::environment)
+COMMON-LISP	UNBOUND-SLOT	yes	yes	class+condition+type	-
+COMMON-LISP	UNBOUND-SLOT-INSTANCE	yes	yes	function	(condition)
+COMMON-LISP	UNBOUND-VARIABLE	yes	yes	class+condition+type	-
+COMMON-LISP	UNDEFINED-FUNCTION	yes	yes	class+condition+type	-
+COMMON-LISP	UNEXPORT	yes	yes	function	(sb-impl::symbols &optional (package (sb-int:sane-package)))
+COMMON-LISP	UNINTERN	yes	yes	function	(symbol &optional (package (sb-int:sane-package)))
+COMMON-LISP	UNION	yes	yes	function	(sb-impl::list1 sb-impl::list2 &key sb-impl::key (sb-impl::test nil sb-impl::testp) (sb-impl::test-not nil sb-impl::notp))
+COMMON-LISP	UNLESS	yes	yes	macro	(sb-impl::test &body sb-impl::forms)
+COMMON-LISP	UNREAD-CHAR	yes	yes	function	(character &optional (stream *standard-input*))
+COMMON-LISP	UNSIGNED-BYTE	yes	yes	type	-
+COMMON-LISP	UNTRACE	yes	yes	macro	(&rest sb-debug::specs)
+COMMON-LISP	UNUSE-PACKAGE	yes	yes	function	(sb-impl::packages-to-unuse &optional (package (sb-int:sane-package)))
+COMMON-LISP	UNWIND-PROTECT	yes	yes	special-operator	-
+COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	yes	yes	function	(sb-pcl::previous sb-pcl::current &rest sb-pcl::initargs)
+COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	yes	yes	function	(sb-kernel:instance sb-pcl::added-slots sb-pcl::discarded-slots sb-pcl::property-list &rest sb-pcl::initargs)
+COMMON-LISP	UPGRADED-ARRAY-ELEMENT-TYPE	yes	yes	function	(sb-kernel::spec &optional sb-kernel::environment)
+COMMON-LISP	UPGRADED-COMPLEX-PART-TYPE	yes	yes	function	(sb-kernel::spec &optional sb-kernel::environment)
+COMMON-LISP	UPPER-CASE-P	yes	yes	function	(char)
+COMMON-LISP	USE-PACKAGE	yes	yes	function	(sb-impl::packages-to-use &optional (package (sb-int:sane-package)))
+COMMON-LISP	USE-VALUE	yes	yes	function	(sb-kernel::value &optional condition)
+COMMON-LISP	USER-HOMEDIR-PATHNAME	yes	yes	function	(&optional sb-kernel:host)
+COMMON-LISP	VALUES	yes	yes	function	(&rest values)
+COMMON-LISP	VALUES-LIST	yes	yes	function	(list)
+COMMON-LISP	VARIABLE	yes	yes	other	-
+COMMON-LISP	VECTOR	yes	yes	function+class+type	(&rest sb-vm::objects)
+COMMON-LISP	VECTOR-POP	yes	yes	function	(array)
+COMMON-LISP	VECTOR-PUSH	yes	yes	function	(sb-vm::new-element array)
+COMMON-LISP	VECTOR-PUSH-EXTEND	yes	yes	function	(sb-vm::new-element vector &optional sb-vm::min-extension)
+COMMON-LISP	VECTORP	yes	yes	function	(sb-impl::object)
+COMMON-LISP	WARN	yes	yes	function	(sb-kernel::datum &rest sb-kernel::arguments)
+COMMON-LISP	WARNING	yes	yes	class+condition+type	-
+COMMON-LISP	WHEN	yes	yes	macro	(sb-impl::test &body sb-impl::forms)
+COMMON-LISP	WILD-PATHNAME-P	yes	yes	function	(pathname &optional sb-impl::field-key)
+COMMON-LISP	WITH-ACCESSORS	yes	yes	macro	(sb-pcl::slots sb-kernel:instance &body sb-pcl::body)
+COMMON-LISP	WITH-COMPILATION-UNIT	yes	yes	macro	(sb-c::options &body sb-c::body)
+COMMON-LISP	WITH-CONDITION-RESTARTS	yes	yes	macro	(sb-kernel::condition-form sb-kernel::restarts-form &body sb-kernel::body)
+COMMON-LISP	WITH-HASH-TABLE-ITERATOR	yes	yes	macro	((sb-impl::name hash-table) &body sb-impl::body)
+COMMON-LISP	WITH-INPUT-FROM-STRING	yes	yes	macro	((sb-impl::var string &key sb-int:index (sb-impl::start 0) sb-impl::end) &body sb-impl::forms-decls)
+COMMON-LISP	WITH-OPEN-FILE	yes	yes	macro	((stream sb-impl::filespec &rest sb-impl::options) &body sb-impl::body)
+COMMON-LISP	WITH-OPEN-STREAM	yes	yes	macro	((sb-impl::var stream) &body sb-impl::body)
+COMMON-LISP	WITH-OUTPUT-TO-STRING	yes	yes	macro	((sb-impl::var &optional string &key (sb-impl::element-type (quote (quote character)))) &body sb-impl::body)
+COMMON-LISP	WITH-PACKAGE-ITERATOR	yes	yes	macro	((sb-impl::mname sb-impl::package-list &rest sb-impl::symbol-types) &body sb-impl::body)
+COMMON-LISP	WITH-SIMPLE-RESTART	yes	yes	macro	((restart-name sb-kernel::format-string &rest sb-kernel::format-arguments) &body sb-kernel::forms)
+COMMON-LISP	WITH-SLOTS	yes	yes	macro	(sb-pcl::slots sb-kernel:instance &body sb-pcl::body)
+COMMON-LISP	WITH-STANDARD-IO-SYNTAX	yes	yes	macro	(&body sb-impl::body)
+COMMON-LISP	WRITE	yes	yes	function	(sb-impl::object &key stream ((:escape . #1=(*print-escape*)) . #1#) ((:radix . #2=(*print-radix*)) . #2#) ((:base . #3=(*print-base*)) . #3#) ((:circle . #4=(*print-circle*)) . #4#) ((:pretty . #5=(*print-pretty*)) . #5#) ((:level . #6=(*print-level*)) . #6#) ((:length . #7=(*print-length*)) . #7#) ((:case . #8=(*print-case*)) . #8#) ((:array . #9=(*print-array*)) . #9#) ((:gensym . #10=(*print-gensym*)) . #10#) ((:readably . #11=(*print-readably*)) . #11#) ((:right-margin . #12=(*print-right-margin*)) . #12#) ((:miser-width . #13=(*print-miser-width*)) . #13#) ((:lines . #14=(*print-lines*)) . #14#) ((:pprint-dispatch . #15=(*print-pprint-dispatch*)) . #15#) ((:suppress-errors . #16=(*suppress-print-errors*)) . #16#))
+COMMON-LISP	WRITE-BYTE	yes	yes	function	(integer stream)
+COMMON-LISP	WRITE-CHAR	yes	yes	function	(character &optional (stream *standard-output*))
+COMMON-LISP	WRITE-LINE	yes	yes	function	(string &optional (stream *standard-output*) &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	WRITE-SEQUENCE	yes	yes	function	(sb-impl::seq stream &key (sb-impl::start 0) (sb-impl::end nil))
+COMMON-LISP	WRITE-STRING	yes	yes	function	(string &optional (stream *standard-output*) &key (sb-impl::start 0) sb-impl::end)
+COMMON-LISP	WRITE-TO-STRING	yes	yes	function	(sb-impl::object &key ((:escape . #1=(*print-escape*)) . #1#) ((:radix . #2=(*print-radix*)) . #2#) ((:base . #3=(*print-base*)) . #3#) ((:circle . #4=(*print-circle*)) . #4#) ((:pretty . #5=(*print-pretty*)) . #5#) ((:level . #6=(*print-level*)) . #6#) ((:length . #7=(*print-length*)) . #7#) ((:case . #8=(*print-case*)) . #8#) ((:array . #9=(*print-array*)) . #9#) ((:gensym . #10=(*print-gensym*)) . #10#) ((:readably . #11=(*print-readably*)) . #11#) ((:right-margin . #12=(*print-right-margin*)) . #12#) ((:miser-width . #13=(*print-miser-width*)) . #13#) ((:lines . #14=(*print-lines*)) . #14#) ((:pprint-dispatch . #15=(*print-pprint-dispatch*)) . #15#) ((:suppress-errors . #16=(*suppress-print-errors*)) . #16#))
+COMMON-LISP	Y-OR-N-P	yes	yes	function	(&optional sb-impl::format-string &rest sb-impl::arguments)
+COMMON-LISP	YES-OR-NO-P	yes	yes	function	(&optional sb-impl::format-string &rest sb-impl::arguments)
+COMMON-LISP	ZEROP	yes	yes	function	(number)

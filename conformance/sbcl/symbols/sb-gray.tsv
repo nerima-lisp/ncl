@@ -1,0 +1,33 @@
+package	symbol	present	external	kind	lambda-list
+SB-GRAY	FUNDAMENTAL-BINARY-INPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-BINARY-OUTPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-BINARY-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-CHARACTER-INPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-CHARACTER-OUTPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-CHARACTER-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-INPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-OUTPUT-STREAM	yes	yes	class+type	-
+SB-GRAY	FUNDAMENTAL-STREAM	yes	yes	class+type	-
+SB-GRAY	STREAM-ADVANCE-TO-COLUMN	yes	yes	function	(stream sb-gray::column)
+SB-GRAY	STREAM-CLEAR-INPUT	yes	yes	function	(stream)
+SB-GRAY	STREAM-CLEAR-OUTPUT	yes	yes	function	(stream)
+SB-GRAY	STREAM-FILE-POSITION	yes	yes	function	(stream &optional sb-gray::position-spec)
+SB-GRAY	STREAM-FINISH-OUTPUT	yes	yes	function	(stream)
+SB-GRAY	STREAM-FORCE-OUTPUT	yes	yes	function	(stream)
+SB-GRAY	STREAM-FRESH-LINE	yes	yes	function	(stream)
+SB-GRAY	STREAM-LINE-COLUMN	yes	yes	function	(stream)
+SB-GRAY	STREAM-LINE-LENGTH	yes	yes	function	(stream)
+SB-GRAY	STREAM-LISTEN	yes	yes	function	(stream)
+SB-GRAY	STREAM-PEEK-CHAR	yes	yes	function	(stream)
+SB-GRAY	STREAM-READ-BYTE	yes	yes	function	(stream)
+SB-GRAY	STREAM-READ-CHAR	yes	yes	function	(stream)
+SB-GRAY	STREAM-READ-CHAR-NO-HANG	yes	yes	function	(stream)
+SB-GRAY	STREAM-READ-LINE	yes	yes	function	(stream)
+SB-GRAY	STREAM-READ-SEQUENCE	yes	yes	function	(stream sb-gray::seq &optional sb-gray::start sb-gray::end)
+SB-GRAY	STREAM-START-LINE-P	yes	yes	function	(stream)
+SB-GRAY	STREAM-TERPRI	yes	yes	function	(stream)
+SB-GRAY	STREAM-UNREAD-CHAR	yes	yes	function	(stream character)
+SB-GRAY	STREAM-WRITE-BYTE	yes	yes	function	(stream integer)
+SB-GRAY	STREAM-WRITE-CHAR	yes	yes	function	(stream character)
+SB-GRAY	STREAM-WRITE-SEQUENCE	yes	yes	function	(stream sb-gray::seq &optional sb-gray::start sb-gray::end)
+SB-GRAY	STREAM-WRITE-STRING	yes	yes	function	(stream string &optional sb-gray::start sb-gray::end)

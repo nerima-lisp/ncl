@@ -1,0 +1,17 @@
+package	symbol	present	external	kind	lambda-list
+SB-SPROF	*MAX-SAMPLES*	yes	yes	variable	-
+SB-SPROF	*REPORT-SORT-BY*	yes	yes	variable	-
+SB-SPROF	*REPORT-SORT-ORDER*	yes	yes	variable	-
+SB-SPROF	*SAMPLE-INTERVAL*	yes	yes	variable	-
+SB-SPROF	MAP-TRACES	yes	yes	function	(function sb-sprof::samples)
+SB-SPROF	PROFILE-CALL-COUNTS	yes	yes	function	(&rest sb-sprof::names)
+SB-SPROF	REPORT	yes	yes	function	(&key (type :graph) max sb-sprof::min-percent sb-sprof::call-graph ((:sort-by . #1=(sb-sprof:*report-sort-by*)) . #1#) ((:sort-order . #2=(sb-sprof:*report-sort-order*)) . #2#) (stream *standard-output*) ((:show-progress sb-sprof::*show-progress*)))
+SB-SPROF	RESET	yes	yes	function	()
+SB-SPROF	SAMPLE-PC	yes	yes	function	(sb-int:info sb-sprof::pc-or-offset)
+SB-SPROF	START-PROFILING	yes	yes	function	(&key (sb-sprof::max-samples sb-sprof:*max-samples*) (sb-sprof::mode sb-sprof::*sampling-mode*) (sb-sprof::sample-interval sb-sprof:*sample-interval*) sb-sprof::alloc-interval sb-sprof::max-depth (sb-sprof::threads :all))
+SB-SPROF	START-SAMPLING	yes	yes	function	(&optional (sb-sprof::thread sb-thread:*current-thread*))
+SB-SPROF	STOP-PROFILING	yes	yes	function	()
+SB-SPROF	STOP-SAMPLING	yes	yes	function	(&optional (sb-sprof::thread sb-thread:*current-thread*))
+SB-SPROF	UNPROFILE-CALL-COUNTS	yes	yes	function	()
+SB-SPROF	WITH-PROFILING	yes	yes	macro	((&key (sb-sprof::sample-interval (quote sb-sprof:*sample-interval*)) sb-sprof::alloc-interval (sb-sprof::max-samples (quote sb-sprof:*max-samples*)) (sb-sprof:reset . #1=(nil)) (sb-sprof::mode (quote sb-sprof::*sampling-mode*)) (loop . #1#) sb-sprof::max-depth sb-sprof::show-progress (sb-sprof::threads :all) (sb-sprof:report . #1#)) &body sb-sprof::body)
+SB-SPROF	WITH-SAMPLING	yes	yes	macro	((&optional (sb-sprof::on t)) &body sb-sprof::body)

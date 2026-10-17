@@ -12,20 +12,37 @@ The public extension packages are `NCL-THREADS`, `NCL-FFI`, `NCL-MOP`,
 `ncl-clos`, `ncl-lib-streams`, `ncl-object`, `ncl-image`, `ncl-lib-strings`,
 `ncl-os`, `ncl-compiler-front`, and `ncl-sys`.
 
-`NCL-` packages are the only extension namespace. The ASDF and UIOP package
-names remain `ASDF/INTERFACE` and `UIOP/DRIVER`.
+The `NCL-` packages provide NCL-specific extensions. SBCL-compatible packages
+and contrib packages are tracked separately in the restored SBCL surface
+tables. The ASDF and UIOP package names remain `ASDF/INTERFACE` and
+`UIOP/DRIVER`.
 
 ## Ownership tables
 
 Each owning crate stores a seven-column TSV at `packages/<crate>/ownership.tsv`:
 `package`, `symbol`, `kind`, `crate`, `phase`, `direct-expansion`, and `notes`.
 The `crate` column is retained so a row is self-describing. COMMON-LISP has
-978 rows; ASDF/INTERFACE has 230 rows; UIOP/DRIVER has 427 rows. SB-prefixed
-packages and SBCL contrib rows are not part of the contract.
+978 rows; ASDF/INTERFACE has 230 rows; UIOP/DRIVER has 427 rows. The SBCL
+surface tables in `conformance/sbcl/symbols/` record `package`, `symbol`,
+`present`, `external`, `kind`, and `lambda-list` for SBCL packages and contribs.
+Every SB-prefixed ownership row must match a surface row's package, symbol,
+and kind. The COMMON-LISP symbol set in the SBCL surface table must match the
+978-symbol retained source table; named missing or extra symbols fail the gate.
 
 `conformance/ownership/check.py` reads all split tables and checks retained
-surface coverage, duplicate `(package, symbol)` keys, valid fields, and the
-absence of SB-prefixed packages.
+COMMON-LISP coverage, duplicate `(package, symbol)` keys, valid fields, and
+SBCL row matches. It reports unowned public SBCL symbols and the referenced
+internal symbols listed in
+`conformance/sbcl/symbols/internal-referenced.tsv`, grouped by package, without
+failing for those omissions. Pass `--package PACKAGE` to report only
+selected packages' missing symbols; all ownership validation remains global.
+The checker requires the COMMON-LISP, eight public SBCL, and internal reference
+tables. It validates contrib names and packages, each loaded table against its
+declared external row count, and permits only `sb-simd` and `sb-perf` to have
+status `out-of-scope` with reason `platform-not-in-scope`. The extractor marks
+those two out of scope unless SBCL reports both `:x86-64` and `:linux`; the
+checker validates the recorded metadata but does not independently inspect the
+host platform. Any failed contrib status fails the check.
 
 ## Registration order
 
@@ -148,38 +165,6 @@ The complete safe callback order is `(&mut ThreadContext, &Runtime,
 validates only the context-free categories implemented in `typed.rs`, and
 returns `typed::TypeError` for a mismatch. Any heap `Word` that survives an
 allocation must be held through the existing rooting API.
-
-### Fixed arguments
-
-Fixed positional functions use `BuiltinConvention::Direct(Arity::exact(...))`:
-
-```rust
-const FIXED: &[Parameter] = &[
-    Parameter { name: BuiltinName::new("first"), ty: ParameterType::Fixnum },
-    Parameter { name: BuiltinName::new("second"), ty: ParameterType::Fixnum },
-];
-
-fn fixed(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let first = args.required(0)?.as_fixnum()
-        .ok_or(ObjectError::TypeError)?;
-    let second = args.required(1)?.as_fixnum()
-        .ok_or(ObjectError::TypeError)?;
-    Ok(Word::fixnum(first + second))
-}
-
-let implementation = BuiltinImplementation::direct(
-    Builtin {
-        lambda_list: LambdaList::fixed(FIXED),
-        convention: BuiltinConvention::Direct(Arity::exact(2)),
-    },
-    fixed,
-);
-```
 
 `LambdaList::fixed`, `with_optional`, `with_rest`, and `with_keys` are the
 typed descriptor constructors. They keep the parameter shape explicit:

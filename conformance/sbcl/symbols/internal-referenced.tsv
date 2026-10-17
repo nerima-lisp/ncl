@@ -1,0 +1,59 @@
+package	symbol	present	external	kind	lambda-list	libraries	example-file	exported-in-sbcl-2.6.0
+SB-ALIEN-INTERNALS	ALIEN-TYPE-ALIGNMENT	yes	yes	function	(sb-kernel:instance)	cffi	src/cffi-sbcl.lisp	yes
+SB-ALIEN-INTERNALS	ALIEN-TYPE-BITS	yes	yes	function	(sb-kernel:instance)	cffi	src/cffi-sbcl.lisp	yes
+SB-ALIEN-INTERNALS	ALIEN-VALUE	yes	yes	function+class+type	(symbol)	usocket	tests/udp-one-shot.lisp	yes
+SB-ALIEN-INTERNALS	PARSE-ALIEN-TYPE	yes	yes	function	(type sb-alien::env)	cffi	src/cffi-sbcl.lisp	yes
+SB-C	*ABORTED-COMPILATION-UNIT-COUNT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*COMPILER-ERROR-COUNT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*COMPILER-NOTE-COUNT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*COMPILER-STYLE-WARNING-COUNT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*COMPILER-WARNING-COUNT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*IN-COMPILATION-UNIT*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	*POLICY*	yes	no	variable	-	uiop	uiop.lisp	yes
+SB-C	*UNDEFINED-WARNINGS*	yes	no	other	-	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-CONTEXT	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-ENCLOSING-SOURCE	yes	no	function	(sb-c::context)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-FILE-NAME	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-FILE-POSITION	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-ORIGINAL-SOURCE	yes	no	function	(sb-c::context)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-ORIGINAL-SOURCE-PATH	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	COMPILER-ERROR-CONTEXT-SOURCE	yes	no	function	(sb-c::context)	uiop	uiop.lisp	yes
+SB-C	MAKE-COMPILER-ERROR-CONTEXT	yes	no	function	(&key ((:%enclosing-source #:%enclosing-source) . #1=(nil)) ((:%source #:%source) . #1#) ((:original-form #:original-form) . #2=((sb-int:missing-arg))) ((:original-form-string #:original-form-string) . #1#) ((:context #:context) . #1#) ((:file-name #:file-name) . #2#) ((:file-position #:file-position) . #1#) ((:path #:path) . #1#) ((:format-args #:format-args) . #1#) ((:initialized #:initialized) . #1#) ((:original-source-path #:original-source-path) . #1#) ((:handled-conditions #:handled-conditions) . #1#))	uiop	uiop.lisp	yes
+SB-C	MAKE-UNDEFINED-WARNING	yes	no	function	(&key ((:name #:name) . #1=(nil)) ((:kind #:kind) (sb-int:missing-arg)) ((:count #:count) 0) ((:warnings #:warnings) . #1#))	uiop	uiop.lisp	yes
+SB-C	POLICY-QUALITY	yes	no	function+type	(sb-c:policy sb-c::quality-name)	uiop	uiop.lisp	yes
+SB-C	SIMPLE-COMPILER-NOTE	yes	no	class+condition+type	-	uiop	uiop.lisp	no
+SB-C	UNDEFINED-WARNING-COUNT	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	UNDEFINED-WARNING-KIND	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	UNDEFINED-WARNING-NAME	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-C	UNDEFINED-WARNING-WARNINGS	yes	no	function	(sb-kernel:instance)	uiop	uiop.lisp	yes
+SB-IMPL	FD-STREAM-TIMEOUT	yes	no	function	(sb-kernel:instance)	usocket	option.lisp	yes
+SB-IMPL	PROCESS-EXIT-CODE	yes	no	function	(sb-impl::process)	cffi	uffi-compat/uffi-compat.lisp	no
+SB-INT	BROKEN-PIPE	yes	yes	class+condition+type	-	usocket	backend/sbcl.lisp	yes
+SB-INT	CONSTANT-FORM-VALUE	yes	yes	function	(sb-kernel:form &optional (sb-c::environment nil sb-c::envp))	cffi	src/sys-utils.lisp	yes
+SB-INT	INDEX	yes	yes	type	-	cffi	src/cffi-sbcl.lisp	yes
+SB-INT	PACKAGE-AT-VARIANCE	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-INT	SIMPLE-READER-ERROR	yes	yes	function+class+condition+type	(stream sb-impl::control &rest sb-impl::args)	alexandria	alexandria-1/conditions.lisp	yes
+SB-INT	SIMPLE-STYLE-WARNING	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	%SIGNAL	yes	no	function	(condition)	usocket	tests/udp-one-shot.lisp	yes
+SB-KERNEL	CLASSOID-CELL	yes	no	class+type	-	usocket	tests/udp-one-shot.lisp	yes
+SB-KERNEL	FORMAT-CONTROL	yes	yes	type	-	uiop	uiop.lisp	yes
+SB-KERNEL	LEXICAL-ENVIRONMENT-TOO-COMPLEX	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	REDEFINITION-WITH-DEFGENERIC	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	REDEFINITION-WITH-DEFMACRO	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	REDEFINITION-WITH-DEFMETHOD	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	REDEFINITION-WITH-DEFUN	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	SIMPLE-UNBOXED-ARRAY	yes	yes	type	-	cffi	src/cffi-sbcl.lisp	yes
+SB-KERNEL	UNDEFINED-ALIEN-STYLE-WARNING	yes	yes	class+condition+type	-	uiop	uiop.lisp	yes
+SB-KERNEL	UNINTERESTING-REDEFINITION	yes	yes	type	-	uiop	uiop.lisp	yes
+SB-KERNEL	WITH-ARRAY-DATA	yes	yes	macro	(((sb-c::data-var array &key sb-c::offset-var) (sb-c::start-var &optional (sb-c::svalue 0)) (sb-c::end-var &optional (sb-c::evalue nil)) &key sb-c::force-inline sb-c::check-fill-pointer sb-kernel:array-header-p) &body sb-c::forms)	babel	src/strings.lisp	yes
+SB-PCL	CONDITION-CLASS	yes	no	class+type	-	alexandria	doc/docstrings.lisp	yes
+SB-PCL	PRECOMPILE-RANDOM-CODE-SEGMENTS	no	no	other	-	uiop	uiop.lisp	no
+SB-UNIX	EINTR	yes	yes	constant	-	usocket	backend/sbcl.lisp	yes
+SB-UNIX	FD-ISSET	yes	yes	function	(sb-unix::offset sb-unix:fd-set)	usocket	backend/sbcl.lisp	yes
+SB-UNIX	FD-SET	yes	yes	function	(sb-unix::offset sb-unix:fd-set)	usocket	backend/sbcl.lisp	yes
+SB-UNIX	FD-ZERO	yes	yes	function	(sb-unix:fd-set)	usocket	backend/sbcl.lisp	yes
+SB-UNIX	POSIX-GETCWD	yes	yes	function	()	uiop	uiop.lisp	yes
+SB-UNIX	UNIX-FAST-SELECT	yes	yes	function	(sb-unix::num-descriptors sb-unix::read-fds sb-unix::write-fds sb-unix::exception-fds sb-unix::timeout-secs sb-unix::timeout-usecs)	usocket	backend/sbcl.lisp	yes
+SB-UNIX	UNIX-GETHOSTNAME	yes	yes	function	()	usocket	backend/sbcl.lisp	yes
+SB-UNIX	UNIX-STAT	yes	yes	function	(sb-unix::name)	uiop	uiop.lisp	yes
+SB-VM	N-MACHINE-WORD-BITS	yes	yes	constant	-	usocket	backend/sbcl.lisp	yes

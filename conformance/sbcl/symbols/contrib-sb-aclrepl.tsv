@@ -1,0 +1,8 @@
+package	symbol	present	external	kind	lambda-list
+SB-ACLREPL	*COMMAND-CHAR*	yes	yes	variable	-
+SB-ACLREPL	*EXIT-ON-EOF*	yes	yes	variable	-
+SB-ACLREPL	*MAX-HISTORY*	yes	yes	variable	-
+SB-ACLREPL	*PROMPT*	yes	yes	variable	-
+SB-ACLREPL	*USE-SHORT-PACKAGE-NAME*	yes	yes	variable	-
+SB-ACLREPL	ALIAS	yes	yes	macro	(sb-aclrepl::name-param sb-aclrepl::args &rest sb-aclrepl::body)
+SB-ACLREPL	MAKE-REPL-FUN	yes	yes	function	()

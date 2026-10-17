@@ -1,0 +1,107 @@
+package	symbol	present	external	kind	lambda-list
+SB-SIMPLE-STREAMS	*DEBUG-IO*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*ERROR-OUTPUT*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*QUERY-IO*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*STANDARD-INPUT*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*STANDARD-OUTPUT*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*TERMINAL-IO*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	*TRACE-OUTPUT*	yes	yes	variable	-
+SB-SIMPLE-STREAMS	ADD-STREAM-INSTANCE-FLAGS	yes	yes	macro	(stream &rest sb-simple-streams::flags)
+SB-SIMPLE-STREAMS	ANNOTATION-OUTPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	BUFFER-INPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	BUFFER-OUTPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	CHARPOS	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	CLEAR-INPUT	yes	yes	function	(&optional (stream *standard-input*) sb-simple-streams::buffer-only)
+SB-SIMPLE-STREAMS	CLEAR-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	CLOSE	yes	yes	function	(stream &key abort)
+SB-SIMPLE-STREAMS	COMPOSING-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	DEF-STREAM-CLASS	yes	yes	macro	(sb-simple-streams::name sb-simple-streams::superclasses sb-simple-streams::slots &rest sb-simple-streams::options)
+SB-SIMPLE-STREAMS	DEFAULT-OPEN-CLASS	yes	yes	other	-
+SB-SIMPLE-STREAMS	DEFINE-FILESPEC	yes	yes	macro	(sb-simple-streams::name sb-simple-streams::lambda-list &body sb-simple-streams::body)
+SB-SIMPLE-STREAMS	DEVICE-BUFFER-LENGTH	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	DEVICE-CLEAR-INPUT	yes	yes	function	(stream sb-simple-streams::buffer-only)
+SB-SIMPLE-STREAMS	DEVICE-CLEAR-OUTPUT	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	DEVICE-CLOSE	yes	yes	function	(stream abort)
+SB-SIMPLE-STREAMS	DEVICE-EXTEND	yes	yes	other	-
+SB-SIMPLE-STREAMS	DEVICE-FILE-LENGTH	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	DEVICE-FILE-POSITION	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	DEVICE-FINISH-RECORD	yes	yes	function	(stream sb-simple-streams::blocking sb-simple-streams::action)
+SB-SIMPLE-STREAMS	DEVICE-OPEN	yes	yes	function	(stream sb-simple-streams::options)
+SB-SIMPLE-STREAMS	DEVICE-READ	yes	yes	function	(stream sb-simple-streams::buffer sb-simple-streams::start sb-simple-streams::end sb-simple-streams::blocking)
+SB-SIMPLE-STREAMS	DEVICE-WRITE	yes	yes	function	(stream sb-simple-streams::buffer sb-simple-streams::start sb-simple-streams::end sb-simple-streams::blocking)
+SB-SIMPLE-STREAMS	DIRECT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	DUAL-CHANNEL-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	FILE-LENGTH	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	FILE-POSITION	yes	yes	function	(stream &optional (position 0 sb-impl::suppliedp))
+SB-SIMPLE-STREAMS	FILE-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	FILL-POINTER-OUTPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	FINISH-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	FORCE-OUTPUT	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	FORMAT	yes	yes	function	(sb-format::destination sb-format::control-string &rest sb-format::format-arguments)
+SB-SIMPLE-STREAMS	FRESH-LINE	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	FUNCALL-STM-HANDLER	yes	yes	macro	(sb-simple-streams::slot-name stream &rest sb-simple-streams::args)
+SB-SIMPLE-STREAMS	FUNCALL-STM-HANDLER-2	yes	yes	macro	(sb-simple-streams::slot-name sb-simple-streams::arg1 stream &rest sb-simple-streams::args)
+SB-SIMPLE-STREAMS	HIPER-SOCKET-SIMPLE-STREAM	yes	yes	other	-
+SB-SIMPLE-STREAMS	INPUT-STREAM-P	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	INTERACTIVE-STREAM-P	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	LIMITED-STRING-OUTPUT-SIMPLE-STREAM	yes	yes	other	-
+SB-SIMPLE-STREAMS	LINE-LENGTH	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	LISTEN	yes	yes	function	(&optional (stream *standard-input*) (sb-simple-streams::width 1))
+SB-SIMPLE-STREAMS	MAPPED-FILE-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	NULL-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	OPEN	yes	yes	function	(sb-simple-streams::filename &rest sb-simple-streams::options &key (sb-simple-streams::direction :input) (sb-simple-streams::element-type (quote character) sb-simple-streams::element-type-given) sb-simple-streams::if-exists sb-simple-streams::if-does-not-exist (sb-simple-streams::external-format :default) class sb-simple-streams::mapped sb-simple-streams::input-handle sb-simple-streams::output-handle)
+SB-SIMPLE-STREAMS	OPEN-STREAM-P	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	OUTPUT-STREAM-P	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	PARSE-FILESPEC	yes	yes	function	(string &optional (sb-simple-streams::errorp t))
+SB-SIMPLE-STREAMS	PEEK-CHAR	yes	yes	function	(&optional (sb-impl::peek-type nil) (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+SB-SIMPLE-STREAMS	PPRINT	yes	yes	function	(sb-impl::object &optional stream)
+SB-SIMPLE-STREAMS	PRIN1	yes	yes	function	(sb-impl::object &optional stream)
+SB-SIMPLE-STREAMS	PRIN1-TO-STRING	yes	yes	function	(sb-impl::object)
+SB-SIMPLE-STREAMS	PRINC	yes	yes	function	(sb-impl::object &optional stream)
+SB-SIMPLE-STREAMS	PRINC-TO-STRING	yes	yes	function	(sb-impl::object)
+SB-SIMPLE-STREAMS	PRINT	yes	yes	function	(sb-impl::object &optional stream)
+SB-SIMPLE-STREAMS	PROBE-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	READ	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) (sb-impl::eof-value . #1=(nil)) (sb-impl::recursive-p . #1#))
+SB-SIMPLE-STREAMS	READ-BYTE	yes	yes	function	(stream &optional (sb-impl::eof-error-p t) sb-impl::eof-value)
+SB-SIMPLE-STREAMS	READ-CHAR	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+SB-SIMPLE-STREAMS	READ-CHAR-NO-HANG	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+SB-SIMPLE-STREAMS	READ-DELIMITED-LIST	yes	yes	function	(sb-impl::endchar &optional (sb-impl::input-stream *standard-input*) sb-impl::recursive-p)
+SB-SIMPLE-STREAMS	READ-FROM-STRING	yes	yes	function	(string &optional (sb-impl::eof-error-p t) sb-impl::eof-value &key (sb-impl::start 0) sb-impl::end sb-impl::preserve-whitespace)
+SB-SIMPLE-STREAMS	READ-LINE	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) sb-impl::eof-value sb-impl::recursive-p)
+SB-SIMPLE-STREAMS	READ-OCTETS	yes	yes	function	()
+SB-SIMPLE-STREAMS	READ-PRESERVING-WHITESPACE	yes	yes	function	(&optional (stream *standard-input*) (sb-impl::eof-error-p t) (sb-impl::eof-value . #1=(nil)) (sb-impl::recursive-p . #1#))
+SB-SIMPLE-STREAMS	READ-SEQUENCE	yes	yes	function	(sb-simple-streams::seq stream &key (sb-simple-streams::start 0) (sb-simple-streams::end nil) sb-simple-streams::partial-fill)
+SB-SIMPLE-STREAMS	READ-VECTOR	yes	yes	other	-
+SB-SIMPLE-STREAMS	REMOVE-STREAM-INSTANCE-FLAGS	yes	yes	macro	(stream &rest sb-simple-streams::flags)
+SB-SIMPLE-STREAMS	SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	SINGLE-CHANNEL-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	SM	yes	yes	macro	(sb-simple-streams::slot-name stream)
+SB-SIMPLE-STREAMS	SOCKET-BASE-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	SOCKET-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	STREAM-ELEMENT-TYPE	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	STREAM-EXTERNAL-FORMAT	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	STREAM-INPUT-HANDLE	yes	yes	function	(sb-pcl::object)
+SB-SIMPLE-STREAMS	STREAM-OUTPUT-HANDLE	yes	yes	function	(sb-pcl::object)
+SB-SIMPLE-STREAMS	STREAM-PLIST	yes	yes	function	(sb-pcl::object)
+SB-SIMPLE-STREAMS	STREAMP	yes	yes	function	(stream)
+SB-SIMPLE-STREAMS	STRING-INPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	STRING-OUTPUT-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	STRING-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	TERMINAL-SIMPLE-STREAM	yes	yes	class+type	-
+SB-SIMPLE-STREAMS	TERPRI	yes	yes	function	(&optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	UNREAD-CHAR	yes	yes	function	(character &optional (stream *standard-input*))
+SB-SIMPLE-STREAMS	WAIT-FOR-INPUT-AVAILABLE	yes	yes	function	(stream &optional sb-simple-streams::timeout)
+SB-SIMPLE-STREAMS	WITH-OPEN-FILE	yes	yes	macro	((stream sb-impl::filespec &rest sb-impl::options) &body sb-impl::body)
+SB-SIMPLE-STREAMS	WITH-OPEN-STREAM	yes	yes	macro	((sb-impl::var stream) &body sb-impl::body)
+SB-SIMPLE-STREAMS	WITH-STREAM-CLASS	yes	yes	macro	((class-name &optional stream) &body sb-simple-streams::body)
+SB-SIMPLE-STREAMS	WRITE	yes	yes	function	(sb-impl::object &key stream ((:escape . #1=(*print-escape*)) . #1#) ((:radix . #2=(*print-radix*)) . #2#) ((:base . #3=(*print-base*)) . #3#) ((:circle . #4=(*print-circle*)) . #4#) ((:pretty . #5=(*print-pretty*)) . #5#) ((:level . #6=(*print-level*)) . #6#) ((:length . #7=(*print-length*)) . #7#) ((:case . #8=(*print-case*)) . #8#) ((:array . #9=(*print-array*)) . #9#) ((:gensym . #10=(*print-gensym*)) . #10#) ((:readably . #11=(*print-readably*)) . #11#) ((:right-margin . #12=(*print-right-margin*)) . #12#) ((:miser-width . #13=(*print-miser-width*)) . #13#) ((:lines . #14=(*print-lines*)) . #14#) ((:pprint-dispatch . #15=(*print-pprint-dispatch*)) . #15#) ((:suppress-errors . #16=(*suppress-print-errors*)) . #16#))
+SB-SIMPLE-STREAMS	WRITE-BYTE	yes	yes	function	(integer stream)
+SB-SIMPLE-STREAMS	WRITE-CHAR	yes	yes	function	(character &optional (stream *standard-output*))
+SB-SIMPLE-STREAMS	WRITE-LINE	yes	yes	function	(string &optional (stream *standard-output*) &key (sb-impl::start 0) sb-impl::end)
+SB-SIMPLE-STREAMS	WRITE-OCTETS	yes	yes	function	(stream sb-simple-streams::buffer sb-simple-streams::start sb-simple-streams::end sb-simple-streams::blocking)
+SB-SIMPLE-STREAMS	WRITE-SEQUENCE	yes	yes	function	(sb-impl::seq stream &key (sb-impl::start 0) (sb-impl::end nil))
+SB-SIMPLE-STREAMS	WRITE-STRING	yes	yes	function	(string &optional (stream *standard-output*) &key (sb-impl::start 0) sb-impl::end)
+SB-SIMPLE-STREAMS	WRITE-TO-STRING	yes	yes	function	(sb-impl::object &key ((:escape . #1=(*print-escape*)) . #1#) ((:radix . #2=(*print-radix*)) . #2#) ((:base . #3=(*print-base*)) . #3#) ((:circle . #4=(*print-circle*)) . #4#) ((:pretty . #5=(*print-pretty*)) . #5#) ((:level . #6=(*print-level*)) . #6#) ((:length . #7=(*print-length*)) . #7#) ((:case . #8=(*print-case*)) . #8#) ((:array . #9=(*print-array*)) . #9#) ((:gensym . #10=(*print-gensym*)) . #10#) ((:readably . #11=(*print-readably*)) . #11#) ((:right-margin . #12=(*print-right-margin*)) . #12#) ((:miser-width . #13=(*print-miser-width*)) . #13#) ((:lines . #14=(*print-lines*)) . #14#) ((:pprint-dispatch . #15=(*print-pprint-dispatch*)) . #15#) ((:suppress-errors . #16=(*suppress-print-errors*)) . #16#))
+SB-SIMPLE-STREAMS	WRITE-VECTOR	yes	yes	other	-
+SB-SIMPLE-STREAMS	XP-SIMPLE-STREAM	yes	yes	class+type	-

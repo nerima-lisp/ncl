@@ -1,0 +1,11 @@
+package	symbol	present	external	kind	lambda-list
+SB-RT	*DO-TESTS-WHEN-DEFINED*	yes	yes	variable	-
+SB-RT	*TEST*	yes	yes	variable	-
+SB-RT	CONTINUE-TESTING	yes	yes	function	()
+SB-RT	DEFTEST	yes	yes	macro	(sb-rt::name sb-rt::form &rest values)
+SB-RT	DO-TEST	yes	yes	function	(&optional (sb-rt::name sb-rt:*test*))
+SB-RT	DO-TESTS	yes	yes	function	(&optional (sb-rt::out *standard-output*))
+SB-RT	GET-TEST	yes	yes	function	(&optional (sb-rt::name sb-rt:*test*))
+SB-RT	PENDING-TESTS	yes	yes	function	()
+SB-RT	REM-ALL-TESTS	yes	yes	function	()
+SB-RT	REM-TEST	yes	yes	function	(&optional (sb-rt::name sb-rt:*test*))

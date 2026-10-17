@@ -1,0 +1,10 @@
+package	symbol	present	external	kind	lambda-list
+SB-QUEUE	DEQUEUE	yes	yes	function	(sb-concurrency:queue)
+SB-QUEUE	ENQUEUE	yes	yes	function	(sb-concurrency::value sb-concurrency:queue)
+SB-QUEUE	LIST-QUEUE-CONTENTS	yes	yes	function	(sb-concurrency:queue)
+SB-QUEUE	MAKE-QUEUE	yes	yes	function	(&key sb-concurrency::name sb-concurrency::initial-contents)
+SB-QUEUE	QUEUE	yes	yes	class+type	-
+SB-QUEUE	QUEUE-COUNT	yes	yes	function	(sb-concurrency:queue)
+SB-QUEUE	QUEUE-EMPTY-P	yes	yes	function	(sb-concurrency:queue)
+SB-QUEUE	QUEUE-NAME	yes	yes	function	(sb-kernel:instance)
+SB-QUEUE	QUEUEP	yes	yes	function	(sb-kernel::object)

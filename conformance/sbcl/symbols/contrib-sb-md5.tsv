@@ -1,0 +1,17 @@
+package	symbol	present	external	kind	lambda-list
+SB-MD5	FILL-BLOCK	yes	yes	function	()
+SB-MD5	FILL-BLOCK-CHAR	yes	yes	function	()
+SB-MD5	FILL-BLOCK-UB8	yes	yes	function	()
+SB-MD5	FINALIZE-MD5-STATE	yes	yes	function	(sb-md5::state)
+SB-MD5	INITIAL-MD5-REGS	yes	yes	function	()
+SB-MD5	MAKE-MD5-STATE	yes	yes	function	()
+SB-MD5	MD5-REGS	yes	yes	type	-
+SB-MD5	MD5-STATE	yes	yes	class+type	-
+SB-MD5	MD5-STATE-P	yes	yes	function	(sb-kernel::object)
+SB-MD5	MD5REGS-DIGEST	yes	yes	function	()
+SB-MD5	MD5SUM-FILE	yes	yes	function	(pathname)
+SB-MD5	MD5SUM-SEQUENCE	yes	yes	function	(sequence &key (sb-md5::start 0) sb-md5::end)
+SB-MD5	MD5SUM-STREAM	yes	yes	function	(stream)
+SB-MD5	MD5SUM-STRING	yes	yes	function	(string &key (sb-md5::external-format :default) (sb-md5::start 0) sb-md5::end)
+SB-MD5	UPDATE-MD5-BLOCK	yes	yes	function	()
+SB-MD5	UPDATE-MD5-STATE	yes	yes	function	(sb-md5::state sequence &key (sb-md5::start 0) (sb-md5::end (length sequence)))

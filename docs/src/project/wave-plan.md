@@ -1,189 +1,154 @@
 # Wave plan
 
-## 概要
+## Overview
 
-本書は、旧 `wave-plan.md` を置き換える NCL の並列実装計画書です。各レーンは
-ゼロ文脈で起動する前提です。
+This document records NCL's implementation plan and acceptance criteria. Each lane follows this plan and the frozen design contracts.
 
-- **問題**: SBCL を超える Common Lisp 処理系が必要です。現行 NCL は SBCL 互換
-  (SB-* パッケージ表面と SBCL contrib 20 本) を前提に計画されており、受入
-  ゲートの所有表もその前提で作られています。
-- **成果**: SBCL 互換を捨てた NCL 独自の処理系にします。対象は ANSI CL と
-  NCL 独自の拡張 API で、実装は既存の Rust コアを引き継ぎます。前回の
-  Wave 1 は 9 レーン同時でしたが、今回は 16 レーンを常時埋める計画にします。
-- **受入**: 前回決定 6 の 4 基準 (ansi-test、cl-bench、ライブラリロード、
-  起動・サイズ・compile-file) をそのまま使います。比較対象は SBCL 2.6.0 の
-  実測値で、SBCL との互換性ではなく SBCL の数値を上回るかで判定します。
+NCL targets compatibility with SBCL 2.6.0. The target includes ANSI Common Lisp, the public SBCL APIs and contribs, 58 internal symbols referenced by libraries, ASDF/UIOP, and 14 libraries. P0 establishes the SBCL surface tables and coverage check so later lanes can count the remaining symbols in each package. Work proceeds through P0, P0b, and P1 to P6, followed by release.
 
-## 今回の決定
+## Decisions
 
-| # | 決定 | 置き換える既存決定 |
+| # | Decision | Relation |
 |---|---|---|
-| D-1 | 既存コアを継続する。sys/object/ir/codegen/asm/objfile/reader/printer/types などの SBCL 非依存部は残し、SB-* 表面と SBCL 前提の設計・所有表だけを作り直す | なし |
-| D-2 | SB-* パッケージとシンボルは作らない。機能は NCL 独自パッケージと独自 API で持つ。互換 shim や別名パッケージも置かない | 2026-09-15 決定 5 |
-| D-3 | 移植範囲は「実行基盤 + 開発ツール」(FR-003, FR-004)。gmp/mpfr/simple-streams/aclrepl/cltl2/rt/md5/rotate-byte は移植しない | D-24-3 (contrib 20 本すべて Rust) |
-| D-4 | ASDF/UIOP は Rust で再実装する。パッケージ名は上流 ASDF のもの (ASDF/INTERFACE, UIOP/DRIVER) を使う。これは SBCL の表面ではない | D-24-3 を ASDF/UIOP に限って維持 |
-| D-5 | 可搬層ライブラリの `#+ncl` バックエンドは NCL リポジトリ内に置く。上流への PR は受入後に別途判断する | なし |
-| D-6 | 同時に走らせるレーンは最大 16。うち 1 本は統合専任 | なし |
-| D-7 | CI は x86-64 のみ。AArch64 の回帰は、統合レーンが merge のたびに macOS arm64 で全テストを流して検出する | D-24-4 を再確認 |
-| D-8 | 最適化の到達点は D-24-1 の 4 項目 (SSA 最適化 + SSA レジスタ割当、並列 GC、tier-1 投機 + deopt/OSR、SIMD) に、e-graph (等価飽和) 最適化を加えたもの | D-24-1 を拡張 |
+| D-1 | Keep the existing SBCL-independent core and update the SBCL surface and its ownership tables. | None |
+| D-2 | Do not create SB-* packages; provide only NCL-specific APIs. | Withdrawn by D-9 |
+| D-3 | Do not port contribs beyond the runtime and development tools. | Withdrawn by D-9 |
+| D-4 | Implement ASDF/UIOP in NCL and use the ASDF/INTERFACE and UIOP/DRIVER packages. Preserve D-24-3 only for ASDF/UIOP. | D-24-3, limited to ASDF/UIOP |
+| D-5 | Keep `#+ncl` backends for portability-layer libraries in the NCL repository. | Preserved by D-10 |
+| D-6 | Run at most 16 lanes concurrently, including one integration lane. | None |
+| D-7 | Target the architecture and operating system combinations in D-12. | Confirmed by D-12 |
+| D-8 | Target SSA optimization and register allocation, parallel GC, tier-1 speculative optimization with deopt/OSR, SIMD, and e-graph rewriting. | Extends D-24-1 |
+| D-9 | Compatibility covers the public APIs of SB-EXT, SB-THREAD, SB-ALIEN, SB-SYS, SB-MOP, SB-GRAY, SB-UNICODE, and SB-DEBUG; contribs; and 58 internal symbols referenced by libraries. | D-2, D-3, and FR-001 |
+| D-10 | `*features*` includes `:ncl` and never includes `:sbcl`. Libraries use `#+ncl` backends. | Preserves D-5 |
+| D-11 | NCL passes every ansi-test test passed by SBCL 2.6.0 on the same day and machine. For cl-bench, NCL's geometric mean is at most SBCL's, and each of the 65 benchmarks runs within 1.5 times SBCL's time. | Adds ANSI-test and cl-bench acceptance criteria |
+| D-12 | Target x86-64 and AArch64 on macOS and Linux. | Confirms D-7 |
+| D-13 | A contrib is in scope on exactly the platforms where SBCL 2.6.0 loads it. The decision states 20 contribs on macOS arm64, while the extraction reports 18 loaded and excludes sb-simd/sb-perf; the gap and expected names remain unresolved. Add sb-simd and sb-perf on x86-64 Linux and schedule them last; Linux table statuses are unverified. | O-1 run ruling (not defined here) |
 
-## 現状
+D-9 withdraws D-2's SB-* exclusion, D-3's contrib exclusion, and FR-001's SBCL-surface removal requirement.
 
-Gate 0 の N01 が契約と骨格を着地させています。次の事実は着地先の main で確認したものです。
+The specification's baseline for the eight SBCL public packages is 690 symbols, while the extracted package tables total 698 (237+83+62+111+102+32+47+24). This discrepancy remains unresolved; neither count should be treated as an acceptance figure until reconciled. The COMMON-LISP table's 978 symbols and the 58 library-referenced internal symbols are separate counts.
 
-- `src/main.rs` は 23 行の stub です。動くのは `--version` / `-V` のみで、
-  `--eval` は "not implemented during the native rewrite" を表示して exit 1、
-  それ以外の引数は exit 2、引数なしは書き換えの案内を表示して exit 2 に
-  なります。`--file`、`--repl`、`--compiled`、`--load`、`--script` はありません。
-- 旧 interpreter、VM、syntax crate は削除済みで、`packages/core/*` はもう
-  存在しません。
-- 着地済みまたは一部着地の crate: sys、object、ir、codegen、objfile、
-  asm/x86-64、asm/aarch64。言語・ライブラリ・runtime・conformance の各 crate は
-  骨格または部分実装の段階です。
-- N01 が所有表の分割 (`packages/<crate>/ownership.tsv`)、拡張 crate 7 本
-  (ncl-os、ncl-asdf、ncl-uiop、ncl-profiler、ncl-coverage、ncl-debug、
-  ncl-disasm) の骨格、`docs/src/design/extension-api.md` を着地させました。
-  グローバルな `conformance/ownership/symbols.tsv` には、先頭フィールドが `SB-`
-  で始まる行がまだ 1,925 行残っており、FR-001 がこれを削除します。
-- SBCL 互換は意図的に廃止しています (D-2)。拡張機能は NCL 独自パッケージが
-  提供します (FR-003)。
-- 開発環境は `nix develop` で整います。Rust 1.98.0、clippy、rustfmt、
-  cargo-llvm-cov、mkdocs が揃います。
+## Project acceptance criteria
 
-## 機能要件
+| Criterion | Target | Verification |
+|---|---|---|
+| ansi-test | NCL passes every test passed by SBCL 2.6.0 on the same day and machine. | P0b records SBCL's passing test names and compares NCL under the same conditions. The baseline has 21,768 of 21,942 tests passing; the gate uses the test-name set. |
+| cl-bench | Geometric mean at most SBCL's; each of the 65 benchmarks within 1.5 times SBCL's time. | Measure SBCL and NCL on the same day and machine. |
+| Startup time | Median at most 17.331 ms. | Measure startup with empty input. |
+| Executable size | At most 82,501,760 bytes. | Measure the release executable. |
 
-### FR-001 SBCL 表面の撤去 (必須。D-2 の直接の帰結)
+## Functional requirements
 
-- 実行時に `SB-` で始まるパッケージを作りません。
-- `git grep -n '"SB-' -- packages src` が 0 件になります。
-- 削除: `conformance/sbcl/symbols/`、`conformance/sbcl/extract-surface.lisp`、グローバルの `symbols.tsv`。
-- `conformance/baselines/` は比較用の数値なので残します。
+### FR-001 SBCL surface removal
 
-### FR-002 ANSI CL (必須。受入基準 1)
+Withdrawn by D-9. SB-* surface is allowed and is checked against the SBCL surface tables.
 
-- COMMON-LISP パッケージの外部シンボル 978 個を全て所有・登録します。
-- ansi-test (`ca06bd91…`) の合格数が SBCL の 21,768/21,942 以上になります。
+### FR-002 ANSI Common Lisp
 
-### FR-003 NCL 拡張 API: 実行基盤 (必須。D-3。ライブラリロードの前提になります)
+Register all 978 external symbols in the COMMON-LISP package in the ownership tables. The ansi-test acceptance criterion follows D-11.
 
-どの crate が何を持つか:
+### FR-003 Runtime and extension API
 
-| 機能 | 担当 crate |
+| Function | Owning crate |
 |---|---|
-| スレッド、同期、タイマ、並行キュー | ncl-threads |
+| Threads, synchronization, timers, concurrent queues | ncl-threads |
 | FFI | ncl-ffi |
 | MOP | ncl-clos |
-| Gray stream | ncl-lib-streams |
-| weak pointer、finalizer、GC 制御 | ncl-object |
-| image 保存と単体実行ファイル | ncl-image |
-| PLN、package lock | ncl-lib-packages |
+| Gray streams | ncl-lib-streams |
+| Weak pointers, finalizers, GC control | ncl-object |
+| Image saving and standalone executables | ncl-image |
+| Package locks | ncl-lib-packages |
 | Unicode | ncl-lib-strings |
-| POSIX、プロセス、ソケット | ncl-os (新設) |
+| POSIX, processes, sockets | ncl-os |
 
-- パッケージは文脈ごとに `NCL-` 接頭辞を付けて 1 つずつ作ります。
-- 既定の名前は次のとおりで、N01 が凍結します: NCL-THREADS, NCL-FFI,
-  NCL-MOP, NCL-GRAY, NCL-GC, NCL-IMAGE, NCL-UNICODE, NCL-OS, NCL-EXT
-  (`truly-the` など言語拡張), NCL-SYS (内部 primitive)。
-- AMOP や Gray の既存名は、意味が同一の場合に限って流用して構いません。
+NCL's public APIs use NCL-THREADS, NCL-FFI, NCL-MOP, NCL-GRAY, NCL-GC, NCL-IMAGE, NCL-UNICODE, NCL-OS, NCL-EXT, and NCL-SYS. When an NCL name and a public SBCL name describe the same behavior, they share the same symbol object. A name used only by SBCL is owned by the domain crate that implements its behavior. Do not create SB-* nickname or alias packages, or compatibility crates that duplicate behavior.
 
-### FR-004 開発ツール (必須。D-3)
+### FR-004 Development tools and contribs
 
-- 統計プロファイラ (ncl-profiler) を作ります。
-- カバレッジ (ncl-coverage) を作ります。
-- デバッガと introspection (ncl-debug) を作ります。
-- x86-64/AArch64 の逆アセンブラ (ncl-disasm。capstone は使わず自前で書きます) を作ります。
-
-### FR-005 ASDF/UIOP (必須。D-4)
-
-- ncl-uiop と ncl-asdf を Rust で実装します。旧所有表の ASDF/INTERFACE 230 行と UIOP/DRIVER 427 行を移します。
-- 固定コミットの上流 `.asd` がそのままロードできます。
-
-### FR-006 ライブラリロード (必須。受入基準 3)
-
-- 対象は `conformance/sbcl/symbols/README.md:39` に記録された 14 ライブラリ
-  (固定コミット) です: cffi, bordeaux-threads, closer-mop, trivial-features,
-  trivial-garbage, trivial-gray-streams, trivial-backtrace, alexandria,
-  cl-ppcre, babel, usocket, flexi-streams, static-vectors, cl-fad。
-- `libraries/<name>/` に置いた `#+ncl` バックエンドを重ねて、NCL の ASDF で
-  ロードできます。
-- どのライブラリにバックエンドが要るかは inferred です。N77 が `#+sbcl`
-  分岐を grep して確定します。
-
-### FR-007 性能 (必須。受入基準 2 と 4。同じマシン・同じ日に SBCL と対で計測し、commit hash を記録します)
-
-- cl-bench の幾何平均 ≤ 0.0755 s
-- 起動 ≤ 17.331 ms (中央値)
-- 実行ファイル ≤ 82,501,760 bytes
-- compile-file: cl-bench `files/*.lisp` を 0.08 s 以下で処理
-- SBCL 側の値の出典は `conformance/baselines/`。
-
-### FR-008 コンパイラと GC の段階 (必須。D-8)
-
-| Phase | 内容 |
+| Function | Owning crate |
 |---|---|
-| 1b | 線形走査レジスタ割当。GC がフレームチェーン全体を走査するようにする |
-| 1c | tail call、`&rest`/`&key` 専用のプロローグ |
-| 2 | unbox、型推論、inline cache |
-| 3 | inlining、escape analysis + スタック割当、GVN、SCCP、LICM、e-graph |
-| 3 | SSA ベースのレジスタ割当 |
-| 4 | 並列 GC |
-| 5 | tier-1 投機最適化 + deopt/OSR |
-| 6 | SIMD |
+| Statistical profiler | ncl-profiler |
+| Coverage | ncl-coverage |
+| Debugger and introspection | ncl-debug |
+| x86-64 and AArch64 disassembler | ncl-disasm |
 
-各 Phase の受入は `compiler-pipeline.md` の既存定義に従います。e-graph pass の
-受入は次の 2 点です:
+Load libcapstone at runtime through ncl-ffi. Contrib ownership follows the table below; assign remaining contribs along DDD boundaries.
 
-- 規則ごとに IR の往復テストがあり、`verify()` を通ります。
-- cl-bench の幾何平均が e-graph 導入前を上回りません (遅くなりません)。
+| Contrib | Owning crate |
+|---|---|
+| sb-posix, sb-bsd-sockets | ncl-os |
+| sb-sprof | ncl-profiler |
+| sb-cover | ncl-coverage |
+| sb-introspect | ncl-debug |
+| sb-concurrency, sb-queue | ncl-threads |
+| sb-executable | ncl-image |
+| sb-simple-streams | ncl-lib-streams |
 
-### FR-009 安定性 (必須。「安定性と速度の両立」を観測できる形にしたものです)
+The current extraction reports 18 contribs loaded by SBCL 2.6.0 on macOS arm64, with sb-simd and sb-perf out of scope there. D-13 states 20 for macOS arm64, so the decision count and extraction result conflict and remain unresolved. D-13 also calls for sb-simd and sb-perf on x86-64 Linux, scheduled last; confirm their Linux table statuses before marking them verified.
 
-- pass を 1 つ通すごとに IR `verify()` を実行します。
-- 差分テスト: 同じプログラムを tier-0、最適化あり、tier-1 で実行し、結果が一致します。
-- GC stress モード: safepoint ごとに collect を走らせても全テストが通ります。
-- 投機 1 種ごとに deopt テストを置きます。
-- 並行テストには watchdog を付けます。
-- coverage は regions 95% 以上を維持します。ゲートは緩めません。
+### FR-005 ASDF/UIOP
 
-### FR-010 AI Slop 除去 (必須。ユーザー指示)
+Implement ASDF/UIOP in ncl-uiop and ncl-asdf. The existing ownership tables contain 230 ASDF/INTERFACE symbols and 427 UIOP/DRIVER symbols. NCL's ASDF must load the pinned upstream `.asd` files.
 
-- 対象: root README の書き直し、em dash の置換、`SymbolKind`/`SymbolRow` の
-  ncl-ownership への一本化、SBCL 前提の文書記述、旧 `wave-plan.md` のこの
-  計画での置き換え。
-- 再発防止として `check_standards.py` に em dash 検査を加えます。
+### FR-006 Library loading
 
-### FR-011 並列実行規約 (必須。D-6)
+The 14 target libraries are cffi, bordeaux-threads, closer-mop, trivial-features, trivial-garbage, trivial-gray-streams, trivial-backtrace, alexandria, cl-ppcre, babel, usocket, flexi-streams, static-vectors, and cl-fad. Place `#+ncl` backends under `libraries/<name>/` and load them through NCL's ASDF. Determine which libraries need backends by inspecting their `#+sbcl` branches.
 
-- 1 レーン = 1 worktree = 1 ブランチ。
-- 所有表は crate ごとに分け、`packages/<crate>/ownership.tsv` に置きます。
-  こうすると共有 TSV での衝突が起きません。
-- 各レーンは最初のコミットで、自 crate の表と公開 API を凍結します。
-- root `Cargo.toml`/`Cargo.lock` と凍結契約文書を変更してよいのは契約レーン (N01/N02) だけです。
+### FR-007 Performance
 
-## 技術仕様
+Use the cl-bench criteria in D-11. Startup time and executable size follow the project acceptance criteria table.
 
-### 所有表の分割 (D-1, FR-011)
+### FR-008 Compiler and GC phases
 
-決定内容:
+| Phase | Work |
+|---|---|
+| 1b | Linear-scan register allocation; GC scans the full frame chain. |
+| 1c | Tail calls and dedicated `&rest`/`&key` prologues. |
+| 2 | Unboxing, type inference, inline cache. |
+| 3 | Inlining, escape analysis and stack allocation, GVN, SCCP, LICM, e-graph. |
+| 3 | SSA-based register allocation. |
+| 4 | Parallel GC. |
+| 5 | Tier-1 speculative optimization with deopt/OSR. |
+| 6 | SIMD. |
 
-- `ncl-ownership` は、テストが渡した表テキスト (`include_str!` で読む crate ごとの表) で検査する形に変えます。
-- `check.py` は全 `packages/**/ownership.tsv` を集め、3 点を検査します: CL の
-  978 シンボルが網羅されていること、行が重複していないこと、`SB-` が 0 件
-  であること。
+Run the IR verifier after each pass. Give each e-graph rewrite an IR round-trip test. E-graph introduction must not worsen the cl-bench geometric mean.
 
-理由: 表が 1 ファイルのままだと、16 レーンが同じファイルを編集して衝突するためです。
+### FR-009 Stability
 
-却下した案: 単一 TSV を維持し、統合者がまとめて編集する案。統合者が律速点になるため却下しました。
+Run the IR verifier after each pass. Compare results for the same program at tier-0, with optimizations, and at tier-1. In GC stress mode, collect at every safepoint. Add a deopt test for each speculative optimization, watchdogs for concurrency tests, and maintain at least 95% regions coverage.
 
-### 登録の入口
+### FR-010 Documentation and implementation quality
 
-- `ncl-stdlib::register_all` を、シンボルを所有する全 crate (threads/ffi/image と新設 crate を含む) の唯一の入口にします。
-- まだ着地していない crate は何も登録しません。conformance runner はそれを失敗ではなく「未着地」と表示します。
+Update the README and design documents to reflect current decisions. Do not add stubs that return Unsupported, unused code, comments that restate behavior, or tests without assertions.
 
-### 新設 crate の依存辺
+### FR-011 Parallel execution
 
-N01 が `crates.md` に反映します。非循環であることを確認済みです (inferred)。
+Use one worktree and one branch per lane. Split ownership tables by crate under `packages/<crate>/ownership.tsv`. Each lane freezes its crate's table and public API in its first commit. Only contract lanes may change the root Cargo.toml, Cargo.lock, and frozen contract documents.
+
+## Technical specification
+
+### P0: surface tables and coverage check
+
+Extract the SBCL 2.6.0 surface into tables under `conformance/sbcl/symbols/`. Use `conformance/sbcl/extract-surface.lisp` as the extraction script. Record the SBCL version, extraction command, and platform-specific contrib scope in `conformance/sbcl/README.md`.
+
+The SBCL surface tables record each symbol's presence, external status, kind,
+and function or macro lambda list for comparison against SBCL 2.6.0. Kinds
+include special operator, macro, function, variable, constant, class, and
+type. D-13 calls for sb-simd and sb-perf on x86-64 Linux; confirm their table
+statuses during extraction.
+
+`conformance/ownership/check.py` reads every crate's `packages/<crate>/ownership.tsv` and preserves the existing seven-column format. Fail when an SB-* row's package, symbol name, or kind does not match the surface table, and list each failure as `package::symbol (kind): reason`. For symbols in the surface table but absent from ownership tables, list names and counts by package and exit 0. Support filtering by package. Preserve the 978-symbol COMMON-LISP coverage requirement and reject duplicate ownership rows.
+
+### Ownership and registration
+
+- `ncl-ownership` checks the table text for each crate.
+- `ncl-stdlib::register_all` is the registration entry point for each crate.
+- A crate that has not landed registers no symbols; the conformance runner reports it as not landed.
+
+### Planned crate dependency edges
+
+These are target edges. N76 adds `ncl-ffi` to `ncl-disasm`'s current
+`ncl-object` dependency for runtime Capstone access.
 
 ```text
 ncl-os -> ncl-object, ncl-sys, ncl-conditions, ncl-lib-streams
@@ -192,110 +157,102 @@ ncl-asdf -> ncl-object, ncl-conditions, ncl-clos, ncl-uiop
 ncl-profiler -> ncl-object, ncl-sys, ncl-threads, ncl-conditions
 ncl-coverage -> ncl-object, ncl-compiler-front
 ncl-debug -> ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams
-ncl-disasm -> ncl-object
-ncl-stdlib -> (既存の辺) + ncl-threads, ncl-ffi, ncl-image, ncl-compiler-front, 上記 7 crate
+ncl-disasm -> ncl-object, ncl-ffi
+ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-compiler-front, and the seven extension crates
 ```
 
-### IR 契約 v2 (N02)
+### IR contract v2
 
-- 加えるもの: 関数エントリ定数、クロージャ生成、`catch`/`unwind-protect`/`progv` の handler-region lowering。
-- 理由: クロージャ (ANSI の必須機能) と Phase 3 の pass が、安定した IR を前提にするためです。
-- 範囲: 両アーキテクチャの codegen テンプレートまでを 1 レーンで atomic に着地させます。
-- レジスタクラス (Phase 6) の契約は、N49 の着地後に凍結します。これはユーザー判断ではなく順序の問題です。
+- Add function-entry constants, closure creation, and handler-region lowering for `catch`, `unwind-protect`, and `progv`.
+- Closures and Phase 3 passes depend on stable IR.
+- Land codegen templates for both architectures in the same lane.
+- Freeze the register-class contract after N49 lands.
 
-## 制約
+## Constraints
 
-- 外部 crate はゼロ。`unsafe` は `ncl-sys` だけに置きます。DDD 構造を守ります
-  (2026-09-15 決定 3 と 9。変更なし)。
-- 後方互換はありません。旧 NCL の API や FASL v1 のための別名や移行層も作りません。
-- 検証は `nix develop --command cargo test --workspace` で行います。bare cargo は bin のリンクに失敗します。
-- main の実体は `git ls-remote origin main` で確認します。fetch refspec が空なので `origin/main` は古い値のままになります。
+- Load libgmp, libmpfr, and libcapstone at runtime through ncl-ffi.
+- Do not provide backward compatibility for the old NCL API or FASL v1.
+- Run Rust validation through `nix develop --command`.
 
-## テスト要件
+## Test requirements
 
-### 全レーン共通
+- Pass each crate's `registers_every_owned_symbol` test.
+- Maintain at least 95% regions coverage in each crate.
+- Pass workspace tests, clippy, and `check_standards.py`.
+- Validate all target operating systems and architectures in D-12.
 
-- 自 crate の `registers_every_owned_symbol` が緑。
-- 自 crate の regions coverage が 95% 以上。
-- `cargo test --workspace`、`cargo clippy -D warnings`、`check_standards.py` がすべて exit 0。
-- 自 crate に `"SB-` の文字列が無い。
+### Failure behavior
 
-### 失敗時の挙動
+Reject duplicate ownership rows, SB-* rows absent from the SBCL surface, and package, name, or kind mismatches. Report surface symbols that have not been implemented as missing entries for coverage progress.
 
-- 所有表が空なら `NoRows` で失敗します (偽の合格を防ぎます)。
-- 登録が 1 件でも欠けていれば `package::symbol (kind): reason` の形で列挙して失敗します。
+### Milestones
 
-### マイルストーン
-
-| ID | 観測できる状態 |
+| ID | Observable state |
 |---|---|
-| M0 | FR-001 の grep が 0 件、`check.py` が CL 978 を網羅、旧 `symbols.tsv` が消えている |
-| M1 | `ncl --eval` に fib の定義と `(fib 25)` を渡すと、ソースから native 実行されて `75025` を出力する。x86-64 は CI、AArch64 は統合レーンのローカル実行で確認 |
-| M2 | ansi-test が完走し、合格・失敗・未実行の 3 つの数値と commit hash を出す |
-| M3 | cl-bench 65 本が完走する |
-| M4 | 14 ライブラリのロードマトリクスが全て成功する |
-| M5 | FR-002 と FR-007 の数値が SBCL の値以上 (時間とサイズは以下) |
+| M0 | SBCL surface tables are complete. The ownership check rejects mismatches, reports missing symbols by package, and preserves CL 978-symbol coverage and duplicate rejection. |
+| M1 | `ncl --eval` defines fib, evaluates `(fib 25)`, and prints `75025` from native execution on D-12 target platforms. |
+| M2 | P0b records SBCL's passing test-name set, and NCL meets D-11's ansi-test criterion. |
+| M3 | All 65 cl-bench benchmarks finish and meet D-11's geometric-mean and per-benchmark limits. |
+| M4 | The 14 library `#+ncl` backends load through NCL's ASDF. |
+| M5 | Startup time and executable size meet the targets in the acceptance criteria table above. |
 
-## タスク分解
+## Work breakdown
 
-レーン番号は旧 L 番号と区別するため N を付けています。「開始条件」の番号は、
-そのレーンの API 凍結コミットを指します。
+Lane IDs use the N prefix. A start condition refers to an upstream lane's frozen API.
 
-### Gate 0 (この 6 レーンを最初に同時起動します)
+### Gate 0
 
-| N | 範囲 | 開始条件 | 受入 |
+| N | Scope | Start condition | Acceptance |
 |---|---|---|---|
-| N01 | 拡張 API の契約 (`docs/src/design/extension-api.md`)、`crates.md`、所有表の分割、`ncl-ownership` の API 変更と型の一本化、`check.py` の書き直し、SBCL 抽出物の削除、新設 7 crate の骨格と root `Cargo.toml`、`register_all` の順序表 | なし | M0 の `check.py` 部分。最初のコミットで表の形式と ownership API を凍結する |
-| N02 | IR 契約 v2 (ir、`compiler-pipeline.md`、両アーキテクチャの codegen テンプレート) | なし | 新しい op が両アーキテクチャで実行テストを通る |
-| N03 | Slop 除去と文書 (README、`docs/src/**`、ただし N01/N02 が持つファイルは除く。新計画書) | なし | FR-010。`mkdocs build --strict` が exit 0 |
-| N04 | 統合 (常駐)。merge、全体テスト、arm64 でのローカル全テスト | なし | merge ごとに両アーキテクチャが緑 |
-| N05 | sys/object/objfile/asm の coverage 回復 | なし | 各 crate の regions が 95% 以上 |
-| N76 | ncl-disasm のデコーダ | なし (登録は N01 の後) | 自前 assembler の出力を逆アセンブルして往復一致する |
+| N01 | Extension API contract, `crates.md`, ownership-table split, ncl-ownership API and type unification, restored surface extraction, coverage check, skeletons for seven new crates, root Cargo.toml, and `register_all` order table. | None | M0; freeze the ownership format and API. |
+| N02 | IR contract v2, compiler-pipeline, and codegen templates for both architectures. | None | New operations pass execution tests on both architectures. |
+| N03 | README and documentation. | None | Record current decisions and pass the strict MkDocs build. |
+| N04 | Integration, full test runs, and checks on all target operating systems and architectures. | None | Validate D-12 target combinations. |
+| N05 | Recover coverage for sys/object/objfile/asm. | None | Each crate reaches at least 95% regions coverage. |
+| N76 | ncl-disasm decoder. | After N01 establishes ncl-ffi. | Disassemble assembler output on target architectures; load libcapstone at runtime through ncl-ffi. |
 
-### Wave A (N01/N02 の凍結後、空いた枠に優先順で投入します)
+### Wave A
 
-| 優先 | N | 範囲 | 開始条件 |
+Start in priority order after N01 and N02 freeze.
+
+| Priority | N | Scope | Start condition |
 |---|---|---|---|
-| 1 | N60 | runtime + bin (eval/compile/compile-file/load、`MacroCaller`、REPL、`--eval`/`--load`/`--script`)。M1 を担当 | N01, N02 |
-| 2 | N27 | lib-macros A (定義、制御、setf) | N01 |
-| 3 | N20 | lib-numbers | N01 |
-| 4 | N13 | compiler-front の表面移行と IR v2 の lowering (クロージャ、catch/unwind-protect/progv、macrolet) | N01, N02 |
-| 5 | N40 | Phase 1b | N02 |
-| 6〜14 | N10 threads、N11 ffi、N12 conditions、N14 types/reader/printer/image/object の表面移行、N21 sequences、N22 strings、N24 streams、N25 packages、N26 clos | N01 |
-| 15 | N43 | pass manager + inlining | N02 |
+| 1 | N60 | Runtime and binary: eval/compile/compile-file/load, MacroCaller, REPL, `--eval`/`--load`/`--script`; owns M1. | N01, N02 |
+| 2 | N27 | lib-macros A: definitions, control, setf. | N01 |
+| 3 | N20 | lib-numbers. | N01 |
+| 4 | N13 | compiler-front surface migration and IR v2 lowering for closures, catch/unwind-protect/progv, and macrolet. | N01, N02 |
+| 5 | N40 | Phase 1b. | N02 |
+| 6-14 | N10 threads; N11 FFI; N12 conditions; N14 types/reader/printer/image/object; N21 sequences; N22 strings; N24 streams; N25 packages; N26 CLOS. | N01 |
+| 15 | N43 | Pass manager and inlining. | N02 |
 
-### Wave B (依存先の凍結後に投入します)
+### Wave B
 
-| N | 範囲 | 開始条件 |
+| N | Scope | Start condition |
 |---|---|---|
 | N23 | hash-arrays | N01 |
 | N28 | LOOP | N27 |
 | N29 | pathnames | N22 |
 | N30 | format | N22, N24, printer |
-| N44〜N47 | escape analysis、GVN+SCCP、LICM、e-graph | N43 |
-| N41 | Phase 1c | N40 |
-| N49 | SSA レジスタ割当 | N40 |
-| N50 | Phase 4 並列 GC | N40 (`collect.rs` が重なるため) |
-| N62 | conformance runner (M2/M3/M5) | N60 |
-| N63 | 差分テスト + GC stress | N60 |
-| N70 | ncl-os | N24 |
-| N73 | ncl-profiler | N10 |
+| N44-N47 | Escape analysis, GVN/SCCP, LICM, e-graph. | N43 |
+| N41 | Phase 1c. | N40 |
+| N49 | SSA register allocation. | N40 |
+| N50 | Phase 4 parallel GC. | N40 (`collect.rs` overlaps.) |
+| N62 | Conformance runner for M2/M3/M5. | N60 |
+| N63 | Differential tests and GC stress. | N60 |
+| N70 | ncl-os. | N24 |
+| N73 | ncl-profiler. | N10 |
 
 ### Wave C
 
-| N | 範囲 | 開始条件 |
+| N | Scope | Start condition |
 |---|---|---|
-| N42 | Phase 2 | N41, N13 |
-| N52 | Phase 5 | N42, N44〜N47, N49 |
-| N53 | Phase 6 SIMD | N49 の後、レジスタクラス契約を凍結してから |
-| N71 | ncl-uiop | N24, N29, N70 |
-| N72 | ncl-asdf | N71, N26 |
-| N74 | ncl-coverage | N13, N60 |
-| N75 | ncl-debug | N12, N60 |
-| N77 | ライブラリバックエンドとロードマトリクス (M4) | N72, N10, N11, N26 |
+| N42 | Phase 2. | N41, N13 |
+| N52 | Phase 5. | N42, N44-N47, N49 |
+| N53 | Phase 6 compiler SIMD. | After N49 and register-class contract freeze. |
+| N71 | ncl-uiop. | N24, N29, N70 |
+| N72 | ncl-asdf. | N71, N26 |
+| N74 | ncl-coverage. | N13, N60 |
+| N75 | ncl-debug. | N12, N60 |
+| N77 | Library backends and load matrix for M4. | N72, N10, N11, N26 |
 
-### 引き継ぎの前提と禁止事項
-
-- 基準は main の `5bf6506a` 以降です。printer の未 merge 2 コミットの扱いは N04 が決めます。
-- 使ってはいけないもの: 旧 `wave-plan.md` の D-24-3 決定、所有表の SB-* 行、coverage ゲートの引き下げ。
-- 前回の Wave 1 は opencode の利用上限で全停止しました。16 本を同時に起動する際は、上限に達したときの再開手順を kickoff に含めます。
+D-13's sb-simd and sb-perf contribs are scheduled last on x86-64 Linux. This work is separate from N53 compiler SIMD.

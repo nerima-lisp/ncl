@@ -14,6 +14,12 @@ scoreboard = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 sys.modules[spec.name] = scoreboard
 spec.loader.exec_module(scoreboard)
+INCLUSION_PATH = Path(__file__).parents[2] / "scripts" / "ansi_test_inclusion.py"
+inclusion_spec = importlib.util.spec_from_file_location("ansi_test_inclusion", INCLUSION_PATH)
+inclusion = importlib.util.module_from_spec(inclusion_spec)
+assert inclusion_spec.loader is not None
+sys.modules[inclusion_spec.name] = inclusion
+inclusion_spec.loader.exec_module(inclusion)
 
 
 class ScoreboardTests(unittest.TestCase):
@@ -66,6 +72,243 @@ class ScoreboardTests(unittest.TestCase):
         result = scoreboard.make_scoreboard(ansi, None, bench, [])
         self.assertEqual(result["cl-bench"]["samples"], 0)
         self.assertNotIn("geometric_mean", result["cl-bench"])
+
+    def test_baseline_measurement_uses_registered_source_for_chapter(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "ansi-test"
+            source_file = source / "printer" / "format" / "format.lsp"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("", encoding="utf-8")
+            stdout = "\n".join((
+                f"{inclusion.PROTOCOL}\tENTRY\tA.1\t{source_file}",
+                f"{inclusion.PROTOCOL}\tPASS\tA.1",
+                f"{inclusion.PROTOCOL}\tDONE\tbaseline",
+            ))
+            with patch.object(inclusion, "_run_process", return_value=("process", stdout, "", 0)):
+                with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.0"):
+                    report = inclusion.measure_baseline(["sbcl", "--script"], source, 1)
+
+        self.assertEqual(
+            report["tests"],
+            [{"name": "A.1", "chapter": "printer/format", "status": "passed"}],
+        )
+        self.assertEqual(report["registered"], 3)
+        self.assertEqual(report["unexecuted"], 0)
+
+    def test_clean_suite_scratch_removes_files_and_directory(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory)
+            scratch = source / "sandbox" / "scratch"
+            scratch.mkdir(parents=True)
+            (scratch / "foo.txt").write_text("", encoding="utf-8")
+
+            inclusion._clean_suite_scratch(source)
+
+            self.assertFalse(scratch.exists())
+
+    def test_baseline_writer_preserves_dotted_platform_prefix(self):
+        with TemporaryDirectory() as directory:
+            prefix = Path(directory) / "ansi-test-sbcl-2.6.0-macos-arm64"
+            report = {
+                "status": "complete",
+                "unexecuted": 0,
+                "runtime_version": "SBCL 2.6.0",
+                "active": 1,
+                "tests": [{"name": "A.1", "chapter": "arrays", "status": "passed"}],
+                "measured_on": "2026-10-17",
+                "platform": "macOS arm64",
+                "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "registered": 3,
+                "removed": 2,
+                "process_exit_status": 0,
+                "disabled": 0,
+                "disabled_tests": [],
+                "passed": 1,
+                "failed": 0,
+            }
+
+            inclusion._write_baseline_files(report, prefix)
+
+            names_path = Path(str(prefix) + ".txt")
+            self.assertEqual(names_path.read_text(encoding="utf-8"), "A.1\n")
+            self.assertEqual(inclusion.load_baseline(names_path), {"A.1": "arrays"})
+            metadata = Path(str(prefix) + ".md").read_text(encoding="utf-8")
+            self.assertIn("upstream `doit.lsp` says they misbehave", metadata)
+            self.assertFalse(prefix.with_suffix(".txt").exists())
+
+    def test_baseline_metadata_explains_sbcl_note_disabling(self):
+        with TemporaryDirectory() as directory:
+            prefix = Path(directory) / "baseline"
+            report = {
+                "status": "complete",
+                "unexecuted": 0,
+                "runtime_version": "SBCL 2.6.0",
+                "active": 1,
+                "tests": [{"name": "OPEN.IO.21", "chapter": "streams", "status": "passed"}],
+                "measured_on": "2026-10-17",
+                "platform": "macOS arm64",
+                "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "registered": 3,
+                "removed": 2,
+                "process_exit_status": 0,
+                "disabled": 1,
+                "disabled_tests": ["OPEN.IO.30"],
+                "passed": 1,
+                "failed": 0,
+            }
+
+            inclusion._write_baseline_files(report, prefix)
+
+            metadata = prefix.with_suffix(".md").read_text(encoding="utf-8")
+            self.assertIn("The note assumes `OPEN` with `:if-exists :new-version` does not fail", metadata)
+            self.assertIn("ansi-test disables it for SBCL", metadata)
+
+    def test_inclusion_comparator_reports_missing_tests_by_chapter(self):
+        baseline = {
+            "A.1": "arrays",
+            "A.2": "arrays",
+            "CONS.1": "cons",
+            "CONS.2": "cons",
+            "SYMBOL.1": "symbols",
+        }
+        observed = {
+            "A.1": "passed",
+            "A.2": "failed",
+            "CONS.1": "timeout",
+            "SYMBOL.1": "harness_error",
+        }
+
+        result = inclusion.compare_results(baseline, observed)
+
+        self.assertEqual(result["expected"], 5)
+        self.assertEqual(result["passed"], 1)
+        self.assertEqual(result["t_ansi_count"], 4)
+        self.assertEqual(
+            [(row["name"], row["status"]) for row in result["t_ansi"]],
+            [
+                ("A.2", "failed"),
+                ("CONS.1", "timeout"),
+                ("CONS.2", "unexecuted"),
+                ("SYMBOL.1", "harness_error"),
+            ],
+        )
+        self.assertEqual(
+            result["by_chapter"],
+            {
+                "arrays": {"failed": 1},
+                "cons": {"timeout": 1, "unexecuted": 1},
+                "symbols": {"harness_error": 1},
+            },
+        )
+        markdown = inclusion.render_markdown({
+            "measured_on": "2026-10-17",
+            "platform": "macOS arm64",
+            "implementation": "ncl",
+            "runtime_version": "NCL",
+            "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+            "status": "complete",
+            "comparison": result,
+        })
+        self.assertIn("`A.2` | arrays | failed", markdown)
+        self.assertIn("`CONS.2` | cons | unexecuted", markdown)
+        self.assertIn("`SYMBOL.1` | symbols | harness_error", markdown)
+        self.assertEqual(inclusion.comparison_exit_status(result), 1)
+        self.assertEqual(
+            inclusion.comparison_exit_status(
+                inclusion.compare_results({"A.1": "arrays"}, {"A.1": "passed"})
+            ),
+            0,
+        )
+
+    def test_inclusion_diagnostic_prefers_fatal_error_over_sbcl_noise(self):
+        diagnostic = inclusion._diagnostic(
+            "; compilation unit finished\n; caught 1 fatal ERROR condition\n"
+            "WARNING:\n   Invalid qualifiers\nUnhandled SIMPLE-ERROR in thread main thread\n",
+            "",
+        )
+
+        self.assertEqual(diagnostic, "Unhandled SIMPLE-ERROR in thread main thread")
+        self.assertIsNone(inclusion._diagnostic("", "STYLE-WARNING: ignored warning\n"))
+
+    def test_partial_inclusion_report_explains_unfinished_chapter_loaders(self):
+        markdown = inclusion.render_markdown({
+            "measured_on": "2026-10-17",
+            "platform": "macOS arm64",
+            "implementation": "ncl",
+            "runtime_version": "NCL",
+            "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+            "status": "partial",
+            "comparison": {
+                "expected": 1,
+                "passed": 0,
+                "t_ansi_count": 1,
+                "t_ansi": [{"name": "A.1", "chapter": "arrays", "status": "harness_error"}],
+                "by_chapter": {"arrays": {"harness_error": 1}},
+            },
+        })
+
+        self.assertIn("Partial means one or more chapter loaders did not finish", markdown)
+        self.assertIn("Tests under those loaders are listed as `harness_error` or `timeout`", markdown)
+
+    def test_inclusion_loads_current_baseline_files_and_metadata(self):
+        with TemporaryDirectory() as directory:
+            baseline = Path(directory) / "baseline.txt"
+            baseline.write_text("A.1\nCONS.1\n", encoding="utf-8")
+            baseline.with_suffix(".tsv").write_text(
+                "name\tchapter\nA.1\tarrays\nCONS.1\tcons\n", encoding="utf-8"
+            )
+            baseline.with_suffix(".md").write_text(
+                "# ANSI-Test baseline\n"
+                "- Measured: 2026-10-17\n"
+                "- Platform: macOS arm64\n"
+                "- SBCL: 2.6.0\n"
+                "- ansi-test commit: `ca06bd919661af162c67407c9d994e881870bdb3`\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                inclusion.load_baseline(baseline),
+                {"A.1": "arrays", "CONS.1": "cons"},
+            )
+            inclusion.validate_same_day_baseline(baseline, {
+                "measured_on": "2026-10-17",
+                "platform": "macOS arm64",
+            })
+            with self.assertRaisesRegex(ValueError, "same day"):
+                inclusion.validate_same_day_baseline(baseline, {
+                    "measured_on": "2026-10-18",
+                    "platform": "macOS arm64",
+                })
+
+    def test_unmeasured_ansi_status_is_preserved_as_successful_measurement(self):
+        ansi_output = json.dumps({
+            "passed": 0,
+            "failed": 0,
+            "unexecuted": 0,
+            "status": "unmeasured",
+            "reason": "No same-day Linux baseline.",
+        })
+        bench_output = json.dumps({"times": [0.001]})
+        with TemporaryDirectory() as directory:
+            with patch.object(scoreboard, "checkout_source", return_value=Path(directory)):
+                with patch.object(
+                    scoreboard,
+                    "run_command",
+                    side_effect=[
+                        scoreboard.ProcessResult("passed", 0, ansi_output),
+                        scoreboard.ProcessResult("passed", 0, bench_output),
+                    ],
+                ):
+                    with patch.object(sys, "stdout") as stdout:
+                        status = scoreboard.main([
+                            "--ansi-command", "ansi",
+                            "--cl-bench-command", "bench",
+                        ])
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(status, 0)
+        self.assertEqual(report["ansi-test"]["status"], "unmeasured")
+        self.assertEqual(report["ansi-test"]["reason"], "No same-day Linux baseline.")
+        self.assertIn("No same-day Linux baseline.", scoreboard.render_markdown(report))
 
     def test_main_reads_driver_json_for_success_and_failure_results(self):
         ansi_output = json.dumps({"passed": 1, "failed": 0, "unexecuted": 0})

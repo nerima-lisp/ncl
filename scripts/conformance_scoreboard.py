@@ -297,9 +297,18 @@ def make_scoreboard(
     ansi_counts: Mapping[str, int] | None,
     bench: ProcessResult,
     bench_times: Sequence[float] | None,
+    ansi_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-serializable scoreboard from two process results."""
     ansi_data: dict[str, Any] = {"status": ansi.status}
+    if (
+        ansi.status == "passed"
+        and ansi_report is not None
+        and ansi_report.get("status") == "unmeasured"
+    ):
+        ansi_data["status"] = "unmeasured"
+        if ansi_report.get("reason"):
+            ansi_data["reason"] = str(ansi_report["reason"])
     if ansi_counts is not None:
         ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
     bench_data: dict[str, Any] = {"status": bench.status}
@@ -321,7 +330,9 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     bench = scoreboard["cl-bench"]
     lines = ["# Conformance scoreboard", "", "| suite | status | result |", "| --- | --- | --- |"]
     counts = ""
-    if "passed" in ansi:
+    if ansi["status"] == "unmeasured":
+        counts = str(ansi.get("reason", "no reason supplied"))
+    elif "passed" in ansi:
         counts = f"{ansi['passed']} passed, {ansi['failed']} failed, {ansi['unexecuted']} unexecuted"
     lines.append(f"| ansi-test | {ansi['status']} | {counts} |")
     mean = str(bench.get("geometric_mean", ""))
@@ -372,14 +383,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
     bench = run_command(bench_command, cwd=bench_source, timeout=args.timeout)
     ansi_counts = None
+    ansi_report = None
     bench_times = None
     if ansi.stdout:
-        data = _json_output(ansi)
-        ansi_counts = {key: int(data[key]) for key in ("passed", "failed", "unexecuted")}
+        ansi_report = _json_output(ansi)
+        ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
     if bench.stdout:
         data = _json_output(bench)
         bench_times = [float(value) for value in data["times"]]
-    scoreboard = make_scoreboard(ansi, ansi_counts, bench, bench_times)
+    scoreboard = make_scoreboard(ansi, ansi_counts, bench, bench_times, ansi_report)
     output = render_markdown(scoreboard) if args.format == "markdown" else json.dumps(scoreboard, indent=2, sort_keys=True)
     output = output if output.endswith("\n") else output + "\n"
     if args.output:
@@ -389,7 +401,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(output, end="")
     # A test failure is a measurement result, not a harness failure.  Only
     # process supervision or malformed runner output makes the harness fail.
-    return 0 if ansi.status in ("passed", "failed") and bench.status in ("passed", "failed") else 1
+    ansi_status = scoreboard["ansi-test"]["status"]
+    complete_statuses = ("passed", "failed", "unmeasured")
+    return 0 if ansi_status in complete_statuses and bench.status in ("passed", "failed") else 1
 
 
 if __name__ == "__main__":

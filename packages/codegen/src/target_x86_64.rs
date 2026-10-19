@@ -153,13 +153,18 @@ fn spill_arguments(
     Ok(())
 }
 
-fn emit_epilogue(assembler: &mut Assembler) -> Result<(), CodegenError> {
+fn emit_epilogue(assembler: &mut Assembler, callee_saved_base: u32) -> Result<(), CodegenError> {
+    lowering::restore_callee_saved_registers(assembler, callee_saved_base)?;
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
     emit(assembler, Inst::Ret)
 }
 
-fn emit_tail_transfer(assembler: &mut Assembler) -> Result<(), CodegenError> {
+fn emit_tail_transfer(
+    assembler: &mut Assembler,
+    callee_saved_base: u32,
+) -> Result<(), CodegenError> {
+    lowering::restore_callee_saved_registers(assembler, callee_saved_base)?;
     emit(assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
     emit(assembler, Inst::Pop(FRAME_POINTER))?;
     emit(assembler, Inst::MovRM(RETURN_VALUE, Mem::base(Reg::Rsp, 0)))?;
@@ -204,11 +209,16 @@ pub fn compile_function_x86_64(
         .and_then(|words| words.checked_add(spill_words))
         .and_then(|words| words.checked_add(extra_frame_words))
         .ok_or(CodegenError::FrameOverflow)?;
+    value_slots.callee_saved_base = value_slots
+        .outgoing_base
+        .checked_add(outgoing_words)
+        .ok_or(CodegenError::FrameOverflow)?;
     let frame = FrameLayout::new(
         argument_words,
         local_words
             .checked_add(spill_words)
             .and_then(|words| words.checked_add(extra_frame_words))
+            .and_then(|words| words.checked_add(lowering::CALLEE_SAVED_WORDS))
             .ok_or(CodegenError::FrameOverflow)?,
         outgoing_words,
     )?;
@@ -240,6 +250,7 @@ pub fn compile_function_x86_64(
             Inst::BinRI(BinOp::Sub, Reg::Rsp, body_bytes.cast_signed()),
         )?;
     }
+    lowering::save_callee_saved_registers(&mut assembler, value_slots.callee_saved_base)?;
     let incoming_args_base = generated_lambda.then(|| {
         argument_words
             .saturating_add(local_words)
@@ -435,11 +446,11 @@ pub fn compile_function_x86_64(
                 lower_call(&mut assembler, *function, args, &value_slots)?;
                 let call_pc = emit_call(&mut assembler)?;
                 add_map(&mut maps, call_pc, frame, &value_slots, position, FLAG_CALL)?;
-                emit_epilogue(&mut assembler)?;
+                emit_epilogue(&mut assembler, value_slots.callee_saved_base)?;
             }
             Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
-                emit_tail_transfer(&mut assembler)?;
+                emit_tail_transfer(&mut assembler, value_slots.callee_saved_base)?;
             }
             Terminator::Throw { .. } => {
                 lower_return_or_throw(

@@ -58,6 +58,7 @@ fn emit_epilogue(
             ),
         )?;
     }
+    super::restore_callee_saved_registers(assembler, slots.callee_saved_base)?;
     emit(assembler, Inst::MovRR(Reg::Rsp, super::FRAME_POINTER))?;
     emit(assembler, Inst::Pop(super::FRAME_POINTER))?;
     emit(assembler, Inst::Ret)

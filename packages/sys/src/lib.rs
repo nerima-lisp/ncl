@@ -43,14 +43,6 @@ pub use thread::{
     ThreadLayout, thread_layout,
 };
 
-impl RootToken {
-    /// Construct a token covering a contiguous span of root slots.
-    #[must_use]
-    pub(crate) const fn spanning(index: usize, count: usize) -> Self {
-        Self { index, count }
-    }
-}
-
 impl Thread {
     /// Push a precise root slot backed by interior-mutable storage.
     pub fn push_root_cell(&mut self, cell: &core::cell::Cell<Word>) -> RootToken {
@@ -61,10 +53,12 @@ impl Thread {
 
     /// Pop a contiguous span of the most recently pushed roots.
     pub(crate) fn pop_root_span(&mut self, token: RootToken) -> bool {
-        token
-            .index
-            .checked_add(token.count)
-            .is_some_and(|end| end == self.roots.len())
+        token.generation == 0
+            && token.heap_id == 0
+            && token
+                .index
+                .checked_add(token.count)
+                .is_some_and(|end| end == self.roots.len())
             && (0..token.count).all(|_| self.roots.pop().is_some())
     }
 
@@ -361,9 +355,19 @@ pub fn push_heap_root(heap: &Heap, value: &mut Word) -> RootToken {
     heap.push_root(value)
 }
 
+/// Register a heap root backed by interior-mutable storage.
+pub fn push_heap_root_cell(heap: &Heap, value: &core::cell::Cell<Word>) -> RootToken {
+    heap.push_root_cell(value)
+}
+
 /// Remove the most recently registered heap-level root.
 pub fn pop_heap_root(heap: &Heap, token: RootToken) -> bool {
     heap.pop_root(token)
+}
+
+/// Remove a heap-level root by its token, regardless of insertion order.
+pub fn unregister_heap_root(heap: &Heap, token: RootToken) -> bool {
+    heap.unregister_root(token)
 }
 
 /// Enter a foreign/native section.

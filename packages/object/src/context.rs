@@ -88,17 +88,11 @@ impl ThreadContext {
             Some(self.thread.push_root_cell(&self.condition_handler_head));
         self.ensure_standard_packages(runtime)
     }
-    pub(crate) fn push_heap_root(&self, value: &mut Word) -> Result<RootToken, ObjectError> {
+    pub(crate) fn push_heap_root_cell(&self, value: &Cell<Word>) -> Result<RootToken, ObjectError> {
         let Some(heap) = self.heap.as_ref() else {
             return Err(ObjectError::Layout);
         };
-        Ok(ncl_sys::push_heap_root(heap, value))
-    }
-    pub(crate) fn pop_heap_root(&self, token: RootToken) -> bool {
-        let Some(heap) = self.heap.as_ref() else {
-            return false;
-        };
-        ncl_sys::pop_heap_root(heap, token)
+        Ok(ncl_sys::push_heap_root_cell(heap, value))
     }
     pub(crate) const fn heap(&self) -> Option<&Arc<Heap>> {
         self.heap.as_ref()

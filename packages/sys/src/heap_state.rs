@@ -23,6 +23,8 @@ pub struct State {
     pub(crate) threads: Vec<*mut Thread>,
     pub(crate) dirty_cards: HashSet<(usize, usize)>,
     pub(crate) roots: Vec<*mut Word>,
+    pub(crate) root_generations: Vec<u128>,
+    pub(crate) next_root_generation: u128,
     pub(crate) finalizers: Vec<(Word, Finalizer)>,
     pub(crate) after_gc_hooks: Vec<fn()>,
     pub(crate) code_registry: CodeRegistry,

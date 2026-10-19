@@ -1,10 +1,11 @@
 use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
-
 mod control;
+mod root_token;
 mod stack;
 pub use control::ControlFrameKind;
+pub use root_token::RootToken;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
 
@@ -32,13 +33,6 @@ pub enum SafepointState {
     /// The mutator is outside the managed heap and safe to stop.
     Safe,
 }
-/// A LIFO shadow-root handle.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RootToken {
-    pub(crate) index: usize,
-    pub(crate) count: usize,
-}
-
 /// Machine-visible mutator context.
 ///
 /// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a

@@ -176,7 +176,7 @@ extern "C" fn make_rest_list_native(
                 let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
                 let result = FunctionObject::try_from(rooted_function)
                     .and_then(|function| object.call_builtin(context, function, &arguments));
-                let function_popped = ncl_object::pop_heap_root(object, function_token);
+                let function_popped = ncl_object::unregister_heap_root(object, function_token);
                 if !function_popped {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                     return Word::NIL.bits();
@@ -192,7 +192,7 @@ extern "C" fn make_rest_list_native(
             let arguments_popped = argument_tokens
                 .into_iter()
                 .rev()
-                .all(|token| ncl_object::pop_heap_root(object, token));
+                .all(|token| ncl_object::unregister_heap_root(object, token));
             if !arguments_popped {
                 context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                 return Word::NIL.bits();
@@ -279,7 +279,7 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
                 let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
                 let result = FunctionObject::try_from(rooted_function)
                     .and_then(|function| object.call_builtin(context, function, &arguments));
-                let function_popped = ncl_object::pop_heap_root(object, function_token);
+                let function_popped = ncl_object::unregister_heap_root(object, function_token);
                 if !function_popped {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                     return Word::NIL.bits();
@@ -295,7 +295,7 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
             let arguments_popped = argument_tokens
                 .into_iter()
                 .rev()
-                .all(|token| ncl_object::pop_heap_root(object, token));
+                .all(|token| ncl_object::unregister_heap_root(object, token));
             if !arguments_popped {
                 context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                 return Word::NIL.bits();

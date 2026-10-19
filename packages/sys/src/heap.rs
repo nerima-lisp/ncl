@@ -5,21 +5,26 @@ pub use crate::heap_types::{
 };
 use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/collect.rs"]
 mod collect;
+#[path = "heap/roots.rs"]
+mod roots;
 #[path = "heap/scan.rs"]
 mod scan;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
+static NEXT_HEAP_ID: AtomicU64 = AtomicU64::new(1);
 /// Heap objects must not occupy the address range used by immediate values.
 pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
+
 #[derive(Debug)]
 /// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
+    root_namespace: u64,
     config: HeapConfig,
     state: Mutex<State>,
     strict_forwarding: AtomicBool,
@@ -39,6 +44,7 @@ impl Heap {
     /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
         Self {
+            root_namespace: NEXT_HEAP_ID.fetch_add(1, Ordering::Relaxed),
             config,
             state: Mutex::new(State {
                 used: 0,
@@ -49,6 +55,8 @@ impl Heap {
                 threads: Vec::new(),
                 dirty_cards: HashSet::new(),
                 roots: Vec::new(),
+                root_generations: Vec::new(),
+                next_root_generation: 1,
                 finalizers: Vec::new(),
                 after_gc_hooks: Vec::new(),
                 code_registry: crate::CodeRegistry::default(),
@@ -104,30 +112,6 @@ impl Heap {
         let address = object.words.as_ptr() as usize;
         drop(state);
         Some(Word::pointer(address, tag))
-    }
-    /// Register a heap-owned precise root slot.
-    ///
-    /// The referenced slot must outlive the returned token and remain at the
-    /// same address until [`Heap::pop_root`] is called.
-    pub fn push_root(&self, value: &mut Word) -> crate::RootToken {
-        let mut state = self.lock_state();
-        let token = crate::RootToken {
-            index: state.roots.len(),
-            count: 1,
-        };
-        state.roots.push(std::ptr::from_mut(value));
-        token
-    }
-    /// Remove the most recently registered heap-owned root.
-    pub fn pop_root(&self, token: crate::RootToken) -> bool {
-        let mut state = self.lock_state();
-        if token.index + token.count != state.roots.len() {
-            return false;
-        }
-        for _ in 0..token.count {
-            let _ = state.roots.pop();
-        }
-        true
     }
     /// # Errors
     /// Returns `LayoutError` when the widetag is already registered.

@@ -60,8 +60,8 @@ pub(super) fn dispatch_with_context(
     let arguments_popped = argument_tokens
         .into_iter()
         .rev()
-        .all(|token| ncl_object::pop_heap_root(object, token));
-    let function_popped = ncl_object::pop_heap_root(object, function_token);
+        .all(|token| ncl_object::unregister_heap_root(object, token));
+    let function_popped = ncl_object::unregister_heap_root(object, function_token);
     if !arguments_popped || !function_popped {
         context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
         return error_result();

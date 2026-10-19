@@ -5,9 +5,9 @@ use crate::{Runtime, RuntimeError, compile};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FileError, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, car, cdr, classify_object, make_cons, pop_heap_root, push_heap_root,
+    BuiltinPackage, FileError, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError,
+    ObjectRef, ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable,
+    Runtime as ObjectRuntime, ThreadContext, Word, car, cdr, classify_object, make_cons,
     symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
@@ -197,8 +197,7 @@ pub fn source_forms_with_mode(
 ) -> Result<Word, RuntimeError> {
     let mut input = StringSource::new(source);
     let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;
-    let mut result = Word::NIL;
-    let result_token = push_heap_root(&runtime.object, &mut result);
+    let result_root = HeapRootedWord::new(&runtime.context, Word::NIL)?;
 
     // Read one form, evaluate it, then read the next: package markers such as
     // `cl-bench:` only resolve once a preceding `defpackage`/`in-package` in
@@ -207,18 +206,16 @@ pub fn source_forms_with_mode(
     let loaded = (|| {
         while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
             let package = in_package_name(&runtime.context, form)?;
-            result = eval_top_level(runtime, &mut options, form, mode)?;
+            result_root.set(eval_top_level(runtime, &mut options, form, mode)?);
             if let Some(package) = package {
                 options.set_current_package(package)?;
             }
         }
-        Ok(result)
+        Ok(result_root.get())
     })();
-    if !pop_heap_root(&runtime.object, result_token) {
-        return Err(RuntimeError::Native(
-            "load: result root stack corrupted".to_owned(),
-        ));
-    }
+    result_root
+        .release()
+        .map_err(|_| RuntimeError::Native("load: result root stack corrupted".to_owned()))?;
     loaded
 }
 
@@ -228,14 +225,11 @@ fn eval_top_level(
     form: Word,
     mode: TopLevelMode,
 ) -> Result<Word, RuntimeError> {
-    let mut rooted_form = form;
-    let token = push_heap_root(&runtime.object, &mut rooted_form);
-    let result = eval_top_level_inner(runtime, options, rooted_form, mode);
-    if !pop_heap_root(&runtime.object, token) {
-        return Err(RuntimeError::Native(
-            "load: top-level form root stack corrupted".to_owned(),
-        ));
-    }
+    let rooted_form = HeapRootedWord::new(&runtime.context, form)?;
+    let result = eval_top_level_inner(runtime, options, rooted_form.get(), mode);
+    rooted_form.release().map_err(|_| {
+        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
+    })?;
     result
 }
 
@@ -248,7 +242,7 @@ fn eval_top_level_inner(
     if !matches!(classify_object(&runtime.context, form), ObjectRef::Cons(_)) {
         return eval_rooted(runtime, options, form);
     }
-    let mut elements = ncl_compiler_front::form::list(&mut runtime.context, form)?;
+    let elements = ncl_compiler_front::form::list(&mut runtime.context, form)?;
     let Some((head, arguments)) = elements.split_first() else {
         return eval_rooted(runtime, options, form);
     };
@@ -282,38 +276,46 @@ fn eval_top_level_inner(
     if body_start >= arguments.len() {
         return eval_rooted(runtime, options, form);
     }
-    let mut element_tokens = Vec::with_capacity(elements.len());
-    for element in &mut elements {
-        element_tokens.push(push_heap_root(&runtime.object, element));
-    }
-    let mut result = Word::NIL;
+    let rooted_elements = elements
+        .iter()
+        .copied()
+        .map(|element| HeapRootedWord::new(&runtime.context, element))
+        .collect::<Result<Vec<_>, _>>()?;
+    let result_root = HeapRootedWord::new(&runtime.context, Word::NIL)?;
     let evaluated = (|| {
-        let body_forms = elements
-            .get(1 + body_start..)
-            .ok_or_else(|| RuntimeError::Native("load: top-level body is missing".to_owned()))?;
-        for body in body_forms {
-            let body_form = if name == "PROGN" || name == "EVAL-WHEN" {
-                *body
-            } else {
-                let prefix = elements.get(..=body_start).ok_or_else(|| {
-                    RuntimeError::Native("load: top-level prefix is missing".to_owned())
+        for body_index in 1 + body_start..rooted_elements.len() {
+            let body = rooted_elements
+                .get(body_index)
+                .map(HeapRootedWord::get)
+                .ok_or_else(|| {
+                    RuntimeError::Native("load: top-level body is missing".to_owned())
                 })?;
-                wrap_top_level_form(runtime, prefix, *body)?
+            let body_form = if name == "PROGN" || name == "EVAL-WHEN" {
+                body
+            } else {
+                let prefix = rooted_elements
+                    .get(..=body_start)
+                    .ok_or_else(|| {
+                        RuntimeError::Native("load: top-level prefix is missing".to_owned())
+                    })?
+                    .iter()
+                    .map(HeapRootedWord::get)
+                    .collect::<Vec<_>>();
+                wrap_top_level_form(runtime, &prefix, body)?
             };
-            result = if name == "PROGN" || name == "EVAL-WHEN" {
+            let result = if name == "PROGN" || name == "EVAL-WHEN" {
                 eval_top_level(runtime, options, body_form, mode)?
             } else {
                 eval_rooted(runtime, options, body_form)?
             };
+            result_root.set(result);
         }
-        Ok(result)
+        Ok(result_root.get())
     })();
-    for token in element_tokens.into_iter().rev() {
-        if !pop_heap_root(&runtime.object, token) {
-            return Err(RuntimeError::Native(
-                "load: top-level form root stack corrupted".to_owned(),
-            ));
-        }
+    for root in rooted_elements.into_iter().rev() {
+        root.release().map_err(|_| {
+            RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
+        })?;
     }
     evaluated
 }
@@ -359,32 +361,22 @@ fn wrap_top_level_form(
     elements: &[Word],
     body: Word,
 ) -> Result<Word, RuntimeError> {
-    let mut words = elements.to_vec();
-    words.push(body);
-    let mut tokens = Vec::with_capacity(words.len());
-    for word in &mut words {
-        tokens.push(push_heap_root(&runtime.object, word));
-    }
-    let mut wrapped = Word::NIL;
-    let wrapped_token = push_heap_root(&runtime.object, &mut wrapped);
+    let words = elements
+        .iter()
+        .copied()
+        .chain(std::iter::once(body))
+        .map(|word| HeapRootedWord::new(&runtime.context, word))
+        .collect::<Result<Vec<_>, _>>()?;
+    let wrapped = HeapRootedWord::new(&runtime.context, Word::NIL)?;
     for word in words.iter().rev() {
-        wrapped = make_cons(&mut runtime.context, &runtime.object, *word, wrapped)?;
+        wrapped.set(make_cons(
+            &mut runtime.context,
+            &runtime.object,
+            word.get(),
+            wrapped.get(),
+        )?);
     }
-    let result = wrapped;
-    let wrapped_popped = pop_heap_root(&runtime.object, wrapped_token);
-    for token in tokens.into_iter().rev() {
-        if !pop_heap_root(&runtime.object, token) {
-            return Err(RuntimeError::Native(
-                "load: top-level wrapper root stack corrupted".to_owned(),
-            ));
-        }
-    }
-    if !wrapped_popped {
-        return Err(RuntimeError::Native(
-            "load: top-level wrapper root stack corrupted".to_owned(),
-        ));
-    }
-    Ok(result)
+    Ok(wrapped.get())
 }
 
 /// Evaluate `form`, keeping both it and the reader's readtable rooted across
@@ -406,7 +398,7 @@ fn wrap_top_level_form(
 /// whole `Runtime` (which owns that context as a field) back before it can
 /// run.
 ///
-/// [`push_heap_root`]/[`pop_heap_root`] register roots in the runtime's
+/// [`push_heap_root`]/[`unregister_heap_root`] register roots in the runtime's
 /// heap-level registry instead, a separate stack that ordinary compilation
 /// does not touch, so bracketing `eval_form` with that pair stays balanced
 /// regardless of how much the per-thread stack grows underneath it.
@@ -421,24 +413,21 @@ fn eval_rooted(
     options: &mut ReadOptions,
     form: Word,
 ) -> Result<Word, RuntimeError> {
-    let mut form_word = form;
-    let form_token = push_heap_root(&runtime.object, &mut form_word);
-    let mut readtable_word = options.readtable().object().as_word();
-    let readtable_token = push_heap_root(&runtime.object, &mut readtable_word);
+    let form_root = HeapRootedWord::new(&runtime.context, form)?;
+    let readtable_root =
+        HeapRootedWord::new(&runtime.context, options.readtable().object().as_word())?;
 
-    let evaluated = runtime.eval_form(form_word);
+    let evaluated = runtime.eval_form(form_root.get());
 
-    // Pop in the reverse of push order (LIFO): the readtable was pushed
-    // last, so it must be popped first.
-    let readtable_popped = pop_heap_root(&runtime.object, readtable_token);
-    let form_popped = pop_heap_root(&runtime.object, form_token);
-    if !readtable_popped || !form_popped {
-        return Err(RuntimeError::Native(
-            "load: form root stack corrupted".to_owned(),
-        ));
-    }
+    let readtable = readtable_root.get();
+    readtable_root
+        .release()
+        .map_err(|_| RuntimeError::Native("load: form root stack corrupted".to_owned()))?;
+    form_root
+        .release()
+        .map_err(|_| RuntimeError::Native("load: form root stack corrupted".to_owned()))?;
     options.set_readtable(Readtable::from_object(ObjectReadtable::from_word(
-        readtable_word,
+        readtable,
     )));
     evaluated
 }

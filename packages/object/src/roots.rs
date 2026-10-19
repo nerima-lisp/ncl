@@ -1,6 +1,7 @@
 use crate::{ObjectError, Runtime, ThreadContext};
 use core::cell::Cell;
 use ncl_sys::{Heap, RootSlot, RootToken, Word};
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Push a precise root.
@@ -34,22 +35,31 @@ pub fn pop_heap_root(runtime: &Runtime, token: RootToken) -> bool {
     ncl_sys::pop_heap_root(&runtime.heap, token)
 }
 
+/// Remove a precise root from the runtime's heap-level registry by its token.
+pub fn unregister_heap_root(runtime: &Runtime, token: RootToken) -> bool {
+    ncl_sys::unregister_heap_root(&runtime.heap, token)
+}
+
 /// A stable slot registered as a root in the runtime's heap-level registry.
 ///
-/// The registry holds a pointer to the slot until `release` or `Drop` pops its
-/// root token.
+/// The registry holds a pointer to the slot until `release` or `Drop` removes
+/// its root token. `Drop` works even when newer roots remain.
 #[derive(Debug)]
 pub struct HeapRootedWord {
     heap: Arc<Heap>,
-    slot: Box<Cell<Word>>,
+    slot: Rc<Cell<Word>>,
     token: Option<RootToken>,
 }
 
 impl HeapRootedWord {
+    /// Register a word in the heap-level root registry.
+    ///
+    /// # Errors
+    /// Returns `ObjectError::Layout` when the context is not registered.
     pub fn new(ctx: &ThreadContext, value: Word) -> Result<Self, ObjectError> {
         let heap = Arc::clone(ctx.heap().ok_or(ObjectError::Layout)?);
-        let mut slot = Box::new(Cell::new(value));
-        let token = ctx.push_heap_root(slot.get_mut())?;
+        let slot = Rc::new(Cell::new(value));
+        let token = ctx.push_heap_root_cell(&slot)?;
         Ok(Self {
             heap,
             slot,
@@ -57,15 +67,24 @@ impl HeapRootedWord {
         })
     }
 
+    #[must_use]
     pub fn get(&self) -> Word {
         self.slot.get()
     }
 
+    pub fn set(&self, value: Word) {
+        self.slot.set(value);
+    }
+
+    /// Remove this word from the heap-level root registry.
+    ///
+    /// # Errors
+    /// Returns `ObjectError::RootStackCorrupted` when the token is invalid.
     pub fn release(mut self) -> Result<(), ObjectError> {
         let Some(token) = self.token else {
             return Err(ObjectError::RootStackCorrupted);
         };
-        if ncl_sys::pop_heap_root(&self.heap, token) {
+        if self.heap.unregister_root(token) {
             self.token = None;
             Ok(())
         } else {
@@ -76,8 +95,11 @@ impl HeapRootedWord {
 
 impl Drop for HeapRootedWord {
     fn drop(&mut self) {
-        if let Some(token) = self.token.take() {
-            let _ = ncl_sys::pop_heap_root(&self.heap, token);
+        if let Some(token) = self.token.take()
+            && !self.heap.unregister_root(token)
+        {
+            // Keep the slot alive if the registry still holds its pointer.
+            std::mem::forget(Rc::clone(&self.slot));
         }
     }
 }
@@ -178,42 +200,28 @@ pub fn with_rooted_slice<T>(
     result
 }
 
-/// Keep a mutable word slice rooted independently of the per-thread root stack.
+/// Keep words rooted independently of the per-thread root stack.
 ///
-/// Use this when the callback can compile code and grow that stack.
+/// The callback receives handles whose values it can read and update while
+/// compilation or collection moves the underlying objects.
 ///
 /// # Errors
 /// Returns a callback or root-registry error.
 pub fn with_heap_rooted_slice<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, &[HeapRootedWord]) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    let mut rooted = values.to_vec();
-    let mut tokens = Vec::with_capacity(rooted.len());
-    for value in &mut rooted {
-        match ctx.push_heap_root(value) {
-            Ok(token) => tokens.push(token),
-            Err(error) => {
-                return match release_heap_roots(ctx, tokens) {
-                    Ok(()) => Err(error),
-                    Err(rollback_error) => Err(rollback_error),
-                };
-            }
-        }
+    let rooted = values
+        .iter()
+        .copied()
+        .map(|value| HeapRootedWord::new(ctx, value))
+        .collect::<Result<Vec<_>, _>>()?;
+    let result = f(ctx, &rooted);
+    for root in rooted.into_iter().rev() {
+        root.release()?;
     }
-    let result = f(ctx, &mut rooted);
-    release_heap_roots(ctx, tokens)?;
     result
-}
-
-fn release_heap_roots(ctx: &ThreadContext, tokens: Vec<RootToken>) -> Result<(), ObjectError> {
-    for token in tokens.into_iter().rev() {
-        if !ctx.pop_heap_root(token) {
-            return Err(ObjectError::RootStackCorrupted);
-        }
-    }
-    Ok(())
 }
 
 /// Pop a thread root and return the callback result.
@@ -232,7 +240,7 @@ pub fn finish_root<T>(
 
 #[cfg(test)]
 mod tests {
-    use super::{pop_root, push_root, with_heap_rooted_slice, with_root};
+    use super::{HeapRootedWord, pop_root, push_root, with_heap_rooted_slice, with_root};
     use crate::{
         ObjectRef, Runtime, ThreadContext, classify_object, make_instance, make_string, slot_ref,
         string_length, string_ref,
@@ -278,13 +286,78 @@ mod tests {
         let returned = with_heap_rooted_slice(&mut ctx, &[value], |ctx, rooted| {
             stack_token = Some(ncl_sys::push_root(&mut ctx.thread, &mut stack_value));
             ctx.collect(true)?;
-            Ok(rooted[0])
+            Ok(rooted[0].get())
         })
         .unwrap_or_else(|error| panic!("collection failed: {error:?}"));
 
         assert_eq!(string_length(&ctx, returned), Ok(64));
         let stack_token = stack_token.unwrap_or_else(|| panic!("thread root was not pushed"));
         assert!(pop_root(&mut ctx, stack_token));
+    }
+
+    #[test]
+    fn with_heap_rooted_slice_releases_its_roots_out_of_order() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+        let mut later_root = None;
+
+        let result = with_heap_rooted_slice(&mut ctx, &[Word::fixnum(1)], |ctx, rooted| {
+            later_root = Some(HeapRootedWord::new(ctx, Word::fixnum(2))?);
+            Ok(rooted[0].get())
+        })
+        .unwrap_or_else(|error| panic!("rooted slice cleanup failed: {error:?}"));
+
+        assert_eq!(result, Word::fixnum(1));
+        assert_eq!(
+            later_root.as_ref().map(HeapRootedWord::get),
+            Some(Word::fixnum(2))
+        );
+        drop(later_root);
+    }
+
+    #[test]
+    fn with_heap_rooted_slice_releases_roots_during_unwind() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _: Result<(), crate::ObjectError> =
+                with_heap_rooted_slice(&mut ctx, &[Word::TRUE], |_, _| panic!("callback panic"));
+        }));
+
+        assert!(result.is_err());
+        ctx.collect(true)
+            .unwrap_or_else(|error| panic!("collection after unwind failed: {error:?}"));
+    }
+
+    #[test]
+    fn out_of_order_heap_root_drop_unregisters_slot_before_collection() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+        let value = make_string(&mut ctx, &runtime, &['x'; 64])
+            .unwrap_or_else(|error| panic!("string allocation failed: {error:?}"));
+        let first = HeapRootedWord::new(&ctx, value)
+            .unwrap_or_else(|error| panic!("heap root failed: {error:?}"));
+        let second = HeapRootedWord::new(&ctx, Word::fixnum(2))
+            .unwrap_or_else(|error| panic!("second heap root failed: {error:?}"));
+
+        drop(first);
+
+        ctx.collect(true)
+            .unwrap_or_else(|error| panic!("collection failed: {error:?}"));
+        assert_eq!(second.get(), Word::fixnum(2));
+        drop(second);
     }
 
     #[test]

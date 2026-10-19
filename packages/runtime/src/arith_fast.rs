@@ -20,7 +20,7 @@ use std::ptr::NonNull;
 
 use ncl_object::{
     BuiltinIdentifier, BuiltinName, BuiltinPackage, FunctionObject, Package,
-    Runtime as ObjectRuntime, Word, pop_heap_root, push_heap_root, symbol_function,
+    Runtime as ObjectRuntime, Word, push_heap_root, symbol_function, unregister_heap_root,
 };
 use ncl_sys::{Thread, with_native_context};
 
@@ -68,7 +68,7 @@ fn call_generic_binary(thread: NonNull<Thread>, name: &str, left: Word, right: W
         let arguments_popped = argument_tokens
             .into_iter()
             .rev()
-            .all(|token| pop_heap_root(object, token));
+            .all(|token| unregister_heap_root(object, token));
         if !arguments_popped {
             context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
             return Word::NIL.bits();

@@ -16,6 +16,10 @@ UNBOUND = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*::UNBOUND\b")
 UNSUPPORTED = re.compile(r"\bUnsupported\b")
 WORD_TABLE = re.compile(r"\b(?:HashMap|BTreeMap|HashSet)\s*<[^\n>]*\bWord\b")
 ALLOW = re.compile(r"check-added-lines:\s*allow\(([^)]+)\)(.*)$")
+INDEX = re.compile(
+    r"(?<![#!'])"
+    r"(?:\b(?!let\b|mut\b|ref\b)[A-Za-z_][A-Za-z0-9_]*|\)|\])\s*\[[^]]+\]"
+)
 
 def diff_text(base: Optional[str]) -> str:
     if (ROOT / ".jj").exists():
@@ -125,7 +129,12 @@ def cfg_test_lines(lines: list[tuple[Path, int, str]]) -> set[tuple[Path, int]]:
 def violations(lines: list[tuple[Path, int, str]]) -> list[str]:
     failures, excluded = [], cfg_test_lines(lines)
     for index, (path, number, text) in enumerate(lines):
-        test_only = "tests" in path.parts or path.name.startswith("tests_") or path.name.endswith("_test.rs")
+        test_only = (
+            "tests" in path.parts
+            or path.name == "tests.rs"
+            or path.name.startswith("tests_")
+            or path.name.endswith(("_test.rs", "_tests.rs"))
+        )
         if path.suffix != ".rs" or test_only or (path, number) in excluded:
             continue
         location, code = f"{path}:{number}", code_only(text)
@@ -137,7 +146,7 @@ def violations(lines: list[tuple[Path, int, str]]) -> list[str]:
             directive = ALLOW.search(candidate)
             if directive and directive.group(2).strip():
                 allowed.update(x.strip() for x in directive.group(1).split(","))
-        if "index" not in allowed and re.search(r"(?<![#!])(?:\b(?!mut\b)[A-Za-z_][A-Za-z0-9_]*|\)|\])\s*\[[^]]+\]", code):
+        if "index" not in allowed and INDEX.search(code):
             failures.append(f"{location}: [index] unchecked indexing")
         if "as-cast" not in allowed and re.search(
             r"\bas\s+(?:u(?:8|16|32|64|128|size)|i(?:8|16|32|64|128|size)|f(?:32|64)|\*\s*(?:const|mut))\b",

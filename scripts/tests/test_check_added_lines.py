@@ -72,6 +72,38 @@ let _converted = value as Alias;
         )
         self.assertEqual(checker.check_added_lines(diff), [])
 
+    def test_detects_indexing_through_mutable_bindings(self):
+        failures = checker.check_added_lines(make_diff(
+            "packages/object/src/value.rs",
+            "let mut values = vec![1];\nvalues[0] = 2;",
+        ))
+        self.assertEqual(
+            [item for item in failures if "[index]" in item],
+            ["packages/object/src/value.rs:2: [index] unchecked indexing"],
+        )
+
+    def test_ignores_slice_patterns_and_slice_types(self):
+        diff = make_diff(
+            "packages/object/src/value.rs",
+            "let [mut quality, mut value] = elements.as_slice();\n"
+            "fn descriptor(required: &'static [Parameter]) {}\n"
+            "fn borrowed<'a>(optional: &'a [Parameter]) {}",
+        )
+        self.assertNotIn("[index]", " ".join(checker.check_added_lines(diff)))
+
+    def test_suppresses_external_test_module_filenames(self):
+        for path in (
+            "packages/object/src/tests.rs",
+            "packages/object/src/value_tests.rs",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    checker.check_added_lines(
+                        make_diff(path, "values[0]; panic!(); Unsupported;")
+                    ),
+                    [],
+                )
+
     def test_suppresses_test_paths_and_cfg_test_source_rules(self):
         self.assertEqual(
             checker.check_added_lines(make_diff("packages/object/tests/example.rs", "values[0]; todo!();")),

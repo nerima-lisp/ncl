@@ -329,8 +329,12 @@ fn initialization_base<'ctx>(
     name: ncl_object::Handle<'ctx>,
     quoted_name: ncl_object::Handle<'ctx>,
 ) -> Result<Option<ncl_object::Handle<'ctx>>, ObjectError> {
-    let name_text = symbol_name_string(scope.context(), scope.get(name).as_word())?;
-    if name_text != "INITIALIZE-INSTANCE" && name_text != "SHARED-INITIALIZE" {
+    let name_word = scope.get(name).as_word();
+    let initialize_instance = scope.intern(runtime, COMMON_LISP, "INITIALIZE-INSTANCE")?;
+    let shared_initialize = scope.intern(runtime, COMMON_LISP, "SHARED-INITIALIZE")?;
+    if name_word != scope.get(initialize_instance).as_word()
+        && name_word != scope.get(shared_initialize).as_word()
+    {
         return Ok(None);
     }
     let ensure = scope.intern(runtime, COMMON_LISP, "%CLOS-ENSURE-INITIALIZATION-BASE")?;

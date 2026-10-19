@@ -153,7 +153,7 @@ fn shared_initialize_survives_gc_stress_and_strict_forwarding() {
             .call_builtin(
                 &mut ctx,
                 FunctionObject::try_from(shared_word).unwrap(),
-                &[instance_word, key, Word::TRUE],
+                &[instance_word, Word::TRUE, key, Word::TRUE],
             )
             .unwrap(),
         instance_word
@@ -188,11 +188,11 @@ fn shared_initialize_rejects_odd_initargs_and_non_instance() {
     let (runtime, mut ctx) = setup();
     let shared = function(&runtime, &mut ctx, "COMMON-LISP", "SHARED-INITIALIZE");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, shared, &[Word::NIL, Word::fixnum(1)]),
+        runtime.call_builtin(&mut ctx, shared, &[Word::NIL, Word::TRUE, Word::fixnum(1)],),
         Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
-        runtime.call_builtin(&mut ctx, shared, &[Word::NIL]),
+        runtime.call_builtin(&mut ctx, shared, &[Word::NIL, Word::TRUE]),
         Err(ncl_object::ObjectError::TypeError)
     );
 }

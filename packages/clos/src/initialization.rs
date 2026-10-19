@@ -5,8 +5,8 @@ use ncl_object::{
     BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller, FunctionDesignator,
     FunctionObject, Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
     ObjectType, Package, Parameter, ParameterType, Runtime, ThreadContext, Word, classify_object,
-    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
-    string_length, string_ref, symbol_name,
+    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_ref,
+    slot_set, string_length, string_ref, symbol_name,
 };
 use ncl_object::{Handle, HandleVec, Local, Scope};
 
@@ -18,6 +18,10 @@ const CLASS_ARGUMENT: Parameter = Parameter {
 };
 const INSTANCE_ARGUMENT: Parameter = Parameter {
     name: BuiltinName::new("INSTANCE"),
+    ty: ParameterType::Any,
+};
+const SLOT_NAMES_ARGUMENT: Parameter = Parameter {
+    name: BuiltinName::new("SLOT-NAMES"),
     ty: ParameterType::Any,
 };
 const INITARGS_ARGUMENT: Parameter = Parameter {
@@ -34,7 +38,10 @@ const INITIALIZE_INSTANCE_BUILTIN: Builtin = Builtin {
     convention: ncl_object::BuiltinConvention::Adapted,
 };
 const SHARED_INITIALIZE_BUILTIN: Builtin = Builtin {
-    lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
+    lambda_list: LambdaList::with_rest(
+        &[INSTANCE_ARGUMENT, SLOT_NAMES_ARGUMENT],
+        INITARGS_ARGUMENT,
+    ),
     convention: ncl_object::BuiltinConvention::Adapted,
 };
 const REINITIALIZE_INSTANCE_BUILTIN: Builtin = Builtin {
@@ -45,6 +52,15 @@ const UPDATE_INSTANCE_BUILTIN: Builtin = Builtin {
     lambda_list: LambdaList::with_rest(&[INSTANCE_ARGUMENT], INITARGS_ARGUMENT),
     convention: ncl_object::BuiltinConvention::Adapted,
 };
+
+/// Argument layout used to validate initialization argument pairs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InitArgLayout {
+    /// One required argument precedes the initialization argument pairs.
+    OneLeadingArgument,
+    /// The instance and slot names precede the initialization argument pairs.
+    InstanceAndSlotNames,
+}
 
 /// A registration-ready initialization callback descriptor.
 #[derive(Clone, Copy, Debug)]
@@ -57,6 +73,8 @@ pub struct BuiltinDescriptor {
     pub builtin: Builtin,
     /// Rust callback used by `Runtime::register_builtin`.
     pub callback: ncl_object::RustBuiltin,
+    /// Fixed arguments that precede the initialization argument pairs.
+    pub initarg_layout: InitArgLayout,
     /// Additional packages that expose this same implementation.
     #[allow(dead_code)]
     pub aliases: &'static [BuiltinPackage],
@@ -74,6 +92,7 @@ const BUILTINS: [BuiltinDescriptor; 5] = [
         name: BuiltinName::new("MAKE-INSTANCE"),
         builtin: MAKE_INSTANCE_BUILTIN,
         callback: make_instance_builtin,
+        initarg_layout: InitArgLayout::OneLeadingArgument,
         aliases: &[BuiltinPackage::NclMop],
     },
     BuiltinDescriptor {
@@ -81,6 +100,7 @@ const BUILTINS: [BuiltinDescriptor; 5] = [
         name: BuiltinName::new("INITIALIZE-INSTANCE"),
         builtin: INITIALIZE_INSTANCE_BUILTIN,
         callback: initialize_instance_builtin,
+        initarg_layout: InitArgLayout::OneLeadingArgument,
         aliases: &[],
     },
     BuiltinDescriptor {
@@ -88,6 +108,7 @@ const BUILTINS: [BuiltinDescriptor; 5] = [
         name: BuiltinName::new("SHARED-INITIALIZE"),
         builtin: SHARED_INITIALIZE_BUILTIN,
         callback: shared_initialize_builtin,
+        initarg_layout: InitArgLayout::InstanceAndSlotNames,
         aliases: &[],
     },
     BuiltinDescriptor {
@@ -95,6 +116,7 @@ const BUILTINS: [BuiltinDescriptor; 5] = [
         name: BuiltinName::new("REINITIALIZE-INSTANCE"),
         builtin: REINITIALIZE_INSTANCE_BUILTIN,
         callback: reinitialize_instance_builtin,
+        initarg_layout: InitArgLayout::OneLeadingArgument,
         aliases: &[],
     },
     BuiltinDescriptor {
@@ -102,6 +124,7 @@ const BUILTINS: [BuiltinDescriptor; 5] = [
         name: BuiltinName::new("UPDATE-INSTANCE"),
         builtin: UPDATE_INSTANCE_BUILTIN,
         callback: update_instance_builtin,
+        initarg_layout: InitArgLayout::OneLeadingArgument,
         aliases: &[],
     },
 ];
@@ -148,6 +171,11 @@ fn initarg_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }
 
+fn shared_initarg_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    let _ = InitArgList::parse(args.as_slice().get(2..).ok_or(ObjectError::TypeError)?)?;
+    Ok(args.as_slice().to_vec())
+}
+
 const fn type_error(ctx: &mut ThreadContext, datum: Word, expected: ObjectType) -> ObjectError {
     ctx.set_pending_lisp_error(LispError::TypeError { datum, expected });
     ObjectError::TypeError
@@ -178,6 +206,18 @@ fn class_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectErro
     (0..length)
         .map(|index| simple_vector_ref(ctx, descriptor, index))
         .collect()
+}
+
+fn slot_name_words(ctx: &ThreadContext, mut slot_names: Word) -> Result<Vec<Word>, ObjectError> {
+    let mut names = Vec::new();
+    while slot_names != Word::NIL {
+        if !slot_names.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        names.push(ncl_object::car(ctx, slot_names)?);
+        slot_names = ncl_object::cdr(ctx, slot_names)?;
+    }
+    Ok(names)
 }
 
 fn symbol_name_string(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
@@ -211,11 +251,17 @@ fn initialize_slots<'scope>(
     scope: &mut Scope<'scope>,
     instance: Instance,
     class: Handle<'scope, Word>,
+    slot_names: Word,
     initargs: &HandleVec<'scope, Word>,
-    preserve_bound: bool,
 ) -> Result<(), ObjectError> {
     let class_word = scope.get(class).as_word();
     let slots = class_slots(scope.context(), class_word)?;
+    let all_slot_names = slot_names == Word::TRUE;
+    let slot_names = if all_slot_names {
+        Vec::new()
+    } else {
+        slot_name_words(scope.context(), slot_names)?
+    };
     let initarg_words = scope
         .get_many(initargs)
         .into_iter()
@@ -223,23 +269,25 @@ fn initialize_slots<'scope>(
         .collect::<Vec<_>>();
     let initargs = InitArgList::parse(&initarg_words)?;
     for (index, slot) in slots.into_iter().enumerate() {
-        let key = if matches!(
+        let (slot_name, key) = if matches!(
             classify_object(scope.context(), slot),
             ObjectRef::SimpleVector(_)
         ) && simple_vector_length(scope.context(), slot)? > 0
         {
+            let slot_name = simple_vector_ref(scope.context(), slot, 0)?;
             let initarg = if simple_vector_length(scope.context(), slot)? > 1 {
                 simple_vector_ref(scope.context(), slot, 1)?
             } else {
                 Word::NIL
             };
-            if initarg == Word::NIL {
-                simple_vector_ref(scope.context(), slot, 0)?
+            let key = if initarg == Word::NIL {
+                slot_name
             } else {
                 initarg
-            }
+            };
+            (slot_name, key)
         } else {
-            slot
+            (slot, slot)
         };
         if let Some(value) = initargs.value_for(key) {
             slot_set(scope.context_mut(), instance, index, value.0)?;
@@ -249,11 +297,11 @@ fn initialize_slots<'scope>(
         ) && simple_vector_length(scope.context(), slot)? > 2
         {
             let default = simple_vector_ref(scope.context(), slot, 2)?;
-            // check-added-lines: allow(unbound) sentinel initialization
-            if default != Word::UNBOUND
-                && (!preserve_bound
-                    || slot_ref(scope.context(), instance, index)? == Word::UNBOUND)
-            {
+            let slot_was_selected = all_slot_names || slot_names.contains(&slot_name);
+            let should_apply_default =
+                slot_was_selected && slot_ref(scope.context(), instance, index)?.is_unbound();
+            // check-added-lines: allow(unbound) skip unbound initforms
+            if !default.is_unbound() && should_apply_default {
                 slot_set(scope.context_mut(), instance, index, default)?;
             }
         }
@@ -372,18 +420,13 @@ fn initialize_instance_builtin(
         .as_slice()
         .get(1..)
         .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
-    let initarg_locals = initarg_words
+    let initarg_locals: Vec<Local<'_, Word>> = initarg_words
         .iter()
         .copied()
         .map(Local::from_word)
         .collect::<Vec<_>>();
-    let initargs = scope.root_many(&initarg_locals);
-    let instance = instance_argument(scope.context_mut(), instance_word)?;
-    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
-        scope.context(),
-        instance,
-    )?));
-    initialize_slots(&mut scope, instance, class, &initargs, false)?;
+    let initargs: HandleVec<'_, Word> = scope.root_many(&initarg_locals);
+    let _instance = instance_argument(scope.context_mut(), instance_word)?;
     let common_lisp = runtime.ensure_package(scope.context_mut(), "COMMON-LISP")?;
     let (shared_name, _) = Package::from_word(common_lisp).intern(
         scope.context_mut(),
@@ -396,7 +439,7 @@ fn initialize_instance_builtin(
         return Err(ObjectError::UndefinedFunction);
     }
     let shared_function: Handle<'_, Word> = scope.root(Local::from_word(shared_function));
-    let mut call_args = vec![scope.get(instance_handle).as_word()];
+    let mut call_args = vec![scope.get(instance_handle).as_word(), Word::TRUE];
     call_args.extend(scope.get_many(&initargs).into_iter().map(Local::as_word));
     let shared_function = FunctionObject::try_from(scope.get(shared_function).as_word())?;
     BuiltinFunctionCaller.call_function(
@@ -419,9 +462,10 @@ fn shared_initialize_builtin(
     let mut scope = Scope::new(ctx);
     let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
     let instance_word = scope.get(instance_handle).as_word();
+    let slot_names: Handle<'_, Word> = scope.root(Local::from_word(args.required(1)?));
     let initarg_words = args
         .as_slice()
-        .get(1..)
+        .get(2..)
         .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
     let initarg_locals: Vec<Local<'_, Word>> = initarg_words
         .iter()
@@ -434,47 +478,11 @@ fn shared_initialize_builtin(
         scope.context(),
         instance,
     )?));
-    initialize_slots(&mut scope, instance, class, &initargs, true)?;
+    let slot_names_word = scope.get(slot_names).as_word();
+    initialize_slots(&mut scope, instance, class, slot_names_word, &initargs)?;
     values.clear();
     Ok(scope.get(instance_handle).as_word())
 }
 
-fn reinitialize_instance_builtin(
-    ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let mut scope = Scope::new(ctx);
-    let instance_handle: Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
-    let instance_word = scope.get(instance_handle).as_word();
-    let initarg_words = args
-        .as_slice()
-        .get(1..)
-        .ok_or_else(|| type_error(scope.context_mut(), instance_word, ObjectType::Instance))?;
-    let initarg_locals = initarg_words
-        .iter()
-        .copied()
-        .map(Local::from_word)
-        .collect::<Vec<_>>();
-    let initargs = scope.root_many(&initarg_locals);
-    let instance = instance_argument(scope.context_mut(), instance_word)?;
-    let class: Handle<'_, Word> = scope.root(Local::from_word(ncl_object::instance_class(
-        scope.context(),
-        instance,
-    )?));
-    update_supplied_slots(&mut scope, instance, class, &initargs)?;
-    values.clear();
-    Ok(scope.get(instance_handle).as_word())
-}
-
-fn update_instance_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    reinitialize_instance_builtin(ctx, runtime, args, values)
-}
-
+include!("initialization_reinitialization.rs");
 include!("initialization_registration.rs");

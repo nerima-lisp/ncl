@@ -202,11 +202,24 @@ fn compiled_clos_defmethod_key_arguments_are_dispatched() {
 #[test]
 fn compiled_clos_shared_initialize_preserves_bound_slots() {
     let output = run_ncl(
-        "(progn (defclass shared-init-probe () ((value :initform 7 :accessor shared-init-value))) (let ((object (make-instance 'shared-init-probe))) (setf (shared-init-value object) 9) (shared-initialize object) (shared-init-value object)))",
+        "(progn (defclass shared-init-probe () ((value :initform 7 :initarg :value :accessor shared-init-value))) (let ((object (make-instance 'shared-init-probe :value 9))) (shared-initialize object t) (shared-init-value object)))",
     );
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}
+
+#[test]
+fn compiled_clos_shared_initialize_limits_initforms_to_slot_names() {
+    let output = run_ncl(
+        "(progn (defclass shared-init-slot-names-probe () ((first :initform 7) (second :initform 9))) (let ((object (make-instance 'shared-init-slot-names-probe))) (slot-makunbound object 'first) (slot-makunbound object 'second) (shared-initialize object '(first)) (list (slot-boundp object 'first) (slot-boundp object 'second) (slot-value object 'first))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(T NIL 7)"
+    );
 }
 
 #[test]

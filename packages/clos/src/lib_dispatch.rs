@@ -22,8 +22,10 @@ fn clos_ensure_initialization_base_builtin(
     let mut scope = Scope::new(ctx);
     let name = scope.root(Local::from_word(args.required(0)?));
     let name_word = scope.get(name).as_word();
-    let name_text = symbol_name_string(scope.context(), name_word)?;
-    if name_text != "INITIALIZE-INSTANCE" && name_text != "SHARED-INITIALIZE" {
+    let initialize_name = scope.intern(runtime, COMMON_LISP, "INITIALIZE-INSTANCE")?;
+    let shared_name = scope.intern(runtime, COMMON_LISP, "SHARED-INITIALIZE")?;
+    let is_shared_initialize = name_word == scope.get(shared_name).as_word();
+    if name_word != scope.get(initialize_name).as_word() && !is_shared_initialize {
         return Ok(name_word);
     }
     if has_method_registry(&mut scope, runtime, name)? {
@@ -44,6 +46,16 @@ fn clos_ensure_initialization_base_builtin(
     let specializers = {
         let mut values = scope.root_many(&[]);
         dispatch_push_handle(&mut scope, &mut values, specializer);
+        if is_shared_initialize {
+            let slot_names = scope.intern(runtime, "NCL", "SLOT-NAMES")?;
+            let slot_names_specializer = {
+                let mut fields = scope.root_many(&[]);
+                dispatch_push_handle(&mut scope, &mut fields, slot_names);
+                dispatch_push_handle(&mut scope, &mut fields, class);
+                scope.make_list(runtime, &fields)?
+            };
+            dispatch_push_handle(&mut scope, &mut values, slot_names_specializer);
+        }
         scope.make_list(runtime, &values)?
     };
     let function = scope.root(Local::from_word(function));

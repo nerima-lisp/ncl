@@ -1,7 +1,11 @@
 /// Build the adapted implementation for an initialization descriptor.
 #[must_use]
 pub fn implementation(descriptor: BuiltinDescriptor) -> BuiltinImplementation {
-    BuiltinImplementation::adapted(descriptor.builtin, descriptor.callback, initarg_adapter)
+    let adapter = match descriptor.initarg_layout {
+        InitArgLayout::OneLeadingArgument => initarg_adapter,
+        InitArgLayout::InstanceAndSlotNames => shared_initarg_adapter,
+    };
+    BuiltinImplementation::adapted(descriptor.builtin, descriptor.callback, adapter)
 }
 
 /// Register the instance initialization protocol without modifying CLOS class registration.

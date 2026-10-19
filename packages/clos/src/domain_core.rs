@@ -316,7 +316,7 @@ mod domain_core_tests {
         let class_slot = SlotDefinition::new(SlotId::new(2), Allocation::Class, None);
         let mut class = Class::new(ClassId::new(1), Vec::new(), vec![class_slot, instance_slot]);
 
-        class.finalize_inheritance(&[]).unwrap();
+        assert!(class.finalize_inheritance(&[]).is_ok());
 
         assert_eq!(class.class_slots(), vec![class_slot]);
         assert_eq!(class.instance_slots(), vec![instance_slot.assign_location(0)]);

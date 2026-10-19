@@ -12,12 +12,20 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
         for op in &block.ops {
             let count = match &op.kind {
                 OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
-                    args.len().saturating_sub(1)
+                    args.len()
+                        .saturating_sub(1)
+                        .saturating_sub(ARGUMENT_REGISTERS.len())
                 }
                 OpKind::CallClosure { closure, args, .. } => {
-                    closure_capture_count(function, *closure)?
-                        .unwrap_or(0)
-                        .saturating_add(args.len().saturating_sub(1))
+                    let capture_staging_words =
+                        closure_capture_count(function, *closure)?.unwrap_or(0);
+                    let stack_argument_words = args
+                        .len()
+                        .saturating_sub(1)
+                        .saturating_sub(ARGUMENT_REGISTERS.len());
+                    capture_staging_words
+                        .checked_add(stack_argument_words)
+                        .ok_or(CodegenError::FrameOverflow)?
                 }
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
@@ -40,11 +48,13 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 | OpKind::EnterHandler { .. }
                 | OpKind::LeaveHandler { .. } => 0,
             };
-            maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+            maximum = maximum.max(count);
         }
         let count = match &block.terminator {
             Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
-                args.len().saturating_sub(1)
+                args.len()
+                    .saturating_sub(1)
+                    .saturating_sub(ARGUMENT_REGISTERS.len())
             }
             Terminator::Jump { .. }
             | Terminator::Branch { .. }
@@ -53,7 +63,7 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
             | Terminator::Throw { .. }
             | Terminator::Unreachable => 0,
         };
-        maximum = maximum.max(count.saturating_sub(ARGUMENT_REGISTERS.len()));
+        maximum = maximum.max(count);
     }
     u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
 }

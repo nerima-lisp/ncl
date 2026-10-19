@@ -54,6 +54,35 @@ fn introspection_and_mutation_round_trip() {
 }
 
 #[test]
+fn intern_uses_current_package_when_package_is_omitted() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let package = runtime.ensure_package(&mut ctx, "N25-INTERN-DEFAULT")?;
+    let common = Package::from_word(
+        runtime
+            .find_package(&ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?,
+    );
+    let (current_package, _) = common.intern(&mut ctx, &runtime, "*PACKAGE*")?;
+    let previous_package = ncl_object::symbol_value(&ctx, current_package)?;
+    ncl_object::set_symbol_value(&mut ctx, current_package, package)?;
+
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "INTERN")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let name = ncl_object::make_string(&mut ctx, &runtime, &['D', 'E', 'F', 'A', 'U', 'L', 'T'])?;
+    let symbol = runtime.call_builtin(&mut ctx, function, &[name])?;
+
+    assert_eq!(ncl_object::symbol_package(&ctx, symbol)?, package);
+    ncl_object::set_symbol_value(&mut ctx, current_package, previous_package)?;
+    Ok(())
+}
+
+#[test]
 fn make_package_builtin_creates_and_rejects_duplicate() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

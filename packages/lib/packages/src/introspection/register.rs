@@ -1,16 +1,91 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, NAME, NAME_PACKAGE, ONE_OBJECT, ONE_PACKAGE, ObjectError,
-    PACKAGE_PACKAGE, Parameter, Runtime, SYMBOLS_PACKAGE, ThreadContext, export, find_all_symbols,
-    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
-    package_management, package_name, package_nicknames, package_shadowing_symbols,
-    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
-    use_package,
+    BuiltinPackage, LambdaList, NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE, ONE_SYMBOLS, ObjectError,
+    Parameter, Runtime, ThreadContext, export, find_all_symbols, find_package, find_symbol, import,
+    intern, list_all_packages, package_error_package, package_management, package_name,
+    package_nicknames, package_shadowing_symbols, package_use_list, package_used_by_list, packagep,
+    shadow, unexport, unintern, unuse_package, use_package,
 };
 
-const fn descriptor(required: &'static [Parameter]) -> Builtin {
+const NO_PARAMETERS: &[Parameter] = &[];
+type BuiltinRegistration = (
+    &'static str,
+    &'static [Parameter],
+    &'static [Parameter],
+    ncl_object::RustBuiltin,
+);
+const REGISTRATIONS: &[BuiltinRegistration] = &[
+    ("FIND-PACKAGE", ONE_NAME, NO_PARAMETERS, find_package),
+    ("PACKAGE-NAME", ONE_PACKAGE, NO_PARAMETERS, package_name),
+    (
+        "PACKAGE-NICKNAMES",
+        ONE_PACKAGE,
+        NO_PARAMETERS,
+        package_nicknames,
+    ),
+    (
+        "PACKAGE-SHADOWING-SYMBOLS",
+        ONE_PACKAGE,
+        NO_PARAMETERS,
+        package_shadowing_symbols,
+    ),
+    (
+        "PACKAGE-USE-LIST",
+        ONE_PACKAGE,
+        NO_PARAMETERS,
+        package_use_list,
+    ),
+    (
+        "PACKAGE-USED-BY-LIST",
+        ONE_PACKAGE,
+        NO_PARAMETERS,
+        package_used_by_list,
+    ),
+    ("PACKAGEP", ONE_OBJECT, NO_PARAMETERS, packagep),
+    (
+        "LIST-ALL-PACKAGES",
+        NO_PARAMETERS,
+        NO_PARAMETERS,
+        list_all_packages,
+    ),
+    (
+        "FIND-ALL-SYMBOLS",
+        ONE_NAME,
+        NO_PARAMETERS,
+        find_all_symbols,
+    ),
+    (
+        "PACKAGE-ERROR-PACKAGE",
+        ONE_OBJECT,
+        NO_PARAMETERS,
+        package_error_package,
+    ),
+    ("FIND-SYMBOL", ONE_NAME, ONE_PACKAGE, find_symbol),
+    ("INTERN", ONE_NAME, ONE_PACKAGE, intern),
+    ("EXPORT", ONE_SYMBOLS, ONE_PACKAGE, export),
+    ("UNEXPORT", ONE_SYMBOLS, ONE_PACKAGE, unexport),
+    ("UNINTERN", ONE_NAME, ONE_PACKAGE, unintern),
+    ("IMPORT", ONE_SYMBOLS, ONE_PACKAGE, import),
+    ("SHADOW", ONE_SYMBOLS, ONE_PACKAGE, shadow),
+    ("USE-PACKAGE", ONE_PACKAGE, ONE_PACKAGE, use_package),
+    ("UNUSE-PACKAGE", ONE_PACKAGE, ONE_PACKAGE, unuse_package),
+    (
+        "DELETE-PACKAGE",
+        ONE_PACKAGE,
+        NO_PARAMETERS,
+        package_management::delete_package,
+    ),
+    (
+        "SHADOWING-IMPORT",
+        ONE_SYMBOLS,
+        ONE_PACKAGE,
+        package_management::shadowing_import,
+    ),
+];
+
+const fn descriptor(required: &'static [Parameter], optional: &'static [Parameter]) -> Builtin {
     Builtin {
-        lambda_list: LambdaList::fixed(required),
+        lambda_list: LambdaList::with_optional(required, optional),
         convention: BuiltinConvention::Adapted,
     }
 }
@@ -19,49 +94,11 @@ const fn descriptor(required: &'static [Parameter]) -> Builtin {
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    for (name, params, function) in [
-        (
-            "FIND-PACKAGE",
-            &[NAME][..],
-            find_package as ncl_object::RustBuiltin,
-        ),
-        ("PACKAGE-NAME", ONE_PACKAGE, package_name),
-        ("PACKAGE-NICKNAMES", ONE_PACKAGE, package_nicknames),
-        (
-            "PACKAGE-SHADOWING-SYMBOLS",
-            ONE_PACKAGE,
-            package_shadowing_symbols,
-        ),
-        ("PACKAGE-USE-LIST", ONE_PACKAGE, package_use_list),
-        ("PACKAGE-USED-BY-LIST", ONE_PACKAGE, package_used_by_list),
-        ("PACKAGEP", ONE_OBJECT, packagep),
-        ("LIST-ALL-PACKAGES", &[][..], list_all_packages),
-        ("FIND-ALL-SYMBOLS", &[NAME][..], find_all_symbols),
-        ("PACKAGE-ERROR-PACKAGE", ONE_OBJECT, package_error_package),
-        ("FIND-SYMBOL", NAME_PACKAGE, find_symbol),
-        ("INTERN", NAME_PACKAGE, intern),
-        ("EXPORT", SYMBOLS_PACKAGE, export),
-        ("UNEXPORT", SYMBOLS_PACKAGE, unexport),
-        ("UNINTERN", NAME_PACKAGE, unintern),
-        ("IMPORT", SYMBOLS_PACKAGE, import),
-        ("SHADOW", SYMBOLS_PACKAGE, shadow),
-        ("USE-PACKAGE", PACKAGE_PACKAGE, use_package),
-        ("UNUSE-PACKAGE", PACKAGE_PACKAGE, unuse_package),
-        (
-            "DELETE-PACKAGE",
-            ONE_PACKAGE,
-            package_management::delete_package,
-        ),
-        (
-            "SHADOWING-IMPORT",
-            SYMBOLS_PACKAGE,
-            package_management::shadowing_import,
-        ),
-    ] {
+    for &(name, required, optional, function) in REGISTRATIONS {
         runtime.register_builtin(
             &mut ctx,
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
-            BuiltinImplementation::direct(descriptor(params), function),
+            BuiltinImplementation::direct(descriptor(required, optional), function),
         )?;
     }
     runtime.register_builtin(

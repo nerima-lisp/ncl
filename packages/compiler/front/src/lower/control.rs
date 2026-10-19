@@ -12,6 +12,7 @@ use super::super::function::FunctionLowerer;
 use super::Context;
 use super::NonLocalTarget;
 use super::analysis::{body_has_nested_go, body_has_nested_return};
+use super::control_regions::protected_blocks;
 
 impl Context<'_> {
     pub(super) fn terminate_jump(
@@ -440,14 +441,10 @@ impl Context<'_> {
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
         let start = f.current_block();
+        let previous_blocks = self.blocks.clone();
         self.enter(f, region_id)?;
         let value = self.lower_expr(f, protected_form)?;
-        let protected = self
-            .blocks
-            .iter()
-            .copied()
-            .filter(|block| block.0 >= start.0)
-            .collect::<Vec<_>>();
+        let protected = protected_blocks(&self.blocks, start, &previous_blocks);
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let merge = self.block(f, vec![(Ty::Word, result)]);

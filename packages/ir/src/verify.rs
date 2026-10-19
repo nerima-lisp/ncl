@@ -39,6 +39,10 @@ impl Error for VerifyError {}
 
 type Definition = (Ty, BlockId, usize);
 
+#[path = "verify_cfg.rs"]
+mod cfg;
+use cfg::{compute_dominators, predecessors};
+
 /// Verifies block structure, SSA dominance, operation types, and safepoint placement.
 ///
 /// `SafepointWarning` uses the existing error result channel so the public API remains
@@ -266,7 +270,7 @@ fn verify_handler_flow(
         if normal_exit && !stack.is_empty() {
             errors.push(VerifyError::HandlerUnbalanced(block.id));
         }
-        for target in successors(&block.terminator) {
+        for target in terminator_successors(&block.terminator) {
             if !blocks.contains_key(&target) {
                 continue;
             }
@@ -298,7 +302,7 @@ fn insert_definition(
     }
 }
 
-fn successors(term: &Terminator) -> Vec<BlockId> {
+fn terminator_successors(term: &Terminator) -> Vec<BlockId> {
     match term {
         Terminator::Jump { target, .. } => vec![*target],
         Terminator::Branch {
@@ -316,73 +320,6 @@ fn successors(term: &Terminator) -> Vec<BlockId> {
         | Terminator::Return { .. }
         | Terminator::Throw { .. }
         | Terminator::Unreachable => Vec::new(),
-    }
-}
-
-fn predecessors(
-    function: &Function,
-    blocks: &HashMap<BlockId, &BasicBlock>,
-) -> HashMap<BlockId, Vec<BlockId>> {
-    let mut result = blocks
-        .keys()
-        .map(|id| (*id, Vec::new()))
-        .collect::<HashMap<_, _>>();
-    for block in &function.blocks {
-        for target in successors(&block.terminator) {
-            if let Some(preds) = result.get_mut(&target) {
-                preds.push(block.id);
-            }
-        }
-    }
-    result
-}
-
-fn compute_dominators(
-    function: &Function,
-    blocks: &HashMap<BlockId, &BasicBlock>,
-    predecessors: &HashMap<BlockId, Vec<BlockId>>,
-) -> HashMap<BlockId, HashSet<BlockId>> {
-    let all = blocks.keys().copied().collect::<HashSet<_>>();
-    let Some(entry) = function.blocks.first().map(|block| block.id) else {
-        return HashMap::new();
-    };
-    let mut dominators = blocks
-        .keys()
-        .map(|id| {
-            (
-                *id,
-                if *id == entry || predecessors.get(id).is_none_or(Vec::is_empty) {
-                    HashSet::from([*id])
-                } else {
-                    all.clone()
-                },
-            )
-        })
-        .collect::<HashMap<_, _>>();
-    loop {
-        let mut changed = false;
-        for id in blocks.keys().copied().filter(|id| *id != entry) {
-            let mut incoming = predecessors
-                .get(&id)
-                .into_iter()
-                .flatten()
-                .filter_map(|pred| dominators.get(pred));
-            let Some(first) = incoming.next() else {
-                continue;
-            };
-            let mut next = first.clone();
-            for set in incoming {
-                next.retain(|candidate| set.contains(candidate));
-            }
-            next.insert(id);
-            if dominators.get(&id) != Some(&next) {
-                dominators.insert(id, next);
-                changed = true;
-            }
-        }
-        if !changed {
-            return dominators;
-        }
     }
 }
 
@@ -469,11 +406,14 @@ fn check_safepoints(
             errors.push(VerifyError::SafepointWarning(block.id));
         }
     }
-    if successors(&block.terminator).into_iter().any(|target| {
-        dominators
-            .get(&block.id)
-            .is_some_and(|set| set.contains(&target))
-    }) && !matches!(block.ops.last().map(|op| &op.kind), Some(OpKind::Safepoint))
+    if terminator_successors(&block.terminator)
+        .into_iter()
+        .any(|target| {
+            dominators
+                .get(&block.id)
+                .is_some_and(|set| set.contains(&target))
+        })
+        && !matches!(block.ops.last().map(|op| &op.kind), Some(OpKind::Safepoint))
     {
         errors.push(VerifyError::SafepointWarning(block.id));
     }

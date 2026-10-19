@@ -51,7 +51,7 @@ pub(crate) fn form(
         let operator = symbol(ctx, runtime, name)?;
         let mut values = Vec::with_capacity(roots.len() + 1);
         values.push(operator);
-        values.extend(roots.iter().map(|value| **value));
+        values.extend(roots.iter().map(|value| value.get()));
         list(ctx, runtime, &values)
     })
 }
@@ -71,7 +71,7 @@ pub(crate) fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -
 
 fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
+        let values = roots.iter().map(|value| value.get()).collect::<Vec<_>>();
         match values.as_slice() {
             [] => Ok(Word::TRUE),
             [value] => Ok(*value),
@@ -85,16 +85,21 @@ fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
 
 fn or(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
+        let values = roots.iter().map(|value| value.get()).collect::<Vec<_>>();
         match values.as_slice() {
             [] => Ok(Word::NIL),
             [value] => Ok(*value),
             [value, rest @ ..] => {
                 let mut temporary = fresh_symbol(ctx, runtime)?;
                 ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-                    let let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
+                    let let_bindings = bindings(ctx, runtime, &[(temporary.get(), *value)])?;
                     let next = or(ctx, runtime, rest)?;
-                    let test = form(ctx, runtime, "IF", &[*temporary, *temporary, next])?;
+                    let test = form(
+                        ctx,
+                        runtime,
+                        "IF",
+                        &[temporary.get(), temporary.get(), next],
+                    )?;
                     form(ctx, runtime, "LET", &[let_bindings, test])
                 })
             }
@@ -126,18 +131,18 @@ fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result 
         let first = roots.first().copied().ok_or(ObjectError::TypeError)?;
         let mut temporary = fresh_symbol(ctx, runtime)?;
         ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *first)])?;
+            let mut let_bindings = bindings(ctx, runtime, &[(temporary.get(), first.get())])?;
             ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
                 let mut body = roots
                     .get(1..)
                     .ok_or(ObjectError::TypeError)?
                     .iter()
-                    .map(|value| **value)
+                    .map(|value| value.get())
                     .collect::<Vec<_>>();
-                body.push(*temporary);
+                body.push(temporary.get());
                 let mut body = progn(ctx, runtime, &body)?;
                 ncl_object::with_root(ctx, &mut body, |ctx, body| {
-                    form(ctx, runtime, "LET", &[*let_bindings, *body])
+                    form(ctx, runtime, "LET", &[let_bindings.get(), body.get()])
                 })
             })
         })

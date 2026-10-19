@@ -11,6 +11,18 @@ use super::super::function::FunctionLowerer;
 use super::Context;
 use super::NonLocalTarget;
 
+pub(super) fn protected_blocks(
+    blocks: &[ncl_ir::BlockId],
+    start: ncl_ir::BlockId,
+    previous: &[ncl_ir::BlockId],
+) -> Vec<ncl_ir::BlockId> {
+    blocks
+        .iter()
+        .copied()
+        .filter(|block| *block == start || !previous.contains(block))
+        .collect()
+}
+
 impl Context<'_> {
     pub(super) fn lower_escaping_block(
         &mut self,
@@ -20,6 +32,7 @@ impl Context<'_> {
     ) -> Result<ValueId, LowerError> {
         let result = f.fresh_value();
         let start = f.current_block();
+        let previous_blocks = self.blocks.clone();
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
         let token_name = Context::token(name, "BLOCK", region_id);
@@ -45,12 +58,7 @@ impl Context<'_> {
         f.env().pop();
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
-        let protected = self
-            .blocks
-            .clone()
-            .into_iter()
-            .filter(|block| block.0 >= start.0)
-            .collect::<Vec<_>>();
+        let protected = protected_blocks(&self.blocks, start, &previous_blocks);
         let exit_values = live
             .iter()
             .map(|_| (Ty::Word, f.fresh_value()))

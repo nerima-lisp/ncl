@@ -4,10 +4,12 @@
 //! be expanded again. They live apart from `expand` to keep both files small.
 
 use ncl_object::{
-    HeapRootedWord, ObjectRef, Package, Runtime, ThreadContext, Word, car, symbol_is_macro,
+    HeapRootedWord, ObjectRef, Package, Runtime, ThreadContext, Word, car, set_symbol_special,
+    symbol_is_macro,
 };
 
 use crate::ast::{Expr, LocalMacro, Operator};
+use crate::declaration::Declaration;
 use crate::error::FrontError;
 use crate::expand::{FormExpander, SYMBOL_MACRO_LIMIT};
 use crate::form::classify_form;
@@ -123,6 +125,9 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
+        if name.is_named("COMMON-LISP", "DECLAIM") {
+            return self.expand_declaim(name, arguments);
+        }
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime
@@ -142,6 +147,11 @@ impl<'a> FormExpander<'a> {
         } else {
             None
         };
+        if let Some(macro_name) = inherited_macro.as_ref()
+            && macro_name.is_named("COMMON-LISP", "DECLAIM")
+        {
+            return self.expand_declaim(macro_name.clone(), arguments);
+        }
         if inherited_macro.is_some() || symbol_is_macro(self.ctx, head.get())? {
             let macro_name = inherited_macro.as_ref().unwrap_or(&name);
             let replacement = Self::call_global_macro(
@@ -171,6 +181,27 @@ impl<'a> FormExpander<'a> {
             operator: Operator::Name(name),
             arguments,
         }))
+    }
+
+    fn expand_declaim(
+        &mut self,
+        name: SymbolRef,
+        specifiers: &[HeapRootedWord],
+    ) -> Result<Step, FrontError> {
+        for specifier in specifiers {
+            let declaration = Declaration::parse(&self.datum(specifier.get())?)?;
+            if matches!(declaration, Declaration::Special(_)) {
+                let parts = self.elements(specifier.get())?;
+                let rooted_parts = self.root_forms(&parts)?;
+                for symbol in rooted_parts.iter().skip(1) {
+                    set_symbol_special(self.ctx, symbol.get(), true)?;
+                }
+            }
+        }
+        Ok(Step::Retry {
+            name,
+            form: Word::NIL,
+        })
     }
 
     /// Expand a call whose operator is a lambda expression.

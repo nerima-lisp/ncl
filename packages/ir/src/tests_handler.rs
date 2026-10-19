@@ -99,6 +99,152 @@ fn verifier_accepts_handler_region_across_branch_join() {
 }
 
 #[test]
+fn verifier_counts_handler_dispatch_as_a_predecessor() {
+    let function = finish(
+        "handler-dominance",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[],
+                    OpKind::EnterHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Throw {
+                    condition: ValueId(0),
+                },
+            ),
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![BlockParam {
+                    value: ValueId(1),
+                    ty: Ty::Word,
+                }],
+                ops: vec![op(
+                    &[],
+                    OpKind::LeaveHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                terminator: Terminator::Return {
+                    values: vec![ValueId(0)],
+                },
+            },
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Catch,
+            protected: vec![BlockId(0), BlockId(1)],
+            handler: BlockId(2),
+            cleanup: None,
+            catch_tag: Some(ValueId(0)),
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    let result = verify(&function);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn verifier_ignores_unreachable_predecessors_for_dominance() {
+    let function = finish(
+        "unreachable-handler-predecessor",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[],
+                    OpKind::EnterHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Throw {
+                    condition: ValueId(0),
+                },
+            ),
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![BlockParam {
+                    value: ValueId(1),
+                    ty: Ty::Word,
+                }],
+                ops: vec![op(
+                    &[],
+                    OpKind::LeaveHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                terminator: Terminator::Jump {
+                    target: BlockId(4),
+                    args: Vec::new(),
+                },
+            },
+            block(
+                3,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(4),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                4,
+                Vec::new(),
+                Terminator::Return {
+                    values: vec![ValueId(0)],
+                },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Catch,
+            protected: vec![BlockId(0), BlockId(1)],
+            handler: BlockId(2),
+            cleanup: None,
+            catch_tag: Some(ValueId(0)),
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    let result = verify(&function);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn verifier_accepts_handler_region_across_loop() {
     let function = finish(
         "handler-loop",

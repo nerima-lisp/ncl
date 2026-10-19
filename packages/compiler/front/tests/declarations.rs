@@ -10,8 +10,8 @@ mod forms;
 
 use forms::Fixture;
 
-use ncl_compiler_front::{Declaration, Expr, LexicalEnv, Quality, TypeSpecifier};
-use ncl_object::Word;
+use ncl_compiler_front::{Declaration, Expr, LexicalEnv, Literal, Quality, TypeSpecifier};
+use ncl_object::{FindStatus, Package, Word, symbol_is_special};
 
 /// Build a `(declare specifier*)` form.
 fn declare(f: &mut Fixture, specifiers: &[Word]) -> Word {
@@ -128,6 +128,22 @@ fn optimize_parses_qualities() {
 }
 
 #[test]
+fn optimize_uses_default_quality_for_bare_names() {
+    let mut f = Fixture::new();
+    let optimize = f.cl("OPTIMIZE");
+    let safety = f.cl("SAFETY");
+    let specifier = f.list(&[optimize, safety]);
+    match parse_one(&mut f, specifier) {
+        Declaration::Optimize(qualities) => {
+            assert_eq!(qualities.len(), 1);
+            assert_eq!(qualities[0].quality, Quality::Safety);
+            assert_eq!(qualities[0].value, 3);
+        }
+        other => panic!("expected Optimize, got {other:?}"),
+    }
+}
+
+#[test]
 fn an_unknown_specifier_is_retained() {
     let mut f = Fixture::new();
     let unknown = f.intern("NCL-EXT", "SOME-DECLARATION");
@@ -184,4 +200,65 @@ fn the_environment_reports_special_and_typed_variables() {
 
     env.pop_scope();
     assert!(env.lookup_variable(&x).is_none());
+}
+
+#[test]
+fn declaim_accepts_type_declarations_and_marks_special_symbols() {
+    let mut f = Fixture::new();
+    let ftype = f.cl("FTYPE");
+    let function = f.cl("FUNCTION");
+    let t = f.cl("T");
+    let argument_types = f.list(&[t]);
+    let function_type = f.list(&[function, argument_types, t]);
+    let get_entry = f.user("GET-ENTRY");
+    let ftype_specifier = f.list(&[ftype, function_type, get_entry]);
+    let type_name = f.cl("TYPE");
+    let list_type = f.cl("LIST");
+    let entries = f.user("*ENTRIES*");
+    let type_specifier = f.list(&[type_name, list_type, entries]);
+    let type_declaim = f.form("DECLAIM", &[ftype_specifier, type_specifier]);
+    assert_eq!(
+        f.expand(type_declaim).unwrap(),
+        Expr::Constant(Literal::Nil)
+    );
+
+    let special = f.cl("SPECIAL");
+    let declared = f.user("DECLARED-AS-SPECIAL");
+    let special_specifier = f.list(&[special, declared]);
+    let special_declaim = f.form("DECLAIM", &[special_specifier]);
+    assert_eq!(
+        f.expand(special_declaim).unwrap(),
+        Expr::Constant(Literal::Nil)
+    );
+    assert!(symbol_is_special(&f.ctx, declared).unwrap());
+}
+
+#[test]
+fn inherited_declaim_in_common_lisp_user_proclaims_special() {
+    let mut f = Fixture::new();
+    ncl_compiler_front::register(&f.runtime).unwrap();
+
+    let declaim = f.cl("DECLAIM");
+    let common_lisp = f.runtime.find_package(&f.ctx, "COMMON-LISP").unwrap();
+    let declaim_name = f.string("DECLAIM");
+    assert!(
+        Package::from_word(common_lisp)
+            .export(&mut f.ctx, &f.runtime, declaim_name)
+            .unwrap()
+    );
+    let common_lisp_user = f.runtime.find_package(&f.ctx, "COMMON-LISP-USER").unwrap();
+    let inherited_name = f.string("DECLAIM");
+    let (inherited_declaim, status) = Package::from_word(common_lisp_user)
+        .find_symbol(&mut f.ctx, inherited_name)
+        .unwrap()
+        .expect("COMMON-LISP-USER inherits DECLAIM");
+    assert_eq!(status, FindStatus::Inherited);
+    assert_eq!(inherited_declaim, declaim);
+
+    let special = f.cl("SPECIAL");
+    let declared = f.user("*DECLARED-SPECIAL*");
+    let specifier = f.list(&[special, declared]);
+    let form = f.list(&[inherited_declaim, specifier]);
+    assert_eq!(f.expand(form).unwrap(), Expr::Constant(Literal::Nil));
+    assert!(symbol_is_special(&f.ctx, declared).unwrap());
 }

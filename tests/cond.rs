@@ -79,6 +79,17 @@ fn handler_bind_returns_the_protected_forms_value_on_normal_exit() {
 }
 
 #[test]
+fn handler_case_inside_do_compiles_and_runs() {
+    let mut runtime = Runtime::new().expect("runtime");
+    let result = runtime
+        .eval(
+            "(do ((i 0 (1+ i))) ((>= i 2)) (handler-case (values nil nil) (warning () nil) (error () nil)))",
+        )
+        .expect("handler-case inside do");
+    assert_eq!(runtime.format_result(result), "NIL");
+}
+
+#[test]
 fn handler_bind_t_matches_every_condition() {
     let mut runtime = Runtime::new().expect("runtime");
     let result = runtime
@@ -282,6 +293,15 @@ fn assert_passes_silently_when_the_test_is_true() {
     let mut runtime = Runtime::new().expect("runtime");
     let result = runtime.eval("(assert (= 1 1))").expect("assert evaluation");
     assert_eq!(runtime.format_result(result), "NIL");
+}
+
+#[test]
+fn assert_preserves_outer_lexical_values_after_escaping_control() {
+    let mut runtime = Runtime::new().expect("runtime");
+    let result = runtime
+        .eval("(let ((x 1)) (assert t) x)")
+        .expect("assert evaluation");
+    assert_eq!(runtime.format_result(result), "1");
 }
 
 #[test]

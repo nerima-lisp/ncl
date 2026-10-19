@@ -170,6 +170,36 @@ fn compiled_clos_slot_names_boundp_typep_and_makunbound_are_observable() {
 }
 
 #[test]
+fn compiled_clos_defmethod_rest_arguments_are_dispatched() {
+    let output = run_ncl(
+        "(progn (defclass method-rest-probe () ()) (defgeneric method-rest-values (object &rest values)) (defmethod method-rest-values ((object method-rest-probe) &rest values) values) (method-rest-values (make-instance 'method-rest-probe) 1 2))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(1 2)");
+}
+
+#[test]
+fn compiled_clos_defmethod_optional_arguments_are_dispatched() {
+    let output = run_ncl(
+        "(progn (defclass method-optional-probe () ()) (defgeneric method-optional-value (object &optional value)) (defmethod method-optional-value ((object method-optional-probe) &optional value) (if value value 7)) (let ((object (make-instance 'method-optional-probe))) (list (method-optional-value object) (method-optional-value object 9))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(7 9)");
+}
+
+#[test]
+fn compiled_clos_defmethod_key_arguments_are_dispatched() {
+    let output = run_ncl(
+        "(progn (defclass method-key-probe () ()) (defgeneric method-key-value (object &key value)) (defmethod method-key-value ((object method-key-probe) &key value) value) (method-key-value (make-instance 'method-key-probe) :value 9))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}
+
+#[test]
 fn compiled_clos_shared_initialize_preserves_bound_slots() {
     let output = run_ncl(
         "(progn (defclass shared-init-probe () ((value :initform 7 :accessor shared-init-value))) (let ((object (make-instance 'shared-init-probe))) (setf (shared-init-value object) 9) (shared-initialize object) (shared-init-value object)))",

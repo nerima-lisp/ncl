@@ -314,10 +314,10 @@ fn dispatch_method_match(
     arguments: &[Word],
 ) -> Result<Option<Vec<usize>>, ObjectError> {
     let specializers = form_elements(ctx, specializers)?;
-    if specializers.len() != arguments.len() {
+    if specializers.len() > arguments.len() {
         return Ok(None);
     }
-    let mut specificity = Vec::with_capacity(arguments.len());
+    let mut specificity = Vec::with_capacity(specializers.len());
     for (specializer, argument) in specializers.iter().zip(arguments) {
         let fields = form_elements(ctx, *specializer)?;
         let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;

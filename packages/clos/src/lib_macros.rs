@@ -176,31 +176,50 @@ fn defmethod_macro_builtin(
         .get(specializer_index)
         .ok_or(ObjectError::TypeError)?;
     let specializer_fields = macro_list_to_handles(&mut scope, specializer_form)?;
+    let rest = scope.intern(runtime, COMMON_LISP, "&REST")?;
+    let optional = scope.intern(runtime, COMMON_LISP, "&OPTIONAL")?;
+    let key = scope.intern(runtime, COMMON_LISP, "&KEY")?;
+    let allow_other_keys = scope.intern(runtime, COMMON_LISP, "&ALLOW-OTHER-KEYS")?;
+    let aux = scope.intern(runtime, COMMON_LISP, "&AUX")?;
     let mut user_lambda = scope.root_many(&[]);
     let mut lambda_parameters = scope.root_many(&[]);
+    let mut dispatch_specializers = scope.root_many(&[]);
+    let mut lambda_list_started = false;
+    let mut rest_parameter_next = false;
     for field in specializer_fields.iter().copied() {
-        if scope.get(field).as_word().is_cons() {
+        let field_word = scope.get(field).as_word();
+        if lambda_list_started {
+            macro_push_handle(&mut scope, &mut user_lambda, field);
+            if rest_parameter_next {
+                macro_push_handle(&mut scope, &mut lambda_parameters, field);
+                rest_parameter_next = false;
+            }
+            if field_word == scope.get(rest).as_word() {
+                rest_parameter_next = true;
+            }
+        } else if field_word == scope.get(optional).as_word()
+            || field_word == scope.get(rest).as_word()
+            || field_word == scope.get(key).as_word()
+            || field_word == scope.get(allow_other_keys).as_word()
+            || field_word == scope.get(aux).as_word()
+        {
+            macro_push_handle(&mut scope, &mut user_lambda, field);
+            lambda_list_started = true;
+            rest_parameter_next = field_word == scope.get(rest).as_word();
+        } else if field_word.is_cons() {
             let fields = macro_list_to_handles(&mut scope, field)?;
             let parameter = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
             macro_push_handle(&mut scope, &mut user_lambda, parameter);
             macro_push_handle(&mut scope, &mut lambda_parameters, parameter);
-        } else if symbol_name_string(scope.context(), scope.get(field).as_word())? == "&REST" {
-            macro_push_handle(&mut scope, &mut user_lambda, field);
-            let parameter = *specializer_fields
-                .as_slice()
-                .get(user_lambda.len())
-                .ok_or(ObjectError::TypeError)?;
-            macro_push_handle(&mut scope, &mut user_lambda, parameter);
-            macro_push_handle(&mut scope, &mut lambda_parameters, parameter);
+            macro_push_handle(&mut scope, &mut dispatch_specializers, field);
         } else {
             return Err(ObjectError::TypeError);
         }
     }
-    let dispatch_specializers = scope.make_list(runtime, &specializer_fields)?;
+    let dispatch_specializers = scope.make_list(runtime, &dispatch_specializers)?;
     let defun = scope.intern(runtime, COMMON_LISP, "DEFUN")?;
     let dispatch = scope.intern(runtime, COMMON_LISP, "%CLOS-DISPATCH")?;
     let args_symbol = scope.intern(runtime, COMMON_LISP, "ARGS")?;
-    let rest = scope.intern(runtime, COMMON_LISP, "&REST")?;
     let body_start = specializer_index + 1;
     let body_forms = scope.root_many(
         &parts

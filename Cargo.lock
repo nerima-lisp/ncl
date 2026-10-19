@@ -33,6 +33,7 @@ name = "ncl-clos"
 version = "0.1.0"
 dependencies = [
  "ncl-conditions",
+ "ncl-lib-numbers",
  "ncl-object",
  "ncl-types",
 ]

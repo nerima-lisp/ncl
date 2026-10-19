@@ -24,6 +24,31 @@ fn list(context: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word
     scope.get(result).as_word()
 }
 
+fn dispatch_matches_eql(
+    context: &mut ThreadContext,
+    runtime: &Runtime,
+    variable: Word,
+    specializer_value: Word,
+    argument_value: Word,
+) -> bool {
+    let mut eql = super::super::mop::make_eql_specializer(context, runtime, specializer_value)
+        .expect("eql specializer");
+    let eql_root = push_heap_root(runtime, &mut eql);
+    let specializer = list(context, runtime, &[variable, eql]);
+    let mut specializers = list(context, runtime, &[specializer]);
+    let specializers_root = push_heap_root(runtime, &mut specializers);
+    let matches = super::super::dispatch_method_match(
+        context,
+        runtime,
+        specializers,
+        &[argument_value],
+    )
+    .expect("EQL dispatch")
+    .is_some();
+    let _ = (eql_root, specializers_root);
+    matches
+}
+
 #[test]
 fn generic_dispatch_survives_gc_forced_on_every_allocation() {
     let (runtime, mut context) = setup();
@@ -188,5 +213,76 @@ fn dispatch_specificity_uses_argument_precedence_and_eql_descriptors() {
     assert_eq!(first_score, vec![2, 0]);
     assert_eq!(second_score, vec![0, usize::MAX]);
     assert!(first_score > second_score);
+}
+
+#[test]
+fn eql_specializers_match_equal_bignums() {
+    let (runtime, mut context) = setup();
+    let package = runtime
+        .find_package(&context, COMMON_LISP)
+        .expect("package");
+    let mut variable = Package::from_word(package)
+        .intern(&mut context, &runtime, "VALUE")
+        .expect("variable")
+        .0;
+    let variable_root = push_heap_root(&runtime, &mut variable);
+
+    let mut specializer_value = ncl_object::make_bignum_from_i128(
+        &mut context,
+        &runtime,
+        1_i128 << 100,
+    )
+    .expect("specializer bignum")
+    .as_word();
+    let specializer_value_root = push_heap_root(&runtime, &mut specializer_value);
+    let mut argument_value = ncl_object::make_bignum_from_i128(
+        &mut context,
+        &runtime,
+        1_i128 << 100,
+    )
+    .expect("argument bignum")
+    .as_word();
+    let argument_value_root = push_heap_root(&runtime, &mut argument_value);
+    assert!(dispatch_matches_eql(
+        &mut context,
+        &runtime,
+        variable,
+        specializer_value,
+        argument_value,
+    ));
+    let _ = (variable_root, specializer_value_root, argument_value_root);
+}
+
+#[test]
+fn eql_specializers_match_equal_double_floats() {
+    let (runtime, mut context) = setup();
+    let package = runtime
+        .find_package(&context, COMMON_LISP)
+        .expect("package");
+    let mut variable = Package::from_word(package)
+        .intern(&mut context, &runtime, "VALUE")
+        .expect("variable")
+        .0;
+    let variable_root = push_heap_root(&runtime, &mut variable);
+    let mut specializer_value = ncl_object::make_double(&mut context, &runtime, 1.5)
+        .expect("specializer float")
+        .as_word();
+    let specializer_value_root = push_heap_root(&runtime, &mut specializer_value);
+    let mut argument_value = ncl_object::make_double(&mut context, &runtime, 1.5)
+        .expect("argument float")
+        .as_word();
+    let argument_value_root = push_heap_root(&runtime, &mut argument_value);
+    assert!(dispatch_matches_eql(
+        &mut context,
+        &runtime,
+        variable,
+        specializer_value,
+        argument_value,
+    ));
+    let _ = (
+        variable_root,
+        specializer_value_root,
+        argument_value_root,
+    );
 }
 }

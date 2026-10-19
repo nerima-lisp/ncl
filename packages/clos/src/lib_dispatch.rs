@@ -334,7 +334,7 @@ fn dispatch_method_match(
         let fields = form_elements(ctx, *specializer)?;
         let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
         if let Some(value) = dispatch_eql_specializer(ctx, designator)? {
-            if !eql_word(ctx, *argument, value) {
+            if !ncl_lib_numbers::eql_words(ctx, *argument, value) {
                 return Ok(None);
             }
             specificity.push(usize::MAX);

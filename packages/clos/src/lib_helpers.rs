@@ -193,16 +193,6 @@ fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, Ob
     Ok(Some(Word::fixnum(qualifier)))
 }
 
-fn eql_word(ctx: &ThreadContext, left: Word, right: Word) -> bool {
-    if left == right {
-        return true;
-    }
-    matches!(
-        (ncl_object::classify_object(ctx, left), ncl_object::classify_object(ctx, right)),
-        (ObjectRef::DoubleFloat(left), ObjectRef::DoubleFloat(right)) if left == right
-    )
-}
-
 fn class_depth(ctx: &ThreadContext, class: Word) -> Result<usize, ObjectError> {
     let superclass = ncl_object::simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
     // A class with more than one direct superclass (for example a

@@ -53,30 +53,37 @@ const fn eql_numbers(left: Number, right: Number) -> bool {
     }
 }
 
+/// Compare tagged words using Common Lisp EQL identity and numeric-value rules.
+#[must_use]
+pub fn eql_words(ctx: &ThreadContext, left: Word, right: Word) -> bool {
+    if left == right {
+        return true;
+    }
+    let left_ref = classify_object(ctx, left);
+    let right_ref = classify_object(ctx, right);
+    let numeric_pair = matches!(
+        (left_ref, right_ref),
+        (
+            ObjectRef::Fixnum(_) | ObjectRef::Bignum(_),
+            ObjectRef::Fixnum(_) | ObjectRef::Bignum(_),
+        ) | (ObjectRef::Ratio(_), ObjectRef::Ratio(_))
+            | (ObjectRef::DoubleFloat(_), ObjectRef::DoubleFloat(_))
+            | (ObjectRef::Complex(_), ObjectRef::Complex(_))
+    );
+    if !numeric_pair {
+        return false;
+    }
+    match (number(ctx, left), number(ctx, right)) {
+        (Ok(left), Ok(right)) => eql_numbers(left, right),
+        (Err(_), _) | (_, Err(_)) => false,
+    }
+}
+
 pub fn eql(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let [left, right] = args else {
         return Err(ObjectError::TypeError);
     };
-    let result = if left == right {
-        true
-    } else {
-        match (classify_object(ctx, *left), classify_object(ctx, *right)) {
-            (
-                ObjectRef::Fixnum(_) | ObjectRef::Bignum(_),
-                ObjectRef::Fixnum(_) | ObjectRef::Bignum(_),
-            )
-            | (ObjectRef::Ratio(_), ObjectRef::Ratio(_))
-            | (ObjectRef::DoubleFloat(_), ObjectRef::DoubleFloat(_))
-            | (ObjectRef::Complex(_), ObjectRef::Complex(_)) => {
-                match (number(ctx, *left), number(ctx, *right)) {
-                    (Ok(left), Ok(right)) => eql_numbers(left, right),
-                    _ => false,
-                }
-            }
-            _ => false,
-        }
-    };
-    Ok(bool_word(result))
+    Ok(bool_word(eql_words(ctx, *left, *right)))
 }
 pub fn not_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;

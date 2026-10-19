@@ -10,6 +10,8 @@ mod remainder;
 mod rounding;
 mod transcendental;
 
+pub use arithmetic::eql_words;
+
 use core::cell::Cell;
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,

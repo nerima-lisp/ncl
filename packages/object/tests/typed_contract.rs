@@ -133,7 +133,9 @@ fn lisp_error_variants_preserve_their_payloads() {
         LispError::PackageError(PackageError::NotFound),
         LispError::StreamError(StreamError::Closed),
         LispError::EndOfFile,
-        LispError::FileError(FileError::NotFound),
+        LispError::FileError(FileError::NotFound {
+            pathname: Word::NIL,
+        }),
         LispError::Object(ObjectError::Unbound),
     ];
     assert_eq!(errors.len(), 10);

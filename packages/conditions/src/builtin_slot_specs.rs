@@ -87,5 +87,19 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
         let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
         set_slot_specs(ctx, runtime, class, &cell_error)?;
     }
+    let pathname = keyword(ctx, runtime, "PATHNAME")?;
+    let file_error = [SlotSpec {
+        initarg: pathname,
+        initform: Word::NIL,
+    }];
+    for name in [
+        "FILE-ERROR",
+        "DELETE-FILE-ERROR",
+        "FILE-DOES-NOT-EXIST",
+        "FILE-EXISTS",
+    ] {
+        let class = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
+        set_slot_specs(ctx, runtime, class, &file_error)?;
+    }
     Ok(())
 }

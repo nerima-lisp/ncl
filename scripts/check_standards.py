@@ -73,12 +73,20 @@ def non_test_source(path: Path, source: str) -> str:
 
 
 def em_dash_violations() -> tuple[list[str], int]:
-    listing = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    ).stdout
+    if (ROOT / ".jj").exists():
+        listing = subprocess.run(
+            ["jj", "file", "list", "--revision", "@", "--template", 'path ++ "\\0"'],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+    else:
+        listing = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
     failures = []
     checked = 0
     for entry in listing.split(b"\0"):

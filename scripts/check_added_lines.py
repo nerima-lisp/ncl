@@ -18,6 +18,18 @@ WORD_TABLE = re.compile(r"\b(?:HashMap|BTreeMap|HashSet)\s*<[^\n>]*\bWord\b")
 ALLOW = re.compile(r"check-added-lines:\s*allow\(([^)]+)\)(.*)$")
 
 def diff_text(base: Optional[str]) -> str:
+    if (ROOT / ".jj").exists():
+        revision = base or "main@origin"
+        if revision == "origin/main":
+            revision = "main@origin"
+        return subprocess.run(
+            [
+                "jj", "--no-pager", "--color=never", "diff", "--git", "--context", "0",
+                "--from", revision, "--to", "@", "--", 'root-glob:"**/*.rs"',
+            ],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout
+
     command = ["git", "diff", "--no-ext-diff", "--unified=0"]
     if not base:
         base = subprocess.run(

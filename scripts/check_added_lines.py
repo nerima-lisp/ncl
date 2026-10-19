@@ -137,7 +137,7 @@ def violations(lines: list[tuple[Path, int, str]]) -> list[str]:
             directive = ALLOW.search(candidate)
             if directive and directive.group(2).strip():
                 allowed.update(x.strip() for x in directive.group(1).split(","))
-        if "index" not in allowed and re.search(r"(?<![#!])(?:\b[A-Za-z_][A-Za-z0-9_]*|\)|\])\s*\[[^]]+\]", code):
+        if "index" not in allowed and re.search(r"(?<![#!])(?:\b(?!mut\b)[A-Za-z_][A-Za-z0-9_]*|\)|\])\s*\[[^]]+\]", code):
             failures.append(f"{location}: [index] unchecked indexing")
         if "as-cast" not in allowed and re.search(
             r"\bas\s+(?:u(?:8|16|32|64|128|size)|i(?:8|16|32|64|128|size)|f(?:32|64)|\*\s*(?:const|mut))\b",

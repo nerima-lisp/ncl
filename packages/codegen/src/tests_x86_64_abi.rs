@@ -12,7 +12,7 @@ const CALLEE_SAVED_SENTINELS: [i64; 3] = [
 
 fn emit(assembler: &mut Assembler, instruction: &Inst) -> Result<(), String> {
     assembler
-        .emit(&instruction)
+        .emit(instruction)
         .map_err(|error| format!("encode ABI probe: {error:?}"))
 }
 

@@ -24,6 +24,10 @@ pub(super) const ARGUMENT_REGISTERS: [Reg; 4] = [Reg::Rsi, Reg::Rdx, Reg::Rcx, R
 pub(super) const REST_ARGUMENT: Reg = Reg::R9;
 /// Bytes reserved below `rsp` before a call so the callee can write frame header words 2 and 3.
 const CALLEE_HEADER_RESERVE: i32 = 16;
+/// SysV callee-saved registers other than the frame pointer.
+pub(super) const CALLEE_SAVED_REGISTERS: [Reg; 5] =
+    [Reg::Rbx, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
+pub(super) const CALLEE_SAVED_WORDS: u32 = 5;
 
 #[allow(clippy::needless_pass_by_value)]
 pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -47,6 +51,7 @@ pub(super) struct ValueSlots {
     allocation: Allocation,
     spill_base: u32,
     pub(super) outgoing_base: u32,
+    pub(super) callee_saved_base: u32,
     pub(super) incoming_args_base: Option<u32>,
 }
 
@@ -130,6 +135,7 @@ pub(super) fn slots(
             allocation,
             spill_base,
             outgoing_base,
+            callee_saved_base: 0,
             incoming_args_base: None,
         },
         local_words,
@@ -155,6 +161,32 @@ pub(super) fn slot_mem_of(index: u32) -> Result<Mem, CodegenError> {
         FRAME_POINTER,
         -i32::try_from(bytes).map_err(|_| CodegenError::FrameOverflow)?,
     ))
+}
+
+pub(super) fn save_callee_saved_registers(
+    assembler: &mut Assembler,
+    base_slot: u32,
+) -> Result<(), CodegenError> {
+    for (index, register) in CALLEE_SAVED_REGISTERS.into_iter().enumerate() {
+        let slot = base_slot
+            .checked_add(u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?)
+            .ok_or(CodegenError::FrameOverflow)?;
+        emit(assembler, Inst::MovMR(slot_mem_of(slot)?, register))?;
+    }
+    Ok(())
+}
+
+pub(super) fn restore_callee_saved_registers(
+    assembler: &mut Assembler,
+    base_slot: u32,
+) -> Result<(), CodegenError> {
+    for (index, register) in CALLEE_SAVED_REGISTERS.into_iter().enumerate() {
+        let slot = base_slot
+            .checked_add(u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?)
+            .ok_or(CodegenError::FrameOverflow)?;
+        emit(assembler, Inst::MovRM(register, slot_mem_of(slot)?))?;
+    }
+    Ok(())
 }
 
 fn value_location(slots: &ValueSlots, value: ValueId) -> Result<Location, CodegenError> {

@@ -50,9 +50,12 @@ responsible file and line or the missing Common Lisp function.
 
 The compiled CLOS probe is in `tests/e2eclos.rs`. Built-in class inspection,
 class and method definition, inheritance dispatch, standard method qualifiers,
-`call-next-method`, `next-method-p`, symbol class designators, slot initargs,
-and the tested EQL-specializer path are working. These are covered by value
-assertions in the e2e test and are not XFAILs.
+`call-next-method`, `next-method-p`, symbol class designators, and slot initargs
+are covered by value assertions there and are not XFAILs.
+The EQL-specializer path has no end-to-end value assertion. The unit test
+`dispatch_specificity_uses_argument_precedence_and_eql_descriptors` in
+`packages/clos/src/dispatch_tests.rs` checks score ordering, not compiled runtime
+dispatch.
 
 | case | source | stderr | cause |
 | --- | --- | --- | --- |

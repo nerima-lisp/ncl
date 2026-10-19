@@ -13,8 +13,10 @@ import dataclasses
 import json
 import math
 import os
+import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 from datetime import date
@@ -26,6 +28,16 @@ DEFAULT_CONNECT_TIMEOUT = 120.0
 DEFAULT_SOURCE_TIMEOUT = 300.0
 DEFAULT_COMMAND_TIMEOUT = 900.0
 DEFAULT_SOURCE_RETRIES = 2
+MAX_STDERR_TAIL_CHARS = 4000
+
+_QUOTED_PATH_PATTERNS = tuple(
+    re.compile(
+        re.escape(quote) + r"/[^" + re.escape(quote) + r"\r\n]*" + re.escape(quote)
+    )
+    for quote in ("'", '"', "`")
+)
+_FILE_URI_PATTERN = re.compile(r"(?i)(?<![\w.-])file:[^\r\n]*")
+_UNQUOTED_ABSOLUTE_PATH_LINE_PATTERN = re.compile(r"(?<![\w:/])/(?!/)[^\r\n]*")
 
 
 SOURCES = {
@@ -292,6 +304,27 @@ def _json_output(result: ProcessResult) -> Mapping[str, Any]:
     return value
 
 
+def _stderr_tail(stderr: str) -> tuple[str, bool]:
+    """Redact machine-specific details and keep only a bounded stderr tail."""
+    hostname = socket.gethostname()
+    if hostname:
+        stderr = re.sub(
+            rf"(?<![\w.-]){re.escape(hostname)}(?![\w.-])",
+            "<hostname>",
+            stderr,
+            flags=re.IGNORECASE,
+        )
+    for pattern in _QUOTED_PATH_PATTERNS:
+        stderr = pattern.sub(
+            lambda match: match.group(0)[0] + "<absolute-path>" + match.group(0)[0],
+            stderr,
+        )
+    stderr = _FILE_URI_PATTERN.sub("<absolute-path>", stderr)
+    stderr = _UNQUOTED_ABSOLUTE_PATH_LINE_PATTERN.sub("<absolute-path>", stderr)
+    truncated = len(stderr) > MAX_STDERR_TAIL_CHARS
+    return stderr[-MAX_STDERR_TAIL_CHARS:], truncated
+
+
 def make_scoreboard(
     ansi: ProcessResult,
     ansi_counts: Mapping[str, int] | None,
@@ -316,6 +349,10 @@ def make_scoreboard(
         bench_data["samples"] = len(bench_times)
         if bench_times:
             bench_data["geometric_mean"] = geometric_mean(bench_times)
+    bench_data["return_code"] = bench.returncode
+    if bench.returncode is not None and bench.returncode < 0:
+        bench_data["signal_number"] = -bench.returncode
+    bench_data["stderr_tail"], bench_data["stderr_truncated"] = _stderr_tail(bench.stderr)
     return {
         "schema_version": 1,
         "measured_on": date.today().isoformat(),

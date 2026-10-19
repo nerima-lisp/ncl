@@ -472,8 +472,7 @@ fn lower_builtin(
 #[path = "target_x86_64_lowering/callee_saved.rs"]
 mod callee_saved;
 pub(super) use callee_saved::{
-    CALLEE_SAVED_REGISTERS, CALLEE_SAVED_WORDS, restore_callee_saved_registers,
-    save_callee_saved_registers,
+    CALLEE_SAVED_WORDS, restore_callee_saved_registers, save_callee_saved_registers,
 };
 
 #[path = "target_x86_64_lowering/calls.rs"]

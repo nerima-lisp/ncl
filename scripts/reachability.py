@@ -193,8 +193,14 @@ def main():
         scanned += 1
         reached, all_rs = scan_crate(src_root)
         orphans = sorted(all_rs - reached)
+        reached_src_rs = len(reached & all_rs)
+        other_reached_paths = len(reached - all_rs)
         rel_crate = crate_root.relative_to(REPO_ROOT)
-        print(f"== {rel_crate} == reached {len(reached)} / total {len(all_rs)}")
+        print(
+            f"== {rel_crate} == reached Rust files under src: "
+            f"{reached_src_rs} / {len(all_rs)}; "
+            f"other reached paths: {other_reached_paths}"
+        )
         for o in orphans:
             any_orphan = True
             lines = len(read(o).splitlines())

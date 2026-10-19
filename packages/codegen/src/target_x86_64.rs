@@ -11,11 +11,10 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
     for block in &function.blocks {
         for op in &block.ops {
             let count = match &op.kind {
-                OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => {
-                    args.len()
-                        .saturating_sub(1)
-                        .saturating_sub(ARGUMENT_REGISTERS.len())
-                }
+                OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => args
+                    .len()
+                    .saturating_sub(1)
+                    .saturating_sub(ARGUMENT_REGISTERS.len()),
                 OpKind::CallClosure { closure, args, .. } => {
                     let capture_staging_words =
                         closure_capture_count(function, *closure)?.unwrap_or(0);
@@ -51,11 +50,10 @@ fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
             maximum = maximum.max(count);
         }
         let count = match &block.terminator {
-            Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => {
-                args.len()
-                    .saturating_sub(1)
-                    .saturating_sub(ARGUMENT_REGISTERS.len())
-            }
+            Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => args
+                .len()
+                .saturating_sub(1)
+                .saturating_sub(ARGUMENT_REGISTERS.len()),
             Terminator::Jump { .. }
             | Terminator::Branch { .. }
             | Terminator::Switch { .. }

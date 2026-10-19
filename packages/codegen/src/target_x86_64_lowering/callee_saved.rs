@@ -2,8 +2,7 @@ use super::{CodegenError, emit, slot_mem_of};
 use ncl_asm_x86_64::{Assembler, Inst, Reg};
 
 /// `SysV` callee-saved registers other than the frame pointer.
-const CALLEE_SAVED_REGISTERS: [Reg; 5] =
-    [Reg::Rbx, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
+const CALLEE_SAVED_REGISTERS: [Reg; 5] = [Reg::Rbx, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
 pub(in crate::target_x86_64) const CALLEE_SAVED_WORDS: u32 = 5;
 
 pub(in crate::target_x86_64) fn save_callee_saved_registers(

@@ -16,16 +16,15 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
 /// Push a precise root owned by the runtime's heap-level registry, independent
 /// of the per-thread root stack used by [`push_root`]/[`pop_root`].
 ///
-/// Compiling a form (e.g. `ncl-runtime`'s `Runtime::eval_form`) permanently
-/// grows the per-thread root stack: each compiled function's code object and
+/// Compiling a form (e.g. `ncl-runtime`'s `Runtime::eval_form`) grows the
+/// per-thread root stack: each compiled function's code object and
 /// constants table stay rooted for the runtime's lifetime, via `push_root`
 /// calls that are never popped. A caller that needs to keep a `Word` alive
 /// *across* such a call therefore cannot use a `push_root`/`pop_root` pair on
-/// the thread stack: by the time the call returns, the caller's token no
-/// longer points at the stack's top, and `pop_root` reports the corruption
-/// The heap-level registry used here is
-/// untouched by ordinary compilation, so it tolerates being bracketed around
-/// a call that grows the thread-local stack.
+/// the thread stack: compilation leaves newer roots above that token, so
+/// `pop_root` cannot remove it.
+/// Ordinary compilation does not touch the heap-level registry, so this API
+/// can be used around a call that grows the thread root stack.
 pub fn push_heap_root(runtime: &Runtime, value: &mut Word) -> RootToken {
     ncl_sys::push_heap_root(&runtime.heap, value)
 }

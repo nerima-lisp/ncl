@@ -49,7 +49,10 @@ pub extern "C" fn native_enter_catch(
     tag: Word,
 ) -> Word {
     with_context(thread, |ctx| {
-        ctx.enter_catch(tag);
+        if let Err(error) = ctx.enter_catch(tag) {
+            ctx.set_pending(error);
+            ctx.set_non_local_exit(true);
+        }
         Word::NIL
     })
 }

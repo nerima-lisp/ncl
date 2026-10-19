@@ -6,10 +6,9 @@
 //! Every native call boundary (an ordinary function/closure/builtin call
 //! compiled by `ncl-codegen`) checks [`ncl_sys::Thread::pending`] after the
 //! call returns. When it is set, the callee is propagating a non-local exit
-//! rather than returning normally, and the caller must either intercept it
-//! (because one of its own currently-open `catch`/`unwind-protect`/`progv`
-//! regions is the target) or keep propagating by returning immediately
-//! itself. This is a return-code propagation design (no raw stack/register
+//! rather than returning normally. The caller handles it in an open region
+//! or returns immediately to keep propagating it. This is a return-code
+//! propagation design (no raw stack/register
 //! surgery): every native frame that is unwound past returns through its
 //! ordinary epilogue, so frame bookkeeping the GC relies on elsewhere is
 //! never disturbed. See the top-level README for the full design writeup.
@@ -22,68 +21,34 @@
 //! `catch` frames intercept only when their tag (compared with `eq`,
 //! i.e. [`Word`] equality) matches word 0 of the propagating payload.
 //!
-//! Every frame's rooted payload is boxed so its address is stable
-//! independent of this `Vec` reallocating, and is registered with the GC
-//! root stack via [`ncl_sys::Thread::push_root_cell`] for exactly as long as
-//! the frame is on the chain.
+//! Dynamic-frame payloads use the heap root registry because they can remain
+//! active while compilation grows the per-thread root stack.
 
-use std::cell::Cell;
+use ncl_sys::ControlFrameKind;
 
-use ncl_sys::{ControlFrameKind, RootToken};
-
+use crate::roots::HeapRootedWord;
 use crate::{ObjectError, ThreadContext, Word, car, cdr, set_symbol_value, symbol_value};
-
-/// A single rooted ABI word with a stable heap address.
-///
-/// Release is explicit (via [`Self::release`]) rather than through `Drop`,
-/// because popping the root token needs `&mut ThreadContext`, which `Drop`
-/// cannot borrow.
-#[derive(Debug)]
-pub struct RootedWord {
-    slot: Box<Cell<Word>>,
-    token: RootToken,
-}
 
 #[derive(Debug)]
 pub struct PendingExit {
     region: u64,
     frame_depth: usize,
-    values: Vec<RootedWord>,
-}
-
-impl RootedWord {
-    fn new(ctx: &mut ThreadContext, value: Word) -> Self {
-        let slot = Box::new(Cell::new(value));
-        let token = ctx.thread.push_root_cell(&slot);
-        Self { slot, token }
-    }
-
-    fn get(&self) -> Word {
-        self.slot.get()
-    }
-
-    fn release(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
-        if ncl_sys::pop_root(&mut ctx.thread, self.token) {
-            Ok(())
-        } else {
-            Err(ObjectError::RootStackCorrupted)
-        }
-    }
+    values: Vec<HeapRootedWord>,
 }
 
 /// One `progv` binding: the special variable symbol and the value it held
 /// before this frame rebound it.
 #[derive(Debug)]
 pub struct ProgvBinding {
-    symbol: RootedWord,
-    previous: RootedWord,
+    symbol: HeapRootedWord,
+    previous: HeapRootedWord,
 }
 
 /// One entry in the dynamic-extent frame chain.
 #[derive(Debug)]
 pub enum DynamicFrame {
     /// A `catch` frame, matched by tag identity.
-    Catch { tag: RootedWord },
+    Catch { tag: HeapRootedWord },
     /// An `unwind-protect` frame; always runs its cleanup when unwound past.
     UnwindProtect { region: u64 },
     /// A `progv` frame; always restores its bindings when unwound past.
@@ -103,10 +68,10 @@ fn restore_progv_bindings(
         {
             result = Err(error);
         }
-        if let Err(error) = binding.previous.release(ctx) {
+        if let Err(error) = binding.previous.release() {
             result = Err(error);
         }
-        if let Err(error) = binding.symbol.release(ctx) {
+        if let Err(error) = binding.symbol.release() {
             result = Err(error);
         }
     }
@@ -128,7 +93,7 @@ impl ThreadContext {
         let mut result = Ok(());
         while let Some(PendingExit { values, .. }) = self.pending_unwind.pop() {
             for value in values.into_iter().rev() {
-                if let Err(error) = value.release(self) {
+                if let Err(error) = value.release() {
                     result = Err(error);
                 }
             }
@@ -136,21 +101,24 @@ impl ThreadContext {
         result
     }
 
-    fn restore_pending_unwind(&mut self, values: &[RootedWord]) {
+    fn restore_pending_unwind(&mut self, values: &[HeapRootedWord]) {
         if !self.thread.pending() {
-            let restored = values.iter().map(RootedWord::get).collect::<Vec<_>>();
+            let restored = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
             self.thread.set_multiple_value_area(&restored);
             self.thread.set_pending(true);
         }
     }
 
     /// Establish a `catch` frame for `tag`.
-    pub fn enter_catch(&mut self, tag: Word) {
-        let frame = DynamicFrame::Catch {
-            tag: RootedWord::new(self, tag),
-        };
+    ///
+    /// # Errors
+    /// Returns an object error if this context is not registered with a runtime.
+    pub fn enter_catch(&mut self, tag: Word) -> Result<(), ObjectError> {
+        let tag = HeapRootedWord::new(self, tag)?;
+        let frame = DynamicFrame::Catch { tag };
         self.thread.push_control_depth(frame.kind());
         self.frames.push(frame);
+        Ok(())
     }
 
     /// Leave the innermost `catch` frame.
@@ -160,8 +128,8 @@ impl ThreadContext {
     /// consume that pending exit.
     ///
     /// # Errors
-    /// Returns [`ObjectError::RootStackCorrupted`] if the catch tag root
-    /// cannot be released from the thread's root stack.
+    /// Returns [`ObjectError::RootStackCorrupted`] if the catch tag root cannot
+    /// be released from the heap registry.
     pub fn leave_catch(&mut self) -> Result<(), ObjectError> {
         let pending_tag = self
             .thread
@@ -182,7 +150,7 @@ impl ThreadContext {
                 if discard_before_tag && let Err(error) = self.discard_pending_unwind() {
                     result = Err(error);
                 }
-                if let Err(error) = tag.release(self) {
+                if let Err(error) = tag.release() {
                     result = Err(error);
                 }
                 if pending_tag.is_some()
@@ -215,8 +183,8 @@ impl ThreadContext {
     ///
     /// # Errors
     ///
-    /// Returns [`ObjectError::RootStackCorrupted`] when the saved payload roots
-    /// cannot be released in stack order.
+    /// Returns [`ObjectError::RootStackCorrupted`] if a saved payload root
+    /// cannot be released from the heap registry.
     pub fn leave_unwind_protect(&mut self, region: u64) -> Result<(), ObjectError> {
         if matches!(
             self.frames.last(),
@@ -234,7 +202,7 @@ impl ThreadContext {
                     let Some(value) = self.thread.multiple_values().get(index).copied() else {
                         return Err(ObjectError::Layout);
                     };
-                    values.push(RootedWord::new(self, value));
+                    values.push(HeapRootedWord::new(self, value)?);
                 }
                 self.pending_unwind.push(PendingExit {
                     region,
@@ -255,7 +223,7 @@ impl ThreadContext {
         self.restore_pending_unwind(&values);
         let mut result = Ok(());
         for value in values.into_iter().rev() {
-            if let Err(error) = value.release(self) {
+            if let Err(error) = value.release() {
                 result = Err(error);
             }
         }
@@ -283,8 +251,8 @@ impl ThreadContext {
                 };
                 let previous = symbol_value(self, symbol)?;
                 bindings.push(ProgvBinding {
-                    symbol: RootedWord::new(self, symbol),
-                    previous: RootedWord::new(self, previous),
+                    symbol: HeapRootedWord::new(self, symbol)?,
+                    previous: HeapRootedWord::new(self, previous)?,
                 });
                 set_symbol_value(self, symbol, value)?;
                 symbol_cursor = cdr(self, symbol_cursor)?;
@@ -381,7 +349,7 @@ mod tests {
     fn throw_to_an_established_tag_sets_pending_and_the_payload() {
         let (_runtime, mut ctx) = context();
         let tag = Word::fixnum(7);
-        ctx.enter_catch(tag);
+        ctx.enter_catch(tag).expect("enter catch"); // check-added-lines: allow(panic)
         ctx.throw(tag, Word::fixnum(42)).expect("throw"); // check-added-lines: allow(panic)
         assert!(ctx.thread.pending()); // check-added-lines: allow(panic)
         assert_eq!(ctx.thread.mv_count(), 2); // check-added-lines: allow(panic)
@@ -408,8 +376,8 @@ mod tests {
         let (_runtime, mut ctx) = context();
         let outer = Word::fixnum(1);
         let inner = Word::fixnum(2);
-        ctx.enter_catch(outer);
-        ctx.enter_catch(inner);
+        ctx.enter_catch(outer).expect("enter outer catch"); // check-added-lines: allow(panic)
+        ctx.enter_catch(inner).expect("enter inner catch"); // check-added-lines: allow(panic)
         // Selecting the innermost *matching* frame is generated code's job
         // (it dispatches to whichever of its own open regions' tags match,
         // innermost first); this only exercises that the frame search does
@@ -427,7 +395,7 @@ mod tests {
     fn unwind_protect_pass_through_leaves_pending_set_for_the_enclosing_catch() {
         let (_runtime, mut ctx) = context();
         let tag = Word::fixnum(3);
-        ctx.enter_catch(tag);
+        ctx.enter_catch(tag).expect("enter catch"); // check-added-lines: allow(panic)
         ctx.enter_unwind_protect(1);
         ctx.throw(tag, Word::fixnum(5)).expect("throw");
         // Leaving unwind-protect on the pass-through path pops its frame but
@@ -462,7 +430,7 @@ mod tests {
         ctx.set_gc_stress(true);
         ctx.set_strict_forwarding(true);
         let tag = Word::fixnum(11);
-        ctx.enter_catch(tag);
+        ctx.enter_catch(tag).expect("enter catch"); // check-added-lines: allow(panic)
         // Simulate several intervening `unwind-protect` frames (as if the
         // throw were several native call frames deep) that must not disturb
         // the payload while GC runs during their own bookkeeping.

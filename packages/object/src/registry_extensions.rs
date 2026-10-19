@@ -318,7 +318,7 @@ impl Runtime {
     }
 
     #[must_use]
-    pub const fn gc_config(&self) -> HeapConfig {
+    pub fn gc_config(&self) -> HeapConfig {
         HeapConfig {
             dynamic_space_size: self.heap.dynamic_space_size(),
             bytes_considered_between_gcs: self.heap.bytes_considered_between_gcs(),

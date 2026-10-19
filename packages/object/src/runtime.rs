@@ -13,13 +13,14 @@ use crate::{
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Shared runtime heap and registries.
 #[derive(Debug)]
 pub struct Runtime {
-    pub(crate) heap: Box<Heap>,
+    pub(crate) heap: Arc<Heap>,
     functions: Mutex<Option<RootedTable>>,
     pub(crate) packages: Mutex<Option<RootedTable>>,
     pub(crate) classes: Mutex<Option<RootedTable>>,
@@ -38,8 +39,7 @@ pub struct Runtime {
     generic_builtin_entry: AtomicUsize,
     load_port: Mutex<Option<std::sync::Arc<dyn crate::LoadPort>>>,
 }
-/// Per-mutator object-layer context. Generated code obtains its stable thread
-/// pointer with [`ThreadContext::thread_mut`].
+/// A runtime-owned table slot kept as a precise GC root.
 #[derive(Debug)]
 pub struct RootedTable {
     slot: Box<Word>,
@@ -82,7 +82,7 @@ impl Runtime {
     pub fn with_config(config: HeapConfig) -> Result<Self, ObjectError> {
         Heap::validate_address_space().map_err(ObjectError::from)?;
         let runtime = Self {
-            heap: Box::new(Heap::new(config)),
+            heap: Arc::new(Heap::new(config)),
             functions: Mutex::new(None),
             packages: Mutex::new(None),
             classes: Mutex::new(None),

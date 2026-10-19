@@ -2,8 +2,8 @@
 
 use crate::{LispError, ObjectError, Runtime};
 use core::cell::Cell;
-
-use ncl_sys::{RootToken, StorageCondition, Thread, Word};
+use ncl_sys::{Heap, RootToken, StorageCondition, Thread, Word};
+use std::sync::Arc;
 
 pub type ConditionHandlerInvoker =
     fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, &[Word]) -> Result<Word, ObjectError>;
@@ -12,6 +12,7 @@ pub type ConditionHandlerInvoker =
 pub struct ThreadContext {
     pub(crate) thread: Box<Thread>,
     pub(crate) registered: bool,
+    heap: Option<Arc<Heap>>,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
@@ -37,6 +38,7 @@ impl ThreadContext {
         Self {
             thread: Box::new(Thread::new()),
             registered: false,
+            heap: None,
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
@@ -72,8 +74,8 @@ impl ThreadContext {
     /// Register this context with a runtime.
     ///
     /// The thread state is heap allocated, so moving this context after registration is safe.
-    /// The `runtime` must outlive every registered context: dropping it while a context is
-    /// still registered would leave the thread's heap reference dangling.
+    /// The `runtime` must outlive every registered context so its rooted tables remain valid
+    /// while the context can collect from the shared heap.
     ///
     /// # Errors
     ///
@@ -81,9 +83,25 @@ impl ThreadContext {
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
         self.registered = true;
+        self.heap = Some(Arc::clone(&runtime.heap));
         self.condition_handler_root =
             Some(self.thread.push_root_cell(&self.condition_handler_head));
         self.ensure_standard_packages(runtime)
+    }
+    pub(crate) fn push_heap_root(&self, value: &mut Word) -> Result<RootToken, ObjectError> {
+        let Some(heap) = self.heap.as_ref() else {
+            return Err(ObjectError::Layout);
+        };
+        Ok(ncl_sys::push_heap_root(heap, value))
+    }
+    pub(crate) fn pop_heap_root(&self, token: RootToken) -> bool {
+        let Some(heap) = self.heap.as_ref() else {
+            return false;
+        };
+        ncl_sys::pop_heap_root(heap, token)
+    }
+    pub(crate) const fn heap(&self) -> Option<&Arc<Heap>> {
+        self.heap.as_ref()
     }
     pub(crate) fn ensure_standard_packages(
         &mut self,
@@ -248,10 +266,9 @@ impl ThreadContext {
 }
 /// Unregister the context from its heap.
 ///
-/// `ncl_sys::unregister_thread` resolves the heap through the `Thread`'s stored
-/// heap reference, so the `Runtime` that owns the heap must outlive every
-/// registered `ThreadContext`. Dropping a `Runtime` while a registered context
-/// is still alive would dereference freed heap.
+/// The context's `Arc` keeps the heap alive, but root slots owned by `Runtime`
+/// must also remain valid until registered contexts stop collecting from it.
+/// Therefore the `Runtime` must outlive every registered `ThreadContext`.
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if self.registered {

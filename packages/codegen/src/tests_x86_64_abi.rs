@@ -10,7 +10,7 @@ const CALLEE_SAVED_SENTINELS: [i64; 3] = [
     0x3344_5566_7788_99aa,
 ];
 
-fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), String> {
+fn emit(assembler: &mut Assembler, instruction: &Inst) -> Result<(), String> {
     assembler
         .emit(&instruction)
         .map_err(|error| format!("encode ABI probe: {error:?}"))
@@ -56,10 +56,10 @@ fn abi_probe(entry: usize, argc: i32, first_argument: Option<usize>) -> Result<V
         Inst::MovRI(Reg::Rax, Imm::I32(1)),
         Inst::Jmp(done),
     ] {
-        emit(&mut assembler, instruction)?;
+        emit(&mut assembler, &instruction)?;
     }
     assembler.bind(failed);
-    emit(&mut assembler, Inst::MovRI(Reg::Rax, Imm::I32(0)))?;
+    emit(&mut assembler, &Inst::MovRI(Reg::Rax, Imm::I32(0)))?;
     assembler.bind(done);
     for instruction in [
         Inst::Pop(Reg::R14),
@@ -68,7 +68,7 @@ fn abi_probe(entry: usize, argc: i32, first_argument: Option<usize>) -> Result<V
         Inst::Pop(Reg::Rbp),
         Inst::Ret,
     ] {
-        emit(&mut assembler, instruction)?;
+        emit(&mut assembler, &instruction)?;
     }
     assembler
         .finish()
@@ -222,7 +222,7 @@ fn generated_code_preserves_sysv_callee_saved_registers() -> Result<(), String> 
     for (function_id, tail) in [(91, false), (92, true)] {
         let caller = caller_function(function_id, tail)?;
         let allocation = allocate(&caller, AllocationTarget::X86_64);
-        let callee = caller
+        let entry_value = caller
             .blocks
             .iter()
             .flat_map(|block| &block.ops)
@@ -232,7 +232,7 @@ fn generated_code_preserves_sysv_callee_saved_registers() -> Result<(), String> 
             .ok_or_else(|| "transfer callee allocation missing".to_owned())?;
         assert!(
             matches!(
-                allocation.location(callee),
+                allocation.location(entry_value),
                 Some(Location::Register(register))
                     if (u16::from(Reg::R12.id())..=u16::from(Reg::R14.id())).contains(&register)
             ),

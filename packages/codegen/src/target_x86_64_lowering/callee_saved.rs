@@ -2,11 +2,11 @@ use super::{CodegenError, emit, slot_mem_of};
 use ncl_asm_x86_64::{Assembler, Inst, Reg};
 
 /// SysV callee-saved registers other than the frame pointer.
-pub(super) const CALLEE_SAVED_REGISTERS: [Reg; 5] =
+pub(crate) const CALLEE_SAVED_REGISTERS: [Reg; 5] =
     [Reg::Rbx, Reg::R12, Reg::R13, Reg::R14, Reg::R15];
-pub(super) const CALLEE_SAVED_WORDS: u32 = 5;
+pub(crate) const CALLEE_SAVED_WORDS: u32 = 5;
 
-pub(super) fn save_callee_saved_registers(
+pub(crate) fn save_callee_saved_registers(
     assembler: &mut Assembler,
     base_slot: u32,
 ) -> Result<(), CodegenError> {
@@ -19,7 +19,7 @@ pub(super) fn save_callee_saved_registers(
     Ok(())
 }
 
-pub(super) fn restore_callee_saved_registers(
+pub(crate) fn restore_callee_saved_registers(
     assembler: &mut Assembler,
     base_slot: u32,
 ) -> Result<(), CodegenError> {

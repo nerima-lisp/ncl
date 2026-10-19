@@ -79,11 +79,16 @@ impl Context<'_> {
             Expr::MultipleValueProg1 { first, forms } => {
                 let value = self.lower_expr(f, first)?;
                 for form in forms {
+                    if f.is_terminated() {
+                        break;
+                    }
                     self.lower_expr(f, form)?;
                 }
-                f.none(OpKind::SetMultipleValues {
-                    values: vec![value],
-                })?;
+                if !f.is_terminated() {
+                    f.none(OpKind::SetMultipleValues {
+                        values: vec![value],
+                    })?;
+                }
                 Ok(value)
             }
             Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {

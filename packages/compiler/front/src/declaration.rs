@@ -206,20 +206,27 @@ fn optimize_qualities(literals: &[&Literal]) -> Result<Vec<OptimizeQuality>, Fro
     literals
         .iter()
         .map(|item| {
-            let elements = item
-                .list_elements()
-                .ok_or_else(|| malformed("optimize quality is not a list"))?;
-            let [quality, value] = elements.as_slice() else {
-                return Err(malformed("optimize quality needs a name and a value"));
-            };
-            let quality = literal_symbol(quality)?;
-            let quality = Quality::from_name(&quality.name).unwrap_or(Quality::Unknown);
-            let Literal::Number(crate::literal::NumberLiteral::Fixnum(value)) = value else {
-                return Err(malformed("optimization quality value is not an integer"));
-            };
-            let value =
-                u8::try_from(*value).map_err(|_| malformed("quality value out of range"))?;
-            Ok(OptimizeQuality { quality, value })
+            if let Literal::Symbol(symbol) = item {
+                Ok(OptimizeQuality {
+                    quality: Quality::from_name(&symbol.name).unwrap_or(Quality::Unknown),
+                    value: 3,
+                })
+            } else {
+                let elements = item
+                    .list_elements()
+                    .ok_or_else(|| malformed("optimize quality is not a list"))?;
+                let [quality, value] = elements.as_slice() else {
+                    return Err(malformed("optimize quality needs a name and a value"));
+                };
+                let quality = literal_symbol(quality)?;
+                let quality = Quality::from_name(&quality.name).unwrap_or(Quality::Unknown);
+                let Literal::Number(crate::literal::NumberLiteral::Fixnum(value)) = value else {
+                    return Err(malformed("optimization quality value is not an integer"));
+                };
+                let value =
+                    u8::try_from(*value).map_err(|_| malformed("quality value out of range"))?;
+                Ok(OptimizeQuality { quality, value })
+            }
         })
         .collect()
 }

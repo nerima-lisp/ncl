@@ -19,90 +19,77 @@ pub(super) fn case(
         let value = roots.first().copied().ok_or(ObjectError::TypeError)?;
         let mut temporary = fresh_symbol(ctx, runtime)?;
         ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
+            let mut let_bindings = bindings(ctx, runtime, &[(temporary.get(), value.get())])?;
             ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
-                // Pre-scan clauses to collect every key named, so a `case`
-                // compiled with `errorp` can report the accepted values as a
-                // `(member ...)` expected type when nothing matches. This
-                // pass performs no allocation, so it is safe to read `roots`
-                // directly without copying them out of the root table first.
-                let mut all_keys: Vec<Word> = Vec::new();
-                let mut has_otherwise = false;
-                for clause in roots.get(1..).ok_or(ObjectError::TypeError)? {
-                    let parts = elements(ctx, **clause)?;
-                    let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
-                    if is_otherwise(ctx, keys)? {
-                        has_otherwise = true;
-                        continue;
-                    }
-                    if keys.is_cons() {
-                        all_keys.extend(elements(ctx, keys)?);
-                    } else {
-                        all_keys.push(keys);
-                    }
-                }
+                let (all_keys, has_otherwise) = collect_case_keys(
+                    ctx,
+                    roots
+                        .get(1..)
+                        .ok_or(ObjectError::TypeError)?
+                        .iter()
+                        .map(|clause| clause.get()),
+                )?;
                 let mut branches = if errorp && !has_otherwise {
-                    ncl_object::with_roots(ctx, &all_keys, |ctx, all_keys| {
-                        let key_values = all_keys.iter().map(|key| **key).collect::<Vec<_>>();
-                        let mut expected_types = vec![symbol(ctx, runtime, "MEMBER")?];
-                        expected_types.extend(key_values);
-                        let expected_type = list(ctx, runtime, &expected_types)?;
-                        let expected = form(ctx, runtime, "QUOTE", &[expected_type])?;
-                        let type_error = symbol(ctx, runtime, "TYPE-ERROR")?;
-                        let error_type = form(ctx, runtime, "QUOTE", &[type_error])?;
-                        let datum = symbol(ctx, runtime, "KEYWORD::DATUM")?;
-                        let expected_type_kw = symbol(ctx, runtime, "KEYWORD::EXPECTED-TYPE")?;
-                        form(
-                            ctx,
-                            runtime,
-                            "ERROR",
-                            &[error_type, datum, *temporary, expected_type_kw, expected],
-                        )
-                    })?
+                    case_type_error(ctx, runtime, &all_keys, temporary.get())?
                 } else {
                     Word::NIL
                 };
                 for clause in roots.get(1..).ok_or(ObjectError::TypeError)?.iter().rev() {
-                    let parts = elements(ctx, **clause)?;
+                    let parts = elements(ctx, clause.get())?;
                     ncl_object::with_roots(ctx, &parts, |ctx, parts| {
                         let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
                         let body_values = parts
                             .get(1..)
                             .ok_or(ObjectError::TypeError)?
                             .iter()
-                            .map(|part| **part)
+                            .map(|part| part.get())
                             .collect::<Vec<_>>();
                         let mut body = progn(ctx, runtime, &body_values)?;
                         ncl_object::with_root(ctx, &mut body, |ctx, body| {
-                            if is_otherwise(ctx, *keys)? {
+                            if is_otherwise(ctx, keys.get())? {
                                 let true_symbol = symbol(ctx, runtime, "T")?;
                                 branches =
                                     ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
-                                        form(ctx, runtime, "IF", &[true_symbol, *body, *branches])
+                                        form(
+                                            ctx,
+                                            runtime,
+                                            "IF",
+                                            &[true_symbol, body.get(), branches.get()],
+                                        )
                                     })?;
                                 return Ok(());
                             }
-                            let key_values = if keys.is_cons() {
-                                elements(ctx, *keys)?
+                            let key_values = if keys.get().is_cons() {
+                                elements(ctx, keys.get())?
                             } else {
-                                vec![*keys]
+                                vec![keys.get()]
                             };
                             ncl_object::with_roots(ctx, &key_values, |ctx, key_values| {
                                 let mut tests = Vec::with_capacity(key_values.len());
                                 for key in key_values {
-                                    let quote = form(ctx, runtime, "QUOTE", &[**key])?;
-                                    tests.push(form(ctx, runtime, "EQL", &[*temporary, quote])?);
+                                    let quote = form(ctx, runtime, "QUOTE", &[key.get()])?;
+                                    tests.push(form(
+                                        ctx,
+                                        runtime,
+                                        "EQL",
+                                        &[temporary.get(), quote],
+                                    )?);
                                 }
                                 ncl_object::with_roots(ctx, &tests, |ctx, tests| {
                                     let test_values =
-                                        tests.iter().map(|test| **test).collect::<Vec<_>>();
+                                        tests.iter().map(|test| test.get()).collect::<Vec<_>>();
                                     let mut test = or(ctx, runtime, &test_values)?;
                                     ncl_object::with_root(ctx, &mut test, |ctx, test| {
                                         branches = ncl_object::with_root(
                                             ctx,
                                             &mut branches,
                                             |ctx, branches| {
-                                                form(ctx, runtime, "IF", &[*test, *body, *branches])
+                                                form(
+                                                    ctx,
+                                                    runtime,
+                                                    "IF",
+                                                    &[test.get(), body.get(), branches.get()],
+                                                )
                                             },
                                         )?;
                                         Ok(())
@@ -113,9 +100,68 @@ pub(super) fn case(
                     })?;
                 }
                 ncl_object::with_root(ctx, &mut branches, |ctx, branches| {
-                    form(ctx, runtime, "LET", &[*let_bindings, *branches])
+                    form(ctx, runtime, "LET", &[let_bindings.get(), branches.get()])
                 })
             })
+        })
+    })
+}
+
+/// Collect case keys before constructing Lisp forms, which can trigger GC.
+/// This pass allocates Rust vectors only; the caller roots the returned words
+/// before it constructs those forms.
+fn collect_case_keys(
+    ctx: &mut ThreadContext,
+    clauses: impl Iterator<Item = Word>,
+) -> Result<(Vec<Word>, bool)> {
+    let mut all_keys = Vec::new();
+    let mut has_otherwise = false;
+    for clause in clauses {
+        let parts = elements(ctx, clause)?;
+        let keys = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        if is_otherwise(ctx, keys)? {
+            has_otherwise = true;
+            continue;
+        }
+        if keys.is_cons() {
+            all_keys.extend(elements(ctx, keys)?);
+        } else {
+            all_keys.push(keys);
+        }
+    }
+    Ok((all_keys, has_otherwise))
+}
+
+fn case_type_error(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    all_keys: &[Word],
+    temporary: Word,
+) -> Result {
+    let mut temporary = temporary;
+    ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+        ncl_object::with_roots(ctx, all_keys, |ctx, all_keys| {
+            let key_values = all_keys.iter().map(|key| key.get()).collect::<Vec<_>>();
+            let mut expected_types = vec![symbol(ctx, runtime, "MEMBER")?];
+            expected_types.extend(key_values);
+            let expected_type = list(ctx, runtime, &expected_types)?;
+            let expected = form(ctx, runtime, "QUOTE", &[expected_type])?;
+            let type_error = symbol(ctx, runtime, "TYPE-ERROR")?;
+            let error_type = form(ctx, runtime, "QUOTE", &[type_error])?;
+            let datum = symbol(ctx, runtime, "KEYWORD::DATUM")?;
+            let expected_type_kw = symbol(ctx, runtime, "KEYWORD::EXPECTED-TYPE")?;
+            form(
+                ctx,
+                runtime,
+                "ERROR",
+                &[
+                    error_type,
+                    datum,
+                    temporary.get(),
+                    expected_type_kw,
+                    expected,
+                ],
+            )
         })
     })
 }

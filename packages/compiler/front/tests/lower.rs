@@ -546,3 +546,60 @@ fn lowers_return_from_inside_a_lambda_with_a_catch_region() {
     )));
     assert_verifies(&lowered.nested[0]);
 }
+
+#[test]
+fn let_skips_body_forms_after_a_nonlocal_exit() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let let_symbol = fx.cl("LET");
+    let return_from = fx.cl("RETURN-FROM");
+    let name = fx.user("B");
+    let x = fx.user("X");
+    let binding = fx.list(&[x, Word::fixnum(1)]);
+    let bindings = fx.list(&[binding]);
+    let exit = fx.list(&[return_from, name, Word::fixnum(7)]);
+    let unreachable = Word::fixnum(31_337);
+    let let_form = fx.list(&[let_symbol, bindings, exit, unreachable]);
+    let form = fx.list(&[block, name, let_form]);
+
+    let expr = fx.expand(form).expect("expand terminated let");
+    let lowered = lower_toplevel(&expr).expect("lower terminated let");
+    assert_verifies(&lowered.entry);
+    assert!(
+        !lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(31_337)))
+    );
+}
+
+#[test]
+fn multiple_value_prog1_skips_forms_and_value_capture_after_a_nonlocal_exit() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let prog1 = fx.cl("MULTIPLE-VALUE-PROG1");
+    let return_from = fx.cl("RETURN-FROM");
+    let name = fx.user("B");
+    let exit = fx.list(&[return_from, name, Word::fixnum(7)]);
+    let unreachable = Word::fixnum(31_337);
+    let prog1_form = fx.list(&[prog1, Word::fixnum(1), exit, unreachable]);
+    let form = fx.list(&[block, name, prog1_form]);
+
+    let expr = fx
+        .expand(form)
+        .expect("expand terminated multiple-value-prog1");
+    let lowered = lower_toplevel(&expr).expect("lower terminated multiple-value-prog1");
+    assert_verifies(&lowered.entry);
+    assert!(!any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::SetMultipleValues { .. }
+    )));
+    assert!(
+        !lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(31_337)))
+    );
+}

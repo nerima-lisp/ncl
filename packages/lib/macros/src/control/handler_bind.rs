@@ -82,8 +82,11 @@ pub(crate) fn bindings(
         let mut result = Vec::with_capacity(pairs.len());
         for index in 0..pairs.len() {
             let value = ncl_object::with_roots(ctx, &result, |ctx, _result_roots| {
-                let name = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
-                let value = **roots.get(index * 2 + 1).ok_or(ObjectError::TypeError)?;
+                let name = roots.get(index * 2).ok_or(ObjectError::TypeError)?.get();
+                let value = roots
+                    .get(index * 2 + 1)
+                    .ok_or(ObjectError::TypeError)?
+                    .get();
                 binding(ctx, runtime, name, value)
             })?;
             result.push(value);
@@ -113,9 +116,13 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
             ncl_object::with_roots(ctx, &pair, |ctx, parts| {
                 let condition = parts.first().ok_or(ObjectError::TypeError)?;
                 let handler = parts.get(1).ok_or(ObjectError::TypeError)?;
-                let condition = form(ctx, runtime, "QUOTE", &[**condition])?;
-                let handler = form(ctx, runtime, "FUNCTION", &[**handler])?;
-                let push = form(ctx, runtime, "NCL-EXT::PUSH-HANDLER", &[condition, handler])?;
+                let condition = form(ctx, runtime, "QUOTE", &[condition.get()])?;
+                let push = form(
+                    ctx,
+                    runtime,
+                    "NCL-EXT::PUSH-HANDLER",
+                    &[condition, handler.get()],
+                )?;
                 let token = fresh_symbol(ctx, runtime)?;
                 let bindings = bindings(ctx, runtime, &[(token, push)])?;
                 let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;
@@ -131,14 +138,99 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 // popped on normal exit either way, and stays installed
                 // (harmlessly stale, per the pre-existing contract) if
                 // `result` transfers control past this form.
-                let body = form(ctx, runtime, "PROG1", &[*result, pop])?;
+                let body = form(ctx, runtime, "PROG1", &[result.get(), pop])?;
                 ncl_object::with_roots(ctx, &[bindings, body], |ctx, roots| {
                     let bindings = roots.first().ok_or(ObjectError::Layout)?;
                     let body = roots.get(1).ok_or(ObjectError::Layout)?;
-                    form(ctx, runtime, "LET", &[**bindings, **body])
+                    form(ctx, runtime, "LET", &[bindings.get(), body.get()])
                 })
             })
         })?;
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::form as control_form;
+    use super::expand;
+    use crate::{elements, list, symbol};
+    use ncl_object::{
+        FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word,
+        classify_object,
+    };
+
+    fn count_form(ctx: &mut ThreadContext, tree: Word, form: Word) -> Result<usize, ObjectError> {
+        if tree == form {
+            return Ok(1);
+        }
+        if !matches!(classify_object(ctx, tree), ObjectRef::Cons(_)) {
+            return Ok(0);
+        }
+        let mut count = 0;
+        for child in elements(ctx, tree)? {
+            count += count_form(ctx, child, form)?;
+        }
+        Ok(count)
+    }
+
+    #[test]
+    fn handler_bind_preserves_function_designator_expression() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let function = symbol(&mut ctx, &runtime, "FUNCTION")?;
+        let lambda = symbol(&mut ctx, &runtime, "LAMBDA")?;
+        let parameter = symbol(&mut ctx, &runtime, "CONDITION")?;
+        let warning = symbol(&mut ctx, &runtime, "WARNING")?;
+        let function_body = list(&mut ctx, &runtime, &[parameter])?;
+        let lambda_list = list(&mut ctx, &runtime, &[parameter])?;
+        let lambda_form = list(&mut ctx, &runtime, &[lambda, lambda_list, function_body])?;
+        let handler = list(&mut ctx, &runtime, &[function, lambda_form])?;
+        let clause = list(&mut ctx, &runtime, &[warning, handler])?;
+        let clauses = list(&mut ctx, &runtime, &[clause])?;
+
+        let expansion = expand(&mut ctx, &runtime, &[clauses])?;
+
+        assert_eq!(count_form(&mut ctx, expansion, function)?, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn handler_bind_accepts_an_empty_clause_list() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+
+        let expansion = expand(&mut ctx, &runtime, &[Word::NIL, Word::fixnum(1)])?;
+
+        let progn = symbol(&mut ctx, &runtime, "PROGN")?;
+        assert_eq!(elements(&mut ctx, expansion)?, [progn, Word::fixnum(1)]);
+        Ok(())
+    }
+
+    #[test]
+    fn handler_bind_empty_clause_list_passes_through_adapter() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        crate::register(&runtime)?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let package = runtime
+            .find_package(&ctx, "COMMON-LISP")
+            .ok_or(ObjectError::TypeError)?;
+        let operator = Package::from_word(package)
+            .intern(&mut ctx, &runtime, "HANDLER-BIND")?
+            .0;
+        let function = FunctionObject::try_from(ncl_object::symbol_function(&ctx, operator)?)?;
+        let form = control_form(
+            &mut ctx,
+            &runtime,
+            "HANDLER-BIND",
+            &[Word::NIL, Word::fixnum(1)],
+        )?;
+        let expansion = runtime.call_builtin(&mut ctx, function, &[form])?;
+        let progn = symbol(&mut ctx, &runtime, "PROGN")?;
+        assert_eq!(elements(&mut ctx, expansion)?, [progn, Word::fixnum(1)]);
+        Ok(())
+    }
 }

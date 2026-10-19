@@ -15,6 +15,7 @@ import math
 import os
 import re
 import shlex
+import signal
 import shutil
 import socket
 import subprocess
@@ -350,8 +351,16 @@ def make_scoreboard(
         if bench_times:
             bench_data["geometric_mean"] = geometric_mean(bench_times)
     bench_data["return_code"] = bench.returncode
+    signal_number = None
     if bench.returncode is not None and bench.returncode < 0:
-        bench_data["signal_number"] = -bench.returncode
+        signal_number = -bench.returncode
+    elif (
+        bench.returncode == 128 + signal.SIGSEGV
+        and re.search(r"\bsegmentation fault\b", bench.stderr, re.IGNORECASE)
+    ):
+        signal_number = signal.SIGSEGV
+    if signal_number is not None:
+        bench_data["signal_number"] = signal_number
     bench_data["stderr_tail"], bench_data["stderr_truncated"] = _stderr_tail(bench.stderr)
     return {
         "schema_version": 1,

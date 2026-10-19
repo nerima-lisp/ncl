@@ -99,14 +99,21 @@ class ConformanceScoreboardDiagnosticsTests(unittest.TestCase):
             self.assertNotIn(str(Path.home()), bench["stderr_tail"])
             self.assertNotIn(hostname, bench["stderr_tail"])
 
-    def test_json_exposes_direct_signal_and_keeps_missing_code_null(self):
-        for returncode, expected_signal in (
-            (-signal.SIGTERM, signal.SIGTERM),
-            (None, None),
-            (128 + signal.SIGTERM, None),
-        ):
-            with self.subTest(returncode=returncode):
-                bench = scoreboard.ProcessResult("crash", returncode, stderr="diagnostic")
+    def test_json_exposes_direct_or_reported_signal_and_keeps_missing_code_null(self):
+        cases = (
+            (-signal.SIGTERM, signal.SIGTERM, "diagnostic"),
+            (None, None, "diagnostic"),
+            (128 + signal.SIGTERM, None, "diagnostic"),
+            (
+                128 + signal.SIGSEGV,
+                signal.SIGSEGV,
+                "Segmentation fault (core dumped)\n",
+            ),
+            (128 + signal.SIGSEGV, None, "diagnostic"),
+        )
+        for returncode, expected_signal, stderr in cases:
+            with self.subTest(returncode=returncode, stderr=stderr):
+                bench = scoreboard.ProcessResult("crash", returncode, stderr=stderr)
                 report = scoreboard.make_scoreboard(
                     scoreboard.ProcessResult("passed", 0),
                     {"passed": 1, "failed": 0, "unexecuted": 0},

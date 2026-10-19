@@ -81,3 +81,57 @@ fn default_eql_selection_handles_ranges_and_from_end() {
         Word::NIL
     );
 }
+
+#[test]
+fn remove_duplicates_respects_direction_and_range() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut caller = BuiltinFunctionCaller;
+    let values = [
+        Word::fixnum(9),
+        Word::fixnum(1),
+        Word::fixnum(1),
+        Word::fixnum(2),
+        Word::fixnum(1),
+        Word::fixnum(8),
+    ];
+    let options = selection::SelectionOptions {
+        start: 1,
+        end: Some(5),
+        ..Default::default()
+    };
+    assert_eq!(
+        selection::remove_duplicates(&mut ctx, &runtime, &mut caller, &values, options).unwrap(),
+        [
+            Word::fixnum(9),
+            Word::fixnum(2),
+            Word::fixnum(1),
+            Word::fixnum(8)
+        ]
+    );
+
+    let values = [
+        Word::fixnum(9),
+        Word::fixnum(1),
+        Word::fixnum(1),
+        Word::fixnum(2),
+        Word::fixnum(1),
+        Word::fixnum(8),
+    ];
+    let options = selection::SelectionOptions {
+        start: 1,
+        end: Some(5),
+        from_end: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        selection::remove_duplicates(&mut ctx, &runtime, &mut caller, &values, options).unwrap(),
+        [
+            Word::fixnum(9),
+            Word::fixnum(1),
+            Word::fixnum(2),
+            Word::fixnum(8)
+        ]
+    );
+}

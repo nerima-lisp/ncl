@@ -15,7 +15,7 @@ fn call(
         .get(name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let rooted_args = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
     })
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))

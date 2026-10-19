@@ -15,7 +15,7 @@ fn call(
         .get(name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let rooted_args = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
     })
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
@@ -86,7 +86,7 @@ fn registers_and_composes_all_cadr_family_builtins() {
     for name in names {
         let argument = nested_argument(&runtime, &mut ctx, &functions);
         ncl_object::with_roots(&mut ctx, &[argument], |ctx, roots| {
-            let mut expected = *roots[0];
+            let mut expected = roots[0].get();
             for accessor in name[1..name.len() - 1].chars().rev() {
                 expected = match accessor {
                     'A' => ncl_object::car(ctx, expected)
@@ -96,7 +96,7 @@ fn registers_and_composes_all_cadr_family_builtins() {
                     _ => panic!("unexpected accessor {accessor}"),
                 };
             }
-            let actual = call(&runtime, ctx, &functions, name, &[*roots[0]]);
+            let actual = call(&runtime, ctx, &functions, name, &[roots[0].get()]);
             assert_eq!(actual, expected, "{name} returned the wrong value");
             Ok::<(), ncl_object::ObjectError>(())
         })

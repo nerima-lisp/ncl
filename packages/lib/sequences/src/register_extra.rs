@@ -3,7 +3,10 @@ use super::{
     ThreadContext, Word, callback_word, domain, selection_parse, sequence_arg,
 };
 use ncl_object::{Handle, HandleVec, Local, Scope};
+#[path = "register_duplicates.rs"]
+mod register_duplicates;
 mod register_extra_tail;
+pub use register_duplicates::remove_duplicates_entry;
 pub use register_extra_tail::{
     adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
     rassoc_entry, reduce_entry, remove_if_entry, remove_if_not_entry, set_difference_entry,

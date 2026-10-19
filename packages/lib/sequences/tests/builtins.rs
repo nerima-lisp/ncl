@@ -15,7 +15,7 @@ fn call(
         .get(name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let rooted_args = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
     })
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
@@ -58,7 +58,7 @@ fn probe(
         runtime.call_builtin(
             ctx,
             function,
-            &[**roots.first().ok_or(ncl_object::ObjectError::Layout)?],
+            &[roots.first().ok_or(ncl_object::ObjectError::Layout)?.get()],
         )
     });
 }
@@ -122,6 +122,7 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         "NOTANY",
         "NOTEVERY",
         "REMOVE",
+        "REMOVE-DUPLICATES",
         "SUBSTITUTE",
         "SORT",
         "STABLE-SORT",
@@ -182,11 +183,17 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     );
 
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
-        assert_eq!(call(&runtime, ctx, &functions, "CAR", &[*list]), one);
-        let cdr = call(&runtime, ctx, &functions, "CDR", &[*list]);
+        assert_eq!(call(&runtime, ctx, &functions, "CAR", &[list.get()]), one);
+        let cdr = call(&runtime, ctx, &functions, "CDR", &[list.get()]);
         assert_list(ctx, cdr, &[two, three, four, five]);
         assert_eq!(
-            call(&runtime, ctx, &functions, "NTH", &[Word::fixnum(2), *list]),
+            call(
+                &runtime,
+                ctx,
+                &functions,
+                "NTH",
+                &[Word::fixnum(2), list.get()]
+            ),
             three
         );
         let nthcdr = call(
@@ -194,41 +201,59 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             ctx,
             &functions,
             "NTHCDR",
-            &[Word::fixnum(3), *list],
+            &[Word::fixnum(3), list.get()],
         );
         assert_list(ctx, nthcdr, &[four, five]);
         assert_eq!(
-            call(&runtime, ctx, &functions, "LIST-LENGTH", &[*list]),
+            call(&runtime, ctx, &functions, "LIST-LENGTH", &[list.get()]),
             Word::fixnum(5)
         );
-        assert_eq!(call(&runtime, ctx, &functions, "FIRST", &[*list]), one);
-        assert_eq!(call(&runtime, ctx, &functions, "SECOND", &[*list]), two);
-        assert_eq!(call(&runtime, ctx, &functions, "THIRD", &[*list]), three);
-        assert_eq!(call(&runtime, ctx, &functions, "FOURTH", &[*list]), four);
-        assert_eq!(call(&runtime, ctx, &functions, "FIFTH", &[*list]), five);
+        assert_eq!(call(&runtime, ctx, &functions, "FIRST", &[list.get()]), one);
         assert_eq!(
-            call(&runtime, ctx, &functions, "SIXTH", &[*list]),
+            call(&runtime, ctx, &functions, "SECOND", &[list.get()]),
+            two
+        );
+        assert_eq!(
+            call(&runtime, ctx, &functions, "THIRD", &[list.get()]),
+            three
+        );
+        assert_eq!(
+            call(&runtime, ctx, &functions, "FOURTH", &[list.get()]),
+            four
+        );
+        assert_eq!(
+            call(&runtime, ctx, &functions, "FIFTH", &[list.get()]),
+            five
+        );
+        assert_eq!(
+            call(&runtime, ctx, &functions, "SIXTH", &[list.get()]),
             Word::NIL
         );
         assert_eq!(
-            call(&runtime, ctx, &functions, "SEVENTH", &[*list]),
+            call(&runtime, ctx, &functions, "SEVENTH", &[list.get()]),
             Word::NIL
         );
         assert_eq!(
-            call(&runtime, ctx, &functions, "EIGHTH", &[*list]),
+            call(&runtime, ctx, &functions, "EIGHTH", &[list.get()]),
             Word::NIL
         );
         assert_eq!(
-            call(&runtime, ctx, &functions, "NINTH", &[*list]),
+            call(&runtime, ctx, &functions, "NINTH", &[list.get()]),
             Word::NIL
         );
         assert_eq!(
-            call(&runtime, ctx, &functions, "TENTH", &[*list]),
+            call(&runtime, ctx, &functions, "TENTH", &[list.get()]),
             Word::NIL
         );
     });
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list| {
-        let mut result = call(&runtime, ctx, &functions, "CONS", &[Word::fixnum(0), *list]);
+        let mut result = call(
+            &runtime,
+            ctx,
+            &functions,
+            "CONS",
+            &[Word::fixnum(0), list.get()],
+        );
         let root = ncl_object::push_root(ctx, &mut result);
         assert_eq!(
             call(&runtime, ctx, &functions, "CAR", &[result]),
@@ -242,21 +267,27 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     });
     with_list(&runtime, &mut ctx, &functions, &[one], |ctx, list| {
         assert_eq!(
-            call(&runtime, ctx, &functions, "RPLACA", &[*list, two]),
-            *list
+            call(&runtime, ctx, &functions, "RPLACA", &[list.get(), two]),
+            list.get()
         );
-        assert_eq!(call(&runtime, ctx, &functions, "CAR", &[*list]), two);
+        assert_eq!(call(&runtime, ctx, &functions, "CAR", &[list.get()]), two);
         assert_eq!(
-            call(&runtime, ctx, &functions, "RPLACD", &[*list, Word::NIL]),
-            *list
+            call(
+                &runtime,
+                ctx,
+                &functions,
+                "RPLACD",
+                &[list.get(), Word::NIL]
+            ),
+            list.get()
         );
-        assert_eq!(ncl_object::cdr(ctx, *list), Ok(Word::NIL));
+        assert_eq!(ncl_object::cdr(ctx, list.get()), Ok(Word::NIL));
     });
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
-        let mut result = call(&runtime, ctx, &functions, "COPY-LIST", &[*list]);
+        let mut result = call(&runtime, ctx, &functions, "COPY-LIST", &[list.get()]);
         let root = ncl_object::push_root(ctx, &mut result);
         assert_list(ctx, result, &values);
-        assert_ne!(result, *list);
+        assert_ne!(result, list.get());
         assert!(ncl_object::pop_root(ctx, root));
     });
     let mut list_star = call(
@@ -311,24 +342,24 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     );
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
         assert_eq!(
-            call(&runtime, ctx, &functions, "LENGTH", &[*list]),
+            call(&runtime, ctx, &functions, "LENGTH", &[list.get()]),
             Word::fixnum(5)
         );
-        let mut result = call(&runtime, ctx, &functions, "COPY-SEQ", &[*list]);
+        let mut result = call(&runtime, ctx, &functions, "COPY-SEQ", &[list.get()]);
         let root = ncl_object::push_root(ctx, &mut result);
         assert_list(ctx, result, &values);
         assert!(ncl_object::pop_root(ctx, root));
     });
 
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
-        let mut result = call(&runtime, ctx, &functions, "REVERSE", &[*list]);
+        let mut result = call(&runtime, ctx, &functions, "REVERSE", &[list.get()]);
         let root = ncl_object::push_root(ctx, &mut result);
         assert_list(ctx, result, &[five, four, three, two, one]);
         assert!(ncl_object::pop_root(ctx, root));
     });
 
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
-        let mut result = call(&runtime, ctx, &functions, "NREVERSE", &[*list]);
+        let mut result = call(&runtime, ctx, &functions, "NREVERSE", &[list.get()]);
         let root = ncl_object::push_root(ctx, &mut result);
         assert_list(ctx, result, &[five, four, three, two, one]);
         assert!(ncl_object::pop_root(ctx, root));
@@ -336,7 +367,13 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
 
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
         assert_eq!(
-            call(&runtime, ctx, &functions, "ELT", &[*list, Word::fixnum(3)]),
+            call(
+                &runtime,
+                ctx,
+                &functions,
+                "ELT",
+                &[list.get(), Word::fixnum(3)]
+            ),
             four
         );
         let mut result = call(
@@ -344,7 +381,7 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             ctx,
             &functions,
             "SUBSEQ",
-            &[*list, Word::fixnum(1), Word::fixnum(4)],
+            &[list.get(), Word::fixnum(1), Word::fixnum(4)],
         );
         let root = ncl_object::push_root(ctx, &mut result);
         assert_list(ctx, result, &[two, three, four]);
@@ -353,10 +390,16 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
 
     with_list(&runtime, &mut ctx, &functions, &values, |ctx, list| {
         assert_eq!(
-            call(&runtime, ctx, &functions, "FILL", &[*list, Word::fixnum(9)]),
-            *list
+            call(
+                &runtime,
+                ctx,
+                &functions,
+                "FILL",
+                &[list.get(), Word::fixnum(9)]
+            ),
+            list.get()
         );
-        assert_list(ctx, *list, &[Word::fixnum(9); 5]);
+        assert_list(ctx, list.get(), &[Word::fixnum(9); 5]);
     });
 
     with_list(
@@ -407,4 +450,45 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     ] {
         probe(&runtime, &mut ctx, &functions, name);
     }
+}
+
+#[test]
+fn remove_duplicates_keeps_the_last_occurrence() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    ncl_lib_sequences::register(&runtime).unwrap_or_else(|error| panic!("sequences: {error:?}"));
+    let functions = ["LIST", "REMOVE-DUPLICATES"]
+        .into_iter()
+        .map(|name| {
+            let word = runtime
+                .function(&mut ctx, "COMMON-LISP", name)
+                .unwrap_or_else(|| panic!("missing builtin {name}"));
+            (
+                name.to_owned(),
+                FunctionObject::try_from(word)
+                    .unwrap_or_else(|_| panic!("{name} is not a function")),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let input = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LIST",
+        &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(1)],
+    );
+    let result = ncl_object::with_roots(&mut ctx, &[input], |ctx, roots| {
+        let input = roots.first().ok_or(ncl_object::ObjectError::Layout)?.get();
+        Ok(call(
+            &runtime,
+            ctx,
+            &functions,
+            "REMOVE-DUPLICATES",
+            &[input],
+        ))
+    })
+    .unwrap_or_else(|error| panic!("remove duplicates: {error:?}"));
+    assert_list(&ctx, result, &[Word::fixnum(2), Word::fixnum(1)]);
 }

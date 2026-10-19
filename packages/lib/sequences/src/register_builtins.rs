@@ -1,10 +1,10 @@
 use super::register_extra::{
     adjoin_entry, assoc_entry, every_entry, intersection_entry, map_entry, map_into_entry,
     mapc_entry, mapcan_entry, mapcar_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
-    notany_entry, notevery_entry, rassoc_entry, reduce_entry, remove_entry, remove_if_entry,
-    remove_if_not_entry, set_difference_entry, set_exclusive_or_entry, some_entry, sort_entry,
-    stable_sort_entry, subsetp_entry, substitute_entry, substitute_if_entry,
-    substitute_if_not_entry, union_entry,
+    notany_entry, notevery_entry, rassoc_entry, reduce_entry, remove_duplicates_entry,
+    remove_entry, remove_if_entry, remove_if_not_entry, set_difference_entry,
+    set_exclusive_or_entry, some_entry, sort_entry, stable_sort_entry, subsetp_entry,
+    substitute_entry, substitute_if_entry, substitute_if_not_entry, union_entry,
 };
 use super::{
     DESTINATION_TYPE, INDEX, LIST, OBJECT, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
@@ -443,6 +443,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("NOTANY", notany_entry),
         ("NOTEVERY", notevery_entry),
         ("REMOVE", remove_entry),
+        ("REMOVE-DUPLICATES", remove_duplicates_entry),
         ("REMOVE-IF", remove_if_entry),
         ("REMOVE-IF-NOT", remove_if_not_entry),
         ("DELETE", remove_entry),

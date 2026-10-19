@@ -110,11 +110,11 @@ fn options(
     };
     let mut i = 0;
     while i < args.len() {
-        let name = if matches!(
-            classify_object(ctx, *args.get(i).ok_or(ObjectError::Layout)?),
-            ObjectRef::Symbol(_)
-        ) {
-            Some(symbol_name(ctx, *args.get(i).ok_or(ObjectError::Layout)?)?)
+        let argument = *args.get(i).ok_or(ObjectError::Layout)?;
+        let name = if argument != Word::NIL
+            && matches!(classify_object(ctx, argument), ObjectRef::Symbol(_))
+        {
+            Some(symbol_name(ctx, argument)?)
         } else {
             None
         };
@@ -130,7 +130,7 @@ fn options(
             }
             i += 2;
         } else {
-            positional.push(*args.get(i).ok_or(ObjectError::Layout)?);
+            positional.push(argument);
             i += 1;
         }
     }

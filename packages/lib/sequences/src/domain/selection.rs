@@ -57,6 +57,21 @@ pub fn parse_options(
     ctx: &ThreadContext,
     args: &[Word],
 ) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
+    parse_options_with_minimum(ctx, args, 2)
+}
+
+pub fn parse_options_single(
+    ctx: &ThreadContext,
+    args: &[Word],
+) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
+    parse_options_with_minimum(ctx, args, 1)
+}
+
+fn parse_options_with_minimum(
+    ctx: &ThreadContext,
+    args: &[Word],
+    minimum: usize,
+) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
     let mut positional = Vec::new();
     let mut options = SelectionOptions::default();
     let mut index = 0;
@@ -104,7 +119,7 @@ pub fn parse_options(
             index += 1;
         }
     }
-    if positional.len() < 2 || options.test.is_some() && options.test_not.is_some() {
+    if positional.len() < minimum || options.test.is_some() && options.test_not.is_some() {
         return Err(ObjectError::TypeError);
     }
     Ok((positional, options))
@@ -397,6 +412,10 @@ pub fn substitute<C: FunctionCaller>(
 #[path = "selection_if.rs"]
 mod selection_if;
 pub use selection_if::{count_if, find_if, position_if, remove_if, substitute_if};
+
+#[path = "selection_duplicates.rs"]
+mod selection_duplicates;
+pub use selection_duplicates::remove_duplicates;
 
 #[allow(clippy::needless_pass_by_ref_mut)]
 pub fn search<C: FunctionCaller>(

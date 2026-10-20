@@ -57,7 +57,7 @@ fn call_generic_binary(thread: NonNull<Thread>, name: &str, left: Word, right: W
                 context.set_pending(ncl_object::ObjectError::Unbound);
                 return Word::NIL.bits();
             };
-            match object.call_builtin(context, function, &arguments) {
+            match object.call_builtin_from_generated_code(context, function, &arguments) {
                 Ok(value) => value.bits(),
                 Err(error) => {
                     record_boundary_error(context, error);

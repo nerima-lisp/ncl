@@ -189,8 +189,9 @@ extern "C" fn make_rest_list_native(
                 };
                 let mut rooted_function = function.as_word();
                 let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
-                let result = FunctionObject::try_from(rooted_function)
-                    .and_then(|function| object.call_builtin(context, function, &arguments));
+                let result = FunctionObject::try_from(rooted_function).and_then(|function| {
+                    object.call_builtin_from_generated_code(context, function, &arguments)
+                });
                 let function_popped = ncl_object::unregister_heap_root(object, function_token);
                 if function_popped.is_err() {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
@@ -289,8 +290,9 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
                 };
                 let mut rooted_function = function.as_word();
                 let function_token = ncl_object::push_heap_root(object, &mut rooted_function);
-                let result = FunctionObject::try_from(rooted_function)
-                    .and_then(|function| object.call_builtin(context, function, &arguments));
+                let result = FunctionObject::try_from(rooted_function).and_then(|function| {
+                    object.call_builtin_from_generated_code(context, function, &arguments)
+                });
                 let function_popped = ncl_object::unregister_heap_root(object, function_token);
                 if function_popped.is_err() {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);

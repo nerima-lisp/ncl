@@ -13,6 +13,7 @@ mod local_macro;
 mod native_error;
 mod nonlocal;
 mod support;
+mod time;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
@@ -60,6 +61,7 @@ impl Runtime {
             builtin_trampoline::install(&object, &mut context)?;
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
+        time::register_builtins(&mut context, &object)?;
         builtin_trampoline::install_arith_fast(&object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));

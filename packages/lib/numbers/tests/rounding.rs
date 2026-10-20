@@ -107,6 +107,57 @@ fn float_rounding_keeps_float_types_and_tolerates_binary_error() {
 }
 
 #[test]
+fn unary_float_rounding_returns_expected_quotient_and_remainder() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_double(&mut ctx, &runtime, -2.5)
+        .unwrap()
+        .into();
+
+    for (name, quotient, remainder) in [
+        ("FFLOOR", -3, 0.5),
+        ("FCEILING", -2, -0.5),
+        ("FTRUNCATE", -2, -0.5),
+        ("FROUND", -2, -0.5),
+    ] {
+        let result = call(&runtime, &mut ctx, name, &[value]).unwrap();
+        assert!(matches!(
+            classify_object(&ctx, result),
+            ObjectRef::DoubleFloat(_)
+        ));
+        assert!(
+            (float(&ctx, result) - f64::from(quotient)).abs() < 1e-12,
+            "{name} quotient"
+        );
+        assert!(matches!(
+            classify_object(&ctx, ctx.values()[1]),
+            ObjectRef::DoubleFloat(_)
+        ));
+        assert!(
+            (float(&ctx, ctx.values()[1]) - remainder).abs() < 1e-12,
+            "{name} remainder"
+        );
+    }
+
+    let tie = ncl_object::make_double(&mut ctx, &runtime, -1.5)
+        .unwrap()
+        .into();
+    let result = call(&runtime, &mut ctx, "FROUND", &[tie]).unwrap();
+    assert!(matches!(
+        classify_object(&ctx, result),
+        ObjectRef::DoubleFloat(_)
+    ));
+    assert!((float(&ctx, result) + 2.0).abs() < 1e-12, "FROUND tie quotient");
+    assert!(matches!(
+        classify_object(&ctx, ctx.values()[1]),
+        ObjectRef::DoubleFloat(_)
+    ));
+    assert!(
+        (float(&ctx, ctx.values()[1]) - 0.5).abs() < 1e-12,
+        "FROUND tie remainder"
+    );
+}
+
+#[test]
 fn rounding_rejects_zero_divisor() {
     let (runtime, mut ctx) = setup();
     assert_eq!(

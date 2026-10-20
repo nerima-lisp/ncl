@@ -483,6 +483,148 @@ fn make_array_specialized_types_without_initial_element_are_constructible()
 }
 
 #[test]
+fn make_array_accepts_ansi_element_type_designators_and_rank_zero() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let symbol = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(common_lisp_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let element_type_key = keyword(&mut ctx, "ELEMENT-TYPE")?;
+    let initial_element_key = keyword(&mut ctx, "INITIAL-ELEMENT")?;
+    let make_typed_array =
+        |ctx: &mut ThreadContext, dimensions: Word, element_type: Word, initial_element: Word| {
+            call(
+                &runtime,
+                ctx,
+                "MAKE-ARRAY",
+                &[
+                    dimensions,
+                    element_type_key,
+                    element_type,
+                    initial_element_key,
+                    initial_element,
+                ],
+            )
+        };
+
+    let float_type = symbol(&mut ctx, "FLOAT")?;
+    let float = make_typed_array(&mut ctx, Word::fixnum(1), float_type, Word::fixnum(16))?;
+    let single_float_name = symbol(&mut ctx, "SINGLE-FLOAT")?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[float])?,
+        single_float_name
+    );
+
+    let signed_byte_name = symbol(&mut ctx, "SIGNED-BYTE")?;
+    let signed_byte_width = make_cons(&mut ctx, &runtime, Word::fixnum(8), Word::NIL)?;
+    let signed_byte_type = make_cons(&mut ctx, &runtime, signed_byte_name, signed_byte_width)?;
+    let signed_byte = make_typed_array(
+        &mut ctx,
+        Word::fixnum(1),
+        signed_byte_type,
+        Word::fixnum(127),
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[signed_byte])?,
+        signed_byte_name
+    );
+
+    let integer_name = symbol(&mut ctx, "INTEGER")?;
+    let upper_exclusive = make_cons(&mut ctx, &runtime, Word::fixnum(256), Word::NIL)?;
+    let unsigned_bounds = make_cons(&mut ctx, &runtime, Word::fixnum(0), upper_exclusive)?;
+    let unsigned_integer_type = make_cons(&mut ctx, &runtime, integer_name, unsigned_bounds)?;
+    let unsigned_integer = make_typed_array(
+        &mut ctx,
+        Word::fixnum(1),
+        unsigned_integer_type,
+        Word::fixnum(14),
+    )?;
+    let unsigned_byte_name = symbol(&mut ctx, "UNSIGNED-BYTE")?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ELEMENT-TYPE",
+            &[unsigned_integer]
+        )?,
+        unsigned_byte_name
+    );
+
+    let negative_upper = make_cons(&mut ctx, &runtime, Word::fixnum(128), Word::NIL)?;
+    let signed_bounds = make_cons(&mut ctx, &runtime, Word::fixnum(-128), negative_upper)?;
+    let signed_integer_type = make_cons(&mut ctx, &runtime, integer_name, signed_bounds)?;
+    let signed_integer = make_typed_array(
+        &mut ctx,
+        Word::fixnum(1),
+        signed_integer_type,
+        Word::fixnum(-14),
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[signed_integer])?,
+        signed_byte_name
+    );
+
+    let rank_zero = make_typed_array(&mut ctx, Word::NIL, unsigned_integer_type, Word::fixnum(14))?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-DIMENSIONS", &[rank_zero])?,
+        Word::NIL
+    );
+    assert_eq!(array_row_major_ref(&ctx, rank_zero, 0)?, Word::fixnum(14));
+    Ok(())
+}
+
+#[test]
+fn make_array_nil_element_type_upgrades_to_t() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let element_type = ncl_object::Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "ELEMENT-TYPE")?
+        .0;
+    let nil = ncl_object::Package::from_word(common_lisp_package)
+        .intern(&mut ctx, &runtime, "NIL")?
+        .0;
+    let general_type = ncl_object::Package::from_word(common_lisp_package)
+        .intern(&mut ctx, &runtime, "T")?
+        .0;
+    let array = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[Word::fixnum(0), element_type, nil],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[array])?,
+        general_type
+    );
+    Ok(())
+}
+
+#[test]
 fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

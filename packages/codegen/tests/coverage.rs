@@ -1,8 +1,8 @@
 #![allow(clippy::expect_used, missing_docs)]
 
 use ncl_codegen::{
-    AArch64TargetIsa, Aarch64Abi, CodegenError, FrameLayout, TargetIsa, TemplateKind,
-    compile_function_aarch64,
+    AArch64TargetIsa, Aarch64Abi, CodegenError, FRAME_HEADER_WORDS, FrameLayout, TargetIsa,
+    TemplateKind, compile_function_aarch64,
 };
 use ncl_ir::{FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 
@@ -54,6 +54,25 @@ fn frame_layout_reports_each_word_count_overflow_as_frame_overflow() {
             "arguments={arguments}, locals={locals}, outgoing={outgoing}"
         );
     }
+}
+
+#[test]
+fn frame_layout_reports_byte_size_overflow_with_representable_word_count() {
+    let outgoing_words = 0x1fff_ffff;
+    let frame_words = FRAME_HEADER_WORDS
+        .checked_add(outgoing_words)
+        .and_then(|words| words.checked_add(1))
+        .expect("aligned frame word count fits in u32")
+        & !1;
+    assert!(
+        u64::from(frame_words) * 8 > u64::from(u32::MAX),
+        "frame byte size exceeds u32"
+    );
+
+    assert_eq!(
+        FrameLayout::new(0, 0, 0x1fff_ffff),
+        Err(CodegenError::FrameOverflow)
+    );
 }
 
 #[test]

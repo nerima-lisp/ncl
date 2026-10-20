@@ -24,8 +24,8 @@ impl FrameLayout {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::CodegenError::FrameOverflow`] if the word count cannot
-    /// be represented by `u32`.
+    /// Returns [`crate::CodegenError::FrameOverflow`] if the word count or byte
+    /// size cannot be represented by `u32`.
     pub fn new(
         argument_words: u32,
         local_words: u32,
@@ -40,6 +40,9 @@ impl FrameLayout {
             .checked_add(1)
             .ok_or(crate::CodegenError::FrameOverflow)?
             & !1;
+        if frame_words.checked_mul(WORD_BYTES).is_none() {
+            return Err(crate::CodegenError::FrameOverflow);
+        }
         Ok(Self {
             argument_words,
             local_words,

@@ -144,6 +144,26 @@ fn common_lisp_load_is_a_callable_builtin() {
 }
 
 #[test]
+fn evals_internal_time_constant_and_functions() {
+    let units = output(ncl().args(["--eval", "internal-time-units-per-second"]));
+    assert!(units.status.success(), "{units:?}");
+    assert_eq!(String::from_utf8_lossy(&units.stdout).trim(), "1000000");
+
+    for source in ["(get-internal-real-time)", "(get-internal-run-time)"] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        let ticks = match String::from_utf8_lossy(&result.stdout)
+            .trim()
+            .parse::<i64>()
+        {
+            Ok(ticks) => ticks,
+            Err(error) => panic!("{source} did not return an integer: {error}: {result:?}"),
+        };
+        assert!(ticks >= 0, "{source} returned negative time {ticks}");
+    }
+}
+
+#[test]
 fn setf_get_retains_the_written_value_and_evaluates_place_once() {
     let direct = output(ncl().args(["--eval", "(progn (setf (get 'x 'y) 42) (get 'x 'y))"]));
     assert!(direct.status.success(), "{direct:?}");

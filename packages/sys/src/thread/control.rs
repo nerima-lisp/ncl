@@ -34,13 +34,39 @@ impl RuntimeErrorSource {
 
 impl Thread {
     /// Record whether a Rust-side runtime error payload is pending.
-    pub const fn set_runtime_error_pending(&mut self, source: RuntimeErrorSource, pending: bool) {
+    pub(crate) const fn set_runtime_error_pending(
+        &mut self,
+        source: RuntimeErrorSource,
+        pending: bool,
+    ) {
         let mask = source.mask();
         self.runtime_error_flags = if pending {
             self.runtime_error_flags | mask
         } else {
             self.runtime_error_flags & !mask
         };
+    }
+
+    /// Store a typed payload and mark its source pending in one operation.
+    pub const fn record_runtime_error_payload<T: Copy>(
+        &mut self,
+        source: RuntimeErrorSource,
+        slot: &mut Option<T>,
+        payload: T,
+    ) {
+        *slot = Some(payload);
+        self.set_runtime_error_pending(source, true);
+    }
+
+    /// Take a typed payload and clear its source flag, including for an empty slot.
+    pub const fn take_runtime_error_payload<T: Copy>(
+        &mut self,
+        source: RuntimeErrorSource,
+        slot: &mut Option<T>,
+    ) -> Option<T> {
+        let payload = slot.take();
+        self.set_runtime_error_pending(source, false);
+        payload
     }
 
     /// Whether any Rust-side runtime error payload is pending.
@@ -171,6 +197,28 @@ mod tests {
         thread.set_runtime_error_pending(RuntimeErrorSource::Native, false);
         assert!(!thread.runtime_error_pending());
         assert!(thread.pending());
+    }
+
+    #[test]
+    fn taking_empty_runtime_error_payload_clears_its_source_flag() {
+        for source in [RuntimeErrorSource::Object, RuntimeErrorSource::Lisp] {
+            let mut thread = Thread::new();
+            let mut payload = None::<()>;
+            thread.set_runtime_error_pending(source, true);
+            assert_eq!(
+                thread.take_runtime_error_payload(source, &mut payload),
+                None
+            );
+            assert!(!thread.runtime_error_pending());
+        }
+    }
+
+    #[test]
+    fn taking_empty_native_error_clears_its_source_flag() {
+        let mut thread = Thread::new();
+        thread.set_runtime_error_pending(RuntimeErrorSource::Native, true);
+        assert_eq!(thread.take_native_error(), None);
+        assert!(!thread.runtime_error_pending());
     }
 
     #[test]

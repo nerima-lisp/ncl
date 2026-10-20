@@ -417,13 +417,13 @@ fn put_ref(
     value: Word,
 ) -> Result<(), ImageError> {
     put(ctx, object, slot, value)?;
-    ncl_sys::write_barrier(ctx.thread_mut(), object, slot);
+    ctx.thread_access().write_barrier(object, slot);
     Ok(())
 }
 
 /// Write a scalar slot.
 fn put(ctx: &mut ThreadContext, object: Word, slot: usize, value: Word) -> Result<(), ImageError> {
-    if !ncl_sys::write_object_word(ctx.thread_mut(), object, slot, value) {
+    if !ctx.thread_access().write_object_word(object, slot, value) {
         return Err(ImageError::Object(ObjectError::Storage(
             StorageCondition::ThreadNotRegistered,
         )));

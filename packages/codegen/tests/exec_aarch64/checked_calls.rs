@@ -19,8 +19,7 @@ static LEAVE_UNWIND_PROTECT_ERROR: AtomicBool = AtomicBool::new(false);
 
 pub extern "C" fn call_target_error(ctx: &mut Thread, _value: u64) -> u64 {
     CALL_TARGET_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-    ctx.set_pending(true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -44,8 +43,7 @@ pub extern "C" fn set_pending_exit(ctx: &mut Thread, tag: u64, payload: u64) -> 
 pub extern "C" fn enter_catch(ctx: &mut Thread, _region: u64, _depth: u64, _tag: u64) -> u64 {
     ENTER_CATCH_CALLS.fetch_add(1, Ordering::SeqCst);
     if ENTER_CATCH_ERROR.load(Ordering::SeqCst) {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-        ctx.set_pending(true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }
@@ -54,8 +52,7 @@ pub extern "C" fn leave_catch(ctx: &mut Thread, _region: u64) -> u64 {
     LEAVE_CATCH_CALLS.fetch_add(1, Ordering::SeqCst);
     LEAVE_CATCH_SAW_PENDING.store(ctx.pending(), Ordering::SeqCst);
     if LEAVE_CATCH_ERROR.load(Ordering::SeqCst) {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-        ctx.set_pending(true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }
@@ -63,8 +60,7 @@ pub extern "C" fn leave_catch(ctx: &mut Thread, _region: u64) -> u64 {
 pub extern "C" fn enter_progv(ctx: &mut Thread, _region: u64, _binding: u64) -> u64 {
     ENTER_PROGV_CALLS.fetch_add(1, Ordering::SeqCst);
     if ENTER_PROGV_ERROR.load(Ordering::SeqCst) {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-        ctx.set_pending(true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }
@@ -72,8 +68,7 @@ pub extern "C" fn enter_progv(ctx: &mut Thread, _region: u64, _binding: u64) -> 
 pub extern "C" fn leave_progv(ctx: &mut Thread, _region: u64) -> u64 {
     LEAVE_PROGV_CALLS.fetch_add(1, Ordering::SeqCst);
     if LEAVE_PROGV_ERROR.load(Ordering::SeqCst) {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-        ctx.set_pending(true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }
@@ -86,8 +81,7 @@ pub extern "C" fn enter_unwind_protect(_ctx: &mut Thread, _region: u64, _cleanup
 pub extern "C" fn leave_unwind_protect(ctx: &mut Thread, _region: u64) -> u64 {
     LEAVE_UNWIND_PROTECT_CALLS.fetch_add(1, Ordering::SeqCst);
     if LEAVE_UNWIND_PROTECT_ERROR.load(Ordering::SeqCst) {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-        ctx.set_pending(true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }

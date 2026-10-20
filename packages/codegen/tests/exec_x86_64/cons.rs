@@ -332,9 +332,11 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         .expect("function object")
         .into(),
     );
-    ncl_sys::enter_native(object_context.thread_mut());
+    object_context.thread_access().enter_native();
     let mut thread = Thread::new();
-    ncl_sys::register_thread_with_thread(object_context.thread_mut(), &mut thread)
+    object_context
+        .thread_access()
+        .register_thread_with(&mut thread)
         .expect("register generated thread");
     let _root = ncl_sys::push_root(&mut thread, &mut function);
 
@@ -360,7 +362,6 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     publish_code(&mut code).expect("code publication");
     register_real_frame_code(&thread, &code, &compiled);
 
-    ncl_sys::unregister_thread(object_context.thread_mut());
     let slow_before = SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst);
     COLLECT_IN_SAFEPOINT.store(true, Ordering::SeqCst);
     thread.request_poll();
@@ -375,8 +376,6 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         0,
     );
     COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
-    ncl_sys::register_thread_with_thread(&thread, object_context.thread_mut())
-        .expect("re-register object context");
     assert_eq!(result, (0, 0));
     assert!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst) > slow_before);
     let after = function.bits();

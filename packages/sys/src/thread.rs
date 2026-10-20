@@ -1,9 +1,11 @@
 use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
+mod access;
 mod control;
 mod root_token;
 mod stack;
+pub use access::ThreadAccess;
 pub use control::{ControlFrameKind, RuntimeErrorSource};
 pub use root_token::RootToken;
 /// Number of words in the machine-visible multiple-value return area.
@@ -306,9 +308,7 @@ impl Thread {
     /// Take and clear the direct-native failure.
     pub const fn take_native_error(&mut self) -> Option<NativeError> {
         let error = self.native_error.take();
-        if error.is_some() {
-            self.set_runtime_error_pending(RuntimeErrorSource::Native, false);
-        }
+        self.set_runtime_error_pending(RuntimeErrorSource::Native, false);
         error
     }
     /// Install a synchronous native callback context, returning the previous one.

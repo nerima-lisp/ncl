@@ -126,7 +126,7 @@ fn loaded_objects_survive_a_full_collection() {
 
     let (_runtime2, mut ctx2, loaded) = round_trip(&runtime, &mut ctx, &graph.roots);
     let mut roots = loaded;
-    let token = ncl_sys::register_root_set(ctx2.thread_mut(), &mut roots);
+    let token = ctx2.thread_access().register_root_set(&mut roots);
     ctx2.collect(true).unwrap();
 
     // The cons still points at the vector, whose string and symbol survived.
@@ -151,7 +151,7 @@ fn loaded_objects_survive_a_full_collection() {
     assert_eq!(function_entry(&ctx2, function).unwrap(), 0);
     let code = function_code(&ctx2, function).unwrap();
     assert_eq!(code_entry(&ctx2, code).unwrap().as_fixnum(), Some(0));
-    let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
+    let _ = ctx2.thread_access().pop_root(token);
 }
 
 /// Report whether two object graphs have the same shape and contents.

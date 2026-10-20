@@ -318,7 +318,12 @@ fn verifies_fixed_slot_machine_and_rejects_corrupt_slots_frame_and_maps() {
         loc: None,
     });
     let mut machine = machine_function(&function);
-    assert!(verify_machine(&function, &machine, &[]).is_ok());
+    assert!(matches!(
+        verify_machine(&function, &machine, &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineSafepointMismatch
+        ))
+    ));
 
     let mut bad_slot = machine.clone();
     bad_slot.slots[0].1 = 3;
@@ -364,13 +369,6 @@ fn verifies_fixed_slot_machine_and_rejects_corrupt_slots_frame_and_maps() {
     .unwrap();
     let mut maps = vec![map.clone()];
     assert!(verify_machine(&function, &machine, &maps).is_ok());
-
-    assert!(matches!(
-        verify_machine(&function, &machine, &[]),
-        Err(CodegenError::MachineVerification(
-            MachineVerificationError::MachineSafepointMismatch
-        ))
-    ));
 
     let mut wrong_flags = maps.clone();
     wrong_flags[0].map_flags = crate::FLAG_LOOP_BACKEDGE;

@@ -1,9 +1,6 @@
-use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
-use crate::{
-    Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction,
-    common_lisp_builtin,
-};
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
+use crate::isa_x86_64::SCRATCH;
+use crate::{Allocation, CodegenError, Location};
+use ncl_asm_x86_64::{Assembler, BinOp, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};
 
 /// Register carrying the callee function object on entry, stored as frame header word 2.
@@ -230,244 +227,14 @@ pub(super) fn emit_call(assembler: &mut Assembler) -> Result<u32, CodegenError> 
     Ok(return_offset)
 }
 
-pub(super) fn lower_runtime_builtin(
-    assembler: &mut Assembler,
-    function: RuntimeFunction,
-    immediate_args: &[i64],
-    value_args: &[ValueId],
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    if immediate_args.len() + value_args.len() > ARGUMENT_REGISTERS.len() {
-        return Err(CodegenError::Unsupported(
-            "x86-64 runtime calls support at most four arguments".into(),
-        ));
-    }
-    let address = abi
-        .runtime_address(function)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?
-        .cast_signed();
-    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-    load_immediate(assembler, ENTRY, address)?;
-    for (index, value) in immediate_args.iter().copied().enumerate() {
-        load_immediate(assembler, ARGUMENT_REGISTERS[index], value)?;
-    }
-    for (index, value) in value_args.iter().copied().enumerate() {
-        load_slot(
-            assembler,
-            slots,
-            value,
-            ARGUMENT_REGISTERS[immediate_args.len() + index],
-        )?;
-    }
-    Ok(())
-}
+#[path = "target_x86_64_lowering/runtime_ops.rs"]
+mod runtime_ops;
+use runtime_ops::{
+    lower_alloc, lower_builtin, lower_runtime_builtin, lower_safepoint, store_return_values,
+};
 
-fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
-    let offset = abi
-        .field_offset(field)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
-    Ok(Mem::base(THREAD_CONTEXT, offset))
-}
-
-pub(super) fn store_return_values(
-    assembler: &mut Assembler,
-    slots: &ValueSlots,
-    values: &[ValueId],
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
-        return Err(CodegenError::MultipleValueAreaOverflow {
-            count: values.len(),
-            capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
-        });
-    }
-    let base = abi
-        .field_offset(ContextField::MultipleValueArea)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
-    for (index, value) in values.iter().copied().enumerate() {
-        let byte_offset = i32::try_from(index)
-            .ok()
-            .and_then(|index| index.checked_mul(8))
-            .and_then(|index| base.checked_add(index))
-            .ok_or(CodegenError::FrameOverflow)?;
-        load_slot(assembler, slots, value, FUNCTION_OBJECT)?;
-        emit(
-            assembler,
-            Inst::MovMR(Mem::base(THREAD_CONTEXT, byte_offset), FUNCTION_OBJECT),
-        )?;
-    }
-    Ok(())
-}
-
-fn runtime_address(abi: &dyn RuntimeAbi, function: RuntimeFunction) -> Result<i64, CodegenError> {
-    abi.runtime_address(function)
-        .map(u64::cast_signed)
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))
-}
-
-fn lower_alloc(
-    assembler: &mut Assembler,
-    words: u32,
-    result: Option<ValueId>,
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<u32, CodegenError> {
-    let bytes = words
-        .checked_mul(8)
-        .and_then(|value| i32::try_from(value).ok())
-        .ok_or(CodegenError::FrameOverflow)?;
-    let slow = assembler.new_label();
-    let done = assembler.new_label();
-    emit(
-        assembler,
-        Inst::MovRM(FUNCTION_OBJECT, context_mem(abi, ContextField::TlabBump)?),
-    )?;
-    emit(
-        assembler,
-        Inst::MovRM(ENTRY, context_mem(abi, ContextField::TlabLimit)?),
-    )?;
-    emit(
-        assembler,
-        Inst::Lea(RETURN_VALUE, Mem::base(FUNCTION_OBJECT, bytes)),
-    )?;
-    emit(assembler, Inst::CmpRR(RETURN_VALUE, ENTRY))?;
-    emit(assembler, Inst::Jcc(Cond::A, slow))?;
-    emit(
-        assembler,
-        Inst::MovMR(context_mem(abi, ContextField::TlabBump)?, RETURN_VALUE),
-    )?;
-    if let Some(result) = result {
-        store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
-    }
-    emit(assembler, Inst::Jmp(done))?;
-    assembler.bind(slow);
-    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-    load_immediate(assembler, Reg::Rsi, i64::from(words))?;
-    load_immediate(
-        assembler,
-        ENTRY,
-        runtime_address(abi, RuntimeFunction::AllocateSlow)?,
-    )?;
-    emit(assembler, Inst::CallReg(ENTRY))?;
-    let call_pc =
-        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
-    if let Some(result) = result {
-        store_slot(assembler, slots, result, RETURN_VALUE)?;
-    }
-    assembler.bind(done);
-    Ok(call_pc)
-}
-
-fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u32, CodegenError> {
-    let done = assembler.new_label();
-    emit(
-        assembler,
-        Inst::MovRM(
-            FUNCTION_OBJECT,
-            context_mem(abi, ContextField::SafepointRequest)?,
-        ),
-    )?;
-    emit(assembler, Inst::CmpRI(FUNCTION_OBJECT, 0))?;
-    emit(assembler, Inst::Jcc(Cond::E, done))?;
-    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-    emit(assembler, Inst::MovRR(Reg::Rsi, FRAME_POINTER))?;
-    load_immediate(
-        assembler,
-        ENTRY,
-        runtime_address(abi, RuntimeFunction::SafepointSlow)?,
-    )?;
-    // The continuation PC is the address after the `call r11` below. That call is
-    // three bytes (REX.B + FF /2 + ModRM), so the RIP-relative displacement from
-    // the end of this `lea` to the instruction after the call is exactly three.
-    emit(assembler, Inst::Lea(VALUE_COUNT, Mem::rip(3)))?;
-    emit(assembler, Inst::CallReg(ENTRY))?;
-    let call_pc =
-        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
-    assembler.bind(done);
-    Ok(call_pc)
-}
-
-#[allow(clippy::similar_names)]
-fn lower_builtin(
-    assembler: &mut Assembler,
-    name: &str,
-    args: &[ValueId],
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    if args.len() > ARGUMENT_REGISTERS.len() {
-        return Err(CodegenError::Unsupported(
-            "x86-64 builtins support at most four arguments".into(),
-        ));
-    }
-    if name == "make-rest-list" {
-        // check-added-lines: allow(index) intentional
-        let [argc_value, start_value] = args else {
-            // check-added-lines: allow(unsupported) intentional
-            return Err(CodegenError::Unsupported(
-                "make-rest-list requires argc and start".into(), // check-added-lines: allow(unsupported) intentional
-            ));
-        };
-        emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-        if let Some(base) = slots.incoming_args_base {
-            for (index, register) in ARGUMENT_REGISTERS.into_iter().enumerate() {
-                emit(
-                    assembler,
-                    Inst::MovRM(
-                        register,
-                        slot_mem_of(
-                            base.checked_add(
-                                u32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?,
-                            )
-                            .ok_or(CodegenError::FrameOverflow)?,
-                        )?,
-                    ),
-                )?;
-            }
-            emit(
-                assembler,
-                Inst::MovRM(
-                    REST_ARGUMENT,
-                    slot_mem_of(base.checked_add(4).ok_or(CodegenError::FrameOverflow)?)?,
-                ),
-            )?;
-        }
-        for register in ARGUMENT_REGISTERS
-            .into_iter()
-            .chain(std::iter::once(REST_ARGUMENT))
-        {
-            emit(assembler, Inst::MovRR(register, register))?;
-        }
-        load_slot(assembler, slots, *argc_value, FUNCTION_OBJECT)?;
-        load_slot(assembler, slots, *start_value, RETURN_VALUE)?;
-        emit(
-            assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, -16), FUNCTION_OBJECT),
-        )?;
-        emit(
-            assembler,
-            Inst::MovMR(Mem::base(Reg::Rsp, -8), RETURN_VALUE),
-        )?;
-        load_immediate(
-            assembler,
-            ENTRY,
-            abi.builtin_address(common_lisp_builtin(name))
-                .map_err(|error| CodegenError::Unsupported(error.to_string()))? // check-added-lines: allow(unsupported) ABI address lookup failure.
-                .cast_signed(),
-        )?;
-        return Ok(());
-    }
-    let address = abi
-        .builtin_address(common_lisp_builtin(name))
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
-    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
-    load_immediate(assembler, ENTRY, address.cast_signed())?;
-    for (index, argument) in args.iter().enumerate() {
-        load_slot(assembler, slots, *argument, ARGUMENT_REGISTERS[index])?;
-    }
-    Ok(())
-}
+#[path = "target_x86_64_lowering/checked_ops.rs"]
+mod checked_ops;
 
 #[path = "target_x86_64_lowering/callee_saved.rs"]
 mod callee_saved;
@@ -481,7 +248,8 @@ pub(super) use calls::{lower_call, lower_closure_call, lower_load_capture};
 
 #[path = "target_x86_64_lowering/dispatch.rs"]
 pub(super) mod dispatch;
-pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
+use dispatch::checked_call;
+pub(super) use dispatch::lower_return_or_throw;
 
 #[path = "target_x86_64_lowering/closure.rs"]
 mod closure;

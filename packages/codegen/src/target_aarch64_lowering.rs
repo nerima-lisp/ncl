@@ -237,7 +237,8 @@ fn lower_alloc(
     result: Option<ValueId>,
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
-) -> Result<u32, CodegenError> {
+    context: &CallCheckContext<'_>,
+) -> Result<CheckedCall, CodegenError> {
     let bytes = words
         .checked_mul(8)
         .and_then(|value| u16::try_from(value).ok())
@@ -296,31 +297,39 @@ fn lower_alloc(
     assembler
         .bind(slow)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
-    emit(
+    let checked_call = lower_checked_call(
         assembler,
-        Inst::Mov {
-            rd: RegOrSp::Reg(Reg(0)),
-            rn: RegOrSp::Reg(Reg(21)),
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            emit(
+                assembler,
+                Inst::Mov {
+                    rd: RegOrSp::Reg(Reg(0)),
+                    rn: RegOrSp::Reg(Reg(21)),
+                },
+            )?;
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), u64::from(words)) {
+                emit(assembler, instruction)?;
+            }
+            for instruction in ncl_asm_aarch64::mov_imm64(
+                Reg(17),
+                runtime_address(abi, RuntimeFunction::AllocateSlow)?,
+            ) {
+                emit(assembler, instruction)?;
+            }
+            emit(assembler, Inst::Blr { rn: Reg(17) })
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), u64::from(words)) {
-        emit(assembler, instruction)?;
-    }
-    for instruction in ncl_asm_aarch64::mov_imm64(
-        Reg(17),
-        runtime_address(abi, RuntimeFunction::AllocateSlow)?,
-    ) {
-        emit(assembler, instruction)?;
-    }
-    emit(assembler, Inst::Blr { rn: Reg(17) })?;
-    let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(0))?;
     }
     assembler
         .bind(done)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
-    Ok(call_pc)
+    Ok(checked_call)
 }
 
 fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u32, CodegenError> {
@@ -468,6 +477,10 @@ fn lower_builtin(
 
 #[path = "target_aarch64_lowering/calls.rs"]
 pub(super) mod calls;
+#[path = "target_aarch64_lowering/checked_call.rs"]
+mod checked_call;
+#[path = "target_aarch64_lowering/checked_ops.rs"]
+mod checked_ops;
 #[path = "target_aarch64_lowering/dispatch.rs"]
 pub(super) mod dispatch;
 #[path = "target_aarch64_lowering/moves.rs"]
@@ -478,5 +491,6 @@ pub(super) use moves::move_args;
 #[path = "target_aarch64_lowering/primitives.rs"]
 pub(super) mod primitives;
 pub(super) use calls::{lower_call, lower_closure_call};
-pub(super) use dispatch::{lower_pending_check, lower_return_or_throw};
+pub(super) use checked_call::{CallCheckContext, CheckedCall, CheckedCallMode, lower_checked_call};
+pub(super) use dispatch::lower_return_or_throw;
 pub(super) use ops::lower_op;

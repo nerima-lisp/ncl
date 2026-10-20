@@ -56,7 +56,10 @@ pub fn inject_make_closure_capacity_failure(
 }
 
 #[cfg(test)]
-fn take_make_closure_capacity_failure(thread: NonNull<Thread>) -> bool {
+fn take_make_closure_capacity_failure(thread: NonNull<Thread>, capture_count: usize) -> bool {
+    if capture_count == 0 {
+        return false;
+    }
     MAKE_CLOSURE_FAILURE_THREAD
         .compare_exchange(
             thread.as_ptr().addr(),
@@ -333,7 +336,7 @@ pub extern "C" fn native_make_closure(
             .map_or(invocation.code, |(word, _)| CodeObject::from_word(**word));
         let captures = vec![Word::NIL; capture_count];
         #[cfg(test)]
-        let result = if take_make_closure_capacity_failure(thread) {
+        let result = if take_make_closure_capacity_failure(thread, capture_count) {
             // Keep the allocation error path reproducible without changing production behavior.
             Err(ObjectError::Storage(StorageCondition::CapacityExceeded))
         } else {

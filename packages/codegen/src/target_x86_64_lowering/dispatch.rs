@@ -237,14 +237,14 @@ pub(super) fn checked_call(
     Ok(CheckedCall { return_pc })
 }
 
-/// Stop this function when a helper recorded a runtime error. The error flag
-/// remains set for the Rust boundary or the next generated caller to observe.
+/// Stop this function for a runtime error unless a non-local exit must unwind.
 pub(super) fn lower_runtime_error_check(
     assembler: &mut Assembler,
     slots: &super::ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let normal = assembler.new_label();
+    let error_without_non_local_exit = assembler.new_label();
     emit(
         assembler,
         Inst::MovRM(
@@ -255,16 +255,29 @@ pub(super) fn lower_runtime_error_check(
     emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
     emit(assembler, Inst::Jcc(Cond::E, normal))?;
 
-    // Runtime errors take priority over a simultaneous non-local exit. Clear
-    // only the control-flow flag; the runtime error remains sticky.
+    emit(
+        assembler,
+        Inst::MovRM(
+            super::FUNCTION_OBJECT,
+            context_mem(abi, ContextField::Pending)?,
+        ),
+    )?;
+    emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
+    emit(assembler, Inst::Jcc(Cond::E, error_without_non_local_exit))?;
+
+    // The pending exit will carry control through cleanup blocks. Leave the
+    // typed payload for the Rust boundary, but stop re-entering this branch.
     load_immediate(assembler, super::FUNCTION_OBJECT, 0)?;
     emit(
         assembler,
         Inst::MovMR(
-            context_mem(abi, ContextField::Pending)?,
+            context_mem(abi, ContextField::RuntimeErrorFlags)?,
             super::FUNCTION_OBJECT,
         ),
     )?;
+    emit(assembler, Inst::Jmp(normal))?;
+
+    assembler.bind(error_without_non_local_exit);
     emit_epilogue(assembler, slots, abi, &[], false)?;
 
     assembler.bind(normal);

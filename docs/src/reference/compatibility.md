@@ -31,10 +31,11 @@ environment, not against the recorded numbers alone.
 
 ## Boundary
 
-The compatibility boundary is defined by the design contracts in
-`docs/src/design/` and the conformance runner (`ncl-conformance`). The
-retired interpreter, VM, and syntax crates ended at commit `d9bbb4ec` and
-offer no backward compatibility.
+The intended compatibility boundary is defined by the design contracts in
+`docs/src/design/` and summarized in the wave plan. The
+`ncl-conformance` runner is planned under lane N62. The retired interpreter,
+VM, and syntax crates ended at commit `d9bbb4ec` and offer no backward
+compatibility.
 
 See the [API reference](api.md) for the current surface, the
 [architecture](architecture.md) for the crate layout, and the

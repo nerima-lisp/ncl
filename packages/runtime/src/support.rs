@@ -50,7 +50,7 @@ impl Drop for MakeClosureFailureGuard {
 pub fn inject_make_closure_capacity_failure(
     context: &mut ThreadContext,
 ) -> MakeClosureFailureGuard {
-    let thread = std::ptr::from_mut(context.thread_mut()).addr();
+    let thread = context.thread_access().identity();
     MAKE_CLOSURE_FAILURE_THREAD.store(thread, Ordering::SeqCst);
     MakeClosureFailureGuard(thread)
 }
@@ -265,7 +265,7 @@ pub fn call_macro_function(
             .map_or(Ok(0), |rest| {
                 u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
             })?;
-        let thread = NonNull::from(ctx.thread_mut());
+        let thread = ctx.thread_access().as_non_null();
         let mut native_context = NativeInvocation {
             object: runtime,
             context: ctx,
@@ -283,7 +283,7 @@ pub fn call_macro_function(
             rest,
         );
         let _restored_context = replace_native_context(thread, previous);
-        if ctx.thread_mut().take_native_error().is_some() {
+        if ctx.take_pending_native_error().is_some() {
             return Err(ObjectError::Layout);
         }
         if let Some(error) = ctx.take_pending_lisp_error()

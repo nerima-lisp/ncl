@@ -4,8 +4,8 @@
 //! be expanded again. They live apart from `expand` to keep both files small.
 
 use ncl_object::{
-    HeapRootedWord, ObjectRef, Package, Runtime, ThreadContext, Word, car, set_symbol_special,
-    symbol_is_macro,
+    FindStatus, HeapRootedWord, ObjectRef, Package, Runtime, ThreadContext, Word, car,
+    set_symbol_special, symbol_is_macro,
 };
 
 use crate::ast::{Expr, LocalMacro, Operator};
@@ -131,19 +131,26 @@ impl<'a> FormExpander<'a> {
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self
                 .runtime
-                .find_package(self.ctx, "COMMON-LISP")
+                .find_package(self.ctx, "COMMON-LISP-USER")
                 .ok_or_else(|| FrontError::MacroExpansion {
                     name: name.clone(),
-                    detail: "COMMON-LISP package is not present".to_owned(),
+                    detail: "COMMON-LISP-USER package is not present".to_owned(),
                 })?;
-            let (symbol, _) = Package::from_word(package)
+            let (symbol, status) = Package::from_word(package)
                 .intern(self.ctx, self.runtime, &name.name)
                 .map_err(|error| FrontError::MacroExpansion {
                     name: name.clone(),
                     detail: error.to_string(),
                 })?;
-            symbol_is_macro(self.ctx, symbol)?
-                .then(|| SymbolRef::interned("COMMON-LISP", &name.name))
+            let symbol = HeapRootedWord::new(self.ctx, symbol)?;
+            if status == FindStatus::Inherited
+                && symbol.get() == head.get()
+                && symbol_is_macro(self.ctx, symbol.get())?
+            {
+                Some(SymbolRef::interned("COMMON-LISP", &name.name))
+            } else {
+                None
+            }
         } else {
             None
         };

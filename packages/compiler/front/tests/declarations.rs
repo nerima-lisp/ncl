@@ -10,7 +10,9 @@ mod forms;
 
 use forms::Fixture;
 
-use ncl_compiler_front::{Declaration, Expr, LexicalEnv, Literal, Quality, TypeSpecifier};
+use ncl_compiler_front::{
+    Declaration, Expr, LexicalEnv, Literal, Operator, Quality, TypeSpecifier,
+};
 use ncl_object::{FindStatus, Package, Word, symbol_is_special};
 
 /// Build a `(declare specifier*)` form.
@@ -261,4 +263,43 @@ fn inherited_declaim_in_common_lisp_user_proclaims_special() {
     let form = f.list(&[inherited_declaim, specifier]);
     assert_eq!(f.expand(form).unwrap(), Expr::Constant(Literal::Nil));
     assert!(symbol_is_special(&f.ctx, declared).unwrap());
+}
+
+#[test]
+fn local_declaim_in_common_lisp_user_is_not_the_inherited_macro() {
+    let mut f = Fixture::new();
+    ncl_compiler_front::register(&f.runtime).unwrap();
+    let common_lisp = f.runtime.find_package(&f.ctx, "COMMON-LISP").unwrap();
+    let common_lisp_user = f.runtime.find_package(&f.ctx, "COMMON-LISP-USER").unwrap();
+    assert!(
+        Package::from_word(common_lisp_user)
+            .unuse_package(&mut f.ctx, common_lisp)
+            .unwrap()
+    );
+    let declaim = Package::from_word(common_lisp_user)
+        .intern(&mut f.ctx, &f.runtime, "DECLAIM")
+        .unwrap()
+        .0;
+    Package::from_word(common_lisp_user)
+        .use_package(&mut f.ctx, &f.runtime, common_lisp)
+        .unwrap();
+    let (found, status) = Package::from_word(common_lisp_user)
+        .intern(&mut f.ctx, &f.runtime, "DECLAIM")
+        .unwrap();
+    assert_eq!(found, declaim);
+    assert_eq!(status, FindStatus::Internal);
+
+    let special = f.cl("SPECIAL");
+    let declared = f.user("*DECLARED-SPECIAL*");
+    let specifier = f.list(&[special, declared]);
+    let form = f.list(&[declaim, specifier]);
+
+    match f.expand(form).unwrap() {
+        Expr::Call {
+            operator: Operator::Name(name),
+            ..
+        } => assert!(name.is_named("COMMON-LISP-USER", "DECLAIM")),
+        other => panic!("expected a call to the local DECLAIM, got {other:?}"),
+    }
+    assert!(!symbol_is_special(&f.ctx, declared).unwrap());
 }

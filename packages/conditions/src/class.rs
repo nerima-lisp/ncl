@@ -9,8 +9,8 @@
 use crate::error::ConditionError;
 use ncl_object::{
     Instance, ObjectError, Runtime, ThreadContext, Word, car, cdr, instance_class, make_cons,
-    make_instance, make_simple_vector, make_string, simple_vector_ref, simple_vector_set,
-    string_length, string_ref,
+    make_instance, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
+    simple_vector_set, string_length, string_ref,
 };
 /// Index of the class name string in a class descriptor.
 pub const NAME_SLOT: usize = 0;
@@ -369,6 +369,28 @@ pub fn wire_superclasses(
     };
     simple_vector_set(ctx, child, SUPERCLASS_SLOT, value)
 }
+
+/// Link the registered condition hierarchy to the runtime's `T` class.
+///
+/// This is called by CLOS after it replaces type-registration placeholders
+/// with class descriptors. A runtime that has not registered conditions is
+/// left unchanged.
+///
+/// # Errors
+/// Returns an object-layer error when an installed condition hierarchy cannot
+/// be linked to `T`.
+pub fn wire_condition_root_to_t(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<(), ObjectError> {
+    if let Some(condition) = runtime.class(ctx, "CONDITION")
+        && simple_vector_length(ctx, condition).is_ok_and(|length| length >= 3)
+    {
+        wire_superclasses(ctx, runtime, "CONDITION", &["T"])?;
+    }
+    Ok(())
+}
+
 /// Read the raw direct-superclass slot of a class: `NIL` at the root, a
 /// single class descriptor word, or a list of descriptors for a class with
 /// more than one direct superclass.

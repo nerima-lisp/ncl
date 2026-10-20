@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used, reason = "tests assert on MOP registration")]
 
+#[allow(clippy::redundant_pub_crate)]
 #[path = "../src/mop.rs"]
 mod mop;
 

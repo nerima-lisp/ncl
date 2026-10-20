@@ -124,6 +124,14 @@ pub(super) fn encode(
     let blob = assembler
         .finish()
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    let code_len = checked_u32(blob.bytes.len())?;
+    crate::machine_verify::verify_machine_function(
+        function,
+        &machine,
+        &maps,
+        entry_offset,
+        code_len,
+    )?;
     let relocations = crate::relocations_from_fixups(&blob.fixups).map_err(|error| {
         CodegenError::Encode(format!("relocation conversion failed: {error:?}"))
     })?;

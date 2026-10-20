@@ -176,6 +176,52 @@ fn tracked_sap_memory_round_trips_and_rejects_expired_addresses() {
     ));
 }
 
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn registered_sap_pointer_values_round_trip_full_width_addresses() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+    let storage = ncl_ffi::allocate_system_memory(16).unwrap();
+    let storage_word = storage.to_word(&mut ctx, &runtime).unwrap();
+    let pointer = SystemAreaPointer::new(usize::MAX);
+    let pointer_word = pointer.to_word(&mut ctx, &runtime).unwrap();
+
+    call_builtin(
+        &mut ctx,
+        &runtime,
+        "%SAP-SET-SAP",
+        &[storage_word, Word::fixnum(0), pointer_word],
+    )
+    .unwrap();
+    let first_read = call_builtin(
+        &mut ctx,
+        &runtime,
+        "SAP-REF-SAP",
+        &[storage_word, Word::fixnum(0)],
+    )
+    .unwrap();
+    call_builtin(
+        &mut ctx,
+        &runtime,
+        "%SAP-SET-SAP",
+        &[storage_word, Word::fixnum(8), first_read],
+    )
+    .unwrap();
+    let round_trip = call_builtin(
+        &mut ctx,
+        &runtime,
+        "SAP-REF-SAP",
+        &[storage_word, Word::fixnum(8)],
+    )
+    .unwrap();
+
+    assert_eq!(
+        SystemAreaPointer::from_word(&ctx, round_trip).unwrap(),
+        pointer
+    );
+    ncl_ffi::deallocate_system_memory(storage, 16).unwrap();
+}
+
 #[test]
 fn system_memory_release_checks_size_and_expires_the_sap() {
     let address = ncl_ffi::allocate_system_memory(8).unwrap();

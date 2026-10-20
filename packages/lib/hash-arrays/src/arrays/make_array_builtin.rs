@@ -1,6 +1,7 @@
 use ncl_object::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
-    ThreadContext, Word, array_row_major_set, classify_object, make_array, with_rooted_slice,
+    ArrayElementType, ArrayOptions, Bignum, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
+    Runtime, ThreadContext, Word, array_row_major_set, bignum_limbs, bignum_sign, classify_object,
+    make_array, with_rooted_slice,
 };
 
 use super::helpers::{dimension_values, flatten_initial_contents, list_values};
@@ -12,13 +13,73 @@ fn named_element_type(name: &str) -> Option<ArrayElementType> {
         "BIT" => Some(ArrayElementType::Bit),
         "CHARACTER" => Some(ArrayElementType::Character),
         "BASE-CHAR" => Some(ArrayElementType::BaseChar),
-        "FIXNUM" | "INTEGER" => Some(ArrayElementType::Fixnum),
+        "FIXNUM" => Some(ArrayElementType::Fixnum),
+        "INTEGER" => Some(ArrayElementType::Signed),
         "SIGNED-BYTE" => Some(ArrayElementType::Signed),
         "UNSIGNED-BYTE" => Some(ArrayElementType::Unsigned),
         "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" => Some(ArrayElementType::SingleFloat),
         "DOUBLE-FLOAT" | "LONG-FLOAT" => Some(ArrayElementType::DoubleFloat),
         _ => None, // check-added-lines: allow(wildcard) reject unknown type names
     }
+}
+
+fn integer_is_negative(ctx: &ThreadContext, value: Word) -> Result<bool, ObjectError> {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(value) => Ok(value < 0),
+        ObjectRef::Bignum(value) => bignum_sign(ctx, Bignum::from_word(value)),
+        // check-added-lines: allow(wildcard) type bounds must be integers
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn integer_bound(ctx: &ThreadContext, value: Word) -> Result<Option<bool>, ObjectError> {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Some(integer_is_negative(ctx, value)?)),
+        ObjectRef::Symbol(_) if symbol_text(ctx, value)? == "*" => Ok(None),
+        ObjectRef::Cons(_) => {
+            let bounds = list_values(ctx, value)?;
+            match bounds.as_slice() {
+                [bound] => Ok(Some(integer_is_negative(ctx, *bound)?)),
+                // check-added-lines: allow(wildcard) exclusive bounds must contain one integer.
+                _ => Err(ObjectError::TypeError),
+            }
+        }
+        // check-added-lines: allow(wildcard) malformed integer bounds are rejected
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn byte_size(ctx: &ThreadContext, value: Word) -> Result<(), ObjectError> {
+    match classify_object(ctx, value) {
+        ObjectRef::Symbol(_) if symbol_text(ctx, value)? == "*" => Ok(()),
+        ObjectRef::Fixnum(size) if size > 0 => Ok(()),
+        ObjectRef::Bignum(value) => {
+            let value = Bignum::from_word(value);
+            if bignum_sign(ctx, value)? || bignum_limbs(ctx, value)?.iter().all(|limb| *limb == 0) {
+                Err(ObjectError::TypeError)
+            } else {
+                Ok(())
+            }
+        }
+        // check-added-lines: allow(wildcard) unsupported byte sizes are rejected
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn integer_element_type(
+    ctx: &ThreadContext,
+    lower: Option<Word>,
+    upper: Option<Word>,
+) -> Result<ArrayElementType, ObjectError> {
+    let lower = lower.map(|bound| integer_bound(ctx, bound)).transpose()?;
+    if let Some(upper) = upper {
+        integer_bound(ctx, upper)?;
+    }
+    Ok(if lower.flatten().is_some_and(|is_negative| !is_negative) {
+        ArrayElementType::Unsigned
+    } else {
+        ArrayElementType::Signed
+    })
 }
 
 fn element_type_designator(
@@ -32,27 +93,31 @@ fn element_type_designator(
         ObjectRef::Cons(_) => {
             let parts = list_values(ctx, designator)?;
             match parts.as_slice() {
+                [name] => match symbol_text(ctx, *name)?.to_ascii_uppercase().as_str() {
+                    "INTEGER" => integer_element_type(ctx, None, None),
+                    "SIGNED-BYTE" => Ok(ArrayElementType::Signed),
+                    "UNSIGNED-BYTE" => Ok(ArrayElementType::Unsigned),
+                    _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported element type names
+                },
                 [name, width] => {
                     let name = symbol_text(ctx, *name)?.to_ascii_uppercase();
-                    if width.as_fixnum().is_none_or(|width| width <= 0) {
-                        return Err(ObjectError::TypeError);
-                    }
                     match name.as_str() {
-                        "SIGNED-BYTE" => Ok(ArrayElementType::Signed),
-                        "UNSIGNED-BYTE" => Ok(ArrayElementType::Unsigned),
+                        "INTEGER" => integer_element_type(ctx, Some(*width), None),
+                        "SIGNED-BYTE" => {
+                            byte_size(ctx, *width)?;
+                            Ok(ArrayElementType::Signed)
+                        }
+                        "UNSIGNED-BYTE" => {
+                            byte_size(ctx, *width)?;
+                            Ok(ArrayElementType::Unsigned)
+                        }
                         _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported element type names
                     }
                 }
-                [name, lower, _upper] => {
-                    if symbol_text(ctx, *name)?.eq_ignore_ascii_case("INTEGER") {
-                        if lower.as_fixnum().ok_or(ObjectError::TypeError)? < 0 {
-                            Ok(ArrayElementType::Signed)
-                        } else {
-                            Ok(ArrayElementType::Unsigned)
-                        }
-                    } else {
-                        Err(ObjectError::TypeError)
-                    }
+                [name, lower, upper]
+                    if symbol_text(ctx, *name)?.eq_ignore_ascii_case("INTEGER") =>
+                {
+                    integer_element_type(ctx, Some(*lower), Some(*upper))
                 }
                 _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject malformed type lists
             }

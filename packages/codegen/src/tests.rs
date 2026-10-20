@@ -34,10 +34,9 @@ fn assert_compiles(function: &ncl_ir::Function) -> CompiledFunction {
 }
 
 fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
-    let mut builder =
-        FunctionBuilder::new(ncl_ir::FunctionId(id), name, Vec::new(), vec![Ty::Word]);
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(id), name, Vec::new(), vec![Ty::I64]);
     let constant = builder.add_constant(Constant::Fixnum(value));
-    let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
+    let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::I64]);
     assert!(values.is_ok());
     let value = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
     assert!(
@@ -89,10 +88,9 @@ impl RuntimeAbi for Aarch64FixtureAbi {
 
 #[test]
 fn lowers_fixnum_return_to_decodable_x86() {
-    let mut builder =
-        FunctionBuilder::new(ncl_ir::FunctionId(0), "one", Vec::new(), vec![Ty::Word]);
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(0), "one", Vec::new(), vec![Ty::I64]);
     let constant = builder.add_constant(Constant::Fixnum(1));
-    let values_result = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
+    let values_result = builder.push_op(OpKind::Const { result: constant }, &[Ty::I64]);
     assert!(
         values_result.is_ok(),
         "builder rejected constant: {values_result:?}"
@@ -122,16 +120,26 @@ fn lowers_fixnum_return_to_decodable_x86() {
 
 #[test]
 fn generates_maps_for_all_safepoint_kinds() {
-    let mut allocation =
-        FunctionBuilder::new(ncl_ir::FunctionId(1), "alloc", Vec::new(), vec![Ty::Word]);
-    assert!(
-        allocation
-            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Word])
-            .is_ok()
+    let mut allocation = FunctionBuilder::new(
+        ncl_ir::FunctionId(1),
+        "alloc",
+        Vec::new(),
+        vec![Ty::Address],
     );
+    let allocation_values = allocation.push_op(OpKind::Alloc { words: 2 }, &[Ty::Address]);
+    assert!(allocation_values.is_ok());
+    let Some(allocation_value) = allocation_values
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        return;
+    };
+    assert!(allocation.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         allocation
-            .terminate(Terminator::Return { values: Vec::new() })
+            .terminate(Terminator::Return {
+                values: vec![allocation_value],
+            })
             .is_ok()
     );
     let allocation_result = compile_function(&allocation.finish(), &X86_64Abi);
@@ -149,8 +157,7 @@ fn generates_maps_for_all_safepoint_kinds() {
             .any(|map| map.map_flags & FLAG_ALLOCATION_SLOW != 0)
     );
 
-    let mut explicit =
-        FunctionBuilder::new(ncl_ir::FunctionId(2), "poll", Vec::new(), vec![Ty::Word]);
+    let mut explicit = FunctionBuilder::new(ncl_ir::FunctionId(2), "poll", Vec::new(), Vec::new());
     assert!(explicit.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         explicit
@@ -173,7 +180,8 @@ fn generates_maps_for_all_safepoint_kinds() {
     );
 
     let mut loop_function =
-        FunctionBuilder::new(ncl_ir::FunctionId(3), "loop", Vec::new(), vec![Ty::Word]);
+        FunctionBuilder::new(ncl_ir::FunctionId(3), "loop", Vec::new(), Vec::new());
+    assert!(loop_function.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         loop_function
             .terminate(Terminator::Jump {
@@ -228,9 +236,10 @@ fn golden_cons_allocates_and_records_safepoint() {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(11), "cons", Vec::new(), vec![]);
     assert!(
         builder
-            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Word])
+            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
             .is_ok()
     );
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         builder
             .terminate(Terminator::Return { values: Vec::new() })
@@ -252,7 +261,21 @@ fn golden_branch_emits_two_resolved_targets() {
     let condition = builder.add_constant(Constant::T);
     let values = builder.push_op(OpKind::Const { result: condition }, &[Ty::Word]);
     assert!(values.is_ok());
-    let condition = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let left = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let other = builder.add_constant(Constant::Nil);
+    let other_values = builder.push_op(OpKind::Const { result: other }, &[Ty::Word]);
+    assert!(other_values.is_ok());
+    let right = other_values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let condition_values = builder.push_op(
+        OpKind::Compare {
+            op: ncl_ir::Compare::Eq,
+            left,
+            right,
+        },
+        &[Ty::Bool],
+    );
+    assert!(condition_values.is_ok());
+    let condition = condition_values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
     let then_target = builder.create_block(Vec::new());
     let else_target = builder.create_block(Vec::new());
     assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
@@ -327,7 +350,7 @@ fn golden_builtin_call_has_call_safepoint() {
                     name: "identity".into(),
                     args: Vec::new()
                 },
-                &[]
+                &[Ty::Word]
             )
             .is_ok()
     );
@@ -361,14 +384,24 @@ fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn Runtim
     };
     assert!(!compiled.code.is_empty());
     assert_eq!(compiled.code.len() % 4, 0);
-    let (words, _) = compiled.code.as_chunks::<4>();
-    for word in words {
-        let encoded = u32::from_le_bytes([word[0], word[1], word[2], word[3]]);
+    let (instructions, _) = compiled.code.as_chunks::<4>();
+    for (index, instruction) in instructions.iter().enumerate() {
+        let word = u32::from_le_bytes([
+            instruction[0],
+            instruction[1],
+            instruction[2],
+            instruction[3],
+        ]);
+        if word & 0xffff_0fe0 == 0x9a9f_07e0 {
+            continue;
+        }
+        let address = 0x1_0000 + (index as u64) * 4;
+        let decoded = ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, instruction, address);
         assert!(
-            ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &encoded.to_le_bytes(), 0)
-                .is_ok(),
-            "unsupported AArch64 golden word: 0x{encoded:08x}"
+            decoded.is_ok(),
+            "unsupported AArch64 golden instruction 0x{word:08x}: {decoded:?}"
         );
+        assert_eq!(decoded.map(|instructions| instructions.len()), Ok(1));
     }
 }
 
@@ -395,6 +428,7 @@ fn golden_explicit_safepoint_has_encoded_pc() {
 #[test]
 fn golden_fib_twenty_five_loop_has_backedge_map() {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(15), "fib-25", Vec::new(), vec![]);
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         builder
             .terminate(Terminator::Jump {

@@ -297,7 +297,7 @@ pub fn expand_rotatef(
     arguments: &[Word],
 ) -> Result<Word, ObjectError> {
     if arguments.is_empty() {
-        return Err(ObjectError::TypeError);
+        return Ok(Word::NIL);
     }
     rotate_like(ctx, runtime, registry, arguments, true)
 }
@@ -351,7 +351,11 @@ fn rotate_like(
         let expansion = expansions.get(index).ok_or(ObjectError::TypeError)?;
         stores.push(store_place(ctx, runtime, expansion, source)?);
     }
-    stores.push(old_values.first().copied().ok_or(ObjectError::TypeError)?);
+    stores.push(if rotate {
+        Word::NIL
+    } else {
+        old_values.first().copied().ok_or(ObjectError::TypeError)?
+    });
     let body = sequence(ctx, runtime, &stores)?;
     wrap_let(ctx, runtime, "LET*", &bindings, body)
 }

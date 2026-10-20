@@ -105,6 +105,11 @@ const CASES: &[Case] = &[
         expected: "7",
     },
     Case {
+        builtin: "(SETF SBIT)",
+        source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
+        expected: "1",
+    },
+    Case {
         builtin: "GETHASH KEY RETENTION FORM",
         source: "(let ((table (make-hash-table :test 'eq))) (setf (gethash 1 table) 7) (gethash 1 table))",
         expected: "7",
@@ -286,26 +291,9 @@ const CASES: &[Case] = &[
     },
 ];
 
-struct XfailCase {
-    builtin: &'static str,
-    source: &'static str,
-    expected_exit: i32,
-    stderr_contains: &'static str,
-    cause: &'static str,
-}
-
-const XFAILS: &[XfailCase] = &[XfailCase {
-    builtin: "SBIT",
-    source: "(setf (sbit (make-array 2 :element-type 'bit) 0) 1)",
-    expected_exit: 1,
-    stderr_contains: "UndefinedFunction",
-    cause: "packages/lib/macros/src/setf_places.rs:223-240: SETF place expansion for the SBIT CL function is unimplemented",
-}];
-
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
-    assert_eq!(CASES.len(), 55);
-    assert_eq!(XFAILS.len(), 1);
+    assert_eq!(CASES.len(), 56);
     for case in CASES {
         let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
             .args(["--eval", case.source])
@@ -325,43 +313,6 @@ fn compiled_hash_array_matrix_reports_every_registered_builtin() {
             stdout, case.expected,
             "{}: unexpected stdout (stderr: {stderr})",
             case.builtin
-        );
-    }
-    for case in XFAILS {
-        let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
-            .args(["--eval", case.source])
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) => panic!("{}: failed to execute ncl: {error}", case.builtin),
-        };
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        assert_eq!(
-            output.status.code(),
-            Some(case.expected_exit),
-            "{}: expected exit {}, stderr: {stderr}; cause: {}",
-            case.builtin,
-            case.expected_exit,
-            case.cause
-        );
-        assert!(
-            !stderr.is_empty(),
-            "{}: expected diagnostic stderr; cause: {}",
-            case.builtin,
-            case.cause
-        );
-        assert!(
-            stderr.contains(case.stderr_contains),
-            "{}: stderr missing {:?}: {stderr}; cause: {}",
-            case.builtin,
-            case.stderr_contains,
-            case.cause
-        );
-        println!(
-            "XFAIL | {} | {} | {}",
-            case.builtin,
-            case.source,
-            stderr.trim()
         );
     }
 }

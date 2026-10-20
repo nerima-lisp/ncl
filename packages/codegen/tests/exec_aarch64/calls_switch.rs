@@ -14,9 +14,10 @@ fn weighted_target_builder() -> FunctionBuilder {
     );
     let arguments = (0..5)
         .map(|index| {
-            target_builder
+            let argument = target_builder
                 .push_op(OpKind::LoadArg { index }, &[Ty::Word])
-                .expect("callee argument")[0]
+                .expect("callee argument")[0];
+            convert(&mut target_builder, Convert::WordToI64, argument, Ty::I64)
         })
         .collect::<Vec<_>>();
     let mut weighted_sum = arguments[0];
@@ -30,7 +31,7 @@ fn weighted_target_builder() -> FunctionBuilder {
                         args: vec![weighted_argument, weighted_argument],
                         condition: None,
                     },
-                    &[Ty::Word],
+                    &[Ty::I64],
                 )
                 .expect("double weighted argument")[0];
         }
@@ -41,10 +42,16 @@ fn weighted_target_builder() -> FunctionBuilder {
                     args: vec![weighted_sum, weighted_argument],
                     condition: None,
                 },
-                &[Ty::Word],
+                &[Ty::I64],
             )
             .expect("add weighted argument")[0];
     }
+    let weighted_sum = convert(
+        &mut target_builder,
+        Convert::I64ToWord,
+        weighted_sum,
+        Ty::Word,
+    );
     target_builder
         .terminate(Terminator::Return {
             values: vec![weighted_sum],
@@ -60,7 +67,7 @@ fn five_argument_invoker_builder() -> FunctionBuilder {
         vec![
             Param {
                 name: "callee".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "first".into(),
@@ -86,7 +93,7 @@ fn five_argument_invoker_builder() -> FunctionBuilder {
         vec![Ty::Word],
     );
     let target_address = invoker_builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("target address")[0];
     let arguments = (1..=5)
         .map(|index| {
@@ -95,10 +102,7 @@ fn five_argument_invoker_builder() -> FunctionBuilder {
                 .expect("invoker argument")[0]
         })
         .collect::<Vec<_>>();
-    let argc = invoker_builder.add_constant(Constant::Fixnum(5));
-    let argc = invoker_builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-        .expect("target argc")[0];
+    let argc = fixnum_word(&mut invoker_builder, 5);
     invoker_builder
         .push_op(OpKind::Safepoint, &[])
         .expect("call safepoint");
@@ -171,33 +175,9 @@ fn executes_switch_cases_and_default_with_block_arguments() {
     let selector = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::I64])
         .expect("switch selector")[0];
-    let case_one_value = builder.add_constant(Constant::Fixnum(101));
-    let case_one_value = builder
-        .push_op(
-            OpKind::Const {
-                result: case_one_value,
-            },
-            &[Ty::Word],
-        )
-        .expect("first case result")[0];
-    let case_two_value = builder.add_constant(Constant::Fixnum(202));
-    let case_two_value = builder
-        .push_op(
-            OpKind::Const {
-                result: case_two_value,
-            },
-            &[Ty::Word],
-        )
-        .expect("second case result")[0];
-    let default_value = builder.add_constant(Constant::Fixnum(303));
-    let default_value = builder
-        .push_op(
-            OpKind::Const {
-                result: default_value,
-            },
-            &[Ty::Word],
-        )
-        .expect("default result")[0];
+    let case_one_value = fixnum_word(&mut builder, 101);
+    let case_two_value = fixnum_word(&mut builder, 202);
+    let default_value = fixnum_word(&mut builder, 303);
     let case_one_result = builder.fresh_value();
     let case_one = builder.create_block(vec![(Ty::Word, case_one_result)]);
     let case_two_result = builder.fresh_value();

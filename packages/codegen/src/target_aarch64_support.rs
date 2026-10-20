@@ -1,41 +1,24 @@
 use crate::FLAG_CALL;
-use crate::{Allocation, CodegenError, FrameLayout, Location, SafepointMap};
+use crate::{Allocation, CodegenError, FrameLayout, SafepointMap};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
-use ncl_ir::{Function, Ty};
+use ncl_ir::Function;
 
 pub(super) fn add_map(
     maps: &mut Vec<SafepointMap>,
     pc: u32,
+    function: &Function,
     frame: FrameLayout,
     allocation: &Allocation,
     position: u32,
     flags: u32,
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    let mut live_slots = Vec::new();
-    let mut registers = Vec::new();
-    for (value, location) in &allocation.locations {
-        let Some(interval) = allocation
-            .intervals
-            .iter()
-            .find(|item| item.value == *value)
-        else {
-            continue;
-        };
-        if !(interval.start <= position
-            && position <= interval.end
-            && matches!(interval.ty, Ty::Word | Ty::Address))
-        {
-            continue;
-        }
-        match location {
-            Location::Spill(spill) => live_slots.push(
-                4u16.checked_add(u16::try_from(*spill).map_err(|_| CodegenError::FrameOverflow)?)
-                    .ok_or(CodegenError::FrameOverflow)?,
-            ),
-            Location::Register(register) => registers.push(*register),
-        }
-    }
+    let (registers, roots) =
+        crate::machine_verify::root_locations_at(function, allocation, position, 0);
+    let mut live_slots = roots
+        .into_iter()
+        .map(|slot| u16::try_from(slot).map_err(|_| CodegenError::FrameOverflow))
+        .collect::<Result<Vec<_>, _>>()?;
     if flags & FLAG_CALL != 0 {
         let base = 4u32
             .checked_add(allocation.outgoing_base)
@@ -66,11 +49,13 @@ pub(super) fn add_map(
     }
     live_slots.sort_unstable();
     live_slots.dedup();
-    registers.sort_unstable();
-    registers.dedup();
-    SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
-        .map(|map| maps.push(map))
-        .map_err(|error| CodegenError::Encode(error.to_string()))
+    let map = SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    crate::machine_verify::verify_safepoint_map(
+        function, allocation, frame, 0, position, flags, &map,
+    )?;
+    maps.push(map);
+    Ok(())
 }
 
 pub(super) fn initialize_arguments(

@@ -1,9 +1,10 @@
 use super::*;
+use crate::{RelocKind, SectionId, SymbolRef};
 
 #[test]
 fn malformed_private_fasl_ranges_are_rejected() {
     assert_eq!(
-        decode_relocations(&[0; 15]),
+        decode_relocations(&[0; 15], 1, 1),
         Err(ObjectError::InvalidField {
             field: "relocation size",
             value: 15,
@@ -51,20 +52,20 @@ fn private_wire_helpers_cover_integer_boundaries() {
         })
     );
     assert_eq!(
-        number_kind(99),
+        relocation_wire::number_kind(99),
         Err(ObjectError::InvalidField {
             field: "relocation kind",
             value: 99,
         })
     );
-    assert_eq!(kind_number(RelocKind::ExternalSymbol), 8);
+    assert_eq!(relocation_wire::kind_number(RelocKind::ExternalSymbol), 8);
 }
 
 #[test]
 fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
     for length in [24usize, 28, 32, 36, 40, 44, 48, 52, 56, 60] {
         assert!(matches!(
-            read_fasl_ranges(&vec![0; length]),
+            read_fasl_ranges(&vec![0; length], 1),
             Err(ObjectError::Truncated { needed: 4, .. })
         ));
     }
@@ -72,7 +73,7 @@ fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
     bytes[24..28].copy_from_slice(&64u32.to_le_bytes());
     bytes[28..32].copy_from_slice(&1u32.to_le_bytes());
     assert!(matches!(
-        read_fasl_ranges(&bytes),
+        read_fasl_ranges(&bytes, 1),
         Err(ObjectError::OutOfBounds {
             section: "code",
             offset: 64,
@@ -83,7 +84,7 @@ fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
     huge_relocation_count[32..36].copy_from_slice(&64u32.to_le_bytes());
     huge_relocation_count[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
     assert!(matches!(
-        read_fasl_ranges(&huge_relocation_count),
+        read_fasl_ranges(&huge_relocation_count, 1),
         Err(ObjectError::InvalidField {
             field: "relocation size",
             value: u64::MAX,
@@ -123,7 +124,7 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
     let bytes_result = FaslWriter::write(&value);
     assert!(bytes_result.is_ok());
     let Ok(bytes) = bytes_result else { return };
-    let ranges_result = read_fasl_ranges(&bytes);
+    let ranges_result = read_fasl_ranges(&bytes, 2);
     assert!(ranges_result.is_ok());
     let Ok(ranges) = ranges_result else { return };
     assert_eq!(ranges.code, &[1, 2]);
@@ -135,7 +136,7 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
         &[6]
     );
     assert_eq!(
-        decode_relocations(ranges.reloc).map_or(0, |relocations| relocations.len()),
+        decode_relocations(ranges.reloc, 2, 1).map_or(0, |relocations| relocations.len()),
         1
     );
     assert_eq!(

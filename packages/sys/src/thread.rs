@@ -4,7 +4,7 @@ use std::ptr;
 mod control;
 mod root_token;
 mod stack;
-pub use control::ControlFrameKind;
+pub use control::{ControlFrameKind, RuntimeErrorSource};
 pub use root_token::RootToken;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
@@ -68,6 +68,7 @@ pub struct Thread {
     frame_last_written: Vec<Word>,
     native_error: Option<NativeError>,
     native_context: Option<ptr::NonNull<()>>,
+    runtime_error_flags: u64,
 }
 /// Native offsets consumed by the code generator when addressing a thread context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +91,8 @@ pub struct ThreadLayout {
     pub catch: usize,
     /// Offset of the multiple-value count word.
     pub mv_count: usize,
+    /// Offset of the Rust-side runtime-error source flags.
+    pub runtime_error_flags: usize,
 }
 /// Return byte offsets for the machine-visible part of [`Thread`].
 #[must_use]
@@ -104,6 +107,7 @@ pub const fn thread_layout() -> ThreadLayout {
         cleanup: std::mem::offset_of!(Thread, cleanup),
         catch: std::mem::offset_of!(Thread, catch),
         mv_count: std::mem::offset_of!(Thread, mv_count),
+        runtime_error_flags: std::mem::offset_of!(Thread, runtime_error_flags),
     }
 }
 impl Default for Thread {
@@ -143,6 +147,7 @@ impl Thread {
             frame_last_written: Vec::new(),
             native_error: None,
             native_context: None,
+            runtime_error_flags: 0,
         }
     }
     /// Return the heap this thread is registered with.
@@ -295,11 +300,16 @@ impl Thread {
     pub const fn set_native_error(&mut self, error: NativeError) {
         if self.native_error.is_none() {
             self.native_error = Some(error);
+            self.set_runtime_error_pending(RuntimeErrorSource::Native, true);
         }
     }
     /// Take and clear the direct-native failure.
     pub const fn take_native_error(&mut self) -> Option<NativeError> {
-        self.native_error.take()
+        let error = self.native_error.take();
+        if error.is_some() {
+            self.set_runtime_error_pending(RuntimeErrorSource::Native, false);
+        }
+        error
     }
     /// Install a synchronous native callback context, returning the previous one.
     pub(crate) const fn replace_native_context(
@@ -430,52 +440,6 @@ mod tests {
     mod coverage;
 
     #[test]
-    fn layout_matches_c_struct_offsets() {
-        let layout = thread_layout();
-        assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
-        assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
-        assert_eq!(
-            layout.safepoint_request,
-            std::mem::offset_of!(Thread, safepoint_request)
-        );
-        assert_eq!(layout.pending, std::mem::offset_of!(Thread, pending));
-        assert_eq!(layout.mv, std::mem::offset_of!(Thread, mv));
-        assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
-        assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
-        assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
-        assert_eq!(layout.mv_count, std::mem::offset_of!(Thread, mv_count));
-    }
-
-    #[test]
-    fn machine_visible_fields_are_aligned_single_words() {
-        let thread = Thread::new();
-        let layout = thread_layout();
-        let fields = [
-            (layout.tlab_bump, std::mem::size_of_val(&thread.tlab_bump)),
-            (layout.tlab_limit, std::mem::size_of_val(&thread.tlab_limit)),
-            (
-                layout.safepoint_request,
-                std::mem::size_of_val(&thread.safepoint_request),
-            ),
-            (layout.pending, std::mem::size_of_val(&thread.pending)),
-            (layout.handler, std::mem::size_of_val(&thread.handler)),
-            (layout.cleanup, std::mem::size_of_val(&thread.cleanup)),
-            (layout.catch, std::mem::size_of_val(&thread.catch)),
-            (layout.mv_count, std::mem::size_of_val(&thread.mv_count)),
-        ];
-        for (offset, size) in fields {
-            assert_eq!(offset % 8, 0);
-            assert_eq!(size, 8);
-        }
-        // `mv` is a fixed machine-visible word area.
-        assert_eq!(layout.mv % 8, 0);
-        assert_eq!(
-            std::mem::size_of::<[Word; MULTIPLE_VALUE_AREA_WORDS]>(),
-            MULTIPLE_VALUE_AREA_WORDS * 8
-        );
-    }
-
-    #[test]
     fn frame_snapshot_write_back_consumes_snapshot() {
         let mut frame = vec![Word::fixnum(10); 8].into_boxed_slice();
         // SAFETY: the pointer is kept within the boxed allocation, with four words of slot space before it.
@@ -492,3 +456,7 @@ mod tests {
         assert_eq!(frame[0], first);
     }
 }
+
+#[cfg(test)]
+#[path = "thread/layout_tests.rs"]
+mod layout_tests;

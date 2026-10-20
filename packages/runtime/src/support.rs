@@ -11,6 +11,11 @@ use ncl_object::{
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
+#[cfg(test)]
+use ncl_sys::StorageCondition;
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::{PublishedFunction, RuntimeError};
 
 pub struct NativeInvocation<'a> {
@@ -21,6 +26,45 @@ pub struct NativeInvocation<'a> {
     /// `MakeClosure` can attach the callee's code (and constants table)
     /// rather than always inheriting the currently-executing function's.
     pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) borrowed rooted code entries
+}
+
+#[cfg(test)]
+static MAKE_CLOSURE_FAILURE_THREAD: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+pub struct MakeClosureFailureGuard(usize);
+
+#[cfg(test)]
+impl Drop for MakeClosureFailureGuard {
+    fn drop(&mut self) {
+        let _ = MAKE_CLOSURE_FAILURE_THREAD.compare_exchange(
+            self.0,
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
+    }
+}
+
+#[cfg(test)]
+pub fn inject_make_closure_capacity_failure(
+    context: &mut ThreadContext,
+) -> MakeClosureFailureGuard {
+    let thread = std::ptr::from_mut(context.thread_mut()).addr();
+    MAKE_CLOSURE_FAILURE_THREAD.store(thread, Ordering::SeqCst);
+    MakeClosureFailureGuard(thread)
+}
+
+#[cfg(test)]
+fn take_make_closure_capacity_failure(thread: NonNull<Thread>) -> bool {
+    MAKE_CLOSURE_FAILURE_THREAD
+        .compare_exchange(
+            thread.as_ptr().addr(),
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        )
+        .is_ok()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -49,6 +93,7 @@ impl RuntimeAbi for NativeAbi<'_> {
             ncl_codegen::ContextField::Handler => layout.handler,
             ncl_codegen::ContextField::Cleanup => layout.cleanup,
             ncl_codegen::ContextField::Catch => layout.catch,
+            ncl_codegen::ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
         };
         i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
@@ -287,7 +332,23 @@ pub extern "C" fn native_make_closure(
             .get(&entry)
             .map_or(invocation.code, |(word, _)| CodeObject::from_word(**word));
         let captures = vec![Word::NIL; capture_count];
-        match make_closure(
+        #[cfg(test)]
+        let result = if take_make_closure_capacity_failure(thread) {
+            // Keep the allocation error path reproducible without changing production behavior.
+            Err(ObjectError::Storage(StorageCondition::CapacityExceeded))
+        } else {
+            make_closure(
+                ctx,
+                invocation.object,
+                entry,
+                Word::NIL,
+                Word::NIL,
+                code,
+                &captures,
+            )
+        };
+        #[cfg(not(test))]
+        let result = make_closure(
             ctx,
             invocation.object,
             entry,
@@ -295,7 +356,8 @@ pub extern "C" fn native_make_closure(
             Word::NIL,
             code,
             &captures,
-        ) {
+        );
+        match result {
             Ok(function) => function.as_word(),
             Err(error) => {
                 ctx.set_pending(error);

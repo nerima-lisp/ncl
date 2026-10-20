@@ -10,7 +10,45 @@
 use super::{MULTIPLE_VALUE_AREA_WORDS, Thread};
 use crate::word::Word;
 
+/// Source whose Rust-side error payload is pending for this thread.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum RuntimeErrorSource {
+    /// An object-layer runtime error.
+    Object = 0,
+    /// A typed Lisp condition.
+    Lisp = 1,
+    /// A direct native runtime error.
+    Native = 2,
+}
+
+impl RuntimeErrorSource {
+    const fn mask(self) -> u64 {
+        match self {
+            Self::Object => 1,
+            Self::Lisp => 1 << 1,
+            Self::Native => 1 << 2,
+        }
+    }
+}
+
 impl Thread {
+    /// Record whether a Rust-side runtime error payload is pending.
+    pub const fn set_runtime_error_pending(&mut self, source: RuntimeErrorSource, pending: bool) {
+        let mask = source.mask();
+        self.runtime_error_flags = if pending {
+            self.runtime_error_flags | mask
+        } else {
+            self.runtime_error_flags & !mask
+        };
+    }
+
+    /// Whether any Rust-side runtime error payload is pending.
+    #[must_use]
+    pub const fn runtime_error_pending(&self) -> bool {
+        self.runtime_error_flags != 0
+    }
+
     /// Whether a non-local exit is currently propagating through native code.
     #[must_use]
     pub const fn pending(&self) -> bool {
@@ -106,7 +144,7 @@ pub enum ControlFrameKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{ControlFrameKind, Thread};
+    use super::{ControlFrameKind, RuntimeErrorSource, Thread};
     use crate::word::Word;
 
     #[test]
@@ -117,6 +155,22 @@ mod tests {
         assert!(thread.pending());
         thread.set_pending(false);
         assert!(!thread.pending());
+    }
+
+    #[test]
+    fn runtime_error_sources_are_independent_of_each_other_and_pending() {
+        let mut thread = Thread::new();
+        assert!(!thread.runtime_error_pending());
+        assert!(!thread.pending());
+        thread.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+        thread.set_runtime_error_pending(RuntimeErrorSource::Native, true);
+        thread.set_pending(true);
+        thread.set_runtime_error_pending(RuntimeErrorSource::Object, false);
+        assert!(thread.runtime_error_pending());
+        assert!(thread.pending());
+        thread.set_runtime_error_pending(RuntimeErrorSource::Native, false);
+        assert!(!thread.runtime_error_pending());
+        assert!(thread.pending());
     }
 
     #[test]

@@ -163,7 +163,7 @@ impl Runtime {
                 .collect(),
         };
         let mut passes = ncl_opt::PassManager::new();
-        passes.add_function_pass(ncl_opt::InlineDirectCalls::default());
+        passes.add_default_optimization_pipeline();
         passes
             .run(&mut module)
             .map_err(|error| RuntimeError::Native(error.to_string()))?;

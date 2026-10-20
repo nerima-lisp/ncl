@@ -12,7 +12,7 @@ front end は reader output を macroexpand、parse、declaration/type propagati
   LICM)と、`ncl-codegen` の SSA ベースレジスタ割当。IR 型と ABI は不変。受入は cl-bench
   幾何平均が Phase 2 着地時の同機測定以下。
 
-`ncl-opt` の既定順序は direct-call inlining、GVN、SCCP である。GVN は支配木の順に
+`ncl-opt` の既定順序は direct-call inlining、GVN、SCCP、DCE である。GVN は支配木の順に
 純粋な式だけを共通化し、SCCP は Unknown/Constant/Overdefined 格子で到達辺を絞る。
 純粋性とメモリ効果の分類は `ncl-ir::Prim` の公開属性に集約する。fixnum 演算は checked
 計算だけを畳み込み、overflow は bignum 昇格のため保持する。`eq`/`eql` は同一 SSA 値の

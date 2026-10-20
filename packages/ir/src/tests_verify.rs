@@ -350,6 +350,35 @@ fn verifier_accepts_unique_ids_and_matching_types() {
 }
 
 #[test]
+fn verifier_accepts_unreachable_terminator_in_dead_block() {
+    let function = finish(
+        "explicit-unreachable",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(0, Vec::new(), Terminator::Return { values: Vec::new() }),
+            block(1, Vec::new(), Terminator::Unreachable),
+        ],
+        Vec::new(),
+    );
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_still_reports_unreachable_sentinel_on_reachable_block() {
+    let function = finish(
+        "reachable-unfinished",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![block(0, Vec::new(), Terminator::Unreachable)],
+        Vec::new(),
+    );
+    verify_has(&function, &VerifyError::MissingTerminator(BlockId(0)));
+}
+
+#[test]
 fn verifier_rejects_value_not_dominated_by_use_block() {
     let function = finish(
         "non-dominating-value",

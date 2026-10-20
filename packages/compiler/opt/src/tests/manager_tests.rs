@@ -59,6 +59,30 @@ impl FunctionPass for InvalidatingPass {
     }
 }
 
+#[derive(Debug)]
+struct InvalidatingOnce {
+    changed: bool,
+}
+
+impl FunctionPass for InvalidatingOnce {
+    fn name(&self) -> &'static str {
+        "invalidating-once"
+    }
+
+    fn run(&mut self, function: &mut Function, _module: &Module) -> PassResult {
+        if !self.changed {
+            return Ok(false);
+        }
+        self.changed = false;
+        function.blocks[0].ops.push(Op {
+            results: vec![(ValueId(0), Ty::Word)],
+            kind: OpKind::Move { value: ValueId(0) },
+            loc: None,
+        });
+        Ok(true)
+    }
+}
+
 #[test]
 fn manager_reports_module_passes_limits_and_errors() {
     let options = PassManagerOptions {
@@ -73,8 +97,13 @@ fn manager_reports_module_passes_limits_and_errors() {
             functions: vec![leaf()],
         })
         .fixture();
+    assert_eq!(report.iterations, 1);
     assert!(report.hit_iteration_limit);
     assert_eq!(report.stats.len(), 2);
+    assert_eq!(report.stats[0].pass, "toggle");
+    assert!(report.stats[0].changed);
+    assert_eq!(report.stats[1].pass, "module-toggle");
+    assert!(!report.stats[1].changed);
     let options = PassManagerOptions::default().without_verification();
     let mut manager = PassManager::with_options(options);
     manager.add_function_pass(FailingPass);
@@ -84,7 +113,8 @@ fn manager_reports_module_passes_limits_and_errors() {
         std::process::exit(1)
     };
     assert_eq!(error.pass, "failing");
-    assert!(error.to_string().contains("failing"));
+    assert_eq!(error.message, "boom");
+    assert_eq!(error.to_string(), "pass failing failed: boom");
 }
 
 #[test]
@@ -98,6 +128,110 @@ fn manager_rejects_an_invalid_function_after_a_pass() {
     };
     assert_eq!(error.pass, "invalidating");
     assert!(error.message.contains("DuplicateValue"));
+}
+
+#[test]
+fn manager_can_disable_post_pass_verification() {
+    let mut manager =
+        PassManager::with_options(PassManagerOptions::default().without_verification());
+    manager.add_function_pass(InvalidatingOnce { changed: true });
+    let mut module = Module {
+        functions: vec![leaf()],
+    };
+
+    let report = manager.run(&mut module).fixture();
+
+    assert_eq!(report.iterations, 2);
+    assert!(!report.hit_iteration_limit);
+    assert_eq!(report.stats.len(), 2);
+    assert!(report.stats[0].changed);
+    assert!(!report.stats[1].changed);
+    assert!(module.verify().is_err());
+}
+
+#[test]
+fn manager_reports_the_transformed_ir_and_reaches_a_fixed_point() {
+    let mut manager = PassManager::new();
+    manager.add_function_pass(InlineDirectCalls::default());
+    let mut module = Module {
+        functions: vec![caller(), leaf()],
+    };
+
+    let report = manager.run(&mut module).fixture();
+
+    assert_eq!(report.iterations, 2);
+    assert!(!report.hit_iteration_limit);
+    assert_eq!(report.stats.len(), 4);
+    assert!(report.stats[0].changed);
+    assert!(!report.stats[1].changed);
+    assert!(!report.stats[2].changed);
+    assert!(!report.stats[3].changed);
+
+    let function = &module.functions[0];
+    assert_eq!(function.blocks.len(), 1);
+    assert_eq!(function.blocks[0].ops.len(), 2);
+    assert!(matches!(
+        function.blocks[0].ops[0].kind,
+        OpKind::Const {
+            result: ConstantIndex(0)
+        }
+    ));
+    assert!(matches!(
+        function.blocks[0].ops[1].kind,
+        OpKind::Move { value: ValueId(0) }
+    ));
+    assert_eq!(
+        function.blocks[0].ops[1].results,
+        vec![(ValueId(3), Ty::Word)]
+    );
+    assert_eq!(
+        function.blocks[0].terminator,
+        Terminator::Return {
+            values: vec![ValueId(3)]
+        }
+    );
+    assert!(
+        !function.blocks[0]
+            .ops
+            .iter()
+            .any(|op| matches!(op.kind, OpKind::Call { .. }))
+    );
+    module.verify().fixture();
+}
+
+#[test]
+fn manager_preserves_a_conservative_noop_and_reports_no_limit_hit() {
+    let mut manager = PassManager::with_options(PassManagerOptions {
+        max_iterations: 3,
+        verify_after_each_pass: true,
+    });
+    manager.add_function_pass(InlineDirectCalls { max_ops: 0 });
+    let mut module = Module {
+        functions: vec![caller(), leaf()],
+    };
+    module.functions[0].blocks[0].ops.insert(
+        1,
+        Op {
+            results: vec![],
+            kind: OpKind::Safepoint,
+            loc: None,
+        },
+    );
+    let before = module.clone();
+
+    let report = manager.run(&mut module).fixture();
+
+    assert_eq!(report.iterations, 1);
+    assert!(!report.hit_iteration_limit);
+    assert_eq!(report.stats.len(), 2);
+    assert!(report.stats.iter().all(|stat| !stat.changed));
+    assert_eq!(module, before);
+    assert!(
+        module.functions[0].blocks[0]
+            .ops
+            .iter()
+            .any(|op| matches!(op.kind, OpKind::Call { .. }))
+    );
 }
 
 #[test]

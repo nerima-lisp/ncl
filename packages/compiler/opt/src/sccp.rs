@@ -114,7 +114,11 @@ impl Sccp {
                 State::Constant(*result)
             }
             OpKind::Move { value } => states.get(value).copied().unwrap_or(State::Unknown),
-            OpKind::Prim { op, args, .. } => match (op, args.as_slice()) {
+            OpKind::Prim {
+                op,
+                args,
+                condition: None,
+            } => match (op, args.as_slice()) {
                 (Prim::FixnumAdd, [left, right]) => {
                     Self::binary_fixnum(function, states, *left, *right, i64::checked_add)
                 }
@@ -173,6 +177,9 @@ impl Sccp {
                 }
                 _ => State::Overdefined,
             },
+            // A conditional primitive has a condition edge for failures such as
+            // type errors. Folding it would discard that edge and its runtime
+            // behavior, so only unconditional primitives are evaluated here.
             OpKind::Compare { op, left, right } if left == right => Self::bool_state(
                 function,
                 matches!(op, Compare::Eq | Compare::Le | Compare::Ge),
@@ -200,7 +207,8 @@ impl Sccp {
                 };
                 Self::bool_state(function, result)
             }
-            OpKind::Load { .. }
+            OpKind::Prim { .. }
+            | OpKind::Load { .. }
             | OpKind::LoadField { .. }
             | OpKind::Alloc { .. }
             | OpKind::LoadArg { .. }
@@ -288,11 +296,8 @@ impl Sccp {
         let constants = function.constants.clone();
         for block in &mut function.blocks {
             if !reachable.contains(&block.id) {
-                if !matches!(block.terminator, Terminator::Unreachable) || !block.ops.is_empty() {
-                    block.ops.clear();
-                    block.terminator = Terminator::Unreachable;
-                    changed = true;
-                }
+                // Keep dead blocks structurally valid until DCE removes them. `Unreachable`
+                // is the builder's unfinished-block sentinel and is rejected by `verify`.
                 continue;
             }
             for op in &mut block.ops {
@@ -313,7 +318,14 @@ impl Sccp {
                         | (Ty::F64, Constant::SingleFloat(_) | Constant::DoubleFloat(_))
                         | (Ty::Word, _)
                 );
-                if valid_type && !matches!(op.kind, OpKind::Const { .. }) {
+                let conditional_prim = matches!(
+                    op.kind,
+                    OpKind::Prim {
+                        condition: Some(_),
+                        ..
+                    }
+                );
+                if valid_type && !conditional_prim && !matches!(op.kind, OpKind::Const { .. }) {
                     op.kind = OpKind::Const { result: index };
                     changed = true;
                 }

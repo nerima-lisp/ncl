@@ -23,15 +23,19 @@ pub enum NativeState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafepointState {
     /// The mutator may continue running.
-    Running,
+    Running = 0,
     /// A collector has requested a safepoint.
-    PollRequested,
+    PollRequested = 1,
     /// The mutator has published its root snapshot.
-    Published,
+    Published = 2,
     /// The collector is scanning this mutator.
-    Collecting,
+    Collecting = 3,
     /// The mutator is outside the managed heap and safe to stop.
-    Safe,
+    Safe = 4,
+    /// This thread owns the heap slow-path collection gate.
+    Collector = 5,
+    /// This thread has published roots and is waiting for the collection gate.
+    Parked = 6,
 }
 /// Machine-visible mutator context.
 ///

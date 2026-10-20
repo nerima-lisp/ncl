@@ -56,6 +56,8 @@ pub enum Literal {
     Character(u32),
     /// A string, as Unicode scalar values.
     String(Vec<char>),
+    /// A pathname namestring.
+    Pathname(Vec<char>),
     /// A cons cell.
     Cons(Box<Self>, Box<Self>),
     /// A simple vector.

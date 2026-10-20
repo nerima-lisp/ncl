@@ -1,4 +1,7 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
+use crate::{
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, allocate, bignum_sign, classify_object,
+    layout, with_roots,
+};
 use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -43,15 +46,24 @@ impl ArrayElementType {
 }
 
 pub(crate) fn validate_element(
+    ctx: &ThreadContext,
     element_type: ArrayElementType,
     value: Word,
 ) -> Result<Word, ObjectError> {
     let valid = match element_type {
         ArrayElementType::Bit => matches!(value.as_fixnum(), Some(0 | 1)),
         ArrayElementType::Character | ArrayElementType::BaseChar => value.is_character(),
-        ArrayElementType::Fixnum | ArrayElementType::Signed | ArrayElementType::Unsigned => {
-            value.as_fixnum().is_some()
-        }
+        ArrayElementType::Fixnum => value.as_fixnum().is_some(),
+        ArrayElementType::Signed => matches!(
+            classify_object(ctx, value),
+            ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
+        ),
+        ArrayElementType::Unsigned => match classify_object(ctx, value) {
+            ObjectRef::Fixnum(value) => value >= 0,
+            ObjectRef::Bignum(value) => !bignum_sign(ctx, Bignum::from_word(value))?,
+            // check-added-lines: allow(wildcard) non-integer objects are invalid in unsigned arrays
+            _ => false,
+        },
         ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
     };
     valid.then_some(value).ok_or(ObjectError::TypeError)
@@ -390,7 +402,7 @@ pub fn array_row_major_set(
     if index >= total {
         return Err(ObjectError::TypeError);
     }
-    validate_element(array_element_type(ctx, object)?, value)?;
+    validate_element(ctx, array_element_type(ctx, object)?, value)?;
     let displaced = read(
         ctx,
         object,

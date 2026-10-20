@@ -160,9 +160,11 @@ fn executes_one_million_mutual_tail_calls_under_gc_stress() {
     object_context
         .register(&runtime)
         .expect("register object context");
-    ncl_sys::enter_native(object_context.thread_mut());
+    object_context.thread_access().enter_native();
     let mut thread = Thread::new();
-    ncl_sys::register_thread_with_thread(object_context.thread_mut(), &mut thread)
+    object_context
+        .thread_access()
+        .register_thread_with(&mut thread)
         .expect("register generated thread");
 
     let abi = BuiltinAbi;

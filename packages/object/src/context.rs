@@ -5,6 +5,24 @@ use core::cell::Cell;
 use ncl_sys::{Heap, RootToken, RuntimeErrorSource, StorageCondition, Thread, Word};
 use std::sync::Arc;
 
+struct RuntimeErrorPayloadCapability<'a, T> {
+    thread: &'a mut Thread,
+    source: RuntimeErrorSource,
+    payload: &'a mut Option<T>,
+}
+
+impl<T: Copy> RuntimeErrorPayloadCapability<'_, T> {
+    const fn record(self, payload: T) {
+        self.thread
+            .record_runtime_error_payload(self.source, self.payload, payload);
+    }
+
+    const fn take(self) -> Option<T> {
+        self.thread
+            .take_runtime_error_payload(self.source, self.payload)
+    }
+}
+
 pub type ConditionHandlerInvoker =
     fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, &[Word]) -> Result<Word, ObjectError>;
 
@@ -153,18 +171,21 @@ impl ThreadContext {
     }
     /// Record a pending condition.
     pub const fn set_pending(&mut self, error: ObjectError) {
-        self.pending = Some(error);
-        self.thread
-            .set_runtime_error_pending(RuntimeErrorSource::Object, true);
+        RuntimeErrorPayloadCapability {
+            thread: &mut self.thread,
+            source: RuntimeErrorSource::Object,
+            payload: &mut self.pending,
+        }
+        .record(error);
     }
     /// Take the pending condition.
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
-        let error = self.pending.take();
-        if error.is_some() {
-            self.thread
-                .set_runtime_error_pending(RuntimeErrorSource::Object, false);
+        RuntimeErrorPayloadCapability {
+            thread: &mut self.thread,
+            source: RuntimeErrorSource::Object,
+            payload: &mut self.pending,
         }
-        error
+        .take()
     }
     /// Whether no Rust-side boundary error is pending.
     #[must_use]
@@ -172,18 +193,25 @@ impl ThreadContext {
         self.pending.is_none()
     }
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
-        self.pending_lisp_error = Some(error);
-        self.thread
-            .set_runtime_error_pending(RuntimeErrorSource::Lisp, true);
+        RuntimeErrorPayloadCapability {
+            thread: &mut self.thread,
+            source: RuntimeErrorSource::Lisp,
+            payload: &mut self.pending_lisp_error,
+        }
+        .record(error);
     }
     /// Take the pending typed Lisp condition, if one was recorded.
     pub const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
-        let error = self.pending_lisp_error.take();
-        if error.is_some() {
-            self.thread
-                .set_runtime_error_pending(RuntimeErrorSource::Lisp, false);
+        RuntimeErrorPayloadCapability {
+            thread: &mut self.thread,
+            source: RuntimeErrorSource::Lisp,
+            payload: &mut self.pending_lisp_error,
         }
-        error
+        .take()
+    }
+    /// Take the direct native error, clearing its source flag even when empty.
+    pub fn take_pending_native_error(&mut self) -> Option<ncl_sys::NativeError> {
+        self.thread.take_native_error()
     }
     /// Store the condition object produced for the latest typed builtin error.
     pub const fn set_pending_condition(&mut self, condition: Word) {
@@ -247,9 +275,21 @@ impl ThreadContext {
         };
         invoker(runtime, self, handler, arguments)
     }
-    /// Return the stable thread pointer used by generated code.
-    pub fn thread_mut(&mut self) -> &mut Thread {
-        &mut self.thread
+    /// Return a restricted view of the thread's native and heap operations.
+    ///
+    /// The view does not expose runtime-error payload mutation or consumption.
+    ///
+    /// ```compile_fail
+    /// let mut context = ncl_object::ThreadContext::new();
+    /// let mut payload = None::<()>;
+    /// context.thread_access().record_runtime_error_payload(
+    ///     ncl_sys::RuntimeErrorSource::Object,
+    ///     &mut payload,
+    ///     (),
+    /// );
+    /// ```
+    pub fn thread_access(&mut self) -> ncl_sys::ThreadAccess<'_> {
+        ncl_sys::ThreadAccess::new(self.thread.as_mut())
     }
     /// Mark an object as weak with the requested policy.
     ///

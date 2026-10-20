@@ -12,7 +12,7 @@
 
 use ncl_image::{CodeImage, load, save};
 use ncl_object::{Runtime, ThreadContext};
-use ncl_sys::{alloc_code, invoke_entry, publish_code, write_code};
+use ncl_sys::{alloc_code, publish_code, write_code};
 
 /// The constant returned by the fixture program.
 const EXPECTED: u64 = 42;
@@ -37,7 +37,9 @@ fn published_code_executes_after_a_load() {
     assert_eq!(loaded.code.len(), 1);
     assert_eq!(loaded.code[0].entry(), loaded.code[0].address());
 
-    let (value, count) = invoke_entry(&loaded.code[0], 0, ctx.thread_mut(), 0, [0; 4], 0);
+    let (value, count) = ctx
+        .thread_access()
+        .invoke_entry(&loaded.code[0], 0, 0, [0; 4], 0);
     assert_eq!(value, EXPECTED);
     assert_eq!(count, 1);
 }

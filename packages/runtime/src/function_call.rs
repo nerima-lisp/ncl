@@ -6,7 +6,6 @@ use ncl_object::{
     Runtime as ObjectRuntime, ThreadContext, Word, function_entry, symbol_function,
     symbol_is_macro,
 };
-use ncl_sys::invoke_entry_with_function_address;
 
 /// Calls registered Rust builtins and published native simple-funs.
 #[derive(Debug, Default)]
@@ -80,9 +79,8 @@ fn call_native(
         .map_or(Ok(0), |rest| {
             u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
         })?;
-    let (result, count) = invoke_entry_with_function_address(
+    let (result, count) = ctx.thread_access().invoke_entry_with_function_address(
         entry,
-        std::ptr::from_mut(ctx.thread_mut()),
         function.as_word().bits(),
         argument_count,
         registers,
@@ -98,7 +96,8 @@ fn call_native(
             value
         }
         count => {
-            let area = ctx.thread_mut().multiple_values();
+            let thread = ctx.thread_access();
+            let area = thread.multiple_values();
             if area.len() < count {
                 return Err(ObjectError::Layout);
             }
@@ -179,6 +178,15 @@ mod tests {
             .as_fixnum()
             .ok_or(ncl_object::ObjectError::TypeError)?;
         Ok(Word::fixnum(left + right))
+    }
+
+    fn failing_lisp_error_converter(
+        context: &mut ncl_object::ThreadContext,
+        _runtime: &ncl_object::Runtime,
+        _error: ncl_object::LispError,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        context.set_pending(ncl_object::ObjectError::ControlError);
+        Err(ncl_object::ObjectError::Layout)
     }
 
     fn register_builtin(runtime: &mut Runtime) -> ncl_object::FunctionObject {
@@ -356,6 +364,40 @@ mod tests {
             Ok(Word::fixnum(5))
         );
         assert!(values.is_empty());
+    }
+
+    #[test]
+    fn builtin_function_caller_drains_errors_from_compiled_entry() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let function = runtime
+            .eval("(lambda () 7)")
+            .and_then(|word| ncl_object::FunctionObject::try_from(word).map_err(Into::into))
+            .unwrap_or_else(|error| panic!("compiled function: {error:?}"));
+        runtime
+            .object
+            .register_lisp_error_converter(failing_lisp_error_converter);
+        runtime
+            .context
+            .set_pending_lisp_error(ncl_object::LispError::EndOfFile);
+
+        let mut caller = ncl_object::BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        assert_eq!(
+            caller.call_function(
+                &mut runtime.context,
+                &runtime.object,
+                FunctionDesignator::Function(function),
+                FunctionArguments::new(&[]),
+                &mut values,
+            ),
+            Err(ncl_object::ObjectError::Layout)
+        );
+        assert!(!runtime.context.thread_access().runtime_error_pending());
+
+        let value = runtime
+            .eval("42")
+            .unwrap_or_else(|error| panic!("follow-up evaluation: {error:?}"));
+        assert_eq!(runtime.format_result(value), "42");
     }
 
     #[test]

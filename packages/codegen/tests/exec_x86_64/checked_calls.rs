@@ -15,7 +15,7 @@ static OUTER_CATCH_HANDLER_CALLS: AtomicUsize = AtomicUsize::new(0);
 extern "C" fn call_target_error(ctx: &mut Thread, value: u64) -> u64 {
     assert_eq!(value, Word::fixnum(23).bits());
     CALL_TARGET_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -46,7 +46,7 @@ extern "C" fn enter_progv_success(
 
 extern "C" fn enter_progv_error(ctx: &mut Thread, region: u64, symbols: u64, values: u64) -> u64 {
     enter_progv_success(ctx, region, symbols, values);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -57,7 +57,7 @@ extern "C" fn leave_progv_success(_ctx: &mut Thread, _region: u64) -> u64 {
 
 extern "C" fn leave_progv_error(ctx: &mut Thread, region: u64) -> u64 {
     leave_progv_success(ctx, region);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -68,7 +68,7 @@ extern "C" fn enter_catch_success(_ctx: &mut Thread, _region: u64, _depth: u64, 
 
 extern "C" fn enter_catch_error(ctx: &mut Thread, region: u64, depth: u64, tag: u64) -> u64 {
     enter_catch_success(ctx, region, depth, tag);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -87,7 +87,7 @@ extern "C" fn leave_catch_success(_ctx: &mut Thread, _region: u64) -> u64 {
 
 extern "C" fn leave_catch_error(ctx: &mut Thread, region: u64) -> u64 {
     leave_catch_success(ctx, region);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 
@@ -97,7 +97,7 @@ extern "C" fn leave_catch_pending_error(ctx: &mut Thread, region: u64) -> u64 {
     let was_pending = ctx.pending();
     LEAVE_CATCH_SAW_PENDING.store(was_pending, Ordering::SeqCst);
     if was_pending {
-        ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+        set_runtime_error_for_codegen_test(ctx);
     }
     Word::NIL.bits()
 }
@@ -114,7 +114,7 @@ extern "C" fn leave_unwind_protect_success(_ctx: &mut Thread, _region: u64) -> u
 
 extern "C" fn leave_unwind_protect_error(ctx: &mut Thread, region: u64) -> u64 {
     leave_unwind_protect_success(ctx, region);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 

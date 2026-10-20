@@ -342,7 +342,7 @@ pub fn thread_yield() {
 pub fn idle_body(_runtime: &Runtime, context: &mut ThreadContext) -> Result<(), ThreadError> {
     let id = current_id();
     loop {
-        ncl_sys::poll_safepoint(context.thread_mut());
+        context.thread_access().poll_safepoint();
         let _interrupted = take_interrupt(id);
         if should_terminate(id) {
             return Ok(());

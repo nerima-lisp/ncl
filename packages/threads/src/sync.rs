@@ -103,7 +103,7 @@ pub fn block_until<T>(
     mut try_take: impl FnMut(&mut SyncState) -> Option<T>,
 ) -> Result<T, ThreadError> {
     let deadline = timeout.map(|span| Instant::now() + span);
-    ncl_sys::enter_native(ctx.thread_mut());
+    ctx.thread_access().enter_native();
     let (mutex, condvar) = sync();
     let mut state = lock(mutex);
     let outcome = loop {
@@ -132,7 +132,7 @@ pub fn block_until<T>(
         }
     };
     drop(state);
-    ncl_sys::leave_native(ctx.thread_mut());
+    ctx.thread_access().leave_native();
     outcome
 }
 

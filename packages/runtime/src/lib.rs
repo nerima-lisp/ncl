@@ -28,7 +28,7 @@ use ncl_object::{
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, RootToken, SafepointMap, SourceLocation, alloc_code,
-    invoke_entry_with_function, publish_code, register_code, write_code,
+    invoke_entry_with_function, publish_code, write_code,
 };
 use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
 /// A running NCL instance and its published native code.
@@ -242,7 +242,9 @@ impl Runtime {
             debug_table: Vec::new(),
         };
         if !compiled.safepoint_maps.is_empty() {
-            register_code(self.context.thread_mut(), &code, metadata.clone())
+            self.context
+                .thread_access()
+                .register_code(&code, metadata.clone())
                 .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         }
         Ok((code, metadata))
@@ -324,8 +326,8 @@ impl Runtime {
         let code_object = function_code(&self.context, Function::from_word(function))?;
         let entry_codes = &self.entry_codes;
         let context = &mut self.context;
-        context.thread_mut().take_native_error();
-        let thread = NonNull::from(context.thread_mut());
+        let _ = context.take_pending_native_error();
+        let thread = context.thread_access().as_non_null();
         let mut native_context = NativeInvocation {
             object: &self.object,
             context,
@@ -347,7 +349,7 @@ impl Runtime {
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
         let ((value, _), _) = (result, native_context);
-        if let Some(error) = context.thread_mut().take_native_error() {
+        if let Some(error) = context.take_pending_native_error() {
             return Err(native_failure(error));
         }
         if let Some(error) = context.take_pending_lisp_error()

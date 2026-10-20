@@ -62,7 +62,7 @@ mod tests {
         runtime.context.set_gc_stress(true);
         runtime.context.set_strict_forwarding(true);
 
-        let thread = std::ptr::NonNull::from(runtime.context.thread_mut());
+        let thread = runtime.context.thread_access().as_non_null();
         let returned = ncl_sys::native_add(
             thread,
             Word::fixnum(i64::MAX / 2),
@@ -70,7 +70,7 @@ mod tests {
         );
         assert_eq!(returned, Word::NIL);
         assert!(matches!(
-            runtime.context.thread_mut().take_native_error(),
+            runtime.context.take_pending_native_error(),
             Some(NativeError::Overflow {
                 operation: NativeOperation::Add,
                 semantics: OverflowSemantics::ArithmeticFixnum,

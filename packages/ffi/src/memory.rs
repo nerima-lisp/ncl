@@ -10,7 +10,7 @@ use ncl_sys::foreign::{
 };
 
 use crate::FfiError;
-use crate::alien::{AlienType, marshal_argument, size_of, unmarshal_result};
+use crate::alien::{AlienType, marshal_argument, unmarshal_result};
 use crate::roots::with_roots;
 use crate::sap::SystemAreaPointer;
 
@@ -304,20 +304,30 @@ fn checked_offset(
 }
 
 fn access_width(ty: &AlienType) -> Result<AccessWidth, FfiError> {
-    let bytes = match ty {
+    match ty {
         AlienType::Void
         | AlienType::LongFloat
         | AlienType::Array(_, _)
         | AlienType::Structure(_)
-        | AlienType::Union(_) => return Err(FfiError::UnsupportedType(ty.label())),
-        _ => size_of(ty),
-    };
-    match bytes {
-        1 => Ok(AccessWidth::U8),
-        2 => Ok(AccessWidth::U16),
-        4 => Ok(AccessWidth::U32),
-        8 => Ok(AccessWidth::U64),
-        _ => Err(FfiError::UnsupportedType(ty.label())),
+        | AlienType::Union(_) => Err(FfiError::UnsupportedType(ty.label())),
+        AlienType::Boolean | AlienType::Char | AlienType::UnsignedChar => Ok(AccessWidth::U8),
+        AlienType::Short | AlienType::UnsignedShort => Ok(AccessWidth::U16),
+        AlienType::Int
+        | AlienType::UnsignedInt
+        | AlienType::SingleFloat
+        | AlienType::Enumeration(_) => Ok(AccessWidth::U32),
+        AlienType::Long
+        | AlienType::UnsignedLong
+        | AlienType::LongLong
+        | AlienType::UnsignedLongLong
+        | AlienType::SizeT
+        | AlienType::SSizeT
+        | AlienType::DoubleFloat
+        | AlienType::Pointer(_)
+        | AlienType::CString
+        | AlienType::Utf8String
+        | AlienType::SystemAreaPointer
+        | AlienType::Function(_) => Ok(AccessWidth::U64),
     }
 }
 

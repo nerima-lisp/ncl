@@ -88,6 +88,36 @@ const PROBES: &[Probe] = &[
         expected: "3",
     },
     Probe {
+        name: "multiple-value-setq-returns-primary-and-discards-extra",
+        source: "(let ((a 0) (b 0)) (list (multiple-value-setq (a b) (values 1 2 3)) a b))",
+        expected: "(1 1 2)",
+    },
+    Probe {
+        name: "multiple-value-setq-short-values-fill-nil",
+        source: "(let ((a 0) (b 2)) (list (multiple-value-setq (a b) (values 4)) a b))",
+        expected: "(4 4 NIL)",
+    },
+    Probe {
+        name: "multiple-value-setq-no-values-fill-nil",
+        source: "(let ((a 1) (b 2)) (list (multiple-value-setq (a b) (values)) a b))",
+        expected: "(NIL NIL NIL)",
+    },
+    Probe {
+        name: "multiple-value-setq-empty-variable-list",
+        source: "(multiple-value-setq () (values 7 8))",
+        expected: "7",
+    },
+    Probe {
+        name: "rotatef",
+        source: "(let ((a 1) (b 2)) (list (rotatef a b) a b))",
+        expected: "(NIL 2 1)",
+    },
+    Probe {
+        name: "shiftf",
+        source: "(let ((a 1) (b 2)) (list (shiftf a b 3) a b))",
+        expected: "(1 2 3)",
+    },
+    Probe {
         name: "with-input-from-string",
         source: "(with-input-from-string (s \"abc\") (read-char s))",
         expected: "#\\a",
@@ -236,6 +266,16 @@ const PROBES: &[Probe] = &[
         expected: "2",
     },
     Probe {
+        name: "loop-maximize",
+        source: "(loop for x from 1 below 4 maximize x)",
+        expected: "3",
+    },
+    Probe {
+        name: "loop-minimize",
+        source: "(loop for x from 1 below 4 minimize x)",
+        expected: "1",
+    },
+    Probe {
         name: "loop-below-defaults-from-zero",
         source: "(loop for i below 3 collect i)",
         expected: "(0 1 2)",
@@ -267,38 +307,12 @@ const PROBES: &[Probe] = &[
     },
 ];
 
-const XFAILS: &[XFail] = &[
-    XFail {
-        name: "loop-maximize",
-        source: "(loop for x from 1 below 4 maximize x)",
-        stderr: "UnsupportedLiteral",
-        exit_code: 1,
-    },
-    XFail {
-        name: "loop-with-finally",
-        source: "(loop with x = 2 finally (return x))",
-        stderr: "UndefinedValue",
-        exit_code: 1,
-    },
-    XFail {
-        name: "rotatef",
-        source: "(let ((a 1) (b 2)) (rotatef a b) (list a b))",
-        stderr: "ROTATEF",
-        exit_code: 1,
-    },
-    XFail {
-        name: "shiftf",
-        source: "(let ((a 1) (b 2)) (shiftf a b 3) (list a b))",
-        stderr: "SHIFTF",
-        exit_code: 1,
-    },
-    XFail {
-        name: "multiple-value-setq",
-        source: "(multiple-value-setq (a b) (values 1 2))",
-        stderr: "MULTIPLE-VALUE-SETQ",
-        exit_code: 1,
-    },
-];
+const XFAILS: &[XFail] = &[XFail {
+    name: "loop-with-finally",
+    source: "(loop with x = 2 finally (return x))",
+    stderr: "UndefinedValue",
+    exit_code: 1,
+}];
 
 const ERROR_CASES: &[ErrorCase] = &[
     // B7: ECASE, unlike CASE, signals when nothing matches.

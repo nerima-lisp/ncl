@@ -282,6 +282,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "NTH-VALUE" => Some(control::expand_nth_value_adapter),
         "MULTIPLE-VALUE-LIST" => Some(control::expand_multiple_value_list_adapter),
         "MULTIPLE-VALUE-BIND" => Some(control::expand_multiple_value_bind_adapter),
+        "MULTIPLE-VALUE-SETQ" => Some(psetq::expand_multiple_value_setq),
         "DO" => Some(control::expand_do_adapter),
         "DO*" => Some(control::expand_do_star_adapter),
         "PSETQ" => Some(psetq::expand),

@@ -45,6 +45,7 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     place!("REST", [list_symbol]);
     place!("NTH", [Word::fixnum(0), list_symbol]);
     place!("SYMBOL-VALUE", [var_symbol]);
+    place!("SBIT", [var_symbol, Word::fixnum(0)]);
     cases.push(var_symbol);
 
     ctx.set_gc_stress(true);

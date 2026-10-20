@@ -2,39 +2,42 @@
 
 ## hash-arrays
 
-The compiled hash/array matrix has 55 normal cases and 1 explicit XFAIL case.
-Each XFAIL must exit with status 1 and retain stderr for the listed substring
-assertion. `VECTOR-PUSH-EXTEND` and `VECTOR-POP` were previously XFAILed for
-an AArch64 four-register call-argument limit; both now compile and pass as
-ordinary cases in `tests/e2ehash.rs`.
+`tests/e2ehash.rs` currently contains 56 ordinary probes and no XFAILs. This
+describes its test coverage, not every supported or unsupported hash/array
+operation. `VECTOR-PUSH-EXTEND` and `VECTOR-POP` are ordinary probes in the
+compiled matrix. AArch64 lowering passes four call arguments in registers and
+stores any additional arguments in its outgoing area. `SETF SBIT` is also an
+ordinary probe using a simple bit vector created by `MAKE-ARRAY`.
 
 ## macros
 
-`tests/e2emacro.rs` asserts compiled results for the working control macros and
-keeps the currently failing binding, iteration, multiple-value, and structure
-paths as explicit XFAILs. `IF`/`WHEN`/`UNLESS` (and the LOOP clauses that lower
-through them, e.g. `count`) used to leave a mutated variable's post-branch
-value unmerged, producing a native IR verification error
-(`pass inline-direct-calls failed`); `lower_if`
-(`packages/compiler/front/src/lower/expr.rs`) now merges live variables across
-branches through a block parameter, so `loop-count` and ordinary `if`/`when`
-mutation moved from XFAIL to `PROBES`. `LOOP` also gained `WHEN`/`UNLESS`/`IF`
-conditional clauses (with `AND`/`ELSE`/`END`/`IT`), destructuring `FOR`
-variables, and a CLHS-conformant default initial value of `0` for arithmetic
-`FOR` clauses without `FROM`/`UPFROM`/`DOWNFROM` (`packages/lib/macros/src/loop`).
-The remaining XFAILs are front-end macro-expansion errors for unsupported
-destructuring/multiple-value/defstruct paths, `UnsupportedLiteral` for the loop
-`maximize`/`minimize` accumulators (the `Word::TRUE` first-value sentinel in
-`packages/lib/macros/src/loop/accumulator.rs` is not a literal the front end
-lowers), and `loop-with-finally`, whose body has no iteration-control clause at
-all: real Common Lisp (confirmed against SBCL 2.6.0) loops forever on this
-same input, so NCL's fast compile-time error is preferable to reproducing the
-hang and is not a defect to fix. These are retained with their stderr and exit
-status in the test rather than being silently omitted.
+`tests/e2emacro.rs` currently asserts compiled results for control macros, LOOP clauses,
+`MAXIMIZE`/`MINIMIZE`, `ROTATEF`, `SHIFTF`, and `MULTIPLE-VALUE-SETQ`. The
+`MULTIPLE-VALUE-SETQ` probes cover extra values, missing values, no values, an
+empty variable list, and return of the primary value. Its expansion captures
+the values in a list, assigns each variable from its corresponding position,
+and ignores values beyond the last variable. A missing position reads as
+`NIL`, including the primary value when there are no values.
 
-| builtin | source | expected exit | stderr substring | cause |
+`IF`/`WHEN`/`UNLESS` and LOOP clauses that lower through them, such as `COUNT`,
+now merge mutated variables across branches through a block parameter in
+`packages/compiler/front/src/lower/expr.rs`. LOOP also supports conditional
+clauses with `AND`/`ELSE`/`END`/`IT`, destructuring `FOR` variables, and a
+default initial value of `0` for arithmetic `FOR` clauses without
+`FROM`/`UPFROM`/`DOWNFROM` (`packages/lib/macros/src/loop`). The
+`MAXIMIZE`/`MINIMIZE` accumulators use the `NIL` accumulator value to identify
+their first iteration, avoiding the unsupported `Word::TRUE` literal.
+
+The only explicit macro XFAIL in `tests/e2emacro.rs` is `loop-with-finally`.
+This file records the current probes, not every unsupported LOOP clause. The
+XFAIL records NCL's current `UndefinedValue` rejection. The form has no
+iteration-control clause, so the equivalent Common Lisp loop does not
+terminate; the test records NCL's early rejection instead of running an
+unbounded probe.
+
+| case | source | expected exit | stderr substring | cause |
 | --- | --- | ---: | --- | --- |
-| `SBIT` | `(setf (sbit (make-array 2 :element-type 'bit) 0) 1)` | 1 | `UndefinedFunction` | `packages/lib/macros/src/setf_places.rs:223-240`: SETF place expansion for the SBIT CL function is unimplemented |
+| `loop-with-finally` | `(loop with x = 2 finally (return x))` | 1 | `UndefinedValue` | NCL rejects this form before evaluation because it has no iteration-control clause; the equivalent Common Lisp loop does not terminate. |
 
 ## Numbers
 

@@ -76,10 +76,6 @@ pub(super) fn expand_accumulator(
             &[accumulator, value],
         )?),
         AccumulatorKind::Maximize | AccumulatorKind::Minimize => {
-            let first = held_fresh_symbol(ctx, runtime, held)?;
-            let truth = held.len();
-            held.push(Word::TRUE);
-            bindings.push(held_list(ctx, runtime, held, &[first, truth])?);
             let operator = if matches!(kind, AccumulatorKind::Maximize) {
                 "MAX"
             } else {
@@ -87,18 +83,14 @@ pub(super) fn expand_accumulator(
             };
             let selected = held_form(ctx, runtime, held, operator, &[accumulator, value])?;
             let selected = held_form(ctx, runtime, held, "SETQ", &[accumulator, selected])?;
-            let set_first = held_form(ctx, runtime, held, "SETQ", &[accumulator, value])?;
-            let nil = held.len();
-            held.push(Word::NIL);
-            let clear_first = held_form(ctx, runtime, held, "SETQ", &[first, nil])?;
+            let initialize = held_form(ctx, runtime, held, "SETQ", &[accumulator, value])?;
             body.push(held_form(
                 ctx,
                 runtime,
                 held,
                 "IF",
-                &[first, set_first, selected],
+                &[accumulator, selected, initialize],
             )?);
-            body.push(clear_first);
         }
     }
     Ok((accumulator, kind))

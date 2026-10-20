@@ -1,4 +1,7 @@
-use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
+use crate::{ObjectError, Relocation};
+#[path = "fasl_relocation.rs"]
+mod relocation_wire;
+use relocation_wire::{decode as decode_relocations, encode as encode_relocations, width};
 
 #[cfg(test)]
 #[path = "fasl_coverage_tests.rs"]
@@ -62,7 +65,13 @@ impl FaslWriter {
     pub fn write(fasl: &Fasl) -> Result<Vec<u8>, ObjectError> {
         let mut out = vec![0; 64];
         out[0..8].copy_from_slice(b"NCLFASL\0");
-        out[8..10].copy_from_slice(&1u16.to_le_bytes());
+        out.get_mut(8..10)
+            .ok_or(ObjectError::OutOfBounds {
+                section: "FASL header",
+                offset: 8,
+                size: 2,
+            })?
+            .copy_from_slice(&2u16.to_le_bytes());
         out[10] = fasl.header.architecture as u8;
         out[11] = 8;
         out[12] = 1;
@@ -128,7 +137,7 @@ impl FaslReader {
         architecture: Architecture,
         features: u64,
     ) -> Result<Fasl, ObjectError> {
-        validate_fasl_header(bytes, architecture, features)?;
+        let version = validate_fasl_header(bytes, architecture, features)?;
         let FaslRanges {
             code,
             reloc,
@@ -136,8 +145,8 @@ impl FaslReader {
             symbols,
             stack,
             debug_start,
-        } = read_fasl_ranges(bytes)?;
-        let relocations = decode_relocations(reloc)?;
+        } = read_fasl_ranges(bytes, version)?;
+        let relocations = decode_relocations(reloc, version, u32_at(bytes, 36)?)?;
         for relocation in &relocations {
             if relocation.section.0 != 0 {
                 return Err(ObjectError::InvalidReference {
@@ -145,11 +154,21 @@ impl FaslReader {
                     index: usize::try_from(relocation.section.0).unwrap_or(usize::MAX),
                 });
             }
-            if usize::try_from(relocation.offset).map_or(true, |offset| offset >= code.len()) {
+            let relocation_width = width(relocation.kind);
+            let relocation_width_in_bytes =
+                usize::try_from(relocation_width).map_err(|_| ObjectError::InvalidField {
+                    field: "relocation width",
+                    value: u64::from(relocation_width),
+                })?;
+            if usize::try_from(relocation.offset)
+                .ok()
+                .and_then(|offset| offset.checked_add(relocation_width_in_bytes))
+                .is_none_or(|end| end > code.len())
+            {
                 return Err(ObjectError::OutOfBounds {
                     section: "FASL relocation",
                     offset: u64::from(relocation.offset),
-                    size: 1,
+                    size: u64::from(relocation_width),
                 });
             }
         }
@@ -182,7 +201,7 @@ fn validate_fasl_header(
     bytes: &[u8],
     architecture: Architecture,
     features: u64,
-) -> Result<(), ObjectError> {
+) -> Result<u16, ObjectError> {
     if bytes.len() < 64 {
         return Err(ObjectError::Truncated {
             offset: bytes.len(),
@@ -195,10 +214,11 @@ fn validate_fasl_header(
             value: 0,
         });
     }
-    if u16_at(bytes, 8)? != 1 {
+    let version = u16_at(bytes, 8)?;
+    if !matches!(version, 1 | 2) {
         return Err(ObjectError::InvalidField {
             field: "version",
-            value: u64::from(u16_at(bytes, 8)?),
+            value: u64::from(version),
         });
     }
     if bytes[10] != architecture as u8 {
@@ -232,7 +252,7 @@ fn validate_fasl_header(
             value: actual_features,
         });
     }
-    Ok(())
+    Ok(version)
 }
 
 struct FaslRanges<'a> {
@@ -244,15 +264,27 @@ struct FaslRanges<'a> {
     debug_start: u32,
 }
 
-fn read_fasl_ranges(bytes: &[u8]) -> Result<FaslRanges<'_>, ObjectError> {
+fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, ObjectError> {
     let code = range(bytes, "code", u32_at(bytes, 24)?, u32_at(bytes, 28)?)?;
-    let reloc_size = u32_at(bytes, 36)?
-        .checked_mul(16)
-        .ok_or(ObjectError::InvalidField {
-            field: "relocation size",
-            value: u64::MAX,
-        })?;
-    let reloc = range(bytes, "relocation", u32_at(bytes, 32)?, reloc_size)?;
+    let reloc_offset = u32_at(bytes, 32)?;
+    let reloc_count = u32_at(bytes, 36)?;
+    let constant_offset = u32_at(bytes, 40)?;
+    let reloc_size = if version == 1 {
+        reloc_count
+            .checked_mul(16)
+            .ok_or(ObjectError::InvalidField {
+                field: "relocation size",
+                value: u64::MAX,
+            })?
+    } else {
+        constant_offset
+            .checked_sub(reloc_offset)
+            .ok_or(ObjectError::Overlap {
+                first: "relocation",
+                second: "constant",
+            })?
+    };
+    let reloc = range(bytes, "relocation", reloc_offset, reloc_size)?;
     let constants = range(bytes, "constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?)?;
     let symbols = range(bytes, "symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?)?;
     let stack_offset = u32_at(bytes, 56)?;
@@ -268,7 +300,7 @@ fn read_fasl_ranges(bytes: &[u8]) -> Result<FaslRanges<'_>, ObjectError> {
             })?;
     validate_section_order(&[
         ("code", u32_at(bytes, 24)?, u32_at(bytes, 28)?),
-        ("relocation", u32_at(bytes, 32)?, reloc_size),
+        ("relocation", reloc_offset, reloc_size),
         ("constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?),
         ("symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?),
         ("stack map", stack_offset, stack_size),
@@ -283,97 +315,6 @@ fn read_fasl_ranges(bytes: &[u8]) -> Result<FaslRanges<'_>, ObjectError> {
     })
 }
 
-fn encode_relocations(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
-    let mut out = Vec::with_capacity(items.len() * 16);
-    for item in items {
-        out.extend_from_slice(&item.section.0.to_le_bytes());
-        out.extend_from_slice(&item.offset.to_le_bytes());
-        out.extend_from_slice(&(kind_number(item.kind)).to_le_bytes());
-        out.extend_from_slice(
-            &i32::try_from(item.addend)
-                .map_err(|_| ObjectError::InvalidField {
-                    field: "relocation addend",
-                    value: item.addend.unsigned_abs(),
-                })?
-                .to_le_bytes(),
-        );
-    }
-    Ok(out)
-}
-fn decode_relocations(bytes: &[u8]) -> Result<Vec<Relocation>, ObjectError> {
-    if !bytes.len().is_multiple_of(16) {
-        return Err(ObjectError::InvalidField {
-            field: "relocation size",
-            value: bytes.len() as u64,
-        });
-    }
-    bytes
-        .as_chunks::<16>()
-        .0
-        .iter()
-        .map(|r| {
-            Ok(Relocation {
-                section: SectionId(u32::from_le_bytes(r[0..4].try_into().map_err(|_| {
-                    ObjectError::Truncated {
-                        offset: 0,
-                        needed: 4,
-                    }
-                })?)),
-                offset: u32::from_le_bytes(r[4..8].try_into().map_err(|_| {
-                    ObjectError::Truncated {
-                        offset: 4,
-                        needed: 4,
-                    }
-                })?),
-                kind: number_kind(u32::from_le_bytes(r[8..12].try_into().map_err(|_| {
-                    ObjectError::Truncated {
-                        offset: 8,
-                        needed: 4,
-                    }
-                })?))?,
-                symbol: SymbolRef::Local(0),
-                addend: i64::from(i32::from_le_bytes(r[12..16].try_into().map_err(|_| {
-                    ObjectError::Truncated {
-                        offset: 12,
-                        needed: 4,
-                    }
-                })?)),
-            })
-        })
-        .collect()
-}
-const fn kind_number(kind: RelocKind) -> u32 {
-    match kind {
-        RelocKind::Abs64 => 0,
-        RelocKind::PcRel32 => 1,
-        RelocKind::Plt32 => 2,
-        RelocKind::Branch26 => 3,
-        RelocKind::Adrp21 => 4,
-        RelocKind::Add12 => 5,
-        RelocKind::CondBranch19 => 6,
-        RelocKind::CodeEntry => 7,
-        RelocKind::ExternalSymbol => 8,
-    }
-}
-fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
-    [
-        RelocKind::Abs64,
-        RelocKind::PcRel32,
-        RelocKind::Plt32,
-        RelocKind::Branch26,
-        RelocKind::Adrp21,
-        RelocKind::Add12,
-        RelocKind::CondBranch19,
-        RelocKind::CodeEntry,
-        RelocKind::ExternalSymbol,
-    ]
-    .get(value as usize)
-    .copied()
-    .ok_or_else(|| ObjectError::InvalidField {
-        field: "relocation kind",
-        value: u64::from(value),
-    })
-}
 fn u16_at(b: &[u8], p: usize) -> Result<u16, ObjectError> {
     b.get(p..p + 2)
         .ok_or(ObjectError::Truncated {

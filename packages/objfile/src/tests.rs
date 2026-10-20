@@ -8,7 +8,7 @@ fn fasl_round_trip_and_header_validation() {
             features: 3,
         },
         sections: FaslSection {
-            code: vec![0xc3],
+            code: vec![0xc3, 0, 0, 0, 0, 0, 0, 0],
             relocations: vec![Relocation {
                 section: SectionId(0),
                 offset: 0,
@@ -108,7 +108,7 @@ fn seeded_fasl_round_trip() {
     let mut seed = 0x9e37_79b9_u32;
     for iteration in 0..64 {
         seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        let code_len = usize::try_from(seed % 31 + 1).unwrap_or(1);
+        let code_len = usize::try_from(seed % 24 + 8).unwrap_or(8);
         let mut code = Vec::with_capacity(code_len);
         for _ in 0..code_len {
             seed = seed.rotate_left(5).wrapping_add(0x6d2b_79f5);
@@ -129,7 +129,11 @@ fn seeded_fasl_round_trip() {
                     section: SectionId(0),
                     offset: 0,
                     kind: RelocKind::Abs64,
-                    symbol: SymbolRef::Local(0),
+                    symbol: if iteration % 2 == 0 {
+                        SymbolRef::Local(u32::try_from(iteration + 1).unwrap_or_default())
+                    } else {
+                        SymbolRef::External(format!("seeded_{iteration}"))
+                    },
                     addend: i64::from(i32::from_ne_bytes(seed.to_ne_bytes())),
                 }],
                 constants: seed.to_le_bytes().to_vec(),
@@ -265,12 +269,12 @@ fn fasl_header_rejection_reports_the_rejected_field() {
         })
     );
     let mut bytes = FaslWriter::write(&value).unwrap_or_default();
-    bytes[8..10].copy_from_slice(&2u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3u16.to_le_bytes());
     assert_eq!(
         FaslReader::read(&bytes, Architecture::X86_64, 7),
         Err(ObjectError::InvalidField {
             field: "version",
-            value: 2
+            value: 3
         })
     );
     let mut bytes = FaslWriter::write(&value).unwrap_or_default();
@@ -340,10 +344,18 @@ fn fasl_bounds_and_relocation_errors_are_specific() {
         Err(ObjectError::OutOfBounds {
             section: "FASL relocation",
             offset: 1,
-            size: 1
+            size: 8
         })
     );
-    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    let no_relocations = Fasl {
+        sections: FaslSection {
+            relocations: vec![],
+            ..value.sections.clone()
+        },
+        ..value
+    };
+    let mut bytes = FaslWriter::write(&no_relocations).unwrap_or_default();
+    bytes[8..10].copy_from_slice(&1u16.to_le_bytes());
     bytes[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
     assert_eq!(
         FaslReader::read(&bytes, Architecture::X86_64, 0),

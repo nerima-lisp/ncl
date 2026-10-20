@@ -85,6 +85,7 @@ fn fasl_rejects_bad_relocation_wire_data() {
         })
     );
     let mut bytes = FaslWriter::write(&minimal_fasl()).unwrap_or_default();
+    bytes[8..10].copy_from_slice(&1u16.to_le_bytes());
     bytes[36..40].copy_from_slice(&1u32.to_le_bytes());
     assert_eq!(
         FaslReader::read(&bytes, Architecture::X86_64, 0),

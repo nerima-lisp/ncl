@@ -47,6 +47,7 @@ dependencies = [
  "ncl-disasm",
  "ncl-ir",
  "ncl-object",
+ "ncl-objfile",
  "ncl-sys",
 ]
 

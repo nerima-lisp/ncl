@@ -162,8 +162,7 @@ fn enter_progv_error_stops_before_downstream_calls() {
     ENTER_PROGV_CALLS.store(0, Ordering::SeqCst);
     LEAVE_PROGV_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        fail_enter_progv: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::FailEnterProgv,
     };
     let (code, entry) = compile_and_publish(&build_progv_handler_function(95), &abi);
     let mut thread = Thread::new();
@@ -184,8 +183,7 @@ fn leave_progv_error_stops_before_downstream_call() {
     ENTER_PROGV_CALLS.store(0, Ordering::SeqCst);
     LEAVE_PROGV_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        fail_leave_progv: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::FailLeaveProgv,
     };
     let (code, entry) = compile_and_publish(&build_progv_handler_function(96), &abi);
     let mut thread = Thread::new();
@@ -206,8 +204,7 @@ fn enter_catch_error_stops_before_downstream_calls() {
     ENTER_CATCH_CALLS.store(0, Ordering::SeqCst);
     LEAVE_CATCH_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        fail_enter_catch: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::FailEnterCatch,
     };
     let (code, entry) = compile_and_publish(&build_catch_handler_function(98), &abi);
     let mut thread = Thread::new();
@@ -228,8 +225,7 @@ fn leave_catch_error_stops_before_downstream_call() {
     ENTER_CATCH_CALLS.store(0, Ordering::SeqCst);
     LEAVE_CATCH_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        fail_leave_catch: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::FailLeaveCatch,
     };
     let (code, entry) = compile_and_publish(&build_catch_handler_function(99), &abi);
     let mut thread = Thread::new();
@@ -250,8 +246,7 @@ fn leave_unwind_protect_error_stops_before_downstream_call() {
     ENTER_UNWIND_PROTECT_CALLS.store(0, Ordering::SeqCst);
     LEAVE_UNWIND_PROTECT_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        fail_leave_unwind_protect: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::FailLeaveUnwindProtect,
     };
     let (code, entry) = compile_and_publish(&build_unwind_protect_function(), &abi);
     let mut thread = Thread::new();
@@ -273,8 +268,7 @@ fn pending_dispatch_leave_catch_error_stops_before_outer_handler() {
     LEAVE_CATCH_SAW_PENDING.store(false, Ordering::SeqCst);
     OUTER_CATCH_HANDLER_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi {
-        pending_dispatch: true,
-        ..CheckedCallsAbi::default()
+        mode: CheckedCallsMode::PendingDispatch,
     };
     let (code, entry) = compile_and_publish(&build_pending_dispatch_function(), &abi);
     let mut thread = Thread::new();

@@ -120,12 +120,19 @@ extern "C" fn leave_unwind_protect_error(ctx: &mut Thread, region: u64) -> u64 {
 
 #[derive(Default)]
 struct CheckedCallsAbi {
-    fail_enter_progv: bool,
-    fail_leave_progv: bool,
-    fail_enter_catch: bool,
-    fail_leave_catch: bool,
-    fail_leave_unwind_protect: bool,
-    pending_dispatch: bool,
+    mode: CheckedCallsMode,
+}
+
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+enum CheckedCallsMode {
+    #[default]
+    Normal,
+    FailEnterProgv,
+    FailLeaveProgv,
+    FailEnterCatch,
+    FailLeaveCatch,
+    FailLeaveUnwindProtect,
+    PendingDispatch,
 }
 
 impl RuntimeAbi for CheckedCallsAbi {
@@ -149,32 +156,34 @@ impl RuntimeAbi for CheckedCallsAbi {
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         let address = match function {
-            RuntimeFunction::EnterCatch if self.fail_enter_catch => {
+            RuntimeFunction::EnterCatch if self.mode == CheckedCallsMode::FailEnterCatch => {
                 enter_catch_error as *const () as usize as u64
             }
-            RuntimeFunction::EnterCatch if self.pending_dispatch => {
+            RuntimeFunction::EnterCatch if self.mode == CheckedCallsMode::PendingDispatch => {
                 enter_catch_pending as *const () as usize as u64
             }
             RuntimeFunction::EnterCatch => enter_catch_success as *const () as usize as u64,
-            RuntimeFunction::LeaveCatch if self.pending_dispatch => {
+            RuntimeFunction::LeaveCatch if self.mode == CheckedCallsMode::PendingDispatch => {
                 leave_catch_pending_error as *const () as usize as u64
             }
-            RuntimeFunction::LeaveCatch if self.fail_leave_catch => {
+            RuntimeFunction::LeaveCatch if self.mode == CheckedCallsMode::FailLeaveCatch => {
                 leave_catch_error as *const () as usize as u64
             }
             RuntimeFunction::LeaveCatch => leave_catch_success as *const () as usize as u64,
-            RuntimeFunction::EnterProgv if self.fail_enter_progv => {
+            RuntimeFunction::EnterProgv if self.mode == CheckedCallsMode::FailEnterProgv => {
                 enter_progv_error as *const () as usize as u64
             }
             RuntimeFunction::EnterProgv => enter_progv_success as *const () as usize as u64,
-            RuntimeFunction::LeaveProgv if self.fail_leave_progv => {
+            RuntimeFunction::LeaveProgv if self.mode == CheckedCallsMode::FailLeaveProgv => {
                 leave_progv_error as *const () as usize as u64
             }
             RuntimeFunction::LeaveProgv => leave_progv_success as *const () as usize as u64,
             RuntimeFunction::EnterUnwindProtect => {
                 enter_unwind_protect as *const () as usize as u64
             }
-            RuntimeFunction::LeaveUnwindProtect if self.fail_leave_unwind_protect => {
+            RuntimeFunction::LeaveUnwindProtect
+                if self.mode == CheckedCallsMode::FailLeaveUnwindProtect =>
+            {
                 leave_unwind_protect_error as *const () as usize as u64
             }
             RuntimeFunction::LeaveUnwindProtect => {
@@ -340,8 +349,8 @@ mod handlers;
 fn call_and_call_indirect_errors_stop_before_downstream_builtin() {
     let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
     let abi = CheckedCallsAbi::default();
-    let (callee_code, callee_entry) = compile_and_publish(&build_error_callee(), &abi);
-    let callee_address = (callee_code.address() + callee_entry) as u64;
+    let (target_code, target_entry) = compile_and_publish(&build_error_callee(), &abi);
+    let target_address = (target_code.address() + target_entry) as u64;
 
     for (id, indirect, name) in [(92, false, "Call"), (93, true, "CallIndirect")] {
         CALL_TARGET_ERROR_CALLS.store(0, Ordering::SeqCst);
@@ -354,7 +363,7 @@ fn call_and_call_indirect_errors_stop_before_downstream_builtin() {
             caller_entry,
             &mut thread,
             2,
-            [callee_address, Word::fixnum(23).bits(), 0, 0],
+            [target_address, Word::fixnum(23).bits(), 0, 0],
             0,
         );
 
@@ -377,9 +386,9 @@ fn call_closure_error_stops_before_downstream_builtin() {
     CALL_TARGET_ERROR_CALLS.store(0, Ordering::SeqCst);
     CALL_TARGET_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let abi = CheckedCallsAbi::default();
-    let (callee_code, callee_entry) = compile_and_publish(&build_error_callee(), &abi);
-    let mut closure_object = vec![0_u64; ncl_object::function_offset::ENTRY + 2];
-    let entry_address = callee_code.address() + callee_entry;
+    let (target_code, target_entry) = compile_and_publish(&build_error_callee(), &abi);
+    let mut closure_object = [0_u64; ncl_object::function_offset::ENTRY + 2];
+    let entry_address = target_code.address() + target_entry;
     closure_object[ncl_object::function_offset::ENTRY + 1] =
         Word::fixnum(i64::try_from(entry_address).expect("entry address fits a fixnum")).bits();
     let closure = Word::pointer(closure_object.as_ptr() as usize, ncl_sys::LowTag::Function).bits();

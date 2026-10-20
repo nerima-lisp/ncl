@@ -113,21 +113,33 @@ fn unary_float_rounding_returns_expected_quotient_and_remainder() {
         .unwrap()
         .into();
 
-    for (name, quotient, remainder) in [
-        ("FFLOOR", -3, 0.5),
-        ("FCEILING", -2, -0.5),
-        ("FTRUNCATE", -2, -0.5),
-        ("FROUND", -2, -0.5),
+    for (name, quotient, remainder, float_quotient) in [
+        ("FLOOR", -3, 0.5, false),
+        ("CEILING", -2, -0.5, false),
+        ("TRUNCATE", -2, -0.5, false),
+        ("ROUND", -2, -0.5, false),
+        ("FFLOOR", -3, 0.5, true),
+        ("FCEILING", -2, -0.5, true),
+        ("FTRUNCATE", -2, -0.5, true),
+        ("FROUND", -2, -0.5, true),
     ] {
         let result = call(&runtime, &mut ctx, name, &[value]).unwrap();
-        assert!(matches!(
-            classify_object(&ctx, result),
-            ObjectRef::DoubleFloat(_)
-        ));
-        assert!(
-            (float(&ctx, result) - f64::from(quotient)).abs() < 1e-12,
-            "{name} quotient"
-        );
+        if float_quotient {
+            assert!(matches!(
+                classify_object(&ctx, result),
+                ObjectRef::DoubleFloat(_)
+            ));
+            assert!(
+                (float(&ctx, result) - f64::from(quotient)).abs() < 1e-12,
+                "{name} quotient"
+            );
+        } else {
+            assert_eq!(
+                integer(&ctx, result),
+                i128::from(quotient),
+                "{name} quotient"
+            );
+        }
         assert!(matches!(
             classify_object(&ctx, ctx.values()[1]),
             ObjectRef::DoubleFloat(_)
@@ -141,20 +153,47 @@ fn unary_float_rounding_returns_expected_quotient_and_remainder() {
     let tie = ncl_object::make_double(&mut ctx, &runtime, -1.5)
         .unwrap()
         .into();
-    let result = call(&runtime, &mut ctx, "FROUND", &[tie]).unwrap();
-    assert!(matches!(
-        classify_object(&ctx, result),
-        ObjectRef::DoubleFloat(_)
-    ));
-    assert!((float(&ctx, result) + 2.0).abs() < 1e-12, "FROUND tie quotient");
-    assert!(matches!(
-        classify_object(&ctx, ctx.values()[1]),
-        ObjectRef::DoubleFloat(_)
-    ));
-    assert!(
-        (float(&ctx, ctx.values()[1]) - 0.5).abs() < 1e-12,
-        "FROUND tie remainder"
+    for (name, float_quotient) in [("ROUND", false), ("FROUND", true)] {
+        let result = call(&runtime, &mut ctx, name, &[tie]).unwrap();
+        if float_quotient {
+            assert!(matches!(
+                classify_object(&ctx, result),
+                ObjectRef::DoubleFloat(_)
+            ));
+            assert!(
+                (float(&ctx, result) + 2.0).abs() < 1e-12,
+                "{name} tie quotient"
+            );
+        } else {
+            assert_eq!(integer(&ctx, result), -2, "{name} tie quotient");
+        }
+        assert!(matches!(
+            classify_object(&ctx, ctx.values()[1]),
+            ObjectRef::DoubleFloat(_)
+        ));
+        assert!(
+            (float(&ctx, ctx.values()[1]) - 0.5).abs() < 1e-12,
+            "{name} tie remainder"
+        );
+    }
+}
+
+#[test]
+fn float_rounding_returns_bignum_quotients_above_i128() {
+    let (runtime, mut ctx) = setup();
+    let value = ncl_object::make_double(&mut ctx, &runtime, 2.0_f64.powi(128))
+        .unwrap()
+        .into();
+    let quotient = call(&runtime, &mut ctx, "FLOOR", &[value]).unwrap();
+    let ObjectRef::Bignum(bignum) = classify_object(&ctx, quotient) else {
+        panic!("expected a bignum quotient");
+    };
+    assert_eq!(
+        ncl_object::bignum_limbs(&ctx, ncl_object::Bignum::from_word(bignum)).unwrap(),
+        [0, 0, 0, 0, 1]
     );
+    assert!(!ncl_object::bignum_sign(&ctx, ncl_object::Bignum::from_word(bignum)).unwrap());
+    assert!(float(&ctx, ctx.values()[1]).abs() < 1e-12);
 }
 
 #[test]

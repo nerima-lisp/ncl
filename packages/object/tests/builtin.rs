@@ -156,6 +156,65 @@ fn builtin_registry_follows_function_relocation() {
 }
 
 #[test]
+fn builtin_image_resolution_uses_latest_registration_and_rejects_stale_metadata() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let first = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("first builtin: {error:?}"));
+    let name = ncl_object::function_name(&ctx, ncl_object::Function::from_word(first.as_word()))
+        .unwrap_or_else(|error| panic!("function name: {error:?}"));
+
+    assert_eq!(
+        runtime.registered_builtin_for_image(&ctx, name, "NCL-TEST", "ADD"),
+        Some(first)
+    );
+    assert_eq!(
+        runtime.registered_builtin_for_image(&ctx, name, "NCL-TEST", "MISSING"),
+        None
+    );
+    assert_eq!(
+        runtime.registered_builtin_for_image(&ctx, Word::NIL, "NCL-TEST", "ADD"),
+        None
+    );
+
+    let latest = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("latest builtin: {error:?}"));
+    assert_ne!(first, latest);
+    assert_eq!(
+        runtime.registered_builtin_for_image(&ctx, name, "NCL-TEST", "ADD"),
+        Some(latest)
+    );
+
+    ctx.write_object_slot(
+        latest.as_word(),
+        ncl_object::function_offset::BUILTIN_INDEX,
+        Word::fixnum(0),
+    )
+    .unwrap_or_else(|error| panic!("corrupt builtin index: {error:?}"));
+    assert_eq!(
+        runtime.registered_builtin_for_image(&ctx, name, "NCL-TEST", "ADD"),
+        None
+    );
+    assert_eq!(runtime.builtin_descriptor(&ctx, latest), None);
+}
+
+#[test]
 fn builtin_lookup_does_not_read_closure_captures_as_indices() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

@@ -366,6 +366,123 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
 }
 
 #[test]
+fn make_array_character_initial_contents_displacement() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let character_type = ncl_object::Package::from_word(common_lisp_package)
+        .intern(&mut ctx, &runtime, "CHARACTER")?
+        .0;
+    let element_type_key = keyword(&mut ctx, "ELEMENT-TYPE")?;
+    let initial_contents_key = keyword(&mut ctx, "INITIAL-CONTENTS")?;
+    let contents = make_string(&mut ctx, &runtime, &['a', 'b', 'c', 'd', 'e'])?;
+    let base = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(5),
+            element_type_key,
+            character_type,
+            initial_contents_key,
+            contents,
+        ],
+    )?;
+
+    let displaced_to_key = keyword(&mut ctx, "DISPLACED-TO")?;
+    let displaced_index_offset_key = keyword(&mut ctx, "DISPLACED-INDEX-OFFSET")?;
+    let displaced = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(3),
+            element_type_key,
+            character_type,
+            displaced_to_key,
+            base,
+            displaced_index_offset_key,
+            Word::fixnum(1),
+        ],
+    )?;
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 0)?,
+        Word::character('b' as u32)
+    );
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 1)?,
+        Word::character('c' as u32)
+    );
+    assert_eq!(
+        array_row_major_ref(&ctx, displaced, 2)?,
+        Word::character('d' as u32)
+    );
+    array_row_major_set(&mut ctx, displaced, 1, Word::character('z' as u32))?;
+    assert_eq!(
+        array_row_major_ref(&ctx, base, 2)?,
+        Word::character('z' as u32)
+    );
+    Ok(())
+}
+
+#[test]
+fn make_array_specialized_types_without_initial_element_are_constructible()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package).intern(ctx, &runtime, name)
+    };
+    let element_type_key = keyword(&mut ctx, "ELEMENT-TYPE")?.0;
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+
+    for type_name in [
+        "FIXNUM",
+        "SIGNED-BYTE",
+        "UNSIGNED-BYTE",
+        "CHARACTER",
+        "BASE-CHAR",
+    ] {
+        let element_type = ncl_object::Package::from_word(common_lisp_package)
+            .intern(&mut ctx, &runtime, type_name)?
+            .0;
+        let array = call(
+            &runtime,
+            &mut ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), element_type_key, element_type],
+        )?;
+        assert!(
+            matches!(classify_object(&ctx, array), ObjectRef::Array(_)),
+            "MAKE-ARRAY with omitted :INITIAL-ELEMENT should construct {type_name} array"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

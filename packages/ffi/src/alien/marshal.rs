@@ -63,7 +63,7 @@ pub fn marshal_argument(
         | AlienType::CString
         | AlienType::Utf8String
         | AlienType::SystemAreaPointer
-        | AlienType::Function(_) => Ok(pointer_address(value)?.to_le_bytes().to_vec()),
+        | AlienType::Function(_) => Ok(pointer_address(ctx, value)?.to_le_bytes().to_vec()),
         AlienType::Array(_, _) | AlienType::Structure(_) | AlienType::Union(_) => {
             Err(FfiError::MissingSysPrimitive(READ_SYSTEM_MEMORY))
         }
@@ -284,20 +284,11 @@ const fn f64_to_f32(value: f64) -> f32 {
 }
 
 /// Decode a pointer argument into an address.
-fn pointer_address(value: Word) -> Result<usize, FfiError> {
+fn pointer_address(ctx: &ThreadContext, value: Word) -> Result<usize, FfiError> {
     if value == Word::NIL {
         return Ok(0);
     }
-    value.as_fixnum().map_or(
-        Err(FfiError::TypeMismatch {
-            type_name: "pointer",
-        }),
-        |fixnum| {
-            usize::try_from(fixnum).map_err(|_| FfiError::ValueOutOfRange {
-                type_name: "pointer",
-            })
-        },
-    )
+    SystemAreaPointer::from_word(ctx, value).map(SystemAreaPointer::address)
 }
 
 /// Decode any Lisp integer into an `i128`.

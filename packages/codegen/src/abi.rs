@@ -57,6 +57,8 @@ pub enum ContextField {
     Cleanup,
     /// Current catch record.
     Catch,
+    /// Rust-side runtime-error source flags.
+    RuntimeErrorFlags,
 }
 
 impl ContextField {
@@ -73,6 +75,7 @@ impl ContextField {
             Self::Handler => "handler",
             Self::Cleanup => "cleanup",
             Self::Catch => "catch",
+            Self::RuntimeErrorFlags => "runtime_error_flags",
         }
     }
 }
@@ -265,6 +268,10 @@ mod builtin_address_tests {
     fn context_fields_keep_the_stable_legacy_identifiers() {
         assert_eq!(ContextField::TlabBump.identifier(), "tlab_bump");
         assert_eq!(ContextField::MultipleValueCount.identifier(), "mv_count");
+        assert_eq!(
+            ContextField::RuntimeErrorFlags.identifier(),
+            "runtime_error_flags"
+        );
     }
 }
 
@@ -284,6 +291,7 @@ fn default_field_offset(field: ContextField) -> Result<i32, AbiError> {
         ContextField::Handler => layout.handler,
         ContextField::Cleanup => layout.cleanup,
         ContextField::Catch => layout.catch,
+        ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
     };
     i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
 }

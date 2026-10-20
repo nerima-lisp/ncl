@@ -27,6 +27,7 @@ fn direct_native_failures_keep_typed_side_channel() {
     let thread_ptr = NonNull::from(&mut thread);
     let returned = native_add(thread_ptr, Word::fixnum(7), Word::NIL);
     assert_eq!(returned, Word::NIL);
+    assert!(thread.runtime_error_pending());
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::TypeMismatch {
@@ -35,8 +36,10 @@ fn direct_native_failures_keep_typed_side_channel() {
             ..
         })
     ));
+    assert!(!thread.runtime_error_pending());
     let returned = native_mul(thread_ptr, Word::fixnum(i64::MAX / 2), Word::fixnum(3));
     assert_eq!(returned, Word::NIL);
+    assert!(thread.runtime_error_pending());
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::Overflow {
@@ -44,9 +47,11 @@ fn direct_native_failures_keep_typed_side_channel() {
             semantics: OverflowSemantics::ArithmeticFixnum,
         })
     ));
+    assert!(!thread.runtime_error_pending());
     // SAFETY: the test passes a registered live thread and a valid pointer.
     let returned = unsafe { native_car(thread_ptr, Word::fixnum(7)) };
     assert_eq!(returned, Word::NIL);
+    assert!(thread.runtime_error_pending());
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::TypeMismatch {
@@ -54,9 +59,11 @@ fn direct_native_failures_keep_typed_side_channel() {
             ..
         })
     ));
+    assert!(!thread.runtime_error_pending());
     // SAFETY: the test passes a registered live thread and a valid pointer.
     let returned = unsafe { native_cons(thread_ptr, Word::NIL, Word::NIL) };
     assert_eq!(returned, Word::NIL);
+    assert!(thread.runtime_error_pending());
     assert!(matches!(
         thread.take_native_error(),
         Some(NativeError::Allocation {
@@ -64,6 +71,7 @@ fn direct_native_failures_keep_typed_side_channel() {
             ..
         })
     ));
+    assert!(!thread.runtime_error_pending());
     ncl_sys::unregister_thread(&thread);
 }
 

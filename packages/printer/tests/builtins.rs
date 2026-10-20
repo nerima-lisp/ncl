@@ -1,7 +1,49 @@
 #![allow(clippy::unwrap_used, reason = "tests assert on builtin output")]
 #![allow(missing_docs)]
 
-use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word, make_string};
+use ncl_object::{
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, Package,
+    Parameter, ParameterType, Runtime, ThreadContext, Word, make_cons, make_string,
+};
+
+const STRUCTURE_PRINT_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("OBJECT"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("STREAM"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("DEPTH"),
+        ty: ParameterType::Any,
+    },
+];
+
+fn structure_print_callback(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    ncl_object::structure_layout(ctx, args.required(0)?)?;
+    if args.required(2)?.as_fixnum() != Some(0) {
+        return Err(ObjectError::TypeError);
+    }
+    let mut stream = args.required(1)?;
+    ncl_object::with_root(ctx, &mut stream, |ctx, stream| {
+        let mut text = make_string(ctx, runtime, &"PRINT-FUNCTION".chars().collect::<Vec<_>>())?;
+        ncl_object::with_root(ctx, &mut text, |ctx, text| {
+            let writer = runtime
+                .function(ctx, "COMMON-LISP", "WRITE-STRING")
+                .ok_or(ObjectError::Layout)?;
+            let writer = FunctionObject::try_from(writer)?;
+            runtime.call_builtin(ctx, writer, &[text.get(), stream.get()])
+        })
+    })
+}
 
 fn function(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
     FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap()
@@ -181,4 +223,89 @@ fn write_to_string_accepts_bignum_limits() {
         &[vector, length, large_limit],
     );
     assert_eq!(string_contents(&ctx, result), "#(1 2)");
+}
+
+#[test]
+fn structure_print_function_reads_rooted_values_after_package_allocations()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_printer::register(&mut ctx, &runtime)?;
+    ncl_lib_streams::register(&runtime)?;
+
+    let user_package = runtime.ensure_package(&mut ctx, "COMMON-LISP-USER")?;
+    let (mut name, _) = Package::from_word(user_package).intern(&mut ctx, &runtime, "PRINTED")?;
+    let name_token = ncl_object::push_root(&mut ctx, &mut name);
+    let ncl_package = runtime.ensure_package(&mut ctx, "NCL")?;
+    let (mut key, _) =
+        Package::from_word(ncl_package).intern(&mut ctx, &runtime, "%STRUCTURE-PRINT-FUNCTION")?;
+    let key_token = ncl_object::push_root(&mut ctx, &mut key);
+
+    let print_function = runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("STRUCTURE-PRINT")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(STRUCTURE_PRINT_PARAMETERS),
+                convention: BuiltinConvention::Direct(Arity::exact(3)),
+            },
+            structure_print_callback,
+        ),
+    )?;
+    let mut print_function_word = print_function.as_word();
+    let print_function_token = ncl_object::push_root(&mut ctx, &mut print_function_word);
+
+    let layout = runtime.register_structure_layout(0)?;
+    let mut class = ncl_object::make_simple_vector(&mut ctx, &runtime, &[name])?;
+    let class_token = ncl_object::push_root(&mut ctx, &mut class);
+    let class_name = runtime.structure_class_name(&ctx, name)?;
+    runtime.define_class(&mut ctx, class_name, class)?;
+    runtime.register_structure_class_with_parent(&ctx, layout, None, name)?;
+
+    let mut property = make_cons(&mut ctx, &runtime, key, print_function_word)?;
+    let property_token = ncl_object::push_root(&mut ctx, &mut property);
+    let mut plist = make_cons(&mut ctx, &runtime, property, Word::NIL)?;
+    let plist_token = ncl_object::push_root(&mut ctx, &mut plist);
+    ncl_object::set_symbol_plist(&mut ctx, name, plist)?;
+
+    let mut structure = ncl_object::make_structure(&mut ctx, &runtime, layout, &[])?;
+    let structure_token = ncl_object::push_root(&mut ctx, &mut structure);
+    let mut stream = call(&runtime, &mut ctx, "MAKE-STRING-OUTPUT-STREAM", &[]);
+    let stream_token = ncl_object::push_root(&mut ctx, &mut stream);
+
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let result = ncl_object::with_roots(&mut ctx, &[structure, stream], |ctx, roots| {
+        let princ = runtime
+            .function(ctx, "COMMON-LISP", "PRINC")
+            .ok_or(ObjectError::Layout)?;
+        let princ = FunctionObject::try_from(princ)?;
+        runtime.call_builtin(
+            ctx,
+            princ,
+            &[
+                roots.first().ok_or(ObjectError::Layout)?.get(),
+                roots.get(1).ok_or(ObjectError::Layout)?.get(),
+            ],
+        )
+    })?;
+    assert_eq!(result, structure);
+
+    let get_output = runtime
+        .function(&mut ctx, "COMMON-LISP", "GET-OUTPUT-STREAM-STRING")
+        .ok_or(ObjectError::Layout)?;
+    let get_output = FunctionObject::try_from(get_output)?;
+    let output = runtime.call_builtin(&mut ctx, get_output, &[stream])?;
+    assert_eq!(string_contents(&ctx, output), "PRINT-FUNCTION");
+
+    assert!(ncl_object::pop_root(&mut ctx, stream_token));
+    assert!(ncl_object::pop_root(&mut ctx, structure_token));
+    assert!(ncl_object::pop_root(&mut ctx, plist_token));
+    assert!(ncl_object::pop_root(&mut ctx, property_token));
+    assert!(ncl_object::pop_root(&mut ctx, class_token));
+    assert!(ncl_object::pop_root(&mut ctx, print_function_token));
+    assert!(ncl_object::pop_root(&mut ctx, key_token));
+    assert!(ncl_object::pop_root(&mut ctx, name_token));
+    Ok(())
 }

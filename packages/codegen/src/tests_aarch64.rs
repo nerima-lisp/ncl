@@ -43,6 +43,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
             ContextField::Handler => layout.handler,
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
+            ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
         };
         i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
     }

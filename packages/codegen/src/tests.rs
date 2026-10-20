@@ -74,6 +74,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
             ContextField::Handler => layout.handler,
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
+            ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
         };
         i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
@@ -310,6 +311,7 @@ fn golden_builtin_call_has_call_safepoint() {
                 ContextField::Handler => layout.handler,
                 ContextField::Cleanup => layout.cleanup,
                 ContextField::Catch => layout.catch,
+                ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
             };
             i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
         }

@@ -403,6 +403,15 @@ fn executes_both_branch_paths_with_block_arguments() {
             &[Ty::Word],
         )
         .expect("comparison")[0];
+    let then_payload = builder.add_constant(Constant::Fixnum(101));
+    let then_payload = builder
+        .push_op(
+            OpKind::Const {
+                result: then_payload,
+            },
+            &[Ty::Word],
+        )
+        .expect("then payload")[0];
     let then_value = builder.fresh_value();
     let else_value = builder.fresh_value();
     let then_target = builder.create_block(vec![(Ty::Word, then_value)]);
@@ -414,7 +423,7 @@ fn executes_both_branch_paths_with_block_arguments() {
         .terminate(Terminator::Branch {
             condition,
             then_target,
-            then_args: vec![expected],
+            then_args: vec![then_payload],
             else_target,
             else_args: vec![argument],
         })
@@ -448,12 +457,15 @@ fn executes_both_branch_paths_with_block_arguments() {
             0,
         )
     };
-    assert_eq!(invoke(1), (Word::fixnum(1).bits(), 1));
+    assert_eq!(invoke(1), (Word::fixnum(101).bits(), 1));
     assert_eq!(invoke(2), (Word::fixnum(2).bits(), 1));
 }
 
 #[path = "exec_aarch64/cons.rs"]
 mod cons;
+
+#[path = "exec_aarch64/calls_switch.rs"]
+mod calls_switch;
 
 #[path = "exec_aarch64/fib.rs"]
 mod fib;

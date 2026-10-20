@@ -1,7 +1,7 @@
 //! Failure of a foreign declaration, alien type operation, or foreign call.
-
 use ncl_conditions::ConditionError;
 use ncl_object::ObjectError;
+use ncl_sys::foreign::{ForeignCallError, ForeignError};
 
 use crate::sys_requirements::SysPrimitive;
 
@@ -32,6 +32,17 @@ pub enum FfiError {
     },
     /// A null SAP was used where a valid address is required.
     NullPointer,
+    /// A system-library operation failed with a typed loader or memory error.
+    ForeignMemory(ForeignError),
+    /// A typed function call failed validation or dispatch.
+    ForeignCall(ForeignCallError),
+    /// The requested release size differs from the owned allocation size.
+    AllocationSizeMismatch {
+        /// Size recorded by the allocation owner.
+        expected: usize,
+        /// Size supplied to deallocation.
+        got: usize,
+    },
     /// An alien type has no Phase-1 marshalling yet.
     UnsupportedType(&'static str),
     /// The operation needs an `ncl-sys` primitive that does not exist yet.
@@ -62,6 +73,14 @@ impl std::fmt::Display for FfiError {
                 write!(f, "expected {expected} arguments, got {got}")
             }
             Self::NullPointer => f.write_str("null system area pointer"),
+            Self::ForeignMemory(error) => write!(f, "foreign memory or loader error: {error}"),
+            Self::ForeignCall(error) => write!(f, "foreign call error: {error}"),
+            Self::AllocationSizeMismatch { expected, got } => {
+                write!(
+                    f,
+                    "allocation size mismatch: expected {expected}, got {got}"
+                )
+            }
             Self::UnsupportedType(name) => write!(f, "unsupported alien type: {name}"),
             Self::MissingSysPrimitive(requirement) => {
                 write!(f, "missing ncl-sys primitive: {}", requirement.signature())
@@ -84,6 +103,8 @@ impl std::error::Error for FfiError {
         match self {
             Self::Object(error) => Some(error),
             Self::Condition(error) => Some(error),
+            Self::ForeignMemory(error) => Some(error),
+            Self::ForeignCall(error) => Some(error),
             _ => None,
         }
     }
@@ -101,6 +122,11 @@ impl From<ConditionError> for FfiError {
     }
 }
 
+impl From<ForeignError> for FfiError {
+    fn from(error: ForeignError) -> Self {
+        Self::ForeignMemory(error)
+    }
+}
 impl FfiError {
     /// Collapse a foreign-layer error to the object layer.
     ///

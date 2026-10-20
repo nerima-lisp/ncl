@@ -1,5 +1,9 @@
 //! Registration of the owned symbols and the alien type classes.
 
+mod alien_storage;
+mod alien_surface;
+mod sap;
+
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, make_simple_vector, make_string,
     set_symbol_macro, set_symbol_special,
@@ -25,6 +29,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         register_symbol(runtime, &mut ctx, row)?;
     }
     install_classes(runtime, &mut ctx)?;
+    alien_surface::install_builtins(runtime, &mut ctx)?;
+    sap::install_sap_builtins(runtime, &mut ctx)?;
     Ok(())
 }
 

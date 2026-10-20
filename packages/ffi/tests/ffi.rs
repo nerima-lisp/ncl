@@ -6,6 +6,7 @@
 
 //! Foreign calls, dynamic loading, unmanaged memory, roots, and conditions.
 
+use ncl_ffi::deallocate_system_memory;
 use ncl_ffi::{
     AlienType, FfiError, SystemAreaPointer, alien_funcall, alien_routine, alien_size,
     allocate_system_memory, dlerror_message, load_shared_object, null_alien, sap_ref,
@@ -50,12 +51,29 @@ fn arity_mismatch_is_reported_before_marshalling() {
 
 #[test]
 fn a_bad_argument_is_rejected_before_the_call() {
+#[test]
+fn exact_path_loader_rejects_relative_paths_and_lazy_mode() {
     fixture!(runtime, ctx);
     let routine = alien_routine("f", vec![AlienType::Int], AlienType::Int, true);
     let error = alien_funcall(&ctx, &runtime, &routine, &[Word::character(65)]).unwrap_err();
     assert!(matches!(error, FfiError::TypeMismatch { .. }));
+    let address = allocate_system_memory(16).unwrap();
+    assert!(matches!(
+        sap_ref(
+            &mut ctx,
+            &runtime,
+            &AlienType::Int,
+            SystemAreaPointer::new(0x1000),
+            0,
+        ),
+        Err(FfiError::ForeignMemory(
+            ncl_sys::foreign::ForeignError::UnknownRegion
+        ))
+    ));
+    deallocate_system_memory(address, 16).unwrap();
 }
 
+#[cfg(all(target_family = "unix", target_arch = "x86_64", target_os = "macos"))]
 #[test]
 fn a_well_typed_call_reaches_the_missing_sys_primitive() {
     fixture!(runtime, ctx);
@@ -92,26 +110,12 @@ fn dynamic_loading_reports_the_missing_wrappers() {
     );
 }
 
-#[test]
-fn unmanaged_memory_operations_report_the_missing_wrappers() {
-    let error = allocate_system_memory(16).unwrap_err();
-    assert_eq!(
-        error,
-        FfiError::MissingSysPrimitive(sys_requirements::ALLOCATE_SYSTEM_MEMORY)
-    );
     fixture!(runtime, ctx);
-    let error = sap_ref(
         &mut ctx,
         &runtime,
-        &AlienType::Int,
-        SystemAreaPointer::new(0x1000),
-        0,
+        &bound,
+        &[pointer_word, Word::fixnum(0x5a), Word::fixnum(1)],
     )
-    .unwrap_err();
-    assert_eq!(
-        error,
-        FfiError::MissingSysPrimitive(sys_requirements::READ_SYSTEM_MEMORY)
-    );
 }
 
 #[test]

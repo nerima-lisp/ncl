@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod runtime_tests {
     use super::super::{Runtime, RuntimeError};
+    use ncl_object::ObjectError;
     use std::fs;
 
     #[test]
@@ -15,6 +16,44 @@ mod runtime_tests {
         };
         assert_eq!(runtime.format_result(value), "42");
         drop(runtime);
+    }
+
+    #[test]
+    fn escaping_throw_runs_cleanup_and_restores_progv_bindings() {
+        let mut runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime initialization failed: {error}"),
+        };
+        runtime
+            .eval("(defparameter *r2-progv-value* :outer)")
+            .unwrap_or_else(|error| panic!("outer binding setup failed: {error}"));
+        runtime
+            .eval("(defparameter *r2-cleanup-value* :not-run)")
+            .unwrap_or_else(|error| panic!("cleanup setup failed: {error}"));
+
+        let result = runtime.eval(
+            "(progv '(*r2-progv-value*) '(:inner) \
+               (unwind-protect \
+                 (throw 'r2-unmatched-tag :payload) \
+                 (setq *r2-cleanup-value* *r2-progv-value*)))",
+        );
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Object(ObjectError::ControlError))
+        ));
+        let _ = runtime.context.take_non_local_exit();
+
+        let cleanup_ran = runtime
+            .eval("(eq *r2-cleanup-value* :inner)")
+            .unwrap_or_else(|error| panic!("cleanup observation failed: {error}"));
+        assert_eq!(runtime.format_result(cleanup_ran), "T");
+        let binding_restored = runtime
+            .eval("(eq *r2-progv-value* :outer)")
+            .unwrap_or_else(|error| panic!("progv restoration check failed: {error}"));
+        assert_eq!(runtime.format_result(binding_restored), "T");
+        let thread = runtime.context.thread_mut();
+        assert_eq!(thread.cleanup_depth(), 0);
+        assert_eq!(thread.handler_depth(), 0);
     }
 
     #[test]

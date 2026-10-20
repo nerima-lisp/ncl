@@ -113,9 +113,8 @@ pub fn sap_ref(
     base: SystemAreaPointer,
     offset: isize,
 ) -> Result<Word, FfiError> {
-    let width = match access_width(ty) {
-        Some(width) => width,
-        None => return Err(FfiError::UnsupportedType(ty.label())),
+    let Some(width) = access_width(ty) else {
+        return Err(FfiError::UnsupportedType(ty.label()));
     };
     let address = checked_offset(base, offset)?;
     let raw = read_sap(address, width)?;
@@ -140,9 +139,8 @@ pub fn sap_set(
     offset: isize,
     value: Word,
 ) -> Result<(), FfiError> {
-    let width = match access_width(ty) {
-        Some(width) => width,
-        None => return Err(FfiError::UnsupportedType(ty.label())),
+    let Some(width) = access_width(ty) else {
+        return Err(FfiError::UnsupportedType(ty.label()));
     };
     let address = checked_offset(base, offset)?;
     let bytes = marshal_argument(ctx, ty, value)?;

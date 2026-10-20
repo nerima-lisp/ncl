@@ -35,8 +35,8 @@ pub const fn null_alien() -> Word {
 /// # Errors
 /// Returns [`FfiError::TypeMismatch`] when `value` is not a SAP or an integer
 /// address.
-pub fn alien_sap(value: Word) -> Result<SystemAreaPointer, FfiError> {
-    SystemAreaPointer::from_word(value)
+pub fn alien_sap(ctx: &ThreadContext, value: Word) -> Result<SystemAreaPointer, FfiError> {
+    SystemAreaPointer::from_word(ctx, value)
 }
 
 /// Reinterpret an alien address as another type, like `cast`.

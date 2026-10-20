@@ -19,6 +19,7 @@ mod print;
 mod sink;
 mod string;
 mod symbol;
+mod to_string;
 
 pub use builtins::{copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch};
 pub use error::PrintError;

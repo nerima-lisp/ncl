@@ -70,10 +70,17 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     for (package, name) in FUNCTIONS {
         let package_word = runtime.ensure_package(ctx, package)?;
         Package::from_word(package_word).intern(ctx, runtime, name)?;
-        if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
-            register_print_builtin(ctx, runtime, name)?;
-        } else {
-            runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) placeholder for unimplemented printer surface
+        match (package, name) {
+            ("COMMON-LISP", "PRINC" | "PRIN1" | "PRINT") => {
+                register_print_builtin(ctx, runtime, name)?;
+            }
+            ("COMMON-LISP", "PRINC-TO-STRING" | "PRIN1-TO-STRING" | "WRITE-TO-STRING") => {
+                crate::to_string::register(ctx, runtime, name)?;
+            }
+            // check-added-lines: allow(wildcard) retain unbound registrations for printer functions not implemented here
+            _ => {
+                runtime.define_function(ctx, package, name, Word::UNBOUND)?; // check-added-lines: allow(unbound) placeholder for unimplemented printer surface
+            }
         }
     }
     for (package, name) in VARIABLES {

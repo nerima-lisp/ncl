@@ -113,10 +113,10 @@ fn verify_machine_code_bounds(
     entry_offset: u32,
     code_len: u32,
 ) -> Result<(), MachineVerificationError> {
-    if machine.blocks.is_empty()
-        || entry_offset >= code_len
-        || machine.blocks[0].offset != entry_offset
-    {
+    let Some(first_block) = machine.blocks.first() else {
+        return Err(MachineVerificationError::MachineCodeBoundsMismatch);
+    };
+    if entry_offset >= code_len || first_block.offset != entry_offset {
         return Err(MachineVerificationError::MachineCodeBoundsMismatch);
     }
     let mut previous_offset = entry_offset;
@@ -186,7 +186,24 @@ fn machine_safepoint_flags(function: &Function) -> Vec<u32> {
                 | ncl_ir::OpKind::CallIndirect { .. }
                 | ncl_ir::OpKind::Builtin { .. }
                 | ncl_ir::OpKind::Safepoint => flags.push(crate::FLAG_CALL),
-                _ => {}
+                ncl_ir::OpKind::Const { .. }
+                | ncl_ir::OpKind::Move { .. }
+                | ncl_ir::OpKind::Load { .. }
+                | ncl_ir::OpKind::Store { .. }
+                | ncl_ir::OpKind::LoadField { .. }
+                | ncl_ir::OpKind::StoreField { .. }
+                | ncl_ir::OpKind::LoadArg { .. }
+                | ncl_ir::OpKind::LoadCapture { .. }
+                | ncl_ir::OpKind::LoadFunctionObject
+                | ncl_ir::OpKind::MakeClosure { .. }
+                | ncl_ir::OpKind::MakeValueCell { .. }
+                | ncl_ir::OpKind::CallClosure { .. }
+                | ncl_ir::OpKind::Prim { .. }
+                | ncl_ir::OpKind::Compare { .. }
+                | ncl_ir::OpKind::Convert { .. }
+                | ncl_ir::OpKind::SetMultipleValues { .. }
+                | ncl_ir::OpKind::EnterHandler { .. }
+                | ncl_ir::OpKind::LeaveHandler { .. } => {}
             }
         }
         match &block.terminator {
@@ -196,7 +213,12 @@ fn machine_safepoint_flags(function: &Function) -> Vec<u32> {
             Terminator::Jump { target, .. } if *target == block.id => {
                 flags.push(crate::FLAG_LOOP_BACKEDGE);
             }
-            _ => {}
+            Terminator::Jump { .. }
+            | Terminator::Branch { .. }
+            | Terminator::Switch { .. }
+            | Terminator::Return { .. }
+            | Terminator::Throw { .. }
+            | Terminator::Unreachable => {}
         }
     }
     flags

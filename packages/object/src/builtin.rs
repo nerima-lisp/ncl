@@ -468,6 +468,21 @@ impl Runtime {
         function: FunctionObject,
         args: &[Word],
     ) -> Result<Word, ObjectError> {
-        self.call_registered_builtin(ctx, function, args, &mut MultipleValues::new())
+        let result = self.call_registered_builtin(ctx, function, args, &mut MultipleValues::new());
+        let pending_errors = ctx.take_pending_runtime_errors();
+        match result {
+            Err(error) => Err(error),
+            Ok(value) => {
+                if pending_errors.native.is_some() {
+                    Err(ObjectError::Layout)
+                } else if let Some(error) = pending_errors.object {
+                    Err(error)
+                } else if pending_errors.lisp.is_some() {
+                    Err(ObjectError::ControlError)
+                } else {
+                    Ok(value)
+                }
+            }
+        }
     }
 }

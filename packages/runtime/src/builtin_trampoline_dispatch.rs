@@ -123,7 +123,7 @@ fn call_with_heap_rooted_arguments(
         *token = Some(ncl_object::push_heap_root(object, argument));
     }
     let result = FunctionObject::try_from(rooted_function)
-        .and_then(|function| object.call_builtin(context, function, arguments));
+        .and_then(|function| object.call_builtin_from_generated_code(context, function, arguments));
     let arguments_popped = unregister_heap_roots(
         object,
         root_tokens.iter_mut().rev().filter_map(Option::take),

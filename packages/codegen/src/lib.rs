@@ -18,7 +18,8 @@ mod tests;
 mod tests_aarch64;
 #[cfg(test)]
 mod tests_x86_64;
-#[cfg(all(test, target_arch = "x86_64"))]
+#[cfg(test)]
+#[cfg(target_arch = "x86_64")]
 mod tests_x86_64_abi;
 #[cfg(test)]
 mod tests_x86_64_fixture;

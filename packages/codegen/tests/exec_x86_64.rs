@@ -10,7 +10,9 @@
 #![cfg(target_arch = "x86_64")]
 
 use ncl_codegen::{ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64};
-use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
+use ncl_ir::{
+    Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
+};
 use ncl_sys::{
     RuntimeErrorSource, Thread, Word, alloc_code, enter_native, invoke_entry,
     invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
@@ -27,6 +29,42 @@ static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
+
+fn fixnum_i64(builder: &mut FunctionBuilder, value: i64) -> ValueId {
+    let constant = builder.add_constant(Constant::Fixnum(value));
+    builder
+        .push_op(OpKind::Const { result: constant }, &[Ty::I64])
+        .expect("fixnum constant")[0]
+}
+
+fn word_to_i64(builder: &mut FunctionBuilder, value: ValueId) -> ValueId {
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::WordToI64,
+                value,
+            },
+            &[Ty::I64],
+        )
+        .expect("word to fixnum")[0]
+}
+
+fn i64_to_word(builder: &mut FunctionBuilder, value: ValueId) -> ValueId {
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value,
+            },
+            &[Ty::Word],
+        )
+        .expect("fixnum to word")[0]
+}
+
+fn fixnum_word(builder: &mut FunctionBuilder, value: i64) -> ValueId {
+    let value = fixnum_i64(builder, value);
+    i64_to_word(builder, value)
+}
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
@@ -320,21 +358,26 @@ fn executes_fixnum_add_of_two_arguments() {
     let left = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("left argument")[0];
+    let left = word_to_i64(&mut builder, left);
     let right = builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("right argument")[0];
-    let values = builder
+    let right = word_to_i64(&mut builder, right);
+    let result = builder
         .push_op(
             OpKind::Prim {
                 op: Prim::FixnumAdd,
                 args: vec![left, right],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
-        .expect("add operation");
+        .expect("add operation")[0];
+    let result = i64_to_word(&mut builder, result);
     builder
-        .terminate(Terminator::Return { values })
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
         .expect("return terminator");
     let abi = X86_64Abi;
     let compiled = compile_function_x86_64(&builder.finish(), &abi).expect("lowering");
@@ -377,9 +420,11 @@ fn preserves_arguments_across_entry_safepoint() {
     let left = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("left")[0];
+    let left = word_to_i64(&mut builder, left);
     let right = builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("right")[0];
+    let right = word_to_i64(&mut builder, right);
     let sum = builder
         .push_op(
             OpKind::Prim {
@@ -387,9 +432,10 @@ fn preserves_arguments_across_entry_safepoint() {
                 args: vec![left, right],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("sum")[0];
+    let sum = i64_to_word(&mut builder, sum);
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .expect("return");
@@ -537,10 +583,7 @@ fn executes_both_branch_paths_with_block_arguments() {
     let argument = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("argument")[0];
-    let expected = builder.add_constant(Constant::Fixnum(1));
-    let expected = builder
-        .push_op(OpKind::Const { result: expected }, &[Ty::Word])
-        .expect("constant")[0];
+    let expected = fixnum_word(&mut builder, 1);
     let condition = builder
         .push_op(
             OpKind::Compare {
@@ -548,9 +591,10 @@ fn executes_both_branch_paths_with_block_arguments() {
                 left: argument,
                 right: expected,
             },
-            &[Ty::Word],
+            &[Ty::Bool],
         )
         .expect("comparison")[0];
+    let then_payload = fixnum_word(&mut builder, 101);
     let then_value = builder.fresh_value();
     let else_value = builder.fresh_value();
     let then_target = builder.create_block(vec![(Ty::Word, then_value)]);
@@ -562,7 +606,7 @@ fn executes_both_branch_paths_with_block_arguments() {
         .terminate(Terminator::Branch {
             condition,
             then_target,
-            then_args: vec![expected],
+            then_args: vec![then_payload],
             else_target,
             else_args: vec![argument],
         })
@@ -596,7 +640,7 @@ fn executes_both_branch_paths_with_block_arguments() {
             0,
         )
     };
-    assert_eq!(invoke(1), (Word::fixnum(1).bits(), 1));
+    assert_eq!(invoke(1), (Word::fixnum(101).bits(), 1));
     assert_eq!(invoke(2), (Word::fixnum(2).bits(), 1));
 }
 
@@ -611,6 +655,8 @@ mod basic;
 
 #[path = "exec_x86_64/tail.rs"]
 mod tail;
+#[path = "exec_x86_64/calls.rs"]
+mod calls;
 
 #[path = "exec_x86_64/checked_calls.rs"]
 mod checked_calls;

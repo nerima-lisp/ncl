@@ -152,10 +152,7 @@ fn build_checked_call_caller(id: u32, indirect: bool) -> ncl_ir::Function {
     let value = builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("value argument")[0];
-    let argc = builder.add_constant(Constant::Fixnum(1));
-    let argc = builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-        .expect("argc")[0];
+    let argc = fixnum_word(&mut builder, 1);
     let call = if indirect {
         OpKind::CallIndirect {
             callee,
@@ -207,10 +204,7 @@ fn build_closure_caller() -> ncl_ir::Function {
     let value = builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("value argument")[0];
-    let argc = builder.add_constant(Constant::Fixnum(1));
-    let argc = builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-        .expect("argc")[0];
+    let argc = fixnum_word(&mut builder, 1);
     let result = builder
         .push_op(
             OpKind::CallClosure {
@@ -245,10 +239,7 @@ fn build_handler_failure_function(id: u32, leave_before_downstream: bool) -> ncl
         Vec::new(),
         vec![Ty::Word],
     );
-    let catch_tag = builder.add_constant(Constant::Fixnum(17));
-    let catch_tag = builder
-        .push_op(OpKind::Const { result: catch_tag }, &[Ty::Word])
-        .expect("catch tag")[0];
+    let catch_tag = fixnum_word(&mut builder, 17);
     builder
         .push_op(
             OpKind::EnterHandler {
@@ -267,10 +258,7 @@ fn build_handler_failure_function(id: u32, leave_before_downstream: bool) -> ncl
             )
             .expect("leave handler");
     }
-    let value = builder.add_constant(Constant::Fixnum(23));
-    let value = builder
-        .push_op(OpKind::Const { result: value }, &[Ty::Word])
-        .expect("downstream value")[0];
+    let value = fixnum_word(&mut builder, 23);
     let downstream = builder
         .push_op(
             OpKind::Builtin {
@@ -324,10 +312,7 @@ fn build_pending_dispatch_function() -> ncl_ir::Function {
         Vec::new(),
         vec![Ty::Word],
     );
-    let catch_tag = builder.add_constant(Constant::Fixnum(17));
-    let catch_tag = builder
-        .push_op(OpKind::Const { result: catch_tag }, &[Ty::Word])
-        .expect("catch tag")[0];
+    let catch_tag = fixnum_word(&mut builder, 17);
     builder
         .push_op(
             OpKind::EnterHandler {
@@ -336,19 +321,8 @@ fn build_pending_dispatch_function() -> ncl_ir::Function {
             &[],
         )
         .expect("enter handler");
-    let pending_tag = builder.add_constant(Constant::Fixnum(19));
-    let pending_tag = builder
-        .push_op(
-            OpKind::Const {
-                result: pending_tag,
-            },
-            &[Ty::Word],
-        )
-        .expect("pending tag")[0];
-    let payload = builder.add_constant(Constant::Fixnum(29));
-    let payload = builder
-        .push_op(OpKind::Const { result: payload }, &[Ty::Word])
-        .expect("pending payload")[0];
+    let pending_tag = fixnum_word(&mut builder, 19);
+    let payload = fixnum_word(&mut builder, 29);
     let pending_value = builder
         .push_op(
             OpKind::Builtin {
@@ -409,10 +383,7 @@ fn build_progv_failure_function(id: u32, leave_before_downstream: bool) -> ncl_i
         Vec::new(),
         Vec::new(),
     );
-    let binding = builder.add_constant(Constant::Fixnum(31));
-    let binding = builder
-        .push_op(OpKind::Const { result: binding }, &[Ty::Word])
-        .expect("binding target")[0];
+    let binding = fixnum_word(&mut builder, 31);
     builder
         .push_op(
             OpKind::EnterHandler {
@@ -479,10 +450,7 @@ fn build_unwind_protect_failure_function() -> ncl_ir::Function {
         Vec::new(),
         Vec::new(),
     );
-    let value = builder.add_constant(Constant::Fixnum(37));
-    let value = builder
-        .push_op(OpKind::Const { result: value }, &[Ty::Word])
-        .expect("downstream value")[0];
+    let value = fixnum_word(&mut builder, 37);
     builder
         .push_op(
             OpKind::EnterHandler {

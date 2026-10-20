@@ -113,6 +113,11 @@ const PROBES: &[Probe] = &[
         expected: "(NIL 2 1)",
     },
     Probe {
+        name: "rotatef-no-places",
+        source: "(rotatef)",
+        expected: "NIL",
+    },
+    Probe {
         name: "shiftf",
         source: "(let ((a 1) (b 2)) (list (shiftf a b 3) a b))",
         expected: "(1 2 3)",

@@ -6,6 +6,7 @@ pub struct StopWorld {
     pub(crate) epoch: u64,
     pub(crate) requested: bool,
     pub(crate) parked: HashSet<usize>,
+    pub(crate) gate_parked: HashSet<usize>,
 }
 
 impl Heap {
@@ -17,7 +18,8 @@ impl Heap {
         if !stop_world.requested {
             stop_world.epoch = stop_world.epoch.wrapping_add(1).max(1);
             stop_world.requested = true;
-            stop_world.parked.clear();
+            let gate_parked = stop_world.gate_parked.clone();
+            stop_world.parked = gate_parked;
         }
         drop(stop_world);
         self.stop_world_ready.notify_all();
@@ -78,17 +80,47 @@ impl Heap {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         stop_world.requested = false;
-        stop_world.parked.clear();
+        let gate_parked = stop_world.gate_parked.clone();
+        stop_world.parked = gate_parked;
         drop(stop_world);
         self.stop_world_ready.notify_all();
     }
 
     pub(crate) fn collect_with_thread(&self, thread: &mut Thread, full: bool) {
+        let _gate = self.acquire_slow_path_gate(thread);
+        self.collect_with_gate(thread, full);
+    }
+
+    pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
+        thread.publish_snapshot();
+        {
+            let _stop_world = self
+                .stop_world
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            thread.state = SafepointState::Collector;
+        }
         self.begin_collection(thread);
-        thread.state = SafepointState::Collecting;
+        {
+            let _stop_world = self
+                .stop_world
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            thread.state = SafepointState::Collecting;
+        }
         self.collect(full);
-        thread.state = SafepointState::Running;
+        self.reset_allocation_debt();
         self.end_collection();
+        let stop_world = self
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        thread.state = if thread.safepoint_request == 0 {
+            SafepointState::Running
+        } else {
+            SafepointState::PollRequested
+        };
+        drop(stop_world);
     }
 }
 

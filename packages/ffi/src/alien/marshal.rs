@@ -140,7 +140,7 @@ pub fn unmarshal_result(
             if address == 0 {
                 Ok(Word::NIL)
             } else {
-                Ok(SystemAreaPointer::new(address).as_word())
+                SystemAreaPointer::new(address).to_word(ctx, runtime)
             }
         }
         AlienType::Array(_, _) | AlienType::Structure(_) | AlienType::Union(_) => {

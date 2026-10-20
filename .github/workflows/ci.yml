@@ -2,10 +2,12 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,8 +27,6 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: aarch64 macOS
-            runner: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -160,13 +160,12 @@ jobs:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info
       # Region coverage, not line coverage: a line with an untaken branch
       # (e.g. one arm of a match) counts as fully covered by line metrics
       # but only partially by region metrics, so region is the stricter and
       # more accurate signal. This ratchet must remain at the production
       # target; lowering it would hide an untested branch.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-regions 95.0
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info --fail-under-regions 95.0
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

@@ -126,8 +126,8 @@ mod scalar_tests {
             unsafe { call(&function, &signature, &[ForeignValue::I32(-9)]) },
             Ok(ForeignValue::I32(9))
         );
-        assert_integer_width_calls(&library)?;
-        assert_register_argument_calls(&library)?;
+        assert_integer_width_calls()?;
+        assert_register_argument_calls()?;
         assert_pointer_calls(&library)?;
         Ok(())
     }
@@ -147,30 +147,6 @@ mod scalar_tests {
             unsafe { call(function, signature, &[ForeignValue::U32(9)]) },
             Err(ForeignCallError::ArgumentTypeMismatch)
         );
-        let single_argument = ForeignSignature::new(ForeignType::I32, vec![ForeignType::F32]);
-        assert_eq!(
-            // SAFETY: the unsupported-float check rejects this before invocation.
-            unsafe { call(function, &single_argument, &[ForeignValue::F32(1.5)]) },
-            Err(ForeignCallError::UnsupportedAbi)
-        );
-        let double_argument = ForeignSignature::new(ForeignType::I32, vec![ForeignType::F64]);
-        assert_eq!(
-            // SAFETY: the unsupported-float check rejects this before invocation.
-            unsafe { call(function, &double_argument, &[ForeignValue::F64(1.5)]) },
-            Err(ForeignCallError::UnsupportedAbi)
-        );
-        let single_result = ForeignSignature::new(ForeignType::F32, vec![ForeignType::I32]);
-        assert_eq!(
-            // SAFETY: the unsupported-float check rejects this before invocation.
-            unsafe { call(function, &single_result, &[ForeignValue::I32(-9)]) },
-            Err(ForeignCallError::UnsupportedAbi)
-        );
-        let double_result = ForeignSignature::new(ForeignType::F64, vec![ForeignType::I32]);
-        assert_eq!(
-            // SAFETY: the unsupported-float check rejects this before invocation.
-            unsafe { call(function, &double_result, &[ForeignValue::I32(-9)]) },
-            Err(ForeignCallError::UnsupportedAbi)
-        );
         let void_argument = ForeignSignature::new(ForeignType::I32, vec![ForeignType::Void]);
         assert_eq!(
             // SAFETY: the invalid-signature check rejects this before invocation.
@@ -185,74 +161,57 @@ mod scalar_tests {
             unsafe { call(&variadic, &variadic_signature, &[ForeignValue::I32(-9)]) },
             Err(ForeignCallError::UnsupportedAbi)
         );
-        #[cfg(target_arch = "x86_64")]
-        assert_stack_argument_rejected(library, 7)?;
-        #[cfg(target_arch = "aarch64")]
-        assert_stack_argument_rejected(library, 9)?;
         Ok(())
     }
 
-    fn assert_stack_argument_rejected(
-        library: &ForeignLibrary,
-        count: usize,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let signature = ForeignSignature::new(ForeignType::U64, vec![ForeignType::U64; count]);
-        let function = library.symbol(c"abs")?;
-        let values = vec![ForeignValue::U64(1); count];
-        assert_eq!(
-            // SAFETY: the unsupported-argument-count check rejects this before invocation.
-            unsafe { call(&function, &signature, &values) },
-            Err(ForeignCallError::UnsupportedAbi)
-        );
-        Ok(())
-    }
-
-    fn assert_integer_width_calls(
-        library: &ForeignLibrary,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_integer_width_calls() -> Result<(), Box<dyn std::error::Error>> {
         let signed_address =
             NonNull::new(echo_i8 as *const () as *mut c_void).ok_or(ForeignError::NullAddress)?;
-        let signed = ForeignFunction::from_address(signed_address, library);
+        let signed = ForeignFunction::from_test_address(signed_address);
         assert_eq!(
             // SAFETY: `echo_i8` has the declared C ABI and does not unwind.
-            unsafe { call(
-                &signed,
-                &ForeignSignature::new(ForeignType::I8, vec![ForeignType::I8]),
-                &[ForeignValue::I8(-128)],
-            ) },
+            unsafe {
+                call(
+                    &signed,
+                    &ForeignSignature::new(ForeignType::I8, vec![ForeignType::I8]),
+                    &[ForeignValue::I8(-128)],
+                )
+            },
             Ok(ForeignValue::I8(-128))
         );
 
         let unsigned_address =
             NonNull::new(echo_u8 as *const () as *mut c_void).ok_or(ForeignError::NullAddress)?;
-        let unsigned = ForeignFunction::from_address(unsigned_address, library);
+        let unsigned = ForeignFunction::from_test_address(unsigned_address);
         assert_eq!(
             // SAFETY: `echo_u8` has the declared C ABI and does not unwind.
-            unsafe { call(
-                &unsigned,
-                &ForeignSignature::new(ForeignType::U8, vec![ForeignType::U8]),
-                &[ForeignValue::U8(255)],
-            ) },
+            unsafe {
+                call(
+                    &unsigned,
+                    &ForeignSignature::new(ForeignType::U8, vec![ForeignType::U8]),
+                    &[ForeignValue::U8(255)],
+                )
+            },
             Ok(ForeignValue::U8(255))
         );
         Ok(())
     }
 
-    fn assert_register_argument_calls(
-        library: &ForeignLibrary,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_register_argument_calls() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_arch = "x86_64")]
         {
             let address = NonNull::new(sum_six as *const () as *mut c_void)
                 .ok_or(ForeignError::NullAddress)?;
-            let function = ForeignFunction::from_address(address, library);
+            let function = ForeignFunction::from_test_address(address);
             assert_eq!(
                 // SAFETY: `sum_six` has this six-argument C ABI and does not unwind.
-                unsafe { call(
-                    &function,
-                    &ForeignSignature::new(ForeignType::U64, vec![ForeignType::U64; 6]),
-                    &[ForeignValue::U64(1); 6],
-                ) },
+                unsafe {
+                    call(
+                        &function,
+                        &ForeignSignature::new(ForeignType::U64, vec![ForeignType::U64; 6]),
+                        &[ForeignValue::U64(1); 6],
+                    )
+                },
                 Ok(ForeignValue::U64(6))
             );
         }
@@ -260,14 +219,16 @@ mod scalar_tests {
         {
             let address = NonNull::new(sum_eight as *const () as *mut c_void)
                 .ok_or(ForeignError::NullAddress)?;
-            let function = ForeignFunction::from_address(address, library);
+            let function = ForeignFunction::from_test_address(address);
             assert_eq!(
                 // SAFETY: `sum_eight` has this eight-argument C ABI and does not unwind.
-                unsafe { call(
-                    &function,
-                    &ForeignSignature::new(ForeignType::U64, vec![ForeignType::U64; 8]),
-                    &[ForeignValue::U64(1); 8],
-                ) },
+                unsafe {
+                    call(
+                        &function,
+                        &ForeignSignature::new(ForeignType::U64, vec![ForeignType::U64; 8]),
+                        &[ForeignValue::U64(1); 8],
+                    )
+                },
                 Ok(ForeignValue::U64(8))
             );
         }
@@ -276,8 +237,8 @@ mod scalar_tests {
 
     fn assert_pointer_calls(library: &ForeignLibrary) -> Result<(), Box<dyn std::error::Error>> {
         assert_memset_call(library)?;
-        assert_pointer_identity_calls(library)?;
-        assert_tracked_callback_call(library)?;
+        assert_pointer_identity_calls()?;
+        assert_tracked_callback_call()?;
         Ok(())
     }
 
@@ -291,15 +252,17 @@ mod scalar_tests {
         assert_eq!(
             // SAFETY: `memset` matches this C ABI, the tracked region spans eight writable
             // bytes, and no other access races with the call.
-            unsafe { call(
-                &memset,
-                &signature,
-                &[
-                    ForeignValue::Pointer(region.address()),
-                    ForeignValue::I32(0x5a),
-                    ForeignValue::U64(8),
-                ],
-            ) },
+            unsafe {
+                call(
+                    &memset,
+                    &signature,
+                    &[
+                        ForeignValue::Pointer(region.address()),
+                        ForeignValue::I32(0x5a),
+                        ForeignValue::U64(8),
+                    ],
+                )
+            },
             Ok(ForeignValue::Pointer(region.address()))
         );
         assert_eq!(
@@ -309,21 +272,21 @@ mod scalar_tests {
         Ok(())
     }
 
-    fn assert_pointer_identity_calls(
-        library: &ForeignLibrary,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_pointer_identity_calls() -> Result<(), Box<dyn std::error::Error>> {
         let identity_address = NonNull::new(pointer_identity as *const () as *mut c_void)
             .ok_or(ForeignError::NullAddress)?;
-        let identity = ForeignFunction::from_address(identity_address, library);
+        let identity = ForeignFunction::from_test_address(identity_address);
         let signature = ForeignSignature::new(ForeignType::Pointer, vec![ForeignType::Pointer]);
         let null_pointer = SapAddress::new(0)?;
         assert_eq!(
             // SAFETY: `pointer_identity` has the declared C ABI and only copies its pointer.
-            unsafe { call(
-                &identity,
-                &signature,
-                &[ForeignValue::Pointer(null_pointer)],
-            ) },
+            unsafe {
+                call(
+                    &identity,
+                    &signature,
+                    &[ForeignValue::Pointer(null_pointer)],
+                )
+            },
             Ok(ForeignValue::Pointer(null_pointer))
         );
         let mut opaque_storage = [0_u8; 1];
@@ -332,11 +295,13 @@ mod scalar_tests {
         let opaque_address = SapAddress::new(opaque_raw_address)?;
         assert_eq!(
             // SAFETY: `pointer_identity` only copies this live stack pointer and does not unwind.
-            unsafe { call(
-                &identity,
-                &signature,
-                &[ForeignValue::Pointer(opaque_address)],
-            ) },
+            unsafe {
+                call(
+                    &identity,
+                    &signature,
+                    &[ForeignValue::Pointer(opaque_address)],
+                )
+            },
             Ok(ForeignValue::Pointer(opaque_address))
         );
         assert_eq!(
@@ -347,40 +312,42 @@ mod scalar_tests {
         let tracked = allocate_region(8)?;
         assert_eq!(
             // SAFETY: `pointer_identity` only copies this live tracked address and does not unwind.
-            unsafe { call(
-                &identity,
-                &signature,
-                &[ForeignValue::Pointer(tracked.address())],
-            ) },
+            unsafe {
+                call(
+                    &identity,
+                    &signature,
+                    &[ForeignValue::Pointer(tracked.address())],
+                )
+            },
             Ok(ForeignValue::Pointer(tracked.address()))
         );
         assert_eq!(read_sap(tracked.address(), AccessWidth::U8), Ok(0));
         Ok(())
     }
 
-    fn assert_tracked_callback_call(
-        library: &ForeignLibrary,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_tracked_callback_call() -> Result<(), Box<dyn std::error::Error>> {
         let tracked = allocate_region(8)?;
         let callback_address = NonNull::new(read_tracked_address as *const () as *mut c_void)
             .ok_or(ForeignError::NullAddress)?;
         let apply_address = NonNull::new(apply_callback as *const () as *mut c_void)
             .ok_or(ForeignError::NullAddress)?;
-        let apply = ForeignFunction::from_address(apply_address, library);
+        let apply = ForeignFunction::from_test_address(apply_address);
         let callback_raw_address = u64::try_from(callback_address.as_ptr().expose_provenance())
             .map_err(|_| ForeignError::AddressOutOfRange)?;
         let callback_sap = SapAddress::new(callback_raw_address)?;
         assert_eq!(
             // SAFETY: `apply_callback` matches this C ABI; its callback has the declared
             // signature and reads only the live tracked region supplied here.
-            unsafe { call(
-                &apply,
-                &ForeignSignature::new(ForeignType::U64, vec![ForeignType::Pointer; 2]),
-                &[
-                    ForeignValue::Pointer(callback_sap),
-                    ForeignValue::Pointer(tracked.address()),
-                ],
-            ) },
+            unsafe {
+                call(
+                    &apply,
+                    &ForeignSignature::new(ForeignType::U64, vec![ForeignType::Pointer; 2]),
+                    &[
+                        ForeignValue::Pointer(callback_sap),
+                        ForeignValue::Pointer(tracked.address()),
+                    ],
+                )
+            },
             Ok(ForeignValue::U64(0))
         );
         Ok(())

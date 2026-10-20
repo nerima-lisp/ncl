@@ -2,7 +2,7 @@
 
 use crate::{LispError, ObjectError, Runtime};
 use core::cell::Cell;
-use ncl_sys::{Heap, RootToken, StorageCondition, Thread, Word};
+use ncl_sys::{Heap, RootToken, RuntimeErrorSource, StorageCondition, Thread, Word};
 use std::sync::Arc;
 
 pub type ConditionHandlerInvoker =
@@ -154,10 +154,17 @@ impl ThreadContext {
     /// Record a pending condition.
     pub const fn set_pending(&mut self, error: ObjectError) {
         self.pending = Some(error);
+        self.thread
+            .set_runtime_error_pending(RuntimeErrorSource::Object, true);
     }
     /// Take the pending condition.
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
-        self.pending.take()
+        let error = self.pending.take();
+        if error.is_some() {
+            self.thread
+                .set_runtime_error_pending(RuntimeErrorSource::Object, false);
+        }
+        error
     }
     /// Whether no Rust-side boundary error is pending.
     #[must_use]
@@ -166,10 +173,17 @@ impl ThreadContext {
     }
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         self.pending_lisp_error = Some(error);
+        self.thread
+            .set_runtime_error_pending(RuntimeErrorSource::Lisp, true);
     }
     /// Take the pending typed Lisp condition, if one was recorded.
     pub const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
-        self.pending_lisp_error.take()
+        let error = self.pending_lisp_error.take();
+        if error.is_some() {
+            self.thread
+                .set_runtime_error_pending(RuntimeErrorSource::Lisp, false);
+        }
+        error
     }
     /// Store the condition object produced for the latest typed builtin error.
     pub const fn set_pending_condition(&mut self, condition: Word) {
@@ -258,6 +272,7 @@ impl ThreadContext {
         Ok(())
     }
 }
+
 /// Unregister the context from its heap.
 ///
 /// The context's `Arc` keeps the heap alive, but root slots owned by `Runtime`
@@ -275,5 +290,26 @@ impl Drop for ThreadContext {
 impl Default for ThreadContext {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LispError, ObjectError, ThreadContext};
+
+    #[test]
+    fn pending_error_payloads_keep_source_flags_in_sync() {
+        let mut context = ThreadContext::new();
+        context.set_pending(ObjectError::ControlError);
+        context.set_pending_lisp_error(LispError::EndOfFile);
+        assert!(context.thread.runtime_error_pending());
+
+        assert_eq!(context.take_pending(), Some(ObjectError::ControlError));
+        assert!(context.thread.runtime_error_pending());
+        assert_eq!(
+            context.take_pending_lisp_error(),
+            Some(LispError::EndOfFile)
+        );
+        assert!(!context.thread.runtime_error_pending());
     }
 }

@@ -4,15 +4,17 @@
 
 mod extension;
 mod foreign;
+mod sap;
 mod system;
 
 pub use ncl_ownership::{SymbolKind, SymbolRow};
 
 pub use extension::EXTENSION;
 pub use foreign::FOREIGN;
+pub use sap::SAP;
 pub use system::SYSTEM;
 
 /// Every Phase-1 symbol owned by this crate, in ownership-table order.
 pub fn symbols() -> impl Iterator<Item = &'static SymbolRow> {
-    FOREIGN.iter().chain(EXTENSION).chain(SYSTEM)
+    FOREIGN.iter().chain(SAP).chain(EXTENSION).chain(SYSTEM)
 }

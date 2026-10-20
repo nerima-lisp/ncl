@@ -104,3 +104,26 @@ NCL-FFI	POINTER-TYPE	class	ncl-ffi	1	no	NCL-FFI foreign interface
 NCL-FFI	FOREIGN-POINTER-P	function	ncl-ffi	1	no	NCL-FFI foreign interface
 NCL-FFI	UPDATE-FOREIGN-LINKAGE-TABLE	function	ncl-ffi	1	no	NCL-FFI foreign interface
 NCL-FFI	VECTOR-POINTER	function	ncl-ffi	1	no	NCL-FFI foreign interface
+NCL-FFI	INT-SAP	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP+	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP-	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP-INT	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP-REF-16	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-32	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-64	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-8	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-DOUBLE	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-SAP	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-SINGLE	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP-REF-WORD	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SAP<	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP<=	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP=	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP>	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SAP>=	function	ncl-ffi	1	no	NCL-FFI system area pointer arithmetic
+NCL-FFI	SIGNED-SAP-REF-16	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SIGNED-SAP-REF-32	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SIGNED-SAP-REF-64	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SIGNED-SAP-REF-8	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SIGNED-SAP-REF-WORD	function	ncl-ffi	1	no	NCL-FFI tracked system area access
+NCL-FFI	SYSTEM-AREA-POINTER	class+type	ncl-ffi	1	no	NCL-FFI system area pointer type

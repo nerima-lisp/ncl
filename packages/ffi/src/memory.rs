@@ -1,104 +1,346 @@
-//! Unmanaged memory operations and the pinned-object runtime side.
-//!
-//! `ncl-sys` exposes no safe primitive to read, write, allocate, or copy an
-//! arbitrary address, so every operation that needs one returns
-//! [`FfiError::MissingSysPrimitive`] naming the required signature. Rooting is
-//! implemented here because it only needs the public `push_root` / `pop_root`.
+//! Tracked unmanaged memory and the pinned-object runtime side.
+
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 use ncl_object::{Runtime, ThreadContext, Word};
 use ncl_sys::RootSlot;
-
-use crate::FfiError;
-use crate::alien::AlienType;
-use crate::roots::with_roots;
-use crate::sap::SystemAreaPointer;
-use crate::sys_requirements::{
-    ALLOCATE_SYSTEM_MEMORY, DEALLOCATE_SYSTEM_MEMORY, MEMMOVE_SYSTEM_MEMORY, READ_SYSTEM_MEMORY,
-    WRITE_SYSTEM_MEMORY,
+use ncl_sys::foreign::{
+    AccessWidth, Alignment, ByteLength, ForeignRegion, SapAddress, move_sap, read_sap, write_sap,
 };
 
-/// Allocate `size` bytes of unmanaged memory and return its address.
-///
-/// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// allocation wrapper.
-pub const fn allocate_system_memory(_size: usize) -> Result<SystemAreaPointer, FfiError> {
-    Err(FfiError::MissingSysPrimitive(ALLOCATE_SYSTEM_MEMORY))
+use crate::FfiError;
+use crate::alien::{AlienType, marshal_argument, size_of, unmarshal_result};
+use crate::roots::with_roots;
+use crate::sap::SystemAreaPointer;
+
+static SYSTEM_ALLOCATIONS: OnceLock<Mutex<HashMap<usize, ForeignRegion>>> = OnceLock::new();
+
+#[derive(Clone, Copy)]
+pub(crate) enum SapAccessType {
+    Signed8,
+    Unsigned8,
+    Signed16,
+    Unsigned16,
+    Signed32,
+    Unsigned32,
+    Signed64,
+    Unsigned64,
+    Pointer,
+    SingleFloat,
+    DoubleFloat,
 }
 
-/// Release unmanaged memory previously returned by `allocate-system-memory`.
+/// Allocate tracked unmanaged memory and return its base SAP.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// release wrapper.
-pub const fn deallocate_system_memory(
-    _address: SystemAreaPointer,
-    _size: usize,
-) -> Result<(), FfiError> {
-    Err(FfiError::MissingSysPrimitive(DEALLOCATE_SYSTEM_MEMORY))
+/// Returns an error if the size is invalid, allocation fails, or the allocation
+/// registry cannot retain the region.
+pub fn allocate_system_memory(size: usize) -> Result<SystemAreaPointer, FfiError> {
+    let length = u64::try_from(size).map_err(|_| FfiError::ValueOutOfRange {
+        type_name: "system-memory-size",
+    })?;
+    let region = ForeignRegion::allocate(ByteLength::new(length), Alignment::new(8)?)?;
+    let address = system_address(region.address().get())?;
+    let mut allocations = allocation_registry()
+        .lock()
+        .map_err(|_| FfiError::ForeignMemory(ncl_sys::foreign::ForeignError::RegistryPoisoned))?;
+    allocations
+        .try_reserve(1)
+        .map_err(|_| FfiError::ForeignMemory(ncl_sys::foreign::ForeignError::RegistryFull))?;
+    allocations.insert(address.address(), region);
+    drop(allocations);
+    Ok(address)
 }
 
-/// Copy `count` bytes between two possibly overlapping addresses.
+/// Release a tracked allocation previously returned by `allocate_system_memory`.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// copy wrapper.
-pub const fn memmove(
-    _destination: SystemAreaPointer,
-    _source: SystemAreaPointer,
-    _count: usize,
+/// Returns an error if `address` is not tracked or `size` differs from the
+/// allocation's recorded size.
+pub fn deallocate_system_memory(address: SystemAreaPointer, size: usize) -> Result<(), FfiError> {
+    let mut allocations = allocation_registry()
+        .lock()
+        .map_err(|_| FfiError::ForeignMemory(ncl_sys::foreign::ForeignError::RegistryPoisoned))?;
+    let region = allocations
+        .get(&address.address())
+        .ok_or(FfiError::ForeignMemory(
+            ncl_sys::foreign::ForeignError::UnknownRegion,
+        ))?;
+    let expected = usize::try_from(region.len().get()).map_err(|_| FfiError::ValueOutOfRange {
+        type_name: "system-memory-size",
+    })?;
+    if expected != size {
+        return Err(FfiError::AllocationSizeMismatch {
+            expected,
+            got: size,
+        });
+    }
+    let released = allocations.remove(&address.address());
+    drop(allocations);
+    drop(released);
+    Ok(())
+}
+
+/// Copy bytes between currently tracked regions, preserving overlap semantics.
+///
+/// # Errors
+/// Returns an error if either address is outside tracked memory or `count` is
+/// outside the supported range.
+pub fn memmove(
+    destination: SystemAreaPointer,
+    source: SystemAreaPointer,
+    count: usize,
 ) -> Result<SystemAreaPointer, FfiError> {
-    Err(FfiError::MissingSysPrimitive(MEMMOVE_SYSTEM_MEMORY))
+    let destination_address = sap_address(destination)?;
+    let source_address = sap_address(source)?;
+    let count = u64::try_from(count).map_err(|_| FfiError::ValueOutOfRange {
+        type_name: "memory-copy-size",
+    })?;
+    move_sap(destination_address, source_address, ByteLength::new(count))?;
+    Ok(destination)
 }
 
-/// Read a value of `ty` from `base + offset`, the shared implementation of
-/// `sap-ref-*`, `signed-sap-ref-*`, and `sap-ref-sap`.
+/// Read a scalar value from a currently tracked SAP region at a checked offset.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// arbitrary-address read.
-pub const fn sap_ref(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    _ty: &AlienType,
-    _base: SystemAreaPointer,
-    _offset: isize,
+/// Returns an error if `ty` is unsupported, the address is outside tracked
+/// memory, or the value cannot be represented in `ty`.
+pub fn sap_ref(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    ty: &AlienType,
+    base: SystemAreaPointer,
+    offset: isize,
 ) -> Result<Word, FfiError> {
-    Err(FfiError::MissingSysPrimitive(READ_SYSTEM_MEMORY))
+    let width = access_width(ty)?;
+    let address = checked_offset(base, offset)?;
+    let raw = read_sap(address, width)?;
+    let bytes = raw
+        .to_le_bytes()
+        .into_iter()
+        .take(width_bytes(width))
+        .collect::<Vec<_>>();
+    unmarshal_result(ctx, runtime, ty, &bytes)
 }
 
-/// Write `value`, marshalled as `ty`, to `base + offset`, the shared
-/// implementation of `(setf sap-ref-*)`.
+/// Write a scalar value to a currently tracked SAP region at a checked offset.
 ///
 /// # Errors
-/// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
-/// arbitrary-address write.
-pub const fn sap_set(
-    _ctx: &ThreadContext,
+/// Returns an error if `ty` is unsupported, the address is outside tracked
+/// memory, or `value` cannot be represented in `ty`.
+pub fn sap_set(
+    ctx: &ThreadContext,
     _runtime: &Runtime,
-    _ty: &AlienType,
-    _base: SystemAreaPointer,
-    _offset: isize,
-    _value: Word,
+    ty: &AlienType,
+    base: SystemAreaPointer,
+    offset: isize,
+    value: Word,
 ) -> Result<(), FfiError> {
-    Err(FfiError::MissingSysPrimitive(WRITE_SYSTEM_MEMORY))
+    let width = access_width(ty)?;
+    let address = checked_offset(base, offset)?;
+    let bytes = marshal_argument(ctx, ty, value)?;
+    if bytes.len() != width_bytes(width) {
+        return Err(FfiError::UnsupportedType(ty.label()));
+    }
+    let mut raw = [0_u8; 8];
+    for (destination, source) in raw.iter_mut().zip(bytes) {
+        *destination = source;
+    }
+    write_sap(address, width, u64::from_le_bytes(raw))?;
+    Ok(())
+}
+
+pub(crate) fn sap_ref_typed(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    ty: SapAccessType,
+    base: SystemAreaPointer,
+    offset: isize,
+) -> Result<Word, FfiError> {
+    match ty {
+        SapAccessType::Signed8 | SapAccessType::Unsigned8 => {
+            let address = checked_offset(base, offset)?;
+            let value = u8::try_from(read_sap(address, AccessWidth::U8)?).map_err(|_| {
+                FfiError::ValueOutOfRange {
+                    type_name: "sap-ref-8",
+                }
+            })?;
+            let value = if matches!(ty, SapAccessType::Signed8) {
+                i64::from(i8::from_ne_bytes([value]))
+            } else {
+                i64::from(value)
+            };
+            Ok(Word::fixnum(value))
+        }
+        SapAccessType::Pointer => {
+            let address = checked_offset(base, offset)?;
+            let value = read_sap(address, AccessWidth::U64)?;
+            let address = usize::try_from(value).map_err(|_| FfiError::ValueOutOfRange {
+                type_name: "system-area-pointer",
+            })?;
+            SystemAreaPointer::new(address).to_word(ctx, runtime)
+        }
+        SapAccessType::Signed16
+        | SapAccessType::Unsigned16
+        | SapAccessType::Signed32
+        | SapAccessType::Unsigned32
+        | SapAccessType::Signed64
+        | SapAccessType::Unsigned64
+        | SapAccessType::SingleFloat
+        | SapAccessType::DoubleFloat => {
+            let alien_type = alien_type(ty).ok_or(FfiError::UnsupportedType("sap-ref-8"))?;
+            sap_ref(ctx, runtime, &alien_type, base, offset)
+        }
+    }
+}
+
+pub(crate) fn sap_set_typed(
+    ctx: &ThreadContext,
+    runtime: &Runtime,
+    ty: SapAccessType,
+    base: SystemAreaPointer,
+    offset: isize,
+    value: Word,
+) -> Result<(), FfiError> {
+    match ty {
+        SapAccessType::Signed8 | SapAccessType::Unsigned8 => {
+            let integer_type = if matches!(ty, SapAccessType::Signed8) {
+                AlienType::Int
+            } else {
+                AlienType::UnsignedInt
+            };
+            let bytes = marshal_argument(ctx, &integer_type, value)?;
+            let bytes: [u8; 4] = bytes.try_into().map_err(|_| FfiError::ValueOutOfRange {
+                type_name: "sap-ref-8",
+            })?;
+            let byte = if matches!(ty, SapAccessType::Signed8) {
+                let value = i32::from_le_bytes(bytes);
+                let value = i8::try_from(value).map_err(|_| FfiError::ValueOutOfRange {
+                    type_name: "signed-sap-ref-8",
+                })?;
+                let [byte] = value.to_ne_bytes();
+                byte
+            } else {
+                u8::try_from(u32::from_le_bytes(bytes)).map_err(|_| FfiError::ValueOutOfRange {
+                    type_name: "sap-ref-8",
+                })?
+            };
+            let address = checked_offset(base, offset)?;
+            write_sap(address, AccessWidth::U8, u64::from(byte))?;
+            Ok(())
+        }
+        SapAccessType::Signed16
+        | SapAccessType::Unsigned16
+        | SapAccessType::Signed32
+        | SapAccessType::Unsigned32
+        | SapAccessType::Signed64
+        | SapAccessType::Unsigned64
+        | SapAccessType::Pointer
+        | SapAccessType::SingleFloat
+        | SapAccessType::DoubleFloat => {
+            let alien_type = alien_type(ty).ok_or(FfiError::UnsupportedType("sap-ref-8"))?;
+            sap_set(ctx, runtime, &alien_type, base, offset, value)
+        }
+    }
 }
 
 /// Root every value in `values` across a block that builds alien views of them.
 ///
-/// This is the runtime side of `with-alien` / `with-pinned-objects`: precise
-/// roots keep the objects live and rewrite their slots in place after a
-/// collection. A true non-moving pin is a separate `ncl-sys` requirement
-/// (`sys_requirements::PIN_OBJECT`), because a root does not stop the collector
-/// from copying a young object.
+/// A precise root keeps an object reachable but does not prevent the collector
+/// from moving it. A non-moving pin remains a separate system requirement.
 ///
 /// # Errors
-/// Returns [`FfiError::RootStackCorrupt`] when a token does not pop in stack
-/// order, and any error the closure returns.
+/// Returns an error if root-stack cleanup fails or the closure returns an
+/// error.
 pub fn with_rooted_objects<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
     f: impl FnOnce(&mut ThreadContext, &[RootSlot<'_>]) -> Result<T, FfiError>,
 ) -> Result<T, FfiError> {
     with_roots(ctx, values, f)
+}
+
+fn allocation_registry() -> &'static Mutex<HashMap<usize, ForeignRegion>> {
+    SYSTEM_ALLOCATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn system_address(address: u64) -> Result<SystemAreaPointer, FfiError> {
+    usize::try_from(address)
+        .map(SystemAreaPointer::new)
+        .map_err(|_| FfiError::ValueOutOfRange {
+            type_name: "system-area-pointer",
+        })
+}
+
+fn sap_address(address: SystemAreaPointer) -> Result<SapAddress, FfiError> {
+    let address = u64::try_from(address.address()).map_err(|_| FfiError::ValueOutOfRange {
+        type_name: "system-area-pointer",
+    })?;
+    SapAddress::new(address).map_err(FfiError::from)
+}
+
+fn checked_offset(
+    base: SystemAreaPointer,
+    offset: isize,
+) -> Result<ncl_sys::foreign::SapAddress, FfiError> {
+    let address = if offset >= 0 {
+        base.address()
+            .checked_add(
+                usize::try_from(offset).map_err(|_| FfiError::ValueOutOfRange {
+                    type_name: "system-area-pointer-offset",
+                })?,
+            )
+    } else {
+        base.address().checked_sub(offset.unsigned_abs())
+    }
+    .ok_or(FfiError::ValueOutOfRange {
+        type_name: "system-area-pointer-offset",
+    })?;
+    let address = u64::try_from(address).map_err(|_| FfiError::ValueOutOfRange {
+        type_name: "system-area-pointer",
+    })?;
+    ncl_sys::foreign::SapAddress::new(address).map_err(FfiError::from)
+}
+
+fn access_width(ty: &AlienType) -> Result<AccessWidth, FfiError> {
+    let bytes = match ty {
+        AlienType::Void
+        | AlienType::LongFloat
+        | AlienType::Array(_, _)
+        | AlienType::Structure(_)
+        | AlienType::Union(_) => return Err(FfiError::UnsupportedType(ty.label())),
+        _ => size_of(ty),
+    };
+    match bytes {
+        1 => Ok(AccessWidth::U8),
+        2 => Ok(AccessWidth::U16),
+        4 => Ok(AccessWidth::U32),
+        8 => Ok(AccessWidth::U64),
+        _ => Err(FfiError::UnsupportedType(ty.label())),
+    }
+}
+
+fn alien_type(ty: SapAccessType) -> Option<AlienType> {
+    match ty {
+        SapAccessType::Signed8 | SapAccessType::Unsigned8 => None,
+        SapAccessType::Signed16 => Some(AlienType::Short),
+        SapAccessType::Unsigned16 => Some(AlienType::UnsignedShort),
+        SapAccessType::Signed32 => Some(AlienType::Int),
+        SapAccessType::Unsigned32 => Some(AlienType::UnsignedInt),
+        SapAccessType::Signed64 => Some(AlienType::LongLong),
+        SapAccessType::Unsigned64 => Some(AlienType::UnsignedLongLong),
+        SapAccessType::Pointer => Some(AlienType::SystemAreaPointer),
+        SapAccessType::SingleFloat => Some(AlienType::SingleFloat),
+        SapAccessType::DoubleFloat => Some(AlienType::DoubleFloat),
+    }
+}
+
+const fn width_bytes(width: AccessWidth) -> usize {
+    match width {
+        AccessWidth::U8 => 1,
+        AccessWidth::U16 => 2,
+        AccessWidth::U32 => 4,
+        AccessWidth::U64 => 8,
+    }
 }

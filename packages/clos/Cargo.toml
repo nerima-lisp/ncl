@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 ncl-object = { path = "../object" }
 ncl-lib-numbers = { path = "../lib/numbers" }
+ncl-lib-streams = { path = "../lib/streams" }
 ncl-types = { path = "../types" }
 ncl-conditions = { path = "../conditions" }
 

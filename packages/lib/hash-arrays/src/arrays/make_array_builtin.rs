@@ -70,8 +70,17 @@ pub(super) fn make_array_builtin(
     if initial_element_set && initial_contents.is_some() {
         return Err(ObjectError::TypeError);
     }
-    if element_type == ArrayElementType::Bit && !initial_element_set {
-        initial_element = Word::fixnum(0);
+    if !initial_element_set {
+        initial_element = match element_type {
+            ArrayElementType::Bit
+            | ArrayElementType::Fixnum
+            | ArrayElementType::Signed
+            | ArrayElementType::Unsigned => Word::fixnum(0),
+            ArrayElementType::Character | ArrayElementType::BaseChar => Word::character(0),
+            ArrayElementType::T | ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat => {
+                initial_element
+            }
+        };
     }
     let array_options = ArrayOptions {
         element_type,

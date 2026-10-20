@@ -7,7 +7,8 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
     Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
-    make_array, make_cons, make_specialized_array, make_string, pop_root, push_root,
+    make_array, make_bignum_from_i128, make_cons, make_specialized_array, make_string, pop_root,
+    push_root,
 };
 
 fn call(
@@ -586,6 +587,122 @@ fn make_array_accepts_ansi_element_type_designators_and_rank_zero() -> Result<()
         Word::NIL
     );
     assert_eq!(array_row_major_ref(&ctx, rank_zero, 0)?, Word::fixnum(14));
+    Ok(())
+}
+
+#[test]
+fn make_array_integer_designators_accept_bignums_and_validate_bounds() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let symbol = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(common_lisp_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let list = |ctx: &mut ThreadContext, values: &[Word]| {
+        values.iter().rev().try_fold(Word::NIL, |tail, value| {
+            make_cons(ctx, &runtime, *value, tail)
+        })
+    };
+    let element_type_key = keyword(&mut ctx, "ELEMENT-TYPE")?;
+    let initial_element_key = keyword(&mut ctx, "INITIAL-ELEMENT")?;
+    let make_typed_array = |ctx: &mut ThreadContext, element_type: Word, initial_element: Word| {
+        call(
+            &runtime,
+            ctx,
+            "MAKE-ARRAY",
+            &[
+                Word::fixnum(1),
+                element_type_key,
+                element_type,
+                initial_element_key,
+                initial_element,
+            ],
+        )
+    };
+
+    let integer_name = symbol(&mut ctx, "INTEGER")?;
+    let signed_byte_name = symbol(&mut ctx, "SIGNED-BYTE")?;
+    let unsigned_byte_name = symbol(&mut ctx, "UNSIGNED-BYTE")?;
+    let star = symbol(&mut ctx, "*")?;
+    let negative: Word = make_bignum_from_i128(&mut ctx, &runtime, -(1_i128 << 70))?.into();
+    let positive: Word = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 70)?.into();
+
+    let integer = make_typed_array(&mut ctx, integer_name, negative)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[integer])?,
+        signed_byte_name
+    );
+    assert_eq!(array_row_major_ref(&ctx, integer, 0)?, negative);
+
+    let integer_all = list(&mut ctx, &[integer_name, star, star])?;
+    let integer_all = make_typed_array(&mut ctx, integer_all, positive)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[integer_all])?,
+        signed_byte_name
+    );
+    assert_eq!(array_row_major_ref(&ctx, integer_all, 0)?, positive);
+
+    let integer_nonnegative = list(&mut ctx, &[integer_name, Word::fixnum(0), star])?;
+    let integer_nonnegative = make_typed_array(&mut ctx, integer_nonnegative, positive)?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ARRAY-ELEMENT-TYPE",
+            &[integer_nonnegative]
+        )?,
+        unsigned_byte_name
+    );
+
+    let exclusive_upper = list(&mut ctx, &[Word::fixnum(10)])?;
+    let bounded_integer = list(&mut ctx, &[integer_name, Word::fixnum(0), exclusive_upper])?;
+    let bounded_integer = make_typed_array(&mut ctx, bounded_integer, Word::fixnum(5))?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[bounded_integer])?,
+        unsigned_byte_name
+    );
+
+    let malformed_upper = list(&mut ctx, &[integer_name, Word::fixnum(0), Word::TRUE])?;
+    assert_eq!(
+        make_typed_array(&mut ctx, malformed_upper, Word::fixnum(5)),
+        Err(ObjectError::TypeError)
+    );
+
+    let signed_all = list(&mut ctx, &[signed_byte_name, star])?;
+    let signed_all = make_typed_array(&mut ctx, signed_all, negative)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[signed_all])?,
+        signed_byte_name
+    );
+    assert_eq!(array_row_major_ref(&ctx, signed_all, 0)?, negative);
+
+    let unsigned_all_type = list(&mut ctx, &[unsigned_byte_name, star])?;
+    let unsigned_all = make_typed_array(&mut ctx, unsigned_all_type, positive)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[unsigned_all])?,
+        unsigned_byte_name
+    );
+    assert_eq!(array_row_major_ref(&ctx, unsigned_all, 0)?, positive);
+    assert_eq!(
+        make_typed_array(&mut ctx, unsigned_all_type, negative),
+        Err(ObjectError::TypeError)
+    );
+
     Ok(())
 }
 

@@ -118,6 +118,21 @@ const PROBES: &[Probe] = &[
         expected: "(1 2 3)",
     },
     Probe {
+        name: "values-list-multiple-values",
+        source: "(multiple-value-call #'list (values-list '(1 2 3)))",
+        expected: "(1 2 3)",
+    },
+    Probe {
+        name: "defun-fdefinition-lookup",
+        source: "(progn (defun lookup-fn (x) (+ x 1)) (funcall (fdefinition 'lookup-fn) 4))",
+        expected: "5",
+    },
+    Probe {
+        name: "defmacro-macro-function-lookup",
+        source: "(progn (defmacro lookup-macro (x) x) (functionp (macro-function 'lookup-macro)))",
+        expected: "T",
+    },
+    Probe {
         name: "with-input-from-string",
         source: "(with-input-from-string (s \"abc\") (read-char s))",
         expected: "#\\a",
@@ -207,6 +222,16 @@ const PROBES: &[Probe] = &[
         source: "(destructuring-bind (&key (x 10 x-p)) '() (list x x-p))",
         expected: "(10 NIL)",
     },
+    Probe {
+        name: "destructuring-bind-optional-supplied-p",
+        source: "(destructuring-bind (&optional (x 10 x-p)) '(3) (list x x-p))",
+        expected: "(3 T)",
+    },
+    Probe {
+        name: "destructuring-bind-explicit-key-supplied-p",
+        source: "(destructuring-bind (&key ((:value x) 0 x-p)) '(:value 9) (list x x-p))",
+        expected: "(9 T)",
+    },
     // B3: defmacro lambda lists (CLHS 3.4.4): &body, &whole, &environment, nesting.
     Probe {
         name: "defmacro-body-keyword",
@@ -227,6 +252,11 @@ const PROBES: &[Probe] = &[
         name: "defmacro-optional-key-defaults",
         source: "(progn (defmacro my-opt (a &optional (b 10) &key (c 20)) `(list ,a ,b ,c)) (my-opt 1))",
         expected: "(1 10 20)",
+    },
+    Probe {
+        name: "define-condition-initform-accessor",
+        source: "(progn (define-condition probe-condition (error) ((code :initarg :code :initform 41 :accessor probe-condition-code))) (list (probe-condition-code (make-condition 'probe-condition)) (probe-condition-code (make-condition 'probe-condition :code 9))))",
+        expected: "(41 9)",
     },
     // B4: macrolet local macros (CLHS special operator MACROLET).
     Probe {
@@ -274,6 +304,31 @@ const PROBES: &[Probe] = &[
         name: "loop-minimize",
         source: "(loop for x from 1 below 4 minimize x)",
         expected: "1",
+    },
+    Probe {
+        name: "loop-downfrom-by",
+        source: "(loop for i downfrom 5 above 0 by 2 collect i)",
+        expected: "(5 3 1)",
+    },
+    Probe {
+        name: "loop-on-tail-traversal",
+        source: "(loop for tail on '(1 2 3) collect tail)",
+        expected: "((1 2 3) (2 3) (3))",
+    },
+    Probe {
+        name: "loop-across-vector",
+        source: "(loop for x across #(4 5 6) collect x)",
+        expected: "(4 5 6)",
+    },
+    Probe {
+        name: "loop-hash-key-value-traversal",
+        source: "(let ((table (make-hash-table))) (setf (gethash 1 table) 7) (loop for key being the hash-keys of table using (hash-value value) collect (list key value)))",
+        expected: "((1 7))",
+    },
+    Probe {
+        name: "loop-sum",
+        source: "(loop for x in '(1 2 3) sum x)",
+        expected: "6",
     },
     Probe {
         name: "loop-below-defaults-from-zero",

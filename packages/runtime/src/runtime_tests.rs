@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod runtime_tests {
     use super::super::{Runtime, RuntimeError};
+    use ncl_object::{Package, symbol_is_constant, symbol_value};
     use std::fs;
 
     #[test]
@@ -15,6 +16,53 @@ mod runtime_tests {
         };
         assert_eq!(runtime.format_result(value), "42");
         drop(runtime);
+    }
+
+    #[test]
+    fn internal_time_functions_and_constant_are_registered() {
+        let mut runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime initialization failed: {error}"),
+        };
+
+        let units = match runtime.eval("INTERNAL-TIME-UNITS-PER-SECOND") {
+            Ok(value) => value,
+            Err(error) => panic!("internal time constant evaluation failed: {error}"),
+        };
+        assert_eq!(units.as_fixnum(), Some(1_000_000));
+
+        let real_time = match runtime.eval("(GET-INTERNAL-REAL-TIME)") {
+            Ok(value) => value,
+            Err(error) => panic!("GET-INTERNAL-REAL-TIME failed: {error}"),
+        };
+        assert!(real_time.as_fixnum().is_some_and(|ticks| ticks >= 0));
+
+        let run_ticks = match runtime.eval("(GET-INTERNAL-RUN-TIME)") {
+            Ok(value) => value,
+            Err(error) => panic!("GET-INTERNAL-RUN-TIME failed: {error}"),
+        };
+        assert!(run_ticks.as_fixnum().is_some_and(|ticks| ticks >= 0));
+
+        let common_lisp = runtime
+            .object
+            .find_package(&runtime.context, "COMMON-LISP")
+            .unwrap_or_else(|| panic!("COMMON-LISP package missing"));
+        let (constant, _) = Package::from_word(common_lisp)
+            .intern(
+                &mut runtime.context,
+                &runtime.object,
+                "INTERNAL-TIME-UNITS-PER-SECOND",
+            )
+            .unwrap_or_else(|error| panic!("constant symbol lookup failed: {error}"));
+        assert!(
+            symbol_is_constant(&runtime.context, constant)
+                .unwrap_or_else(|error| panic!("constant flag lookup failed: {error}"))
+        );
+        assert_eq!(
+            symbol_value(&runtime.context, constant)
+                .unwrap_or_else(|error| panic!("constant value lookup failed: {error}")),
+            units
+        );
     }
 
     #[test]

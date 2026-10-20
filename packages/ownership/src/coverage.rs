@@ -250,7 +250,10 @@ fn check_kinds(
                 }
             }
             Kind::Class | Kind::Condition => {
-                if runtime.class(ctx, &row.symbol).is_none() {
+                let qualified_name = format!("{}::{}", row.package, row.symbol);
+                if runtime.class(ctx, &row.symbol).is_none()
+                    && runtime.class(ctx, &qualified_name).is_none()
+                {
                     missing.push(single_kind(row, *kind, "class not registered"));
                 }
             }

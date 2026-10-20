@@ -79,17 +79,24 @@ fn make_progn<'ctx>(
     scope.make_list(runtime, &values)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn method_registry_entry<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
     specializers: ncl_object::Handle<'ctx>,
     qualifier: ncl_object::Handle<'ctx>,
     function: ncl_object::Handle<'ctx>,
+    method: ncl_object::Handle<'ctx>,
+    qualifier_list: ncl_object::Handle<'ctx>,
+    origin: ncl_object::Handle<'ctx>,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let mut values = scope.root_many(&[]);
     push_helper_handle(scope, &mut values, specializers);
     push_helper_handle(scope, &mut values, qualifier);
     push_helper_handle(scope, &mut values, function);
+    push_helper_handle(scope, &mut values, method);
+    push_helper_handle(scope, &mut values, qualifier_list);
+    push_helper_handle(scope, &mut values, origin);
     scope.make_list(runtime, &values)
 }
 
@@ -159,7 +166,15 @@ fn method_definition_parts<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
     encoded: ncl_object::Handle<'ctx>,
-) -> Result<(ncl_object::Handle<'ctx>, ncl_object::Handle<'ctx>), ObjectError> {
+) -> Result<
+    (
+        ncl_object::Handle<'ctx>,
+        ncl_object::Handle<'ctx>,
+        ncl_object::Handle<'ctx>,
+        ncl_object::Handle<'ctx>,
+    ),
+    ObjectError,
+> {
     let encoded_local = Local::from_word(scope.get(encoded).as_word());
     let fields = scope.list_to_handle_vec(encoded_local)?;
     let tag = scope.intern(runtime, "NCL", "*CLOS-METHOD-DEFINITION*")?;
@@ -169,15 +184,23 @@ fn method_definition_parts<'ctx>(
         .is_some_and(|field| scope.get(*field).as_word() == scope.get(tag).as_word())
     {
         let qualifier = *fields.as_slice().get(1).ok_or(ObjectError::TypeError)?;
-        let specializers = *fields.as_slice().get(2).ok_or(ObjectError::TypeError)?;
-        return Ok((specializers, qualifier));
+        let qualifier_list = *fields.as_slice().get(2).ok_or(ObjectError::TypeError)?;
+        let specializers = *fields.as_slice().get(3).ok_or(ObjectError::TypeError)?;
+        let default_origin = scope.root(Local::from_word(Word::NIL));
+        let origin = fields.as_slice().get(4).copied().unwrap_or(default_origin);
+        return Ok((specializers, qualifier, qualifier_list, origin));
     }
     let qualifier = scope.root(Local::from_word(Word::fixnum(METHOD_QUALIFIER_PRIMARY)));
-    Ok((encoded, qualifier))
+    let qualifier_list = scope.root(Local::from_word(Word::NIL));
+    let origin = scope.root(Local::from_word(Word::NIL));
+    Ok((encoded, qualifier, qualifier_list, origin))
 }
 
 fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, ObjectError> {
-    if !matches!(ncl_object::classify_object(ctx, value), ObjectRef::Symbol(_)) {
+    if !matches!(
+        ncl_object::classify_object(ctx, value),
+        ObjectRef::Symbol(_)
+    ) {
         return Ok(None);
     }
     let name = symbol_name_string(ctx, value)?;
@@ -191,24 +214,4 @@ fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, Ob
         return Ok(None);
     };
     Ok(Some(Word::fixnum(qualifier)))
-}
-
-fn class_depth(ctx: &ThreadContext, class: Word) -> Result<usize, ObjectError> {
-    let superclass = ncl_object::simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
-    // A class with more than one direct superclass (for example a
-    // multiple-inheritance condition class from `ncl-conditions`) stores a
-    // list of parent descriptors here rather than a bare descriptor word.
-    // Method-dispatch specificity depth is not otherwise a concern for those
-    // classes in Phase 1, so the first (most-specific) parent stands in for
-    // the whole precedence list.
-    let superclass = if superclass.is_cons() {
-        car(ctx, superclass)?
-    } else {
-        superclass
-    };
-    if superclass == Word::NIL {
-        Ok(0)
-    } else {
-        Ok(class_depth(ctx, superclass)? + 1)
-    }
 }

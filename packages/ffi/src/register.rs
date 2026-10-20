@@ -70,7 +70,7 @@ fn install_class(
     let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
     with_root(ctx, &mut name_word, |ctx, name_word| {
         let descriptor = make_simple_vector(ctx, runtime, &[*name_word, Word::NIL, Word::NIL])?;
-        runtime.define_class(ctx, name, descriptor)
+        runtime.define_class(ctx, format!("NCL-FFI::{name}"), descriptor)
     })
     .map_err(FfiError::into_object_error)
 }

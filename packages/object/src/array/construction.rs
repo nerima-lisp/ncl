@@ -49,7 +49,7 @@ pub fn make_array(
     if displaced_to.is_some() && total.checked_add(displaced_index_offset).is_none() {
         return Err(ObjectError::Layout);
     }
-    validate_element(element_type, initial_element)?;
+    validate_element(ctx, element_type, initial_element)?;
     if let Some(target) = displaced_to
         && let Ok(target_type) = super::array_element_type(ctx, target)
         && element_type != ArrayElementType::T

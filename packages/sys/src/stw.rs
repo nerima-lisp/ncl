@@ -92,7 +92,9 @@ impl Heap {
     }
 
     pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
-        thread.publish_snapshot();
+        if !thread.has_native_frame_snapshot() {
+            thread.publish_snapshot();
+        }
         {
             let _stop_world = self
                 .stop_world

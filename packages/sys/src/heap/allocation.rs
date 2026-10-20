@@ -236,7 +236,9 @@ impl Heap {
     }
 
     pub(crate) fn acquire_slow_path_gate(&self, thread: &mut Thread) -> SlowPathGuard<'_> {
-        thread.publish_snapshot();
+        if !thread.has_native_frame_snapshot() {
+            thread.publish_snapshot();
+        }
         let pointer = std::ptr::from_mut(thread).addr();
         loop {
             let observed_generation = *self

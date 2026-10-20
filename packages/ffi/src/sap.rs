@@ -92,7 +92,7 @@ const MOST_POSITIVE_FIXNUM: i128 = (1_i128 << 62) - 1;
 const MOST_NEGATIVE_FIXNUM: i128 = -(1_i128 << 62);
 const MOST_POSITIVE_UNSIGNED_FIXNUM: u128 = (1_u128 << 62) - 1;
 
-pub(crate) fn signed_integer_to_word(
+pub fn signed_integer_to_word(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     value: i128,

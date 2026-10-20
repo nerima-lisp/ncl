@@ -17,7 +17,7 @@ use crate::sap::SystemAreaPointer;
 static SYSTEM_ALLOCATIONS: OnceLock<Mutex<HashMap<usize, ForeignRegion>>> = OnceLock::new();
 
 #[derive(Clone, Copy)]
-pub(crate) enum SapAccessType {
+pub enum SapAccessType {
     Signed8,
     Unsigned8,
     Signed16,
@@ -113,7 +113,10 @@ pub fn sap_ref(
     base: SystemAreaPointer,
     offset: isize,
 ) -> Result<Word, FfiError> {
-    let width = access_width(ty)?;
+    let width = match access_width(ty) {
+        Some(width) => width,
+        None => return Err(FfiError::UnsupportedType(ty.label())),
+    };
     let address = checked_offset(base, offset)?;
     let raw = read_sap(address, width)?;
     let bytes = raw
@@ -137,7 +140,10 @@ pub fn sap_set(
     offset: isize,
     value: Word,
 ) -> Result<(), FfiError> {
-    let width = access_width(ty)?;
+    let width = match access_width(ty) {
+        Some(width) => width,
+        None => return Err(FfiError::UnsupportedType(ty.label())),
+    };
     let address = checked_offset(base, offset)?;
     let bytes = marshal_argument(ctx, ty, value)?;
     if bytes.len() != width_bytes(width) {
@@ -151,7 +157,7 @@ pub fn sap_set(
     Ok(())
 }
 
-pub(crate) fn sap_ref_typed(
+pub fn sap_ref_typed(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     ty: SapAccessType,
@@ -195,7 +201,7 @@ pub(crate) fn sap_ref_typed(
     }
 }
 
-pub(crate) fn sap_set_typed(
+pub fn sap_set_typed(
     ctx: &ThreadContext,
     runtime: &Runtime,
     ty: SapAccessType,
@@ -303,19 +309,19 @@ fn checked_offset(
     ncl_sys::foreign::SapAddress::new(address).map_err(FfiError::from)
 }
 
-fn access_width(ty: &AlienType) -> Result<AccessWidth, FfiError> {
+const fn access_width(ty: &AlienType) -> Option<AccessWidth> {
     match ty {
         AlienType::Void
         | AlienType::LongFloat
         | AlienType::Array(_, _)
         | AlienType::Structure(_)
-        | AlienType::Union(_) => Err(FfiError::UnsupportedType(ty.label())),
-        AlienType::Boolean | AlienType::Char | AlienType::UnsignedChar => Ok(AccessWidth::U8),
-        AlienType::Short | AlienType::UnsignedShort => Ok(AccessWidth::U16),
+        | AlienType::Union(_) => None,
+        AlienType::Boolean | AlienType::Char | AlienType::UnsignedChar => Some(AccessWidth::U8),
+        AlienType::Short | AlienType::UnsignedShort => Some(AccessWidth::U16),
         AlienType::Int
         | AlienType::UnsignedInt
         | AlienType::SingleFloat
-        | AlienType::Enumeration(_) => Ok(AccessWidth::U32),
+        | AlienType::Enumeration(_) => Some(AccessWidth::U32),
         AlienType::Long
         | AlienType::UnsignedLong
         | AlienType::LongLong
@@ -327,11 +333,11 @@ fn access_width(ty: &AlienType) -> Result<AccessWidth, FfiError> {
         | AlienType::CString
         | AlienType::Utf8String
         | AlienType::SystemAreaPointer
-        | AlienType::Function(_) => Ok(AccessWidth::U64),
+        | AlienType::Function(_) => Some(AccessWidth::U64),
     }
 }
 
-fn alien_type(ty: SapAccessType) -> Option<AlienType> {
+const fn alien_type(ty: SapAccessType) -> Option<AlienType> {
     match ty {
         SapAccessType::Signed8 | SapAccessType::Unsigned8 => None,
         SapAccessType::Signed16 => Some(AlienType::Short),

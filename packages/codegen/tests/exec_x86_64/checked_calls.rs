@@ -228,7 +228,15 @@ fn load_arg(builder: &mut FunctionBuilder, index: u8, ty: Ty) -> ncl_ir::ValueId
 
 fn const_fixnum(builder: &mut FunctionBuilder, value: i64) -> ncl_ir::ValueId {
     let result = builder.add_constant(Constant::Fixnum(value));
-    push_value(builder, OpKind::Const { result }, Ty::Word)
+    let integer = push_value(builder, OpKind::Const { result }, Ty::I64);
+    push_value(
+        builder,
+        OpKind::Convert {
+            op: ncl_ir::Convert::I64ToWord,
+            value: integer,
+        },
+        Ty::Word,
+    )
 }
 
 fn const_nil(builder: &mut FunctionBuilder) -> ncl_ir::ValueId {
@@ -241,6 +249,7 @@ fn builtin(
     name: &str,
     args: Vec<ncl_ir::ValueId>,
 ) -> ncl_ir::ValueId {
+    push_effect(builder, OpKind::Safepoint);
     push_value(
         builder,
         OpKind::Builtin {
@@ -289,9 +298,18 @@ fn build_checked_call_caller(id: u32, indirect: bool) -> ncl_ir::Function {
         ],
         vec![Ty::Word],
     );
-    let callee = load_arg(&mut builder, 0, Ty::Address);
+    let callee_address = load_arg(&mut builder, 0, Ty::Address);
+    let callee = push_value(
+        &mut builder,
+        OpKind::Convert {
+            op: ncl_ir::Convert::AddressToWord,
+            value: callee_address,
+        },
+        Ty::Word,
+    );
     let value = load_arg(&mut builder, 1, Ty::Word);
     let argc = const_fixnum(&mut builder, 1);
+    push_effect(&mut builder, OpKind::Safepoint);
     let call = if indirect {
         OpKind::CallIndirect {
             callee,
@@ -328,6 +346,7 @@ fn build_closure_caller() -> ncl_ir::Function {
     let closure = load_arg(&mut builder, 0, Ty::Word);
     let value = load_arg(&mut builder, 1, Ty::Word);
     let argc = const_fixnum(&mut builder, 1);
+    push_effect(&mut builder, OpKind::Safepoint);
     let result = push_value(
         &mut builder,
         OpKind::CallClosure {

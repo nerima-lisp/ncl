@@ -254,6 +254,28 @@ mod tests {
     }
 
     #[test]
+    fn extended_builtin_arguments_survive_gc_stress_and_strict_forwarding() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        runtime
+            .eval(
+                "(defun list-cons-pairs () \
+                   (list (cons 1 2) (cons 3 4) (cons 5 6) (cons 7 8) \
+                         (cons 9 10) (cons 11 12) (cons 13 14)))",
+            )
+            .unwrap_or_else(|error| panic!("defining list-cons-pairs: {error:?}"));
+        runtime.context.set_gc_stress(true);
+        runtime.context.set_strict_forwarding(true);
+
+        let value = runtime
+            .eval("(list-cons-pairs)")
+            .unwrap_or_else(|error| panic!("evaluating list-cons-pairs: {error:?}"));
+        assert_eq!(
+            runtime.format_result(value),
+            "((1 . 2) (3 . 4) (5 . 6) (7 . 8) (9 . 10) (11 . 12) (13 . 14))"
+        );
+    }
+
+    #[test]
     #[cfg(target_arch = "aarch64")]
     fn make_rest_list_survives_gc_stress_and_strict_forwarding() {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -312,6 +334,28 @@ mod tests {
             ),
             Ok(Word::fixnum(5))
         );
+    }
+
+    #[test]
+    fn successful_registered_builtin_clears_reused_values_buffer() {
+        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let function = register_builtin(&mut runtime);
+        let arguments = [Word::fixnum(2), Word::fixnum(3)];
+        let mut caller = RuntimeFunctionCaller;
+        let mut values = MultipleValues::new();
+        values.set(&[Word::fixnum(7), Word::fixnum(8)]);
+
+        assert_eq!(
+            caller.call_function(
+                &mut runtime.context,
+                &runtime.object,
+                FunctionDesignator::Function(function),
+                FunctionArguments::new(&arguments),
+                &mut values,
+            ),
+            Ok(Word::fixnum(5))
+        );
+        assert!(values.is_empty());
     }
 
     #[test]

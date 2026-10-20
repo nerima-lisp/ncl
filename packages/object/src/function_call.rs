@@ -253,6 +253,7 @@ impl Runtime {
             return Err(ObjectError::ControlError);
         }
         let implementation = implementation.ok_or(ObjectError::Unbound)?;
+        values.clear();
         if implementation.nested_evaluation {
             let original = args.to_vec();
             let callback_args = if let Some(adapter) = implementation.keyword_adapter {

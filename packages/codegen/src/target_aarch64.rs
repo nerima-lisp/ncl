@@ -11,6 +11,8 @@ use layout::outgoing_words;
 #[path = "target_aarch64_support.rs"]
 mod support;
 use support::{add_map, initialize_arguments};
+#[path = "target_aarch64_switch.rs"]
+mod switch;
 
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
@@ -297,14 +299,23 @@ pub fn compile_function_aarch64(
                     },
                 )?;
             }
-            Terminator::Switch { default, .. } => {
-                emit(
-                    &mut assembler,
-                    Inst::B {
-                        label: labels[default],
-                    },
-                )?;
-            }
+            Terminator::Switch {
+                value,
+                cases,
+                default,
+                default_args,
+            } => switch::lower_switch(
+                &mut assembler,
+                function,
+                &allocation,
+                switch::Switch {
+                    value: *value,
+                    cases,
+                    default: *default,
+                    default_args,
+                },
+                &labels,
+            )?,
             Terminator::Return { values } => {
                 lower_return_or_throw(
                     &mut assembler,

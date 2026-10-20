@@ -1,6 +1,6 @@
 # NCL
 
-NCL is a Rust-native Common Lisp implementation. It targets ANSI Common Lisp and an NCL-specific extension API. SBCL is a recorded performance and conformance baseline; NCL does not provide an SBCL compatibility surface.
+NCL is a Rust-native Common Lisp implementation. It targets ANSI Common Lisp and the selected SBCL public APIs, contribs, and library-referenced symbols recorded in the [wave plan](docs/src/project/wave-plan.md). SBCL 2.6.0 supplies the conformance and performance baselines; NCL has its own implementation and extension API.
 
 The [wave plan](docs/src/project/wave-plan.md) records current decisions, phases, and acceptance criteria. Design contracts are in [docs/src/design/](docs/src/design/).
 

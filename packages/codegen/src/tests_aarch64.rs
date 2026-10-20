@@ -7,6 +7,8 @@ use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[path = "tests_aarch64_call.rs"]
 mod call_with_rest;
+#[path = "tests_aarch64_switch.rs"]
+mod switch;
 
 fn decoded_text(bytes: [u8; 4], label: &str) -> String {
     let decoded = ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &bytes, 0);

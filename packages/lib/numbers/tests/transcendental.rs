@@ -130,6 +130,31 @@ fn real_functions_match_f64_with_optional_log_and_atan() {
 }
 
 #[test]
+fn real_functions_match_zero_and_one_identities() {
+    let (runtime, mut ctx) = setup();
+    let zero = Word::fixnum(0);
+    let one = Word::fixnum(1);
+    for (name, input, expected) in [
+        ("EXP", zero, 1.0),
+        ("LOG", one, 0.0),
+        ("SIN", zero, 0.0),
+        ("COS", zero, 1.0),
+        ("TAN", zero, 0.0),
+        ("ASIN", zero, 0.0),
+        ("ACOS", one, 0.0),
+        ("ATAN", zero, 0.0),
+        ("SINH", zero, 0.0),
+        ("COSH", zero, 1.0),
+        ("TANH", zero, 0.0),
+        ("ASINH", zero, 0.0),
+        ("ACOSH", one, 0.0),
+        ("ATANH", zero, 0.0),
+    ] {
+        close(call_real(&runtime, &mut ctx, name, &[input]), expected);
+    }
+}
+
+#[test]
 fn complex_branches_and_inverse_hyperbolics() {
     let (runtime, mut ctx) = setup();
     let z = complex(&mut ctx, &runtime, 0.3, -0.7);

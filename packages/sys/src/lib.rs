@@ -3,6 +3,7 @@
 
 mod code;
 mod codegen;
+pub mod foreign;
 mod function_address;
 mod heap;
 mod heap_state;
@@ -11,7 +12,7 @@ mod invoke;
 mod native_builtins;
 mod native_error;
 mod native_words;
-pub mod os;
+mod os;
 mod stw;
 mod sync;
 mod thread;

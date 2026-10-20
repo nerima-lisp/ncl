@@ -34,7 +34,7 @@ fn body_allocates(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Thre
     for _ in 0..64 {
         let mut word = ncl_object::make_string(ctx, runtime, &['x'; 8])?;
         let token = ncl_object::push_root(ctx, &mut word);
-        ncl_sys::poll_safepoint(ctx.thread_mut());
+        ctx.thread_access().poll_safepoint();
         let _ = ncl_object::pop_root(ctx, token);
     }
     Ok(())

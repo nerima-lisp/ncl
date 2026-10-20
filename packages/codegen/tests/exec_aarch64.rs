@@ -40,6 +40,11 @@ static FRAME_LOCAL_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
+const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
+    let mut payload = None::<()>;
+    ctx.record_runtime_error_payload(RuntimeErrorSource::Object, &mut payload, ());
+}
+
 const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
@@ -47,8 +52,7 @@ const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64
 }
 extern "C" fn builtin_error(ctx: &mut Thread, _value: u64) -> u64 {
     BUILTIN_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-    ctx.set_pending(true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn builtin_after_error(_ctx: &mut Thread, value: u64) -> u64 {
@@ -63,14 +67,12 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 extern "C" fn make_closure_error(ctx: &mut Thread, capture_count: u64, _entry: u64) -> u64 {
     MAKE_CLOSURE_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
     MAKE_CLOSURE_CAPTURE_COUNT.store(capture_count, Ordering::SeqCst);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-    ctx.set_pending(true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn make_value_cell_error(ctx: &mut Thread, _value: u64) -> u64 {
     MAKE_VALUE_CELL_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
-    ctx.set_pending(true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn after_value_cell_error(_ctx: &mut Thread, value: u64) -> u64 {

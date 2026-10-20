@@ -5,7 +5,6 @@ use crate::{
     Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
     function_entry, symbol_is_macro,
 };
-use ncl_sys::invoke_entry_with_function_address;
 
 impl crate::BuiltinImplementation {
     /// `entry` starts at the `0` sentinel; registration resolves it to the shared trampoline.
@@ -181,9 +180,8 @@ fn call_native(
         .map_or(Ok(0), |rest| {
             u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
         })?;
-    let (result, count) = invoke_entry_with_function_address(
+    let (result, count) = ctx.thread_access().invoke_entry_with_function_address(
         entry,
-        std::ptr::from_mut(ctx.thread_mut()),
         function.as_word().bits(),
         argument_count,
         registers,
@@ -191,7 +189,7 @@ fn call_native(
     );
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     let non_local_exit = ctx.take_non_local_exit();
-    let non_local_values = ctx.thread_mut().multiple_values().to_vec();
+    let non_local_values = ctx.thread_access().multiple_values().to_vec();
     values.clear();
     if non_local_exit {
         values.set(&non_local_values);
@@ -206,7 +204,8 @@ fn call_native(
             value
         }
         count => {
-            let area = ctx.thread_mut().multiple_values();
+            let thread = ctx.thread_access();
+            let area = thread.multiple_values();
             if area.len() < count {
                 return Err(ObjectError::Layout);
             }

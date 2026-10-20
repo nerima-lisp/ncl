@@ -51,7 +51,7 @@ mod runtime_tests {
             .eval("(eq *r2-progv-value* :outer)")
             .unwrap_or_else(|error| panic!("progv restoration check failed: {error}"));
         assert_eq!(runtime.format_result(binding_restored), "T");
-        let thread = runtime.context.thread_mut();
+        let thread = runtime.context.thread_access();
         assert_eq!(thread.cleanup_depth(), 0);
         assert_eq!(thread.handler_depth(), 0);
     }

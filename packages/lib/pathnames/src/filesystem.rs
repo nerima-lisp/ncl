@@ -239,12 +239,39 @@ pub fn file_write_date_builtin(
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_path, probe_file_builtin, wildcard_match};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::{canonical_path, expand_pattern, probe_file_builtin, wildcard_match};
     use crate::pathname::pathname_from_path;
     use ncl_object::{
         BuiltinArgs, Local, MultipleValues, Package, Runtime, Scope, ThreadContext, Word,
         set_symbol_value,
     };
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Result<Self, std::io::Error> {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            loop {
+                let index = NEXT.fetch_add(1, Ordering::Relaxed);
+                let path = std::env::temp_dir()
+                    .join(format!("ncl-pathnames-{}-{index}", std::process::id()));
+                match std::fs::create_dir(&path) {
+                    Ok(()) => return Ok(Self(path)),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _cleanup = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn canonical_path_resolves_an_existing_path() -> Result<(), std::io::Error> {
@@ -261,6 +288,41 @@ mod tests {
         assert!(!wildcard_match("file?.lisp", "file12.lisp"));
         assert!(wildcard_match("λ?.lisp", "λ語.lisp"));
         assert!(!wildcard_match("file.lisp", "files.lisp"));
+    }
+
+    #[test]
+    fn expand_pattern_matches_nested_wildcards_and_ignores_missing_paths()
+    -> Result<(), std::io::Error> {
+        let directory = TestDirectory::new()?;
+        let alpha = directory.0.join("alpha");
+        let beta = directory.0.join("beta");
+        std::fs::create_dir(&alpha)?;
+        std::fs::create_dir(&beta)?;
+        std::fs::write(alpha.join("file1.lisp"), "")?;
+        std::fs::write(beta.join("file2.lisp"), "")?;
+        std::fs::write(directory.0.join("not-a-directory"), "")?;
+
+        let mut matches = Vec::new();
+        expand_pattern(&directory.0.join("*").join("file?.lisp"), &mut matches)?;
+        matches.sort();
+        assert_eq!(matches, [alpha.join("file1.lisp"), beta.join("file2.lisp")]);
+
+        let mut literal_match = Vec::new();
+        expand_pattern(&alpha.join("file1.lisp"), &mut literal_match)?;
+        assert_eq!(literal_match, [alpha.join("file1.lisp")]);
+
+        let mut missing_matches = Vec::new();
+        expand_pattern(
+            &directory.0.join("missing-directory").join("file?.lisp"),
+            &mut missing_matches,
+        )?;
+        assert!(missing_matches.is_empty());
+        expand_pattern(
+            &directory.0.join("*").join("missing?.lisp"),
+            &mut missing_matches,
+        )?;
+        assert!(missing_matches.is_empty());
+        Ok(())
     }
 
     #[test]

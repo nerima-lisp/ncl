@@ -1,4 +1,7 @@
-use super::{base_directory, component_string, make_pathname_builtin, path_from_word};
+use super::{
+    base_directory, component_string, directory_from_word, make_pathname_builtin, merge_paths,
+    path_from_word, path_name, path_type, with_trailing_separator,
+};
 use ncl_object::{
     BuiltinArgs, Local, MultipleValues, ObjectError, Runtime, Scope, ThreadContext, Word,
 };
@@ -23,6 +26,117 @@ fn base_directory_uses_path_syntax_for_an_existing_directory() {
         .unwrap_or_else(|| panic!("current directory has no parent"));
 
     assert_eq!(base_directory(&directory), parent);
+}
+
+#[test]
+fn pathname_components_and_merging_preserve_explicit_parts() {
+    let defaults = std::path::Path::new("/defaults/base.lisp");
+
+    assert_eq!(
+        path_name(std::path::Path::new("file.tar.gz")),
+        Some("file.tar".into())
+    );
+    assert_eq!(
+        path_type(std::path::Path::new("file.tar.gz")),
+        Some("gz".into())
+    );
+    assert_eq!(
+        path_name(std::path::Path::new("README")),
+        Some("README".into())
+    );
+    assert_eq!(path_type(std::path::Path::new("README")), None);
+    assert_eq!(path_name(std::path::Path::new("directory/")), None);
+    assert_eq!(path_type(std::path::Path::new("directory/")), None);
+
+    assert_eq!(
+        merge_paths("relative".into(), defaults),
+        std::path::Path::new("/defaults/relative.lisp")
+    );
+    assert_eq!(
+        merge_paths("explicit.txt".into(), defaults),
+        std::path::Path::new("/defaults/explicit.txt")
+    );
+    assert_eq!(
+        merge_paths("directory/".into(), defaults),
+        std::path::Path::new("/defaults/directory/")
+    );
+
+    assert_eq!(
+        with_trailing_separator("directory".into()),
+        std::path::Path::new("directory/")
+    );
+    assert_eq!(
+        with_trailing_separator("directory/".into()),
+        std::path::Path::new("directory/")
+    );
+}
+
+#[test]
+fn directory_components_apply_modes_and_parent_markers() {
+    let (runtime, mut ctx) = runtime_and_context();
+    let mut scope = Scope::new(&mut ctx);
+    let mode = scope
+        .intern(&runtime, "KEYWORD", "ABSOLUTE")
+        .unwrap_or_else(|error| panic!("mode: {error:?}"));
+    let child = scope
+        .make_string(&runtime, &['c', 'h', 'i', 'l', 'd'])
+        .unwrap_or_else(|error| panic!("child: {error:?}"));
+    let up = scope
+        .intern(&runtime, "KEYWORD", "UP")
+        .unwrap_or_else(|error| panic!("UP keyword: {error:?}"));
+    let wild = scope
+        .intern(&runtime, "KEYWORD", "WILD")
+        .unwrap_or_else(|error| panic!("WILD keyword: {error:?}"));
+    let tail = scope.root::<Word>(Local::from_word(Word::NIL));
+    let tail = scope
+        .make_cons(&runtime, wild, tail)
+        .unwrap_or_else(|error| panic!("wild tail: {error:?}"));
+    let tail = scope
+        .make_cons(&runtime, up, tail)
+        .unwrap_or_else(|error| panic!("UP tail: {error:?}"));
+    let tail = scope
+        .make_cons(&runtime, child, tail)
+        .unwrap_or_else(|error| panic!("child tail: {error:?}"));
+    let directory = scope
+        .make_cons(&runtime, mode, tail)
+        .unwrap_or_else(|error| panic!("directory: {error:?}"));
+    let directory_word = scope.get(directory).as_word();
+    let path = directory_from_word(
+        scope.context_mut(),
+        &runtime,
+        directory_word,
+        std::path::Path::new("/defaults/base.lisp"),
+    )
+    .unwrap_or_else(|error| panic!("directory conversion: {error:?}"));
+
+    assert_eq!(path, std::path::Path::new("/child/../*"));
+
+    let relative_mode = scope
+        .intern(&runtime, "KEYWORD", "RELATIVE")
+        .unwrap_or_else(|error| panic!("RELATIVE keyword: {error:?}"));
+    let relative = scope
+        .make_cons(&runtime, relative_mode, tail)
+        .unwrap_or_else(|error| panic!("relative directory: {error:?}"));
+    let relative_word = scope.get(relative).as_word();
+    let path = directory_from_word(
+        scope.context_mut(),
+        &runtime,
+        relative_word,
+        std::path::Path::new("/defaults/base.lisp"),
+    )
+    .unwrap_or_else(|error| panic!("relative conversion: {error:?}"));
+    assert_eq!(path, std::path::Path::new("/defaults/child/../*"));
+
+    assert_eq!(
+        directory_from_word(
+            scope.context_mut(),
+            &runtime,
+            Word::NIL,
+            std::path::Path::new("/defaults/base.lisp")
+        )
+        .unwrap_or_else(|error| panic!("nil directory: {error:?}")),
+        std::path::Path::new("/defaults")
+    );
 }
 
 #[test]

@@ -52,11 +52,11 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
         vec![
             Param {
                 name: "self".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "next".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "remaining".into(),
@@ -66,27 +66,25 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
         vec![Ty::Word],
     );
     let self_address = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("self address")[0];
     let next_address = builder
-        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("next address")[0];
     let remaining = builder
         .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
         .expect("remaining depth")[0];
+    let remaining_i64 = convert(&mut builder, Convert::WordToI64, remaining, Ty::I64);
     builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
-    let zero = builder.add_constant(Constant::Fixnum(0));
-    let zero = builder
-        .push_op(OpKind::Const { result: zero }, &[Ty::Word])
-        .expect("zero")[0];
+    let zero = fixnum_i64(&mut builder, 0);
     let done = builder
         .push_op(
             OpKind::Compare {
                 op: Compare::Le,
-                left: remaining,
+                left: remaining_i64,
                 right: zero,
             },
-            &[Ty::Word],
+            &[Ty::Bool],
         )
         .expect("depth comparison")[0];
     let base_value = builder.fresh_value();
@@ -95,8 +93,8 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
     let recurse_remaining = builder.fresh_value();
     let base = builder.create_block(vec![(Ty::Word, base_value)]);
     let recurse = builder.create_block(vec![
-        (Ty::Address, recurse_self),
-        (Ty::Address, recurse_next),
+        (Ty::Word, recurse_self),
+        (Ty::Word, recurse_next),
         (Ty::Word, recurse_remaining),
     ]);
     builder
@@ -118,10 +116,8 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
         })
         .expect("base return");
     builder.position_at(recurse).expect("recurse block");
-    let one = builder.add_constant(Constant::Fixnum(1));
-    let one = builder
-        .push_op(OpKind::Const { result: one }, &[Ty::Word])
-        .expect("one")[0];
+    let one = fixnum_i64(&mut builder, 1);
+    let recurse_remaining = convert(&mut builder, Convert::WordToI64, recurse_remaining, Ty::I64);
     let next_remaining = builder
         .push_op(
             OpKind::Prim {
@@ -129,18 +125,16 @@ fn build_mutual_tail_function(id: u32, name: &str) -> ncl_ir::Function {
                 args: vec![recurse_remaining, one],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("decrement")[0];
+    let next_remaining = convert(&mut builder, Convert::I64ToWord, next_remaining, Ty::Word);
     // `lower_call` (shared by `OpKind::Call` and `Terminator::TailCall`)
     // takes the tagged argument count as `args[0]`, exactly like every
     // other direct call site in this codegen (see `fib.rs`); the callee
     // still receives `self`/`next`/`remaining` in x1..x3 since its params
     // are not named `argc` (see `initialize_arguments`).
-    let argc = builder.add_constant(Constant::Fixnum(3));
-    let argc = builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-        .expect("argc")[0];
+    let argc = fixnum_word(&mut builder, 3);
     builder
         .terminate(Terminator::TailCall {
             function: recurse_self,

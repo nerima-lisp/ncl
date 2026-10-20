@@ -1,22 +1,23 @@
 # Compatibility
 
-NCL targets ANSI Common Lisp. SBCL compatibility is deliberately out of
-scope (decision D-2): the implementation creates no `SB-*` packages and no
-compatibility shim or alias package. Programs that use SBCL extension
-packages must move to the NCL extension API instead.
+NCL targets ANSI Common Lisp and the selected SBCL public APIs, contribs, and
+58 library-referenced internal symbols recorded by D-9 in the
+[wave plan](../project/wave-plan.md). SBCL 2.6.0 supplies the conformance and
+performance baselines. NCL has its own implementation and extension API.
 
 ## Language target
 
-The language target is the 978 external symbols of the `COMMON-LISP`
-package. NCL-specific extensions are exposed only through NCL-named
+The ANSI language target is the 978 external symbols of the `COMMON-LISP`
+package. The selected SBCL surface is enumerated in the wave plan and
+conformance tables. NCL-specific extensions are exposed through NCL-named
 packages: `NCL-THREADS`,
 `NCL-FFI`, `NCL-MOP`, `NCL-GRAY`, `NCL-GC`, `NCL-IMAGE`, `NCL-UNICODE`,
 `NCL-OS`, `NCL-EXT`, and `NCL-SYS`.
 
 ## Acceptance
 
-Acceptance is measured against SBCL 2.6.0's recorded numbers, not against
-SBCL compatibility. The reference values, recorded in
+Acceptance uses same-day comparisons with SBCL 2.6.0. The reference values,
+recorded in
 `conformance/baselines/`, are:
 
 - ansi-test pass count: 21,768 of 21,942 tests

@@ -365,6 +365,28 @@ fn lowers_a_named_global_call_through_the_function_cell() {
 }
 
 #[test]
+fn lowers_unary_increment_and_decrement_as_builtins() {
+    let mut fx = Fixture::new();
+
+    for name in ["1+", "1-"] {
+        let function = fx.cl(name);
+        let form = fx.list(&[function, Word::fixnum(4)]);
+        let expr = fx.expand(form).expect("expand unary arithmetic");
+        let lowered = lower_toplevel(&expr).expect("lower unary arithmetic");
+
+        assert_verifies(&lowered.entry);
+        assert!(
+            any_op(&lowered.entry, |kind| matches!(
+                kind,
+                OpKind::Builtin { name: builtin, args }
+                    if builtin == name && args.len() == 1
+            )),
+            "{name} should lower to a one-argument builtin"
+        );
+    }
+}
+
+#[test]
 fn lowers_catch_throw_with_a_handler_region() {
     let mut fx = Fixture::new();
     let catch = fx.cl("CATCH");

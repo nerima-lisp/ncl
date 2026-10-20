@@ -185,6 +185,7 @@ impl Context<'_> {
         }
         if let Operator::Name(name) = operator
             && ((matches!(name.name.as_str(), "+" | "*" | "-" | "<") && values.len() == 2)
+                || (matches!(name.name.as_str(), "1+" | "1-") && values.len() == 1)
                 || (name.name == "CAR" && values.len() == 1)
                 || (name.name == "CONS" && values.len() == 2))
         {

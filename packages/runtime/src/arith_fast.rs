@@ -1,14 +1,14 @@
-//! Fast native entries for the compiled two-argument `+`/`-`/`*`/`<` call
-//! sites `packages/compiler/front/src/lower/expr.rs` emits as `OpKind::Builtin`.
+//! Fast native entries for compiled builtin call sites emitted as
+//! `OpKind::Builtin` by `packages/compiler/front/src/lower/expr.rs`.
 //!
 //! These addresses are recorded in the runtime's builtin-address table
 //! (`ncl_object::Runtime::register_builtin_address`) *in addition to*, not
 //! instead of, the ordinary generic `ENTRY` every builtin function object
 //! gets from `builtin_trampoline::install`. That split matters: the function
 //! object's `ENTRY` slot is what indirect calls (`funcall`, `apply`, or a
-//! compiled call site with any arity other than two) jump through, so it
-//! must stay the safe, arity-checked generic trampoline. Only the codegen
-//! literal-two-argument fast path reads this module's addresses.
+//! compiled call sites without a matching fast builtin) jump through, so it
+//! must stay the safe, arity-checked generic trampoline. Only matching direct
+//! builtin call paths read this module's addresses.
 //!
 //! Each entry inlines a fixnum tag check and falls back to the same generic
 //! `ncl_object::Runtime::call_builtin` dispatch `funcall`/`apply` already use
@@ -105,6 +105,34 @@ extern "C" fn native_sub_fast(thread: NonNull<Thread>, left: Word, right: Word) 
     call_generic_binary(thread, "-", left, right)
 }
 
+/// Increment a fixnum, falling back to generic addition on overflow or a
+/// non-fixnum operand.
+extern "C" fn native_one_plus_fast(thread: NonNull<Thread>, value: Word) -> Word {
+    if let Some(integer) = value.as_fixnum()
+        && let Some(sum) = integer.checked_add(1)
+    {
+        let word = Word::fixnum(sum);
+        if word.as_fixnum() == Some(sum) {
+            return word;
+        }
+    }
+    call_generic_binary(thread, "+", value, Word::fixnum(1))
+}
+
+/// Decrement a fixnum, falling back to generic subtraction on overflow or a
+/// non-fixnum operand.
+extern "C" fn native_one_minus_fast(thread: NonNull<Thread>, value: Word) -> Word {
+    if let Some(integer) = value.as_fixnum()
+        && let Some(difference) = integer.checked_sub(1)
+    {
+        let word = Word::fixnum(difference);
+        if word.as_fixnum() == Some(difference) {
+            return word;
+        }
+    }
+    call_generic_binary(thread, "-", value, Word::fixnum(1))
+}
+
 /// Multiply two fixnums, falling back to the generic numeric tower on
 /// overflow or a non-fixnum operand.
 extern "C" fn native_mul_fast(thread: NonNull<Thread>, left: Word, right: Word) -> Word {
@@ -128,9 +156,9 @@ extern "C" fn native_less_fast(thread: NonNull<Thread>, left: Word, right: Word)
     call_generic_binary(thread, "<", left, right)
 }
 
-/// Publish the fast two-argument entries for `+`/`-`/`*`/`<` into the
-/// runtime's builtin-address table, so the compiler's literal-two-argument
-/// call sites (`packages/compiler/front/src/lower/expr.rs`) reach them
+/// Publish the fast entries for `+`/`-`/`*`/`<`/`1+`/`1-` into the
+/// runtime's builtin-address table, so the compiler's lowered call sites
+/// (`packages/compiler/front/src/lower/expr.rs`) reach them
 /// instead of the shared generic trampoline.
 ///
 /// Must run after `ncl_stdlib::register_all` has registered these builtins,
@@ -140,7 +168,7 @@ extern "C" fn native_less_fast(thread: NonNull<Thread>, left: Word, right: Word)
 /// Returns an error if an entry's address does not fit the runtime's
 /// address representation.
 pub fn install(object: &ObjectRuntime) -> Result<(), RuntimeError> {
-    let entries: [(&str, u64); 4] = [
+    let entries: [(&str, u64); 6] = [
         (
             "+",
             ncl_sys::function_address!(native_add_fast)
@@ -149,6 +177,16 @@ pub fn install(object: &ObjectRuntime) -> Result<(), RuntimeError> {
         (
             "-",
             ncl_sys::function_address!(native_sub_fast)
+                .map_err(|error| RuntimeError::Native(error.to_string()))?,
+        ),
+        (
+            "1+",
+            ncl_sys::function_address!(native_one_plus_fast)
+                .map_err(|error| RuntimeError::Native(error.to_string()))?,
+        ),
+        (
+            "1-",
+            ncl_sys::function_address!(native_one_minus_fast)
                 .map_err(|error| RuntimeError::Native(error.to_string()))?,
         ),
         (
@@ -171,4 +209,28 @@ pub fn install(object: &ObjectRuntime) -> Result<(), RuntimeError> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ptr::NonNull;
+
+    use super::{native_one_minus_fast, native_one_plus_fast};
+    use ncl_object::Word;
+    use ncl_sys::Thread;
+
+    #[test]
+    fn unary_entries_adjust_fixnums() {
+        let mut context = Thread::new();
+        let thread = NonNull::from(&mut context);
+
+        assert_eq!(
+            native_one_plus_fast(thread, Word::fixnum(41)),
+            Word::fixnum(42)
+        );
+        assert_eq!(
+            native_one_minus_fast(thread, Word::fixnum(-41)),
+            Word::fixnum(-42)
+        );
+    }
 }

@@ -12,14 +12,38 @@ use std::collections::HashSet;
 use ncl_image::{load, save};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    CodeObject, Function, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr,
-    classify_object, code_constants, code_debug, code_entry, code_size, code_stack_map,
-    function_code, function_entry, function_lambda_list, function_name, make_code_object,
-    make_cons, make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, CodeObject, Function, FunctionObject, LambdaList, MultipleValues,
+    ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify_object,
+    code_constants, code_debug, code_entry, code_size, code_stack_map, function_code,
+    function_entry, function_lambda_list, function_name, make_code_object, make_cons,
+    make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_flags,
     symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
 };
 use ncl_sys::LowTag;
+
+const IMAGE_BUILTIN_ID: BuiltinIdentifier = BuiltinIdentifier::new(
+    BuiltinPackage::NclTest,
+    BuiltinName::new("IMAGE-ROUND-TRIP"),
+);
+const IMAGE_BUILTIN: Builtin = Builtin {
+    lambda_list: LambdaList::fixed(&[]),
+    convention: BuiltinConvention::Direct(Arity::exact(0)),
+};
+
+const fn image_builtin(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    if args.is_empty() {
+        Ok(Word::fixnum(17))
+    } else {
+        Err(ObjectError::TypeError)
+    }
+}
 
 /// One built graph plus the roots handed to the image.
 struct Graph {
@@ -152,6 +176,120 @@ fn loaded_objects_survive_a_full_collection() {
     let code = function_code(&ctx2, function).unwrap();
     assert_eq!(code_entry(&ctx2, code).unwrap().as_fixnum(), Some(0));
     let _ = ctx2.thread_access().pop_root(token);
+}
+
+#[test]
+fn registered_builtin_round_trip_keeps_its_runtime_registration() {
+    let source_entry = 0x1234_5678_9abc_u64;
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin)
+                .with_entry(usize::try_from(source_entry).unwrap()),
+        )
+        .unwrap();
+    let image = save(&runtime, &mut ctx, &[function.as_word()], &[]).unwrap();
+    let source_entry_bytes = source_entry.to_le_bytes();
+    assert!(
+        !image
+            .windows(source_entry_bytes.len())
+            .any(|window| window == source_entry_bytes.as_slice())
+    );
+
+    let runtime2 = Runtime::new().unwrap();
+    let mut ctx2 = ThreadContext::new();
+    ctx2.register(&runtime2).unwrap();
+    let function2 = runtime2
+        .register_builtin(
+            &mut ctx2,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(456),
+        )
+        .unwrap();
+    let loaded = load(&image, &runtime2, &mut ctx2).unwrap();
+    let loaded_function = FunctionObject::try_from(loaded.roots[0]).unwrap();
+
+    assert_eq!(loaded.roots, [function2.as_word()]);
+    assert_eq!(
+        runtime2.builtin_descriptor(&ctx2, loaded_function),
+        Some(IMAGE_BUILTIN)
+    );
+    assert_eq!(
+        function_entry(&ctx2, Function::from_word(loaded.roots[0])).unwrap(),
+        456
+    );
+    assert_eq!(
+        runtime2.call_builtin(&mut ctx2, loaded_function, &[]),
+        Ok(Word::fixnum(17))
+    );
+}
+
+#[test]
+fn registered_builtin_without_target_registration_rejects_image() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(123),
+        )
+        .unwrap();
+    let image = save(&runtime, &mut ctx, &[function.as_word()], &[]).unwrap();
+
+    let runtime2 = Runtime::new().unwrap();
+    let mut ctx2 = ThreadContext::new();
+    ctx2.register(&runtime2).unwrap();
+
+    assert!(matches!(
+        load(&image, &runtime2, &mut ctx2),
+        Err(ncl_image::ImageError::UnregisteredBuiltin)
+    ));
+}
+
+#[test]
+fn registered_builtin_restore_uses_latest_duplicate_identity() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(123),
+        )
+        .unwrap();
+    let image = save(&runtime, &mut ctx, &[function.as_word()], &[]).unwrap();
+
+    let runtime2 = Runtime::new().unwrap();
+    let mut ctx2 = ThreadContext::new();
+    ctx2.register(&runtime2).unwrap();
+    runtime2
+        .register_builtin(
+            &mut ctx2,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(456),
+        )
+        .unwrap();
+    let latest = runtime2
+        .register_builtin(
+            &mut ctx2,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(789),
+        )
+        .unwrap();
+
+    let loaded = load(&image, &runtime2, &mut ctx2).unwrap();
+    assert_eq!(loaded.roots, [latest.as_word()]);
+    assert_eq!(
+        function_entry(&ctx2, Function::from_word(loaded.roots[0])).unwrap(),
+        789
+    );
 }
 
 /// Report whether two object graphs have the same shape and contents.

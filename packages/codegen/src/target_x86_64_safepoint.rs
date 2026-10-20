@@ -41,7 +41,17 @@ pub(super) fn add_map(
         live_slots.sort_unstable();
         live_slots.dedup();
     }
-    SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
-        .map(|map| maps.push(map))
-        .map_err(|error| CodegenError::Encode(error.to_string()))
+    let map = SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    crate::machine_verify::verify_safepoint_map(
+        function,
+        &values.allocation,
+        frame,
+        values.spill_base,
+        position,
+        flags,
+        &map,
+    )?;
+    maps.push(map);
+    Ok(())
 }

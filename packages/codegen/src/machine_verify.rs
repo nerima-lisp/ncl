@@ -1,13 +1,11 @@
 #![allow(missing_docs)]
 
-use crate::{
-    Allocation, AllocationTarget, CodegenError, FrameLayout, Location, SafepointMap, allocate,
-};
-use ncl_ir::{Function, Terminator, Ty, ValueId, VerifyError};
+use crate::{Allocation, AllocationTarget, CodegenError, FrameLayout, Location, allocate};
+use ncl_ir::{Function, Ty, ValueId, VerifyError};
 use std::collections::HashSet;
 
 mod machine_function;
-pub(crate) use machine_function::{verify_machine_function, verify_safepoint_map};
+pub use machine_function::{verify_machine_function, verify_safepoint_map};
 
 /// A structural failure found in allocated machine state.
 #[derive(Clone, Debug, Eq, PartialEq)]

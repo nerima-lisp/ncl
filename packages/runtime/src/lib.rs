@@ -10,6 +10,8 @@ mod evalwhen;
 mod function_call;
 pub(crate) mod load;
 mod local_macro;
+#[cfg(test)]
+mod makeclosure_tests;
 mod native_error;
 mod nonlocal;
 mod support;

@@ -14,13 +14,20 @@ use ncl_codegen::{
 };
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
-    Thread, Word, alloc_code, enter_native, invoke_entry, invoke_entry_with_function, leave_native,
-    publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
+    RuntimeErrorSource, Thread, Word, alloc_code, enter_native, invoke_entry,
+    invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
+    thread_layout, tlab_bump, write_code,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
+static BUILTIN_ERROR_CALLS: AtomicUsize = AtomicUsize::new(0);
+static BUILTIN_DOWNSTREAM_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MAKE_CLOSURE_ERROR_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MAKE_CLOSURE_CAPTURE_COUNT: AtomicU64 = AtomicU64::new(0);
+static MAKE_VALUE_CELL_ERROR_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MAKE_VALUE_CELL_DOWNSTREAM_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static TAIL_GC_STRESS: AtomicBool = AtomicBool::new(false);
@@ -38,10 +45,37 @@ const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
 }
+extern "C" fn builtin_error(ctx: &mut Thread, _value: u64) -> u64 {
+    BUILTIN_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    ctx.set_pending(true);
+    Word::NIL.bits()
+}
+extern "C" fn builtin_after_error(_ctx: &mut Thread, value: u64) -> u64 {
+    BUILTIN_DOWNSTREAM_CALLS.fetch_add(1, Ordering::SeqCst);
+    value
+}
 extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
     ALLOC_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     assert_eq!(words, 2);
     SLOW_STORAGE.as_ptr() as u64
+}
+extern "C" fn make_closure_error(ctx: &mut Thread, capture_count: u64, _entry: u64) -> u64 {
+    MAKE_CLOSURE_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
+    MAKE_CLOSURE_CAPTURE_COUNT.store(capture_count, Ordering::SeqCst);
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    ctx.set_pending(true);
+    Word::NIL.bits()
+}
+extern "C" fn make_value_cell_error(ctx: &mut Thread, _value: u64) -> u64 {
+    MAKE_VALUE_CELL_ERROR_CALLS.fetch_add(1, Ordering::SeqCst);
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    ctx.set_pending(true);
+    Word::NIL.bits()
+}
+extern "C" fn after_value_cell_error(_ctx: &mut Thread, value: u64) -> u64 {
+    MAKE_VALUE_CELL_DOWNSTREAM_CALLS.fetch_add(1, Ordering::SeqCst);
+    value
 }
 extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
@@ -104,6 +138,20 @@ impl RuntimeAbi for BuiltinAbi {
     ) -> Result<u64, ncl_codegen::AbiError> {
         if identifier.name.as_str() == "add" {
             Ok(builtin_add as *const () as usize as u64)
+        } else if identifier.name.as_str() == "error-return" {
+            Ok(builtin_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "after-error" {
+            Ok(builtin_after_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "after-value-cell-error" {
+            Ok(after_value_cell_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "call-target-error" {
+            Ok(checked_calls::call_target_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "after-call-error" {
+            Ok(checked_calls::after_call_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "after-handler-error" {
+            Ok(checked_calls::after_handler_error as *const () as usize as u64)
+        } else if identifier.name.as_str() == "set-pending-exit" {
+            Ok(checked_calls::set_pending_exit as *const () as usize as u64)
         } else {
             Err(ncl_codegen::AbiError::MissingBuiltin(identifier))
         }
@@ -121,6 +169,7 @@ impl RuntimeAbi for BuiltinAbi {
             ContextField::Handler => layout.handler,
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
+            ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
         };
         i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))
     }
@@ -128,6 +177,28 @@ impl RuntimeAbi for BuiltinAbi {
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         match function {
             RuntimeFunction::AllocateSlow => Ok(alloc_slow as *const () as usize as u64),
+            RuntimeFunction::MakeClosure => Ok(make_closure_error as *const () as usize as u64),
+            RuntimeFunction::MakeValueCell => {
+                Ok(make_value_cell_error as *const () as usize as u64)
+            }
+            RuntimeFunction::EnterCatch => {
+                Ok(checked_calls::enter_catch as *const () as usize as u64)
+            }
+            RuntimeFunction::LeaveCatch => {
+                Ok(checked_calls::leave_catch as *const () as usize as u64)
+            }
+            RuntimeFunction::EnterProgv => {
+                Ok(checked_calls::enter_progv as *const () as usize as u64)
+            }
+            RuntimeFunction::LeaveProgv => {
+                Ok(checked_calls::leave_progv as *const () as usize as u64)
+            }
+            RuntimeFunction::EnterUnwindProtect => {
+                Ok(checked_calls::enter_unwind_protect as *const () as usize as u64)
+            }
+            RuntimeFunction::LeaveUnwindProtect => {
+                Ok(checked_calls::leave_unwind_protect as *const () as usize as u64)
+            }
             RuntimeFunction::SafepointSlow => Ok(safepoint_slow as *const () as usize as u64),
             _ => Err(ncl_codegen::AbiError::UnsupportedRuntimeFunction(function)),
         }
@@ -245,60 +316,8 @@ fn preserves_arguments_across_entry_safepoint() {
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn executes_builtin_call_with_context_and_arguments() {
-    let mut builder = FunctionBuilder::new(
-        ncl_ir::FunctionId(4),
-        "builtin-add",
-        vec![
-            Param {
-                name: "left".into(),
-                ty: Ty::Word,
-            },
-            Param {
-                name: "right".into(),
-                ty: Ty::Word,
-            },
-        ],
-        vec![Ty::Word],
-    );
-    let left = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
-        .expect("left")[0];
-    let right = builder
-        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
-        .expect("right")[0];
-    let result = builder
-        .push_op(
-            OpKind::Builtin {
-                name: "add".into(),
-                args: vec![left, right],
-            },
-            &[Ty::Word],
-        )
-        .expect("builtin")[0];
-    builder
-        .terminate(Terminator::Return {
-            values: vec![result],
-        })
-        .expect("return");
-    let abi = BuiltinAbi;
-    let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
-    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
-    write_code(&mut code, 0, &compiled.code).expect("code write");
-    publish_code(&mut code).expect("code publication");
-    let mut thread = Thread::new();
-    let (value, count) = invoke_entry(
-        &code,
-        compiled.entry_offset as usize,
-        &mut thread,
-        2,
-        [Word::fixnum(4).bits(), Word::fixnum(5).bits(), 0, 0],
-        0,
-    );
-    assert_eq!(value, Word::fixnum(9).bits());
-    assert_eq!(count, 1);
-}
+#[path = "exec_aarch64/checked_calls.rs"]
+mod checked_calls;
 
 #[test]
 fn loads_fifth_argument_from_rest_storage() {

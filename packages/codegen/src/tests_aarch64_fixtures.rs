@@ -86,6 +86,7 @@ fn golden_aarch64_builtin_decodes() {
                 ContextField::Handler => layout.handler,
                 ContextField::Cleanup => layout.cleanup,
                 ContextField::Catch => layout.catch,
+                ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
             };
             i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
         }

@@ -283,16 +283,25 @@ pub fn call_macro_function(
             rest,
         );
         let _restored_context = replace_native_context(thread, previous);
-        if ctx.take_pending_native_error().is_some() {
+        let pending_errors = ctx.take_pending_runtime_errors();
+        if pending_errors.native.is_some() {
             return Err(ObjectError::Layout);
         }
-        if let Some(error) = ctx.take_pending_lisp_error()
+        if let Some(error) = pending_errors.lisp
             && let Some(converter) = runtime.lisp_error_converter()
         {
-            let condition = converter(ctx, runtime, error)?;
+            let converted = converter(ctx, runtime, error);
+            let converted_errors = ctx.take_pending_runtime_errors();
+            let condition = converted?;
             ctx.set_pending_condition(condition);
+            if converted_errors.native.is_some() {
+                return Err(ObjectError::Layout);
+            }
+            if let Some(error) = converted_errors.object {
+                return Err(error);
+            }
         }
-        if let Some(error) = ctx.take_pending() {
+        if let Some(error) = pending_errors.object {
             return Err(error);
         }
         Ok(Word::from_bits(result))

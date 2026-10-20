@@ -127,8 +127,10 @@ impl<'a> ThreadAccess<'a> {
 
     /// Invoke published native code using the architecture entry convention.
     ///
-    /// `argc` is the total argument count. `arguments` carries the first four
-    /// arguments, and `rest` points to any remaining contiguous arguments.
+    /// `argc` is the total argument count, and `arguments` carries the first
+    /// four words. `rest` is the address, encoded as `u64`, of any remaining
+    /// contiguous words, or zero when there are none. Keep those words alive
+    /// until this synchronous call returns.
     pub fn invoke_entry(
         &mut self,
         code: &CodePtr,
@@ -149,8 +151,7 @@ impl<'a> ThreadAccess<'a> {
 
     /// Invoke a published native entry with an explicit function object.
     ///
-    /// `argc` is the total argument count. `arguments` carries the first four
-    /// arguments, and `rest` points to any remaining contiguous arguments.
+    /// The argument layout and lifetime match [`Self::invoke_entry`].
     pub fn invoke_entry_with_function(
         &mut self,
         code: &CodePtr,
@@ -173,8 +174,7 @@ impl<'a> ThreadAccess<'a> {
 
     /// Invoke a published native entry address with an explicit function object.
     ///
-    /// `argc` is the total argument count. `arguments` carries the first four
-    /// arguments, and `rest` points to any remaining contiguous arguments.
+    /// The argument layout and lifetime match [`Self::invoke_entry`].
     pub fn invoke_entry_with_function_address(
         &mut self,
         entry: usize,

@@ -36,7 +36,7 @@ array_dimensions/array_row_major_ref/array_row_major_set
 
 `Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function(&mut ThreadContext, ...)`、`Runtime::function(&mut ThreadContext, ...)`、`Runtime::ensure_package(&mut ThreadContext, ...)`、`Runtime::find_package(&ThreadContext, ...)`、`Runtime::define_class(&mut ThreadContext, ...)`、`Runtime::class(&mut ThreadContext, ...)`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_strict_forwarding` が runtime の登録・照会・GC API です。registry 操作は呼び出し側 context を使います。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `context.thread_access().as_non_null().as_ptr()` から得た `*mut Thread` を渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
+`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `context.thread_access().as_non_null().as_ptr()` から得た `*mut Thread` を同期した native entry 呼び出し中に渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
 
 `HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`unuse_package`、`add_nickname`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 

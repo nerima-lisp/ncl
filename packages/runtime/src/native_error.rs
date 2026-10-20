@@ -70,7 +70,7 @@ mod tests {
         );
         assert_eq!(returned, Word::NIL);
         assert!(matches!(
-            runtime.context.take_pending_native_error(),
+            runtime.context.take_pending_runtime_errors().native,
             Some(NativeError::Overflow {
                 operation: NativeOperation::Add,
                 semantics: OverflowSemantics::ArithmeticFixnum,

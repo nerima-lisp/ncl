@@ -14,7 +14,7 @@ pub const MAGIC: &[u8; 8] = b"NCLIMAGE";
 /// Size of the fixed image header in bytes.
 pub const HEADER_SIZE: usize = 64;
 /// Format version this build writes and accepts.
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
 const POINTER_WIDTH: u8 = 8;
 const ENDIAN_LITTLE: u8 = 1;
 
@@ -81,7 +81,7 @@ impl ImageFile {
             return Err(ImageError::BadMagic);
         }
         let version = reader.u16()?;
-        if version != FORMAT_VERSION {
+        if version != 1 && version != FORMAT_VERSION {
             return Err(ImageError::UnsupportedVersion {
                 found: version,
                 supported: FORMAT_VERSION,
@@ -127,7 +127,7 @@ impl ImageFile {
         let mut reader = Reader::new(payload);
         let mut objects = Vec::with_capacity(object_count);
         for _ in 0..object_count {
-            objects.push(get_record(&mut reader)?);
+            objects.push(get_record(&mut reader, version)?);
         }
         let mut roots = Vec::with_capacity(root_count);
         for _ in 0..root_count {

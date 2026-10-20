@@ -342,7 +342,7 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns a [`FrontError`] when the object is not representable.
     pub fn datum(&mut self, word: Word) -> Result<Literal, FrontError> {
-        form::literal(self.ctx, &mut self.uninterned, word)
+        form::literal(self.ctx, self.runtime, &mut self.uninterned, word)
     }
 
     /// Convert a symbol word into a [`SymbolRef`].

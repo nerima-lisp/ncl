@@ -31,7 +31,7 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
         vec![
             Param {
                 name: "callee".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "value".into(),
@@ -41,7 +41,7 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
         vec![Ty::Word],
     );
     let target_value = entry_builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("callee argument")[0];
     let value = entry_builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])

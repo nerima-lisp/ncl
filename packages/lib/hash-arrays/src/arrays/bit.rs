@@ -3,6 +3,7 @@ use super::{
     ThreadContext, Word, array_element_type, array_row_major_ref, array_row_major_set, array_shape,
     classify_object, make_array, row_major_index,
 };
+use ncl_object::array::{adjustable_array_p, array_displacement, array_has_fill_pointer_p};
 use ncl_object::with_roots;
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {
@@ -163,10 +164,21 @@ pub(super) fn sbit_builtin(
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
     let shape = array_shape(ctx, array)?;
-    if !matches!(classify_object(ctx, array), ObjectRef::SpecializedArray(_))
-        || array_element_type(ctx, array)? != ArrayElementType::Bit
-        || shape.len() != 1
-    {
+    let simple_bit_vector = match classify_object(ctx, array) {
+        ObjectRef::SpecializedArray(_) => {
+            array_element_type(ctx, array)? == ArrayElementType::Bit && shape.len() == 1
+        }
+        ObjectRef::Array(_) => {
+            array_element_type(ctx, array)? == ArrayElementType::Bit
+                && shape.len() == 1
+                && !adjustable_array_p(ctx, array)?
+                && !array_has_fill_pointer_p(ctx, array)?
+                && array_displacement(ctx, array)?.0 == Word::NIL
+        }
+        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
+        _ => false,
+    };
+    if !simple_bit_vector {
         return Err(ObjectError::TypeError);
     }
     let index = args.required(1)?;

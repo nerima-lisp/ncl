@@ -29,10 +29,10 @@ pub struct LoadedImage { pub roots: Vec<Word>, pub code: Vec<CodePtr> }
 pub fn load(bytes: &[u8], runtime: &Runtime, ctx: &mut ThreadContext)
     -> Result<LoadedImage, ImageError>;
 
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
 ```
 
-## Image format (version 1)
+## Image format (version 2)
 
 The container is little-endian. A fixed 64-byte header is followed by a single
 payload holding the object records, roots, code blobs, and feature strings in
@@ -43,7 +43,7 @@ that order.
 | offset | size | field |
 | ---: | ---: | --- |
 | 0 | 8 | magic `NCLIMAGE` |
-| 8 | 2 | version (1) |
+| 8 | 2 | version (2; version 1 is also accepted) |
 | 10 | 1 | architecture, 1 x86-64, 2 AArch64 |
 | 11 | 1 | pointer width (8) |
 | 12 | 1 | endianness (1 little) |
@@ -84,9 +84,17 @@ other kinds store the payload words that their object-layer accessors expose.
 
 Each code blob stores the function name, entry offset, frame size, byte length,
 and raw bytes. `load` republishes each blob with `alloc_code` → `write_code` →
-`publish_code` and returns the new `CodePtr`. Code blobs carry no relocations:
-a raw entry address in a code object or function object is stored verbatim and
-is not rewritten to the republished allocation.
+`publish_code` and returns the new `CodePtr`. Code blobs carry no relocations.
+Ordinary function and code-object entry addresses remain raw and are not
+rewritten to republished allocations.
+
+Version 2 adds an optional package/name identity to simple-function records for
+registered builtins. The saved entry field is zero for those records, and
+`load` resolves the identity to the target runtime's latest matching builtin
+registration. It returns `ImageError::UnregisteredBuiltin` if the target
+runtime has no matching registration. Version 1 records have no builtin
+identity and retain their legacy raw-entry behavior; `load` cannot rebind a
+version 1 builtin to a target runtime registration.
 
 ## Save and load semantics
 

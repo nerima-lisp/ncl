@@ -1,8 +1,9 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::{
-    AbiError, Allocation, AllocationTarget, CodegenError, ContextField, Location,
-    MachineVerificationError, RuntimeAbi, RuntimeFunction, allocate,
+    AbiError, Allocation, AllocationTarget, Block, CodegenError, ContextField, FrameLayout,
+    Location, MachineFunction, MachineOp, MachineVerificationError, RuntimeAbi, RuntimeFunction,
+    SafepointMap, allocate,
 };
 use ncl_ir::{
     Constant, ConstantIndex, Function, FunctionBuilder, FunctionId, OpKind, Terminator, Ty, ValueId,
@@ -36,6 +37,70 @@ fn simple_function() -> Function {
         })
         .unwrap();
     builder.finish()
+}
+
+fn machine_function(function: &Function) -> MachineFunction {
+    let mut slots = Vec::new();
+    let mut next_slot = crate::FRAME_HEADER_WORDS;
+    for block in &function.blocks {
+        for parameter in &block.params {
+            slots.push((parameter.value, next_slot));
+            next_slot += 1;
+        }
+        for op in &block.ops {
+            for (value, _) in &op.results {
+                slots.push((*value, next_slot));
+                next_slot += 1;
+            }
+        }
+    }
+    let blocks = function
+        .blocks
+        .iter()
+        .map(|source| {
+            let operations = source
+                .ops
+                .iter()
+                .map(|op| {
+                    op.results.first().map_or(MachineOp::Return, |(value, _)| {
+                        let slot = slots
+                            .iter()
+                            .find(|(id, _)| id == value)
+                            .map_or(0, |(_, slot)| *slot);
+                        MachineOp::move_value(slot, slot)
+                    })
+                })
+                .chain(
+                    matches!(source.terminator, Terminator::Return { .. })
+                        .then_some(MachineOp::Return),
+                )
+                .collect();
+            Block::new(source.id, operations)
+        })
+        .collect();
+    let local_words = u32::try_from(slots.len()).unwrap();
+    let frame = FrameLayout::new(
+        u32::try_from(function.params.len()).unwrap(),
+        local_words,
+        0,
+    )
+    .unwrap();
+    MachineFunction::new(
+        function.blocks[0].id,
+        blocks,
+        frame,
+        Vec::new(),
+        Vec::new(),
+        slots,
+    )
+}
+
+fn verify_machine(
+    function: &Function,
+    machine: &MachineFunction,
+    maps: &[SafepointMap],
+) -> Result<(), CodegenError> {
+    crate::machine_verify::verify_machine_function(function, machine, maps, 0, 1)
 }
 
 fn verify_aarch64(function: &Function, allocation: &Allocation) -> Result<(), CodegenError> {
@@ -242,4 +307,170 @@ fn rejects_constant_index_before_emission() {
             MachineVerificationError::InvalidIr(_)
         ))
     ));
+}
+
+#[test]
+fn verifies_fixed_slot_machine_and_rejects_corrupt_slots_frame_and_maps() {
+    let mut function = simple_function();
+    function.blocks[0].ops.push(ncl_ir::Op {
+        results: Vec::new(),
+        kind: OpKind::Safepoint,
+        loc: None,
+    });
+    let mut machine = machine_function(&function);
+    assert!(verify_machine(&function, &machine, &[]).is_ok());
+
+    let mut bad_slot = machine.clone();
+    bad_slot.slots[0].1 = 3;
+    assert!(matches!(
+        verify_machine(&function, &bad_slot, &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineSlotMismatch
+        ))
+    ));
+
+    let mut bad_frame = machine.clone();
+    bad_frame.frame = FrameLayout::new(0, 2, 0).unwrap();
+    assert!(matches!(
+        verify_machine(&function, &bad_frame, &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::FrameMismatch
+        ))
+    ));
+
+    machine.blocks[0].operations[0] = MachineOp::move_value(4, 5);
+    assert!(matches!(
+        verify_machine(&function, &machine, &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineStructureMismatch
+        ))
+    ));
+
+    let machine = machine_function(&function);
+    let frame_words = u16::try_from(machine.frame.frame_words).unwrap();
+    let live_slots = machine
+        .slots
+        .iter()
+        .map(|(_, slot)| u16::try_from(*slot).unwrap())
+        .collect::<Vec<_>>();
+    let mut map = SafepointMap::new(
+        0,
+        frame_words,
+        frame_words,
+        &live_slots,
+        &[],
+        crate::FLAG_CALL,
+    )
+    .unwrap();
+    let mut maps = vec![map.clone()];
+    assert!(verify_machine(&function, &machine, &maps).is_ok());
+
+    assert!(matches!(
+        verify_machine(&function, &machine, &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineSafepointMismatch
+        ))
+    ));
+
+    let mut wrong_flags = maps.clone();
+    wrong_flags[0].map_flags = crate::FLAG_LOOP_BACKEDGE;
+    assert!(matches!(
+        verify_machine(&function, &machine, &wrong_flags),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineSafepointMismatch
+        ))
+    ));
+
+    map.bitmap[0] ^= 1 << 4;
+    maps[0] = map;
+    assert!(matches!(
+        verify_machine(&function, &machine, &maps),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineSafepointMismatch
+        ))
+    ));
+
+    let mut invalid_ir = function.clone();
+    invalid_ir.blocks[0].terminator = Terminator::Return {
+        values: vec![ValueId(99)],
+    };
+    assert!(matches!(
+        verify_machine(&invalid_ir, &machine_function(&invalid_ir), &[]),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::InvalidIr(_)
+        ))
+    ));
+
+    maps[0].pc_offset = 2;
+    assert!(matches!(
+        verify_machine(&function, &machine, &maps),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::MachineCodeBoundsMismatch
+        ))
+    ));
+}
+
+#[test]
+fn verifies_target_map_spill_incoming_and_outgoing_roots() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(31),
+        "map-verifier",
+        vec![ncl_ir::Param {
+            name: "arg".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).unwrap();
+    builder
+        .terminate(Terminator::Return {
+            values: vec![ValueId(0)],
+        })
+        .unwrap();
+    let function = builder.finish();
+    let mut allocation = allocate(&function, AllocationTarget::AArch64);
+    assert!(matches!(
+        allocation.location(ValueId(0)),
+        Some(Location::Spill(_))
+    ));
+    allocation.incoming_args_base = Some(allocation.spill_words);
+    allocation.outgoing_base = allocation.spill_words + 5;
+    let frame = FrameLayout::new(0, allocation.spill_words + 5, 2).unwrap();
+    let frame_words = u16::try_from(frame.frame_words).unwrap();
+    let live_slots = (4_u16..12).collect::<Vec<_>>();
+    let mut map = SafepointMap::new(
+        17,
+        frame_words,
+        frame_words,
+        &live_slots,
+        &[],
+        crate::FLAG_CALL,
+    )
+    .unwrap();
+    assert!(
+        crate::machine_verify::verify_safepoint_map(
+            &function,
+            &allocation,
+            frame,
+            0,
+            0,
+            crate::FLAG_CALL,
+            &map,
+        )
+        .is_ok()
+    );
+
+    map.bitmap[0] &= !(1 << 5);
+    assert_eq!(
+        crate::machine_verify::verify_safepoint_map(
+            &function,
+            &allocation,
+            frame,
+            0,
+            0,
+            crate::FLAG_CALL,
+            &map,
+        ),
+        Err(MachineVerificationError::SafepointMismatch)
+    );
 }

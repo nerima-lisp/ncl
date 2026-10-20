@@ -41,7 +41,7 @@ pub use native_words::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, copy_native_wo
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{
     ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, RuntimeErrorSource,
-    SafepointState, Thread, ThreadLayout, thread_layout,
+    SafepointState, Thread, ThreadAccess, ThreadLayout, thread_layout,
 };
 
 impl Thread {

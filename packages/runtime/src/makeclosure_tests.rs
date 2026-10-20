@@ -16,6 +16,6 @@ fn make_closure_capacity_failure_propagates_before_capture_stores() -> Result<()
             StorageCondition::CapacityExceeded
         )))
     ));
-    assert!(!runtime.context.thread_mut().runtime_error_pending());
+    assert!(!runtime.context.thread_access().runtime_error_pending());
     Ok(())
 }

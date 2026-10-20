@@ -45,7 +45,7 @@ pub fn save(
     let objects = capture.finish();
     let file = ImageFile {
         architecture: host_architecture(),
-        gc_epoch: ncl_sys::heap_epoch(ctx.thread_mut()),
+        gc_epoch: ctx.thread_access().heap_epoch(),
         objects,
         roots: root_refs,
         code: code.to_vec(),
@@ -374,7 +374,8 @@ fn read_string(ctx: &ThreadContext, word: Word) -> Result<String, ImageError> {
 
 /// Read one raw payload word of a header object.
 fn read_slot(ctx: &mut ThreadContext, object: Word, slot: usize) -> Result<Word, ImageError> {
-    ncl_sys::read_object_word(ctx.thread_mut(), object, slot)
+    ctx.thread_access()
+        .read_object_word(object, slot)
         .ok_or(ImageError::Object(ObjectError::Layout))
 }
 

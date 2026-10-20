@@ -261,7 +261,7 @@ fn leave_unwind_protect_error_stops_before_downstream_call() {
 }
 
 #[test]
-fn pending_dispatch_leave_catch_error_stops_before_outer_handler() {
+fn pending_dispatch_leave_catch_error_reaches_matching_outer_handler() {
     let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
     ENTER_CATCH_CALLS.store(0, Ordering::SeqCst);
     LEAVE_CATCH_CALLS.store(0, Ordering::SeqCst);
@@ -278,8 +278,8 @@ fn pending_dispatch_leave_catch_error_stops_before_outer_handler() {
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 2);
     assert_eq!(LEAVE_CATCH_CALLS.load(Ordering::SeqCst), 1);
     assert!(LEAVE_CATCH_SAW_PENDING.load(Ordering::SeqCst));
-    assert_eq!(OUTER_CATCH_HANDLER_CALLS.load(Ordering::SeqCst), 0);
+    assert_eq!(OUTER_CATCH_HANDLER_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!((value, count), (Word::ZERO.bits(), 0));
-    assert!(thread.runtime_error_pending());
-    assert!(!thread.pending());
+    assert!(!thread.runtime_error_pending());
+    assert!(thread.pending());
 }

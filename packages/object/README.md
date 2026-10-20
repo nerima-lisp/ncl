@@ -36,7 +36,7 @@ array_dimensions/array_row_major_ref/array_row_major_set
 
 `Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function(&mut ThreadContext, ...)`、`Runtime::function(&mut ThreadContext, ...)`、`Runtime::ensure_package(&mut ThreadContext, ...)`、`Runtime::find_package(&ThreadContext, ...)`、`Runtime::define_class(&mut ThreadContext, ...)`、`Runtime::class(&mut ThreadContext, ...)`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_strict_forwarding` が runtime の登録・照会・GC API です。registry 操作は呼び出し側 context を使います。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `thread_mut()` で得た `&mut Thread` から `*mut Thread` を渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
+`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `context.thread_access().as_non_null().as_ptr()` から得た `*mut Thread` を渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
 
 `HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`unuse_package`、`add_nickname`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
@@ -102,7 +102,7 @@ constructor は値で受け取った managed 引数と slice の各要素を、�
 
 Object payload ordering, `ReferenceLayout`, runtime roots, hash tests, and write-barrier requirements are specified in [Object layout](../../docs/src/design/object-layout.md) and [GC interface](../../docs/src/design/gc-interface.md). The following notes retain Phase 1 implementation details and known gaps.
 
-double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` のレイアウトを下流 ABI に公開せず、生成コードへは `thread_mut()` で得た `Thread` のポインタを渡す。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
+double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` のレイアウトを下流 ABI に公開せず、生成コードへ渡すポインタには `ThreadAccess::as_non_null()` が返す `NonNull<Thread>` を使う。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
 `ThreadContext` の Drop は登録解除に `ncl_sys::unregister_thread` を使います。`unregister_thread` は `Thread` が保持する heap 参照から heap を引くため、`Runtime`（heap の所有者）は登録済みの全 `ThreadContext` より長生きしなければなりません。登録済み context が生きているうちに `Runtime` を drop すると解放済み heap を参照します。
 

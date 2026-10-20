@@ -66,24 +66,28 @@ fn fixnum_word(builder: &mut FunctionBuilder, value: i64) -> ValueId {
     i64_to_word(builder, value)
 }
 
+const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
+    let mut payload = None::<()>;
+    ctx.record_runtime_error_payload(RuntimeErrorSource::Object, &mut payload, ());
+}
+
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
 }
 extern "C" fn make_closure_error(ctx: &mut Thread, capture_count: u64, entry: u64) -> u64 {
     assert_eq!(capture_count, Word::fixnum(1).bits());
     assert_eq!(entry, Word::fixnum(9).bits());
-    ctx.set_pending(true);
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn make_value_cell_error(ctx: &mut Thread, value: u64) -> u64 {
     assert_eq!(value, Word::fixnum(37).bits());
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn error_builtin(ctx: &mut Thread, value: u64) -> u64 {
     assert_eq!(value, Word::fixnum(23).bits());
-    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    set_runtime_error_for_codegen_test(ctx);
     Word::NIL.bits()
 }
 extern "C" fn observe_after_error_builtin(_ctx: &mut Thread, value: u64) -> u64 {

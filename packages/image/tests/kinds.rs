@@ -107,7 +107,7 @@ fn remaining_object_kinds_round_trip() {
     let mut ctx2 = ThreadContext::new();
     ctx2.register(&runtime2).unwrap();
     let mut loaded = load(&image, &runtime2, &mut ctx2).unwrap().roots;
-    let token = ncl_sys::register_root_set(ctx2.thread_mut(), &mut loaded);
+    let token = ctx2.thread_access().register_root_set(&mut loaded);
     ctx2.collect(true).unwrap();
 
     assert_eq!(
@@ -158,5 +158,5 @@ fn remaining_object_kinds_round_trip() {
             .as_fixnum(),
         Some(5)
     );
-    let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
+    let _ = ctx2.thread_access().pop_root(token);
 }

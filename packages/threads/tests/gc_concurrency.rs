@@ -56,12 +56,12 @@ fn allocating_worker(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), T
     let mut started = false;
     while !STOP.load(Ordering::SeqCst) {
         let mut cell = Cell::new(ncl_object::make_string(ctx, runtime, &['x'; PAYLOAD])?);
-        let token = ncl_sys::push_root(ctx.thread_mut(), cell.get_mut());
+        let token = ctx.thread_access().push_root(cell.get_mut());
         let slot = ncl_sys::RootSlot::new(&cell);
-        ncl_sys::poll_safepoint(ctx.thread_mut());
+        ctx.thread_access().poll_safepoint();
         let length = ncl_object::string_length(ctx, *slot)?;
         assert_eq!(length, PAYLOAD);
-        let _ = ncl_sys::pop_root(ctx.thread_mut(), token);
+        let _ = ctx.thread_access().pop_root(token);
         ALLOCATED.fetch_add(1, Ordering::SeqCst);
         if !started {
             started = true;
@@ -103,7 +103,7 @@ fn collection_parks_two_concurrently_allocating_threads() {
     ncl_threads::join(second, Some(Duration::from_secs(60))).unwrap();
 
     assert!(ALLOCATED.load(Ordering::Relaxed) >= COLLECTIONS);
-    assert!(ncl_sys::heap_epoch(main_ctx.thread_mut()) >= u64::try_from(COLLECTIONS).unwrap());
+    assert!(main_ctx.thread_access().heap_epoch() >= u64::try_from(COLLECTIONS).unwrap());
 }
 
 #[test]

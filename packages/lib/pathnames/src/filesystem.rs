@@ -249,6 +249,10 @@ mod tests {
         set_symbol_value,
     };
 
+    #[cfg(test)]
+    #[path = "builtins.rs"]
+    mod builtins;
+
     struct TestDirectory(PathBuf);
 
     impl TestDirectory {
@@ -271,6 +275,16 @@ mod tests {
         fn drop(&mut self) {
             let _cleanup = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    fn runtime_and_context() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("thread: {error:?}"));
+        ncl_clos::register(&runtime).unwrap_or_else(|error| panic!("CLOS: {error:?}"));
+        crate::register(&mut ctx, &runtime).unwrap_or_else(|error| panic!("pathnames: {error:?}"));
+        (runtime, ctx)
     }
 
     #[test]
@@ -327,12 +341,7 @@ mod tests {
 
     #[test]
     fn probe_file_uses_parent_of_directory_defaults_without_separator() {
-        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)
-            .unwrap_or_else(|error| panic!("thread: {error:?}"));
-        ncl_clos::register(&runtime).unwrap_or_else(|error| panic!("CLOS: {error:?}"));
-        crate::register(&mut ctx, &runtime).unwrap_or_else(|error| panic!("pathnames: {error:?}"));
+        let (runtime, mut ctx) = runtime_and_context();
 
         let directory =
             std::env::current_dir().unwrap_or_else(|error| panic!("current directory: {error}"));

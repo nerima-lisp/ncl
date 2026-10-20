@@ -5,6 +5,7 @@ mod frame;
 mod isa_x86_64;
 mod lowering;
 mod machine;
+mod machine_verify;
 mod regalloc;
 mod relocation;
 mod safepoint;
@@ -16,6 +17,8 @@ mod templates;
 mod tests;
 #[cfg(test)]
 mod tests_aarch64;
+#[cfg(test)]
+mod tests_machine_verify;
 #[cfg(test)]
 mod tests_x86_64;
 #[cfg(test)]
@@ -33,8 +36,9 @@ pub use abi::{
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
+pub use machine_verify::MachineVerificationError;
 pub use regalloc::{Allocation, AllocationTarget, LiveInterval, Location, allocate};
-pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
+pub use relocation::{Relocation, RelocationError, RelocationKind, relocations_from_fixups};
 pub use safepoint::{
     FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
     SafepointMap,
@@ -69,6 +73,8 @@ pub enum CodegenError {
     Abi(String),
     /// Frame layout arithmetic overflowed.
     FrameOverflow,
+    /// The IR allocation or final machine frame failed verification.
+    MachineVerification(MachineVerificationError),
     /// An IR operation refers to a constant-table entry that cannot be indexed.
     InvalidConstantIndex {
         /// The requested constant-table index.
@@ -98,6 +104,7 @@ impl core::fmt::Display for CodegenError {
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
             Self::Abi(message) => write!(f, "runtime ABI error: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
+            Self::MachineVerification(error) => write!(f, "{error}"),
             Self::InvalidConstantIndex { index, length } => {
                 write!(
                     f,
@@ -119,3 +126,9 @@ impl core::fmt::Display for CodegenError {
 }
 
 impl std::error::Error for CodegenError {}
+
+impl From<MachineVerificationError> for CodegenError {
+    fn from(error: MachineVerificationError) -> Self {
+        Self::MachineVerification(error)
+    }
+}

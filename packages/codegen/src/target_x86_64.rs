@@ -1,6 +1,6 @@
 use crate::{
-    AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap,
-    allocate, checked_u32,
+    AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, allocate,
+    checked_u32,
 };
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
@@ -73,6 +73,9 @@ use lowering::{
     RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
     lower_op, lower_pending_check, lower_return_or_throw, move_args, slots,
 };
+#[path = "target_x86_64_safepoint.rs"]
+mod safepoint;
+use safepoint::add_map;
 
 /// Offset of the frame header's function-object word from the frame pointer.
 const HEADER_FUNCTION_OBJECT_OFFSET: i32 = 16;
@@ -80,49 +83,6 @@ const HEADER_FUNCTION_OBJECT_OFFSET: i32 = 16;
 const HEADER_FLAGS_OFFSET: i32 = 24;
 /// Bytes of frame header materialised by `push rbp` and the caller's return address.
 const INHERITED_HEADER_BYTES: u32 = 16;
-
-fn add_map(
-    maps: &mut Vec<SafepointMap>,
-    pc: u32,
-    frame: FrameLayout,
-    values: &ValueSlots,
-    position: u32,
-    flags: u32,
-) -> Result<(), CodegenError> {
-    let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    let (registers, mut live_slots) = values.roots(position);
-    if let Some(base) = values.incoming_args_base {
-        for offset in 0..5 {
-            live_slots.push(
-                u16::try_from(
-                    base.checked_add(offset)
-                        .and_then(|slot| slot.checked_add(4))
-                        .ok_or(CodegenError::FrameOverflow)?,
-                )
-                .map_err(|_| CodegenError::FrameOverflow)?,
-            );
-        }
-    }
-    if flags & FLAG_CALL != 0 {
-        let outgoing_base = values.outgoing_base();
-        for offset in 0..frame.outgoing_words {
-            live_slots.push(
-                u16::try_from(
-                    outgoing_base
-                        .checked_add(offset)
-                        .and_then(|slot| slot.checked_add(4))
-                        .ok_or(CodegenError::FrameOverflow)?,
-                )
-                .map_err(|_| CodegenError::FrameOverflow)?,
-            );
-        }
-        live_slots.sort_unstable();
-        live_slots.dedup();
-    }
-    SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
-        .map(|map| maps.push(map))
-        .map_err(|error| CodegenError::Encode(error.to_string()))
-}
 
 fn spill_arguments(
     assembler: &mut Assembler,
@@ -230,6 +190,23 @@ pub fn compile_function_x86_64(
             .ok_or(CodegenError::FrameOverflow)?,
         outgoing_words,
     )?;
+    let incoming_args_base = generated_lambda.then(|| {
+        argument_words
+            .saturating_add(local_words)
+            .saturating_add(spill_words)
+    });
+    value_slots.incoming_args_base = incoming_args_base;
+    value_slots.allocation.incoming_args_base = incoming_args_base;
+    value_slots.allocation.outgoing_base = value_slots.outgoing_base;
+    crate::machine_verify::verify_allocation(
+        function,
+        AllocationTarget::X86_64,
+        &value_slots.allocation,
+        frame,
+        outgoing_words,
+        value_slots.spill_base,
+        Some(value_slots.callee_saved_base),
+    )?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -259,12 +236,6 @@ pub fn compile_function_x86_64(
         )?;
     }
     lowering::save_callee_saved_registers(&mut assembler, value_slots.callee_saved_base)?;
-    let incoming_args_base = generated_lambda.then(|| {
-        argument_words
-            .saturating_add(local_words)
-            .saturating_add(spill_words)
-    });
-    value_slots.incoming_args_base = incoming_args_base;
     let argument_values = (0..argument_words).map(ncl_ir::ValueId).collect::<Vec<_>>();
     if let Some(base) = incoming_args_base {
         for (index, register) in lowering::ARGUMENT_REGISTERS.into_iter().enumerate() {
@@ -304,6 +275,7 @@ pub fn compile_function_x86_64(
                 add_map(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
+                    function,
                     frame,
                     &value_slots,
                     position,
@@ -315,6 +287,7 @@ pub fn compile_function_x86_64(
                     | OpKind::CallIndirect { .. }
                     | OpKind::MakeClosure { .. }
                     | OpKind::CallClosure { .. }
+                    | OpKind::MakeValueCell { .. }
                     | OpKind::Builtin { .. }
                     | OpKind::Safepoint
                     | OpKind::EnterHandler { .. }
@@ -323,6 +296,7 @@ pub fn compile_function_x86_64(
                 add_map(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
+                    function,
                     frame,
                     &value_slots,
                     position,
@@ -334,6 +308,7 @@ pub fn compile_function_x86_64(
                         | OpKind::CallIndirect { .. }
                         | OpKind::CallClosure { .. }
                         | OpKind::MakeClosure { .. }
+                        | OpKind::MakeValueCell { .. }
                         | OpKind::Builtin { .. }
                 ) {
                     lower_pending_check(
@@ -361,6 +336,7 @@ pub fn compile_function_x86_64(
                     add_map(
                         &mut maps,
                         checked_u32(assembler.bytes().len())?,
+                        function,
                         frame,
                         &value_slots,
                         position,
@@ -450,10 +426,21 @@ pub fn compile_function_x86_64(
                     &labels,
                 )?;
             }
-            Terminator::CallReturn { function, args } => {
-                lower_call(&mut assembler, *function, args, &value_slots)?;
+            Terminator::CallReturn {
+                function: callee,
+                args,
+            } => {
+                lower_call(&mut assembler, *callee, args, &value_slots)?;
                 let call_pc = emit_call(&mut assembler)?;
-                add_map(&mut maps, call_pc, frame, &value_slots, position, FLAG_CALL)?;
+                add_map(
+                    &mut maps,
+                    call_pc,
+                    function,
+                    frame,
+                    &value_slots,
+                    position,
+                    FLAG_CALL,
+                )?;
                 emit_epilogue(&mut assembler, value_slots.callee_saved_base)?;
             }
             Terminator::TailCall { function, args } => {

@@ -40,7 +40,7 @@ fn numeric_tower() {
 
 #[test]
 fn top_and_bottom() {
-    use NamedType::{Integer, Nil, T};
+    use NamedType::{Integer, List, Nil, Null, Symbol, T};
     assert_eq!(
         subtypep(&named(Nil), &named(Integer)).unwrap(),
         (true, true)
@@ -55,6 +55,11 @@ fn top_and_bottom() {
         subtypep(&named(Integer), &named(Integer)).unwrap(),
         (true, true)
     );
+    assert_eq!(
+        subtypep(&named(Null), &named(Symbol)).unwrap(),
+        (true, true)
+    );
+    assert_eq!(subtypep(&named(Null), &named(List)).unwrap(), (true, true));
 }
 
 #[test]

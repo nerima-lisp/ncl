@@ -1,8 +1,7 @@
 use super::*;
 
-#[test]
-fn executes_generated_call_with_fifth_argument_from_rest_area() {
-    let mut callee_builder = FunctionBuilder::new(
+fn build_weighted_target() -> ncl_ir::Function {
+    let mut target_builder = FunctionBuilder::new(
         ncl_ir::FunctionId(100),
         "weighted-five-argument-callee",
         ["first", "second", "third", "fourth", "fifth"]
@@ -16,16 +15,16 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
     );
     let arguments = (0..5)
         .map(|index| {
-            callee_builder
+            target_builder
                 .push_op(OpKind::LoadArg { index }, &[Ty::Word])
-                .expect("callee argument")[0]
+                .expect("target argument")[0]
         })
         .collect::<Vec<_>>();
-    let mut result = word_to_i64(&mut callee_builder, arguments[0]);
+    let mut result = word_to_i64(&mut target_builder, arguments[0]);
     for (index, argument) in arguments.iter().copied().enumerate().skip(1) {
-        let mut weighted = word_to_i64(&mut callee_builder, argument);
+        let mut weighted = word_to_i64(&mut target_builder, argument);
         for _ in 0..index {
-            weighted = callee_builder
+            weighted = target_builder
                 .push_op(
                     OpKind::Prim {
                         op: Prim::FixnumAdd,
@@ -36,7 +35,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
                 )
                 .expect("double weighted argument")[0];
         }
-        result = callee_builder
+        result = target_builder
             .push_op(
                 OpKind::Prim {
                     op: Prim::FixnumAdd,
@@ -47,19 +46,17 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
             )
             .expect("add weighted argument")[0];
     }
-    let result = i64_to_word(&mut callee_builder, result);
-    callee_builder
+    let result = i64_to_word(&mut target_builder, result);
+    target_builder
         .terminate(Terminator::Return {
             values: vec![result],
         })
-        .expect("callee return");
-    let callee =
-        compile_function_x86_64(&callee_builder.finish(), &X86_64Abi).expect("callee lowering");
-    let mut callee_code = alloc_code(callee.code.len()).expect("callee code allocation");
-    write_code(&mut callee_code, 0, &callee.code).expect("callee code write");
-    publish_code(&mut callee_code).expect("callee code publication");
+        .expect("target return");
+    target_builder.finish()
+}
 
-    let mut caller_builder = FunctionBuilder::new(
+fn build_five_argument_entry() -> ncl_ir::Function {
+    let mut entry_builder = FunctionBuilder::new(
         ncl_ir::FunctionId(101),
         "five-argument-caller",
         vec![
@@ -90,23 +87,23 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
         ],
         vec![Ty::Word],
     );
-    let callee_value = caller_builder
+    let callee_value = entry_builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
-        .expect("callee address")[0];
+        .expect("target address")[0];
     let arguments = (1..=5)
         .map(|index| {
-            caller_builder
+            entry_builder
                 .push_op(OpKind::LoadArg { index }, &[Ty::Word])
-                .expect("caller argument")[0]
+                .expect("entry argument")[0]
         })
         .collect::<Vec<_>>();
-    let argc = fixnum_word(&mut caller_builder, 5);
-    caller_builder
+    let argc = fixnum_word(&mut entry_builder, 5);
+    entry_builder
         .push_op(OpKind::Safepoint, &[])
         .expect("call safepoint");
     let mut call_args = vec![argc];
     call_args.extend(arguments);
-    let result = caller_builder
+    let result = entry_builder
         .push_op(
             OpKind::Call {
                 function: callee_value,
@@ -115,27 +112,38 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
             &[Ty::Word],
         )
         .expect("five-argument call")[0];
-    caller_builder
+    entry_builder
         .terminate(Terminator::Return {
             values: vec![result],
         })
-        .expect("caller return");
-    let caller =
-        compile_function_x86_64(&caller_builder.finish(), &BuiltinAbi).expect("caller lowering");
-    let mut caller_code = alloc_code(caller.code.len()).expect("caller code allocation");
-    write_code(&mut caller_code, 0, &caller.code).expect("caller code write");
-    publish_code(&mut caller_code).expect("caller code publication");
+        .expect("entry return");
+    entry_builder.finish()
+}
+
+#[test]
+fn executes_generated_call_with_fifth_argument_from_rest_area() {
+    let target =
+        compile_function_x86_64(&build_weighted_target(), &X86_64Abi).expect("target lowering");
+    let mut target_code = alloc_code(target.code.len()).expect("target code allocation");
+    write_code(&mut target_code, 0, &target.code).expect("target code write");
+    publish_code(&mut target_code).expect("target code publication");
+
+    let entry =
+        compile_function_x86_64(&build_five_argument_entry(), &BuiltinAbi).expect("entry lowering");
+    let mut entry_code = alloc_code(entry.code.len()).expect("entry code allocation");
+    write_code(&mut entry_code, 0, &entry.code).expect("entry code write");
+    publish_code(&mut entry_code).expect("entry code publication");
 
     let values = [1, 2, 3, 4, 5].map(|value| Word::fixnum(value).bits());
     let rest = [values[3], values[4]];
     let mut thread = Thread::new();
     let result = invoke_entry(
-        &caller_code,
-        caller.entry_offset as usize,
+        &entry_code,
+        entry.entry_offset as usize,
         &mut thread,
         6,
         [
-            callee_code.address() as u64,
+            target_code.address() as u64,
             values[0],
             values[1],
             values[2],

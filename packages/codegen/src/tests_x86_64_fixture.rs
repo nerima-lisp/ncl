@@ -18,6 +18,7 @@ impl RuntimeAbi for X86_64FixtureAbi {
             ContextField::SafepointRequest => layout.safepoint_request,
             ContextField::MultipleValueArea => layout.mv,
             ContextField::Pending => layout.pending,
+            ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
             ContextField::MultipleValueCount => layout.mv_count,
             _ => return Err(crate::AbiError::UnsupportedContextField(field)),
         };

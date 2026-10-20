@@ -41,18 +41,14 @@ pub(super) fn load_immediate(
 
 pub(super) struct ValueSlots {
     values: Vec<(ValueId, u32)>,
-    allocation: Allocation,
-    spill_base: u32,
+    pub(super) allocation: Allocation,
+    pub(super) spill_base: u32,
     pub(super) outgoing_base: u32,
     pub(super) callee_saved_base: u32,
     pub(super) incoming_args_base: Option<u32>,
 }
 
 impl ValueSlots {
-    pub(super) const fn outgoing_base(&self) -> u32 {
-        self.outgoing_base
-    }
-
     pub(super) fn location(&self, value: ValueId) -> Result<Location, CodegenError> {
         self.allocation
             .location(value)
@@ -69,34 +65,22 @@ impl ValueSlots {
         }
     }
 
-    pub(super) fn roots(&self, position: u32) -> (Vec<u16>, Vec<u16>) {
-        let mut registers = Vec::new();
-        let mut spills = Vec::new();
-        for interval in &self.allocation.intervals {
-            if interval.ty != ncl_ir::Ty::Word
-                || interval.start >= position
-                || position > interval.end
-            {
-                continue;
-            }
-            match self.allocation.location(interval.value) {
-                Some(Location::Register(register)) => registers.push(register),
-                Some(Location::Spill(spill)) => {
-                    spills.extend(
-                        self.spill_base
-                            .checked_add(spill)
-                            .and_then(|slot| slot.checked_add(4))
-                            .and_then(|slot| u16::try_from(slot).ok()),
-                    );
-                }
-                None => {}
-            }
-        }
-        registers.sort_unstable();
-        registers.dedup();
-        spills.sort_unstable();
-        spills.dedup();
-        (registers, spills)
+    pub(super) fn roots(
+        &self,
+        function: &Function,
+        position: u32,
+    ) -> Result<(Vec<u16>, Vec<u16>), CodegenError> {
+        let (registers, slots) = crate::machine_verify::root_locations_at(
+            function,
+            &self.allocation,
+            position,
+            self.spill_base,
+        );
+        let slots = slots
+            .into_iter()
+            .map(|slot| u16::try_from(slot).map_err(|_| CodegenError::FrameOverflow))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((registers, slots))
     }
 }
 

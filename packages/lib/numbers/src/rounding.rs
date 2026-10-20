@@ -2,8 +2,8 @@
 
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
-    make_ratio, ratio_denominator, ratio_numerator,
+    bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128,
+    make_bignum_from_limbs, make_double, make_ratio, ratio_denominator, ratio_numerator,
 };
 use ncl_sys::RootSlot;
 use std::cell::Cell;
@@ -190,6 +190,54 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Wor
     }
 }
 
+fn float_integer_word(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: f64,
+) -> Result<Word, ObjectError> {
+    if let Some(value) = float_to_i128(value) {
+        return word(ctx, runtime, Number::Integer(value));
+    }
+    if !value.is_finite() {
+        return Err(ObjectError::TypeError);
+    }
+
+    let bits = value.to_bits();
+    let negative = bits >> 63 != 0;
+    let exponent = i32::try_from((bits >> 52) & 0x7ff).map_err(|_| ObjectError::Layout)? - 1023;
+    let shift = u32::try_from(exponent.checked_sub(52).ok_or(ObjectError::TypeError)?)
+        .map_err(|_| ObjectError::TypeError)?;
+    let limb_offset = usize::try_from(shift / 32).map_err(|_| ObjectError::TypeError)?;
+    let bit_offset = shift % 32;
+    let significand = (bits & ((1_u64 << 52) - 1)) | (1_u64 << 52);
+    let bytes = significand.to_le_bytes();
+    let (chunks, trailing_bytes) = bytes.as_chunks::<4>();
+    if !trailing_bytes.is_empty() {
+        return Err(ObjectError::Layout);
+    }
+    let [low_bytes, high_bytes] = chunks else {
+        return Err(ObjectError::Layout);
+    };
+    let low = u32::from_le_bytes(*low_bytes);
+    let high = u32::from_le_bytes(*high_bytes);
+    let low_shifted = u64::from(low) << bit_offset;
+    let high_shifted = u64::from(high) << bit_offset;
+    let middle = (low_shifted >> 32)
+        .checked_add(high_shifted)
+        .ok_or(ObjectError::TypeError)?;
+    let mask = u64::from(u32::MAX);
+    let mut limbs = vec![0_u32; limb_offset];
+    limbs.extend([
+        u32::try_from(low_shifted & mask).map_err(|_| ObjectError::TypeError)?,
+        u32::try_from(middle & mask).map_err(|_| ObjectError::TypeError)?,
+        u32::try_from(middle >> 32).map_err(|_| ObjectError::TypeError)?,
+    ]);
+    while limbs.last().is_some_and(|limb| *limb == 0) {
+        limbs.pop();
+    }
+    make_bignum_from_limbs(ctx, runtime, negative, &limbs).map(Into::into)
+}
+
 fn quotient(numerator: i128, denominator: i128, mode: u8) -> Option<i128> {
     match mode {
         0 => numerator.checked_div_euclid(denominator),
@@ -318,15 +366,11 @@ fn round(
     };
     let mut remainder = word(ctx, runtime, remainder)?;
     with_rooted_word(ctx, &mut remainder, |ctx, remainder| {
-        let result = word(
-            ctx,
-            runtime,
-            if float_result {
-                Number::Float(as_float(quotient))
-            } else {
-                quotient
-            },
-        )?;
+        let result = match (float_result, quotient) {
+            (true, quotient) => word(ctx, runtime, Number::Float(as_float(quotient)))?,
+            (false, Number::Float(quotient)) => float_integer_word(ctx, runtime, quotient)?,
+            (false, quotient) => word(ctx, runtime, quotient)?,
+        };
         values.set(&[result, *remainder]);
         Ok(result)
     })

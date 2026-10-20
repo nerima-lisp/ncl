@@ -79,6 +79,119 @@ fn compiled_clos_baseline_asserts_ansi_output() {
 }
 
 #[test]
+fn compiled_clos_builtin_class_objects_have_their_metaclass() {
+    let output = run_ncl(
+        "(list (class-name (find-class 't)) (class-name (find-class 'nil)) (typep (class-of 1) 'built-in-class) (typep 1 'built-in-class) (typep (find-class 'integer) 'built-in-class) (typep (class-of 1) 'standard-object) (= (length (find-class 'ncl-ffi::integer)) 3))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(\"T\" \"NULL\" T NIL T T T)"
+    );
+}
+
+#[test]
+fn compiled_clos_class_designators_and_precedence_follow_supported_relations() {
+    let output = run_ncl(
+        "(let ((null-precedence (ncl-mop:class-precedence-list (find-class 'null)))) \
+           (and \
+             (eq (class-of (find-class 'integer)) (find-class 'built-in-class)) \
+             (eq (class-of (find-class 'standard-object)) (find-class 'standard-class)) \
+             (typep nil 'symbol) \
+             (typep nil 'list) \
+             (typep 1 'number) \
+             (typep \"x\" 'vector) \
+             (subtypep 'integer 'number) \
+             (= (length null-precedence) 5) \
+             (string= (class-name (svref null-precedence 0)) \"NULL\") \
+             (string= (class-name (svref null-precedence 1)) \"SYMBOL\") \
+             (string= (class-name (svref null-precedence 2)) \"LIST\") \
+             (string= (class-name (svref null-precedence 3)) \"SEQUENCE\") \
+             (string= (class-name (svref null-precedence 4)) \"T\") \
+             (handler-case (progn (find-class (find-class 'ncl-ffi::integer)) nil) \
+               (type-error () t))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "T");
+}
+
+#[test]
+fn compiled_clos_method_dispatch_uses_class_precedence_order() {
+    let output = run_ncl(
+        "(progn \
+           (defclass precedence-left-probe () ()) \
+           (defclass precedence-right-probe () ()) \
+           (defclass precedence-child-probe \
+             (precedence-left-probe precedence-right-probe) ()) \
+           (defgeneric precedence-child-method (value)) \
+           (defmethod precedence-child-method \
+             ((value precedence-left-probe)) :left) \
+           (defmethod precedence-child-method \
+             ((value precedence-right-probe)) :right) \
+           (defgeneric precedence-null-method (value)) \
+           (defmethod precedence-null-method ((value symbol)) :symbol) \
+           (defmethod precedence-null-method ((value list)) :list) \
+           (let ((precedence \
+                   (ncl-mop:class-precedence-list \
+                     (find-class 'precedence-child-probe)))) \
+             (and \
+               (= (length precedence) 5) \
+               (string= (class-name (svref precedence 1)) \
+                        \"PRECEDENCE-LEFT-PROBE\") \
+               (string= (class-name (svref precedence 2)) \
+                        \"PRECEDENCE-RIGHT-PROBE\") \
+               (eq (precedence-child-method \
+                     (make-instance 'precedence-child-probe)) :left) \
+               (eq (precedence-null-method nil) :symbol))))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "T");
+}
+
+#[test]
+fn compiled_clos_generic_functions_have_the_standard_generic_function_class() {
+    let output = run_ncl(
+        "(progn \
+           (defgeneric generic-class-probe (value)) \
+           (and \
+             (eq (class-of #'generic-class-probe) \
+                 (find-class 'standard-generic-function)) \
+             (typep #'generic-class-probe 'generic-function)))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "T");
+}
+
+#[test]
+fn compiled_clos_classes_without_explicit_superclasses_default_to_standard_object() {
+    let output = run_ncl(
+        "(progn \
+           (defclass default-root-probe () ()) \
+           (typep (make-instance 'default-root-probe) 'standard-object))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "T");
+}
+
+#[test]
+fn compiled_clos_defmethod_unspecialized_required_arguments_default_to_t() {
+    let output = run_ncl(
+        "(progn (defgeneric method-default-specializer (x y)) (defmethod method-default-specializer ((x integer) y) (list x y)) (method-default-specializer 2 :anything))",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(2 :ANYTHING)"
+    );
+}
+
+#[test]
 fn unsupported_compiled_clos_cases_remain_explicit_xfails() {
     let cases = [
         XFail {

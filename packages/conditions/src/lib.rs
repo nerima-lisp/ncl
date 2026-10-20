@@ -33,7 +33,7 @@ mod symbols;
 pub use class::{
     ConditionClass, ConditionIdentifier, ConditionRecord, ConditionSlotValue, condition_class,
     condition_class_name, condition_class_of, make_condition, make_condition_record,
-    make_typed_condition,
+    make_typed_condition, wire_condition_root_to_t,
 };
 pub use conversion::condition_from_lisp_error;
 pub use error::ConditionError;

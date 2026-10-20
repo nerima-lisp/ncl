@@ -37,38 +37,167 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 20] = [
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("FIND-CLASS"), arity: BuiltinArity::One, callback: find_class_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-BOUNDP"), arity: BuiltinArity::Two, callback: slot_boundp_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-EXISTS-P"), arity: BuiltinArity::Two, callback: slot_exists_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-MAKUNBOUND"), arity: BuiltinArity::Two, callback: slot_makunbound_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("TYPEP"), arity: BuiltinArity::Two, callback: typep_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-REF"), arity: BuiltinArity::Two, callback: structure_ref_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-SET"), arity: BuiltinArity::Three, callback: structure_set_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-P"), arity: BuiltinArity::Two, callback: structure_predicate_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%STRUCTURE-COPY"), arity: BuiltinArity::One, callback: structure_copy_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DEFINE-GENERIC"), arity: BuiltinArity::One, callback: clos_define_generic_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ADD-METHOD"), arity: BuiltinArity::Three, callback: clos_add_method_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-ENSURE-INITIALIZATION-BASE"), arity: BuiltinArity::One, callback: clos_ensure_initialization_base_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-DISPATCH"), arity: BuiltinArity::Two, callback: clos_dispatch_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-CALL-NEXT-METHOD"), arity: BuiltinArity::Two, callback: clos_call_next_method_builtin },
-    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("%CLOS-NEXT-METHOD-P"), arity: BuiltinArity::One, callback: clos_next_method_p_builtin },
-    DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
+const DIRECT_BUILTINS: [DirectBuiltin; 23] = [
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("CLASS-NAME"),
+        arity: BuiltinArity::One,
+        callback: class_name_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("CLASS-OF"),
+        arity: BuiltinArity::One,
+        callback: class_of_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("FIND-CLASS"),
+        arity: BuiltinArity::One,
+        callback: find_class_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SLOT-BOUNDP"),
+        arity: BuiltinArity::Two,
+        callback: slot_boundp_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SLOT-EXISTS-P"),
+        arity: BuiltinArity::Two,
+        callback: slot_exists_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SLOT-MAKUNBOUND"),
+        arity: BuiltinArity::Two,
+        callback: slot_makunbound_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SLOT-VALUE"),
+        arity: BuiltinArity::Two,
+        callback: slot_value_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SLOT-VALUE-SET"),
+        arity: BuiltinArity::Three,
+        callback: slot_set_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("TYPEP"),
+        arity: BuiltinArity::Two,
+        callback: typep_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%STRUCTURE-REF"),
+        arity: BuiltinArity::Two,
+        callback: structure_ref_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%STRUCTURE-SET"),
+        arity: BuiltinArity::Three,
+        callback: structure_set_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%STRUCTURE-P"),
+        arity: BuiltinArity::Two,
+        callback: structure_predicate_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%STRUCTURE-COPY"),
+        arity: BuiltinArity::One,
+        callback: structure_copy_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-DEFINE-GENERIC"),
+        arity: BuiltinArity::Two,
+        callback: clos_define_generic_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-REDEFINE-GENERIC"),
+        arity: BuiltinArity::Two,
+        callback: clos_redefine_generic_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-GENERIC-FUNCTION-REGISTERED-P"),
+        arity: BuiltinArity::One,
+        callback: clos_generic_function_registered_p_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-DEFGENERIC-ERROR"),
+        arity: BuiltinArity::One,
+        callback: defgeneric_program_error_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-ADD-METHOD"),
+        arity: BuiltinArity::Three,
+        callback: clos_add_method_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-ENSURE-INITIALIZATION-BASE"),
+        arity: BuiltinArity::One,
+        callback: clos_ensure_initialization_base_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-DISPATCH"),
+        arity: BuiltinArity::Two,
+        callback: clos_dispatch_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-CALL-NEXT-METHOD"),
+        arity: BuiltinArity::Two,
+        callback: clos_call_next_method_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("%CLOS-NEXT-METHOD-P"),
+        arity: BuiltinArity::One,
+        callback: clos_next_method_p_builtin,
+    },
+    DirectBuiltin {
+        package: BuiltinPackage::NclMop,
+        name: BuiltinName::new("CLASS-NAME"),
+        arity: BuiltinArity::One,
+        callback: class_name_builtin,
+    },
 ];
 
 fn builtin_manifest() -> Vec<Registration> {
     let mut registrations = DIRECT_BUILTINS
         .iter()
-        .map(|builtin| direct_registration(builtin.package, builtin.name.as_str(), builtin.arity, builtin.callback))
+        .map(|builtin| {
+            direct_registration(
+                builtin.package,
+                builtin.name.as_str(),
+                builtin.arity,
+                builtin.callback,
+            )
+        })
         .collect::<Vec<_>>();
-    registrations.extend(mop::builtin_descriptors().iter().map(|descriptor| Registration {
-        identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
-        implementation: mop::implementation(*descriptor),
-    }));
+    registrations.extend(
+        mop::builtin_descriptors()
+            .iter()
+            .map(|descriptor| Registration {
+                identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
+                implementation: mop::implementation(*descriptor),
+            }),
+    );
     for descriptor in initialization::builtin_descriptors() {
         let implementation = initialization::implementation(*descriptor);
         registrations.push(Registration {
@@ -89,21 +218,44 @@ fn builtin_manifest() -> Vec<Registration> {
     let macro_registration = |name, callback| Registration {
         identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
         implementation: BuiltinImplementation::adapted(macro_builtin, callback, |args| {
-            Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
+            Ok((0..args.len())
+                .filter_map(|index| args.get(index))
+                .collect())
         }),
     };
+    registrations.push(Registration {
+        identifier: BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("FIND-METHOD"),
+        ),
+        implementation: BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_optional(FIND_METHOD_ARGUMENTS, &[ERRORP_ARGUMENT]),
+                convention: ncl_object::BuiltinConvention::Adapted,
+            },
+            find_method_builtin,
+            |args| Ok(args.as_slice().to_vec()),
+        ),
+    });
     registrations.push(macro_registration("DEFCLASS", defclass_macro_builtin));
     registrations.push(macro_registration("DEFGENERIC", defgeneric_macro_builtin));
     registrations.push(macro_registration("DEFMETHOD", defmethod_macro_builtin));
     registrations.push(Registration {
-        identifier: BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("%STRUCTURE-MAKE")),
+        identifier: BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("%STRUCTURE-MAKE"),
+        ),
         implementation: BuiltinImplementation::adapted(
             Builtin {
                 lambda_list: LambdaList::with_rest(&[MACRO_FORM], STRUCTURE_REST),
                 convention: ncl_object::BuiltinConvention::Adapted,
             },
             structure_make_builtin,
-            |args| Ok((0..args.len()).filter_map(|index| args.get(index)).collect()),
+            |args| {
+                Ok((0..args.len())
+                    .filter_map(|index| args.get(index))
+                    .collect())
+            },
         ),
     });
     registrations.push(macro_registration("DEFSTRUCT", defstruct_macro_builtin));
@@ -123,19 +275,24 @@ pub fn production_function_names() -> Vec<BuiltinIdentifier> {
 struct ClassDefinition {
     name: BuiltinName,
     superclass: Option<BuiltinName>,
+    secondary_superclass: Option<BuiltinName>,
+    kind: ClassKind,
 }
 
-const CLASS_NAMES: [BuiltinName; 32] = [
-    BuiltinName::new("CLASS"), BuiltinName::new("NULL"), BuiltinName::new("STANDARD-OBJECT"),
-    BuiltinName::new("STANDARD-CLASS"), BuiltinName::new("BUILT-IN-CLASS"), BuiltinName::new("STRUCTURE-CLASS"),
-    BuiltinName::new("GENERIC-FUNCTION"), BuiltinName::new("STANDARD-GENERIC-FUNCTION"), BuiltinName::new("METHOD"),
-    BuiltinName::new("STANDARD-METHOD"), BuiltinName::new("METHOD-COMBINATION"), BuiltinName::new("STRUCTURE-OBJECT"),
-    BuiltinName::new("EQL-SPECIALIZER"), BuiltinName::new("T"), BuiltinName::new("NUMBER"), BuiltinName::new("INTEGER"),
-    BuiltinName::new("LIST"), BuiltinName::new("CONS"), BuiltinName::new("SYMBOL"), BuiltinName::new("STRING"),
-    BuiltinName::new("VECTOR"), BuiltinName::new("ARRAY"), BuiltinName::new("HASH-TABLE"), BuiltinName::new("STREAM"),
-    BuiltinName::new("PACKAGE"), BuiltinName::new("FUNCTION"), BuiltinName::new("CHARACTER"), BuiltinName::new("SIMPLE-VECTOR"),
-    BuiltinName::new("BIGNUM"), BuiltinName::new("RATIO"), BuiltinName::new("DOUBLE-FLOAT"), BuiltinName::new("COMPLEX"),
-];
+#[derive(Clone, Copy)]
+enum ClassKind {
+    BuiltIn,
+    Standard,
+}
+
+impl ClassKind {
+    const fn word(self) -> Word {
+        match self {
+            Self::BuiltIn => Word::fixnum(0),
+            Self::Standard => Word::NIL,
+        }
+    }
+}
 
 const fn class(name: &'static str, superclass: Option<&'static str>) -> ClassDefinition {
     ClassDefinition {
@@ -144,39 +301,116 @@ const fn class(name: &'static str, superclass: Option<&'static str>) -> ClassDef
             Some(name) => Some(BuiltinName::new(name)),
             None => None,
         },
+        secondary_superclass: None,
+        kind: ClassKind::BuiltIn,
     }
 }
 
-const CLASS_DEFINITIONS: [ClassDefinition; 32] = [
-    class("T", None), class("NULL", Some("T")), class("CLASS", Some("T")),
-    class("STANDARD-OBJECT", Some("T")), class("STANDARD-CLASS", Some("CLASS")),
-    class("BUILT-IN-CLASS", Some("CLASS")), class("STRUCTURE-CLASS", Some("CLASS")),
-    class("GENERIC-FUNCTION", Some("FUNCTION")), class("STANDARD-GENERIC-FUNCTION", Some("GENERIC-FUNCTION")),
-    class("METHOD", Some("STANDARD-OBJECT")), class("STANDARD-METHOD", Some("METHOD")),
-    class("METHOD-COMBINATION", Some("STANDARD-OBJECT")), class("STRUCTURE-OBJECT", Some("STANDARD-OBJECT")),
-    class("EQL-SPECIALIZER", Some("STANDARD-OBJECT")), class("NUMBER", Some("T")), class("INTEGER", Some("T")),
-    class("LIST", Some("T")), class("CONS", Some("T")), class("SYMBOL", Some("T")), class("STRING", Some("T")),
-    class("VECTOR", Some("T")), class("ARRAY", Some("T")), class("HASH-TABLE", Some("T")), class("STREAM", Some("T")),
-    class("PACKAGE", Some("T")), class("FUNCTION", Some("T")), class("CHARACTER", Some("T")),
-    class("SIMPLE-VECTOR", Some("T")), class("BIGNUM", Some("T")), class("RATIO", Some("T")),
-    class("DOUBLE-FLOAT", Some("T")), class("COMPLEX", Some("T")),
+const fn class_with_superclasses(
+    name: &'static str,
+    superclass: &'static str,
+    secondary_superclass: &'static str,
+) -> ClassDefinition {
+    ClassDefinition {
+        name: BuiltinName::new(name),
+        superclass: Some(BuiltinName::new(superclass)),
+        secondary_superclass: Some(BuiltinName::new(secondary_superclass)),
+        kind: ClassKind::BuiltIn,
+    }
+}
+
+const fn standard_class(name: &'static str, superclass: Option<&'static str>) -> ClassDefinition {
+    ClassDefinition {
+        name: BuiltinName::new(name),
+        superclass: match superclass {
+            Some(name) => Some(BuiltinName::new(name)),
+            None => None,
+        },
+        secondary_superclass: None,
+        kind: ClassKind::Standard,
+    }
+}
+
+const CLASS_DEFINITIONS: &[ClassDefinition] = &[
+    class("T", None),
+    standard_class("STANDARD-OBJECT", Some("T")),
+    standard_class("CLASS", Some("STANDARD-OBJECT")),
+    standard_class("STANDARD-CLASS", Some("CLASS")),
+    standard_class("BUILT-IN-CLASS", Some("CLASS")),
+    standard_class("STRUCTURE-CLASS", Some("CLASS")),
+    class("NUMBER", Some("T")),
+    class("REAL", Some("NUMBER")),
+    class("RATIONAL", Some("REAL")),
+    class("INTEGER", Some("RATIONAL")),
+    class("BIGNUM", Some("INTEGER")),
+    class("RATIO", Some("RATIONAL")),
+    class("FLOAT", Some("REAL")),
+    class("SHORT-FLOAT", Some("FLOAT")),
+    class("SINGLE-FLOAT", Some("FLOAT")),
+    class("DOUBLE-FLOAT", Some("FLOAT")),
+    class("LONG-FLOAT", Some("FLOAT")),
+    class("COMPLEX", Some("NUMBER")),
+    class("SEQUENCE", Some("T")),
+    class("LIST", Some("SEQUENCE")),
+    class("CONS", Some("LIST")),
+    class("SYMBOL", Some("T")),
+    class_with_superclasses("NULL", "SYMBOL", "LIST"),
+    class("ARRAY", Some("T")),
+    class_with_superclasses("VECTOR", "ARRAY", "SEQUENCE"),
+    class("BIT-VECTOR", Some("VECTOR")),
+    class("SIMPLE-BIT-VECTOR", Some("BIT-VECTOR")),
+    class("SIMPLE-ARRAY", Some("ARRAY")),
+    class("STRING", Some("VECTOR")),
+    class("BASE-STRING", Some("STRING")),
+    class("SIMPLE-STRING", Some("STRING")),
+    class_with_superclasses("SIMPLE-BASE-STRING", "SIMPLE-STRING", "BASE-STRING"),
+    class("SIMPLE-VECTOR", Some("VECTOR")),
+    class("FUNCTION", Some("T")),
+    class("COMPILED-FUNCTION", Some("FUNCTION")),
+    standard_class("GENERIC-FUNCTION", Some("FUNCTION")),
+    standard_class("STANDARD-GENERIC-FUNCTION", Some("GENERIC-FUNCTION")),
+    standard_class("METHOD", Some("STANDARD-OBJECT")),
+    standard_class("STANDARD-METHOD", Some("METHOD")),
+    standard_class("METHOD-COMBINATION", Some("STANDARD-OBJECT")),
+    class("STRUCTURE-OBJECT", Some("T")),
+    standard_class("EQL-SPECIALIZER", Some("STANDARD-OBJECT")),
+    class("HASH-TABLE", Some("T")),
+    class("STREAM", Some("T")),
+    class("BROADCAST-STREAM", Some("STREAM")),
+    class("CONCATENATED-STREAM", Some("STREAM")),
+    class("ECHO-STREAM", Some("STREAM")),
+    class("FILE-STREAM", Some("STREAM")),
+    class("STRING-STREAM", Some("STREAM")),
+    class("SYNONYM-STREAM", Some("STREAM")),
+    class("TWO-WAY-STREAM", Some("STREAM")),
+    class("PACKAGE", Some("T")),
+    class("PATHNAME", Some("T")),
+    class("LOGICAL-PATHNAME", Some("PATHNAME")),
+    class("CHARACTER", Some("T")),
+    class("RANDOM-STATE", Some("T")),
+    class("READTABLE", Some("T")),
+    class("RESTART", Some("T")),
 ];
 
 fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, COMMON_LISP)?;
-    for name in CLASS_NAMES {
-        Package::from_word(package).intern(ctx, runtime, name.as_str())?;
+    for definition in CLASS_DEFINITIONS {
+        Package::from_word(package).intern(ctx, runtime, definition.name.as_str())?;
     }
-    let [root, null, remaining @ ..] = CLASS_DEFINITIONS;
-    install_typed_class(ctx, runtime, root.name, root.superclass)?;
-    install_typed_class(ctx, runtime, null.name, null.superclass)?;
-    for definition in remaining {
-        // A `Class`-kind entry in the ownership table (see
-        // `ncl-compiler-front::owned_symbols`) registers a `Word::UNBOUND`
-        // placeholder before this crate ever runs, so "already defined"
-        // must exclude that placeholder, not just `None`.
-        if !is_installed_class(ctx, runtime, definition.name.as_str()) {
-            install_typed_class(ctx, runtime, definition.name, definition.superclass)?;
+    for definition in CLASS_DEFINITIONS.iter().copied() {
+        let must_install = matches!(definition.name.as_str(), "T" | "NULL");
+        // The ownership table and `ncl-types` register placeholders before
+        // this crate runs. Neither `Word::UNBOUND` nor `Word::fixnum(1)` is a
+        // class descriptor, so both must count as not installed.
+        if must_install || !is_installed_class(ctx, runtime, definition.name.as_str()) {
+            install_typed_class(
+                ctx,
+                runtime,
+                definition.name,
+                definition.superclass,
+                definition.secondary_superclass,
+                definition.kind,
+            )?;
         }
     }
     Ok(())
@@ -184,7 +418,7 @@ fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
 
 /// Whether `name` already names a *real* (non-placeholder) class.
 fn is_installed_class(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> bool {
-    matches!(runtime.class(ctx, name), Some(word) if word != Word::UNBOUND) // check-added-lines: allow(unbound) ownership-table placeholder
+    matches!(runtime.class(ctx, name), Some(word) if word != Word::UNBOUND && word != Word::fixnum(1)) // check-added-lines: allow(unbound) ownership-table placeholder
 }
 
 fn install_typed_class(
@@ -192,19 +426,45 @@ fn install_typed_class(
     runtime: &Runtime,
     name: BuiltinName,
     superclass: Option<BuiltinName>,
+    secondary_superclass: Option<BuiltinName>,
+    kind: ClassKind,
 ) -> Result<(), ObjectError> {
-    let name_word =
-        ncl_object::make_string(ctx, runtime, &name.as_str().chars().collect::<Vec<_>>())?;
+    let mut scope = Scope::new(ctx);
+    let name_word = scope.make_string(runtime, &name.as_str().chars().collect::<Vec<_>>())?;
     // A superclass may exist only as the ownership table's `Word::UNBOUND`
     // placeholder (see `is_installed_class`); treat that the same as "not
     // registered yet" rather than passing the sentinel through as if it
     // were a real superclass object.
-    let supers = superclass
-        .and_then(|parent| runtime.class(ctx, parent.as_str()))
-        .filter(|word| *word != Word::UNBOUND) // check-added-lines: allow(unbound) ownership-table placeholder
-        .unwrap_or(Word::NIL);
-    let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
-    runtime.define_class(ctx, name.as_str(), class)
+    let mut supers = scope.root_many(&[]);
+    for parent in superclass.into_iter().chain(secondary_superclass) {
+        if let Some(word) = runtime
+            .class(scope.context_mut(), parent.as_str())
+            // check-added-lines: allow(unbound) absent classes use this marker
+            .filter(|word| *word != Word::UNBOUND && *word != Word::fixnum(1))
+        {
+            supers.push(&mut scope, Local::from_word(word));
+        }
+    }
+    let superclass = match supers.len() {
+        0 => scope.root(Local::from_word(Word::NIL)),
+        1 => {
+            let parent_handle = *supers.as_slice().first().ok_or(ObjectError::Layout)?;
+            let parent = scope.get(parent_handle).as_word();
+            scope.root(Local::from_word(parent))
+        }
+        2.. => scope.make_list(runtime, &supers)?,
+    };
+    let name_word = scope.get(name_word).as_word();
+    let superclass_word = scope.get(superclass).as_word();
+    let class = make_class(
+        scope.context_mut(),
+        runtime,
+        name_word,
+        superclass_word,
+        Word::NIL,
+        kind.word(),
+    )?;
+    runtime.define_class(scope.context_mut(), name.as_str(), class)
 }
 
 /// Register the typed CLOS class and builtin tables.
@@ -217,8 +477,13 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     runtime.ensure_package(&mut ctx, NCL_MOP)?;
     register_classes(&mut ctx, runtime)?;
+    ncl_conditions::wire_condition_root_to_t(&mut ctx, runtime)?;
     for registration in builtin_manifest() {
-        runtime.register_builtin(&mut ctx, registration.identifier, registration.implementation)?;
+        runtime.register_builtin(
+            &mut ctx,
+            registration.identifier,
+            registration.implementation,
+        )?;
     }
     Ok(())
 }

@@ -198,7 +198,7 @@ const fn is_supertype(sup: NamedType, sub: NamedType) -> bool {
             | (String, SimpleString)
             | (BitVector, SimpleBitVector)
             | (Function, CompiledFunction)
-            | (Symbol, Keyword)
+            | (Symbol, Null | Keyword)
     )
 }
 

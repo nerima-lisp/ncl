@@ -43,20 +43,46 @@ fn class_designator(
     runtime: &Runtime,
     value: Word,
 ) -> Result<Word, ObjectError> {
+    if value == Word::TRUE || value == Word::NIL {
+        let name = if value == Word::TRUE { "T" } else { "NULL" };
+        return runtime
+            .class(ctx, name)
+            .filter(|class| !is_class_placeholder(*class))
+            .ok_or(ObjectError::TypeError);
+    }
     if matches!(classify_object(ctx, value), ObjectRef::SimpleVector(_)) {
-        return Ok(value);
+        return if is_class_metaobject(ctx, runtime, value)? {
+            Ok(value)
+        } else {
+            Err(ObjectError::TypeError)
+        };
     }
     if matches!(classify_object(ctx, value), ObjectRef::Symbol(_)) {
         let name = symbol_name_string(ctx, value)?;
         let qualified_name = runtime.structure_class_name(ctx, value).ok();
+        let package = Package::from_word(ncl_object::symbol_package(ctx, value)?).name(ctx)?;
+        let package_name = string_word_to_string(ctx, package)?;
+        let package_qualified_name = format!("{package_name}::{name}");
         return qualified_name
             .as_deref()
             .and_then(|qualified| runtime.class(ctx, qualified))
+            .or_else(|| runtime.class(ctx, &package_qualified_name))
             .or_else(|| runtime.class(ctx, &name))
-            .filter(|class| *class != Word::UNBOUND) // check-added-lines: allow(unbound) sentinel check
+            .filter(|class| !is_class_placeholder(*class)) // check-added-lines: allow(unbound) sentinel check
             .ok_or(ObjectError::TypeError);
     }
     Err(ObjectError::TypeError)
+}
+
+fn is_class_placeholder(class: Word) -> bool {
+    class == Word::UNBOUND || class == Word::fixnum(1) // check-added-lines: allow(unbound) class registry placeholders
+}
+
+fn string_word_to_string(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+    let length = ncl_object::string_length(ctx, word)?;
+    (0..length)
+        .map(|index| ncl_object::string_ref(ctx, word, index))
+        .collect()
 }
 
 fn find_class_builtin(
@@ -65,7 +91,18 @@ fn find_class_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    class_designator(ctx, runtime, args.required(0)?)
+    let name = args.required(0)?;
+    if name != Word::TRUE
+        && name != Word::NIL
+        && !matches!(classify_object(ctx, name), ObjectRef::Symbol(_))
+    {
+        ctx.set_pending_lisp_error(ncl_object::LispError::TypeError {
+            datum: name,
+            expected: ObjectType::Symbol,
+        });
+        return Err(ObjectError::TypeError);
+    }
+    class_designator(ctx, runtime, name)
 }
 
 #[cfg(test)]

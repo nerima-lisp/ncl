@@ -17,7 +17,7 @@ pub mod type_specifier;
 pub mod typep;
 
 pub use error::TypeError;
-pub use parse::parse_type_specifier;
+pub use parse::{parse_type_specifier, parse_type_specifier_with_runtime};
 pub use register::register;
 pub use subtypep::subtypep;
 pub use type_specifier::{

@@ -36,3 +36,67 @@ fn tail_handles<'ctx>(
             .collect::<Vec<_>>(),
     )
 }
+
+fn dispatch_method_match(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    specializers: Word,
+    arguments: &[Word],
+) -> Result<Option<Vec<usize>>, ObjectError> {
+    let specializers = form_elements(ctx, specializers)?;
+    if specializers.len() > arguments.len() {
+        return Ok(None);
+    }
+    let mut specificity = Vec::with_capacity(specializers.len());
+    for (specializer, argument) in specializers.iter().zip(arguments) {
+        let fields = form_elements(ctx, *specializer)?;
+        let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
+        if let Some(value) = dispatch_eql_specializer(ctx, designator)? {
+            if !ncl_lib_numbers::eql_words(ctx, *argument, value) {
+                return Ok(None);
+            }
+            specificity.push(usize::MAX);
+            continue;
+        }
+        if designator == Word::TRUE || symbol_name_string(ctx, designator)? == "T" {
+            specificity.push(0);
+            continue;
+        }
+        let expected = class_designator(ctx, runtime, designator)?;
+        let actual = class_of(ctx, runtime, *argument)?;
+        if !class_is_subclass(ctx, actual, expected)? {
+            return Ok(None);
+        }
+        let precedence = mop::class_precedence_order(ctx, actual)?;
+        let rank = precedence
+            .iter()
+            .position(|class| *class == expected)
+            .ok_or(ObjectError::Layout)?;
+        specificity.push(precedence.len() - rank);
+    }
+    Ok(Some(specificity))
+}
+
+fn dispatch_eql_specializer(
+    ctx: &ThreadContext,
+    designator: Word,
+) -> Result<Option<Word>, ObjectError> {
+    if designator.is_cons() {
+        let fields = form_elements(ctx, designator)?;
+        let head = *fields.first().ok_or(ObjectError::TypeError)?;
+        if symbol_name_string(ctx, head)? == "EQL" {
+            if fields.len() != 2 {
+                return Err(ObjectError::TypeError);
+            }
+            return Ok(fields.get(1).copied());
+        }
+        return Ok(None);
+    }
+    if matches!(classify_object(ctx, designator), ObjectRef::SimpleVector(_))
+        && simple_vector_length(ctx, designator)? == 2
+        && simple_vector_ref(ctx, designator, 0)? == Word::fixnum(1)
+    {
+        return Ok(Some(simple_vector_ref(ctx, designator, 1)?));
+    }
+    Ok(None)
+}

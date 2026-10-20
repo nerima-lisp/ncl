@@ -106,12 +106,17 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
 
-    // These three names are owned by the character/string subsystem.  The
-    // class registry may also be populated by CLOS later; defining the
-    // placeholder here keeps this crate's ownership table complete when it is
-    // registered in isolation.
+    // Preserve real CLOS descriptors registered earlier, while retaining a
+    // placeholder when this crate is registered without CLOS.
     for name in ["CHARACTER", "STRING"] {
-        runtime.define_class(&mut ctx, name, Word::fixnum(1))?;
+        let existing = runtime.class(&mut ctx, name);
+        if !matches!(
+            existing,
+            Some(class) if class != Word::UNBOUND // check-added-lines: allow(unbound) registry placeholder
+                && class != Word::fixnum(1)
+        ) {
+            runtime.define_class(&mut ctx, name, Word::fixnum(1))?;
+        }
     }
     let common_lisp = runtime
         .find_package(&ctx, "COMMON-LISP")

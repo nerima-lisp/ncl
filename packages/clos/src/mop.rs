@@ -193,29 +193,91 @@ fn class_precedence_list(
     class: Word,
 ) -> Result<Word, ObjectError> {
     let mut scope = Scope::new(ctx);
-    let mut current = scope.root::<Word>(Local::from_word(class));
-    let limit = simple_vector_length(scope.context(), class)?;
-    let mut result: HandleVec<'_, Word> = scope.root_many(&[]);
-    for _ in 0..=limit {
-        let current_word = scope.get(current).as_word();
-        result.push(&mut scope, Local::from_word(current_word));
-        let parent = class_field(scope.context(), current_word, CLASS_DIRECT_SUPERCLASS)?;
-        // A class with more than one direct superclass (multiple
-        // inheritance, e.g. a condition class from `ncl-conditions`) stores
-        // a list of descriptors here; walk its first (most-specific) parent
-        // as a linearization stand-in rather than erroring.
-        let parent = if parent.is_cons() {
-            car(scope.context(), parent)?
-        } else {
-            parent
-        };
-        if parent == Word::NIL {
-            break;
-        }
-        current = scope.root(Local::from_word(parent));
-    }
+    let linearization = class_precedence_order(scope.context(), class)?;
+    let result: HandleVec<'_, Word> = scope.root_many(
+        &linearization
+            .into_iter()
+            .map(Local::from_word)
+            .collect::<Vec<_>>(),
+    );
     let result = scope.make_simple_vector(runtime, &result)?;
     Ok(scope.get(result).as_word())
+}
+
+pub(crate) fn class_precedence_order(
+    ctx: &ThreadContext,
+    class: Word,
+) -> Result<Vec<Word>, ObjectError> {
+    let mut linearization = Vec::new();
+    c3_linearization(ctx, class, &mut Vec::new(), &mut linearization)?;
+    Ok(linearization)
+}
+
+fn c3_linearization(
+    ctx: &ThreadContext,
+    class: Word,
+    active: &mut Vec<Word>,
+    result: &mut Vec<Word>,
+) -> Result<(), ObjectError> {
+    if active.contains(&class) {
+        return Err(ObjectError::Layout);
+    }
+    active.push(class);
+    let direct = direct_superclasses(ctx, class)?;
+    let mut sequences = direct
+        .iter()
+        .copied()
+        .map(|parent| {
+            let mut precedence = Vec::new();
+            c3_linearization(ctx, parent, active, &mut precedence)?;
+            Ok(precedence)
+        })
+        .collect::<Result<Vec<_>, ObjectError>>()?;
+    sequences.push(direct);
+    result.push(class);
+    while sequences.iter().any(|sequence| !sequence.is_empty()) {
+        let candidate = sequences
+            .iter()
+            .filter_map(|sequence| sequence.first().copied())
+            .find(|candidate| {
+                sequences.iter().all(|sequence| {
+                    !sequence
+                        .get(1..)
+                        .unwrap_or(&[])
+                        .iter()
+                        .any(|tail| tail == candidate)
+                })
+            });
+        let candidate = candidate.ok_or(ObjectError::Layout)?;
+        result.push(candidate);
+        for sequence in &mut sequences {
+            if sequence.first() == Some(&candidate) {
+                sequence.remove(0);
+            }
+        }
+    }
+    active.pop();
+    Ok(())
+}
+
+fn direct_superclasses(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectError> {
+    let direct = class_field(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
+    if direct == Word::NIL {
+        return Ok(Vec::new());
+    }
+    if !direct.is_cons() {
+        return Ok(vec![direct]);
+    }
+    let mut parents = Vec::new();
+    let mut current = direct;
+    while current != Word::NIL {
+        if !current.is_cons() {
+            return Err(ObjectError::Layout);
+        }
+        parents.push(car(ctx, current)?);
+        current = ncl_object::cdr(ctx, current)?;
+    }
+    Ok(parents)
 }
 
 fn class_precedence_list_builtin(

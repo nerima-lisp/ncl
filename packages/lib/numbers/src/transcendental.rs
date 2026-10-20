@@ -207,7 +207,7 @@ fn acos(value: (f64, f64)) -> (f64, f64) {
 fn atan(value: (f64, f64)) -> (f64, f64) {
     let left = log((1.0 + value.1, -value.0));
     let right = log((1.0 - value.1, value.0));
-    ((right.1 - left.1) / 2.0, (right.0 - left.0) / 2.0)
+    ((right.1 - left.1) / 2.0, (left.0 - right.0) / 2.0)
 }
 
 fn unary(

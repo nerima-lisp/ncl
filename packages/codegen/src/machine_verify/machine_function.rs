@@ -3,7 +3,7 @@ use crate::{Allocation, CodegenError, FrameLayout, MachineFunction, MachineOp, S
 use ncl_ir::{Function, Terminator, ValueId};
 use std::collections::{HashMap, HashSet};
 
-pub(crate) fn verify_machine_function(
+pub fn verify_machine_function(
     function: &Function,
     machine: &MachineFunction,
     maps: &[SafepointMap],
@@ -189,7 +189,7 @@ fn machine_safepoint_flags(function: &Function) -> Vec<u32> {
     flags
 }
 
-pub(crate) fn verify_safepoint_map(
+pub fn verify_safepoint_map(
     function: &Function,
     allocation: &Allocation,
     frame: FrameLayout,
@@ -250,7 +250,10 @@ fn verify_machine_structure(
     let Some(entry) = function.blocks.first() else {
         return Err(MachineVerificationError::MachineStructureMismatch);
     };
-    if machine.entry != entry.id || machine.blocks.len() != function.blocks.len() {
+    if machine.entry != entry.id {
+        return Err(MachineVerificationError::MachineStructureMismatch);
+    }
+    if machine.blocks.len() != function.blocks.len() {
         return Err(MachineVerificationError::MachineStructureMismatch);
     }
     let mut block_ids = HashSet::with_capacity(function.blocks.len());

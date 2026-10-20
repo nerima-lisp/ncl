@@ -428,6 +428,7 @@ mod tests {
             runtime.call_builtin(&mut ctx, funcall, &[Word::fixnum(0)]),
             Err(ObjectError::TypeError)
         );
+        assert!(!ctx.thread_access().runtime_error_pending());
         let package = runtime.ensure_package(&mut ctx, "NCL-TEST").unwrap();
         let (symbol, _) = Package::from_word(package)
             .intern(&mut ctx, &runtime, "ADD")

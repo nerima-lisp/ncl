@@ -65,10 +65,10 @@ const REGISTRATIONS: &[BuiltinRegistration] = &[
     ("EXPORT", ONE_SYMBOLS, ONE_PACKAGE, export),
     ("UNEXPORT", ONE_SYMBOLS, ONE_PACKAGE, unexport),
     ("UNINTERN", ONE_NAME, ONE_PACKAGE, unintern),
-    ("IMPORT", ONE_SYMBOLS, ONE_PACKAGE, import),
+    ("IMPORT", ONE_OBJECT, ONE_PACKAGE, import),
     ("SHADOW", ONE_SYMBOLS, ONE_PACKAGE, shadow),
-    ("USE-PACKAGE", ONE_PACKAGE, ONE_PACKAGE, use_package),
-    ("UNUSE-PACKAGE", ONE_PACKAGE, ONE_PACKAGE, unuse_package),
+    ("USE-PACKAGE", ONE_OBJECT, ONE_PACKAGE, use_package),
+    ("UNUSE-PACKAGE", ONE_OBJECT, ONE_PACKAGE, unuse_package),
     (
         "DELETE-PACKAGE",
         ONE_PACKAGE,

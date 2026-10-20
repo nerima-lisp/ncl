@@ -19,25 +19,28 @@ const OPTIONS: Parameter = Parameter {
 };
 
 pub fn register(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<(), ObjectError> {
-    let (builtin_name, lambda_list, function): (&'static str, LambdaList, RustBuiltin) = match name
-    {
-        "PRINC-TO-STRING" => (
-            "PRINC-TO-STRING",
-            LambdaList::fixed(&[OBJECT]),
-            princ_to_string,
-        ),
-        "PRIN1-TO-STRING" => (
-            "PRIN1-TO-STRING",
-            LambdaList::fixed(&[OBJECT]),
-            prin1_to_string,
-        ),
-        "WRITE-TO-STRING" => (
-            "WRITE-TO-STRING",
-            LambdaList::with_rest(&[OBJECT], OPTIONS),
-            write_to_string_builtin,
-        ),
-        _ => return Err(ObjectError::Layout), // check-added-lines: allow(wildcard) reject names outside this registration surface
-    };
+    let (builtin_name, lambda_list, function): (&'static str, LambdaList, RustBuiltin) =
+        if name == "PRINC-TO-STRING" {
+            (
+                "PRINC-TO-STRING",
+                LambdaList::fixed(&[OBJECT]),
+                princ_to_string,
+            )
+        } else if name == "PRIN1-TO-STRING" {
+            (
+                "PRIN1-TO-STRING",
+                LambdaList::fixed(&[OBJECT]),
+                prin1_to_string,
+            )
+        } else if name == "WRITE-TO-STRING" {
+            (
+                "WRITE-TO-STRING",
+                LambdaList::with_rest(&[OBJECT], OPTIONS),
+                write_to_string_builtin,
+            )
+        } else {
+            return Err(ObjectError::Layout); // check-added-lines: allow(wildcard) reject names outside this registration surface
+        };
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(builtin_name)),
@@ -130,31 +133,46 @@ fn write_options(
         if !supplied.insert(name.clone()) {
             continue;
         }
-        options = match name.as_str() {
-            "ARRAY" => options.with_array(value != Word::NIL),
-            "BASE" => {
-                let ObjectRef::Fixnum(base) = classify_object(ctx, value) else {
-                    return Err(ObjectError::TypeError);
-                };
-                let base = u32::try_from(base).map_err(|_| ObjectError::TypeError)?;
-                options.try_with_base(base).ok_or(ObjectError::TypeError)?
-            }
-            "CASE" => options.with_case(match keyword_name(ctx, runtime, value)?.as_str() {
-                "UPCASE" => crate::PrintCase::Upcase,
-                "DOWNCASE" => crate::PrintCase::Downcase,
-                "CAPITALIZE" => crate::PrintCase::Capitalize,
-                _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown CASE values
-            }),
-            "CIRCLE" => options.with_circle(value != Word::NIL),
-            "ESCAPE" => options.with_escape(value != Word::NIL),
-            "GENSYM" => options.with_gensym(value != Word::NIL),
-            "LENGTH" => options.with_length(nonnegative_option(ctx, value)?),
-            "LEVEL" => options.with_level(nonnegative_option(ctx, value)?),
-            "PRETTY" => options.with_pretty(value != Word::NIL),
-            "RADIX" => options.with_radix(value != Word::NIL),
-            "READABLY" => options.with_readably(value != Word::NIL),
-            _ if allow_other_keys => options,
-            _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown WRITE-TO-STRING keys unless allowed
+        options = if name == "ARRAY" {
+            options.with_array(value != Word::NIL)
+        } else if name == "BASE" {
+            let ObjectRef::Fixnum(base) = classify_object(ctx, value) else {
+                return Err(ObjectError::TypeError);
+            };
+            let base = u32::try_from(base).map_err(|_| ObjectError::TypeError)?;
+            options.try_with_base(base).ok_or(ObjectError::TypeError)?
+        } else if name == "CASE" {
+            let name = keyword_name(ctx, runtime, value)?;
+            let case = if name == "UPCASE" {
+                crate::PrintCase::Upcase
+            } else if name == "DOWNCASE" {
+                crate::PrintCase::Downcase
+            } else if name == "CAPITALIZE" {
+                crate::PrintCase::Capitalize
+            } else {
+                return Err(ObjectError::TypeError); // check-added-lines: allow(wildcard) reject unknown CASE values
+            };
+            options.with_case(case)
+        } else if name == "CIRCLE" {
+            options.with_circle(value != Word::NIL)
+        } else if name == "ESCAPE" {
+            options.with_escape(value != Word::NIL)
+        } else if name == "GENSYM" {
+            options.with_gensym(value != Word::NIL)
+        } else if name == "LENGTH" {
+            options.with_length(nonnegative_option(ctx, value)?)
+        } else if name == "LEVEL" {
+            options.with_level(nonnegative_option(ctx, value)?)
+        } else if name == "PRETTY" {
+            options.with_pretty(value != Word::NIL)
+        } else if name == "RADIX" {
+            options.with_radix(value != Word::NIL)
+        } else if name == "READABLY" {
+            options.with_readably(value != Word::NIL)
+        } else if allow_other_keys {
+            options
+        } else {
+            return Err(ObjectError::TypeError); // check-added-lines: allow(wildcard) reject unknown WRITE-TO-STRING keys unless allowed
         };
     }
     Ok(options)

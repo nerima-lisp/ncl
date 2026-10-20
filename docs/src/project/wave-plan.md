@@ -41,6 +41,10 @@ The specification's baseline for the eight SBCL public packages is 690 symbols, 
 | Startup time | Median at most 17.331 ms. | Measure startup with empty input. |
 | Executable size | At most 82,501,760 bytes. | Measure the release executable. |
 
+The recorded SBCL baseline has positive timings for 64 benchmarks; SBCL
+disables `WALK-LIST/MESS`. Its 1.5x comparison remains unresolved until a
+baseline policy is chosen.
+
 ## Functional requirements
 
 ### FR-001 SBCL surface removal
@@ -176,7 +180,7 @@ ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-co
 
 - Load libgmp, libmpfr, and libcapstone at runtime through ncl-ffi.
 - Do not provide backward compatibility for the old NCL API or FASL v1.
-- Run Rust validation through `nix develop --command`.
+- Run Rust validation in a Nix development shell.
 
 ## Test requirements
 

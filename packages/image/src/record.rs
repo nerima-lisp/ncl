@@ -7,6 +7,7 @@
 use crate::code::CodeImage;
 use crate::error::ImageError;
 use crate::format::{Reader, narrow, put_string, put_u8, put_u16, put_u32, put_u64};
+pub use crate::record_types::{BuiltinIdentity, Record, Ref};
 
 const KIND_CONS: u8 = 0;
 const KIND_SYMBOL: u8 = 1;
@@ -26,135 +27,6 @@ const KIND_COMPLEX: u8 = 14;
 
 const REF_IMMEDIATE: u8 = 0;
 const REF_OBJECT: u8 = 1;
-
-/// A reference from one record to either an immediate word or another record.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Ref {
-    /// A non-heap tagged word stored by raw bits.
-    Immediate(u64),
-    /// An index into the image's object record table.
-    Object(u32),
-}
-
-/// One serialized heap object.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Record {
-    /// A cons cell.
-    Cons {
-        /// Car reference.
-        car: Ref,
-        /// Cdr reference.
-        cdr: Ref,
-    },
-    /// An interned symbol addressed by its home package and name.
-    Symbol {
-        /// Home package name; empty for an uninterned symbol.
-        package: String,
-        /// Symbol name.
-        name: String,
-        /// Raw symbol flag bits.
-        flags: u32,
-        /// Value cell.
-        value: Ref,
-        /// Function cell.
-        function: Ref,
-        /// Property list.
-        plist: Ref,
-    },
-    /// A package addressed by name.
-    Package {
-        /// Primary package name.
-        name: String,
-        /// Package nicknames.
-        nicknames: Vec<String>,
-    },
-    /// A string.
-    String(String),
-    /// A simple vector.
-    Vector(Vec<Ref>),
-    /// A specialized array.
-    SpecializedArray {
-        /// Element type tag.
-        element_type: u8,
-        /// Raw element words.
-        elements: Vec<u64>,
-    },
-    /// A hash table addressed by its live entries.
-    HashTable {
-        /// Comparison mode.
-        test: u8,
-        /// Weakness mode.
-        weakness: u8,
-        /// Live key/value pairs.
-        entries: Vec<(Ref, Ref)>,
-    },
-    /// A structure instance.
-    Structure {
-        /// Structure slots.
-        slots: Vec<Ref>,
-    },
-    /// A CLOS instance.
-    Instance {
-        /// Class reference.
-        class: Ref,
-        /// Slot vector contents.
-        slots: Vec<Ref>,
-    },
-    /// A simple function or a closure.
-    Function {
-        /// Whether the object is a closure with inline captures.
-        closure: bool,
-        /// Raw entry address.
-        entry: u64,
-        /// Function name.
-        name: Ref,
-        /// Lambda list.
-        lambda_list: Ref,
-        /// Code object reference.
-        code: Ref,
-        /// Inline captures; empty for a simple function.
-        captures: Vec<Ref>,
-    },
-    /// A code object descriptor.
-    CodeObject {
-        /// Raw entry address.
-        entry: u64,
-        /// Code byte size.
-        size: u64,
-        /// Constant table.
-        constants: Ref,
-        /// Stack-map index.
-        stack_map: Ref,
-        /// Debug table.
-        debug: Ref,
-    },
-    /// A bignum.
-    Bignum {
-        /// Whether the value is negative.
-        negative: bool,
-        /// Little-endian 32-bit limbs.
-        limbs: Vec<u32>,
-    },
-    /// A ratio.
-    Ratio {
-        /// Numerator.
-        numerator: Ref,
-        /// Denominator.
-        denominator: Ref,
-    },
-    /// A double float.
-    DoubleFloat {
-        /// Raw IEEE-754 binary64 bits.
-        bits: u64,
-    },
-    /// A complex number.
-    Complex {
-        /// Real component.
-        real: Ref,
-        /// Imaginary component.
-        imag: Ref,
-    },
-}
 
 /// Encode one reference.
 pub fn put_ref(out: &mut Vec<u8>, value: Ref) {
@@ -261,6 +133,7 @@ pub fn put_record(out: &mut Vec<u8>, record: &Record) -> Result<(), ImageError> 
             lambda_list,
             code,
             captures,
+            builtin,
         } => {
             put_u8(out, KIND_FUNCTION);
             put_u8(out, u8::from(*closure));
@@ -269,6 +142,13 @@ pub fn put_record(out: &mut Vec<u8>, record: &Record) -> Result<(), ImageError> 
             put_ref(out, *lambda_list);
             put_ref(out, *code);
             put_refs(out, captures)?;
+            if let Some(builtin) = builtin {
+                put_u8(out, 1);
+                put_string(out, &builtin.package)?;
+                put_string(out, &builtin.name)?;
+            } else {
+                put_u8(out, 0);
+            }
         }
         Record::CodeObject {
             entry,
@@ -357,7 +237,7 @@ pub fn get_refs(reader: &mut Reader<'_>) -> Result<Vec<Ref>, ImageError> {
 
 /// Decode one object record.
 #[allow(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
-pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
+pub fn get_record(reader: &mut Reader<'_>, version: u16) -> Result<Record, ImageError> {
     let kind = reader.u8()?;
     Ok(match kind {
         KIND_CONS => Record::Cons {
@@ -423,6 +303,23 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
             let lambda_list = get_ref(reader)?;
             let code = get_ref(reader)?;
             let captures = get_refs(reader)?;
+            let builtin = if version >= 2 {
+                match reader.u8()? {
+                    0 => None,
+                    1 => Some(BuiltinIdentity {
+                        package: reader.string()?,
+                        name: reader.string()?,
+                    }),
+                    tag => {
+                        return Err(ImageError::UnknownTag {
+                            space: "builtin identity",
+                            tag,
+                        });
+                    }
+                }
+            } else {
+                None
+            };
             Record::Function {
                 closure,
                 entry,
@@ -430,6 +327,7 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
                 lambda_list,
                 code,
                 captures,
+                builtin,
             }
         }
         KIND_CODE_OBJECT => Record::CodeObject {
@@ -466,4 +364,57 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
             });
         }
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::{
+        BuiltinIdentity, KIND_FUNCTION, Record, Ref, get_record, put_record, put_ref, put_refs,
+    };
+    use crate::format::{Reader, put_u8, put_u64};
+
+    #[test]
+    fn version_one_function_records_have_no_builtin_identity() {
+        let mut bytes = Vec::new();
+        put_u8(&mut bytes, KIND_FUNCTION);
+        put_u8(&mut bytes, 0);
+        put_u64(&mut bytes, 123);
+        for reference in [Ref::Immediate(1), Ref::Immediate(2), Ref::Immediate(3)] {
+            put_ref(&mut bytes, reference);
+        }
+        put_refs(&mut bytes, &[]).unwrap();
+        let record = get_record(&mut Reader::new(&bytes), 1).unwrap();
+        assert_eq!(
+            record,
+            Record::Function {
+                closure: false,
+                entry: 123,
+                name: Ref::Immediate(1),
+                lambda_list: Ref::Immediate(2),
+                code: Ref::Immediate(3),
+                captures: Vec::new(),
+                builtin: None,
+            }
+        );
+    }
+
+    #[test]
+    fn version_two_function_records_preserve_builtin_identity() {
+        let record = Record::Function {
+            closure: false,
+            entry: 123,
+            name: Ref::Immediate(1),
+            lambda_list: Ref::Immediate(2),
+            code: Ref::Immediate(3),
+            captures: Vec::new(),
+            builtin: Some(BuiltinIdentity {
+                package: "NCL-TEST".to_owned(),
+                name: "EXAMPLE".to_owned(),
+            }),
+        };
+        let mut bytes = Vec::new();
+        put_record(&mut bytes, &record).unwrap();
+        assert_eq!(get_record(&mut Reader::new(&bytes), 2).unwrap(), record);
+    }
 }

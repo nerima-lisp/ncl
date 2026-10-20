@@ -23,6 +23,8 @@ pub enum ImageError {
         /// Version this build supports.
         supported: u16,
     },
+    /// A serialized builtin identity is not registered in the target runtime.
+    UnregisteredBuiltin,
     /// A fixed header field did not hold its contract value.
     InvalidField {
         /// Name of the offending field.
@@ -60,6 +62,9 @@ impl std::fmt::Display for ImageError {
             Self::BadMagic => f.write_str("not an NCL image"),
             Self::UnsupportedVersion { found, supported } => {
                 write!(f, "image version {found}, this build supports {supported}")
+            }
+            Self::UnregisteredBuiltin => {
+                f.write_str("image references a builtin that is not registered")
             }
             Self::InvalidField { field } => write!(f, "invalid image field: {field}"),
             Self::UnknownTag { space, tag } => write!(f, "unknown {space} tag {tag}"),

@@ -113,7 +113,7 @@ fn call_method<'ctx, C: ncl_object::FunctionCaller>(
     runtime: &Runtime,
     function: ncl_object::Handle<'ctx>,
     arguments: &ncl_object::HandleVec<'ctx>,
-    _argument_list: ncl_object::Handle<'ctx>,
+    argument_list: ncl_object::Handle<'ctx>,
     next: ncl_object::Handle<'ctx>,
     caller: &mut C,
     values: &mut MultipleValues,
@@ -123,6 +123,7 @@ fn call_method<'ctx, C: ncl_object::FunctionCaller>(
     let mut call_args = scope.root_many(&[]);
     if runtime.builtin_descriptor(function_object).is_none() {
         dispatch_push_handle(scope, &mut call_args, next);
+        dispatch_push_handle(scope, &mut call_args, argument_list);
     }
     for argument in arguments.iter().copied() {
         dispatch_push_handle(scope, &mut call_args, argument);

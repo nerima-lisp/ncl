@@ -232,6 +232,46 @@ fn compiled_clos_explicit_call_next_method_arguments_are_rewritten() {
 }
 
 #[test]
+fn compiled_clos_implicit_call_next_forwards_rest_arguments() {
+    let output = run_ncl(
+        "(progn (defclass implicit-rest-parent () ()) (defclass implicit-rest-child (implicit-rest-parent) ()) (defgeneric implicit-rest-values (object &rest values)) (defmethod implicit-rest-values ((object implicit-rest-child) &rest values) (call-next-method)) (defmethod implicit-rest-values ((object implicit-rest-parent) &rest values) values) (implicit-rest-values (make-instance 'implicit-rest-child) 1 2))",
+    );
+    assert_eq!(output.status.code(), Some(0), "stderr={:?}", output.stderr);
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(1 2)");
+}
+
+#[test]
+fn compiled_clos_implicit_call_next_forwards_optional_arguments() {
+    let output = run_ncl(
+        "(progn (defclass implicit-optional-parent () ()) (defclass implicit-optional-child (implicit-optional-parent) ()) (defgeneric implicit-optional-value (object &optional value)) (defmethod implicit-optional-value ((object implicit-optional-child) &optional value) (call-next-method)) (defmethod implicit-optional-value ((object implicit-optional-parent) &optional value) value) (implicit-optional-value (make-instance 'implicit-optional-child) 9))",
+    );
+    assert_eq!(output.status.code(), Some(0), "stderr={:?}", output.stderr);
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}
+
+#[test]
+fn compiled_clos_implicit_call_next_forwards_key_arguments() {
+    let output = run_ncl(
+        "(progn (defclass implicit-key-parent () ()) (defclass implicit-key-child (implicit-key-parent) ()) (defgeneric implicit-key-value (object &key value)) (defmethod implicit-key-value ((object implicit-key-child) &key value) (call-next-method)) (defmethod implicit-key-value ((object implicit-key-parent) &key value) value) (implicit-key-value (make-instance 'implicit-key-child) :value 9))",
+    );
+    assert_eq!(output.status.code(), Some(0), "stderr={:?}", output.stderr);
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "9");
+}
+
+#[test]
+fn compiled_clos_implicit_call_next_forwards_latest_explicit_arguments() {
+    let output = run_ncl(
+        "(progn (defclass implicit-next-base () ()) (defclass implicit-next-parent (implicit-next-base) ()) (defclass implicit-next-child (implicit-next-parent) ()) (defgeneric implicit-next-values (object &rest values)) (defmethod implicit-next-values ((object implicit-next-child) &rest values) (call-next-method object 3 4)) (defmethod implicit-next-values ((object implicit-next-parent) &rest values) (call-next-method)) (defmethod implicit-next-values ((object implicit-next-base) &rest values) values) (implicit-next-values (make-instance 'implicit-next-child) 1 2))",
+    );
+    assert_eq!(output.status.code(), Some(0), "stderr={:?}", output.stderr);
+    assert!(output.stderr.is_empty(), "stderr={:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim_end(), "(3 4)");
+}
+
+#[test]
 fn compiled_clos_class_of_and_empty_class_definition_are_observable() {
     let output = run_ncl(
         "(progn (defclass empty-probe () ()) (list (class-name (find-class 'empty-probe)) (class-name (class-of (cons 1 2))) (class-name (class-of 1.0))))",

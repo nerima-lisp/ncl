@@ -182,21 +182,12 @@ fn defmethod_macro_builtin(
     let allow_other_keys = scope.intern(runtime, COMMON_LISP, "&ALLOW-OTHER-KEYS")?;
     let aux = scope.intern(runtime, COMMON_LISP, "&AUX")?;
     let mut user_lambda = scope.root_many(&[]);
-    let mut lambda_parameters = scope.root_many(&[]);
     let mut dispatch_specializers = scope.root_many(&[]);
     let mut lambda_list_started = false;
-    let mut rest_parameter_next = false;
     for field in specializer_fields.iter().copied() {
         let field_word = scope.get(field).as_word();
         if lambda_list_started {
             macro_push_handle(&mut scope, &mut user_lambda, field);
-            if rest_parameter_next {
-                macro_push_handle(&mut scope, &mut lambda_parameters, field);
-                rest_parameter_next = false;
-            }
-            if field_word == scope.get(rest).as_word() {
-                rest_parameter_next = true;
-            }
         } else if field_word == scope.get(optional).as_word()
             || field_word == scope.get(rest).as_word()
             || field_word == scope.get(key).as_word()
@@ -205,12 +196,10 @@ fn defmethod_macro_builtin(
         {
             macro_push_handle(&mut scope, &mut user_lambda, field);
             lambda_list_started = true;
-            rest_parameter_next = field_word == scope.get(rest).as_word();
         } else if field_word.is_cons() {
             let fields = macro_list_to_handles(&mut scope, field)?;
             let parameter = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
             macro_push_handle(&mut scope, &mut user_lambda, parameter);
-            macro_push_handle(&mut scope, &mut lambda_parameters, parameter);
             macro_push_handle(&mut scope, &mut dispatch_specializers, field);
         } else {
             return Err(ObjectError::TypeError);
@@ -251,14 +240,21 @@ fn defmethod_macro_builtin(
         &[add_method, quoted_name, quoted_specializers, method_function],
     )?;
     let next_methods = gensym(&mut scope, runtime)?;
+    let current_arguments = gensym(&mut scope, runtime)?;
     let method_body = rewrite_method_body(
         &mut scope,
         runtime,
         &body_forms,
         next_methods,
-        &lambda_parameters,
+        current_arguments,
     )?;
-    let method_lambda_list = method_lambda_list(&mut scope, runtime, next_methods, &user_lambda)?;
+    let method_lambda_list = method_lambda_list(
+        &mut scope,
+        runtime,
+        next_methods,
+        current_arguments,
+        &user_lambda,
+    )?;
     let method_definition = make_form(
         &mut scope,
         runtime,
@@ -345,10 +341,12 @@ fn method_lambda_list<'ctx>(
     scope: &mut ncl_object::Scope<'ctx>,
     runtime: &Runtime,
     next_methods: ncl_object::Handle<'ctx>,
+    current_arguments: ncl_object::Handle<'ctx>,
     user_args: &ncl_object::HandleVec<'ctx>,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let mut values = scope.root_many(&[]);
     macro_push_handle(scope, &mut values, next_methods);
+    macro_push_handle(scope, &mut values, current_arguments);
     for value in user_args.iter().copied() {
         macro_push_handle(scope, &mut values, value);
     }
@@ -357,7 +355,7 @@ fn method_lambda_list<'ctx>(
 
 struct MethodRewrite<'ctx> {
     next_methods: ncl_object::Handle<'ctx>,
-    current_args: ncl_object::HandleVec<'ctx>,
+    current_arguments: ncl_object::Handle<'ctx>,
     call_next_name: ncl_object::Handle<'ctx>,
     call_next_user_name: ncl_object::Handle<'ctx>,
     next_method_p_name: ncl_object::Handle<'ctx>,
@@ -375,11 +373,11 @@ fn rewrite_method_body<'ctx>(
     runtime: &Runtime,
     forms: &ncl_object::HandleVec<'ctx>,
     next_methods: ncl_object::Handle<'ctx>,
-    current_args: &ncl_object::HandleVec<'ctx>,
+    current_arguments: ncl_object::Handle<'ctx>,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let rewrite = MethodRewrite {
         next_methods,
-        current_args: current_args.clone(),
+        current_arguments,
         call_next_name: scope.intern(runtime, "COMMON-LISP-USER", "CALL-NEXT-METHOD")?,
         call_next_user_name: scope.intern(runtime, COMMON_LISP, "CALL-NEXT-METHOD")?,
         next_method_p_name: scope.intern(runtime, "COMMON-LISP-USER", "NEXT-METHOD-P")?,
@@ -420,16 +418,21 @@ fn rewrite_method_form<'ctx>(
     if operator_word == scope.get(rewrite.call_next_name).as_word()
         || operator_word == scope.get(rewrite.call_next_user_name).as_word()
     {
-        let mut supplied = scope.root_many(&[]);
         if fields.len() == 1 {
-            for value in rewrite.current_args.iter().copied() {
-                macro_push_handle(scope, &mut supplied, value);
-            }
-        } else {
-            for value in fields.as_slice().iter().skip(1).copied() {
-                let rewritten = rewrite_method_form(scope, runtime, value, rewrite)?;
-                macro_push_handle(scope, &mut supplied, rewritten);
-            }
+            return make_form(
+                scope,
+                runtime,
+                &[
+                    rewrite.call_next,
+                    rewrite.next_methods,
+                    rewrite.current_arguments,
+                ],
+            );
+        }
+        let mut supplied = scope.root_many(&[]);
+        for value in fields.as_slice().iter().skip(1).copied() {
+            let rewritten = rewrite_method_form(scope, runtime, value, rewrite)?;
+            macro_push_handle(scope, &mut supplied, rewritten);
         }
         let mut supplied_form = scope.root_many(&[]);
         macro_push_handle(scope, &mut supplied_form, rewrite.list_name);

@@ -15,3 +15,34 @@ pub(crate) use adapters::*;
 pub(crate) use input::*;
 pub(crate) use output::*;
 pub(crate) use state::*;
+
+/// The predefined Common Lisp class represented by a stream implementation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StreamClass {
+    /// A stream implementation without a more specific class mapping.
+    Generic,
+    /// A file stream.
+    File,
+    /// A string stream.
+    String,
+    /// A two-way stream.
+    TwoWay,
+}
+
+/// Classify a stream from its implementation state.
+///
+/// # Errors
+/// Returns an object-layer error when the stream or its state is malformed.
+pub fn stream_class(ctx: &ThreadContext, stream: Stream) -> Result<StreamClass, ObjectError> {
+    let kind = state_kind(ctx, stream_state(ctx, stream)?)?;
+    Ok(match kind {
+        StreamKind::StringInput | StreamKind::StringOutput => StreamClass::String,
+        StreamKind::FileOutput | StreamKind::FileIo => StreamClass::File,
+        StreamKind::Data
+        | StreamKind::Closed
+        | StreamKind::StandardInput
+        | StreamKind::StandardOutput
+        | StreamKind::StandardError => StreamClass::Generic,
+        StreamKind::StandardTwoWay => StreamClass::TwoWay,
+    })
+}

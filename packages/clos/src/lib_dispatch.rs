@@ -1,18 +1,5 @@
 include!("lib_dispatch_helpers.rs");
 
-fn clos_define_generic_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let mut scope = Scope::new(ctx);
-    let name = scope.root(Local::from_word(args.required(0)?));
-    let empty = scope.root(Local::from_word(Word::NIL));
-    set_method_registry(&mut scope, runtime, name, empty)?;
-    Ok(scope.get(name).as_word())
-}
-
 fn clos_ensure_initialization_base_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -32,7 +19,8 @@ fn clos_ensure_initialization_base_builtin(
         return Ok(name_word);
     }
     let function = symbol_function(scope.context(), name_word)?;
-    if function == Word::UNBOUND { // check-added-lines: allow(unbound) sentinel check
+    // check-added-lines: allow(unbound) absent function cells use this marker
+    if function == Word::UNBOUND {
         return Err(ObjectError::UndefinedFunction);
     }
     let variable = scope.intern(runtime, "NCL", "INSTANCE")?;
@@ -60,13 +48,34 @@ fn clos_ensure_initialization_base_builtin(
     };
     let function = scope.root(Local::from_word(function));
     let qualifier = scope.root(Local::from_word(Word::fixnum(METHOD_QUALIFIER_PRIMARY)));
-    let entry = method_registry_entry(&mut scope, runtime, specializers, qualifier, function)?;
+    let method = allocate_standard_method(&mut scope, runtime)?;
+    let qualifier_list = scope.root(Local::from_word(Word::NIL));
+    let origin = scope.root(Local::from_word(Word::NIL));
+    let entry = method_registry_entry(
+        &mut scope,
+        runtime,
+        specializers,
+        qualifier,
+        function,
+        method,
+        qualifier_list,
+        origin,
+    )?;
     let registry = {
         let mut values = scope.root_many(&[]);
         dispatch_push_handle(&mut scope, &mut values, entry);
         scope.make_list(runtime, &values)?
     };
     set_method_registry(&mut scope, runtime, name, registry)?;
+    let generic_function_word = symbol_function(scope.context(), scope.get(name).as_word())?;
+    let generic_function = scope.root(Local::from_word(generic_function_word));
+    set_generic_function_mapping(&mut scope, runtime, generic_function, name)?;
+    set_generic_required_arity(
+        &mut scope,
+        runtime,
+        name,
+        if is_shared_initialize { 2 } else { 1 },
+    )?;
     Ok(name_word)
 }
 
@@ -79,24 +88,54 @@ fn clos_add_method_builtin(
     let mut scope = Scope::new(ctx);
     let name = scope.root(Local::from_word(args.required(0)?));
     let encoded = scope.root(Local::from_word(args.required(1)?));
-    let (specializers, qualifier) = method_definition_parts(&mut scope, runtime, encoded)?;
+    let (specializers, qualifier, qualifier_list, origin) =
+        method_definition_parts(&mut scope, runtime, encoded)?;
     let function = scope.root(Local::from_word(
         FunctionObject::try_from(args.required(2)?)?.as_word(),
     ));
+    let generic_function_word = symbol_function(scope.context(), scope.get(name).as_word())?;
+    let generic_function = scope.root(Local::from_word(generic_function_word));
+    set_generic_function_mapping(&mut scope, runtime, generic_function, name)?;
+    if generic_required_arity(&mut scope, runtime, name)?.is_none() {
+        let arity = dispatch_list_to_handles(&mut scope, specializers)?.len();
+        set_generic_required_arity(&mut scope, runtime, name, arity)?;
+    }
     let old = method_registry(&mut scope, runtime, name)?;
     let old_entries = dispatch_list_to_handles(&mut scope, old)?;
     let mut entries = scope.root_many(&[]);
     for entry in old_entries.iter().copied() {
         let fields = dispatch_list_to_handles(&mut scope, entry)?;
         let entry_specializers = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
-        let entry_qualifier = *fields.as_slice().get(1).ok_or(ObjectError::TypeError)?;
-        if scope.get(entry_specializers).as_word() != scope.get(specializers).as_word()
-            || scope.get(entry_qualifier).as_word() != scope.get(qualifier).as_word()
-        {
+        let entry_qualifier_list = *fields.as_slice().get(4).ok_or(ObjectError::TypeError)?;
+        let entry_specializers_word = scope.get(entry_specializers).as_word();
+        let specializers_word = scope.get(specializers).as_word();
+        let same_specializers = method_specializers_equal(
+            scope.context_mut(),
+            runtime,
+            entry_specializers_word,
+            specializers_word,
+        )?;
+        let same_qualifiers = lisp_equal_word(
+            scope.context(),
+            scope.get(entry_qualifier_list).as_word(),
+            scope.get(qualifier_list).as_word(),
+            0,
+        )?;
+        if !same_specializers || !same_qualifiers {
             dispatch_push_handle(&mut scope, &mut entries, entry);
         }
     }
-    let entry = method_registry_entry(&mut scope, runtime, specializers, qualifier, function)?;
+    let method = allocate_standard_method(&mut scope, runtime)?;
+    let entry = method_registry_entry(
+        &mut scope,
+        runtime,
+        specializers,
+        qualifier,
+        function,
+        method,
+        qualifier_list,
+        origin,
+    )?;
     let mut next_entries = scope.root_many(&[]);
     dispatch_push_handle(&mut scope, &mut next_entries, entry);
     for item in entries.iter().copied() {
@@ -104,7 +143,7 @@ fn clos_add_method_builtin(
     }
     let registry = scope.make_list(runtime, &next_entries)?;
     set_method_registry(&mut scope, runtime, name, registry)?;
-    Ok(scope.get(name).as_word())
+    Ok(scope.get(method).as_word())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -321,62 +360,6 @@ fn invoke_dispatch<'ctx, C: ncl_object::FunctionCaller>(
         caller,
         values,
     )
-}
-
-fn dispatch_method_match(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    specializers: Word,
-    arguments: &[Word],
-) -> Result<Option<Vec<usize>>, ObjectError> {
-    let specializers = form_elements(ctx, specializers)?;
-    if specializers.len() > arguments.len() {
-        return Ok(None);
-    }
-    let mut specificity = Vec::with_capacity(specializers.len());
-    for (specializer, argument) in specializers.iter().zip(arguments) {
-        let fields = form_elements(ctx, *specializer)?;
-        let designator = *fields.get(1).ok_or(ObjectError::TypeError)?;
-        if let Some(value) = dispatch_eql_specializer(ctx, designator)? {
-            if !ncl_lib_numbers::eql_words(ctx, *argument, value) {
-                return Ok(None);
-            }
-            specificity.push(usize::MAX);
-            continue;
-        }
-        if symbol_name_string(ctx, designator)? == "T" {
-            specificity.push(0);
-            continue;
-        }
-        let expected = class_designator(ctx, runtime, designator)?;
-        let actual = class_of(ctx, runtime, *argument)?;
-        if !class_is_subclass(ctx, actual, expected)? {
-            return Ok(None);
-        }
-        specificity.push(class_depth(ctx, expected)? + 1);
-    }
-    Ok(Some(specificity))
-}
-
-fn dispatch_eql_specializer(
-    ctx: &ThreadContext,
-    designator: Word,
-) -> Result<Option<Word>, ObjectError> {
-    if designator.is_cons() {
-        let fields = form_elements(ctx, designator)?;
-        let head = *fields.first().ok_or(ObjectError::TypeError)?;
-        if symbol_name_string(ctx, head)? == "EQL" {
-            return Ok(Some(*fields.get(1).ok_or(ObjectError::TypeError)?));
-        }
-        return Ok(None);
-    }
-    if matches!(classify_object(ctx, designator), ObjectRef::SimpleVector(_))
-        && simple_vector_length(ctx, designator)? == 2
-        && simple_vector_ref(ctx, designator, 0)? == Word::fixnum(1)
-    {
-        return Ok(Some(simple_vector_ref(ctx, designator, 1)?));
-    }
-    Ok(None)
 }
 
 fn clos_dispatch_builtin(

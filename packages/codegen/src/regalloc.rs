@@ -149,20 +149,27 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         .into_iter()
         .map(|(value, (start, ty))| {
             let end = last_use.get(&value).copied().unwrap_or(start);
-            // A param's `start` shares its block's first op's position, but
-            // it is live from block entry, before that op; only params need
-            // this inclusive lower bound.
+            // Params are live from block entry, before the first op at the same position.
+            // Give them an inclusive lower bound when checking call and safepoint crossings.
             let start_bound = if block_param_values.contains(&value) {
                 start.saturating_sub(1)
             } else {
                 start
             };
             let crosses_call = call_positions.iter().any(|&call| {
-                (start_bound < call || (start == 0 && block_param_values.contains(&value)))
+                (start_bound < call
+                    || (start == 0
+                        && call == 0
+                        && block_param_values.contains(&value)
+                        && last_use.contains_key(&value)))
                     && call <= end
             });
             let crosses_safepoint = safepoint_positions.iter().any(|&safepoint| {
-                (start_bound < safepoint || (start == 0 && block_param_values.contains(&value)))
+                (start_bound < safepoint
+                    || (start == 0
+                        && safepoint == 0
+                        && block_param_values.contains(&value)
+                        && last_use.contains_key(&value)))
                     && safepoint <= end
             });
             let crosses_handler = handler_values.contains(&value);

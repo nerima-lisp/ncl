@@ -12,7 +12,10 @@ use std::{cmp::Ordering, collections::HashMap};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, Label, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
 
-use super::{context_mem, emit, load_value, store_value};
+use super::{
+    CallCheckContext, CheckedCallMode, context_mem, emit, load_value, lower_checked_call,
+    lower_runtime_builtin, store_value,
+};
 use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 
 pub(super) fn mv_area_mem(abi: &dyn RuntimeAbi, index: i32) -> Result<MemOperand, CodegenError> {
@@ -203,6 +206,7 @@ fn try_dispatch_candidates(
     block: BlockId,
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
+    body_bytes: u32,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
     for region in covering_regions(function, block) {
@@ -266,15 +270,30 @@ fn try_dispatch_candidates(
                 assembler
                     .bind(mismatch)
                     .map_err(|error| CodegenError::Encode(error.to_string()))?;
-                super::lower_runtime_builtin(
+                let context = CallCheckContext {
+                    function,
+                    block,
+                    body_bytes,
+                    labels,
+                };
+                let _ = lower_checked_call(
                     assembler,
-                    RuntimeFunction::LeaveCatch,
-                    &[u64::from(region.id.0)],
-                    &[],
+                    &context,
                     allocation,
                     abi,
+                    CheckedCallMode::RuntimeOnly,
+                    |assembler| {
+                        lower_runtime_builtin(
+                            assembler,
+                            RuntimeFunction::LeaveCatch,
+                            &[u64::from(region.id.0)],
+                            &[],
+                            allocation,
+                            abi,
+                        )?;
+                        emit(assembler, Inst::Blr { rn: Reg(17) })
+                    },
                 )?;
-                emit(assembler, Inst::Blr { rn: Reg(17) })?;
             }
             HandlerKind::UnwindProtect | HandlerKind::Progv => {
                 emit(assembler, Inst::B { label: target })?;
@@ -295,6 +314,7 @@ pub fn lower_return_or_throw(
     body_bytes: u32,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
+    lower_runtime_error_check(assembler, allocation, abi, body_bytes)?;
     let normal = assembler.new_label();
     emit(
         assembler,
@@ -310,7 +330,9 @@ pub fn lower_return_or_throw(
             label: normal,
         },
     )?;
-    try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
+    try_dispatch_candidates(
+        assembler, function, block, allocation, abi, body_bytes, labels,
+    )?;
     emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
     assembler
         .bind(normal)
@@ -360,9 +382,75 @@ pub fn lower_pending_check(
             label: normal,
         },
     )?;
-    try_dispatch_candidates(assembler, function, block, allocation, abi, labels)?;
+    try_dispatch_candidates(
+        assembler, function, block, allocation, abi, body_bytes, labels,
+    )?;
     emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))
+}
+
+fn lower_runtime_error_check(
+    assembler: &mut Assembler,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    body_bytes: u32,
+) -> Result<(), CodegenError> {
+    let normal = assembler.new_label();
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: context_mem(abi, ContextField::RuntimeErrorFlags)?,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Cbz {
+            rt: Reg(16),
+            label: normal,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::MovZ {
+            rd: Reg(16),
+            imm: 0,
+            shift: 0,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Str {
+            rt: Reg(16),
+            mem: context_mem(abi, ContextField::Pending)?,
+        },
+    )?;
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], false)?;
+    assembler
+        .bind(normal)
+        .map_err(|error| CodegenError::Encode(error.to_string()))
+}
+
+pub(super) fn lower_checked_call_check(
+    assembler: &mut Assembler,
+    context: &CallCheckContext<'_>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    mode: CheckedCallMode,
+) -> Result<(), CodegenError> {
+    lower_runtime_error_check(assembler, allocation, abi, context.body_bytes)?;
+    if matches!(mode, CheckedCallMode::RuntimeAndNonLocal) {
+        lower_pending_check(
+            assembler,
+            context.function,
+            context.block,
+            allocation,
+            abi,
+            context.body_bytes,
+            context.labels,
+        )?;
+    }
+    Ok(())
 }

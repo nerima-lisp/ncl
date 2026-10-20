@@ -2,7 +2,7 @@
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
 use crate::{AllocationTarget, FLAG_CALL, Location, allocate, compile_function_x86_64};
-use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
+use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
@@ -16,12 +16,24 @@ fn x86_64_lowers_non_local_exit_at_codegen_time() -> Result<(), String> {
     let mut builder =
         ncl_ir::FunctionBuilder::new(ncl_ir::FunctionId(99), "x86-64-throw", Vec::new(), vec![]);
     let constant = builder.add_constant(Constant::Fixnum(1));
-    let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
-    let value = values
+    let unboxed_values = builder.push_op(OpKind::Const { result: constant }, &[Ty::I64]);
+    let unboxed = unboxed_values
         .map_err(|error| format!("constant lowering: {error:?}"))?
         .first()
         .copied()
         .ok_or_else(|| "constant result missing".to_owned())?;
+    let values = builder.push_op(
+        OpKind::Convert {
+            op: Convert::I64ToWord,
+            value: unboxed,
+        },
+        &[Ty::Word],
+    );
+    let value = values
+        .map_err(|error| format!("fixnum conversion: {error:?}"))?
+        .first()
+        .copied()
+        .ok_or_else(|| "converted condition missing".to_owned())?;
     builder
         .terminate(Terminator::Throw { condition: value })
         .map_err(|error| format!("throw terminator: {error:?}"))?;
@@ -63,7 +75,7 @@ fn golden_x86_64_safepoint_pc_follows_emitted_instruction() {
     let constant = builder.add_constant(Constant::Fixnum(0x1234_5678));
     assert!(
         builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+            .push_op(OpKind::Const { result: constant }, &[Ty::I64])
             .is_ok()
     );
     assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
@@ -177,7 +189,7 @@ fn golden_x86_64_compare_materialises_full_word() {
         OpKind::Const {
             result: left_constant,
         },
-        &[Ty::Word],
+        &[Ty::I64],
     );
     assert!(left.is_ok());
     let left = left.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
@@ -186,7 +198,7 @@ fn golden_x86_64_compare_materialises_full_word() {
         OpKind::Const {
             result: right_constant,
         },
-        &[Ty::Word],
+        &[Ty::I64],
     );
     assert!(right.is_ok());
     let right = right.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
@@ -198,7 +210,7 @@ fn golden_x86_64_compare_materialises_full_word() {
                     left,
                     right,
                 },
-                &[Ty::Word],
+                &[Ty::Bool],
             )
             .is_ok()
     );
@@ -225,7 +237,7 @@ fn golden_x86_64_fixnum_constant_uses_imm32() {
     let constant = builder.add_constant(Constant::Fixnum(0x1234_5678));
     assert!(
         builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+            .push_op(OpKind::Const { result: constant }, &[Ty::I64])
             .is_ok()
     );
     assert!(
@@ -253,7 +265,7 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
         vec![
             ncl_ir::Param {
                 name: "address".into(),
-                ty: Ty::Word,
+                ty: Ty::Address,
             },
             ncl_ir::Param {
                 name: "value".into(),
@@ -273,7 +285,7 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
     let load_field = builder
         .push_op(
             OpKind::LoadField {
-                object: ncl_ir::ValueId(0),
+                object: ncl_ir::ValueId(1),
                 field: 1,
             },
             &[Ty::Word],
@@ -291,7 +303,7 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
     builder
         .push_op(
             OpKind::StoreField {
-                object: ncl_ir::ValueId(0),
+                object: ncl_ir::ValueId(1),
                 field: 1,
                 value: ncl_ir::ValueId(1),
             },
@@ -317,7 +329,7 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
 #[test]
 fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(32), "call-map", Vec::new(), vec![]);
-    let callee_constant = builder.add_constant(Constant::Fixnum(0));
+    let callee_constant = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
     let callee = builder.push_op(
         OpKind::Const {
             result: callee_constant,
@@ -326,7 +338,7 @@ fn golden_x86_64_call_map_matches_return_address() -> Result<(), String> {
     );
     assert!(callee.is_ok());
     let callee = callee.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
-    let argc_constant = builder.add_constant(Constant::Fixnum(0));
+    let argc_constant = builder.add_constant(Constant::Nil);
     let argc = builder.push_op(
         OpKind::Const {
             result: argc_constant,
@@ -380,7 +392,7 @@ fn golden_x86_64_switch_dispatches_on_value() {
         OpKind::Const {
             result: selector_constant,
         },
-        &[Ty::Word],
+        &[Ty::I64],
     );
     assert!(selector.is_ok());
     let selector = selector.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
@@ -424,15 +436,16 @@ fn golden_x86_64_switch_dispatches_on_value() {
 fn golden_x86_64_swapped_block_arguments_stage_on_the_stack() {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(34), "swap", Vec::new(), vec![]);
     let swap_block = builder.create_block(vec![
-        (Ty::Word, ncl_ir::ValueId(100)),
-        (Ty::Word, ncl_ir::ValueId(101)),
+        (Ty::I64, ncl_ir::ValueId(100)),
+        (Ty::I64, ncl_ir::ValueId(101)),
     ]);
+    assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
     let first_constant = builder.add_constant(Constant::Fixnum(0));
     let first = builder.push_op(
         OpKind::Const {
             result: first_constant,
         },
-        &[Ty::Word],
+        &[Ty::I64],
     );
     assert!(first.is_ok());
     let first = first.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
@@ -441,7 +454,7 @@ fn golden_x86_64_swapped_block_arguments_stage_on_the_stack() {
         OpKind::Const {
             result: second_constant,
         },
-        &[Ty::Word],
+        &[Ty::I64],
     );
     assert!(second.is_ok());
     let second = second.map_or(ncl_ir::ValueId(0), |ids| ids[0]);

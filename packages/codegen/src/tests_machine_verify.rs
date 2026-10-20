@@ -27,7 +27,7 @@ impl RuntimeAbi for EmptyAbi {
 
 fn simple_function() -> Function {
     let mut builder = FunctionBuilder::new(FunctionId(0), "verify", Vec::new(), vec![Ty::Word]);
-    let constant = builder.add_constant(Constant::Fixnum(7));
+    let constant = builder.add_constant(Constant::T);
     let value = builder
         .push_op(OpKind::Const { result: constant }, &[Ty::Word])
         .unwrap()[0];
@@ -131,7 +131,8 @@ fn accepts_allocator_output_and_safepoint_warnings() {
         ncl_ir::verify(&function),
         Err(errors) if errors.iter().any(|error| matches!(error, ncl_ir::VerifyError::SafepointWarning(_)))
     ));
-    let allocation = allocate(&function, AllocationTarget::AArch64);
+    let mut allocation = allocate(&function, AllocationTarget::AArch64);
+    allocation.outgoing_base = allocation.spill_words;
     assert!(verify_aarch64(&function, &allocation).is_ok());
 }
 
@@ -168,8 +169,8 @@ fn rejects_missing_duplicate_and_invalid_locations() {
     ));
 
     let mut invalid_spill = allocation;
-    invalid_spill.locations[0].1 = Location::Spill(u32::MAX);
-    invalid_spill.spill_words = u32::MAX;
+    invalid_spill.locations[0].1 = Location::Spill(1);
+    invalid_spill.spill_words = 1;
     assert!(matches!(
         verify_aarch64(&function, &invalid_spill),
         Err(CodegenError::MachineVerification(
@@ -290,8 +291,7 @@ fn rejects_call_crossing_register_and_safepoint_mismatch() {
 
 #[test]
 fn rejects_constant_index_before_emission() {
-    let mut builder =
-        FunctionBuilder::new(FunctionId(30), "bad-constant", Vec::new(), vec![Ty::Word]);
+    let mut builder = FunctionBuilder::new(FunctionId(30), "bad-constant", Vec::new(), Vec::new());
     builder
         .push_op(
             OpKind::Const {
@@ -299,6 +299,9 @@ fn rejects_constant_index_before_emission() {
             },
             &[Ty::Word],
         )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
         .unwrap();
     let function = builder.finish();
     assert!(matches!(

@@ -37,11 +37,24 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
     );
     let argc = builder.add_constant(Constant::Fixnum(5));
     let Some(argc) = builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .push_op(OpKind::Const { result: argc }, &[Ty::I64])
         .ok()
         .and_then(|values| values.first().copied())
     else {
         return Err("argc constant did not lower".into());
+    };
+    let Some(argc) = builder
+        .push_op(
+            OpKind::Convert {
+                op: ncl_ir::Convert::I64ToWord,
+                value: argc,
+            },
+            &[Ty::Word],
+        )
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        return Err("argc conversion did not lower".into());
     };
     let Some(result) = builder
         .push_op(

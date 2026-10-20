@@ -11,9 +11,10 @@ fn golden_aarch64_cons_decodes() {
         FunctionBuilder::new(ncl_ir::FunctionId(21), "aarch64-cons", Vec::new(), vec![]);
     assert!(
         builder
-            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Word])
+            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
             .is_ok()
     );
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         builder
             .terminate(Terminator::Return { values: Vec::new() })
@@ -29,7 +30,21 @@ fn golden_aarch64_branch_decodes() {
     let condition = builder.add_constant(Constant::T);
     let values = builder.push_op(OpKind::Const { result: condition }, &[Ty::Word]);
     assert!(values.is_ok());
-    let condition = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let left = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let other = builder.add_constant(Constant::Nil);
+    let other_values = builder.push_op(OpKind::Const { result: other }, &[Ty::Word]);
+    assert!(other_values.is_ok());
+    let right = other_values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let condition_values = builder.push_op(
+        OpKind::Compare {
+            op: ncl_ir::Compare::Eq,
+            left,
+            right,
+        },
+        &[Ty::Bool],
+    );
+    assert!(condition_values.is_ok());
+    let condition = condition_values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
     let then_target = builder.create_block(Vec::new());
     let else_target = builder.create_block(Vec::new());
     assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
@@ -108,7 +123,7 @@ fn golden_aarch64_builtin_decodes() {
                     name: "identity".into(),
                     args: Vec::new()
                 },
-                &[]
+                &[Ty::Word]
             )
             .is_ok()
     );
@@ -141,6 +156,7 @@ fn golden_aarch64_safepoint_decodes() {
 fn golden_aarch64_fib_loop_decodes() {
     let mut builder =
         FunctionBuilder::new(ncl_ir::FunctionId(25), "aarch64-fib-25", Vec::new(), vec![]);
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         builder
             .terminate(Terminator::Jump {

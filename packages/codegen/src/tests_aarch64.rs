@@ -3,10 +3,12 @@
 use crate::{
     AllocationTarget, ContextField, RuntimeAbi, RuntimeFunction, allocate, compile_function_aarch64,
 };
-use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
+use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Terminator, Ty};
 
 #[path = "tests_aarch64_call.rs"]
 mod call_with_rest;
+#[path = "tests_aarch64_safepoint_root.rs"]
+mod safepoint_root;
 #[path = "tests_aarch64_switch.rs"]
 mod switch;
 
@@ -80,7 +82,7 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
     let entry_value = ncl_ir::ValueId(0);
     let closure = ncl_ir::ValueId(1);
     let argc = builder.add_constant(Constant::Fixnum(0));
-    let result = ncl_ir::ValueId(3);
+    let result = ncl_ir::ValueId(4);
     assert!(
         builder
             .push_op(OpKind::Const { result: entry }, &[Ty::Word])
@@ -99,14 +101,24 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
     );
     let argc_value = ncl_ir::ValueId(2);
     builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .push_op(OpKind::Const { result: argc }, &[Ty::I64])
         .map_err(|error| format!("argc constant: {error:?}"))?;
+    let argc_word = ncl_ir::ValueId(3);
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: argc_value,
+            },
+            &[Ty::Word],
+        )
+        .map_err(|error| format!("argc conversion: {error:?}"))?;
     assert!(
         builder
             .push_op(
                 OpKind::CallClosure {
                     closure,
-                    args: vec![argc_value],
+                    args: vec![argc_word],
                     named_symbol: None,
                 },
                 &[Ty::Word]
@@ -164,7 +176,7 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
     let constant = builder.add_constant(Constant::Fixnum(0x1234_5678));
     assert!(
         builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+            .push_op(OpKind::Const { result: constant }, &[Ty::I64])
             .is_ok()
     );
     assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
@@ -250,19 +262,32 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> 
         FunctionBuilder::new(ncl_ir::FunctionId(30), "tail-call", Vec::new(), Vec::new());
     let callee = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
     let Some(callee) = builder
-        .push_op(OpKind::Const { result: callee }, &[Ty::Address])
+        .push_op(OpKind::Const { result: callee }, &[Ty::Word])
         .ok()
         .and_then(|values| values.first().copied())
     else {
         unreachable!("callee result")
     };
     let argc = builder.add_constant(Constant::Fixnum(0));
-    let Some(argc) = builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+    let Some(argc_integer) = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::I64])
         .ok()
         .and_then(|values| values.first().copied())
     else {
         return Err("argc result missing".to_owned());
+    };
+    let Some(argc) = builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: argc_integer,
+            },
+            &[Ty::Word],
+        )
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        return Err("argc conversion missing".to_owned());
     };
     assert!(
         builder
@@ -419,15 +444,25 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
         ncl_ir::FunctionId(29),
         "allocator-locations",
         Vec::new(),
-        vec![Ty::Word],
+        vec![Ty::Word; 12],
     );
     let mut values = Vec::new();
     for index in 0..12 {
         let constant = builder.add_constant(Constant::Fixnum(index));
+        let integer = match builder.push_op(OpKind::Const { result: constant }, &[Ty::I64]) {
+            Ok(ids) => ids[0],
+            Err(error) => unreachable!("constant: {error:?}"),
+        };
         values.push(
-            match builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]) {
+            match builder.push_op(
+                OpKind::Convert {
+                    op: Convert::I64ToWord,
+                    value: integer,
+                },
+                &[Ty::Word],
+            ) {
                 Ok(ids) => ids[0],
-                Err(error) => unreachable!("constant: {error:?}"),
+                Err(error) => unreachable!("word conversion: {error:?}"),
             },
         );
     }
@@ -449,47 +484,4 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
         "spill slots must extend the frame"
     );
     assert!(map.bitmap.iter().any(|byte| byte & (1 << 4) != 0));
-}
-
-#[test]
-fn safepoint_map_keeps_root_passed_as_later_block_parameter() {
-    let mut builder = FunctionBuilder::new(
-        ncl_ir::FunctionId(30),
-        "later-block-parameter-root",
-        Vec::new(),
-        Vec::new(),
-    );
-    let constant = builder.add_constant(Constant::Fixnum(7));
-    let root = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .unwrap()[0];
-    let target = ncl_ir::BlockId(1);
-    assert!(
-        builder
-            .terminate(Terminator::Jump {
-                target,
-                args: vec![root],
-            })
-            .is_ok()
-    );
-    let root_param = ncl_ir::ValueId(1);
-    assert_eq!(builder.create_block(vec![(Ty::Word, root_param)]), target);
-    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
-    assert!(
-        builder
-            .terminate(Terminator::Return { values: Vec::new() })
-            .is_ok()
-    );
-
-    let function = builder.finish();
-    let allocation = allocate(&function, AllocationTarget::AArch64);
-    let spill = match allocation.location(root_param) {
-        Some(crate::Location::Spill(spill)) => spill,
-        location => panic!("expected block parameter spill across safepoint, got {location:?}"),
-    };
-    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi).unwrap();
-    let map = compiled.safepoint_maps.first().unwrap();
-    let root_slot = usize::try_from(crate::FRAME_HEADER_WORDS + spill).unwrap();
-    let byte = map.bitmap.get(root_slot / 8).copied().unwrap_or_default();
-    assert_ne!(byte & (1 << (root_slot % 8)), 0);
 }

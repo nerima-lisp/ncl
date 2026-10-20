@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
-use super::{Aarch64FixtureAbi, decoded_text};
+use super::{Aarch64FixtureAbi, AllocationTarget, allocate, decoded_text};
 use crate::compile_function_aarch64;
 use ncl_ir::{FunctionBuilder, Terminator, Ty};
 
@@ -51,7 +51,26 @@ fn aarch64_switch_compares_cases_and_moves_block_arguments() {
             .is_ok()
     );
 
-    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi);
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::AArch64);
+    let source = allocation.location(ncl_ir::ValueId(1));
+    assert!(source.is_some(), "payload location");
+    let Some(source) = source else {
+        return;
+    };
+    let destination = allocation.location(ncl_ir::ValueId(2));
+    assert!(destination.is_some(), "case block parameter location");
+    let Some(destination) = destination else {
+        return;
+    };
+    assert_ne!(source, destination, "case payload must be moved");
+    let expected_move = match destination {
+        crate::Location::Register(register) => {
+            format!("orr x{register}, x31, x17, lsl #0")
+        }
+        crate::Location::Spill(_) => "str x17, [x16, #0]".to_owned(),
+    };
+    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi);
     assert!(compiled.is_ok(), "switch failed to compile: {compiled:?}");
     let Some(compiled) = compiled.ok() else {
         return;
@@ -68,5 +87,8 @@ fn aarch64_switch_compares_cases_and_moves_block_arguments() {
             .any(|text| text.starts_with("subs sp, x16, x17"))
     );
     assert!(instructions.iter().any(|text| text.starts_with("b.eq")));
-    assert!(instructions.iter().any(|text| text == "mov x6, x17"));
+    assert!(
+        instructions.iter().any(|text| text == &expected_move),
+        "switch block argument must be stored in its allocated location: {instructions:?}"
+    );
 }

@@ -23,6 +23,17 @@ impl<T: Copy> RuntimeErrorPayloadCapability<'_, T> {
     }
 }
 
+/// Typed runtime errors taken when generated code returns to its Rust caller.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PendingRuntimeErrors {
+    /// Object-layer runtime error.
+    pub object: Option<ObjectError>,
+    /// Typed Lisp condition.
+    pub lisp: Option<LispError>,
+    /// Direct native runtime error.
+    pub native: Option<ncl_sys::NativeError>,
+}
+
 pub type ConditionHandlerInvoker =
     fn(std::ptr::NonNull<()>, &mut ThreadContext, Word, &[Word]) -> Result<Word, ObjectError>;
 
@@ -213,6 +224,17 @@ impl ThreadContext {
     pub fn take_pending_native_error(&mut self) -> Option<ncl_sys::NativeError> {
         self.thread.take_native_error()
     }
+    /// Take every typed runtime error payload and clear all three source flags.
+    pub fn take_pending_runtime_errors(&mut self) -> PendingRuntimeErrors {
+        let object = self.take_pending();
+        let lisp = self.take_pending_lisp_error();
+        let native = self.take_pending_native_error();
+        PendingRuntimeErrors {
+            object,
+            lisp,
+            native,
+        }
+    }
     /// Store the condition object produced for the latest typed builtin error.
     pub const fn set_pending_condition(&mut self, condition: Word) {
         self.pending_condition = Some(condition);
@@ -335,7 +357,8 @@ impl Default for ThreadContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{LispError, ObjectError, ThreadContext};
+    use super::{LispError, ObjectError, PendingRuntimeErrors, ThreadContext};
+    use ncl_sys::{NativeError, NativeOperation};
 
     #[test]
     fn pending_error_payloads_keep_source_flags_in_sync() {
@@ -349,6 +372,27 @@ mod tests {
         assert_eq!(
             context.take_pending_lisp_error(),
             Some(LispError::EndOfFile)
+        );
+        assert!(!context.thread.runtime_error_pending());
+    }
+
+    #[test]
+    fn taking_pending_runtime_errors_drains_all_three_sources() {
+        let mut context = ThreadContext::new();
+        let native = NativeError::NullThread {
+            operation: NativeOperation::Car,
+        };
+        context.set_pending(ObjectError::ControlError);
+        context.set_pending_lisp_error(LispError::EndOfFile);
+        context.thread.set_native_error(native);
+
+        assert_eq!(
+            context.take_pending_runtime_errors(),
+            PendingRuntimeErrors {
+                object: Some(ObjectError::ControlError),
+                lisp: Some(LispError::EndOfFile),
+                native: Some(native),
+            }
         );
         assert!(!context.thread.runtime_error_pending());
     }

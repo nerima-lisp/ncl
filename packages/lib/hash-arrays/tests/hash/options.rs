@@ -1,8 +1,8 @@
 use super::call;
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, double_value, make_double, pop_root,
-    push_root,
+    FunctionObject, ObjectError, Runtime, ThreadContext, Word, double_value, make_code_object,
+    make_double, make_simple_fun, pop_root, push_root,
 };
 
 fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
@@ -70,6 +70,31 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
     assert_eq!(
         call(&runtime, &mut ctx, "HASH-TABLE-SIZE", &[table])?,
         Word::fixnum(32)
+    );
+    Ok(())
+}
+
+#[test]
+fn make_hash_table_accepts_function_test_designator() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let test_key = keyword(&runtime, &mut ctx, "TEST")?;
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let equal_symbol = ncl_object::Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "EQUAL")?
+        .0;
+    let code = make_code_object(&mut ctx, &runtime, 0, 0, Word::NIL, Word::NIL, Word::NIL)?;
+    let equal = make_simple_fun(&mut ctx, &runtime, 0, equal_symbol, Word::NIL, code)?.as_word();
+    let table = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test_key, equal])?;
+
+    assert_eq!(
+        call(&runtime, &mut ctx, "HASH-TABLE-TEST", &[table])?,
+        equal_symbol
     );
     Ok(())
 }

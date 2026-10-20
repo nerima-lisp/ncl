@@ -16,15 +16,13 @@ packages: `NCL-THREADS`,
 
 ## Acceptance
 
-Acceptance uses same-day comparisons with SBCL 2.6.0. The reference values,
-recorded in
-`conformance/baselines/`, are:
+Acceptance uses same-day comparisons with SBCL 2.6.0. The reference values
+recorded in `conformance/baselines/` are:
 
 - ansi-test pass count: 21,768 of 21,942 tests
 - cl-bench geometric mean: 0.0755 s
 - startup time: 17 ms
 - executable size: 82.5 MB
-- compile-file speed: 0.08 s median
 
 Each comparison is measured against SBCL again on the same machine and
 environment, not against the recorded numbers alone.

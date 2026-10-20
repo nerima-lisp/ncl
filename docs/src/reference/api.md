@@ -12,12 +12,13 @@ APIs are documented as their implementation lanes land.
 | `ncl --load FILE` | Loads a file and prints its final value. | 0 or 1 |
 | `ncl --script FILE` | Loads a file without printing its final value. | 0 or 1 |
 | `ncl --compile-file FILE` | Compiles a file. | 0 or 1 |
-| `ncl` | Reads forms from the interactive REPL. | 0 |
+| `ncl` | Reads forms from the interactive REPL. | 0 or 1 |
 
 Malformed or extra arguments to `--eval`, `--load`, `--script`, and
 `--compile-file` produce a diagnostic and exit status 2. `--version` prints
 the version and exits with status 0; trailing arguments are ignored. Runtime
-and compilation errors produce a diagnostic and exit status 1.
+and compilation errors produce a diagnostic and exit status 1. The REPL exits
+with status 0 at end of input and status 1 on initialization or input errors.
 
 The current native path is covered by CLI integration tests, including
 recursive functions, closures, loading, compilation, and REPL input.

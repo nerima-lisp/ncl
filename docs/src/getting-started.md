@@ -16,7 +16,7 @@ Evaluate a form with `--eval`:
 nix develop --command cargo run -- --eval '(+ 1 2)'
 ~~~
 
-The command prints <code>3</code>. A recursive source-level run prints
+The command prints <code>3</code>. A recursive Lisp function prints
 <code>75025</code>:
 
 ~~~sh

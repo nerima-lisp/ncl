@@ -398,6 +398,7 @@ fn lower_runtime_error_check(
     body_bytes: u32,
 ) -> Result<(), CodegenError> {
     let normal = assembler.new_label();
+    let error_without_non_local_exit = assembler.new_label();
     emit(
         assembler,
         Inst::Ldr {
@@ -414,6 +415,23 @@ fn lower_runtime_error_check(
     )?;
     emit(
         assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: context_mem(abi, ContextField::Pending)?,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Cbz {
+            rt: Reg(16),
+            label: error_without_non_local_exit,
+        },
+    )?;
+
+    // The pending exit will carry control through cleanup blocks. Leave the
+    // typed payload for the Rust boundary, but stop re-entering this branch.
+    emit(
+        assembler,
         Inst::MovZ {
             rd: Reg(16),
             imm: 0,
@@ -424,9 +442,14 @@ fn lower_runtime_error_check(
         assembler,
         Inst::Str {
             rt: Reg(16),
-            mem: context_mem(abi, ContextField::Pending)?,
+            mem: context_mem(abi, ContextField::RuntimeErrorFlags)?,
         },
     )?;
+    emit(assembler, Inst::B { label: normal })?;
+
+    assembler
+        .bind(error_without_non_local_exit)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
     emit_epilogue(assembler, allocation, abi, body_bytes, &[], false)?;
     assembler
         .bind(normal)

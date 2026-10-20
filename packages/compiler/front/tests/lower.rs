@@ -575,6 +575,66 @@ fn let_skips_body_forms_after_a_nonlocal_exit() {
 }
 
 #[test]
+fn let_skips_later_initializers_and_body_after_a_nonlocal_exit() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let let_symbol = fx.cl("LET");
+    let return_from = fx.cl("RETURN-FROM");
+    let name = fx.user("B");
+    let x = fx.user("X");
+    let y = fx.user("Y");
+    let exit = fx.list(&[return_from, name, Word::fixnum(7)]);
+    let first_binding = fx.list(&[x, exit]);
+    let later_initializer = Word::fixnum(31_337);
+    let second_binding = fx.list(&[y, later_initializer]);
+    let bindings = fx.list(&[first_binding, second_binding]);
+    let unreachable_body = Word::fixnum(37_001);
+    let let_form = fx.list(&[let_symbol, bindings, unreachable_body]);
+    let form = fx.list(&[block, name, let_form]);
+
+    let expr = fx.expand(form).expect("expand terminated let initializer");
+    let lowered = lower_toplevel(&expr).expect("lower terminated let initializer");
+    assert_verifies(&lowered.entry);
+    assert!(
+        !lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(31_337 | 37_001)))
+    );
+}
+
+#[test]
+fn let_star_skips_later_initializers_and_body_after_a_nonlocal_exit() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let let_star = fx.cl("LET*");
+    let return_from = fx.cl("RETURN-FROM");
+    let name = fx.user("B");
+    let x = fx.user("X");
+    let y = fx.user("Y");
+    let exit = fx.list(&[return_from, name, Word::fixnum(7)]);
+    let first_binding = fx.list(&[x, exit]);
+    let later_initializer = Word::fixnum(31_337);
+    let second_binding = fx.list(&[y, later_initializer]);
+    let bindings = fx.list(&[first_binding, second_binding]);
+    let unreachable_body = Word::fixnum(37_001);
+    let let_form = fx.list(&[let_star, bindings, unreachable_body]);
+    let form = fx.list(&[block, name, let_form]);
+
+    let expr = fx.expand(form).expect("expand terminated let* initializer");
+    let lowered = lower_toplevel(&expr).expect("lower terminated let* initializer");
+    assert_verifies(&lowered.entry);
+    assert!(
+        !lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::Fixnum(31_337 | 37_001)))
+    );
+}
+
+#[test]
 fn multiple_value_prog1_skips_forms_and_value_capture_after_a_nonlocal_exit() {
     let mut fx = Fixture::new();
     let block = fx.cl("BLOCK");

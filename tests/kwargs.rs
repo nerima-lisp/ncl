@@ -43,11 +43,17 @@ fn builtin_call_with_keywords_and_eight_arguments_does_not_lowering_error() {
 }
 
 #[test]
-fn make_pathname_reports_an_explicit_unimplemented_condition() {
-    let output =
-        run_ncl("(make-pathname :directory '(:relative :wild) :name :wild :type \"fasl\")");
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("undefined function UNDEFINED-FUNCTION: MAKE-PATHNAME"));
-    assert!(!stderr.contains("lowering error"));
+fn make_pathname_accepts_wild_path_components() {
+    let output = run_ncl(
+        r#"(let ((pathname (make-pathname :directory '(:relative :wild) :name :wild :type "fasl"))) (list (pathnamep pathname) (pathname-name pathname) (pathname-type pathname) (equal (car (reverse (pathname-directory pathname))) "*")))"#,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        r#"(T "*" "fasl" T)"#
+    );
 }

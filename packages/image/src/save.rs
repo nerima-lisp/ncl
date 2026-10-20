@@ -4,21 +4,22 @@ use std::collections::{HashMap, VecDeque};
 
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
-    Bignum, CodeObject, Complex, DoubleFloat, Function, Instance, ObjectError, ObjectRef, Package,
-    Ratio, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object,
-    closure_ref, code_constants, code_debug, code_entry, code_size, code_stack_map, complex_imag,
-    complex_real, double_value, function_code, function_entry, function_lambda_list, function_name,
-    instance_class, instance_offset, ratio_denominator, ratio_numerator, simple_vector_length,
-    simple_vector_ref, slot_ref, specialized_array_element_type, specialized_array_offset,
-    specialized_array_ref, string_length, string_ref, structure_layout, structure_ref,
-    symbol_flags, symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
+    Bignum, CodeObject, Complex, DoubleFloat, Function, FunctionObject, Instance, ObjectError,
+    ObjectRef, Package, Ratio, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr,
+    classify_object, closure_ref, code_constants, code_debug, code_entry, code_size,
+    code_stack_map, complex_imag, complex_real, double_value, function_code, function_entry,
+    function_lambda_list, function_name, instance_class, instance_offset, ratio_denominator,
+    ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
+    specialized_array_element_type, specialized_array_offset, specialized_array_ref, string_length,
+    string_ref, structure_layout, structure_ref, symbol_flags, symbol_function, symbol_name,
+    symbol_package, symbol_plist, symbol_value,
 };
 use ncl_sys::LowTag;
 
 use crate::code::CodeImage;
 use crate::error::ImageError;
 use crate::format::ImageFile;
-use crate::record::{Record, Ref};
+use crate::record::{BuiltinIdentity, Record, Ref};
 
 /// `PACKAGE` payload slot holding the nickname list (`packages/object/src/package.rs`).
 const PACKAGE_NICKNAMES: usize = 3;
@@ -298,6 +299,21 @@ impl<'a> Capture<'a> {
         let name = function_name(ctx, function)?;
         let lambda_list = function_lambda_list(ctx, function)?;
         let code = function_code(ctx, function)?;
+        let builtin = if closure {
+            None
+        } else {
+            self.runtime
+                .builtin_identifier(ctx, FunctionObject::try_from(word)?)
+                .map(|identifier| BuiltinIdentity {
+                    package: identifier.package.as_str().to_owned(),
+                    name: identifier.name.as_str().to_owned(),
+                })
+        };
+        let entry = if builtin.is_some() {
+            0
+        } else {
+            u64::try_from(entry).map_err(|_| invalid("entry address"))?
+        };
         let mut captures = Vec::new();
         if closure {
             let mut index = 0;
@@ -309,11 +325,12 @@ impl<'a> Capture<'a> {
         }
         Ok(Record::Function {
             closure,
-            entry: u64::try_from(entry).map_err(|_| invalid("entry address"))?,
+            entry,
             name: self.ref_of(name)?,
             lambda_list: self.ref_of(lambda_list)?,
             code: self.ref_of(code.as_word())?,
             captures,
+            builtin,
         })
     }
 
@@ -386,3 +403,7 @@ const fn invalid(field: &'static str) -> ImageError {
 const fn unsupported(kind: &'static str) -> ImageError {
     ImageError::UnsupportedKind { kind }
 }
+
+#[cfg(test)]
+#[path = "save_tests.rs"]
+mod tests;

@@ -49,6 +49,7 @@ mod code;
 mod error;
 mod format;
 mod record;
+mod record_types;
 mod register;
 mod restore;
 mod save;

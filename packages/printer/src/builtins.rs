@@ -5,11 +5,15 @@ use ncl_object::{
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
-    make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, simple_vector_ref,
-    structure_layout, symbol_plist, symbol_value, with_root, with_roots,
+    make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, symbol_value, with_root,
+    with_roots,
 };
 
 use crate::{PrintError, PrintOptions, write_to_string};
+
+#[path = "builtins/structure.rs"]
+mod structure;
+use structure::invoke_structure_print_function;
 
 /// The `(package, name)` functions `ncl-printer` owns.
 const FUNCTIONS: [(&str, &str); 20] = [
@@ -172,124 +176,42 @@ fn print_object(
     options: PrintOptions,
     surrounding_newlines: bool,
 ) -> Result<Word, ObjectError> {
-    let object = args.required(0)?;
-    let stream = output_stream(ctx, runtime, args.get(1))?;
-    if matches!(classify_object(ctx, object), ObjectRef::Structure(_))
-        && (invoke_structure_print_function(ctx, runtime, object, stream)?
-            || invoke_print_object_method(ctx, runtime, object, stream)?)
-    {
-        return Ok(object);
-    }
-    with_roots(ctx, &[object, stream], |ctx, roots| {
-        let object = **roots.first().ok_or(ObjectError::Layout)?;
-        let rendered =
-            write_to_string(ctx, runtime, object, &options).map_err(|error| print_error(&error))?;
-        let result = with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
-            if surrounding_newlines {
-                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
+    let mut object = args.required(0)?;
+    with_root(ctx, &mut object, |ctx, object| {
+        let mut stream = output_stream(ctx, runtime, args.get(1))?;
+        with_root(ctx, &mut stream, |ctx, stream| {
+            if matches!(classify_object(ctx, object.get()), ObjectRef::Structure(_))
+                && (invoke_structure_print_function(ctx, runtime, object.get(), stream.get())?
+                    || invoke_print_object_method(ctx, runtime, object.get(), stream.get())?)
+            {
+                return Ok(object.get());
+            }
+            let rendered = write_to_string(ctx, runtime, object.get(), &options)
+                .map_err(|error| print_error(&error))?;
+            with_root(ctx, &mut rendered.clone(), |ctx, rendered| {
+                if surrounding_newlines {
+                    call_builtin(
+                        ctx,
+                        runtime,
+                        "WRITE-CHAR",
+                        &[Word::character(u32::from('\n')), stream.get()],
+                    )?;
+                }
                 call_builtin(
                     ctx,
                     runtime,
-                    "WRITE-CHAR",
-                    &[Word::character(u32::from('\n')), stream],
+                    "WRITE-STRING",
+                    &[rendered.get(), stream.get()],
                 )?;
-            }
-            let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
-            call_builtin(ctx, runtime, "WRITE-STRING", &[*rendered, stream])?;
-            if surrounding_newlines {
-                let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
-                call_builtin(
-                    ctx,
-                    runtime,
-                    "WRITE-CHAR",
-                    &[Word::character(u32::from('\n')), stream],
-                )?;
-            }
-            Ok(())
-        });
-        result?;
-        roots.first().map(|root| **root).ok_or(ObjectError::Layout)
-    })
-}
-
-fn invoke_structure_print_function(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    object: Word,
-    stream: Word,
-) -> Result<bool, ObjectError> {
-    with_roots(ctx, &[object, stream], |ctx, roots| {
-        let object = **roots.first().ok_or(ObjectError::Layout)?;
-        let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
-        let layout = structure_layout(ctx, object)?;
-        let Some(class) = runtime.structure_class(ctx, layout) else {
-            return Ok(false);
-        };
-        let mut class = class;
-        with_root(ctx, &mut class, |ctx, class| {
-            let mut name = simple_vector_ref(ctx, *class, 0)?;
-            with_root(ctx, &mut name, |ctx, name| {
-                let mut key = Package::from_word(runtime.ensure_package(ctx, "NCL")?)
-                    .intern(ctx, runtime, "%STRUCTURE-PRINT-FUNCTION")?
-                    .0;
-                with_root(ctx, &mut key, |ctx, key| {
-                    let mut plist = symbol_plist(ctx, *name)?;
-                    with_root(ctx, &mut plist, |ctx, plist| {
-                        let mut plist_word = *plist;
-                        while plist_word != Word::NIL {
-                            let (found, next) = with_root(ctx, &mut plist_word, |ctx, plist| {
-                                let mut property = car(ctx, *plist)?;
-                                let found = with_root(ctx, &mut property, |ctx, property| {
-                                    if car(ctx, *property)? == *key {
-                                        let mut function = cdr(ctx, *property)?;
-                                        with_root(ctx, &mut function, |ctx, function| {
-                                            let mut function_word = *function;
-                                            if (*function).is_cons() {
-                                                let mut operator = car(ctx, *function)?;
-                                                with_root(ctx, &mut operator, |ctx, operator| {
-                                                    let common_lisp = runtime
-                                                        .ensure_package(ctx, "COMMON-LISP")?;
-                                                    let function_operator =
-                                                        Package::from_word(common_lisp)
-                                                            .intern(ctx, runtime, "FUNCTION")?
-                                                            .0;
-                                                    if *operator == function_operator {
-                                                        function_word =
-                                                            car(ctx, cdr(ctx, *function)?)?;
-                                                    }
-                                                    Ok(())
-                                                })?;
-                                            }
-                                            let designator = FunctionDesignator::try_from_word(
-                                                ctx,
-                                                function_word,
-                                            )?;
-                                            let words = [object, stream, Word::fixnum(0)];
-                                            let mut caller = BuiltinFunctionCaller;
-                                            let mut values = MultipleValues::new();
-                                            caller.call_function(
-                                                ctx,
-                                                runtime,
-                                                designator,
-                                                FunctionArguments::new(&words),
-                                                &mut values,
-                                            )?;
-                                            Ok(true)
-                                        })
-                                    } else {
-                                        Ok(false)
-                                    }
-                                })?;
-                                Ok((found, cdr(ctx, *plist)?))
-                            })?;
-                            if found {
-                                return Ok(true);
-                            }
-                            plist_word = next;
-                        }
-                        Ok(false)
-                    })
-                })
+                if surrounding_newlines {
+                    call_builtin(
+                        ctx,
+                        runtime,
+                        "WRITE-CHAR",
+                        &[Word::character(u32::from('\n')), stream.get()],
+                    )?;
+                }
+                Ok(object.get())
             })
         })
     })
@@ -306,8 +228,6 @@ fn invoke_print_object_method(
     stream: Word,
 ) -> Result<bool, ObjectError> {
     with_roots(ctx, &[object, stream], |ctx, roots| {
-        let object = **roots.first().ok_or(ObjectError::Layout)?;
-        let stream = **roots.get(1).ok_or(ObjectError::Layout)?;
         let Some(function_word) = runtime.function(ctx, "COMMON-LISP", "PRINT-OBJECT") else {
             return Ok(false);
         };
@@ -317,7 +237,10 @@ fn invoke_print_object_method(
         let mut caller = BuiltinFunctionCaller;
         let mut values = MultipleValues::new();
         let designator = FunctionDesignator::Function(function);
-        let words = [object, stream];
+        let words = [
+            roots.first().ok_or(ObjectError::Layout)?.get(),
+            roots.get(1).ok_or(ObjectError::Layout)?.get(),
+        ];
         match caller.call_function(
             ctx,
             runtime,
@@ -353,8 +276,10 @@ fn output_stream_variable(
 ) -> Result<Word, ObjectError> {
     let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
     with_root(ctx, &mut package.clone(), |ctx, package| {
-        let (mut symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
-        with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
+        let (mut symbol, _) = Package::from_word(package.get()).intern(ctx, runtime, name)?;
+        with_root(ctx, &mut symbol, |ctx, symbol| {
+            symbol_value(ctx, symbol.get())
+        })
     })
 }
 

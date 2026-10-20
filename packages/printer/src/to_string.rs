@@ -83,7 +83,7 @@ fn write_to_string_builtin(
     let mut object = args.required(0)?;
     with_root(ctx, &mut object, |ctx, object| {
         let options = write_options(ctx, runtime, args)?;
-        write_to_string(ctx, runtime, *object, &options).map_err(|error| print_error(&error))
+        write_to_string(ctx, runtime, object.get(), &options).map_err(|error| print_error(&error))
     })
 }
 
@@ -100,7 +100,7 @@ fn to_string_builtin(
         if let Some(readably) = readably {
             options = options.with_readably(readably);
         }
-        write_to_string(ctx, runtime, *object, &options).map_err(|error| print_error(&error))
+        write_to_string(ctx, runtime, object.get(), &options).map_err(|error| print_error(&error))
     })
 }
 

@@ -16,6 +16,8 @@ mod native_error;
 mod nonlocal;
 mod support;
 mod time;
+#[cfg(test)]
+mod tests_function_call_drain;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
@@ -323,10 +325,10 @@ impl Runtime {
         metadata: &CodeObjectMetadata,
         function: Word,
     ) -> Result<Word, RuntimeError> {
+        let _ = self.context.take_pending_runtime_errors();
         let code_object = function_code(&self.context, Function::from_word(function))?;
         let entry_codes = &self.entry_codes;
         let context = &mut self.context;
-        let _ = context.take_pending_native_error();
         let thread = context.thread_access().as_non_null();
         let mut native_context = NativeInvocation {
             object: &self.object,
@@ -349,16 +351,25 @@ impl Runtime {
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
         let ((value, _), _) = (result, native_context);
-        if let Some(error) = context.take_pending_native_error() {
+        let pending_errors = context.take_pending_runtime_errors();
+        if let Some(error) = pending_errors.native {
             return Err(native_failure(error));
         }
-        if let Some(error) = context.take_pending_lisp_error()
+        if let Some(error) = pending_errors.lisp
             && let Some(converter) = self.object.lisp_error_converter()
         {
-            let condition = converter(context, &self.object, error)?;
+            let converted = converter(context, &self.object, error);
+            let converted_errors = context.take_pending_runtime_errors();
+            let condition = converted?;
             context.set_pending_condition(condition);
+            if let Some(error) = converted_errors.native {
+                return Err(native_failure(error));
+            }
+            if let Some(error) = converted_errors.object {
+                return Err(error.into());
+            }
         }
-        if let Some(error) = context.take_pending() {
+        if let Some(error) = pending_errors.object {
             if matches!(error, ObjectError::UndefinedFunction)
                 && let Some(condition) = context.take_pending_condition()
             {

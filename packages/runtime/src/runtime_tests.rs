@@ -4,6 +4,15 @@ mod runtime_tests {
     use ncl_object::{ObjectError, Package, symbol_is_constant, symbol_value};
     use std::fs;
 
+    fn failing_lisp_error_converter(
+        context: &mut ncl_object::ThreadContext,
+        _runtime: &ncl_object::Runtime,
+        _error: ncl_object::LispError,
+    ) -> Result<ncl_object::Word, ObjectError> {
+        context.set_pending(ObjectError::ControlError);
+        Err(ObjectError::Layout)
+    }
+
     #[test]
     fn evaluates_a_literal_through_native_code() {
         let mut runtime = match Runtime::new() {
@@ -101,6 +110,26 @@ mod runtime_tests {
         let thread = runtime.context.thread_access();
         assert_eq!(thread.cleanup_depth(), 0);
         assert_eq!(thread.handler_depth(), 0);
+    }
+
+    #[test]
+    fn failed_condition_conversion_does_not_poison_the_next_compiled_eval() {
+        let mut runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+        runtime
+            .object
+            .register_lisp_error_converter(failing_lisp_error_converter);
+
+        assert!(matches!(
+            runtime.eval("(car)"),
+            Err(RuntimeError::Object(ObjectError::Layout))
+        ));
+        assert!(!runtime.context.thread_access().runtime_error_pending());
+
+        let value = runtime
+            .eval("42")
+            .unwrap_or_else(|error| panic!("follow-up evaluation failed: {error}"));
+        assert_eq!(runtime.format_result(value), "42");
     }
 
     #[test]

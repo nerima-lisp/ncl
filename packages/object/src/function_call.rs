@@ -149,7 +149,7 @@ impl FunctionCaller for BuiltinFunctionCaller {
                 result?
             } else {
                 crate::with_rooted_slice(ctx, &current_args, |ctx, rooted_args| {
-                    call_native(ctx, function, rooted_args, values)
+                    call_native(ctx, runtime, function, rooted_args, values)
                 })?
             };
             values.set(ctx.values());
@@ -160,6 +160,7 @@ impl FunctionCaller for BuiltinFunctionCaller {
 
 fn call_native(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     function: FunctionObject,
     args: &mut [Word],
     values: &mut MultipleValues,
@@ -187,6 +188,7 @@ fn call_native(
         registers,
         rest,
     );
+    let pending_errors = ctx.take_pending_runtime_errors();
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     let non_local_exit = ctx.take_non_local_exit();
     let non_local_values = ctx.thread_access().multiple_values().to_vec();
@@ -195,6 +197,9 @@ fn call_native(
         values.set(&non_local_values);
         ctx.set_non_local_exit(true);
         return Err(ObjectError::NonLocalExit);
+    }
+    if pending_errors.native.is_some() {
+        return Err(ObjectError::Layout);
     }
     let result = match count {
         0 => Word::NIL,
@@ -213,6 +218,23 @@ fn call_native(
             Word::from_bits(result)
         }
     };
+    if let Some(error) = pending_errors.lisp
+        && let Some(converter) = runtime.lisp_error_converter()
+    {
+        let converted = converter(ctx, runtime, error);
+        let converted_errors = ctx.take_pending_runtime_errors();
+        let condition = converted?;
+        ctx.set_pending_condition(condition);
+        if converted_errors.native.is_some() {
+            return Err(ObjectError::Layout);
+        }
+        if let Some(error) = converted_errors.object {
+            return Err(error);
+        }
+    }
+    if let Some(error) = pending_errors.object {
+        return Err(error);
+    }
     Ok(result)
 }
 
@@ -244,12 +266,15 @@ impl Runtime {
         values: &mut MultipleValues,
         implementation: Option<crate::BuiltinImplementation>,
     ) -> Result<Word, ObjectError> {
+        let pending_errors = ctx.take_pending_runtime_errors();
+        if pending_errors.native.is_some() {
+            return Err(ObjectError::Layout);
+        }
+        if pending_errors.object.is_some() || pending_errors.lisp.is_some() {
+            return Err(ObjectError::ControlError);
+        }
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
-        }
-        if !ctx.pending_is_none() {
-            ctx.set_pending(ObjectError::ControlError);
-            return Err(ObjectError::ControlError);
         }
         let implementation = implementation.ok_or(ObjectError::Unbound)?;
         values.clear();
@@ -263,8 +288,27 @@ impl Runtime {
             let callback_args = crate::BuiltinArgs::new(&callback_args);
             let result = (implementation.function)(ctx, self, &callback_args, values);
             ctx.set_values(values.as_slice());
-            let pending = ctx.take_pending();
-            return pending.map_or(result, Err);
+            let pending_errors = ctx.take_pending_runtime_errors();
+            if pending_errors.native.is_some() {
+                return Err(ObjectError::Layout);
+            }
+            if let Some(error) = pending_errors.lisp
+                && let Some(converter) = self.lisp_error_converter()
+            {
+                let converted = converter(ctx, self, error);
+                let converted_errors = ctx.take_pending_runtime_errors();
+                let condition = converted?;
+                ctx.set_pending_condition(condition);
+                if converted_errors.native.is_some() {
+                    return Err(ObjectError::Layout);
+                }
+                if let Some(error) = converted_errors.object {
+                    return Err(error);
+                }
+            } else if let Some(error) = pending_errors.lisp {
+                ctx.set_pending_lisp_error(error);
+            }
+            return pending_errors.object.map_or(result, Err);
         }
         let mut rooted_values = Vec::with_capacity(args.len() + 1);
         rooted_values.push(function.as_word());
@@ -297,16 +341,28 @@ impl Runtime {
                 let callback_args = crate::BuiltinArgs::from_rooted(&callback_args, rooted_adapted);
                 (implementation.function)(ctx, self, &callback_args, values)
             }))
-        })?;
+        });
         ctx.set_values(values.as_slice());
-        if let Some(error) = ctx.take_pending_lisp_error()
+        let pending_errors = ctx.take_pending_runtime_errors();
+        let result = result?;
+        if pending_errors.native.is_some() {
+            return Err(ObjectError::Layout);
+        }
+        if let Some(error) = pending_errors.lisp
             && let Some(converter) = self.lisp_error_converter()
         {
-            let condition = converter(ctx, self, error)?;
+            let converted = converter(ctx, self, error);
+            let converted_errors = ctx.take_pending_runtime_errors();
+            let condition = converted?;
             ctx.set_pending_condition(condition);
+            if converted_errors.native.is_some() {
+                return Err(ObjectError::Layout);
+            }
+            if let Some(error) = converted_errors.object {
+                return Err(error);
+            }
         }
-        let pending = ctx.take_pending();
-        pending.map_or(result, Err)
+        pending_errors.object.map_or(result, Err)
     }
 }
 
@@ -330,4 +386,58 @@ macro_rules! builtin {
             convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)),
         };
     };
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    fn unused_builtin(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &crate::BuiltinArgs<'_>,
+        _values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        Err(ObjectError::Unsupported)
+    }
+
+    #[test]
+    fn registered_builtin_drains_pending_payloads_before_returning() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut context = ThreadContext::new();
+        context
+            .register(&runtime)
+            .unwrap_or_else(|error| panic!("register context: {error:?}"));
+        let descriptor = crate::Builtin {
+            lambda_list: crate::LambdaList::new(&[], &[], None, &[], false),
+            convention: crate::BuiltinConvention::Direct(crate::Arity::exact(0)),
+        };
+        let function = runtime
+            .register_builtin(
+                &mut context,
+                crate::BuiltinIdentifier::new(
+                    crate::BuiltinPackage::NclTest,
+                    crate::BuiltinName::new("PENDING-DRAIN"),
+                ),
+                crate::BuiltinImplementation::direct(descriptor, unused_builtin),
+            )
+            .unwrap_or_else(|error| panic!("register builtin: {error:?}"));
+        context.set_pending(ObjectError::TypeError);
+        context.set_pending_lisp_error(LispError::EndOfFile);
+
+        assert_eq!(
+            runtime.call_builtin(&mut context, function, &[]),
+            Err(ObjectError::ControlError)
+        );
+        assert!(!context.thread_access().runtime_error_pending());
+        assert_eq!(
+            context.take_pending_runtime_errors(),
+            crate::PendingRuntimeErrors {
+                object: None,
+                lisp: None,
+                native: None,
+            }
+        );
+    }
 }

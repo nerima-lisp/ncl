@@ -162,11 +162,6 @@ impl Runtime {
                 .chain(lowered.nested)
                 .collect(),
         };
-        let mut passes = ncl_opt::PassManager::new();
-        passes.add_function_pass(ncl_opt::InlineDirectCalls::default());
-        passes
-            .run(&mut module)
-            .map_err(|error| RuntimeError::Native(error.to_string()))?;
         module.functions.sort_by_key(|function| function.id);
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())

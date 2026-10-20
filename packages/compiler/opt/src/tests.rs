@@ -73,6 +73,36 @@ fn recursive_and_unsafe_callees_are_skipped() {
 }
 
 #[test]
+fn generated_lambda_with_load_arg_is_not_inlined() {
+    let mut callee_builder = ncl_ir::FunctionBuilder::new(
+        FunctionId(2),
+        "generated-lambda",
+        vec![
+            ncl_ir::Param {
+                name: "argc".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let loaded = callee_builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .fixture()[0];
+    callee_builder
+        .terminate(Terminator::Return {
+            values: vec![loaded],
+        })
+        .fixture();
+    let callee = callee_builder.finish();
+
+    assert!(InlineDirectCalls::prohibited(&callee));
+}
+
+#[test]
 fn threshold_skips() {
     let mut module = Module {
         functions: vec![caller(), leaf()],

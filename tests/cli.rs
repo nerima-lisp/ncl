@@ -248,6 +248,17 @@ fn evals_native_functions_constants_and_closures() {
         assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
     }
 }
+
+#[test]
+fn evals_nested_function_entry_constants_after_compilation() {
+    let result = output(ncl().args([
+        "--eval",
+        "(progn (defun nested (n) (flet ((inc (x) (+ x 1))) (inc n))) (nested 41))",
+    ]));
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "42");
+}
+
 #[test]
 fn top_level_forms_run_in_order_for_definitions_and_macros() {
     for (source, expected) in [

@@ -4,7 +4,7 @@
 
 use super::accumulator::expand_accumulator;
 use super::clause::HeldLoopClause;
-use super::held::{held_form, held_get, held_list, held_symbol};
+use super::held::{held_form, held_fresh_symbol, held_get, held_list, held_symbol};
 use super::{
     AccumulatorKind, ConditionalKind, ObjectError, Result, Runtime, ThreadContext, Word,
     string_length, string_ref, symbol_name,
@@ -186,6 +186,22 @@ pub(super) fn expand_selectable_clause(
                 "RETURN-FROM",
                 &[target, value],
             )?);
+        }
+        HeldLoopClause::Thereis(form) => {
+            let value = held_fresh_symbol(ctx, runtime, held)?;
+            bindings.push(held_list(ctx, runtime, held, &[value, nil])?);
+            body.push(held_form(ctx, runtime, held, "SETQ", &[value, form])?);
+            let target = name.unwrap_or(nil);
+            let return_from = held_form(ctx, runtime, held, "RETURN-FROM", &[target, value])?;
+            body.push(held_form(
+                ctx,
+                runtime,
+                held,
+                "WHEN",
+                &[value, return_from],
+            )?);
+            *result = nil;
+            *result_kind = None;
         }
         HeldLoopClause::Accumulate {
             kind,

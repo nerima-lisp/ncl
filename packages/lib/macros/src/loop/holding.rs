@@ -188,6 +188,21 @@ fn hold_clause(
             held.push(value);
             HeldLoopClause::Return(index)
         }
+        LoopClause::Thereis(value) => {
+            let index = held.len();
+            held.push(value);
+            HeldLoopClause::Thereis(index)
+        }
+        LoopClause::Always(value) => {
+            let index = held.len();
+            held.push(value);
+            HeldLoopClause::Always(index)
+        }
+        LoopClause::Never(value) => {
+            let index = held.len();
+            held.push(value);
+            HeldLoopClause::Never(index)
+        }
         LoopClause::Conditional {
             kind,
             test,

@@ -1,0 +1,213 @@
+use super::super::{
+    ForClause, HashClause, HashIterationKind, LimitDirection, LoopClause, ObjectError, Result,
+    StepDirection, ThreadContext, Word, elements, symbol_name,
+};
+use super::{required, word_name};
+
+#[allow(clippy::too_many_lines)]
+pub(super) fn parse_for(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+) -> Result<LoopClause> {
+    let variable = required(input, cursor)?;
+    symbol_name(ctx, variable)?;
+    let mut init = Word::NIL;
+    let mut has_init = false;
+    let mut step = None;
+    let mut then = None;
+    let mut direction = None;
+    let mut limit = None;
+    while let Some(word) = input.get(*cursor).copied() {
+        let name = word_name(ctx, word)?;
+        let Some(next) = input.get(*cursor + 1).copied() else {
+            return Err(ObjectError::TypeError);
+        };
+        match name.as_str() {
+            "=" => {
+                init = next;
+                has_init = true;
+                *cursor += 2;
+            }
+            "FROM" | "UPFROM" | "DOWNFROM" => {
+                direction = Some(if name == "FROM" {
+                    StepDirection::From
+                } else if name == "UPFROM" {
+                    StepDirection::UpFrom
+                } else if name == "DOWNFROM" {
+                    StepDirection::DownFrom
+                } else {
+                    return Err(ObjectError::TypeError);
+                });
+                init = next;
+                has_init = true;
+                *cursor += 2;
+            }
+            "THEN" => {
+                if then.is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+                then = Some(next);
+                *cursor += 2;
+            }
+            "BY" => {
+                if step.is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+                step = Some(next);
+                *cursor += 2;
+            }
+            "TO" | "UPTO" | "BELOW" | "DOWNTO" | "ABOVE" => {
+                limit = Some((
+                    if name == "TO" {
+                        LimitDirection::To
+                    } else if name == "UPTO" {
+                        LimitDirection::UpTo
+                    } else if name == "BELOW" {
+                        LimitDirection::Below
+                    } else if name == "DOWNTO" {
+                        LimitDirection::DownTo
+                    } else if name == "ABOVE" {
+                        LimitDirection::Above
+                    } else {
+                        return Err(ObjectError::TypeError);
+                    },
+                    next,
+                ));
+                *cursor += 2;
+            }
+            other
+                if !matches!(
+                    other,
+                    "=" | "FROM"
+                        | "UPFROM"
+                        | "DOWNFROM"
+                        | "THEN"
+                        | "BY"
+                        | "TO"
+                        | "UPTO"
+                        | "BELOW"
+                        | "DOWNTO"
+                        | "ABOVE"
+                ) =>
+            {
+                break;
+            }
+            _other => return Err(ObjectError::TypeError),
+        }
+    }
+    if let Some(then) = then {
+        if step.is_some() || direction.is_some() || limit.is_some() {
+            return Err(ObjectError::TypeError);
+        }
+        Ok(LoopClause::EqualsThen {
+            variable,
+            init,
+            then,
+        })
+    } else {
+        // ANSI CL: when no from-type preposition (`=`/`from`/`upfrom`/`downfrom`)
+        // is present, the index starts at 0.
+        if !has_init {
+            init = Word::fixnum(0);
+        }
+        Ok(LoopClause::For(ForClause {
+            variable,
+            init,
+            step,
+            direction,
+            limit,
+        }))
+    }
+}
+
+pub(super) fn parse_sequence_for(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+    on: bool,
+) -> Result<LoopClause> {
+    let sequence = required(input, cursor)?;
+    let by = if input
+        .get(*cursor)
+        .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "BY"))
+    {
+        *cursor += 1;
+        Some(required(input, cursor)?)
+    } else {
+        None
+    };
+    Ok(LoopClause::In {
+        variable,
+        sequence,
+        on,
+        by,
+    })
+}
+
+fn hash_kind(name: &str) -> Option<HashIterationKind> {
+    if name == "HASH-KEY" || name == "HASH-KEYS" {
+        Some(HashIterationKind::Key)
+    } else if name == "HASH-VALUE" || name == "HASH-VALUES" {
+        Some(HashIterationKind::Value)
+    } else {
+        None
+    }
+}
+
+pub(super) fn parse_hash_for(
+    ctx: &mut ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+) -> Result<LoopClause> {
+    symbol_name(ctx, variable)?;
+    if input.get(*cursor).is_some_and(
+        |word| matches!(word_name(ctx, *word), Ok(name) if name == "EACH" || name == "THE"),
+    ) {
+        *cursor += 1;
+    }
+    let kind_name = word_name(ctx, required(input, cursor)?)?;
+    let kind = hash_kind(&kind_name).ok_or(ObjectError::TypeError)?;
+    let of = word_name(ctx, required(input, cursor)?)?;
+    if of != "OF" {
+        return Err(ObjectError::TypeError);
+    }
+    let table = required(input, cursor)?;
+    let using = if input
+        .get(*cursor)
+        .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "USING"))
+    {
+        *cursor += 1;
+        let specification = elements(ctx, required(input, cursor)?)?;
+        if specification.len() != 2 {
+            return Err(ObjectError::TypeError);
+        }
+        let using_name = word_name(
+            ctx,
+            specification
+                .first()
+                .copied()
+                .ok_or(ObjectError::TypeError)?,
+        )?;
+        let using_kind = hash_kind(&using_name).ok_or(ObjectError::TypeError)?;
+        let using_variable = specification
+            .get(1)
+            .copied()
+            .ok_or(ObjectError::TypeError)?;
+        symbol_name(ctx, using_variable)?;
+        if using_kind == kind {
+            return Err(ObjectError::TypeError);
+        }
+        Some((using_kind, using_variable))
+    } else {
+        None
+    };
+    Ok(LoopClause::Hash(HashClause {
+        variable,
+        kind,
+        table,
+        using,
+    }))
+}

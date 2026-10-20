@@ -1,7 +1,7 @@
 use super::clause::HeldLoopClause;
 use super::conditional::{bind_for_variable, expand_selectable_clause, find_it_word};
 use super::hash::wrap_hash_iteration;
-use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
+use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list, held_symbol};
 use super::holding::hold_clauses;
 use super::{
     AccumulatorKind, LimitDirection, LoopAst, ObjectError, Result, Runtime, StepDirection,
@@ -219,9 +219,24 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 tests.push(held_form(ctx, runtime, &mut held, "NOT", &[test])?);
             }
             HeldLoopClause::Until(test) => tests.push(test),
+            HeldLoopClause::Always(test) => {
+                let target = name.unwrap_or(nil);
+                let stop = held_form(ctx, runtime, &mut held, "RETURN-FROM", &[target, nil])?;
+                body.push(held_form(ctx, runtime, &mut held, "UNLESS", &[test, stop])?);
+                result = held_symbol(ctx, runtime, &mut held, "T")?;
+                result_kind = None;
+            }
+            HeldLoopClause::Never(test) => {
+                let target = name.unwrap_or(nil);
+                let stop = held_form(ctx, runtime, &mut held, "RETURN-FROM", &[target, nil])?;
+                body.push(held_form(ctx, runtime, &mut held, "WHEN", &[test, stop])?);
+                result = held_symbol(ctx, runtime, &mut held, "T")?;
+                result_kind = None;
+            }
             HeldLoopClause::Initially(ref forms) => initially.extend(forms),
             HeldLoopClause::Finally(ref forms) => finally.extend(forms),
             HeldLoopClause::Do(_)
+            | HeldLoopClause::Thereis(_)
             | HeldLoopClause::Return(_)
             | HeldLoopClause::Accumulate { .. }
             | HeldLoopClause::Conditional { .. } => {

@@ -104,6 +104,9 @@ pub enum LoopClause {
         form: Word,
         variable: Option<Word>,
     },
+    Always(Word),
+    Never(Word),
+    Thereis(Word),
     Return(Word),
     /// `when`/`unless`/`if` test-form selectable-clause* [`else` selectable-clause*] [`end`]
     Conditional {

@@ -38,6 +38,46 @@ fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> 
 }
 
 #[test]
+fn parses_and_expands_thereis_once() -> Result<(), ObjectError> {
+    fn count_form(ctx: &ThreadContext, tree: Word, form: Word) -> Result<usize, ObjectError> {
+        if tree == form {
+            return Ok(1);
+        }
+        if !tree.is_cons() {
+            return Ok(0);
+        }
+        Ok(count_form(ctx, ncl_object::car(ctx, tree)?, form)?
+            + count_form(ctx, ncl_object::cdr(ctx, tree)?, form)?)
+    }
+
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let plus = symbol(&mut ctx, &runtime, "+")?;
+    let form = list(&mut ctx, &runtime, &[plus, x, Word::fixnum(1)])?;
+    let thereis = symbol(&mut ctx, &runtime, "THEREIS")?;
+    let ast = parse_loop(&mut ctx, &[thereis, form])?;
+    assert!(matches!(ast.clauses.as_slice(), [LoopClause::Thereis(value)] if *value == form));
+
+    let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    assert_eq!(count_form(&ctx, expansion, form)?, 1);
+    Ok(())
+}
+
+#[test]
+fn parses_always_and_never_termination_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let form = symbol(&mut ctx, &runtime, "P")?;
+    let always = symbol(&mut ctx, &runtime, "ALWAYS")?;
+    let never = symbol(&mut ctx, &runtime, "NEVER")?;
+    let ast = parse_loop(&mut ctx, &[always, form, never, form])?;
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [LoopClause::Always(first), LoopClause::Never(second)] if *first == form && *second == form
+    ));
+    Ok(())
+}
+
+#[test]
 fn expansion_has_block_tagbody_and_lexical_bindings() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let x = symbol(&mut ctx, &runtime, "X")?;

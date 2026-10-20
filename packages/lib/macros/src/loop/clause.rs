@@ -45,6 +45,9 @@ pub(super) enum HeldLoopClause {
         form: usize,
         variable: Option<usize>,
     },
+    Always(usize),
+    Never(usize),
+    Thereis(usize),
     Return(usize),
     Conditional {
         kind: ConditionalKind,

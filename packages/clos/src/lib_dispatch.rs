@@ -121,7 +121,10 @@ fn call_method<'ctx, C: ncl_object::FunctionCaller>(
     let function_word = scope.get(function).as_word();
     let function_object = FunctionObject::try_from(function_word)?;
     let mut call_args = scope.root_many(&[]);
-    if runtime.builtin_descriptor(function_object).is_none() {
+    if runtime
+        .builtin_descriptor(scope.context(), function_object)
+        .is_none()
+    {
         dispatch_push_handle(scope, &mut call_args, next);
         dispatch_push_handle(scope, &mut call_args, argument_list);
     }

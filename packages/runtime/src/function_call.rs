@@ -41,8 +41,10 @@ impl FunctionCaller for RuntimeFunctionCaller {
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
         let function = resolve_function(ctx, designator)?;
-        if runtime.builtin_descriptor(function).is_some() {
-            let result = runtime.call_builtin(ctx, function, args.as_slice())?;
+        if let Some(result) =
+            runtime.call_builtin_if_registered(ctx, function, args.as_slice(), values)
+        {
+            let result = result?;
             values.set(ctx.values());
             return Ok(result);
         }

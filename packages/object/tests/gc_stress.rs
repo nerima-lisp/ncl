@@ -56,7 +56,7 @@ fn make_rest_list_builtin_survives_gc_stress_and_strict_forwarding() {
         .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
         .unwrap_or_else(|| panic!("MAKE-REST-LIST not registered"));
     let descriptor = runtime
-        .builtin_descriptor(function)
+        .builtin_descriptor(&ctx, function)
         .unwrap_or_else(|| panic!("MAKE-REST-LIST descriptor missing"));
     assert_eq!(descriptor.lambda_list.required.len(), 2);
     assert_eq!(

@@ -179,7 +179,7 @@ fn call_named(
                     .ok_or(ObjectError::Layout)
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        let value = if runtime.builtin_descriptor(function).is_some() {
+        let value = if runtime.builtin_descriptor(ctx, function).is_some() {
             runtime.call_builtin(ctx, function, &arguments)?
         } else {
             call_macro_function(ctx, runtime, function, &arguments, entry_codes)?

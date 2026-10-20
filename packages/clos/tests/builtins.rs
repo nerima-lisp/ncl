@@ -40,7 +40,10 @@ fn slot_builtins_round_trip_and_reject_non_instances() {
     let slot_value = function(&runtime, &mut ctx, "SLOT-VALUE");
     let slot_set = function(&runtime, &mut ctx, "SLOT-VALUE-SET");
     assert_eq!(
-        runtime.builtin_descriptor(slot_set).unwrap().convention,
+        runtime
+            .builtin_descriptor(&ctx, slot_set)
+            .unwrap()
+            .convention,
         BuiltinConvention::Direct(ncl_object::Arity::exact(3))
     );
     assert_eq!(
@@ -124,7 +127,7 @@ fn production_table_contains_only_bound_builtins() {
             panic!("production builtin is not a FunctionObject: {identifier:?}")
         });
         assert!(
-            runtime.builtin_descriptor(function).is_some(),
+            runtime.builtin_descriptor(&ctx, function).is_some(),
             "production builtin has no descriptor: {identifier:?}"
         );
     }

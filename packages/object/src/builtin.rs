@@ -6,6 +6,9 @@ use crate::{
 };
 use ncl_sys::{RootSlot, Word};
 
+#[path = "builtin_registry.rs"]
+mod registry;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum NclStatus {
@@ -357,6 +360,7 @@ pub struct BuiltinImplementation {
 #[derive(Debug)]
 pub struct BuiltinEntry {
     pub(crate) function: Box<Word>,
+    pub(crate) identifier: BuiltinIdentifier,
     pub(crate) implementation: BuiltinImplementation,
     pub(crate) _token: ncl_sys::RootToken,
 }
@@ -425,16 +429,25 @@ impl Runtime {
                     *function_word,
                 )?;
                 self.define_function(ctx, package, name, *function_word)?;
+                let mut builtins = self
+                    .builtins
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let index = crate::object_access::fix(builtins.len())?;
+                ctx.write_object_slot(
+                    *function_word,
+                    crate::function_offset::BUILTIN_INDEX,
+                    index,
+                )?;
                 let mut rooted_function = Box::new(*function_word);
                 let token = ncl_sys::push_heap_root(&self.heap, &mut rooted_function);
-                self.builtins
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(BuiltinEntry {
-                        function: rooted_function,
-                        implementation,
-                        _token: token,
-                    });
+                builtins.push(BuiltinEntry {
+                    function: rooted_function,
+                    identifier,
+                    implementation,
+                    _token: token,
+                });
+                drop(builtins);
                 self.builtin_addresses
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -456,17 +469,5 @@ impl Runtime {
         args: &[Word],
     ) -> Result<Word, ObjectError> {
         self.call_registered_builtin(ctx, function, args, &mut MultipleValues::new())
-    }
-
-    /// Return the descriptor installed for a function object.
-    #[must_use]
-    pub fn builtin_descriptor(&self, function: FunctionObject) -> Option<Builtin> {
-        let function_word = self.heap.forwarded_word(function.as_word())?;
-        self.builtins
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
-            .find(|entry| *entry.function == function_word)
-            .map(|entry| entry.implementation.descriptor)
     }
 }

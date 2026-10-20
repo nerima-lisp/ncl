@@ -6,7 +6,7 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     LambdaList, LispError, MultipleValues, ObjectError, Parameter, ParameterType, ProgramError,
-    Runtime, ThreadContext, make_cons,
+    Runtime, ThreadContext, make_closure, make_code_object, make_cons,
 };
 use ncl_sys::Word;
 
@@ -144,12 +144,49 @@ fn builtin_registry_follows_function_relocation() {
         .unwrap_or_else(|error| panic!("collection: {error:?}"));
     let relocated = ncl_object::FunctionObject::try_from(function_word)
         .unwrap_or_else(|error| panic!("relocated function: {error:?}"));
-    assert_eq!(runtime.builtin_descriptor(relocated), Some(descriptor));
+    assert_eq!(
+        runtime.builtin_descriptor(&ctx, relocated),
+        Some(descriptor)
+    );
     assert_eq!(
         runtime.call_builtin(&mut ctx, relocated, &[Word::fixnum(2), Word::fixnum(3)]),
         Ok(Word::fixnum(5))
     );
     assert!(ncl_object::pop_root(&mut ctx, token));
+}
+
+#[test]
+fn builtin_lookup_does_not_read_closure_captures_as_indices() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    let code = make_code_object(&mut ctx, &runtime, 0, 0, Word::NIL, Word::NIL, Word::NIL)
+        .unwrap_or_else(|error| panic!("code: {error:?}"));
+    let closure = make_closure(
+        &mut ctx,
+        &runtime,
+        0,
+        Word::NIL,
+        Word::NIL,
+        code,
+        &[Word::fixnum(0)],
+    )
+    .unwrap_or_else(|error| panic!("closure: {error:?}"));
+    let closure = ncl_object::FunctionObject::try_from(closure.as_word())
+        .unwrap_or_else(|error| panic!("function object: {error:?}"));
+    assert_eq!(runtime.builtin_descriptor(&ctx, closure), None);
 }
 
 #[test]

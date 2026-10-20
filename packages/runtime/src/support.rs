@@ -161,7 +161,7 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         } else {
             form
         };
-        if runtime.builtin_descriptor(function).is_some() {
+        if runtime.builtin_descriptor(ctx, function).is_some() {
             return runtime
                 .call_builtin(ctx, function, &[form])
                 .map_err(|error| expansion(name, &error.to_string()));

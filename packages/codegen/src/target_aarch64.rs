@@ -59,6 +59,15 @@ pub fn compile_function_aarch64(
             .ok_or(CodegenError::FrameOverflow)?,
         outgoing_words,
     )?;
+    crate::machine_verify::verify_allocation(
+        function,
+        AllocationTarget::AArch64,
+        &allocation,
+        frame,
+        outgoing_words,
+        0,
+        None,
+    )?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -185,6 +194,7 @@ pub fn compile_function_aarch64(
                 add_map(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    function,
                     frame,
                     &allocation,
                     position,
@@ -205,6 +215,7 @@ pub fn compile_function_aarch64(
                 add_map(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    function,
                     frame,
                     &allocation,
                     position,
@@ -254,6 +265,7 @@ pub fn compile_function_aarch64(
                     add_map(
                         &mut maps,
                         checked_u32(assembler.offset())?,
+                        function,
                         frame,
                         &allocation,
                         position,
@@ -315,12 +327,16 @@ pub fn compile_function_aarch64(
                     &labels,
                 )?;
             }
-            Terminator::CallReturn { function, args } => {
-                lower_call(&mut assembler, *function, args, &allocation)?;
+            Terminator::CallReturn {
+                function: callee,
+                args,
+            } => {
+                lower_call(&mut assembler, *callee, args, &allocation)?;
                 emit(&mut assembler, Inst::Blr { rn: Reg(17) })?;
                 add_map(
                     &mut maps,
                     checked_u32(assembler.offset())?,
+                    function,
                     frame,
                     &allocation,
                     position,
@@ -428,6 +444,7 @@ pub fn compile_function_aarch64(
                 emit(&mut assembler, Inst::Brk { imm: 0 })?;
             }
         }
+        position = position.saturating_add(1);
     }
     let blob = assembler
         .finish()

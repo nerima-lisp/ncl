@@ -29,14 +29,23 @@ The binary also provides an interactive REPL and the <code>--load</code>,
 
 ## Development gates
 
-From the repository root, run <code>nix develop</code> and then:
+From the repository root, run <code>nix develop</code> once to enter the
+development shell. Run the following commands from that shell:
 
 ~~~sh
-nix develop --command cargo test --workspace
-nix develop --command cargo clippy --workspace --all-targets -- -D warnings
-nix develop --command cargo fmt --check
-nix develop --command python3 scripts/check_standards.py
-nix develop --command mkdocs build --strict --config-file docs/mkdocs.yml
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+python3 scripts/check_standards.py
+mkdocs build --strict --config-file docs/mkdocs.yml
+~~~
+
+For local lane work, test the changed crate. If a test under <code>tests/</code>
+changes, run <code>cargo test -p ncl --test &lt;name&gt;</code>. CI runs the
+locked workspace tests with all features and targets in debug and release:
+
+~~~sh
+cargo test --locked --workspace --all-features --all-targets
+cargo test --locked --workspace --all-features --all-targets --release
 ~~~
 
 Coverage uses LLVM instrumentation through the flake app:

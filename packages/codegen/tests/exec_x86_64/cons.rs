@@ -58,24 +58,17 @@ fn build_cons_function() -> ncl_ir::Function {
     let object = builder
         .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
         .expect("allocation")[0];
-    let first_constant = builder.add_constant(Constant::Fixnum(10));
-    let car = builder
+    let object = builder
         .push_op(
-            OpKind::Const {
-                result: first_constant,
+            OpKind::Convert {
+                op: Convert::AddressToWord,
+                value: object,
             },
             &[Ty::Word],
         )
-        .expect("car")[0];
-    let second_constant = builder.add_constant(Constant::Fixnum(20));
-    let cdr = builder
-        .push_op(
-            OpKind::Const {
-                result: second_constant,
-            },
-            &[Ty::Word],
-        )
-        .expect("cdr")[0];
+        .expect("object word")[0];
+    let car = fixnum_word(&mut builder, 10);
+    let cdr = fixnum_word(&mut builder, 20);
     builder
         .push_op(
             OpKind::Prim {
@@ -83,7 +76,7 @@ fn build_cons_function() -> ncl_ir::Function {
                 args: vec![object, car],
                 condition: None,
             },
-            &[],
+            &[Ty::Unit],
         )
         .expect("store car");
     builder
@@ -93,7 +86,7 @@ fn build_cons_function() -> ncl_ir::Function {
                 args: vec![object, cdr],
                 condition: None,
             },
-            &[],
+            &[Ty::Unit],
         )
         .expect("store cdr");
     let first_loaded = builder
@@ -116,6 +109,8 @@ fn build_cons_function() -> ncl_ir::Function {
             &[Ty::Word],
         )
         .expect("load cdr")[0];
+    let first_loaded = word_to_i64(&mut builder, first_loaded);
+    let second_loaded = word_to_i64(&mut builder, second_loaded);
     let sum = builder
         .push_op(
             OpKind::Prim {
@@ -123,9 +118,10 @@ fn build_cons_function() -> ncl_ir::Function {
                 args: vec![first_loaded, second_loaded],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("sum")[0];
+    let sum = i64_to_word(&mut builder, sum);
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .expect("return");
@@ -211,10 +207,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         vec![Ty::Word],
     );
     assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
-    let constant = builder.add_constant(Constant::Fixnum(7));
-    let value = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .expect("constant")[0];
+    let value = fixnum_word(&mut builder, 7);
     builder
         .terminate(Terminator::Return {
             values: vec![value],

@@ -21,9 +21,9 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
                 .expect("callee argument")[0]
         })
         .collect::<Vec<_>>();
-    let mut result = arguments[0];
+    let mut result = word_to_i64(&mut callee_builder, arguments[0]);
     for (index, argument) in arguments.iter().copied().enumerate().skip(1) {
-        let mut weighted = argument;
+        let mut weighted = word_to_i64(&mut callee_builder, argument);
         for _ in 0..index {
             weighted = callee_builder
                 .push_op(
@@ -32,7 +32,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
                         args: vec![weighted, weighted],
                         condition: None,
                     },
-                    &[Ty::Word],
+                    &[Ty::I64],
                 )
                 .expect("double weighted argument")[0];
         }
@@ -43,10 +43,11 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
                     args: vec![result, weighted],
                     condition: None,
                 },
-                &[Ty::Word],
+                &[Ty::I64],
             )
             .expect("add weighted argument")[0];
     }
+    let result = i64_to_word(&mut callee_builder, result);
     callee_builder
         .terminate(Terminator::Return {
             values: vec![result],
@@ -64,7 +65,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
         vec![
             Param {
                 name: "callee".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "first".into(),
@@ -90,7 +91,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
         vec![Ty::Word],
     );
     let callee_value = caller_builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("callee address")[0];
     let arguments = (1..=5)
         .map(|index| {
@@ -99,10 +100,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
                 .expect("caller argument")[0]
         })
         .collect::<Vec<_>>();
-    let argc = caller_builder.add_constant(Constant::Fixnum(5));
-    let argc = caller_builder
-        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
-        .expect("callee argc")[0];
+    let argc = fixnum_word(&mut caller_builder, 5);
     caller_builder
         .push_op(OpKind::Safepoint, &[])
         .expect("call safepoint");

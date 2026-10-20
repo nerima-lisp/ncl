@@ -369,3 +369,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 #[path = "tests/registration.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/coverage.rs"]
+mod coverage_tests;

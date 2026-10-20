@@ -86,6 +86,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     for (index, parameter) in function.params.iter().enumerate() {
         if let Ok(value) = u32::try_from(index) {
             definitions.insert(ValueId(value), (position, parameter.ty));
+            block_param_values.insert(ValueId(value));
         }
     }
 
@@ -109,10 +110,10 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             if is_call(&op.kind) {
                 call_positions.insert(position);
             }
-            if matches!(op.kind, OpKind::Safepoint) {
+            if matches!(op.kind, OpKind::Safepoint | OpKind::Alloc { .. }) {
                 safepoint_positions.insert(position);
             }
-            if matches!(op.kind, OpKind::Safepoint) || is_call(&op.kind) {
+            if matches!(op.kind, OpKind::Safepoint | OpKind::Alloc { .. }) || is_call(&op.kind) {
                 safepoints.push(position);
             }
             position = position.saturating_add(1);
@@ -121,6 +122,15 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         operands_of_terminator(&block.terminator, &mut operands);
         for value in operands {
             last_use.insert(value, position);
+        }
+        if matches!(
+            block.terminator,
+            Terminator::CallReturn { .. } | Terminator::TailCall { .. }
+        ) {
+            call_positions.insert(position);
+        }
+        if matches!(block.terminator, Terminator::CallReturn { .. }) {
+            safepoints.push(position);
         }
         if matches!(block.terminator, Terminator::Jump { target, .. } if target == block.id) {
             safepoints.push(position);
@@ -147,12 +157,14 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             } else {
                 start
             };
-            let crosses_call = call_positions
-                .iter()
-                .any(|&call| start_bound < call && call <= end);
-            let crosses_safepoint = safepoint_positions
-                .iter()
-                .any(|&safepoint| start_bound < safepoint && safepoint <= end);
+            let crosses_call = call_positions.iter().any(|&call| {
+                (start_bound < call || (start == 0 && block_param_values.contains(&value)))
+                    && call <= end
+            });
+            let crosses_safepoint = safepoint_positions.iter().any(|&safepoint| {
+                (start_bound < safepoint || (start == 0 && block_param_values.contains(&value)))
+                    && safepoint <= end
+            });
             let crosses_handler = handler_values.contains(&value);
             LiveInterval {
                 value,
@@ -200,49 +212,30 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         locations.push((interval.value, location));
     }
 
-    let mut safepoint_registers = BTreeMap::new();
-    for point in safepoints {
-        let mut roots = locations
-            .iter()
-            .filter_map(|(value, location)| {
-                let interval = intervals.iter().find(|interval| interval.value == *value)?;
-                (*location).into_register().filter(|_| {
-                    interval.ty == Ty::Word && interval.start <= point && point <= interval.end
-                })
-            })
-            .collect::<Vec<_>>();
-        roots.sort_unstable();
-        roots.dedup();
-        safepoint_registers.insert(point, roots);
-    }
-    Allocation {
+    let mut allocation = Allocation {
         intervals,
         locations,
         spill_words: next_spill,
-        safepoint_registers,
+        safepoint_registers: BTreeMap::new(),
         outgoing_base: 0,
         incoming_args_base: None,
+    };
+    for point in safepoints {
+        let (registers, _) =
+            crate::machine_verify::root_locations_at(function, &allocation, point, 0);
+        allocation.safepoint_registers.insert(point, registers);
     }
+    allocation
 }
 
-impl Location {
-    const fn into_register(self) -> Option<u16> {
-        if let Self::Register(register) = self {
-            Some(register)
-        } else {
-            None
-        }
-    }
-}
-
-const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
+pub const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
     match target {
         AllocationTarget::X86_64 => &[11, 12, 13],
         AllocationTarget::AArch64 => &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     }
 }
 
-const fn is_call(kind: &OpKind) -> bool {
+pub const fn is_call(kind: &OpKind) -> bool {
     matches!(
         kind,
         OpKind::Call { .. }

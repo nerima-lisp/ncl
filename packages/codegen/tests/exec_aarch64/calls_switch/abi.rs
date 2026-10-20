@@ -49,7 +49,7 @@ fn initialize_probe_registers(assembler: &mut Assembler) {
             rn: RegOrSp::Reg(Reg(1)),
         },
     );
-    for register in [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] {
+    for register in [19, 20, 22, 23, 24, 25, 26, 27, 28, 29] {
         for instruction in ncl_asm_aarch64::mov_imm64(Reg(register), u64::from(register)) {
             emit_probe(assembler, &instruction);
         }
@@ -81,8 +81,22 @@ fn call_probe_target(assembler: &mut Assembler) {
 
 fn check_probe_registers(assembler: &mut Assembler, failed: Label) {
     for register in [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] {
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(18), u64::from(register)) {
-            emit_probe(assembler, &instruction);
+        if register == 21 {
+            emit_probe(
+                assembler,
+                &Inst::Ldr {
+                    rt: Reg(18),
+                    mem: MemOperand::Unsigned {
+                        base: RegOrSp::Sp,
+                        offset: 32,
+                        scale: 8,
+                    },
+                },
+            );
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(18), u64::from(register)) {
+                emit_probe(assembler, &instruction);
+            }
         }
         emit_probe(
             assembler,
@@ -183,10 +197,7 @@ fn generated_entry_preserves_aarch64_callee_saved_registers() {
         Vec::new(),
         vec![Ty::Word],
     );
-    let constant = builder.add_constant(Constant::Fixnum(73));
-    let value = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .expect("return value")[0];
+    let value = fixnum_word(&mut builder, 73);
     builder
         .terminate(Terminator::Return {
             values: vec![value],

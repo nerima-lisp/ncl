@@ -155,11 +155,22 @@ fn complex_branches_and_inverse_hyperbolics() {
             -expected.0.sin() * expected.1.sinh(),
         ),
     );
-    for name in [
-        "TAN", "SINH", "COSH", "TANH", "ASIN", "ACOS", "ATAN", "ASINH", "ACOSH", "ATANH",
+    for (name, expected) in [
+        ("TAN", (0.189_717_091_519_086_86, -0.639_835_930_263_18)),
+        ("SINH", (0.232_909_967_312_626_84, -0.673_425_559_952_578_9)),
+        ("COSH", (0.799_518_995_599_034_8, -0.196_177_359_161_461_2)),
+        ("TANH", (0.469_705_165_967_558_07, -0.727_037_186_243_519_9)),
+        ("ASIN", (0.245_732_006_101_079_7, -0.670_336_742_987_789_7)),
+        ("ACOS", (1.325_064_320_693_816_9, 0.670_336_742_987_789_7)),
+        ("ATAN", (0.480_035_181_202_844, -0.701_680_432_152_309_9)),
+        ("ASINH", (0.385_590_987_318_174_9, -0.708_903_440_965_505_2)),
+        ("ACOSH", (0.670_336_742_987_789_7, -1.325_064_320_693_816_9)),
+        (
+            "ATANH",
+            (0.199_881_896_029_629_27, -0.639_669_766_158_514_8),
+        ),
     ] {
-        let result = call_pair(&runtime, &mut ctx, name, &[z]);
-        assert!(result.0.is_finite() && result.1.is_finite());
+        close_pair(call_pair(&runtime, &mut ctx, name, &[z]), expected);
     }
     let negative_one = complex(&mut ctx, &runtime, -1.0, 0.0);
     close_pair(

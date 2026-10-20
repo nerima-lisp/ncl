@@ -4,7 +4,7 @@
 //! AST. Macroexpansion goes through [`MacroCaller`]; the expander never
 //! reverse-depends on the runtime.
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car};
+use ncl_object::{HeapRootedWord, ObjectRef, Runtime, ThreadContext, Word, car};
 
 use crate::ast::{Expr, LambdaExpr};
 use crate::compiler_macro::MacroRegistry;
@@ -168,7 +168,20 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns the first [`FrontError`] raised by any form.
     pub fn expand_all(&mut self, forms: &[Word]) -> Result<Vec<Expr>, FrontError> {
-        forms.iter().map(|form| self.expand(*form)).collect()
+        let rooted = self.root_forms(forms)?;
+        self.expand_rooted(&rooted)
+    }
+
+    fn root_forms(&self, forms: &[Word]) -> Result<Vec<HeapRootedWord>, FrontError> {
+        forms
+            .iter()
+            .copied()
+            .map(|form| HeapRootedWord::new(self.ctx, form).map_err(Into::into))
+            .collect()
+    }
+
+    fn expand_rooted(&mut self, forms: &[HeapRootedWord]) -> Result<Vec<Expr>, FrontError> {
+        forms.iter().map(|form| self.expand(form.get())).collect()
     }
 
     /// Split the leading `(declare ...)` forms from a body.

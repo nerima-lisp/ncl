@@ -3,7 +3,9 @@
 //! These methods resolve one form to an [`Expr`] or to a replacement that must
 //! be expanded again. They live apart from `expand` to keep both files small.
 
-use ncl_object::{ObjectRef, Package, Runtime, ThreadContext, Word, car, symbol_is_macro};
+use ncl_object::{
+    HeapRootedWord, ObjectRef, Package, Runtime, ThreadContext, Word, car, symbol_is_macro,
+};
 
 use crate::ast::{Expr, LocalMacro, Operator};
 use crate::error::FrontError;
@@ -84,26 +86,28 @@ impl<'a> FormExpander<'a> {
 
     /// Expand a cons form.
     fn expand_cons(&mut self, form: Word) -> Result<Step, FrontError> {
-        let elements = self.elements(form)?;
-        let Some((head, arguments)) = elements.split_first() else {
+        let form = HeapRootedWord::new(self.ctx, form)?;
+        let elements = self.elements(form.get())?;
+        let rooted_elements = self.root_forms(&elements)?;
+        let Some((head, arguments)) = rooted_elements.split_first() else {
             return Ok(Step::Done(Expr::Constant(Literal::Nil)));
         };
-        if head.is_cons() {
-            return self.expand_lambda_call(*head, arguments);
+        if head.get().is_cons() {
+            return self.expand_lambda_call(&rooted_elements);
         }
-        if !matches!(classify_form(self.ctx, *head), ObjectRef::Symbol(_)) {
+        if !matches!(classify_form(self.ctx, head.get()), ObjectRef::Symbol(_)) {
             return Err(FrontError::InvalidOperator {
                 detail: "operator is not a symbol".to_owned(),
             });
         }
-        let name = self.symbol(*head)?;
-        if self.is_named(*head, "LAMBDA")? {
+        let name = self.symbol(head.get())?;
+        if self.is_named(head.get(), "LAMBDA")? {
             return Ok(Step::Done(Expr::Lambda(Box::new(
-                self.expand_lambda(form)?,
+                self.expand_lambda(form.get())?,
             ))));
         }
         if let Some(kind) = SpecialForm::from_symbol(&name) {
-            return Ok(Step::Done(special::parse(self, kind, form)?));
+            return Ok(Step::Done(special::parse(self, kind, form.get())?));
         }
         if let Some(definition) = self.env.lookup_macro(&name) {
             let definition = definition.clone();
@@ -112,7 +116,7 @@ impl<'a> FormExpander<'a> {
                 self.ctx,
                 self.runtime,
                 &definition,
-                form,
+                form.get(),
             )?;
             return Ok(Step::Retry {
                 name,
@@ -138,14 +142,14 @@ impl<'a> FormExpander<'a> {
         } else {
             None
         };
-        if symbol_is_macro(self.ctx, *head)? || inherited_macro.is_some() {
+        if inherited_macro.is_some() || symbol_is_macro(self.ctx, head.get())? {
             let macro_name = inherited_macro.as_ref().unwrap_or(&name);
             let replacement = Self::call_global_macro(
                 &mut self.caller,
                 self.ctx,
                 self.runtime,
                 macro_name,
-                form,
+                form.get(),
             )?;
             return Ok(Step::Retry {
                 name: macro_name.clone(),
@@ -155,14 +159,14 @@ impl<'a> FormExpander<'a> {
         let registry = self.registry;
         if let Some(entry) = registry.lookup(&name)
             && entry.arity.accepts(arguments.len())
-            && let Some(replacement) = (entry.expander)(self.ctx, self.runtime, form)?
+            && let Some(replacement) = (entry.expander)(self.ctx, self.runtime, form.get())?
         {
             return Ok(Step::Retry {
                 name,
                 form: replacement,
             });
         }
-        let arguments = self.expand_all(arguments)?;
+        let arguments = self.expand_rooted(arguments)?;
         Ok(Step::Done(Expr::Call {
             operator: Operator::Name(name),
             arguments,
@@ -170,15 +174,18 @@ impl<'a> FormExpander<'a> {
     }
 
     /// Expand a call whose operator is a lambda expression.
-    fn expand_lambda_call(&mut self, head: Word, arguments: &[Word]) -> Result<Step, FrontError> {
-        let head_symbol = car(self.ctx, head)?;
+    fn expand_lambda_call(&mut self, elements: &[HeapRootedWord]) -> Result<Step, FrontError> {
+        let Some((head, arguments)) = elements.split_first() else {
+            return Ok(Step::Done(Expr::Constant(Literal::Nil)));
+        };
+        let head_symbol = car(self.ctx, head.get())?;
         if !self.is_named(head_symbol, "LAMBDA")? {
             return Err(FrontError::InvalidOperator {
                 detail: "operator is neither a symbol nor a lambda expression".to_owned(),
             });
         }
-        let lambda = self.expand_lambda(head)?;
-        let arguments = self.expand_all(arguments)?;
+        let lambda = self.expand_lambda(head.get())?;
+        let arguments = self.expand_rooted(arguments)?;
         Ok(Step::Done(Expr::Call {
             operator: Operator::Lambda(Box::new(lambda)),
             arguments,

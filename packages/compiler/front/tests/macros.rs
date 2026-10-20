@@ -71,6 +71,25 @@ fn a_global_macro_is_expanded_through_the_caller() {
 }
 
 #[test]
+fn user_call_arguments_survive_gc_during_inherited_macro_lookup() {
+    let mut f = Fixture::new();
+    let operator_name = "GC-ROOTED-CALL-OPERATOR";
+    let _ = f.user(operator_name);
+    for _ in 0..3 {
+        f.ctx.collect(true).expect("collection");
+    }
+    let operator = f.user(operator_name);
+    let argument = f.user("GC-ROOTED-CALL-ARGUMENT");
+    let form = f.list(&[operator, argument]);
+
+    f.ctx.set_gc_stress(true);
+    f.ctx.set_strict_forwarding(true);
+    let expanded = f.expand(form).expect("expand user call");
+
+    assert!(matches!(expanded, Expr::Call { .. }));
+}
+
+#[test]
 fn a_macro_without_a_caller_reports_a_failure() {
     let mut f = Fixture::new();
     let macro_name = f.intern("COMMON-LISP-USER", "MY-MACRO");

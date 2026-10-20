@@ -1,22 +1,10 @@
-use crate::array::{length, read, write};
+use crate::array::{length, read, validate_element, write};
 use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 
 use ncl_sys::Word;
 
 fn kind(ctx: &ThreadContext, object: Word) -> Result<ArrayElementType, ObjectError> {
     ArrayElementType::from_word(read(ctx, object, 0, layout::widetag::SPECIALIZED_ARRAY)?)
-}
-
-fn validate(kind: ArrayElementType, value: Word) -> Result<Word, ObjectError> {
-    let valid = match kind {
-        ArrayElementType::Bit => matches!(value.as_fixnum(), Some(0 | 1)),
-        ArrayElementType::Character | ArrayElementType::BaseChar => value.is_character(),
-        ArrayElementType::Fixnum | ArrayElementType::Signed | ArrayElementType::Unsigned => {
-            value.as_fixnum().is_some()
-        }
-        ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
-    };
-    valid.then_some(value).ok_or(ObjectError::TypeError)
 }
 
 /// Allocate a specialized array from encoded element words.
@@ -34,7 +22,7 @@ pub fn make_specialized_array(
         return Err(ObjectError::TypeError);
     }
     for value in values.iter().copied() {
-        validate(element_type, value)?;
+        validate_element(ctx, element_type, value)?;
     }
     with_roots(ctx, values, |ctx, values| {
         let object = allocate(
@@ -96,7 +84,8 @@ pub fn specialized_array_ref(
     if index >= len {
         return Err(ObjectError::TypeError);
     }
-    validate(
+    validate_element(
+        ctx,
         kind(ctx, object)?,
         read(ctx, object, 2 + index, layout::widetag::SPECIALIZED_ARRAY)?,
     )
@@ -121,7 +110,7 @@ pub fn specialized_array_set(
         ctx,
         object,
         2 + index,
-        validate(kind(ctx, object)?, value)?,
+        validate_element(ctx, kind(ctx, object)?, value)?,
         layout::widetag::SPECIALIZED_ARRAY,
     )
 }

@@ -82,6 +82,98 @@ fn specialized_and_displaced_arrays_cover_element_validation() {
 }
 
 #[test]
+fn signed_and_unsigned_arrays_validate_bignum_elements() {
+    let (runtime, mut context) = setup();
+    let negative = make_bignum_from_i128(&mut context, &runtime, -(1_i128 << 70))
+        .unwrap_or_else(|error| panic!("negative bignum: {error:?}"))
+        .into();
+    let positive = make_bignum_from_i128(&mut context, &runtime, 1_i128 << 70)
+        .unwrap_or_else(|error| panic!("positive bignum: {error:?}"))
+        .into();
+    let signed = ncl_object::make_specialized_array(
+        &mut context,
+        &runtime,
+        ArrayElementType::Signed,
+        &[negative],
+    )
+    .unwrap_or_else(|error| panic!("signed array: {error:?}"));
+    assert_eq!(specialized_array_ref(&context, signed, 0), Ok(negative));
+    assert!(specialized_array_set(&mut context, signed, 0, positive).is_ok());
+    assert_eq!(specialized_array_ref(&context, signed, 0), Ok(positive));
+
+    let unsigned = ncl_object::make_specialized_array(
+        &mut context,
+        &runtime,
+        ArrayElementType::Unsigned,
+        &[positive],
+    )
+    .unwrap_or_else(|error| panic!("unsigned array: {error:?}"));
+    assert_eq!(specialized_array_ref(&context, unsigned, 0), Ok(positive));
+    assert_eq!(
+        specialized_array_set(&mut context, unsigned, 0, negative),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        specialized_array_set(&mut context, unsigned, 0, Word::fixnum(-1)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ncl_object::make_specialized_array(
+            &mut context,
+            &runtime,
+            ArrayElementType::Fixnum,
+            &[positive],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let options = |element_type, initial_element| ArrayOptions {
+        element_type,
+        initial_element,
+        adjustable: false,
+        fill_pointer: None,
+        displaced_to: None,
+        displaced_index_offset: 0,
+    };
+    let general_signed = make_array(
+        &mut context,
+        &runtime,
+        &[1],
+        options(ArrayElementType::Signed, negative),
+    )
+    .unwrap_or_else(|error| panic!("general signed array: {error:?}"));
+    assert_eq!(
+        array_row_major_ref(&context, general_signed, 0),
+        Ok(negative)
+    );
+    assert!(array_row_major_set(&mut context, general_signed, 0, positive).is_ok());
+    assert_eq!(
+        array_row_major_ref(&context, general_signed, 0),
+        Ok(positive)
+    );
+
+    let general_unsigned = make_array(
+        &mut context,
+        &runtime,
+        &[1],
+        options(ArrayElementType::Unsigned, positive),
+    )
+    .unwrap_or_else(|error| panic!("general unsigned array: {error:?}"));
+    assert_eq!(
+        array_row_major_ref(&context, general_unsigned, 0),
+        Ok(positive)
+    );
+    assert_eq!(
+        array_row_major_set(&mut context, general_unsigned, 0, negative),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        array_row_major_set(&mut context, general_unsigned, 0, Word::fixnum(-1)),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
 fn registry_and_root_error_values_are_stable() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut context = ThreadContext::new();

@@ -51,6 +51,21 @@ use keyword_impl::install_keyword_builtins;
 #[path = "arith_fast.rs"]
 mod arith_fast;
 pub use arith_fast::install as install_arith_fast;
+
+pub fn unregister_heap_roots(
+    object: &ObjectRuntime,
+    tokens: impl IntoIterator<Item = ncl_sys::RootToken>,
+) -> Result<(), ncl_object::ObjectError> {
+    let mut first_error = None;
+    for token in tokens {
+        if let Err(error) = ncl_object::unregister_heap_root(object, token)
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
 /// `(primary value, value count)`, the pair a native entry already returns to
 /// `invoke_entry_with_function_address` (value in the first return register,
 /// count in the second): `#[repr(C)]` with two eight-byte integer fields is
@@ -177,7 +192,7 @@ extern "C" fn make_rest_list_native(
                 let result = FunctionObject::try_from(rooted_function)
                     .and_then(|function| object.call_builtin(context, function, &arguments));
                 let function_popped = ncl_object::unregister_heap_root(object, function_token);
-                if !function_popped {
+                if function_popped.is_err() {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                     return Word::NIL.bits();
                 }
@@ -189,11 +204,8 @@ extern "C" fn make_rest_list_native(
                     }
                 }
             })();
-            let arguments_popped = argument_tokens
-                .into_iter()
-                .rev()
-                .all(|token| ncl_object::unregister_heap_root(object, token));
-            if !arguments_popped {
+            let arguments_popped = unregister_heap_roots(object, argument_tokens.into_iter().rev());
+            if arguments_popped.is_err() {
                 context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                 return Word::NIL.bits();
             }
@@ -280,7 +292,7 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
                 let result = FunctionObject::try_from(rooted_function)
                     .and_then(|function| object.call_builtin(context, function, &arguments));
                 let function_popped = ncl_object::unregister_heap_root(object, function_token);
-                if !function_popped {
+                if function_popped.is_err() {
                     context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                     return Word::NIL.bits();
                 }
@@ -292,11 +304,8 @@ fn call_keyword_builtin(thread_ptr: *mut Thread, name: &str, words: &[u64]) -> u
                     }
                 }
             })();
-            let arguments_popped = argument_tokens
-                .into_iter()
-                .rev()
-                .all(|token| ncl_object::unregister_heap_root(object, token));
-            if !arguments_popped {
+            let arguments_popped = unregister_heap_roots(object, argument_tokens.into_iter().rev());
+            if arguments_popped.is_err() {
                 context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
                 return Word::NIL.bits();
             }

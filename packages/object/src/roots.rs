@@ -36,8 +36,11 @@ pub fn pop_heap_root(runtime: &Runtime, token: RootToken) -> bool {
 }
 
 /// Remove a precise root from the runtime's heap-level registry by its token.
-pub fn unregister_heap_root(runtime: &Runtime, token: RootToken) -> bool {
-    ncl_sys::unregister_heap_root(&runtime.heap, token)
+///
+/// # Errors
+/// Returns [`ObjectError::RootStackCorrupted`] when the token is invalid.
+pub fn unregister_heap_root(runtime: &Runtime, token: RootToken) -> Result<(), ObjectError> {
+    ncl_sys::unregister_heap_root(&runtime.heap, token).map_err(|_| ObjectError::RootStackCorrupted)
 }
 
 /// A stable slot registered as a root in the runtime's heap-level registry.
@@ -84,19 +87,18 @@ impl HeapRootedWord {
         let Some(token) = self.token else {
             return Err(ObjectError::RootStackCorrupted);
         };
-        if self.heap.unregister_root(token) {
-            self.token = None;
-            Ok(())
-        } else {
-            Err(ObjectError::RootStackCorrupted)
-        }
+        self.heap
+            .unregister_root(token)
+            .map_err(|_| ObjectError::RootStackCorrupted)?;
+        self.token = None;
+        Ok(())
     }
 }
 
 impl Drop for HeapRootedWord {
     fn drop(&mut self) {
         if let Some(token) = self.token.take()
-            && !self.heap.unregister_root(token)
+            && self.heap.unregister_root(token).is_err()
         {
             // Keep the slot alive if the registry still holds its pointer.
             std::mem::forget(Rc::clone(&self.slot));

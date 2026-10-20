@@ -1,6 +1,6 @@
 use super::{
     FunctionObject, NativeCallResult, NativeInvocation, ObjectRuntime, ThreadContext, Word,
-    error_result, ok_result,
+    error_result, ok_result, unregister_heap_roots,
 };
 
 /// Record an error at the native boundary without retaining a transient exit.
@@ -57,12 +57,9 @@ pub(super) fn dispatch_with_context(
         .collect::<Vec<_>>();
     let result = FunctionObject::try_from(rooted_function)
         .and_then(|function| object.call_builtin(context, function, &rooted_words));
-    let arguments_popped = argument_tokens
-        .into_iter()
-        .rev()
-        .all(|token| ncl_object::unregister_heap_root(object, token));
+    let arguments_popped = unregister_heap_roots(object, argument_tokens.into_iter().rev());
     let function_popped = ncl_object::unregister_heap_root(object, function_token);
-    if !arguments_popped || !function_popped {
+    if arguments_popped.is_err() || function_popped.is_err() {
         context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
         return error_result();
     }

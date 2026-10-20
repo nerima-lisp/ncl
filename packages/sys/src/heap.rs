@@ -13,6 +13,7 @@ mod collect;
 mod roots;
 #[path = "heap/scan.rs"]
 mod scan;
+pub use roots::HeapRootError;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;

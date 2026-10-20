@@ -3,6 +3,13 @@ use crate::heap_state::State;
 use crate::{RootToken, Word};
 use core::cell::Cell;
 
+/// Failure to remove a heap root.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapRootError {
+    /// The token does not identify an active root in this heap.
+    InvalidToken,
+}
+
 fn trim_root_tombstones(state: &mut State) {
     let State {
         roots,
@@ -81,9 +88,13 @@ impl Heap {
     /// Remove a heap root by its token, regardless of insertion order.
     ///
     /// This is for owners that cannot wait for newer roots to be removed.
-    pub fn unregister_root(&self, token: RootToken) -> bool {
+    ///
+    /// # Errors
+    /// Returns [`HeapRootError::InvalidToken`] when the token is not active in
+    /// this heap.
+    pub fn unregister_root(&self, token: RootToken) -> Result<(), HeapRootError> {
         if token.count != 1 || token.generation == 0 || token.heap_id != self.root_namespace {
-            return false;
+            return Err(HeapRootError::InvalidToken);
         }
         let mut state = self.lock_state();
         {
@@ -93,22 +104,22 @@ impl Heap {
                 ..
             } = &mut *state;
             let Some(generation) = root_generations.get_mut(token.index) else {
-                return false;
+                return Err(HeapRootError::InvalidToken);
             };
             if *generation != token.generation {
-                return false;
+                return Err(HeapRootError::InvalidToken);
             }
             let Some(root) = roots.get_mut(token.index) else {
-                return false;
+                return Err(HeapRootError::InvalidToken);
             };
             if root.is_null() {
-                return false;
+                return Err(HeapRootError::InvalidToken);
             }
             *root = std::ptr::null_mut();
             *generation = 0;
         }
         trim_root_tombstones(&mut state);
         drop(state);
-        true
+        Ok(())
     }
 }

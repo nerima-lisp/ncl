@@ -28,8 +28,8 @@ pub use code::{
 pub use codegen::{set_tlab, tlab_bump};
 pub use function_address::{FunctionAddressError, function_address};
 pub use heap::{
-    Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
-    Weakness,
+    Finalizer, Heap, HeapConfig, HeapRootError, LayoutError, PageKind, ReferenceLayout,
+    StorageCondition, TypeTag, Weakness,
 };
 pub use invoke::{invoke_entry, invoke_entry_with_function, invoke_entry_with_function_address};
 pub use native_builtins::{
@@ -366,7 +366,11 @@ pub fn pop_heap_root(heap: &Heap, token: RootToken) -> bool {
 }
 
 /// Remove a heap-level root by its token, regardless of insertion order.
-pub fn unregister_heap_root(heap: &Heap, token: RootToken) -> bool {
+///
+/// # Errors
+/// Returns [`HeapRootError::InvalidToken`] when the token is not active in
+/// this heap.
+pub fn unregister_heap_root(heap: &Heap, token: RootToken) -> Result<(), HeapRootError> {
     heap.unregister_root(token)
 }
 

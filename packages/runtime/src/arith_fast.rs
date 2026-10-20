@@ -20,12 +20,12 @@ use std::ptr::NonNull;
 
 use ncl_object::{
     BuiltinIdentifier, BuiltinName, BuiltinPackage, FunctionObject, Package,
-    Runtime as ObjectRuntime, Word, push_heap_root, symbol_function, unregister_heap_root,
+    Runtime as ObjectRuntime, Word, push_heap_root, symbol_function,
 };
 use ncl_sys::{Thread, with_native_context};
 
 use crate::RuntimeError;
-use crate::builtin_trampoline::record_boundary_error;
+use crate::builtin_trampoline::{record_boundary_error, unregister_heap_roots};
 use crate::support::NativeInvocation;
 
 /// Call the generic Common Lisp `name` builtin with two rooted arguments,
@@ -65,11 +65,8 @@ fn call_generic_binary(thread: NonNull<Thread>, name: &str, left: Word, right: W
                 }
             }
         })();
-        let arguments_popped = argument_tokens
-            .into_iter()
-            .rev()
-            .all(|token| unregister_heap_root(object, token));
-        if !arguments_popped {
+        let arguments_popped = unregister_heap_roots(object, argument_tokens.into_iter().rev());
+        if arguments_popped.is_err() {
             context.set_pending(ncl_object::ObjectError::RootStackCorrupted);
             return Word::NIL.bits();
         }

@@ -1,5 +1,5 @@
-use super::{build_x86_64_stub, record_boundary_error};
-use ncl_object::{ObjectError, ThreadContext};
+use super::{build_x86_64_stub, record_boundary_error, unregister_heap_roots};
+use ncl_object::{ObjectError, ThreadContext, Word, push_heap_root, unregister_heap_root};
 
 #[test]
 fn x86_stub_places_pinned_arguments_in_sysv_stack_slots() -> Result<(), String> {
@@ -45,4 +45,27 @@ fn boundary_regular_error_is_recorded() {
     record_boundary_error(&mut context, ObjectError::TypeError);
     // check-added-lines: allow(panic) test-only
     assert_eq!(context.take_pending(), Some(ObjectError::TypeError));
+}
+
+#[test]
+fn unregister_heap_roots_attempts_every_token_after_an_error() -> Result<(), String> {
+    let object = ncl_object::Runtime::new().map_err(|error| format!("runtime init: {error}"))?;
+    let mut stale_value = Word::NIL;
+    let stale_token = push_heap_root(&object, &mut stale_value);
+    unregister_heap_root(&object, stale_token)
+        .map_err(|error| format!("initial unregister: {error}"))?;
+    let mut live_value = Word::TRUE;
+    let live_token = push_heap_root(&object, &mut live_value);
+
+    let result = unregister_heap_roots(&object, [stale_token, live_token]);
+    if result != Err(ObjectError::RootStackCorrupted) {
+        return Err(format!("expected root error, got {result:?}"));
+    }
+    let second_unregister = unregister_heap_root(&object, live_token);
+    if second_unregister != Err(ObjectError::RootStackCorrupted) {
+        return Err(format!(
+            "live token was not released: {second_unregister:?}"
+        ));
+    }
+    Ok(())
 }

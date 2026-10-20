@@ -317,6 +317,9 @@ fn eval_top_level_inner(
             RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
         })?;
     }
+    result_root.release().map_err(|_| {
+        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
+    })?;
     evaluated
 }
 
@@ -376,7 +379,16 @@ fn wrap_top_level_form(
             wrapped.get(),
         )?);
     }
-    Ok(wrapped.get())
+    let result = wrapped.get();
+    for word in words.into_iter().rev() {
+        word.release().map_err(|_| {
+            RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
+        })?;
+    }
+    wrapped.release().map_err(|_| {
+        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
+    })?;
+    Ok(result)
 }
 
 /// Evaluate `form`, keeping both it and the reader's readtable rooted across

@@ -355,14 +355,17 @@ fn heap_level_roots_and_after_gc_hooks_are_released() {
     let mut second_value = Word::TRUE;
     let second_token = ncl_sys::push_heap_root(&heap, &mut second_value);
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
-    assert!(heap.unregister_root(heap_token));
+    assert_eq!(heap.unregister_root(heap_token), Ok(()));
     assert!(ncl_sys::pop_heap_root(&heap, second_token));
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
     let mut reused_value = Word::NIL;
     let reused_token = ncl_sys::push_heap_root(&heap, &mut reused_value);
-    assert!(!heap.unregister_root(heap_token));
+    assert_eq!(
+        heap.unregister_root(heap_token),
+        Err(ncl_sys::HeapRootError::InvalidToken)
+    );
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
-    assert!(heap.unregister_root(reused_token));
+    assert_eq!(heap.unregister_root(reused_token), Ok(()));
     ncl_sys::register_after_gc_hook(&heap, hook);
     collect(&mut thread, true);
     ncl_sys::register_finalizer(&thread, value, finalizer);
@@ -379,9 +382,18 @@ fn heap_root_tokens_cannot_remove_roots_from_another_heap() {
     let mut second_value = Word::NIL;
     let second_token = ncl_sys::push_heap_root(&second_heap, &mut second_value);
 
-    assert!(!ncl_sys::unregister_heap_root(&second_heap, first_token));
-    assert!(ncl_sys::unregister_heap_root(&second_heap, second_token));
-    assert!(ncl_sys::unregister_heap_root(&first_heap, first_token));
+    assert_eq!(
+        ncl_sys::unregister_heap_root(&second_heap, first_token),
+        Err(ncl_sys::HeapRootError::InvalidToken)
+    );
+    assert_eq!(
+        ncl_sys::unregister_heap_root(&second_heap, second_token),
+        Ok(())
+    );
+    assert_eq!(
+        ncl_sys::unregister_heap_root(&first_heap, first_token),
+        Ok(())
+    );
 }
 
 #[test]

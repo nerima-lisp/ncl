@@ -1,6 +1,9 @@
 #![allow(missing_docs)]
 
-use ncl_object::{Runtime, ThreadContext, Word, pop_root, push_root, try_pop_root, try_push_root};
+use ncl_object::{
+    ObjectError, Runtime, ThreadContext, Word, pop_root, push_heap_root, push_root, try_pop_root,
+    try_push_root, unregister_heap_root,
+};
 
 fn setup() -> (Runtime, Box<ThreadContext>) {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -58,4 +61,17 @@ fn try_pop_root_allows_a_context_moved_after_registration() {
     let mut moved = Box::new(*ctx);
 
     assert_eq!(try_pop_root(&mut moved, token), Ok(true));
+}
+
+#[test]
+fn unregister_heap_root_reports_invalid_tokens() {
+    let (runtime, _ctx) = setup();
+    let mut value = Word::TRUE;
+    let token = push_heap_root(&runtime, &mut value);
+
+    assert_eq!(unregister_heap_root(&runtime, token), Ok(()));
+    assert_eq!(
+        unregister_heap_root(&runtime, token),
+        Err(ObjectError::RootStackCorrupted)
+    );
 }

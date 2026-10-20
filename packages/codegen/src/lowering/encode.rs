@@ -12,6 +12,9 @@ pub(super) fn encode(
     mut machine: MachineFunction,
     abi: &dyn RuntimeAbi,
 ) -> Result<CompiledFunction, CodegenError> {
+    machine
+        .verify()
+        .map_err(|error| CodegenError::Encode(format!("machine verification failed: {error:?}")))?;
     let mut assembler = Assembler::new();
     let labels: HashMap<_, _> = machine
         .blocks

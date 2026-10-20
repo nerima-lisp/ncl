@@ -32,7 +32,9 @@ pub use abi::{
 };
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
-pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
+pub use machine::{
+    Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp, MachineVerifyError,
+};
 pub use regalloc::{Allocation, AllocationTarget, LiveInterval, Location, allocate};
 pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
 pub use safepoint::{

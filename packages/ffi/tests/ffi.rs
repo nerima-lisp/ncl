@@ -51,29 +51,12 @@ fn arity_mismatch_is_reported_before_marshalling() {
 
 #[test]
 fn a_bad_argument_is_rejected_before_the_call() {
-#[test]
-fn exact_path_loader_rejects_relative_paths_and_lazy_mode() {
     fixture!(runtime, ctx);
     let routine = alien_routine("f", vec![AlienType::Int], AlienType::Int, true);
     let error = alien_funcall(&ctx, &runtime, &routine, &[Word::character(65)]).unwrap_err();
     assert!(matches!(error, FfiError::TypeMismatch { .. }));
-    let address = allocate_system_memory(16).unwrap();
-    assert!(matches!(
-        sap_ref(
-            &mut ctx,
-            &runtime,
-            &AlienType::Int,
-            SystemAreaPointer::new(0x1000),
-            0,
-        ),
-        Err(FfiError::ForeignMemory(
-            ncl_sys::foreign::ForeignError::UnknownRegion
-        ))
-    ));
-    deallocate_system_memory(address, 16).unwrap();
 }
 
-#[cfg(all(target_family = "unix", target_arch = "x86_64", target_os = "macos"))]
 #[test]
 fn a_well_typed_call_reaches_the_missing_sys_primitive() {
     fixture!(runtime, ctx);
@@ -110,12 +93,23 @@ fn dynamic_loading_reports_the_missing_wrappers() {
     );
 }
 
+#[test]
+fn unmanaged_memory_rejects_untracked_addresses() {
     fixture!(runtime, ctx);
-        &mut ctx,
-        &runtime,
-        &bound,
-        &[pointer_word, Word::fixnum(0x5a), Word::fixnum(1)],
-    )
+    let address = allocate_system_memory(16).unwrap();
+    assert!(matches!(
+        sap_ref(
+            &mut ctx,
+            &runtime,
+            &AlienType::Int,
+            SystemAreaPointer::new(0x1000),
+            0,
+        ),
+        Err(FfiError::ForeignMemory(
+            ncl_sys::foreign::ForeignError::UnknownRegion
+        ))
+    ));
+    deallocate_system_memory(address, 16).unwrap();
 }
 
 #[test]

@@ -387,6 +387,57 @@ fn lowers_unary_increment_and_decrement_as_builtins() {
 }
 
 #[test]
+fn lowers_local_unary_arithmetic_names_as_functions() {
+    let mut fx = Fixture::new();
+
+    for name in ["1+", "1-"] {
+        let function = fx.cl(name);
+        let argument = fx.user("X");
+        let lambda_list = fx.list(&[argument]);
+        let definition = fx.list(&[function, lambda_list, argument]);
+        let definitions = fx.list(&[definition]);
+        let call = fx.list(&[function, Word::fixnum(4)]);
+        let form = fx.form("FLET", &[definitions, call]);
+        let expr = fx.expand(form).expect("expand local unary function");
+        let lowered = lower_toplevel(&expr).expect("lower local unary function");
+
+        assert_verifies(&lowered.entry);
+        assert!(!any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::Builtin { name: builtin, .. } if builtin == name
+        )));
+        assert!(any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::CallClosure { .. }
+        )));
+    }
+}
+
+#[test]
+fn lowers_non_common_lisp_unary_arithmetic_names_as_functions() {
+    let mut fx = Fixture::new();
+
+    for name in ["1+", "1-"] {
+        let function = fx.intern("NCL-TEST", name);
+        let form = fx.list(&[function, Word::fixnum(4)]);
+        let expr = fx
+            .expand(form)
+            .expect("expand package-local unary function");
+        let lowered = lower_toplevel(&expr).expect("lower package-local unary function");
+
+        assert_verifies(&lowered.entry);
+        assert!(!any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::Builtin { name: builtin, .. } if builtin == name
+        )));
+        assert!(any_op(&lowered.entry, |kind| matches!(
+            kind,
+            OpKind::CallClosure { .. }
+        )));
+    }
+}
+
+#[test]
 fn lowers_catch_throw_with_a_handler_region() {
     let mut fx = Fixture::new();
     let catch = fx.cl("CATCH");

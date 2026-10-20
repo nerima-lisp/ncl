@@ -58,24 +58,9 @@ fn build_cons_function() -> ncl_ir::Function {
     let object = builder
         .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
         .expect("allocation")[0];
-    let first_constant = builder.add_constant(Constant::Fixnum(10));
-    let car = builder
-        .push_op(
-            OpKind::Const {
-                result: first_constant,
-            },
-            &[Ty::Word],
-        )
-        .expect("car")[0];
-    let second_constant = builder.add_constant(Constant::Fixnum(20));
-    let cdr = builder
-        .push_op(
-            OpKind::Const {
-                result: second_constant,
-            },
-            &[Ty::Word],
-        )
-        .expect("cdr")[0];
+    let object_word = convert(&mut builder, Convert::AddressToWord, object, Ty::Word);
+    let car = fixnum_word(&mut builder, 10);
+    let cdr = fixnum_word(&mut builder, 20);
     // A cons cell has no header word (`Prim::Car`/`Prim::Cdr` below read it
     // directly at byte offsets 0/8), so it must be filled in with the
     // matching headerless `Rplaca`/`Rplacd` primitives rather than the
@@ -84,27 +69,27 @@ fn build_cons_function() -> ncl_ir::Function {
         .push_op(
             OpKind::Prim {
                 op: Prim::Rplaca,
-                args: vec![object, car],
+                args: vec![object_word, car],
                 condition: None,
             },
-            &[],
+            &[Ty::Unit],
         )
         .expect("store car");
     builder
         .push_op(
             OpKind::Prim {
                 op: Prim::Rplacd,
-                args: vec![object, cdr],
+                args: vec![object_word, cdr],
                 condition: None,
             },
-            &[],
+            &[Ty::Unit],
         )
         .expect("store cdr");
     let first_loaded = builder
         .push_op(
             OpKind::Prim {
                 op: Prim::Car,
-                args: vec![object],
+                args: vec![object_word],
                 condition: None,
             },
             &[Ty::Word],
@@ -114,12 +99,14 @@ fn build_cons_function() -> ncl_ir::Function {
         .push_op(
             OpKind::Prim {
                 op: Prim::Cdr,
-                args: vec![object],
+                args: vec![object_word],
                 condition: None,
             },
             &[Ty::Word],
         )
         .expect("load cdr")[0];
+    let first_loaded = convert(&mut builder, Convert::WordToI64, first_loaded, Ty::I64);
+    let second_loaded = convert(&mut builder, Convert::WordToI64, second_loaded, Ty::I64);
     let sum = builder
         .push_op(
             OpKind::Prim {
@@ -127,9 +114,10 @@ fn build_cons_function() -> ncl_ir::Function {
                 args: vec![first_loaded, second_loaded],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("sum")[0];
+    let sum = convert(&mut builder, Convert::I64ToWord, sum, Ty::Word);
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .expect("return");
@@ -220,10 +208,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         vec![Ty::Word],
     );
     assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
-    let constant = builder.add_constant(Constant::Fixnum(7));
-    let value = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .expect("constant")[0];
+    let value = fixnum_word(&mut builder, 7);
     builder
         .terminate(Terminator::Return {
             values: vec![value],
@@ -361,7 +346,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
             name: "function".into(),
             ty: Ty::Word,
         }],
-        vec![],
+        vec![Ty::Word],
     );
     let live_local = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])

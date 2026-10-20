@@ -8,12 +8,11 @@ fn executes_constant_return_in_published_code() {
         Vec::new(),
         vec![Ty::Word],
     );
-    let constant = builder.add_constant(Constant::Fixnum(42));
-    let values = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .expect("constant operation");
+    let value = fixnum_word(&mut builder, 42);
     builder
-        .terminate(Terminator::Return { values })
+        .terminate(Terminator::Return {
+            values: vec![value],
+        })
         .expect("return terminator");
     let abi = Aarch64Abi;
     let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
@@ -42,12 +41,23 @@ fn executes_immediate_constants_as_words() {
             Vec::new(),
             vec![Ty::Word],
         );
+        let is_fixnum = matches!(&constant, Constant::Fixnum(_));
         let constant = builder.add_constant(constant);
         let values = builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+            .push_op(
+                OpKind::Const { result: constant },
+                &[if is_fixnum { Ty::I64 } else { Ty::Word }],
+            )
             .expect("constant operation");
+        let value = if is_fixnum {
+            convert(&mut builder, Convert::I64ToWord, values[0], Ty::Word)
+        } else {
+            values[0]
+        };
         builder
-            .terminate(Terminator::Return { values })
+            .terminate(Terminator::Return {
+                values: vec![value],
+            })
             .expect("return terminator");
         let compiled = compile_function_aarch64(&builder.finish(), &Aarch64Abi).expect("lowering");
         let mut code = alloc_code(compiled.code.len()).expect("code allocation");

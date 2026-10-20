@@ -9,7 +9,7 @@ fn executes_recursive_fib_twenty_five() {
         vec![
             Param {
                 name: "callee".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "n".into(),
@@ -19,45 +19,32 @@ fn executes_recursive_fib_twenty_five() {
         vec![Ty::Word],
     );
     let callee = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .expect("callee argument")[0];
     let n = builder
         .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
         .expect("n argument")[0];
-    let one = builder.add_constant(Constant::Fixnum(1));
-    let one = builder
-        .push_op(OpKind::Const { result: one }, &[Ty::Word])
-        .expect("one")[0];
-    let two = builder.add_constant(Constant::Fixnum(2));
-    let two = builder
-        .push_op(OpKind::Const { result: two }, &[Ty::Word])
-        .expect("two")[0];
-    let argc_one = builder.add_constant(Constant::Fixnum(1));
-    let argc_one = builder
-        .push_op(OpKind::Const { result: argc_one }, &[Ty::Word])
-        .expect("argc one")[0];
-    let argc_two = builder.add_constant(Constant::Fixnum(2));
-    let argc_two = builder
-        .push_op(OpKind::Const { result: argc_two }, &[Ty::Word])
-        .expect("argc two")[0];
+    let one = fixnum_i64(&mut builder, 1);
+    let two = fixnum_i64(&mut builder, 2);
+    let argc_one = fixnum_word(&mut builder, 1);
+    let argc_two = fixnum_word(&mut builder, 2);
+    let n_i64 = word_to_i64(&mut builder, n);
     let condition = builder
         .push_op(
             OpKind::Compare {
                 op: Compare::Le,
-                left: n,
+                left: n_i64,
                 right: one,
             },
-            &[Ty::Word],
+            &[Ty::Bool],
         )
         .expect("base comparison")[0];
     let base_n = builder.fresh_value();
     let recursive_callee = builder.fresh_value();
     let recursive_n = builder.fresh_value();
     let base = builder.create_block(vec![(Ty::Word, base_n)]);
-    let recursive = builder.create_block(vec![
-        (Ty::Address, recursive_callee),
-        (Ty::Word, recursive_n),
-    ]);
+    let recursive =
+        builder.create_block(vec![(Ty::Word, recursive_callee), (Ty::Word, recursive_n)]);
     builder.position_at(ncl_ir::BlockId(0)).expect("entry");
     builder
         .terminate(Terminator::Branch {
@@ -75,16 +62,18 @@ fn executes_recursive_fib_twenty_five() {
         })
         .expect("base return");
     builder.position_at(recursive).expect("recursive");
+    let recursive_n_i64 = word_to_i64(&mut builder, recursive_n);
     let n_minus_one = builder
         .push_op(
             OpKind::Prim {
                 op: Prim::FixnumSub,
-                args: vec![recursive_n, one],
+                args: vec![recursive_n_i64, one],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("n minus one")[0];
+    let n_minus_one = i64_to_word(&mut builder, n_minus_one);
     let first = builder
         .push_op(
             OpKind::Call {
@@ -98,12 +87,13 @@ fn executes_recursive_fib_twenty_five() {
         .push_op(
             OpKind::Prim {
                 op: Prim::FixnumSub,
-                args: vec![recursive_n, two],
+                args: vec![recursive_n_i64, two],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("n minus two")[0];
+    let n_minus_two = i64_to_word(&mut builder, n_minus_two);
     let second = builder
         .push_op(
             OpKind::Call {
@@ -113,6 +103,8 @@ fn executes_recursive_fib_twenty_five() {
             &[Ty::Word],
         )
         .expect("second recursive call")[0];
+    let first = word_to_i64(&mut builder, first);
+    let second = word_to_i64(&mut builder, second);
     let sum = builder
         .push_op(
             OpKind::Prim {
@@ -120,9 +112,10 @@ fn executes_recursive_fib_twenty_five() {
                 args: vec![first, second],
                 condition: None,
             },
-            &[Ty::Word],
+            &[Ty::I64],
         )
         .expect("sum")[0];
+    let sum = i64_to_word(&mut builder, sum);
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .expect("recursive return");

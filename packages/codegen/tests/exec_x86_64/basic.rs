@@ -8,12 +8,12 @@ fn executes_constant_return_in_published_code() {
         Vec::new(),
         vec![Ty::Word],
     );
-    let constant = builder.add_constant(Constant::Fixnum(42));
-    let values = builder
-        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-        .expect("constant operation");
+    let constant = fixnum_i64(&mut builder, 42);
+    let value = i64_to_word(&mut builder, constant);
     builder
-        .terminate(Terminator::Return { values })
+        .terminate(Terminator::Return {
+            values: vec![value],
+        })
         .expect("return terminator");
     let abi = X86_64Abi;
     let compiled = compile_function_x86_64(&builder.finish(), &abi).expect("lowering");
@@ -42,12 +42,21 @@ fn executes_immediate_constants_as_words() {
             Vec::new(),
             vec![Ty::Word],
         );
+        let is_fixnum = matches!(&constant, Constant::Fixnum(_));
         let constant = builder.add_constant(constant);
-        let values = builder
-            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-            .expect("constant operation");
+        let result_ty = if is_fixnum { Ty::I64 } else { Ty::Word };
+        let value = builder
+            .push_op(OpKind::Const { result: constant }, &[result_ty])
+            .expect("constant operation")[0];
+        let value = if is_fixnum {
+            i64_to_word(&mut builder, value)
+        } else {
+            value
+        };
         builder
-            .terminate(Terminator::Return { values })
+            .terminate(Terminator::Return {
+                values: vec![value],
+            })
             .expect("return terminator");
         let compiled = compile_function_x86_64(&builder.finish(), &X86_64Abi).expect("lowering");
         let mut code = alloc_code(compiled.code.len()).expect("code allocation");
@@ -70,4 +79,5 @@ fn executes_immediate_constants_as_words() {
     assert_eq!(run(Constant::T, 2), Word::TRUE);
     assert_eq!(run(Constant::Nil, 3), Word::NIL);
     assert_eq!(run(Constant::Unbound, 4), Word::UNBOUND);
+    assert_eq!(run(Constant::Fixnum(17), 5), Word::fixnum(17));
 }

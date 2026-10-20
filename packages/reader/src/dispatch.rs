@@ -1,6 +1,7 @@
 //! Dispatch macro character (`#`) handling.
 
 use std::cell::Cell;
+use std::path::Path;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
@@ -68,7 +69,7 @@ pub fn read_sharp(
         'c' | 'C' => read_complex(ctx, runtime, source, opts, rt, labels).map(Some),
         'a' | 'A' => Err(ReadError::ArraySyntax),
         's' | 'S' => read_structure(ctx, runtime, source, opts, rt, labels).map(Some),
-        'p' | 'P' => Err(ReadError::PathnameSyntax),
+        'p' | 'P' => read_pathname(ctx, runtime, source, opts, rt, labels).map(Some),
         '0'..='9' => {
             source.unread_char(sub);
             let number = read_label_number(source)?;
@@ -94,6 +95,27 @@ pub fn read_sharp(
         }
         other => Err(ReadError::UndefinedDispatchMacro(other)),
     }
+}
+
+/// Read a `#P` pathname literal from its namestring.
+fn read_pathname(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    source: &mut dyn CharSource,
+    opts: &ReadOptions,
+    rt: &Cell<Word>,
+    labels: &Cell<Word>,
+) -> Result<Word, ReadError> {
+    let Some(namestring) = read_form(ctx, runtime, source, opts, rt, labels)? else {
+        return Err(ReadError::UnexpectedEof);
+    };
+    if !matches!(classify_object(ctx, namestring), ObjectRef::String(_)) {
+        return Err(ReadError::PathnameSyntax);
+    }
+    let namestring = (0..string_length(ctx, namestring)?)
+        .map(|index| string_ref(ctx, namestring, index))
+        .collect::<Result<String, _>>()?;
+    ncl_lib_pathnames::from_host_path(ctx, runtime, Path::new(&namestring)).map_err(Into::into)
 }
 
 /// Read a `#S(name :slot value ...)` structure literal.

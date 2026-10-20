@@ -8,11 +8,11 @@
 use std::collections::HashMap;
 
 use ncl_object::{
-    Bignum, Complex, DoubleFloat, ObjectRef, Package, Ratio, ThreadContext, Word, array_dimensions,
-    array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify, classify_object,
-    complex_imag, complex_real, double_value, ratio_denominator, ratio_numerator,
-    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
-    symbol_package,
+    Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime, ThreadContext,
+    Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify,
+    classify_object, complex_imag, complex_real, double_value, instance_class, ratio_denominator,
+    ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref, string_length, string_ref,
+    symbol_name, symbol_package,
 };
 
 use crate::error::FrontError;
@@ -129,6 +129,7 @@ pub fn symbol_ref(
 /// rejects a sub-object.
 pub fn literal(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<Literal, FrontError> {
@@ -139,16 +140,33 @@ pub fn literal(
         ObjectRef::Fixnum(value) => Ok(Literal::fixnum(value)),
         ObjectRef::Character(value) => Ok(Literal::Character(value)),
         ObjectRef::Symbol(symbol) => symbol_literal(ctx, table, symbol),
-        ObjectRef::Cons(_) => cons_literal(ctx, table, word),
+        ObjectRef::Cons(_) => cons_literal(ctx, runtime, table, word),
         ObjectRef::String(_) => Ok(Literal::String(word_characters(ctx, word)?)),
-        ObjectRef::SimpleVector(_) => vector_literal(ctx, table, word),
-        ObjectRef::Array(_) => array_literal(ctx, table, word),
+        ObjectRef::SimpleVector(_) => vector_literal(ctx, runtime, table, word),
+        ObjectRef::Array(_) => array_literal(ctx, runtime, table, word),
+        ObjectRef::Instance(_) => pathname_literal(ctx, runtime, word),
         ObjectRef::Bignum(_)
         | ObjectRef::Ratio(_)
         | ObjectRef::DoubleFloat(_)
         | ObjectRef::Complex(_) => Ok(Literal::Number(number_literal(ctx, word)?)),
         _ => Err(FrontError::UnsupportedLiteral),
     }
+}
+
+fn pathname_literal(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    word: Word,
+) -> Result<Literal, FrontError> {
+    let Some(class) = runtime.class(ctx, "PATHNAME") else {
+        return Err(FrontError::UnsupportedLiteral);
+    };
+    let instance = Instance::from_word(word);
+    if instance_class(ctx, instance)? != class {
+        return Err(FrontError::UnsupportedLiteral);
+    }
+    let namestring = slot_ref(ctx, instance, 0)?;
+    Ok(Literal::Pathname(word_characters(ctx, namestring)?))
 }
 
 /// Convert a number word into a [`NumberLiteral`].
@@ -223,26 +241,33 @@ fn symbol_literal(
 /// Convert a cons word into a [`Literal::Cons`].
 fn cons_literal(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<Literal, FrontError> {
     let head = car(ctx, word)?;
     let tail = cdr(ctx, word)?;
-    let head = literal(ctx, table, head)?;
-    let tail = literal(ctx, table, tail)?;
+    let head = literal(ctx, runtime, table, head)?;
+    let tail = literal(ctx, runtime, table, tail)?;
     Ok(Literal::Cons(Box::new(head), Box::new(tail)))
 }
 
 /// Convert a simple-vector word into a [`Literal::Vector`].
 fn vector_literal(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<Literal, FrontError> {
     let length = simple_vector_length(ctx, word)?;
     let mut elements = Vec::with_capacity(length);
     for index in 0..length {
-        elements.push(literal(ctx, table, simple_vector_ref(ctx, word, index)?)?);
+        elements.push(literal(
+            ctx,
+            runtime,
+            table,
+            simple_vector_ref(ctx, word, index)?,
+        )?);
     }
     Ok(Literal::Vector(elements))
 }
@@ -250,6 +275,7 @@ fn vector_literal(
 /// Convert a general-array word into a [`Literal::Array`].
 fn array_literal(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<Literal, FrontError> {
@@ -260,7 +286,12 @@ fn array_literal(
         .ok_or(FrontError::UnsupportedLiteral)?;
     let mut elements = Vec::with_capacity(total);
     for index in 0..total {
-        elements.push(literal(ctx, table, array_row_major_ref(ctx, word, index)?)?);
+        elements.push(literal(
+            ctx,
+            runtime,
+            table,
+            array_row_major_ref(ctx, word, index)?,
+        )?);
     }
     Ok(Literal::Array {
         dimensions,

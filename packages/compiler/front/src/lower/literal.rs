@@ -8,6 +8,7 @@
 use ncl_ir::{Constant, Convert, OpKind, StructureKind, Ty, ValueId};
 
 use crate::literal::{Literal, NumberLiteral};
+use crate::symbols::SymbolRef;
 
 use super::error::LowerError;
 use super::function::FunctionLowerer;
@@ -30,6 +31,7 @@ pub(super) fn lower_literal(
             }
             f.word_constant(Constant::StringBytes(bytes))
         }
+        Literal::Pathname(namestring) => lower_pathname(f, namestring),
         Literal::Number(number) => lower_number(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => {
             let descriptor = structure_constant(f, literal)?;
@@ -42,6 +44,44 @@ pub(super) fn lower_literal(
     }
 }
 
+fn lower_pathname(f: &mut FunctionLowerer, namestring: &[char]) -> Result<ValueId, LowerError> {
+    let mut bytes = Vec::new();
+    for character in namestring {
+        let mut buffer = [0_u8; 4];
+        bytes.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+    }
+    let namestring = f.word_constant(Constant::StringBytes(bytes))?;
+    let symbol = f.symbol(&SymbolRef::interned("COMMON-LISP", "PATHNAME"))?;
+    let function = f.one(
+        OpKind::LoadField {
+            object: symbol,
+            field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                LowerError::Ir {
+                    detail: "function symbol offset does not fit u32".to_owned(),
+                }
+            })?,
+        },
+        Ty::Word,
+    )?;
+    let raw_argc = f.fixnum(1)?;
+    let argc = f.one(
+        OpKind::Convert {
+            op: Convert::I64ToWord,
+            value: raw_argc,
+        },
+        Ty::Word,
+    )?;
+    f.safepoint()?;
+    f.one(
+        OpKind::CallClosure {
+            closure: function,
+            args: vec![argc, namestring],
+            named_symbol: Some(symbol),
+        },
+        Ty::Word,
+    )
+}
+
 fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Constant, LowerError> {
     let (kind, children): (StructureKind, Vec<&Literal>) = match literal {
         Literal::Cons(car, cdr) => (StructureKind::Cons, vec![car, cdr]),
@@ -52,6 +92,7 @@ fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Cons
         | Literal::Number(_)
         | Literal::Character(_)
         | Literal::String(_)
+        | Literal::Pathname(_)
         | Literal::Array { .. }
         | Literal::BitVector(_) => {
             // check-added-lines: allow(unsupported) unsupported literal families remain explicit
@@ -95,10 +136,12 @@ fn scalar_or_structure_constant(
         }
         Literal::Number(number) => number_literal_constant(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => structure_constant(f, literal),
-        // check-added-lines: allow(unsupported) unsupported literal families remain explicit
-        Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
-            form: "quoted structure",
-        }),
+        Literal::Pathname(_) | Literal::Array { .. } | Literal::BitVector(_) => {
+            // check-added-lines: allow(unsupported) unsupported literal families remain explicit
+            Err(LowerError::Unsupported {
+                form: "quoted structure",
+            })
+        }
     }
 }
 

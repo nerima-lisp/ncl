@@ -364,6 +364,22 @@ impl Runtime {
         }
         pending_errors.object.map_or(result, Err)
     }
+
+    /// Call a registered builtin from generated code. Generated code checks the pending-error
+    /// flag; the enclosing Rust boundary consumes the thread's pending error payloads after
+    /// generated code returns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `ObjectError` produced while resolving or invoking the builtin.
+    pub fn call_builtin_from_generated_code(
+        &self,
+        ctx: &mut ThreadContext,
+        function: FunctionObject,
+        args: &[Word],
+    ) -> Result<Word, ObjectError> {
+        self.call_registered_builtin(ctx, function, args, &mut MultipleValues::new())
+    }
 }
 
 #[macro_export]

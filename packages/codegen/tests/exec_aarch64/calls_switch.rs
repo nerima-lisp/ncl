@@ -162,7 +162,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
 }
 
 #[test]
-fn executes_switch_cases_and_default_with_block_arguments() {
+fn executes_switch_with_negative_and_wide_i64_cases_and_default() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(102),
         "switch-cases-and-default",
@@ -175,6 +175,8 @@ fn executes_switch_cases_and_default_with_block_arguments() {
     let selector = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::I64])
         .expect("switch selector")[0];
+    let negative_case = -1_i64;
+    let wide_case = 1_i64 << 40;
     let case_one_value = fixnum_word(&mut builder, 101);
     let case_two_value = fixnum_word(&mut builder, 202);
     let default_value = fixnum_word(&mut builder, 303);
@@ -191,8 +193,8 @@ fn executes_switch_cases_and_default_with_block_arguments() {
         .terminate(Terminator::Switch {
             value: selector,
             cases: vec![
-                (1, case_one, vec![case_one_value]),
-                (2, case_two, vec![case_two_value]),
+                (negative_case, case_one, vec![case_one_value]),
+                (wide_case, case_two, vec![case_two_value]),
             ],
             default,
             default_args: vec![default_value],
@@ -233,8 +235,8 @@ fn executes_switch_cases_and_default_with_block_arguments() {
             0,
         )
     };
-    assert_eq!(invoke(1), (Word::fixnum(101).bits(), 1));
-    assert_eq!(invoke(2), (Word::fixnum(202).bits(), 1));
+    assert_eq!(invoke(negative_case as u64), (Word::fixnum(101).bits(), 1));
+    assert_eq!(invoke(wide_case as u64), (Word::fixnum(202).bits(), 1));
     assert_eq!(invoke(9), (Word::fixnum(303).bits(), 1));
 }
 

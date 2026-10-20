@@ -36,7 +36,7 @@ pub fn make_array(
         displaced_to,
         displaced_index_offset,
     } = options;
-    if dimensions.is_empty() || (fill_pointer.is_some() && dimensions.len() != 1) {
+    if fill_pointer.is_some() && dimensions.len() != 1 {
         return Err(ObjectError::TypeError);
     }
     let total = dimensions

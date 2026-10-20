@@ -1,10 +1,65 @@
 use ncl_object::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, Runtime,
-    ThreadContext, Word, array_row_major_set, make_array, with_rooted_slice,
+    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
+    ThreadContext, Word, array_row_major_set, classify_object, make_array, with_rooted_slice,
 };
 
-use super::helpers::{dimension_values, flatten_initial_contents};
+use super::helpers::{dimension_values, flatten_initial_contents, list_values};
 use super::symbol_text;
+
+fn named_element_type(name: &str) -> Option<ArrayElementType> {
+    match name.to_ascii_uppercase().as_str() {
+        "NIL" | "T" => Some(ArrayElementType::T),
+        "BIT" => Some(ArrayElementType::Bit),
+        "CHARACTER" => Some(ArrayElementType::Character),
+        "BASE-CHAR" => Some(ArrayElementType::BaseChar),
+        "FIXNUM" | "INTEGER" => Some(ArrayElementType::Fixnum),
+        "SIGNED-BYTE" => Some(ArrayElementType::Signed),
+        "UNSIGNED-BYTE" => Some(ArrayElementType::Unsigned),
+        "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" => Some(ArrayElementType::SingleFloat),
+        "DOUBLE-FLOAT" | "LONG-FLOAT" => Some(ArrayElementType::DoubleFloat),
+        _ => None, // check-added-lines: allow(wildcard) reject unknown type names
+    }
+}
+
+fn element_type_designator(
+    ctx: &ThreadContext,
+    designator: Word,
+) -> Result<ArrayElementType, ObjectError> {
+    match classify_object(ctx, designator) {
+        ObjectRef::Symbol(_) => {
+            named_element_type(&symbol_text(ctx, designator)?).ok_or(ObjectError::TypeError)
+        }
+        ObjectRef::Cons(_) => {
+            let parts = list_values(ctx, designator)?;
+            match parts.as_slice() {
+                [name, width] => {
+                    let name = symbol_text(ctx, *name)?.to_ascii_uppercase();
+                    if width.as_fixnum().is_none_or(|width| width <= 0) {
+                        return Err(ObjectError::TypeError);
+                    }
+                    match name.as_str() {
+                        "SIGNED-BYTE" => Ok(ArrayElementType::Signed),
+                        "UNSIGNED-BYTE" => Ok(ArrayElementType::Unsigned),
+                        _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported element type names
+                    }
+                }
+                [name, lower, _upper] => {
+                    if symbol_text(ctx, *name)?.eq_ignore_ascii_case("INTEGER") {
+                        if lower.as_fixnum().ok_or(ObjectError::TypeError)? < 0 {
+                            Ok(ArrayElementType::Signed)
+                        } else {
+                            Ok(ArrayElementType::Unsigned)
+                        }
+                    } else {
+                        Err(ObjectError::TypeError)
+                    }
+                }
+                _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject malformed type lists
+            }
+        }
+        _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported designators
+    }
+}
 
 pub(super) fn make_array_builtin(
     ctx: &mut ThreadContext,
@@ -31,18 +86,7 @@ pub(super) fn make_array_builtin(
             .trim_start_matches(':')
         {
             "ELEMENT-TYPE" => {
-                element_type = match symbol_text(ctx, value)?.to_ascii_uppercase().as_str() {
-                    "T" => ArrayElementType::T,
-                    "BIT" => ArrayElementType::Bit,
-                    "CHARACTER" => ArrayElementType::Character,
-                    "BASE-CHAR" => ArrayElementType::BaseChar,
-                    "FIXNUM" => ArrayElementType::Fixnum,
-                    "SIGNED-BYTE" => ArrayElementType::Signed,
-                    "UNSIGNED-BYTE" => ArrayElementType::Unsigned,
-                    "SINGLE-FLOAT" => ArrayElementType::SingleFloat,
-                    "DOUBLE-FLOAT" => ArrayElementType::DoubleFloat,
-                    _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unknown element types
-                }
+                element_type = element_type_designator(ctx, value)?;
             }
             "INITIAL-ELEMENT" => {
                 initial_element = value;

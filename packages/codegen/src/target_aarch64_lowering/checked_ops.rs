@@ -1,0 +1,315 @@
+use super::{
+    CallCheckContext, CheckedCallMode, emit, lower_alloc, lower_builtin, lower_call,
+    lower_checked_call, lower_runtime_builtin, lower_safepoint, primitives, store_value,
+};
+use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
+use ncl_asm_aarch64::{Assembler, Inst, Reg};
+use ncl_ir::{Function, HandlerRegionId, ValueId};
+
+pub(super) fn lower_alloc_op(
+    assembler: &mut Assembler,
+    words: u32,
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    Ok(lower_alloc(assembler, words, result, allocation, abi, context)?.return_pc())
+}
+
+pub(super) fn lower_safepoint_op(
+    assembler: &mut Assembler,
+    abi: &dyn RuntimeAbi,
+) -> Result<u32, CodegenError> {
+    lower_safepoint(assembler, abi)
+}
+
+pub(super) fn lower_call_op(
+    assembler: &mut Assembler,
+    function: ValueId,
+    args: &[ValueId],
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let call_pc = lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_call(assembler, function, args, allocation)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )?
+    .return_pc();
+    if let Some(result) = result {
+        store_value(assembler, allocation, result, Reg(0))?;
+    }
+    Ok(call_pc)
+}
+
+pub(super) fn lower_make_closure_op(
+    assembler: &mut Assembler,
+    entry: ValueId,
+    captures: &[ValueId],
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let call_pc = lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeClosure,
+                &[ncl_sys::Word::fixnum(
+                    i64::try_from(captures.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                )
+                .bits()],
+                &[entry],
+                allocation,
+                abi,
+            )?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )?
+    .return_pc();
+    if let Some(result) = result {
+        store_value(assembler, allocation, result, Reg(0))?;
+        // No allocation or safepoint occurs before these stores, so the new object cannot move.
+        for (index, capture) in captures.iter().copied().enumerate() {
+            store_closure_capture(assembler, result, index, capture, allocation)?;
+        }
+    }
+    Ok(call_pc)
+}
+
+pub(super) fn lower_make_value_cell_op(
+    assembler: &mut Assembler,
+    value: ValueId,
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let call_pc = lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeValueCell,
+                &[],
+                &[value],
+                allocation,
+                abi,
+            )?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )?
+    .return_pc();
+    if let Some(result) = result {
+        store_value(assembler, allocation, result, Reg(0))?;
+    }
+    Ok(call_pc)
+}
+
+pub(super) fn lower_call_closure_op(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    args: &[ValueId],
+    named_symbol: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    primitives::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi)?;
+    let call_pc = lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| emit(assembler, Inst::Blr { rn: Reg(17) }),
+    )?
+    .return_pc();
+    Ok(call_pc)
+}
+
+pub(super) fn lower_builtin_op(
+    assembler: &mut Assembler,
+    name: &str,
+    args: &[ValueId],
+    result: Option<ValueId>,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let call_pc = lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_builtin(assembler, name, args, allocation, abi)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )?
+    .return_pc();
+    if let Some(result) = result {
+        store_value(assembler, allocation, result, Reg(0))?;
+    }
+    Ok(call_pc)
+}
+
+pub(super) fn lower_enter_handler_op(
+    assembler: &mut Assembler,
+    function: &Function,
+    region: HandlerRegionId,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let definition = function
+        .handler_regions
+        .iter()
+        .find(|candidate| candidate.id == region)
+        // check-added-lines: allow(unsupported) malformed IR can reference an unavailable handler region.
+        .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
+    let (runtime_function, immediate_args, value_args) = match definition.kind {
+        ncl_ir::HandlerKind::Catch => (
+            RuntimeFunction::EnterCatch,
+            vec![u64::from(region.0), u64::from(definition.depth)],
+            definition.catch_tag.into_iter().collect(),
+        ),
+        ncl_ir::HandlerKind::UnwindProtect => (
+            RuntimeFunction::EnterUnwindProtect,
+            vec![
+                u64::from(region.0),
+                u64::from(
+                    definition
+                        .cleanup
+                        .ok_or_else(|| {
+                            // check-added-lines: allow(unsupported) malformed unwind-protect IR may omit cleanup.
+                            CodegenError::Unsupported("cleanup block is unavailable".into())
+                        })?
+                        .0,
+                ),
+            ],
+            Vec::new(),
+        ),
+        ncl_ir::HandlerKind::Progv => (
+            RuntimeFunction::EnterProgv,
+            vec![u64::from(region.0)],
+            definition.binding_targets.clone(),
+        ),
+    };
+    lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_runtime_builtin(
+                assembler,
+                runtime_function,
+                &immediate_args,
+                &value_args,
+                allocation,
+                abi,
+            )?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )
+    .map(super::CheckedCall::return_pc)
+}
+
+pub(super) fn lower_leave_handler_op(
+    assembler: &mut Assembler,
+    function: &Function,
+    region: HandlerRegionId,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+    context: &CallCheckContext<'_>,
+) -> Result<u32, CodegenError> {
+    let definition = function
+        .handler_regions
+        .iter()
+        .find(|candidate| candidate.id == region)
+        // check-added-lines: allow(unsupported) malformed IR can reference an unavailable handler region.
+        .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
+    let runtime_function = match definition.kind {
+        ncl_ir::HandlerKind::Catch => RuntimeFunction::LeaveCatch,
+        ncl_ir::HandlerKind::UnwindProtect => RuntimeFunction::LeaveUnwindProtect,
+        ncl_ir::HandlerKind::Progv => RuntimeFunction::LeaveProgv,
+    };
+    lower_checked_call(
+        assembler,
+        context,
+        allocation,
+        abi,
+        CheckedCallMode::RuntimeAndNonLocal,
+        |assembler| {
+            lower_runtime_builtin(
+                assembler,
+                runtime_function,
+                &[u64::from(region.0)],
+                &[],
+                allocation,
+                abi,
+            )?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })
+        },
+    )
+    .map(super::CheckedCall::return_pc)
+}
+
+fn store_closure_capture(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    index: usize,
+    capture: ValueId,
+    allocation: &Allocation,
+) -> Result<(), CodegenError> {
+    use ncl_asm_aarch64::{MemOperand, RegOrSp};
+
+    let offset = ncl_object::function_offset::CAPTURES
+        .checked_add(index)
+        .and_then(|slot| slot.checked_add(1))
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|offset| i16::try_from(offset).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    super::load_value(assembler, allocation, closure, Reg(16))?;
+    super::load_value(assembler, allocation, capture, Reg(17))?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Str {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset,
+            },
+        },
+    )
+}

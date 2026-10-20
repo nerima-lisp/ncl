@@ -1,8 +1,5 @@
-use super::{
-    constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
-    lower_runtime_builtin, lower_safepoint, primitives, store_value,
-};
-use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
+use super::{CallCheckContext, constant_table_entry, emit, load_value, primitives, store_value};
+use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Compare, Function, Op, OpKind, ValueId};
 
@@ -104,41 +101,6 @@ fn load_heap_constant(
     )
 }
 
-fn store_closure_capture(
-    assembler: &mut Assembler,
-    closure: ValueId,
-    index: usize,
-    capture: ValueId,
-    allocation: &Allocation,
-) -> Result<(), CodegenError> {
-    let offset = ncl_object::function_offset::CAPTURES
-        .checked_add(index)
-        .and_then(|slot| slot.checked_add(1))
-        .and_then(|slot| slot.checked_mul(8))
-        .and_then(|offset| i16::try_from(offset).ok())
-        .ok_or(CodegenError::FrameOverflow)?;
-    load_value(assembler, allocation, closure, Reg(16))?;
-    load_value(assembler, allocation, capture, Reg(17))?;
-    emit(
-        assembler,
-        Inst::AndImm {
-            rd: Reg(16),
-            rn: Reg(16),
-            imm: !ncl_sys::LOWTAG_MASK,
-        },
-    )?;
-    emit(
-        assembler,
-        Inst::Str {
-            rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(16)),
-                offset,
-            },
-        },
-    )
-}
-
 const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::Eq,
@@ -157,6 +119,7 @@ pub fn lower_op(
     function: &Function,
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
+    check_context: &CallCheckContext<'_>,
 ) -> Result<Option<u32>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
     let mut call_pc = None;
@@ -313,145 +276,103 @@ pub fn lower_op(
             super::dispatch::lower_set_multiple_values(assembler, values, result, allocation, abi)?;
         }
         OpKind::Alloc { words } => {
-            call_pc = Some(lower_alloc(assembler, *words, result, allocation, abi)?);
+            call_pc = Some(super::checked_ops::lower_alloc_op(
+                assembler,
+                *words,
+                result,
+                allocation,
+                abi,
+                check_context,
+            )?);
         }
         OpKind::Safepoint => {
-            call_pc = Some(lower_safepoint(assembler, abi)?);
+            call_pc = Some(super::checked_ops::lower_safepoint_op(assembler, abi)?);
         }
         OpKind::Call { function, args }
         | OpKind::CallIndirect {
             callee: function,
             args,
         } => {
-            lower_call(assembler, *function, args, allocation)?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
-            if let Some(result) = result {
-                store_value(assembler, allocation, result, Reg(0))?;
-            }
+            call_pc = Some(super::checked_ops::lower_call_op(
+                assembler,
+                *function,
+                args,
+                result,
+                allocation,
+                abi,
+                check_context,
+            )?);
         }
         OpKind::MakeClosure { entry, captures } => {
-            lower_runtime_builtin(
+            call_pc = Some(super::checked_ops::lower_make_closure_op(
                 assembler,
-                RuntimeFunction::MakeClosure,
-                &[ncl_sys::Word::fixnum(
-                    i64::try_from(captures.len()).map_err(|_| CodegenError::FrameOverflow)?,
-                )
-                .bits()],
-                &[*entry],
+                *entry,
+                captures,
+                result,
                 allocation,
                 abi,
-            )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
-            if let Some(result) = result {
-                store_value(assembler, allocation, result, Reg(0))?;
-                // No allocation or safepoint occurs before these stores, so the new object cannot move.
-                for (index, capture) in captures.iter().copied().enumerate() {
-                    store_closure_capture(assembler, result, index, capture, allocation)?;
-                }
-            }
+                check_context,
+            )?);
         }
         OpKind::MakeValueCell { value } => {
-            lower_runtime_builtin(
+            call_pc = Some(super::checked_ops::lower_make_value_cell_op(
                 assembler,
-                RuntimeFunction::MakeValueCell,
-                &[],
-                &[*value],
+                *value,
+                result,
                 allocation,
                 abi,
-            )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
-            if let Some(result) = result {
-                store_value(assembler, allocation, result, Reg(0))?;
-            }
+                check_context,
+            )?);
         }
         OpKind::CallClosure {
             closure,
             args,
             named_symbol,
         } => {
-            primitives::lower_closure_call(
+            let checked_call_pc = super::checked_ops::lower_call_closure_op(
                 assembler,
                 *closure,
                 args,
-                allocation,
                 *named_symbol,
+                allocation,
                 abi,
+                check_context,
             )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;
             }
+            call_pc = Some(checked_call_pc);
         }
         OpKind::Builtin { name, args } => {
-            lower_builtin(assembler, name, args, allocation, abi)?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
-            if let Some(result) = result {
-                store_value(assembler, allocation, result, Reg(0))?;
-            }
+            call_pc = Some(super::checked_ops::lower_builtin_op(
+                assembler,
+                name,
+                args,
+                result,
+                allocation,
+                abi,
+                check_context,
+            )?);
         }
         OpKind::EnterHandler { region } => {
-            let definition = function
-                .handler_regions
-                .iter()
-                .find(|candidate| candidate.id == *region)
-                .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
-            let (function, immediate_args, value_args) = match definition.kind {
-                ncl_ir::HandlerKind::Catch => (
-                    RuntimeFunction::EnterCatch,
-                    vec![u64::from(region.0), u64::from(definition.depth)],
-                    definition.catch_tag.into_iter().collect(),
-                ),
-                ncl_ir::HandlerKind::UnwindProtect => (
-                    RuntimeFunction::EnterUnwindProtect,
-                    vec![
-                        u64::from(region.0),
-                        u64::from(
-                            definition
-                                .cleanup
-                                .ok_or_else(|| {
-                                    CodegenError::Unsupported("cleanup block is unavailable".into())
-                                })?
-                                .0,
-                        ),
-                    ],
-                    Vec::new(),
-                ),
-                ncl_ir::HandlerKind::Progv => (
-                    RuntimeFunction::EnterProgv,
-                    vec![u64::from(region.0)],
-                    definition.binding_targets.clone(),
-                ),
-            };
-            lower_runtime_builtin(
+            call_pc = Some(super::checked_ops::lower_enter_handler_op(
                 assembler,
                 function,
-                &immediate_args,
-                &value_args,
+                *region,
                 allocation,
                 abi,
-            )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+                check_context,
+            )?);
         }
         OpKind::LeaveHandler { region } => {
-            let definition = function
-                .handler_regions
-                .iter()
-                .find(|candidate| candidate.id == *region)
-                .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
-            let function = match definition.kind {
-                ncl_ir::HandlerKind::Catch => RuntimeFunction::LeaveCatch,
-                ncl_ir::HandlerKind::UnwindProtect => RuntimeFunction::LeaveUnwindProtect,
-                ncl_ir::HandlerKind::Progv => RuntimeFunction::LeaveProgv,
-            };
-            lower_runtime_builtin(
+            call_pc = Some(super::checked_ops::lower_leave_handler_op(
                 assembler,
                 function,
-                &[u64::from(region.0)],
-                &[],
+                *region,
                 allocation,
                 abi,
-            )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+                check_context,
+            )?);
         }
     }
     Ok(call_pc)

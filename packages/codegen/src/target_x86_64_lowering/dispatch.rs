@@ -145,6 +145,7 @@ fn try_dispatch_candidates(
                     abi,
                 )?;
                 emit_call(assembler)?;
+                lower_runtime_error_check(assembler, slots, abi)?;
             }
             HandlerKind::UnwindProtect | HandlerKind::Progv => {
                 emit(assembler, Inst::Jmp(target))?;
@@ -179,6 +180,97 @@ pub fn lower_return_or_throw(
     emit_epilogue(assembler, slots, abi, values.unwrap_or(&[]), false)
 }
 
+/// Return address metadata for a helper call after its error and non-local-exit
+/// state have both been checked.
+pub(super) struct CheckedCall {
+    return_pc: u32,
+}
+
+pub(super) struct CallCheckContext<'a> {
+    pub(super) function: &'a Function,
+    pub(super) block: BlockId,
+    pub(super) slots: &'a super::ValueSlots,
+    pub(super) abi: &'a dyn RuntimeAbi,
+    pub(super) labels: &'a HashMap<BlockId, Label>,
+}
+
+impl<'a> CallCheckContext<'a> {
+    pub(super) fn new(
+        function: &'a Function,
+        block: BlockId,
+        slots: &'a super::ValueSlots,
+        abi: &'a dyn RuntimeAbi,
+        labels: &'a HashMap<BlockId, Label>,
+    ) -> Self {
+        Self {
+            function,
+            block,
+            slots,
+            abi,
+            labels,
+        }
+    }
+}
+
+impl CheckedCall {
+    pub(super) const fn return_pc(&self) -> u32 {
+        self.return_pc
+    }
+}
+
+/// Emit a helper call and check its result state before returning control to the
+/// lowering that may consume the helper's return registers.
+pub(super) fn checked_call(
+    assembler: &mut Assembler,
+    context: &CallCheckContext<'_>,
+    emit_helper: impl FnOnce(&mut Assembler) -> Result<u32, CodegenError>,
+) -> Result<CheckedCall, CodegenError> {
+    let return_pc = emit_helper(assembler)?;
+    lower_pending_check(
+        assembler,
+        context.function,
+        context.block,
+        context.slots,
+        context.abi,
+        context.labels,
+    )?;
+    Ok(CheckedCall { return_pc })
+}
+
+/// Stop this function when a helper recorded a runtime error. The error flag
+/// remains set for the Rust boundary or the next generated caller to observe.
+pub(super) fn lower_runtime_error_check(
+    assembler: &mut Assembler,
+    slots: &super::ValueSlots,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    let normal = assembler.new_label();
+    emit(
+        assembler,
+        Inst::MovRM(
+            super::FUNCTION_OBJECT,
+            context_mem(abi, ContextField::RuntimeErrorFlags)?,
+        ),
+    )?;
+    emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
+    emit(assembler, Inst::Jcc(Cond::E, normal))?;
+
+    // Runtime errors take priority over a simultaneous non-local exit. Clear
+    // only the control-flow flag; the runtime error remains sticky.
+    load_immediate(assembler, super::FUNCTION_OBJECT, 0)?;
+    emit(
+        assembler,
+        Inst::MovMR(
+            context_mem(abi, ContextField::Pending)?,
+            super::FUNCTION_OBJECT,
+        ),
+    )?;
+    emit_epilogue(assembler, slots, abi, &[], false)?;
+
+    assembler.bind(normal);
+    Ok(())
+}
+
 pub fn lower_pending_check(
     assembler: &mut Assembler,
     function: &Function,
@@ -187,6 +279,7 @@ pub fn lower_pending_check(
     abi: &dyn RuntimeAbi,
     labels: &HashMap<BlockId, Label>,
 ) -> Result<(), CodegenError> {
+    lower_runtime_error_check(assembler, slots, abi)?;
     let normal = assembler.new_label();
     emit(
         assembler,

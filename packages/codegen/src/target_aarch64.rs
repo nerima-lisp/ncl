@@ -15,7 +15,7 @@ use support::{add_map, initialize_arguments};
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
 use lowering::{
-    load_value, lower_call, lower_op, lower_pending_check, lower_return_or_throw, move_args,
+    CallCheckContext, load_value, lower_call, lower_op, lower_return_or_throw, move_args,
 };
 
 #[allow(clippy::needless_pass_by_value)]
@@ -180,7 +180,20 @@ pub fn compile_function_aarch64(
             .bind(labels[&block.id])
             .map_err(|error| CodegenError::Encode(error.to_string()))?;
         for op in &block.ops {
-            let call_pc = lower_op(&mut assembler, op, function, &allocation, abi)?;
+            let check_context = CallCheckContext {
+                function,
+                block: block.id,
+                body_bytes,
+                labels: &labels,
+            };
+            let call_pc = lower_op(
+                &mut assembler,
+                op,
+                function,
+                &allocation,
+                abi,
+                &check_context,
+            )?;
             if matches!(op.kind, OpKind::Alloc { .. }) {
                 add_map(
                     &mut maps,
@@ -210,29 +223,6 @@ pub fn compile_function_aarch64(
                     position,
                     FLAG_CALL,
                 )?;
-                if matches!(
-                    op.kind,
-                    OpKind::Call { .. }
-                        | OpKind::CallIndirect { .. }
-                        | OpKind::CallClosure { .. }
-                        | OpKind::MakeClosure { .. }
-                        | OpKind::MakeValueCell { .. }
-                        | OpKind::Builtin { .. }
-                ) {
-                    // A callee may be propagating a non-local exit (for
-                    // example a closure crossed by `return-from`/`throw`)
-                    // rather than returning normally; see
-                    // `lowering::dispatch::lower_pending_check`.
-                    lower_pending_check(
-                        &mut assembler,
-                        function,
-                        block.id,
-                        &allocation,
-                        abi,
-                        body_bytes,
-                        &labels,
-                    )?;
-                }
             }
             position = position.saturating_add(1);
         }

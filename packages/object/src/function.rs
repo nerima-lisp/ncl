@@ -25,11 +25,17 @@ pub fn make_simple_fun(
     with_root(ctx, &mut name, |ctx, name| {
         with_root(ctx, &mut lambda_list, |ctx, lambda_list| {
             with_root(ctx, &mut code, |ctx, code| {
-                let object = allocate(ctx, runtime, widetag::SIMPLE_FUN, 4)?;
+                let object = allocate(
+                    ctx,
+                    runtime,
+                    widetag::SIMPLE_FUN,
+                    function_offset::SIMPLE_FUN_WORDS,
+                )?;
                 put(ctx, object, function_offset::ENTRY, fix(entry)?)?;
                 put(ctx, object, function_offset::NAME, *name)?;
                 put(ctx, object, function_offset::LAMBDA_LIST, *lambda_list)?;
                 put(ctx, object, function_offset::CODE, *code)?;
+                put(ctx, object, function_offset::BUILTIN_INDEX, Word::NIL)?;
                 Ok(Function::from_word(object))
             })
         })

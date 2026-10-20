@@ -96,6 +96,8 @@ pub mod function_offset {
     pub const LAMBDA_LIST: usize = 2;
     pub const CODE: usize = 3;
     pub const CAPTURES: usize = 4;
+    pub const BUILTIN_INDEX: usize = CAPTURES;
+    pub const SIMPLE_FUN_WORDS: usize = BUILTIN_INDEX + 1;
 }
 
 pub mod number_offset {

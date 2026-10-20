@@ -144,8 +144,10 @@ impl FunctionCaller for BuiltinFunctionCaller {
                 }
             };
             let current_args: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
-            let result = if runtime.builtin_descriptor(function).is_some() {
-                runtime.call_builtin(ctx, function, &current_args)?
+            let result = if let Some(result) =
+                runtime.call_builtin_if_registered(ctx, function, &current_args, values)
+            {
+                result?
             } else {
                 crate::with_rooted_slice(ctx, &current_args, |ctx, rooted_args| {
                     call_native(ctx, function, rooted_args, values)
@@ -223,6 +225,26 @@ impl Runtime {
         args: &[Word],
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
+        let implementation = self
+            .registered_builtin(ctx, function)
+            .map(|(_, implementation)| implementation);
+        self.call_registered_builtin_with_implementation(
+            ctx,
+            function,
+            args,
+            values,
+            implementation,
+        )
+    }
+
+    pub(crate) fn call_registered_builtin_with_implementation(
+        &self,
+        ctx: &mut ThreadContext,
+        function: FunctionObject,
+        args: &[Word],
+        values: &mut MultipleValues,
+        implementation: Option<crate::BuiltinImplementation>,
+    ) -> Result<Word, ObjectError> {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
@@ -230,18 +252,7 @@ impl Runtime {
             ctx.set_pending(ObjectError::ControlError);
             return Err(ObjectError::ControlError);
         }
-        let function_word = self
-            .heap
-            .forwarded_word(function.as_word())
-            .ok_or(ObjectError::Unbound)?;
-        let implementation = self
-            .builtins
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
-            .find(|entry| *entry.function == function_word)
-            .map(|entry| entry.implementation)
-            .ok_or(ObjectError::Unbound)?;
+        let implementation = implementation.ok_or(ObjectError::Unbound)?;
         if implementation.nested_evaluation {
             let original = args.to_vec();
             let callback_args = if let Some(adapter) = implementation.keyword_adapter {
@@ -259,18 +270,6 @@ impl Runtime {
         rooted_values.push(function.as_word());
         rooted_values.extend_from_slice(args);
         let result = crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
-            let function_word = self
-                .heap
-                .forwarded_word(*rooted_values[0])
-                .ok_or(ObjectError::Unbound)?;
-            let implementation = self
-                .builtins
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .iter()
-                .find(|entry| *entry.function == function_word)
-                .map(|entry| entry.implementation)
-                .ok_or(ObjectError::Unbound)?;
             if rooted_values.len() - 1 < implementation.descriptor.lambda_list.min_arity()
                 || implementation
                     .descriptor

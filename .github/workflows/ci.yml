@@ -40,7 +40,7 @@ jobs:
           if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             BASE_SHA="HEAD^"
           else
-            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            git fetch --no-tags origin "$BASE_SHA"
           fi
           python3 scripts/check_added_lines.py --base "$BASE_SHA"
       - name: Verify toolchain version consistency

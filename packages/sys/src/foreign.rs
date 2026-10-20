@@ -11,6 +11,14 @@ mod loader;
 mod memory;
 
 #[cfg(test)]
+#[cfg(all(
+    target_family = "unix",
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    any(target_os = "linux", target_os = "macos")
+))]
+#[path = "foreign/tests_call.rs"]
+mod call_tests;
+#[cfg(test)]
 mod memory_tests;
 #[cfg(test)]
 mod tests;

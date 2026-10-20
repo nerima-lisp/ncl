@@ -25,14 +25,13 @@ pub enum ForeignType {
     /// Unsigned sixty-four-bit integer.
     U64,
     /// Single-precision floating-point value.
-    ///
-    /// Modeled in signatures, but rejected by the current register call backend.
     F32,
     /// Double-precision floating-point value.
-    ///
-    /// Modeled in signatures, but rejected by the current register call backend.
     F64,
-    /// Native pointer value; SAP access still requires an active tracked region.
+    /// Native pointer type. A system-area pointer (SAP) can be read or written only
+    /// when the complete access range, including its width, belongs to a live
+    /// `ForeignRegion`. A foreign call may pass an untracked pointer when the caller
+    /// meets `call`'s safety requirements.
     Pointer,
 }
 
@@ -61,7 +60,10 @@ pub enum ForeignValue {
     F32(f32),
     /// Double-precision floating-point value.
     F64(f64),
-    /// Native pointer value; SAP access still requires an active tracked region.
+    /// Native pointer value. Reads and writes through this address require the
+    /// complete access range, including its width, to belong to a live
+    /// `ForeignRegion`. A foreign call may pass it untracked when the caller meets
+    /// `call`'s safety requirements.
     Pointer(SapAddress),
 }
 
@@ -101,14 +103,7 @@ impl ForeignValue {
     }
 }
 
-/// A scalar calling signature supplied for one call.
-///
-/// The Lisp foreign-call caller must choose a function export and supply its exact
-/// ABI, including pointer bounds and lifetime rules, and must not unwind across the
-/// C boundary. The checked call validates value tags and supported register shapes,
-/// but cannot verify that contract. The caller must also synchronize C access to
-/// tracked memory with concurrent SAP access and ensure the function supports its
-/// calling thread. The `ncl-ffi` adapter can use this safe API.
+/// A description of a foreign call's result and argument types.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ForeignSignature {
     result: ForeignType,
@@ -120,11 +115,11 @@ pub struct ForeignSignature {
 enum CallKind {
     Fixed,
     Variadic,
+    Aggregate,
 }
 
 impl ForeignSignature {
-    /// Create a fixed-argument signature.
-    /// The C return type represented by this signature.
+    /// Create a fixed-argument signature with the given result and argument types.
     #[must_use]
     pub fn new(result: ForeignType, arguments: impl Into<Box<[ForeignType]>>) -> Self {
         Self {
@@ -142,6 +137,19 @@ impl ForeignSignature {
             result,
             arguments: arguments.into(),
             call_kind: CallKind::Variadic,
+        }
+    }
+
+    /// Mark an ABI shape with an aggregate argument or result; calls reject it with
+    /// [`ForeignCallError::UnsupportedAbi`].
+    ///
+    /// This marker carries no aggregate layout.
+    #[must_use]
+    pub fn aggregate(result: ForeignType, arguments: impl Into<Box<[ForeignType]>>) -> Self {
+        Self {
+            result,
+            arguments: arguments.into(),
+            call_kind: CallKind::Aggregate,
         }
     }
 
@@ -177,6 +185,16 @@ impl<'library> ForeignFunction<'library> {
     }
 }
 
+#[cfg(test)]
+impl ForeignFunction<'static> {
+    pub(super) const fn from_test_address(address: NonNull<c_void>) -> Self {
+        Self {
+            address,
+            _library: PhantomData,
+        }
+    }
+}
+
 /// A typed error from validating or making a foreign call.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ForeignCallError {
@@ -188,7 +206,7 @@ pub enum ForeignCallError {
     ArgumentTypeMismatch,
     /// The signature contains `Void` as an argument.
     InvalidSignature,
-    /// A SAP address or pointer failed tracked-region validation.
+    /// A returned address is out of range, or a tracked-region registry operation failed.
     Memory(ForeignError),
 }
 
@@ -212,9 +230,11 @@ impl core::fmt::Display for ForeignCallError {
 
 impl std::error::Error for ForeignCallError {}
 
-/// Call a resolved function using a caller-supplied integer or pointer ABI signature.
+/// Call a resolved function using a caller-supplied scalar or pointer ABI signature.
 ///
-/// Float, variadic, aggregate, and stack-passed signatures return
+/// Fixed scalar and pointer calls are supported on Unix targets with the x86_64
+/// or AArch64 architecture.
+/// Other targets, variadic signatures, and aggregate signatures return
 /// [`ForeignCallError::UnsupportedAbi`].
 ///
 /// # Safety
@@ -225,22 +245,27 @@ impl std::error::Error for ForeignCallError {}
 /// uses it. The target must not unwind across the call boundary. The caller must
 /// ensure the target is safe to invoke on the current thread and synchronize its
 /// memory access with Rust and foreign code so the call creates no data races or
-/// aliasing violations. The checked signature and tracked-memory leases do not
-/// establish these guarantees.
+/// aliasing violations. For each non-null pointer inside a registered region, the
+/// call retains that region's allocation until the call returns. This does not
+/// validate an untracked pointer or keep untracked storage alive.
 ///
 /// # Errors
 ///
-/// Returns an error if the signature is unsupported, the argument count or types do
-/// not match, or tracked pointer validation fails.
+/// Returns [`ForeignCallError::UnsupportedAbi`] for an unsupported signature or
+/// target, [`ForeignCallError::InvalidSignature`] if the signature uses `Void` as
+/// an argument, [`ForeignCallError::ArgumentCountMismatch`] or
+/// [`ForeignCallError::ArgumentTypeMismatch`] if arguments do not match, or
+/// [`ForeignCallError::Memory`] if a returned address is out of range or a
+/// tracked-region registry operation fails.
 pub unsafe fn call(
     function: &ForeignFunction<'_>,
     signature: &ForeignSignature,
     arguments: &[ForeignValue],
 ) -> Result<ForeignValue, ForeignCallError> {
-    if signature.call_kind == CallKind::Variadic {
-        return Err(ForeignCallError::UnsupportedAbi);
-    }
-    if is_float_type(signature.result) || signature.arguments.iter().copied().any(is_float_type) {
+    if matches!(
+        signature.call_kind,
+        CallKind::Variadic | CallKind::Aggregate
+    ) {
         return Err(ForeignCallError::UnsupportedAbi);
     }
     if signature.arguments.len() != arguments.len() {
@@ -256,30 +281,10 @@ pub unsafe fn call(
     {
         return Err(ForeignCallError::ArgumentTypeMismatch);
     }
-    let maximum = maximum_register_arguments();
-    if arguments.len() > maximum {
-        return Err(ForeignCallError::UnsupportedAbi);
-    }
-    let mut raw_arguments = [0_u64; 8];
-    let mut pointers = [None; 8];
-    for ((raw_slot, pointer_slot), argument) in raw_arguments
-        .iter_mut()
-        .zip(pointers.iter_mut())
-        .zip(arguments.iter().copied())
-    {
-        let (raw, pointer) = argument.encode();
-        *raw_slot = raw;
-        *pointer_slot = pointer;
-    }
-    let pointers = pointers
-        .get(..arguments.len())
-        .ok_or(ForeignCallError::UnsupportedAbi)?;
-    let raw_arguments = raw_arguments
-        .get(..arguments.len())
-        .ok_or(ForeignCallError::UnsupportedAbi)?;
-    memory::call_with_tracked_inputs(pointers, || {
-        let raw = invoke(function.address, raw_arguments)?;
-        decode_result(signature.result, raw)
+    let (marshalled, pointers) = marshal_arguments(arguments)?;
+    memory::call_with_tracked_inputs(&pointers, || {
+        let (integer_result, float_result) = invoke(function.address, &marshalled)?;
+        decode_result(signature.result, integer_result, float_result)
     })
     .map_err(|error| match error {
         ForeignError::UnsupportedAbi => ForeignCallError::UnsupportedAbi,
@@ -287,29 +292,119 @@ pub unsafe fn call(
     })
 }
 
-fn decode_result(result_type: ForeignType, raw: u64) -> Result<ForeignValue, ForeignError> {
+#[derive(Debug)]
+struct MarshalledArguments {
+    general: [u64; 8],
+    floating: [u64; 8],
+    stack: Vec<u64>,
+    stack_area_bytes: usize,
+}
+
+fn marshal_arguments(
+    arguments: &[ForeignValue],
+) -> Result<(MarshalledArguments, Vec<Option<SapAddress>>), ForeignCallError> {
+    let (general_limit, floating_limit) = argument_register_limits();
+    let mut general = [0_u64; 8];
+    let mut floating = [0_u64; 8];
+    let mut general_count = 0;
+    let mut floating_count = 0;
+    let mut stack = Vec::new();
+    let mut pointers = Vec::new();
+    stack
+        .try_reserve(arguments.len())
+        .map_err(|_| ForeignCallError::UnsupportedAbi)?;
+    pointers
+        .try_reserve(arguments.len())
+        .map_err(|_| ForeignCallError::UnsupportedAbi)?;
+
+    for argument in arguments.iter().copied() {
+        let (encoded, pointer) = argument.encode();
+        if let Some(address) = pointer {
+            pointers.push(Some(address));
+        }
+        match argument.foreign_type() {
+            ForeignType::F32 | ForeignType::F64 => {
+                if floating_count < floating_limit {
+                    let slot = floating
+                        .get_mut(floating_count)
+                        .ok_or(ForeignCallError::UnsupportedAbi)?;
+                    *slot = encoded;
+                    floating_count += 1;
+                } else {
+                    stack.push(encoded);
+                }
+            }
+            ForeignType::Void => return Err(ForeignCallError::UnsupportedAbi),
+            ForeignType::I8
+            | ForeignType::U8
+            | ForeignType::I16
+            | ForeignType::U16
+            | ForeignType::I32
+            | ForeignType::U32
+            | ForeignType::I64
+            | ForeignType::U64
+            | ForeignType::Pointer => {
+                if general_count < general_limit {
+                    let slot = general
+                        .get_mut(general_count)
+                        .ok_or(ForeignCallError::UnsupportedAbi)?;
+                    *slot = encoded;
+                    general_count += 1;
+                } else {
+                    stack.push(encoded);
+                }
+            }
+        }
+    }
+
+    let stack_bytes = stack
+        .len()
+        .checked_mul(core::mem::size_of::<u64>())
+        .ok_or(ForeignCallError::UnsupportedAbi)?;
+    let stack_area_bytes = stack_bytes
+        .checked_add(15)
+        .map(|bytes| bytes & !15)
+        .ok_or(ForeignCallError::UnsupportedAbi)?;
+    Ok((
+        MarshalledArguments {
+            general,
+            floating,
+            stack,
+            stack_area_bytes,
+        },
+        pointers,
+    ))
+}
+
+fn decode_result(
+    result_type: ForeignType,
+    integer_raw: u64,
+    float_raw: u64,
+) -> Result<ForeignValue, ForeignError> {
     match result_type {
         ForeignType::Void => Ok(ForeignValue::Void),
         ForeignType::I8 => {
-            let bits = low_u8(raw)?;
+            let bits = low_u8(integer_raw)?;
             Ok(ForeignValue::I8(i8::from_ne_bytes([bits])))
         }
-        ForeignType::U8 => Ok(ForeignValue::U8(low_u8(raw)?)),
+        ForeignType::U8 => Ok(ForeignValue::U8(low_u8(integer_raw)?)),
         ForeignType::I16 => {
-            let bits = low_u16(raw)?;
+            let bits = low_u16(integer_raw)?;
             Ok(ForeignValue::I16(i16::from_ne_bytes(bits.to_ne_bytes())))
         }
-        ForeignType::U16 => Ok(ForeignValue::U16(low_u16(raw)?)),
+        ForeignType::U16 => Ok(ForeignValue::U16(low_u16(integer_raw)?)),
         ForeignType::I32 => {
-            let bits = low_u32(raw)?;
+            let bits = low_u32(integer_raw)?;
             Ok(ForeignValue::I32(i32::from_ne_bytes(bits.to_ne_bytes())))
         }
-        ForeignType::U32 => Ok(ForeignValue::U32(low_u32(raw)?)),
-        ForeignType::I64 => Ok(ForeignValue::I64(i64::from_ne_bytes(raw.to_ne_bytes()))),
-        ForeignType::U64 => Ok(ForeignValue::U64(raw)),
-        ForeignType::F32 => Ok(ForeignValue::F32(f32::from_bits(low_u32(raw)?))),
-        ForeignType::F64 => Ok(ForeignValue::F64(f64::from_bits(raw))),
-        ForeignType::Pointer => SapAddress::new(raw).map(ForeignValue::Pointer),
+        ForeignType::U32 => Ok(ForeignValue::U32(low_u32(integer_raw)?)),
+        ForeignType::I64 => Ok(ForeignValue::I64(i64::from_ne_bytes(
+            integer_raw.to_ne_bytes(),
+        ))),
+        ForeignType::U64 => Ok(ForeignValue::U64(integer_raw)),
+        ForeignType::F32 => Ok(ForeignValue::F32(f32::from_bits(low_u32(float_raw)?))),
+        ForeignType::F64 => Ok(ForeignValue::F64(f64::from_bits(float_raw))),
+        ForeignType::Pointer => SapAddress::new(integer_raw).map(ForeignValue::Pointer),
     }
 }
 
@@ -325,54 +420,59 @@ fn low_u32(raw: u64) -> Result<u32, ForeignError> {
     u32::try_from(raw & u64::from(u32::MAX)).map_err(|_| ForeignError::ValueOutOfRange)
 }
 
-const fn is_float_type(foreign_type: ForeignType) -> bool {
-    matches!(foreign_type, ForeignType::F32 | ForeignType::F64)
-}
-
-const fn maximum_register_arguments() -> usize {
+const fn argument_register_limits() -> (usize, usize) {
     #[cfg(all(target_arch = "x86_64", target_family = "unix"))]
     {
-        6
+        (6, 8)
     }
     #[cfg(all(target_arch = "aarch64", target_family = "unix"))]
     {
-        8
+        (8, 8)
     }
     #[cfg(not(any(
         all(target_arch = "x86_64", target_family = "unix"),
         all(target_arch = "aarch64", target_family = "unix")
     )))]
     {
-        0
+        (0, 0)
     }
 }
 
-fn invoke(function: NonNull<c_void>, arguments: &[u64]) -> Result<u64, ForeignError> {
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the unsupported-target configuration returns an ABI error"
+)]
+fn invoke(
+    function: NonNull<c_void>,
+    arguments: &MarshalledArguments,
+) -> Result<(u64, u64), ForeignError> {
     #[cfg(all(target_arch = "x86_64", target_family = "unix"))]
     {
-        let mut registers = [0_u64; 6];
-        if arguments.len() > registers.len() {
-            return Err(ForeignError::UnsupportedAbi);
-        }
-        for (register, argument) in registers.iter_mut().zip(arguments.iter().copied()) {
-            *register = argument;
-        }
-        // SAFETY: the public caller contract guarantees the function's System V ABI;
-        // the checked signature limits this backend to six integer/pointer arguments.
-        Ok(unsafe { super::call_x86_64::invoke(function.as_ptr(), registers) })
+        // SAFETY: the caller contract guarantees this function's System V ABI, and
+        // the marshalled registers and overflow stack arguments follow that ABI.
+        Ok(unsafe {
+            super::call_x86_64::invoke(
+                function.as_ptr(),
+                &arguments.general,
+                &arguments.floating,
+                &arguments.stack,
+                arguments.stack_area_bytes,
+            )
+        })
     }
     #[cfg(all(target_arch = "aarch64", target_family = "unix"))]
     {
-        let mut registers = [0_u64; 8];
-        if arguments.len() > registers.len() {
-            return Err(ForeignError::UnsupportedAbi);
-        }
-        for (register, argument) in registers.iter_mut().zip(arguments.iter().copied()) {
-            *register = argument;
-        }
-        // SAFETY: the public caller contract guarantees the function's AAPCS64 ABI;
-        // the checked signature limits this backend to eight integer/pointer arguments.
-        Ok(unsafe { super::call_aarch64::invoke(function.as_ptr(), registers) })
+        // SAFETY: the caller contract guarantees this function's AAPCS64 ABI, and
+        // the marshalled registers and overflow stack arguments follow that ABI.
+        Ok(unsafe {
+            super::call_aarch64::invoke(
+                function.as_ptr(),
+                &arguments.general,
+                &arguments.floating,
+                &arguments.stack,
+                arguments.stack_area_bytes,
+            )
+        })
     }
     #[cfg(not(any(
         all(target_arch = "x86_64", target_family = "unix"),

@@ -14,13 +14,13 @@ pub fn make_class(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     name: Word,
-    direct_superclasses: Word,
+    direct_superclasses_word: Word,
     slots: Word,
     kind: Word,
 ) -> Result<Word, ObjectError> {
     let mut scope = ncl_object::Scope::new(ctx);
     let rooted = scope.root_many::<Word>(
-        &[name, direct_superclasses, slots, kind]
+        &[name, direct_superclasses_word, slots, kind]
             .into_iter()
             .map(ncl_object::Local::<Word>::from_word)
             .collect::<Vec<_>>(),
@@ -32,13 +32,13 @@ pub fn make_class(
     let slots_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
     let kind_handle = rooted_iter.next().ok_or(ObjectError::Layout)?;
 
-    if scope.get(superclass_handle).as_word() != Word::NIL {
-        let inherited = class_effective_slots(scope.context(), scope.get(superclass_handle).as_word())?;
+    for superclass in direct_superclasses(scope.context(), scope.get(superclass_handle).as_word())?
+    {
+        let inherited = class_effective_slots(scope.context(), superclass)?;
         for slot in inherited {
             let inherited_slot_handle: ncl_object::Handle<'_, Word> =
                 scope.root(ncl_object::Local::from_word(slot));
-            let slot_name =
-                slot_key(scope.context(), scope.get(inherited_slot_handle).as_word())?;
+            let slot_name = slot_key(scope.context(), scope.get(inherited_slot_handle).as_word())?;
             let mut found = false;
             for candidate in &effective {
                 if slot_key(scope.context(), scope.get(*candidate).as_word())? == slot_name {
@@ -82,11 +82,11 @@ pub fn make_class(
     let effective_slots = scope.make_simple_vector(runtime, &effective_handles)?;
     let class_values = [name_handle, superclass_handle, slots_handle, kind_handle]
         .into_iter()
-    .map(|handle| ncl_object::Local::from_word(scope.get(handle).as_word()))
-    .chain(std::iter::once(ncl_object::Local::from_word(
-        scope.get(effective_slots).as_word(),
-    )))
-    .collect::<Vec<_>>();
+        .map(|handle| ncl_object::Local::from_word(scope.get(handle).as_word()))
+        .chain(std::iter::once(ncl_object::Local::from_word(
+            scope.get(effective_slots).as_word(),
+        )))
+        .collect::<Vec<_>>();
     let class_handles = scope.root_many(&class_values);
     let class = scope.make_simple_vector(runtime, &class_handles)?;
     Ok(scope.get(class).as_word())
@@ -127,6 +127,67 @@ pub fn class_name(ctx: &ThreadContext, class: Word) -> Result<Word, ObjectError>
     simple_vector_ref(ctx, class, CLASS_NAME)
 }
 
+fn class_object_metaclass(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<Option<Word>, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let object: ncl_object::Handle<'_, Word> = scope.root(Local::from_word(object));
+    let object_word = scope.get(object).as_word();
+    if !matches!(
+        classify_object(scope.context(), object_word),
+        ObjectRef::SimpleVector(_)
+    ) {
+        return Ok(None);
+    }
+    let length = simple_vector_length(scope.context(), object_word)?;
+    if length < 3 {
+        return Ok(None);
+    }
+    let name_word = simple_vector_ref(scope.context(), object_word, CLASS_NAME)?;
+    let name = match classify_object(scope.context(), name_word) {
+        ObjectRef::Symbol(_) => symbol_name_string(scope.context(), name_word)?,
+        ObjectRef::String(_) => {
+            let length = ncl_object::string_length(scope.context(), name_word)?;
+            (0..length)
+                .map(|index| ncl_object::string_ref(scope.context(), name_word, index))
+                .collect::<Result<String, _>>()?
+        }
+        _ => return Ok(None), // check-added-lines: allow(wildcard) a class name must be a symbol or string
+    };
+    let registered = runtime.class(scope.context_mut(), &name);
+    if registered != Some(scope.get(object).as_word()) {
+        return Ok(None);
+    }
+    let object_word = scope.get(object).as_word();
+    let metaclass_name = if length <= CLASS_EFFECTIVE_SLOTS {
+        // Condition descriptors use a shorter layout, but the registered
+        // descriptor identity and name above still establish the class object.
+        "STANDARD-CLASS"
+    } else {
+        match simple_vector_ref(scope.context(), object_word, CLASS_KIND)? {
+            kind if kind == Word::fixnum(0) => "BUILT-IN-CLASS",
+            kind if kind == Word::fixnum(1) => "STRUCTURE-CLASS",
+            Word::NIL => "STANDARD-CLASS",
+            _ => return Ok(None), // check-added-lines: allow(wildcard) reject unknown class-kind markers
+        }
+    };
+    runtime
+        .class(scope.context_mut(), metaclass_name)
+        .filter(|class| *class != Word::UNBOUND && *class != Word::fixnum(1)) // check-added-lines: allow(unbound) class registry placeholders
+        .map(Some)
+        .ok_or(ObjectError::Layout)
+}
+
+fn is_class_metaobject(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+) -> Result<bool, ObjectError> {
+    Ok(class_object_metaclass(ctx, runtime, object)?.is_some())
+}
+
 /// Return the class of an object using the existing object-layer layouts.
 ///
 /// # Errors
@@ -138,6 +199,9 @@ pub fn class_of(
     object: Word,
 ) -> Result<Word, ObjectError> {
     if let Ok(class) = instance_class(ctx, Instance::from_word(object)) {
+        return Ok(class);
+    }
+    if let Some(class) = class_object_metaclass(ctx, runtime, object)? {
         return Ok(class);
     }
     let name = if object == Word::NIL {
@@ -153,27 +217,52 @@ pub fn class_of(
         } else if matches!(object_ref, ObjectRef::Symbol(_)) {
             "SYMBOL"
         } else if matches!(object_ref, ObjectRef::String(_)) {
-            "STRING"
+            "SIMPLE-STRING"
         } else if matches!(object_ref, ObjectRef::SimpleVector(_)) {
             "SIMPLE-VECTOR"
-        } else if matches!(
-            object_ref,
-            ObjectRef::Array(_) | ObjectRef::SpecializedArray(_)
-        ) {
+        } else if matches!(object_ref, ObjectRef::Array(_)) {
             "ARRAY"
+        } else if matches!(object_ref, ObjectRef::SpecializedArray(_)) {
+            if ncl_object::specialized_array_element_type(ctx, object)?
+                == ncl_object::ArrayElementType::Bit
+                && ncl_object::array_dimensions(ctx, object)?.len() == 1
+            {
+                "SIMPLE-BIT-VECTOR"
+            } else {
+                "SIMPLE-ARRAY"
+            }
         } else if matches!(object_ref, ObjectRef::HashTable(_)) {
             "HASH-TABLE"
         } else if matches!(object_ref, ObjectRef::Function(_) | ObjectRef::Closure(_)) {
-            "FUNCTION"
+            if generic_function_name_for_word(ctx, runtime, object)?.is_some() {
+                return runtime
+                    .class(ctx, "STANDARD-GENERIC-FUNCTION")
+                    .filter(|class| *class != Word::UNBOUND && *class != Word::fixnum(1)) // check-added-lines: allow(unbound) class registry placeholders
+                    .ok_or(ObjectError::Layout);
+            }
+            if matches!(object_ref, ObjectRef::Function(_)) {
+                "COMPILED-FUNCTION"
+            } else {
+                "FUNCTION"
+            }
         } else if matches!(object_ref, ObjectRef::Package(_)) {
             "PACKAGE"
         } else if matches!(object_ref, ObjectRef::Stream(_)) {
-            "STREAM"
+            match ncl_lib_streams::character::stream_class(ctx, Stream::from_word(object))? {
+                ncl_lib_streams::character::StreamClass::Generic => "STREAM",
+                ncl_lib_streams::character::StreamClass::File => "FILE-STREAM",
+                ncl_lib_streams::character::StreamClass::String => "STRING-STREAM",
+                ncl_lib_streams::character::StreamClass::TwoWay => "TWO-WAY-STREAM",
+            }
+        } else if matches!(object_ref, ObjectRef::Readtable(_)) {
+            "READTABLE"
         } else if matches!(object_ref, ObjectRef::Structure(_)) {
             if let Ok(layout) = ncl_object::structure_layout(ctx, object)
                 && runtime.structure_class(ctx, layout).is_some()
             {
-                return runtime.structure_class(ctx, layout).ok_or(ObjectError::Layout);
+                return runtime
+                    .structure_class(ctx, layout)
+                    .ok_or(ObjectError::Layout);
             }
             "STRUCTURE-OBJECT"
         } else if matches!(object_ref, ObjectRef::Bignum(_)) {
@@ -206,8 +295,7 @@ pub fn make_instance(
     slots: &[Word],
 ) -> Result<Word, ObjectError> {
     let mut scope = ncl_object::Scope::new(ctx);
-    let class: ncl_object::Handle<'_, Word> =
-        scope.root(ncl_object::Local::from_word(class));
+    let class: ncl_object::Handle<'_, Word> = scope.root(ncl_object::Local::from_word(class));
     let rooted_slots = scope.root_many(
         &slots
             .iter()
@@ -276,11 +364,7 @@ fn slot_value_builtin(
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
     let index = slot_index(ctx, instance, args.required(1)?)?;
-    slot_ref(
-        ctx,
-        instance,
-        index,
-    )
+    slot_ref(ctx, instance, index)
 }
 
 fn slot_set_builtin(
@@ -292,12 +376,7 @@ fn slot_set_builtin(
     let instance = instance_arg(ctx, args.required(0)?)?;
     let index = slot_index(ctx, instance, args.required(1)?)?;
     let value = args.required(2)?;
-    slot_set(
-        ctx,
-        instance,
-        index,
-        value,
-    )?;
+    slot_set(ctx, instance, index, value)?;
     Ok(value)
 }
 
@@ -323,12 +402,7 @@ fn slot_makunbound_builtin(
 ) -> Result<Word, ObjectError> {
     let instance = instance_arg(ctx, args.required(0)?)?;
     let index = slot_index(ctx, instance, args.required(1)?)?;
-    slot_set(
-        ctx,
-        instance,
-        index,
-        Word::UNBOUND,
-    )?;
+    slot_set(ctx, instance, index, Word::UNBOUND)?; // check-added-lines: allow(unbound) SLOT-MAKUNBOUND stores the marker
     Ok(instance.as_word())
 }
 
@@ -402,48 +476,6 @@ fn class_of_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     class_of(ctx, runtime, args.required(0)?)
-}
-
-fn class_is_subclass(
-    ctx: &ThreadContext,
-    actual: Word,
-    expected: Word,
-) -> Result<bool, ObjectError> {
-    if actual == expected {
-        return Ok(true);
-    }
-    let superclass = simple_vector_ref(ctx, actual, CLASS_DIRECT_SUPERCLASS)?;
-    for parent in direct_superclasses(ctx, superclass)? {
-        if class_is_subclass(ctx, parent, expected)? {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn typep_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let object = args.required(0)?;
-    let expected = class_designator(ctx, runtime, args.required(1)?)?;
-    let actual = class_of(ctx, runtime, object)?;
-    Ok(if class_is_subclass(ctx, actual, expected)? {
-        Word::TRUE
-    } else {
-        Word::NIL
-    })
-}
-
-fn class_name_builtin(
-    ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    class_name(ctx, args.required(0)?)
 }
 
 // Dispatch metadata is kept in a symbol plist rather than in a Rust-side

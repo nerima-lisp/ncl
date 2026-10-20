@@ -11,6 +11,7 @@ use ncl_object::{
     ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object, double_value,
     make_double, make_simple_vector, make_string, ratio_denominator, ratio_numerator,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_function,
+    symbol_name,
 };
 
 use crate::{NamedType, TypeSpecifier, parse_type_specifier, subtypep, typep};
@@ -161,25 +162,29 @@ fn type_of_builtin(
 
 fn subtypep_builtin(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let type1 = args.required(0)?;
     let type2 = args.required(1)?;
-    let spec1 = parse_type_specifier(ctx, type1);
-    let spec2 = parse_type_specifier(ctx, type2);
+    let spec1 = crate::parse_type_specifier_with_runtime(ctx, runtime, type1);
+    let spec2 = crate::parse_type_specifier_with_runtime(ctx, runtime, type2);
     // Every failure mode (an unresolved `TypeError` from `subtypep`, or a
     // specifier that fails to parse at all) is treated as "cannot determine"
     // rather than a hard error, matching CLHS's permission for SUBTYPEP to
     // report uncertainty via its second value.
     let (is_sub, definite) = match (spec1, spec2) {
-        (Ok(spec1), Ok(spec2)) => subtypep(&spec1, &spec2).unwrap_or_default(),
+        (Ok(spec1), Ok(spec2)) => {
+            subtypep_with_class_graph(ctx, runtime, &spec1, &spec2).unwrap_or_default()
+        }
         (Err(_), _) | (_, Err(_)) => (false, false),
     };
     values.set(&[bool_word(definite)]);
     Ok(bool_word(is_sub))
 }
+
+include!("builtins_subtypep.rs");
 
 fn coerce_builtin(
     ctx: &mut ThreadContext,

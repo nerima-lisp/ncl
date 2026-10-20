@@ -39,9 +39,10 @@ python3 scripts/check_standards.py
 mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
-For local lane work, test the changed crate. If a test under <code>tests/</code>
-changes, run <code>cargo test -p ncl --test &lt;name&gt;</code>. CI runs the
-locked workspace tests with all features and targets in debug and release:
+For local lane work, run <code>cargo test -p &lt;crate&gt;</code> for each
+changed crate. If a test under <code>tests/</code> changes, run
+<code>cargo test -p ncl --test &lt;name&gt;</code>. CI runs the locked workspace
+tests with all features and targets in debug and release:
 
 ~~~sh
 cargo test --locked --workspace --all-features --all-targets

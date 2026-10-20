@@ -1,6 +1,10 @@
 # NCL
 
-NCL is a Rust-native Common Lisp implementation. It targets ANSI Common Lisp and the selected SBCL public APIs, contribs, and library-referenced symbols recorded in the [wave plan](docs/src/project/wave-plan.md). SBCL 2.6.0 supplies the conformance and performance baselines; NCL has its own implementation and extension API.
+NCL is a Rust-native Common Lisp implementation. It targets ANSI Common Lisp
+and the selected SBCL public APIs, contribs, and library-referenced symbols
+recorded in the [wave plan](docs/src/project/wave-plan.md). SBCL 2.6.0 supplies
+the conformance and performance baselines; NCL has its own implementation and
+extension API.
 
 The [wave plan](docs/src/project/wave-plan.md) records current decisions, phases, and acceptance criteria. Design contracts are in [docs/src/design/](docs/src/design/).
 
@@ -37,7 +41,9 @@ cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 python3 scripts/check_standards.py
 ```
 
-For local lane work, test the changed crate. If a test under `tests/` changes, run `cargo test -p ncl --test <name>`. CI runs workspace tests in debug and release on x86-64 Linux and AArch64 macOS:
+For local lane work, run `cargo test -p <crate>` for each changed crate. If a
+test under `tests/` changes, run `cargo test -p ncl --test <name>`. CI runs
+workspace tests in debug and release on x86-64 Linux and AArch64 macOS:
 
 ```sh
 cargo test --locked --workspace --all-features --all-targets

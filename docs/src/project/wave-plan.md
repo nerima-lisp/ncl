@@ -181,9 +181,13 @@ ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-co
 ## Test requirements
 
 - Pass each crate's `registers_every_owned_symbol` test.
-- Target at least 95% regions coverage per crate. CI currently enforces 95% at the workspace level; its coverage job does not check the per-crate target.
-- For local lane work, test the changed crate. If a test under `tests/` changes, run `cargo test -p ncl --test <name>`.
-- CI runs formatting, checks, tests, Clippy, and coverage on the x86-64 Linux and AArch64 macOS targets:
+- Target at least 95% regions coverage per crate. CI currently enforces the
+  threshold at workspace level; its coverage job does not check the per-crate
+  target.
+- For local lane work, run `cargo test -p <crate>` for each changed crate. If a
+  test under `tests/` changes, run `cargo test -p ncl --test <name>`.
+- CI runs formatting, checks, debug and release tests, and release builds on
+  x86-64 Linux and AArch64 macOS. The coverage job runs on Ubuntu:
 
 ```sh
 cargo fmt --all -- --check

@@ -12,14 +12,16 @@
 use ncl_codegen::{ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
-    Thread, Word, alloc_code, enter_native, invoke_entry, invoke_entry_with_function, leave_native,
-    publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
+    RuntimeErrorSource, Thread, Word, alloc_code, enter_native, invoke_entry,
+    invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
+    thread_layout, tlab_bump, write_code,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
+static AFTER_ERROR_BUILTIN_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
@@ -28,6 +30,27 @@ static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
+}
+extern "C" fn make_closure_error(ctx: &mut Thread, capture_count: u64, entry: u64) -> u64 {
+    assert_eq!(capture_count, Word::fixnum(1).bits());
+    assert_eq!(entry, Word::fixnum(9).bits());
+    ctx.set_pending(true);
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    Word::NIL.bits()
+}
+extern "C" fn make_value_cell_error(ctx: &mut Thread, value: u64) -> u64 {
+    assert_eq!(value, Word::fixnum(37).bits());
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    Word::NIL.bits()
+}
+extern "C" fn error_builtin(ctx: &mut Thread, value: u64) -> u64 {
+    assert_eq!(value, Word::fixnum(23).bits());
+    ctx.set_runtime_error_pending(RuntimeErrorSource::Object, true);
+    Word::NIL.bits()
+}
+extern "C" fn observe_after_error_builtin(_ctx: &mut Thread, value: u64) -> u64 {
+    AFTER_ERROR_BUILTIN_CALLS.fetch_add(1, Ordering::SeqCst);
+    value
 }
 extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
     ALLOC_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
@@ -62,10 +85,11 @@ impl RuntimeAbi for BuiltinAbi {
         &self,
         identifier: ncl_object::BuiltinIdentifier,
     ) -> Result<u64, ncl_codegen::AbiError> {
-        if identifier.name.as_str() == "add" {
-            Ok(builtin_add as *const () as usize as u64)
-        } else {
-            Err(ncl_codegen::AbiError::MissingBuiltin(identifier))
+        match identifier.name.as_str() {
+            "add" => Ok(builtin_add as *const () as usize as u64),
+            "error" => Ok(error_builtin as *const () as usize as u64),
+            "observe-after-error" => Ok(observe_after_error_builtin as *const () as usize as u64),
+            _ => Err(ncl_codegen::AbiError::MissingBuiltin(identifier)),
         }
     }
 
@@ -81,12 +105,17 @@ impl RuntimeAbi for BuiltinAbi {
             ContextField::Handler => layout.handler,
             ContextField::Cleanup => layout.cleanup,
             ContextField::Catch => layout.catch,
+            ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
         };
         i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))
     }
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         match function {
+            RuntimeFunction::MakeClosure => Ok(make_closure_error as *const () as usize as u64),
+            RuntimeFunction::MakeValueCell => {
+                Ok(make_value_cell_error as *const () as usize as u64)
+            }
             RuntimeFunction::AllocateSlow => Ok(alloc_slow as *const () as usize as u64),
             RuntimeFunction::SafepointSlow => Ok(safepoint_slow as *const () as usize as u64),
             _ => Err(ncl_codegen::AbiError::UnsupportedRuntimeFunction(function)),
@@ -108,10 +137,167 @@ fn builtin_fixture_exposes_all_context_fields() {
         (ContextField::Handler, layout.handler),
         (ContextField::Cleanup, layout.cleanup),
         (ContextField::Catch, layout.catch),
+        (ContextField::RuntimeErrorFlags, layout.runtime_error_flags),
     ];
     for (field, expected) in fields {
         assert_eq!(abi.field_offset(field).ok(), i32::try_from(expected).ok());
     }
+}
+
+#[test]
+fn make_closure_error_stops_before_capture_stores() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(36),
+        "make-closure-error",
+        vec![
+            Param {
+                name: "entry".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "capture".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let entry = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("entry argument")[0];
+    let capture = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("capture argument")[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry,
+                captures: vec![capture],
+            },
+            &[Ty::Word],
+        )
+        .expect("closure allocation")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![closure],
+        })
+        .expect("return");
+
+    let compiled = compile_function_x86_64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        2,
+        [Word::fixnum(9).bits(), Word::fixnum(37).bits(), 0, 0],
+        0,
+    );
+
+    assert_eq!((value, count), (Word::ZERO.bits(), 0));
+    assert!(thread.runtime_error_pending());
+    assert!(!thread.pending());
+    assert_eq!(thread.mv_count(), 0);
+}
+
+#[test]
+fn make_value_cell_error_returns_no_values() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(37),
+        "make-value-cell-error",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+    );
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("value argument")[0];
+    let cell = builder
+        .push_op(OpKind::MakeValueCell { value }, &[Ty::Word])
+        .expect("value cell allocation")[0];
+    builder
+        .terminate(Terminator::Return { values: vec![cell] })
+        .expect("return");
+
+    let compiled = compile_function_x86_64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        1,
+        [Word::fixnum(37).bits(), 0, 0, 0],
+        0,
+    );
+
+    assert_eq!((value, count), (Word::ZERO.bits(), 0));
+    assert!(thread.runtime_error_pending());
+    assert_eq!(thread.mv_count(), 0);
+}
+
+#[test]
+fn builtin_error_skips_later_helper_calls() {
+    AFTER_ERROR_BUILTIN_CALLS.store(0, Ordering::SeqCst);
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(38),
+        "builtin-error",
+        vec![Param {
+            name: "value".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+    );
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("value argument")[0];
+    let failed = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "error".into(),
+                args: vec![value],
+            },
+            &[Ty::Word],
+        )
+        .expect("failing builtin")[0];
+    let observed = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "observe-after-error".into(),
+                args: vec![failed],
+            },
+            &[Ty::Word],
+        )
+        .expect("downstream builtin")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![observed],
+        })
+        .expect("return");
+
+    let compiled = compile_function_x86_64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        1,
+        [Word::fixnum(23).bits(), 0, 0, 0],
+        0,
+    );
+
+    assert_eq!((value, count), (Word::ZERO.bits(), 0));
+    assert!(thread.runtime_error_pending());
+    assert_eq!(AFTER_ERROR_BUILTIN_CALLS.load(Ordering::SeqCst), 0);
 }
 
 #[test]
@@ -425,3 +611,6 @@ mod basic;
 
 #[path = "exec_x86_64/tail.rs"]
 mod tail;
+
+#[path = "exec_x86_64/checked_calls.rs"]
+mod checked_calls;

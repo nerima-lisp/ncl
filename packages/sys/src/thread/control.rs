@@ -60,6 +60,12 @@ impl<T: RuntimeErrorPayloadKind> RuntimeErrorPayloadSlot<T> {
     }
 }
 
+impl<T: RuntimeErrorPayloadKind> Default for RuntimeErrorPayloadSlot<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Thread {
     /// Record whether a Rust-side runtime error payload is pending.
     pub(crate) const fn set_runtime_error_pending(

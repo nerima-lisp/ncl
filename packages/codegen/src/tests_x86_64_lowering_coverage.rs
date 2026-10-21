@@ -5,8 +5,10 @@ use crate::{
     AbiError, Allocation, AllocationTarget, ContextField, Location, RuntimeAbi, RuntimeFunction,
     allocate, compile_function_x86_64,
 };
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
-use ncl_ir::{Constant, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
+use ncl_ir::{
+    Constant, Convert, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
+};
 
 fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
     let mut assembler = Assembler::new();
@@ -81,6 +83,7 @@ fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
             Inst::CmpRR(Reg::R10, Reg::R11),
             Inst::Setcc(condition, Reg::R10),
             Inst::Movzx(Reg::R10, Reg::R10, 8),
+            store_register_into_value(&function, &allocation, result, Reg::R10),
         ]);
         assert_contains(
             &compiled.code,
@@ -124,7 +127,7 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
             params,
             result_types,
         );
-        let op_result_types = if is_load { &[Ty::Word][..] } else { &[] };
+        let op_result_types = [if is_load { Ty::Word } else { Ty::Unit }];
         let results = builder
             .push_op(
                 OpKind::Prim {
@@ -132,19 +135,33 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
                     args,
                     condition: None,
                 },
-                op_result_types,
+                &op_result_types,
             )
             .expect("cons primitive");
+        // Rplaca/Rplacd have a Unit IR result even though the fixture returns no values.
+        let result = results[0];
         builder
-            .terminate(Terminator::Return { values: results })
+            .terminate(Terminator::Return {
+                values: if is_load { vec![result] } else { Vec::new() },
+            })
             .expect("cons primitive return");
 
-        let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
-            .expect("cons primitive lowers");
+        let function = builder.finish();
+        let allocation = allocate(&function, AllocationTarget::X86_64);
+        let compiled =
+            compile_function_x86_64(&function, &X86_64FixtureAbi).expect("cons primitive lowers");
         let expected = if is_load {
-            encode([Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset))])
+            encode([
+                load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
+                Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
+                store_register_into_value(&function, &allocation, result, Reg::R10),
+            ])
         } else {
-            encode([Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11)])
+            encode([
+                load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
+                load_value_into_register(&function, &allocation, ValueId(1), Reg::R11),
+                Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
+            ])
         };
         assert_contains(
             &compiled.code,
@@ -161,30 +178,60 @@ fn load_value_into_register(
     target: Reg,
 ) -> Inst {
     match allocation.location(value).expect("value is allocated") {
-        Location::Register(allocated) => Inst::MovRR(
-            target,
-            Reg::from_id(u8::try_from(allocated).expect("register id fits"))
-                .expect("allocated register exists"),
-        ),
-        Location::Spill(spill) => {
-            let local_words = function
-                .blocks
-                .iter()
-                .map(|block| {
-                    block.params.len() + block.ops.iter().map(|op| op.results.len()).sum::<usize>()
-                })
-                .sum::<usize>();
-            let spill_base =
-                u32::try_from(function.params.len() + local_words).expect("frame slot count fits");
-            let slot = spill_base.checked_add(spill).expect("spill slot fits");
-            let bytes = slot
-                .checked_add(1)
-                .and_then(|slot| slot.checked_mul(8))
-                .and_then(|bytes| i32::try_from(bytes).ok())
-                .expect("spill byte offset fits");
-            Inst::MovRM(target, Mem::base(Reg::Rbp, -bytes))
-        }
+        Location::Register(allocated) => Inst::MovRR(target, allocated_register(allocated)),
+        Location::Spill(spill) => Inst::MovRM(target, spill_memory(function, spill)),
     }
+}
+
+fn store_register_into_value(
+    function: &Function,
+    allocation: &Allocation,
+    value: ValueId,
+    source: Reg,
+) -> Inst {
+    match allocation.location(value).expect("value is allocated") {
+        Location::Register(allocated) => Inst::MovRR(allocated_register(allocated), source),
+        Location::Spill(spill) => Inst::MovMR(spill_memory(function, spill), source),
+    }
+}
+
+fn spill_memory(function: &Function, spill: u32) -> Mem {
+    let local_words = function
+        .blocks
+        .iter()
+        .map(|block| {
+            block.params.len() + block.ops.iter().map(|op| op.results.len()).sum::<usize>()
+        })
+        .sum::<usize>();
+    let spill_base =
+        u32::try_from(function.params.len() + local_words).expect("frame slot count fits");
+    let bytes = spill_base
+        .checked_add(spill)
+        .and_then(|slot| slot.checked_add(1))
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|bytes| i32::try_from(bytes).ok())
+        .expect("spill byte offset fits");
+    Mem::base(Reg::Rbp, -bytes)
+}
+
+fn allocated_register(id: u16) -> Reg {
+    Reg::from_id(u8::try_from(id).expect("register id fits")).expect("allocated register exists")
+}
+
+fn add_fixnum_word(builder: &mut FunctionBuilder, value: i64) -> ValueId {
+    let constant = builder.add_constant(Constant::Fixnum(value));
+    let integer = builder
+        .push_op(OpKind::Const { result: constant }, &[Ty::I64])
+        .expect("fixnum constant")[0];
+    builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: integer,
+            },
+            &[Ty::Word],
+        )
+        .expect("fixnum word")[0]
 }
 
 #[test]
@@ -193,39 +240,21 @@ fn x86_64_set_multiple_values_stores_distinct_consecutive_values_and_count() {
         ncl_ir::FunctionId(220),
         "multiple-value-stores",
         Vec::new(),
-        vec![Ty::Word],
+        Vec::new(),
     );
-    let first_constant = builder.add_constant(Constant::Fixnum(11));
-    let first = builder
-        .push_op(
-            OpKind::Const {
-                result: first_constant,
-            },
-            &[Ty::Word],
-        )
-        .expect("first value")[0];
-    let second_constant = builder.add_constant(Constant::Fixnum(22));
-    let second = builder
-        .push_op(
-            OpKind::Const {
-                result: second_constant,
-            },
-            &[Ty::Word],
-        )
-        .expect("second value")[0];
-    let result = builder
+    let first = add_fixnum_word(&mut builder, 11);
+    let second = add_fixnum_word(&mut builder, 22);
+    builder
         .push_op(
             OpKind::SetMultipleValues {
                 values: vec![first, second],
             },
-            &[Ty::Word],
+            &[],
         )
-        .expect("set multiple values")[0];
+        .expect("set multiple values");
     builder
-        .terminate(Terminator::Return {
-            values: vec![result],
-        })
-        .expect("single-value return after the multiple-value operation");
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("void return after the multiple-value operation");
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert_ne!(
@@ -306,6 +335,7 @@ fn assert_named_closure_unbound_dispatch(
     function: &Function,
     allocation: &Allocation,
     closure: ValueId,
+    argument_count: ValueId,
 ) {
     let unbound = i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes());
     let unbound_immediate =
@@ -337,11 +367,6 @@ fn assert_named_closure_unbound_dispatch(
         code[jump_start], 0xe9,
         "the undefined path must jump to the call setup"
     );
-    let jump_displacement = i32::from_le_bytes(
-        code[jump_start + 1..jump_start + 5]
-            .try_into()
-            .expect("relative jump has four displacement bytes"),
-    );
     let call_setup = encode([
         Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
         Inst::CallReg(Reg::R11),
@@ -351,28 +376,44 @@ fn assert_named_closure_unbound_dispatch(
         .position(|window| window == call_setup)
         .map(|offset| branch_start + offset)
         .expect("named dispatch must reach the indirect call setup");
-    let jump_target = jump_start
-        + 5
-        + usize::try_from(jump_displacement)
-            .expect("undefined path jumps forward to the shared call setup");
+    let jump_target = rel32_target(code, jump_start + 1, jump_start + 5);
     assert_eq!(
         jump_target, call_setup_start,
         "the undefined path must skip the bound-closure setup and rejoin at its call"
     );
-    let branch_displacement = i32::from_le_bytes(
-        code[branch_start + 2..branch_start + 6]
-            .try_into()
-            .expect("conditional branch has four displacement bytes"),
-    );
-    let branch_target = branch_start
-        + 6
-        + usize::try_from(branch_displacement)
-            .expect("bound path jumps forward over the undefined fallback");
+    let branch_target = rel32_target(code, branch_start + 2, branch_start + 6);
     assert_eq!(
         branch_target,
         jump_start + 5,
         "the bound path must branch to the first instruction after the undefined fallback"
     );
+    let entry_offset = i32::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
+        .expect("closure entry offset fits");
+    let bound_dispatch = encode([
+        load_value_into_register(function, allocation, closure, Reg::R10),
+        Inst::MovRR(Reg::R11, Reg::R10),
+        Inst::MovRI(Reg::Rax, Imm::I32(-8)),
+        Inst::BinRR(BinOp::And, Reg::R11, Reg::Rax),
+        Inst::MovRR(Reg::Rax, Reg::R11),
+        load_value_into_register(function, allocation, argument_count, Reg::Rdi),
+        Inst::MovRM(Reg::R11, Mem::base(Reg::Rax, entry_offset)),
+        Inst::ShiftImm(
+            Shift::Sar,
+            Reg::R11,
+            u8::try_from(ncl_sys::FIXNUM_TAG_BITS).expect("tag width fits"),
+        ),
+    ]);
+    let bound_path = &code[branch_target..call_setup_start];
+    assert_contains(
+        bound_path,
+        &bound_dispatch,
+        "bound dispatch must preserve the untagged closure pointer in rax through the entry load",
+    );
+}
+
+fn rel32_target(code: &[u8], start: usize, end: usize) -> usize {
+    let displacement = i32::from_le_bytes(code[start..end].try_into().expect("rel32 bytes"));
+    end + usize::try_from(displacement).expect("branch target is forward")
 }
 
 #[test]
@@ -392,6 +433,7 @@ fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
         ],
         vec![Ty::Word],
     );
+    let argument_count = ValueId(0);
     let capture = builder
         .push_op(OpKind::LoadCapture { index: 2 }, &[Ty::Word])
         .expect("capture load")[0];
@@ -429,7 +471,7 @@ fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
         .push_op(
             OpKind::CallClosure {
                 closure,
-                args: vec![ValueId(0)],
+                args: vec![argument_count],
                 named_symbol: Some(symbol),
             },
             &[Ty::Word],
@@ -446,5 +488,11 @@ fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
     let compiled = compile_function_x86_64(&function, &UndefinedFunctionFixtureAbi)
         .expect("named closure function lowers");
     assert_capture_index_two_load(&compiled.code);
-    assert_named_closure_unbound_dispatch(&compiled.code, &function, &allocation, closure);
+    assert_named_closure_unbound_dispatch(
+        &compiled.code,
+        &function,
+        &allocation,
+        closure,
+        argument_count,
+    );
 }

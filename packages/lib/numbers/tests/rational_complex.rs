@@ -106,9 +106,9 @@ fn complex_builtins_preserve_real_identity_and_conjugate_components() {
     assert_eq!(collapsed, real);
 
     let real_part = call(&runtime, &mut ctx, "REALPART", &[collapsed]).unwrap();
-    assert_eq!(double(&ctx, real_part), 3.0);
+    assert_eq!(double(&ctx, real_part).to_bits(), 3.0_f64.to_bits());
     let imaginary_part = call(&runtime, &mut ctx, "IMAGPART", &[collapsed]).unwrap();
-    assert_eq!(double(&ctx, imaginary_part), 0.0);
+    assert_eq!(double(&ctx, imaginary_part).to_bits(), 0.0_f64.to_bits());
 
     let mut real = make_double(&mut ctx, &runtime, 3.0).unwrap().into();
     let real_root = ncl_object::push_root(&mut ctx, &mut real);
@@ -124,9 +124,9 @@ fn complex_builtins_preserve_real_identity_and_conjugate_components() {
         ObjectRef::Complex(_)
     ));
     let real_part = call(&runtime, &mut ctx, "REALPART", &[conjugate]).unwrap();
-    assert_eq!(double(&ctx, real_part), 3.0);
+    assert_eq!(double(&ctx, real_part).to_bits(), 3.0_f64.to_bits());
     let imaginary_part = call(&runtime, &mut ctx, "IMAGPART", &[conjugate]).unwrap();
-    assert_eq!(double(&ctx, imaginary_part), -4.0);
+    assert_eq!(double(&ctx, imaginary_part).to_bits(), (-4.0_f64).to_bits());
 
     assert!(ncl_object::pop_root(&mut ctx, conjugate_root));
     assert!(ncl_object::pop_root(&mut ctx, complex_root));

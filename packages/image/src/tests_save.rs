@@ -117,8 +117,13 @@ fn save_records_package_hash_specialized_array_and_number_payloads() {
     .unwrap();
     let image = ImageFile::from_bytes(&bytes).unwrap();
 
+    assert_package_and_hash_records(&image);
+    assert_specialized_array_and_number_records(&image);
+}
+
+fn assert_package_and_hash_records(image: &ImageFile) {
     assert_eq!(
-        object_root(&image, 0),
+        object_root(image, 0),
         &Record::Package {
             name: "SAVE-PACKAGE".to_owned(),
             nicknames: vec!["SP".to_owned()],
@@ -131,7 +136,7 @@ fn save_records_package_hash_specialized_array_and_number_payloads() {
         test,
         weakness,
         entries,
-    } = object_root(&image, 2)
+    } = object_root(image, 2)
     else {
         panic!("hash-table root")
     };
@@ -152,28 +157,30 @@ fn save_records_package_hash_specialized_array_and_number_payloads() {
         Record::Symbol { package, name, .. }
             if package == "SAVE-PACKAGE" && name == "VALUE"
     ));
+}
 
+fn assert_specialized_array_and_number_records(image: &ImageFile) {
     assert!(matches!(
-        object_root(&image, 3),
+        object_root(image, 3),
         Record::SpecializedArray { element_type, elements }
             if *element_type == ArrayElementType::Fixnum as u8
                 && elements == &[Word::fixnum(3).bits(), Word::fixnum(5).bits()]
     ));
     assert_eq!(
-        object_root(&image, 4),
+        object_root(image, 4),
         &Record::Bignum {
             negative: true,
             limbs: vec![7, 11],
         }
     );
     assert_eq!(
-        object_root(&image, 5),
+        object_root(image, 5),
         &Record::Ratio {
             numerator: Ref::Immediate(Word::fixnum(2).bits()),
             denominator: Ref::Immediate(Word::fixnum(3).bits()),
         }
     );
-    let Record::Complex { real, imag } = object_root(&image, 6) else {
+    let Record::Complex { real, imag } = object_root(image, 6) else {
         panic!("complex root")
     };
     assert_eq!(*real, Ref::Immediate(Word::fixnum(1).bits()));

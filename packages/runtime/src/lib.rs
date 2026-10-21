@@ -6,6 +6,7 @@ mod compile;
 #[cfg(test)]
 mod constant_tests;
 mod error;
+mod eval_builtins;
 mod evalwhen;
 mod function_call;
 pub(crate) mod load;
@@ -24,8 +25,8 @@ pub use native_error::NativeCondition;
 use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    Function, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
-    make_simple_vector, slot_ref, symbol_name,
+    Function, HeapRootedWord, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word,
+    function_code, make_simple_vector, slot_ref, symbol_name,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
@@ -43,6 +44,7 @@ pub struct Runtime {
     /// Published entry addresses retain their own rooted `CODE` objects.
     entry_codes: BTreeMap<usize, (Box<Word>, RootToken)>, // check-added-lines: allow(word-table) every code Word has its own root token
     rooted_functions: Vec<(Box<Word>, RootToken)>,
+    pending_undefined_function_condition: Option<HeapRootedWord>,
     object: ObjectRuntime,
 }
 #[derive(Debug)]
@@ -66,6 +68,7 @@ impl Runtime {
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
         time::register_builtins(&mut context, &object)?;
+        eval_builtins::register(&mut context, &object)?;
         builtin_trampoline::install_arith_fast(&object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
@@ -78,6 +81,7 @@ impl Runtime {
             functions: BTreeMap::new(),
             entry_codes: BTreeMap::new(),
             rooted_functions: Vec::new(),
+            pending_undefined_function_condition: None,
         })
     }
     /// Enables or disables collection before each allocation.
@@ -98,6 +102,7 @@ impl Runtime {
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = load::source_forms(self, source);
+        self.clear_pending_undefined_function_condition();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -112,6 +117,7 @@ impl Runtime {
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = compile::source(self, source);
+        self.clear_pending_undefined_function_condition();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -128,6 +134,7 @@ impl Runtime {
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = compile::file(self, path.as_ref());
+        self.clear_pending_undefined_function_condition();
         self.context.clear_evaluator_runtime();
         result
     }
@@ -148,13 +155,28 @@ impl Runtime {
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
         let result = load::file(self, path.as_ref());
+        self.clear_pending_undefined_function_condition();
         self.context.clear_evaluator_runtime();
         result
     }
     pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
-        self.compile_form(form)
+        self.eval_form_with_values(form).map(|(value, _)| value)
     }
-    fn compile_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
+    pub(crate) fn eval_form_with_values(
+        &mut self,
+        form: Word,
+    ) -> Result<(Word, Vec<Word>), RuntimeError> {
+        self.compile_form_with_values(form)
+    }
+    pub(crate) fn pending_undefined_function_condition(&self) -> Option<Word> {
+        self.pending_undefined_function_condition
+            .as_ref()
+            .map(HeapRootedWord::get)
+    }
+    fn clear_pending_undefined_function_condition(&mut self) {
+        self.pending_undefined_function_condition = None;
+    }
+    fn compile_form_with_values(&mut self, form: Word) -> Result<(Word, Vec<Word>), RuntimeError> {
         let registry = MacroRegistry::new();
         let mut caller = RuntimeMacroCaller {
             entry_codes: &self.entry_codes,
@@ -202,11 +224,11 @@ impl Runtime {
             .address()
             .saturating_add(entry_metadata.entry_offset);
         self.root_entry_code(entry_address, entry_constants);
-        let value = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
+        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
         for (_, (code, _)) in compiled {
             self.code.push(code);
         }
-        Ok(value)
+        Ok(result)
     }
     fn compile_native(
         &mut self,
@@ -324,7 +346,7 @@ impl Runtime {
         code: &CodePtr,
         metadata: &CodeObjectMetadata,
         function: Word,
-    ) -> Result<Word, RuntimeError> {
+    ) -> Result<(Word, Vec<Word>), RuntimeError> {
         let _ = self.context.take_pending_runtime_errors();
         let code_object = function_code(&self.context, Function::from_word(function))?;
         let entry_codes = &self.entry_codes;
@@ -350,7 +372,7 @@ impl Runtime {
             0,
         );
         let _ = ncl_sys::replace_native_context(thread, previous);
-        let ((value, _), _) = (result, native_context);
+        let ((value, value_count), _) = (result, native_context);
         let pending_errors = context.take_pending_runtime_errors();
         if let Some(error) = pending_errors.native {
             return Err(native_failure(error));
@@ -373,8 +395,9 @@ impl Runtime {
             if matches!(error, ObjectError::UndefinedFunction)
                 && let Some(condition) = context.take_pending_condition()
             {
+                let condition = HeapRootedWord::new(context, condition)?;
                 #[allow(clippy::option_if_let_else)]
-                let name = match slot_ref(context, Instance::from_word(condition), 0)
+                let name = match slot_ref(context, Instance::from_word(condition.get()), 0)
                     .and_then(|name| symbol_name(context, name))
                     .and_then(|name| {
                         ncl_compiler_front::form::word_string(context, name)
@@ -383,6 +406,7 @@ impl Runtime {
                     Ok(name) => name,
                     Err(_) => "<unknown>".to_owned(),
                 };
+                self.pending_undefined_function_condition = Some(condition);
                 return Err(RuntimeError::UndefinedFunction { name });
             }
             return Err(error.into());
@@ -390,7 +414,14 @@ impl Runtime {
         if context.take_non_local_exit() {
             return Err(ObjectError::ControlError.into());
         }
-        Ok(Word::from_bits(value))
+        let value_count = usize::try_from(value_count).map_err(|_| ObjectError::Layout)?;
+        let values = context
+            .thread_access()
+            .multiple_values()
+            .get(..value_count)
+            .ok_or(ObjectError::Layout)?
+            .to_vec();
+        Ok((Word::from_bits(value), values))
     }
     /// Format a result for the command-line frontend.
     pub fn format_result(&mut self, value: Word) -> String {

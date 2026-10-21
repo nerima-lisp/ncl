@@ -52,11 +52,13 @@ fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
             ],
             vec![Ty::Bool],
         );
+        let left = ValueId(0);
+        let right = ValueId(1);
         let result = builder
             .push_op(
                 OpKind::Prim {
                     op: primitive.clone(),
-                    args: vec![ValueId(0), ValueId(1)],
+                    args: vec![left, right],
                     condition: None,
                 },
                 &[Ty::Bool],
@@ -68,9 +70,14 @@ fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
             })
             .expect("comparison return");
 
-        let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
-            .expect("comparison lowers");
+        let function = builder.finish();
+        // compile_function_x86_64 recomputes allocation from this function.
+        let allocation = allocate(&function, AllocationTarget::X86_64);
+        let compiled =
+            compile_function_x86_64(&function, &X86_64FixtureAbi).expect("comparison lowers");
         let expected = encode([
+            load_value_into_register(&function, &allocation, left, Reg::R10),
+            load_value_into_register(&function, &allocation, right, Reg::R11),
             Inst::CmpRR(Reg::R10, Reg::R11),
             Inst::Setcc(condition, Reg::R10),
             Inst::Movzx(Reg::R10, Reg::R10, 8),
@@ -78,7 +85,9 @@ fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
         assert_contains(
             &compiled.code,
             &expected,
-            &format!("{primitive:?} must use {condition:?} and zero-extend"),
+            &format!(
+                "{primitive:?} must load left into r10 and right into r11 before {condition:?} and zero-extension"
+            ),
         );
     }
 }
@@ -145,11 +154,16 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
     }
 }
 
-fn load_value_into_r10(function: &Function, allocation: &Allocation, value: ValueId) -> Inst {
+fn load_value_into_register(
+    function: &Function,
+    allocation: &Allocation,
+    value: ValueId,
+    target: Reg,
+) -> Inst {
     match allocation.location(value).expect("value is allocated") {
-        Location::Register(register) => Inst::MovRR(
-            Reg::R10,
-            Reg::from_id(u8::try_from(register).expect("register id fits"))
+        Location::Register(allocated) => Inst::MovRR(
+            target,
+            Reg::from_id(u8::try_from(allocated).expect("register id fits"))
                 .expect("allocated register exists"),
         ),
         Location::Spill(spill) => {
@@ -168,7 +182,7 @@ fn load_value_into_r10(function: &Function, allocation: &Allocation, value: Valu
                 .and_then(|slot| slot.checked_mul(8))
                 .and_then(|bytes| i32::try_from(bytes).ok())
                 .expect("spill byte offset fits");
-            Inst::MovRM(Reg::R10, Mem::base(Reg::Rbp, -bytes))
+            Inst::MovRM(target, Mem::base(Reg::Rbp, -bytes))
         }
     }
 }
@@ -227,9 +241,9 @@ fn x86_64_set_multiple_values_stores_distinct_consecutive_values_and_count() {
     let count = i32::try_from(layout.mv_count).expect("multiple-value count offset fits");
 
     let expected_stores = encode([
-        load_value_into_r10(&function, &allocation, first),
+        load_value_into_register(&function, &allocation, first, Reg::R10),
         Inst::MovMR(Mem::base(Reg::R15, area), Reg::R10),
-        load_value_into_r10(&function, &allocation, second),
+        load_value_into_register(&function, &allocation, second, Reg::R10),
         Inst::MovMR(Mem::base(Reg::R15, second_area), Reg::R10),
         Inst::MovRI(Reg::Rdx, Imm::I32(2)),
         Inst::MovMR(Mem::base(Reg::R15, count), Reg::Rdx),
@@ -287,19 +301,25 @@ fn assert_capture_index_two_load(code: &[u8]) {
     );
 }
 
-fn assert_named_closure_unbound_dispatch(code: &[u8]) {
+fn assert_named_closure_unbound_dispatch(
+    code: &[u8],
+    function: &Function,
+    allocation: &Allocation,
+    closure: ValueId,
+) {
     let unbound = i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes());
     let unbound_immediate =
         i32::try_from(unbound).expect("UNBOUND fits in a sign-extended x86-64 immediate");
-    let unbound_compare = encode([
+    let closure_load_and_unbound_compare = encode([
+        load_value_into_register(function, allocation, closure, Reg::R11),
         Inst::MovRI(Reg::Rax, Imm::I32(unbound_immediate)),
         Inst::CmpRR(Reg::R11, Reg::Rax),
     ]);
     let compare_start = code
-        .windows(unbound_compare.len())
-        .position(|window| window == unbound_compare)
-        .expect("named dispatch compares against the unbound sentinel");
-    let branch_start = compare_start + unbound_compare.len();
+        .windows(closure_load_and_unbound_compare.len())
+        .position(|window| window == closure_load_and_unbound_compare)
+        .expect("named dispatch loads its closure into r11 before the unbound comparison");
+    let branch_start = compare_start + closure_load_and_unbound_compare.len();
     assert_eq!(
         &code[branch_start..branch_start + 2],
         &[0x0f, 0x85],
@@ -421,8 +441,10 @@ fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
         })
         .expect("return captured value");
 
-    let compiled = compile_function_x86_64(&builder.finish(), &UndefinedFunctionFixtureAbi)
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled = compile_function_x86_64(&function, &UndefinedFunctionFixtureAbi)
         .expect("named closure function lowers");
     assert_capture_index_two_load(&compiled.code);
-    assert_named_closure_unbound_dispatch(&compiled.code);
+    assert_named_closure_unbound_dispatch(&compiled.code, &function, &allocation, closure);
 }

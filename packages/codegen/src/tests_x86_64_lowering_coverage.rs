@@ -6,7 +6,9 @@ use crate::{
     allocate, compile_function_x86_64,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
-use ncl_ir::{Constant, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId};
+use ncl_ir::{
+    Constant, Convert, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
+};
 
 fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
     let mut assembler = Assembler::new();
@@ -124,7 +126,11 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
             params,
             result_types,
         );
-        let op_result_types = if is_load { &[Ty::Word][..] } else { &[] };
+        let op_result_types = if is_load {
+            &[Ty::Word][..]
+        } else {
+            &[Ty::Unit][..]
+        };
         let results = builder
             .push_op(
                 OpKind::Prim {
@@ -136,7 +142,9 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
             )
             .expect("cons primitive");
         builder
-            .terminate(Terminator::Return { values: results })
+            .terminate(Terminator::Return {
+                values: if is_load { results } else { Vec::new() },
+            })
             .expect("cons primitive return");
 
         let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
@@ -193,39 +201,55 @@ fn x86_64_set_multiple_values_stores_distinct_consecutive_values_and_count() {
         ncl_ir::FunctionId(220),
         "multiple-value-stores",
         Vec::new(),
-        vec![Ty::Word],
+        Vec::new(),
     );
     let first_constant = builder.add_constant(Constant::Fixnum(11));
-    let first = builder
+    let first_integer = builder
         .push_op(
             OpKind::Const {
                 result: first_constant,
+            },
+            &[Ty::I64],
+        )
+        .expect("first constant")[0];
+    let first = builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: first_integer,
             },
             &[Ty::Word],
         )
         .expect("first value")[0];
     let second_constant = builder.add_constant(Constant::Fixnum(22));
-    let second = builder
+    let second_integer = builder
         .push_op(
             OpKind::Const {
                 result: second_constant,
             },
+            &[Ty::I64],
+        )
+        .expect("second constant")[0];
+    let second = builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: second_integer,
+            },
             &[Ty::Word],
         )
         .expect("second value")[0];
-    let result = builder
+    builder
         .push_op(
             OpKind::SetMultipleValues {
                 values: vec![first, second],
             },
-            &[Ty::Word],
+            &[],
         )
-        .expect("set multiple values")[0];
+        .expect("set multiple values");
     builder
-        .terminate(Terminator::Return {
-            values: vec![result],
-        })
-        .expect("single-value return after the multiple-value operation");
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("void return after the multiple-value operation");
     let function = builder.finish();
     let allocation = allocate(&function, AllocationTarget::X86_64);
     assert_ne!(

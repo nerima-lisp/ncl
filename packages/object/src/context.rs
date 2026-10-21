@@ -2,24 +2,33 @@
 
 use crate::{LispError, ObjectError, Runtime};
 use core::cell::Cell;
-use ncl_sys::{Heap, RootToken, RuntimeErrorSource, StorageCondition, Thread, Word};
+use ncl_sys::{
+    Heap, RootToken, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
+    StorageCondition, Thread, Word,
+};
 use std::sync::Arc;
 
-struct RuntimeErrorPayloadCapability<'a, T> {
-    thread: &'a mut Thread,
-    source: RuntimeErrorSource,
-    payload: &'a mut Option<T>,
+impl RuntimeErrorPayloadKind for ObjectError {
+    const SOURCE: RuntimeErrorSource = RuntimeErrorSource::Object;
 }
 
-impl<T: Copy> RuntimeErrorPayloadCapability<'_, T> {
+impl RuntimeErrorPayloadKind for LispError {
+    const SOURCE: RuntimeErrorSource = RuntimeErrorSource::Lisp;
+}
+
+struct RuntimeErrorPayloadCapability<'a, T: RuntimeErrorPayloadKind> {
+    thread: &'a mut Thread,
+    payload: &'a mut RuntimeErrorPayloadSlot<T>,
+}
+
+impl<T: RuntimeErrorPayloadKind> RuntimeErrorPayloadCapability<'_, T> {
     const fn record(self, payload: T) {
         self.thread
-            .record_runtime_error_payload(self.source, self.payload, payload);
+            .record_runtime_error_payload(self.payload, payload);
     }
 
     const fn take(self) -> Option<T> {
-        self.thread
-            .take_runtime_error_payload(self.source, self.payload)
+        self.thread.take_runtime_error_payload(self.payload)
     }
 }
 
@@ -44,8 +53,8 @@ pub struct ThreadContext {
     heap: Option<Arc<Heap>>,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
-    pending: Option<ObjectError>,
-    pending_lisp_error: Option<LispError>,
+    pending: RuntimeErrorPayloadSlot<ObjectError>,
+    pending_lisp_error: RuntimeErrorPayloadSlot<LispError>,
     pending_condition: Option<Word>,
     pub(crate) handler: Option<usize>,
     pub(crate) cleanup: Option<usize>,
@@ -70,8 +79,8 @@ impl ThreadContext {
             heap: None,
             bindings: Vec::new(),
             values: Vec::new(),
-            pending: None,
-            pending_lisp_error: None,
+            pending: RuntimeErrorPayloadSlot::new(),
+            pending_lisp_error: RuntimeErrorPayloadSlot::new(),
             pending_condition: None,
             handler: None,
             cleanup: None,
@@ -184,7 +193,6 @@ impl ThreadContext {
     pub const fn set_pending(&mut self, error: ObjectError) {
         RuntimeErrorPayloadCapability {
             thread: &mut self.thread,
-            source: RuntimeErrorSource::Object,
             payload: &mut self.pending,
         }
         .record(error);
@@ -193,7 +201,6 @@ impl ThreadContext {
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         RuntimeErrorPayloadCapability {
             thread: &mut self.thread,
-            source: RuntimeErrorSource::Object,
             payload: &mut self.pending,
         }
         .take()
@@ -206,7 +213,6 @@ impl ThreadContext {
     pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         RuntimeErrorPayloadCapability {
             thread: &mut self.thread,
-            source: RuntimeErrorSource::Lisp,
             payload: &mut self.pending_lisp_error,
         }
         .record(error);
@@ -215,7 +221,6 @@ impl ThreadContext {
     pub const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
         RuntimeErrorPayloadCapability {
             thread: &mut self.thread,
-            source: RuntimeErrorSource::Lisp,
             payload: &mut self.pending_lisp_error,
         }
         .take()

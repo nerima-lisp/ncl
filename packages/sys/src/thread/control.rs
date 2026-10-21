@@ -32,6 +32,34 @@ impl RuntimeErrorSource {
     }
 }
 
+/// Associates a payload type with the source flag consumed by its Rust boundary.
+///
+/// Implement this for payload types handled through the matching source slot.
+pub trait RuntimeErrorPayloadKind: Copy {
+    /// Source flag set while this payload is stored on a thread.
+    const SOURCE: RuntimeErrorSource;
+}
+
+/// Stores a payload whose type determines which source flag is updated.
+#[derive(Debug)]
+pub struct RuntimeErrorPayloadSlot<T: RuntimeErrorPayloadKind> {
+    payload: Option<T>,
+}
+
+impl<T: RuntimeErrorPayloadKind> RuntimeErrorPayloadSlot<T> {
+    /// Create an empty payload slot.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { payload: None }
+    }
+
+    /// Whether this slot contains no payload.
+    #[must_use]
+    pub const fn is_none(&self) -> bool {
+        self.payload.is_none()
+    }
+}
+
 impl Thread {
     /// Record whether a Rust-side runtime error payload is pending.
     pub(crate) const fn set_runtime_error_pending(
@@ -48,24 +76,34 @@ impl Thread {
     }
 
     /// Store a typed payload and mark its source pending in one operation.
-    pub const fn record_runtime_error_payload<T: Copy>(
+    ///
+    /// ```compile_fail
+    /// let mut thread = ncl_sys::Thread::new();
+    /// let mut payload = None::<()>;
+    /// thread.record_runtime_error_payload(&mut payload, ());
+    /// ```
+    pub const fn record_runtime_error_payload<T: RuntimeErrorPayloadKind>(
         &mut self,
-        source: RuntimeErrorSource,
-        slot: &mut Option<T>,
+        slot: &mut RuntimeErrorPayloadSlot<T>,
         payload: T,
     ) {
-        *slot = Some(payload);
-        self.set_runtime_error_pending(source, true);
+        slot.payload = Some(payload);
+        self.set_runtime_error_pending(T::SOURCE, true);
     }
 
     /// Take a typed payload and clear its source flag, including for an empty slot.
-    pub const fn take_runtime_error_payload<T: Copy>(
+    ///
+    /// ```compile_fail
+    /// let mut thread = ncl_sys::Thread::new();
+    /// let mut payload = None::<()>;
+    /// let _ = thread.take_runtime_error_payload(&mut payload);
+    /// ```
+    pub const fn take_runtime_error_payload<T: RuntimeErrorPayloadKind>(
         &mut self,
-        source: RuntimeErrorSource,
-        slot: &mut Option<T>,
+        slot: &mut RuntimeErrorPayloadSlot<T>,
     ) -> Option<T> {
-        let payload = slot.take();
-        self.set_runtime_error_pending(source, false);
+        let payload = slot.payload.take();
+        self.set_runtime_error_pending(T::SOURCE, false);
         payload
     }
 
@@ -170,8 +208,25 @@ pub enum ControlFrameKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{ControlFrameKind, RuntimeErrorSource, Thread};
+    use super::{
+        ControlFrameKind, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
+        Thread,
+    };
     use crate::word::Word;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct ObjectPayload;
+
+    impl RuntimeErrorPayloadKind for ObjectPayload {
+        const SOURCE: RuntimeErrorSource = RuntimeErrorSource::Object;
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct LispPayload;
+
+    impl RuntimeErrorPayloadKind for LispPayload {
+        const SOURCE: RuntimeErrorSource = RuntimeErrorSource::Lisp;
+    }
 
     #[test]
     fn pending_flag_round_trips() {
@@ -201,16 +256,37 @@ mod tests {
 
     #[test]
     fn taking_empty_runtime_error_payload_clears_its_source_flag() {
-        for source in [RuntimeErrorSource::Object, RuntimeErrorSource::Lisp] {
+        fn check<T: RuntimeErrorPayloadKind>() {
             let mut thread = Thread::new();
-            let mut payload = None::<()>;
-            thread.set_runtime_error_pending(source, true);
-            assert_eq!(
-                thread.take_runtime_error_payload(source, &mut payload),
-                None
-            );
+            let mut payload = RuntimeErrorPayloadSlot::<T>::new();
+            thread.set_runtime_error_pending(T::SOURCE, true);
+            assert!(thread.take_runtime_error_payload(&mut payload).is_none());
             assert!(!thread.runtime_error_pending());
         }
+
+        check::<ObjectPayload>();
+        check::<LispPayload>();
+    }
+
+    #[test]
+    fn typed_runtime_error_payload_sets_and_clears_its_source_flag() {
+        let mut thread = Thread::new();
+        let mut object = RuntimeErrorPayloadSlot::<ObjectPayload>::new();
+        let mut lisp = RuntimeErrorPayloadSlot::<LispPayload>::new();
+
+        thread.record_runtime_error_payload(&mut object, ObjectPayload);
+        thread.record_runtime_error_payload(&mut lisp, LispPayload);
+        assert!(thread.runtime_error_pending());
+        assert_eq!(
+            thread.take_runtime_error_payload(&mut object),
+            Some(ObjectPayload)
+        );
+        assert!(thread.runtime_error_pending());
+        assert_eq!(
+            thread.take_runtime_error_payload(&mut lisp),
+            Some(LispPayload)
+        );
+        assert!(!thread.runtime_error_pending());
     }
 
     #[test]

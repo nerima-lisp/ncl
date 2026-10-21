@@ -170,7 +170,8 @@ fn copy_seq_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    sequence_builtin(ctx, runtime, args, values, domain::list::copy_seq)
+    let result = domain::copy_seq::copy_seq_object(ctx, runtime, args.required(0)?);
+    finish(ctx, values, result)
 }
 fn reverse_builtin(
     ctx: &mut ThreadContext,

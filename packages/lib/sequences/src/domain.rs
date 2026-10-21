@@ -51,6 +51,7 @@ pub fn list_from_scope<'ctx>(
     Ok(result)
 }
 
+pub mod copy_seq;
 pub mod equality;
 pub mod filter;
 pub mod higher_order;

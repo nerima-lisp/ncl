@@ -7,7 +7,7 @@ use super::register_extra::{
     substitute_if_not_entry, union_entry,
 };
 use super::{
-    DESTINATION_TYPE, INDEX, LIST, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
+    DESTINATION_TYPE, INDEX, LIST, OBJECT, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
     append_builtin, atom_builtin, car_builtin, cdr_builtin, concatenate_builtin, cons_builtin,
     cons_p_builtin, copy_list_builtin, copy_seq_builtin, copy_tree_builtin, count_entry,
     count_if_entry, count_if_not_entry, direct_descriptor, domain, eighth_builtin, elt_builtin,
@@ -370,13 +370,19 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             length_builtin as ncl_object::RustBuiltin,
             &[SEQUENCE][..], // check-added-lines: allow(index) slice type
         ),
-        ("COPY-SEQ", copy_seq_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
         ("REVERSE", reverse_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
         ("NREVERSE", nreverse_builtin, &[SEQUENCE][..]), // check-added-lines: allow(index) slice type
         ("ELT", elt_builtin, &[SEQUENCE, INDEX][..]), // check-added-lines: allow(index) slice type
     ] {
         register_direct(runtime, &mut ctx, name, direct_descriptor(params), function)?;
     }
+    register_direct(
+        runtime,
+        &mut ctx,
+        "COPY-SEQ",
+        direct_descriptor(&[OBJECT]),
+        copy_seq_builtin,
+    )?;
     register_adapted(
         runtime,
         &mut ctx,

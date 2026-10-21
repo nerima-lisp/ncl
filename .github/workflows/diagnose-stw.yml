@@ -47,7 +47,7 @@ jobs:
               pids+=("$pid")
               while IFS= read -r child; do
                 [[ -z "$child" ]] || queue+=("$child")
-              done < <(ps --no-headers --ppid "$pid" -o pid 2>/dev/null || true)
+              done < <(ps --no-headers --ppid "$pid" -o pid 2>/dev/null | awk '{$1=$1; print}' || true)
               index=$((index + 1))
             done
 
@@ -63,45 +63,44 @@ jobs:
                 cat "$task_dir/comm" 2>&1 || true
                 printf 'wchan='
                 cat "$task_dir/wchan" 2>&1 || true
+                printf '\n'
                 printf 'kernel_stack:\n'
                 cat "$task_dir/stack" 2>&1 || true
               done
             done
           }
-          capture_after_sixty_seconds() {
-            local runner_pid=$1
-            local label=$2
-            local sleep_pid=
-            trap 'if [[ -n "$sleep_pid" ]]; then kill "$sleep_pid" 2>/dev/null || true; wait "$sleep_pid" 2>/dev/null || true; fi; exit 0' TERM INT
-            sleep 60 &
-            sleep_pid=$!
-            if ! wait "$sleep_pid"; then
-              return 0
-            fi
-            if kill -0 "$runner_pid" 2>/dev/null; then
-              printf '%s is still active after 60 seconds; collecting best-effort /proc state.\n' "$label"
-              capture_process_state "$runner_pid"
-            fi
-          }
           run_with_diagnostics() {
             local label=$1
             local time_limit=$2
-            local started_at started_seconds runner_pid watchdog_pid finished_at elapsed_seconds status
+            local started_at started_seconds runner_pid watchdog_pid finished_pid first_status finished_at elapsed_seconds status
             shift 2
             started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             started_seconds=$(date +%s)
             printf 'run=%s started_at=%s limit=%s\n' "$label" "$started_at" "$time_limit"
             timeout --verbose --signal=TERM --kill-after=10s "$time_limit" "$@" &
             runner_pid=$!
-            capture_after_sixty_seconds "$runner_pid" "$label" &
+            sleep 60 &
             watchdog_pid=$!
-            if wait "$runner_pid"; then
-              status=0
+            if wait -n -p finished_pid "$runner_pid" "$watchdog_pid"; then
+              first_status=0
             else
-              status=$?
+              first_status=$?
             fi
-            kill "$watchdog_pid" 2>/dev/null || true
-            wait "$watchdog_pid" 2>/dev/null || true
+            if [[ "$finished_pid" == "$watchdog_pid" ]]; then
+              if kill -0 "$runner_pid" 2>/dev/null; then
+                printf '%s is still active after 60 seconds; collecting best-effort /proc state.\n' "$label"
+                capture_process_state "$runner_pid"
+              fi
+              if wait "$runner_pid"; then
+                status=0
+              else
+                status=$?
+              fi
+            else
+              status=$first_status
+              kill "$watchdog_pid" 2>/dev/null || true
+              wait "$watchdog_pid" 2>/dev/null || true
+            fi
             finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             elapsed_seconds=$(( $(date +%s) - started_seconds ))
             printf 'run=%s finished_at=%s elapsed_seconds=%s exit_code=%s\n' \
@@ -111,7 +110,7 @@ jobs:
             fi
             return "$status"
           }
-          for attempt in $(seq 1 10); do
+          for attempt in $(seq 1 1000); do
             if run_with_diagnostics "isolated attempt $attempt" 90s \
               nix develop --command cargo test --locked -p ncl-sys --all-features --lib \
                 "$test_name" -- --exact --nocapture; then
@@ -120,9 +119,11 @@ jobs:
               exit "$?"
             fi
           done
-          if run_with_diagnostics 'full ncl-sys lib test binary' 8m \
-            nix develop --command cargo test --locked -p ncl-sys --all-features --lib; then
-            :
-          else
-            exit "$?"
-          fi
+          for attempt in $(seq 1 100); do
+            if run_with_diagnostics "full ncl-sys lib attempt $attempt" 90s \
+              nix develop --command cargo test --locked -p ncl-sys --all-features --lib; then
+              :
+            else
+              exit "$?"
+            fi
+          done

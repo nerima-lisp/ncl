@@ -15,9 +15,9 @@ mod makeclosure_tests;
 mod native_error;
 mod nonlocal;
 mod support;
-mod time;
 #[cfg(test)]
 mod tests_function_call_drain;
+mod time;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;

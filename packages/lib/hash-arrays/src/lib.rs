@@ -12,6 +12,9 @@ use ncl_object::{
 };
 
 pub(crate) fn symbol_text(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+    if word == Word::NIL {
+        return Ok("NIL".to_owned());
+    }
     let name = symbol_name(ctx, word)?;
     (0..string_length(ctx, name)?)
         .map(|index| string_ref(ctx, name, index))

@@ -164,6 +164,13 @@ pub fn standard_readtable(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
 ) -> Result<Readtable, ReadError> {
+    standard_readtable_object(ctx, runtime).map_err(ReadError::from)
+}
+
+pub fn standard_readtable_object(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<Readtable, ObjectError> {
     let mut syntax = [Word::fixnum(SYNTAX_CONSTITUENT); TABLE_SIZE];
     for ch in [' ', '\t', '\n', '\r', '\u{0c}'] {
         if let Some(index) = table_index(ch)
@@ -207,41 +214,6 @@ pub fn standard_readtable(
     let _ = pop_root(ctx, syntax_token);
     let object = result?;
     Ok(Readtable::from_object(object))
-}
-
-/// Copy a readtable: a new syntax and dispatch table with the same entries.
-///
-/// # Errors
-/// Returns an object-layer failure when allocation fails.
-pub fn copy_readtable(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    readtable: Readtable,
-) -> Result<Readtable, ReadError> {
-    let case = object_readtable_case(ctx, readtable.object)?;
-    let syntax_copy = copy_vector(ctx, runtime, readtable.syntax_table(ctx)?)?;
-    let mut syntax_copy = syntax_copy;
-    let syntax_token = push_root(ctx, &mut syntax_copy);
-    let mut dispatch_copy = copy_vector(ctx, runtime, readtable.dispatch_table(ctx)?)?;
-    let dispatch_token = push_root(ctx, &mut dispatch_copy);
-    let result = make_readtable(ctx, runtime, syntax_copy, dispatch_copy, case);
-    let _ = pop_root(ctx, dispatch_token);
-    let _ = pop_root(ctx, syntax_token);
-    let object = result?;
-    Ok(Readtable::from_object(object))
-}
-
-/// Copy the contents of a 256-entry simple vector.
-fn copy_vector(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    source: Word,
-) -> Result<Word, ReadError> {
-    let mut entries = [Word::NIL; TABLE_SIZE];
-    for (index, slot) in entries.iter_mut().enumerate() {
-        *slot = simple_vector_ref(ctx, source, index)?;
-    }
-    Ok(make_simple_vector(ctx, runtime, &entries)?)
 }
 
 fn table_index(ch: char) -> Option<usize> {

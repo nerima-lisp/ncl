@@ -209,7 +209,13 @@ pub fn read(
     let rt_token = push_root(ctx, rt.get_mut());
     let mut labels = Cell::new(Word::NIL);
     let labels_token = push_root(ctx, labels.get_mut());
-    let result = read_form(ctx, runtime, source, opts, &rt, &labels);
+    let result = read_form(ctx, runtime, source, opts, &rt, &labels).and_then(|form| {
+        if form.is_none() && source.peek_char() == Some(')') {
+            Err(ReadError::UnmatchedRightParen)
+        } else {
+            Ok(form)
+        }
+    });
     let _ = pop_root(ctx, labels_token);
     let _ = pop_root(ctx, rt_token);
     result
@@ -296,6 +302,9 @@ pub fn read_form(
                 source.read_char();
                 if let Some(word) = read_macro_char(ctx, runtime, source, opts, rt, labels, c)? {
                     return Ok(apply_suppress(Some(word), opts));
+                }
+                if source.peek_char() == Some(')') {
+                    return Ok(None);
                 }
             }
             SyntaxKind::CustomMacro(_) | SyntaxKind::Invalid => {
@@ -480,9 +489,7 @@ fn read_list_inner(
             source.unread_char('.');
         }
         let form = read_form(ctx, runtime, source, opts, rt, labels)?;
-        let Some(form) = form else {
-            return Err(ReadError::UnexpectedEof);
-        };
+        let Some(form) = form else { continue };
         let cell = make_cons(ctx, runtime, form, Word::NIL)?;
         if head.get() == Word::NIL {
             head.set(cell);

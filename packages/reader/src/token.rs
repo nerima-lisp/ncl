@@ -187,6 +187,9 @@ pub fn read_token(
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Ok(None);
     };
+    if opts.read_suppression() == crate::reader::ReadSuppression::Discard {
+        return Ok(Some(ncl_object::Word::NIL));
+    }
     let raw_chars: Vec<char> = token.characters().iter().map(|c| c.character()).collect();
     let any_escaped = token.any_escaped();
     if !any_escaped

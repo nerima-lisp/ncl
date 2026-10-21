@@ -15,7 +15,7 @@ use crate::error::ReadError;
 use crate::features::eval_feature_expr;
 use crate::input::CharSource;
 use crate::number::{digit_value, parse_integer_chars};
-use crate::reader::{ReadOptions, read_form, read_list};
+use crate::reader::{ReadOptions, ReadSuppression, read_form, read_list};
 use crate::readtable::readtable_from_word;
 use crate::token::{intern_common_lisp, read_token_chars};
 
@@ -283,14 +283,23 @@ fn read_feature_conditional(
     positive: bool,
 ) -> Result<Option<Word>, ReadError> {
     let features = runtime.features();
-    let Some(expression) = read_form(ctx, runtime, source, opts, rt, labels)? else {
+    let mut feature_options = opts.clone();
+    feature_options.set_read_suppression(ReadSuppression::Keep);
+    let Some(expression) = read_form(ctx, runtime, source, &feature_options, rt, labels)? else {
         return Err(ReadError::InvalidFeatureExpression);
     };
     let present = eval_feature_expr(ctx, runtime, expression, &features)?;
     if present != positive {
-        let _ = read_form(ctx, runtime, source, opts, rt, labels)?;
+        let mut suppressed = opts.clone();
+        suppressed.set_read_suppression(ReadSuppression::Discard);
+        if read_form(ctx, runtime, source, &suppressed, rt, labels)?.is_none() {
+            return Err(ReadError::UnexpectedEof);
+        }
+        return Ok(None);
     }
-    read_form(ctx, runtime, source, opts, rt, labels)
+    read_form(ctx, runtime, source, opts, rt, labels)?
+        .map(Some)
+        .ok_or(ReadError::UnexpectedEof)
 }
 
 /// Skip a (possibly nested) `#| ... |#` block comment.

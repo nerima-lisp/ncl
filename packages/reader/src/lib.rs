@@ -26,6 +26,8 @@
     reason = "rooted Word slots are passed by reference so each read re-reads the collector-updated value; a by-value copy would be stale after GC"
 )]
 
+mod copy_readtable;
+mod copy_readtable_builtin;
 mod dispatch;
 mod error;
 mod features;
@@ -35,8 +37,9 @@ mod reader;
 mod readtable;
 pub(crate) mod token;
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, set_symbol_value, with_root};
 
+pub use copy_readtable::{copy_readtable, copy_readtable_to};
 pub use error::ReadError;
 pub use input::{CharSource, StringSource};
 pub use number::parse_integer;
@@ -45,7 +48,7 @@ pub use reader::{
     read_delimited_list, read_from_string, read_preserving_whitespace,
 };
 pub use readtable::{
-    Readtable, ReadtableCase, copy_readtable, get_dispatch_macro_character, get_macro_character,
+    Readtable, ReadtableCase, get_dispatch_macro_character, get_macro_character,
     make_dispatch_macro_character, readtable_case, readtablep, set_dispatch_macro_character,
     set_macro_character, set_syntax_from_char, standard_readtable,
 };
@@ -110,10 +113,8 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
 
 /// Intern every owned symbol and install metadata for implemented entries.
 ///
-/// Reader functions and the `READTABLE` class are not registered until their
-/// callable builtin and class implementations exist.  They are still
-/// interned so the ownership table can distinguish ownership from runtime
-/// callability.
+/// `COPY-READTABLE` is callable. Other reader functions and the `READTABLE`
+/// class remain interned until their implementations exist.
 ///
 /// # Errors
 /// Returns an object-layer failure when a package or symbol cannot be created.
@@ -131,5 +132,25 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             SymbolKind::Macro => ncl_object::set_symbol_macro(&mut ctx, symbol, true)?,
         }
     }
+    let mut standard_readtable = readtable::standard_readtable_object(&mut ctx, runtime)?
+        .object()
+        .as_word();
+    with_root(
+        &mut ctx,
+        &mut standard_readtable,
+        |ctx, standard_readtable| {
+            let mut common_lisp = runtime
+                .find_package(ctx, "COMMON-LISP")
+                .ok_or(ObjectError::Layout)?;
+            with_root(ctx, &mut common_lisp, |ctx, common_lisp| {
+                let (mut symbol, _) =
+                    Package::from_word(common_lisp.get()).intern(ctx, runtime, "*READTABLE*")?;
+                with_root(ctx, &mut symbol, |ctx, symbol| {
+                    set_symbol_value(ctx, symbol.get(), standard_readtable.get())
+                })
+            })
+        },
+    )?;
+    copy_readtable_builtin::register(&mut ctx, runtime)?;
     Ok(())
 }

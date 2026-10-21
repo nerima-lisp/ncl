@@ -217,11 +217,22 @@ impl std::error::Error for ForeignCallError {}
 /// Float, variadic, aggregate, and stack-passed signatures return
 /// [`ForeignCallError::UnsupportedAbi`].
 ///
+/// # Safety
+///
+/// If this function invokes `function`, its actual C ABI and parameter and return
+/// types must match `signature`. Every pointer argument must be valid for the
+/// accesses the target performs, and must remain valid for as long as the target
+/// uses it. The target must not unwind across the call boundary. The caller must
+/// ensure the target is safe to invoke on the current thread and synchronize its
+/// memory access with Rust and foreign code so the call creates no data races or
+/// aliasing violations. The checked signature and tracked-memory leases do not
+/// establish these guarantees.
+///
 /// # Errors
 ///
 /// Returns an error if the signature is unsupported, the argument count or types do
 /// not match, or tracked pointer validation fails.
-pub fn call(
+pub unsafe fn call(
     function: &ForeignFunction<'_>,
     signature: &ForeignSignature,
     arguments: &[ForeignValue],
@@ -346,8 +357,8 @@ fn invoke(function: NonNull<c_void>, arguments: &[u64]) -> Result<u64, ForeignEr
         for (register, argument) in registers.iter_mut().zip(arguments.iter().copied()) {
             *register = argument;
         }
-        // SAFETY: the call API limits this to six integer/pointer arguments and the
-        // Lisp foreign-call caller supplies the export's matching System V ABI.
+        // SAFETY: the public caller contract guarantees the function's System V ABI;
+        // the checked signature limits this backend to six integer/pointer arguments.
         Ok(unsafe { super::call_x86_64::invoke(function.as_ptr(), registers) })
     }
     #[cfg(all(target_arch = "aarch64", target_family = "unix"))]
@@ -359,8 +370,8 @@ fn invoke(function: NonNull<c_void>, arguments: &[u64]) -> Result<u64, ForeignEr
         for (register, argument) in registers.iter_mut().zip(arguments.iter().copied()) {
             *register = argument;
         }
-        // SAFETY: the call API limits this to eight integer/pointer arguments and the
-        // Lisp foreign-call caller supplies the export's matching AAPCS64 ABI.
+        // SAFETY: the public caller contract guarantees the function's AAPCS64 ABI;
+        // the checked signature limits this backend to eight integer/pointer arguments.
         Ok(unsafe { super::call_aarch64::invoke(function.as_ptr(), registers) })
     }
     #[cfg(not(any(

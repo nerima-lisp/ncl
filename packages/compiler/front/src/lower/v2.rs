@@ -1,6 +1,8 @@
 //! Shared context for IR v2 lowering.
 
-use ncl_ir::{BlockId, HandlerRegion, HandlerRegionId, OpKind, Ty, ValueId};
+use std::collections::HashSet;
+
+use ncl_ir::{BlockId, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
 
 use crate::symbols::SymbolRef;
 
@@ -19,8 +21,6 @@ mod control;
 mod control_escape;
 #[path = "control_regions.rs"]
 mod control_regions;
-#[path = "control_unwind.rs"]
-mod control_unwind;
 #[path = "dynamic_binding.rs"]
 mod dynamic_binding;
 #[path = "expr.rs"]
@@ -29,6 +29,8 @@ mod expr;
 mod params;
 #[path = "unbound_variable.rs"]
 mod unbound_variable;
+#[path = "unwind_protect.rs"]
+mod unwind_protect;
 
 #[derive(Clone, Debug)]
 pub(super) struct NonLocalTarget {
@@ -74,9 +76,38 @@ impl<'a> Context<'a> {
         id
     }
 
-    fn enter(&mut self, f: &mut FunctionLowerer, id: HandlerRegionId) -> Result<(), LowerError> {
+    fn split_region_entry(&mut self, f: &mut FunctionLowerer) -> Result<BlockId, LowerError> {
+        let source = f.current_block();
+        let connect_source = !f.is_terminated();
+        let entry = self.block(f, Vec::new());
+        if connect_source {
+            f.position(source)?;
+            f.terminate(Terminator::Jump {
+                target: entry,
+                args: Vec::new(),
+            })?;
+        }
+        f.position(entry)?;
+        Ok(entry)
+    }
+
+    fn enter_current(
+        &mut self,
+        f: &mut FunctionLowerer,
+        id: HandlerRegionId,
+    ) -> Result<(), LowerError> {
         self.active.push(id);
         f.none(OpKind::EnterHandler { region: id })
+    }
+
+    fn enter(
+        &mut self,
+        f: &mut FunctionLowerer,
+        id: HandlerRegionId,
+    ) -> Result<BlockId, LowerError> {
+        let entry = self.split_region_entry(f)?;
+        self.enter_current(f, id)?;
+        Ok(entry)
     }
 
     fn leave(&mut self, f: &mut FunctionLowerer, id: HandlerRegionId) -> Result<(), LowerError> {
@@ -90,6 +121,43 @@ impl<'a> Context<'a> {
     /// Number of handler regions currently open (entered but not yet left).
     const fn active_len(&self) -> usize {
         self.active.len()
+    }
+
+    /// Collect the blocks that can execute within a newly lowered handler
+    /// body, including handlers established by nested regions. Unreachable
+    /// normal-path merges are not protected by an enclosing region.
+    fn protected_blocks(
+        &self,
+        f: &FunctionLowerer,
+        start: BlockId,
+        first_new_block: usize,
+        first_new_region: usize,
+    ) -> Vec<BlockId> {
+        let candidates = std::iter::once(start)
+            .chain(self.blocks.iter().skip(first_new_block).copied())
+            .collect::<Vec<_>>();
+        let candidate_set = candidates.iter().copied().collect::<HashSet<_>>();
+        let nested_regions = self.regions.get(first_new_region..).unwrap_or(&[]);
+        let mut reachable = HashSet::new();
+        let mut pending = vec![start];
+
+        while let Some(block) = pending.pop() {
+            if !candidate_set.contains(&block) || !reachable.insert(block) {
+                continue;
+            }
+            pending.extend(f.successors(block).iter().copied());
+            for region in nested_regions {
+                if region.protected.contains(&block) {
+                    pending.push(region.handler);
+                    pending.extend(region.cleanup);
+                }
+            }
+        }
+
+        candidates
+            .into_iter()
+            .filter(|block| reachable.contains(block))
+            .collect()
     }
 
     /// Leave every handler region opened since `depth`, innermost first.

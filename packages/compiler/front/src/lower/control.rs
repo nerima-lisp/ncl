@@ -11,7 +11,7 @@ use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
 use super::NonLocalTarget;
-use super::analysis::{body_has_nested_go, body_has_nested_return};
+use super::analysis::{body_has_nested_return, body_requires_escaping_go};
 
 impl Context<'_> {
     pub(super) fn terminate_jump(
@@ -151,7 +151,10 @@ impl Context<'_> {
             })
             .cloned()
             .collect::<Vec<_>>();
-        if tags.iter().any(|tag| body_has_nested_go(&forms, tag)) {
+        if tags
+            .iter()
+            .any(|tag| body_requires_escaping_go(&forms, tag))
+        {
             return self.lower_escaping_tagbody(f, items);
         }
         let start = f.current_block();
@@ -238,7 +241,8 @@ impl Context<'_> {
             }
         }
         self.targets.truncate(mark);
-        if !f.is_terminated() {
+        let normal_path = !f.is_terminated();
+        if normal_path {
             let args = live
                 .iter()
                 .filter_map(|name| match f.env().lookup_variable(name) {
@@ -250,11 +254,15 @@ impl Context<'_> {
             Self::terminate_jump(f, exit, args)?;
         }
         f.position(exit)?;
+        let value = f.nil()?;
+        if !normal_path {
+            f.terminate(Terminator::Throw { condition: value })?;
+        }
         for (name, value) in live.iter().zip(exit_values) {
             f.env().rebind_variable(name, Slot::Value(value));
         }
         f.env().pop();
-        f.nil()
+        Ok(value)
     }
 
     #[allow(
@@ -266,8 +274,10 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         items: &[TagbodyItem],
     ) -> Result<ValueId, LowerError> {
-        let start = f.current_block();
-        f.position(start)?;
+        let source = f.current_block();
+        let outer_active = self.active.clone();
+        let first_new_region = self.regions.len();
+        f.position(source)?;
         f.env().push();
         let forms = items
             .iter()
@@ -299,7 +309,7 @@ impl Context<'_> {
                 .map(|value| (Ty::Word, value))
                 .collect::<Vec<_>>(),
         );
-        f.position(start)?;
+        f.position(source)?;
         let tags = items
             .iter()
             .filter_map(|item| match item {
@@ -307,7 +317,7 @@ impl Context<'_> {
                 TagbodyItem::Form(_) => None,
             })
             .collect::<Vec<_>>();
-        let mut entries = Vec::new();
+        let mut pending_entries = Vec::new();
         for tag in &tags {
             let id = HandlerRegionId(self.next_region);
             self.next_region += 1;
@@ -315,7 +325,15 @@ impl Context<'_> {
             let token = Self::fresh_token(f)?;
             f.env()
                 .bind_variable(capture.clone(), super::super::env::Slot::Value(token));
-            self.enter(f, id)?;
+            pending_entries.push((tag.clone(), id, capture, token));
+        }
+        let start = self.split_region_entry(f)?;
+        let first_new_block = self.blocks.len();
+        for (_, id, _, _) in &pending_entries {
+            self.enter_current(f, *id)?;
+        }
+        let mut entries = Vec::with_capacity(pending_entries.len());
+        for (tag, id, capture, token) in pending_entries {
             let params = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
             let target = self.block(
                 f,
@@ -325,7 +343,7 @@ impl Context<'_> {
                     .map(|value| (Ty::Word, value))
                     .collect::<Vec<_>>(),
             );
-            entries.push((tag.clone(), id, capture, target, token, params));
+            entries.push((tag, id, capture, target, token, params));
         }
         for (tag, _, capture, _, _, _) in &entries {
             self.targets.push(NonLocalTarget {
@@ -372,12 +390,14 @@ impl Context<'_> {
         }
         self.targets
             .truncate(self.targets.len().saturating_sub(entries.len()));
-        let protected = self
-            .blocks
-            .iter()
-            .copied()
-            .filter(|block| block.0 >= start.0 && *block != exit)
-            .collect::<Vec<_>>();
+        let mut protected = self.protected_blocks(f, start, first_new_block, first_new_region);
+        for (_, _, _, target, _, _) in &entries {
+            for block in self.protected_blocks(f, *target, first_new_block, first_new_region) {
+                if !protected.contains(&block) {
+                    protected.push(block);
+                }
+            }
+        }
         let normal_path = !f.is_terminated();
         if normal_path {
             for (_, id, _, _, _, _) in entries.iter().rev() {
@@ -393,7 +413,14 @@ impl Context<'_> {
                 .collect();
             f.terminate(Terminator::Jump { target: exit, args })?;
         }
-        for (_, id, _capture, target, token, _) in &entries {
+        for (index, (_, id, _capture, target, token, _)) in entries.iter().enumerate() {
+            self.active.clone_from(&outer_active);
+            self.active.extend(
+                entries
+                    .iter()
+                    .take(index + 1)
+                    .map(|(_, id, _, _, _, _)| *id),
+            );
             let value = f.fresh_value();
             let cell_params = live
                 .iter()
@@ -406,6 +433,11 @@ impl Context<'_> {
                     .collect(),
             );
             self.leave(f, *id)?;
+            for (_, reenter_id, _, _, _, _) in entries.iter().skip(index) {
+                f.none(OpKind::EnterHandler {
+                    region: *reenter_id,
+                })?;
+            }
             f.terminate(Terminator::Jump {
                 target: *target,
                 args: cell_params.iter().map(|(_, value)| *value).collect(),
@@ -422,11 +454,16 @@ impl Context<'_> {
                 parent: None,
             });
         }
+        self.active.clone_from(&outer_active);
         f.position(exit)?;
+        let value = f.nil()?;
+        if !normal_path {
+            f.terminate(Terminator::Throw { condition: value })?;
+        }
         for (name, value) in live.into_iter().zip(exit_params) {
             f.env().rebind_variable(&name, Slot::Cell(value));
         }
         f.env().pop();
-        f.nil()
+        Ok(value)
     }
 }

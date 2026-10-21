@@ -480,7 +480,6 @@ fn function_builder_usage_example_builds_and_verifies() {
     );
     assert!(verify(&builder.finish()).is_ok());
 }
-
 #[test]
 fn verifier_uses_handler_edges_for_dominance() {
     let function = finish(
@@ -601,6 +600,110 @@ fn unreachable_predecessor_does_not_break_reachable_dominance() {
             ),
         ],
         Vec::new(),
+    );
+
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_accepts_outer_values_used_by_unwind_cleanup() {
+    let function = finish(
+        "unwind-cleanup-outer-value",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Nil, Constant::T],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[(1, Ty::Word)],
+                        OpKind::MakeValueCell { value: ValueId(0) },
+                    ),
+                    op(
+                        &[],
+                        OpKind::EnterHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(2),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                vec![
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::StoreField {
+                            object: ValueId(1),
+                            field: 0,
+                            value: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(1),
+                        },
+                    ),
+                ],
+                Terminator::Return {
+                    values: vec![ValueId(2)],
+                },
+            ),
+            block(
+                2,
+                vec![
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(
+                        &[(3, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                ],
+                Terminator::Return {
+                    values: vec![ValueId(3)],
+                },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::UnwindProtect,
+            protected: vec![BlockId(0)],
+            handler: BlockId(1),
+            cleanup: Some(BlockId(1)),
+            catch_tag: None,
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        }],
     );
 
     assert!(verify(&function).is_ok());

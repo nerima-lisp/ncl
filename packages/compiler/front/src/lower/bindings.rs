@@ -33,15 +33,11 @@ impl Context<'_> {
         let result = f.fresh_value();
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
-        let start = f.current_block();
-        self.enter(f, region_id)?;
+        let first_new_region = self.regions.len();
+        let start = self.enter(f, region_id)?;
+        let first_new_block = self.blocks.len();
         let value = self.lower_body(f, body)?;
-        let protected = self
-            .blocks
-            .iter()
-            .copied()
-            .filter(|block| block.0 >= start.0)
-            .collect::<Vec<_>>();
+        let protected = self.protected_blocks(f, start, first_new_block, first_new_region);
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let merge = self.block(f, vec![(Ty::Word, result)]);

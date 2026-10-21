@@ -1,9 +1,10 @@
 use ncl_ir::{HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
 
+use crate::ast::Expr;
+
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
-use crate::ast::Expr;
 
 impl Context<'_> {
     pub(super) fn lower_unwind(
@@ -15,15 +16,11 @@ impl Context<'_> {
         let result = f.fresh_value();
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;
-        let start = f.current_block();
-        self.enter(f, region_id)?;
+        let first_new_region = self.regions.len();
+        let start = self.enter(f, region_id)?;
+        let first_new_block = self.blocks.len();
         let value = self.lower_expr(f, protected_form)?;
-        let protected = self
-            .blocks
-            .iter()
-            .copied()
-            .filter(|block| block.0 >= start.0)
-            .collect::<Vec<_>>();
+        let protected = self.protected_blocks(f, start, first_new_block, first_new_region);
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let saved_values = if normal_path && self.preserve_multiple_values {
@@ -31,8 +28,8 @@ impl Context<'_> {
         } else {
             None
         };
-        let merge = self.block(f, vec![(Ty::Word, result)]);
-        if normal_path {
+        let merge = normal_path.then(|| self.block(f, vec![(Ty::Word, result)]));
+        if let Some(merge) = merge {
             f.position(body_end)?;
             self.leave(f, region_id)?;
             for form in cleanup {
@@ -80,7 +77,9 @@ impl Context<'_> {
             depth: 0,
             parent: None,
         });
-        f.position(merge)?;
+        if let Some(merge) = merge {
+            f.position(merge)?;
+        }
         Ok(result)
     }
 }

@@ -66,6 +66,9 @@ impl Context<'_> {
                 .chain(live_values.iter().copied().map(|value| (Ty::Word, value)))
                 .collect(),
         );
+        // Nonlocal exits can close regions while lowering an arm, so each
+        // sibling and the merge must resume from the branch-entry stack.
+        let branch_active = self.active.clone();
         f.position(start)?;
         f.terminate(Terminator::Branch {
             condition,
@@ -97,6 +100,7 @@ impl Context<'_> {
         for (name, value) in &live {
             f.env().rebind_variable(name, Slot::Value(*value));
         }
+        self.active.clone_from(&branch_active);
         f.position(else_block)?;
         let else_value = match otherwise {
             Some(form) => self.lower_expr(f, form)?,
@@ -117,6 +121,7 @@ impl Context<'_> {
                 args,
             })?;
         }
+        self.active.clone_from(&branch_active);
         f.position(merge)?;
         for ((name, _), value) in live.into_iter().zip(live_values) {
             f.env().rebind_variable(&name, Slot::Value(value));

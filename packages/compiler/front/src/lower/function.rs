@@ -1,5 +1,7 @@
 //! Per-function lowering state and the module-level function registry.
 
+use std::collections::HashMap;
+
 use ncl_ir::{
     BlockId, Constant, Function, FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty,
     ValueId,
@@ -53,6 +55,7 @@ impl Lowerer {
 #[derive(Debug)]
 pub(super) struct FunctionLowerer {
     builder: FunctionBuilder,
+    successors: HashMap<BlockId, Vec<BlockId>>,
     env: LowerEnv,
     current: BlockId,
     terminated: bool,
@@ -68,6 +71,7 @@ impl FunctionLowerer {
     ) -> Self {
         Self {
             builder: FunctionBuilder::new(id, name, params, return_types),
+            successors: HashMap::from([(BlockId(0), Vec::new())]),
             env: LowerEnv::new(),
             current: BlockId(0),
             terminated: false,
@@ -87,6 +91,11 @@ impl FunctionLowerer {
     /// The block operations are currently appended to.
     pub(super) const fn current_block(&self) -> BlockId {
         self.current
+    }
+
+    /// The ordinary control-flow successors of a block already lowered.
+    pub(super) fn successors(&self, block: BlockId) -> &[BlockId] {
+        self.successors.get(&block).map_or(&[], Vec::as_slice)
     }
 
     /// Whether the current block already has a terminator.
@@ -167,6 +176,7 @@ impl FunctionLowerer {
     /// Create a block with the given parameters and select it.
     pub(super) fn create_block(&mut self, params: Vec<(Ty, ValueId)>) -> BlockId {
         let id = self.builder.create_block(params);
+        self.successors.insert(id, Vec::new());
         self.current = id;
         self.terminated = false;
         id
@@ -182,7 +192,26 @@ impl FunctionLowerer {
 
     /// Set the current block's terminator.
     pub(super) fn terminate(&mut self, terminator: Terminator) -> Result<(), LowerError> {
+        let successors = match &terminator {
+            Terminator::Jump { target, .. } => vec![*target],
+            Terminator::Branch {
+                then_target,
+                else_target,
+                ..
+            } => vec![*then_target, *else_target],
+            Terminator::Switch { cases, default, .. } => cases
+                .iter()
+                .map(|(_, target, _)| *target)
+                .chain(std::iter::once(*default))
+                .collect(),
+            Terminator::CallReturn { .. }
+            | Terminator::TailCall { .. }
+            | Terminator::Return { .. }
+            | Terminator::Throw { .. }
+            | Terminator::Unreachable => Vec::new(),
+        };
         self.builder.terminate(terminator)?;
+        self.successors.insert(self.current, successors);
         self.terminated = true;
         Ok(())
     }
@@ -204,6 +233,7 @@ impl FunctionLowerer {
     fn ensure_open(&mut self) {
         if self.terminated {
             self.current = self.builder.create_block(Vec::new());
+            self.successors.insert(self.current, Vec::new());
             self.terminated = false;
         }
     }

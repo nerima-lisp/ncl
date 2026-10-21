@@ -82,6 +82,77 @@ fn non_local_escape_values_are_observable_through_the_cli() {
             expected: "18",
         },
         Case {
+            name: "lambda-return-from-through-catch",
+            source: "(block done (catch 'inner (funcall (lambda () (return-from done :through-catch))) :unreachable))",
+            expected: ":THROUGH-CATCH",
+        },
+        Case {
+            name: "lambda-return-from-restores-progv",
+            source: r"
+(progn
+  (defvar *nlx-progv* :outer)
+  (let ((result
+          (block done
+            (progv '(*nlx-progv*) '(:inner)
+              (funcall
+                (lambda ()
+                  (return-from done
+                    (symbol-value '*nlx-progv*))))))))
+    (list result (symbol-value '*nlx-progv*))))
+",
+            expected: "(:INNER :OUTER)",
+        },
+        Case {
+            name: "lambda-return-from-restores-unbound-progv",
+            source: r"
+(let ((result
+        (block done
+          (progv '(*nlx-unbound-progv*) '(:inner)
+            (funcall
+              (lambda ()
+                (return-from done
+                  (symbol-value '*nlx-unbound-progv*))))))))
+  (list result (boundp '*nlx-unbound-progv*)))
+",
+            expected: "(:INNER NIL)",
+        },
+        Case {
+            name: "branch-return-from-restores-special-binding",
+            source: r"
+(progn
+  (defvar *branch-special* :root)
+  (list
+    (let ((*branch-special* :outer))
+      (block outer-probe
+        (list
+          (block inner-probe
+            (let ((*branch-special* :inner))
+              (if nil
+                  (return-from outer-probe :outer-exit)
+                  (return-from inner-probe :inner-exit))))
+          *branch-special*)))
+    *branch-special*))
+",
+            expected: "((:INNER-EXIT :OUTER) :ROOT)",
+        },
+        Case {
+            name: "lambda-return-from-restores-repeated-progv-binding",
+            source: r"
+(progn
+  (defvar *nlx-repeated-progv* :outer)
+  (let ((result
+          (block done
+            (progv '(*nlx-repeated-progv* *nlx-repeated-progv*)
+                   '(:middle :inner)
+              (funcall
+                (lambda ()
+                  (return-from done
+                    (symbol-value '*nlx-repeated-progv*))))))))
+    (list result (symbol-value '*nlx-repeated-progv*))))
+",
+            expected: "(:INNER :OUTER)",
+        },
+        Case {
             name: "lambda-go",
             source: "(let ((result 0)) (tagbody (funcall (lambda () (go done))) done (setq result 13)) result)",
             expected: "13",
@@ -105,6 +176,16 @@ fn non_local_escape_values_are_observable_through_the_cli() {
             name: "unwind-protect-cleanup",
             source: "(progn (setq *escape-cleanup* 0) (block done (unwind-protect (return-from done 14) (setq *escape-cleanup* 15))) *escape-cleanup*)",
             expected: "15",
+        },
+        Case {
+            name: "flet-body-return-from-runs-unwind-cleanup",
+            source: "(progn (setq *escape-cleanup* 0) (block done (flet ((noop () nil)) (unwind-protect (return-from done 24) (setq *escape-cleanup* 25)))) *escape-cleanup*)",
+            expected: "25",
+        },
+        Case {
+            name: "labels-body-return-from-runs-unwind-cleanup",
+            source: "(progn (setq *escape-cleanup* 0) (block done (labels ((noop () nil)) (unwind-protect (return-from done 26) (setq *escape-cleanup* 27)))) *escape-cleanup*)",
+            expected: "27",
         },
         Case {
             name: "outer-frame-closure",
@@ -243,4 +324,16 @@ fn expired_closure_reports_control_error_through_the_cli() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn if_else_return_from_restores_active_regions_for_following_exit() {
+    let source = "(progn (defvar *branch-special-after* :root) (list (block done (let ((*branch-special-after* :inner)) (if t :continue (return-from done :else-exit)) (return-from done *branch-special-after*))) *branch-special-after*))";
+    let output = run_ncl(source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stderr.is_empty(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(:INNER :ROOT)"
+    );
 }

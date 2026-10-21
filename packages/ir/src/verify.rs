@@ -343,7 +343,7 @@ fn predecessors(
                 region
                     .protected
                     .iter()
-                    .filter(|block| blocks.contains_key(block))
+                    .filter(|protected| blocks.contains_key(protected))
                     .copied(),
             );
         }

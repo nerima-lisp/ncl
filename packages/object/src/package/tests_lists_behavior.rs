@@ -1,3 +1,9 @@
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "package tests assert on valid fixture construction"
+)]
+
 use super::super::Package;
 use super::{Runtime, ThreadContext, Word};
 use crate::FindStatus;

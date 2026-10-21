@@ -417,5 +417,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "lists_behavior_tests.rs"]
+#[path = "tests_lists_behavior.rs"]
 mod behavior_tests;

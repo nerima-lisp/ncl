@@ -165,11 +165,14 @@ jobs:
       # but only partially by region metrics, so region is the stricter and
       # more accurate signal. This ratchet must remain at the production
       # target; lowering it would hide an untested branch.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info --fail-under-regions 95.0
+      - run: cargo llvm-cov clean --locked --workspace
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --no-report
+      - run: cargo llvm-cov report --locked --lcov --output-path lcov.info
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
           path: lcov.info
+      - run: cargo llvm-cov report --locked --json --summary-only --fail-under-regions 95.0
 
   security:
     # cargo audit scans every dependency reachable via Cargo.lock, which includes

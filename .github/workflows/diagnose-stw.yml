@@ -1,0 +1,128 @@
+name: Diagnose x86-64 Linux STW test
+
+on:
+  push:
+    branches:
+      - ncl-r2-stw-20261022-4a9f946b
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose-stw:
+    name: Repeat ncl-sys STW test (x86-64 Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile the selected test
+        run: >-
+          nix develop --command cargo test --locked -p ncl-sys --all-features --lib --no-run
+          stw::tests::poll_thread_rejoins_when_a_new_epoch_starts_before_wakeup
+          -- --exact
+      - name: Repeat the selected test with a per-run timeout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_name='stw::tests::poll_thread_rejoins_when_a_new_epoch_starts_before_wakeup'
+          capture_process_state() {
+            local root_pid=$1
+            local pid child task_dir
+            local -a queue=("$root_pid") pids=()
+            local index=0
+            while (( index < ${#queue[@]} )); do
+              pid=${queue[$index]}
+              pids+=("$pid")
+              while IFS= read -r child; do
+                [[ -z "$child" ]] || queue+=("$child")
+              done < <(ps --no-headers --ppid "$pid" -o pid 2>/dev/null || true)
+              index=$((index + 1))
+            done
+
+            local pids_csv
+            printf -v pids_csv '%s,' "${pids[@]}"
+            pids_csv=${pids_csv%,}
+            echo 'Process tree at the 60-second diagnostic point:'
+            ps -o pid,ppid,stat,etime,wchan:32,args -p "$pids_csv" || true
+            for pid in "${pids[@]}"; do
+              for task_dir in /proc/"$pid"/task/*; do
+                [[ -d "$task_dir" ]] || continue
+                printf 'pid=%s tid=%s comm=' "$pid" "${task_dir##*/}"
+                cat "$task_dir/comm" 2>&1 || true
+                printf 'wchan='
+                cat "$task_dir/wchan" 2>&1 || true
+                printf 'kernel_stack:\n'
+                cat "$task_dir/stack" 2>&1 || true
+              done
+            done
+          }
+          capture_after_sixty_seconds() {
+            local runner_pid=$1
+            local label=$2
+            local sleep_pid=
+            trap 'if [[ -n "$sleep_pid" ]]; then kill "$sleep_pid" 2>/dev/null || true; wait "$sleep_pid" 2>/dev/null || true; fi; exit 0' TERM INT
+            sleep 60 &
+            sleep_pid=$!
+            if ! wait "$sleep_pid"; then
+              return 0
+            fi
+            if kill -0 "$runner_pid" 2>/dev/null; then
+              printf '%s is still active after 60 seconds; collecting best-effort /proc state.\n' "$label"
+              capture_process_state "$runner_pid"
+            fi
+          }
+          run_with_diagnostics() {
+            local label=$1
+            local time_limit=$2
+            local started_at started_seconds runner_pid watchdog_pid finished_at elapsed_seconds status
+            shift 2
+            started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            started_seconds=$(date +%s)
+            printf 'run=%s started_at=%s limit=%s\n' "$label" "$started_at" "$time_limit"
+            timeout --verbose --signal=TERM --kill-after=10s "$time_limit" "$@" &
+            runner_pid=$!
+            capture_after_sixty_seconds "$runner_pid" "$label" &
+            watchdog_pid=$!
+            if wait "$runner_pid"; then
+              status=0
+            else
+              status=$?
+            fi
+            kill "$watchdog_pid" 2>/dev/null || true
+            wait "$watchdog_pid" 2>/dev/null || true
+            finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            elapsed_seconds=$(( $(date +%s) - started_seconds ))
+            printf 'run=%s finished_at=%s elapsed_seconds=%s exit_code=%s\n' \
+              "$label" "$finished_at" "$elapsed_seconds" "$status"
+            if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+              printf '%s reached its %s timeout limit.\n' "$label" "$time_limit"
+            fi
+            return "$status"
+          }
+          for attempt in $(seq 1 10); do
+            if run_with_diagnostics "isolated attempt $attempt" 90s \
+              nix develop --command cargo test --locked -p ncl-sys --all-features --lib \
+                "$test_name" -- --exact --nocapture; then
+              :
+            else
+              exit "$?"
+            fi
+          done
+          if run_with_diagnostics 'full ncl-sys lib test binary' 8m \
+            nix develop --command cargo test --locked -p ncl-sys --all-features --lib; then
+            :
+          else
+            exit "$?"
+          fi

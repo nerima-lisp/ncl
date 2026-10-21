@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches-ignore:
+      - ncl-r2-stw-20261022-4a9f946b
   pull_request:
 
 concurrency:

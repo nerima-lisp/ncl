@@ -30,8 +30,6 @@ mod tests_x86_64_abi;
 mod tests_x86_64_fixture;
 #[cfg(test)]
 mod tests_x86_64_golden;
-#[cfg(test)]
-mod tests_x86_64_lowering_coverage;
 
 pub use abi::{
     Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,

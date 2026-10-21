@@ -1,11 +1,13 @@
 #![allow(missing_docs, clippy::expect_used)]
 
-use crate::tests_x86_64_fixture::X86_64FixtureAbi;
-use crate::{
+#[path = "x86_64_lowering_coverage/fixture.rs"]
+mod fixture;
+use fixture::X86_64FixtureAbi;
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
+use ncl_codegen::{
     AbiError, Allocation, AllocationTarget, ContextField, Location, RuntimeAbi, RuntimeFunction,
     allocate, compile_function_x86_64,
 };
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
 use ncl_ir::{
     Constant, Convert, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
 };

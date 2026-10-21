@@ -1,5 +1,6 @@
 use crate::isa_x86_64::SCRATCH;
-use crate::{Allocation, CodegenError, Location};
+use crate::machine_verify::SafepointSite;
+use crate::{Allocation, CodegenError, Location, checked_u32};
 use ncl_asm_x86_64::{Assembler, BinOp, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};
 
@@ -196,19 +197,27 @@ pub(super) fn store_slot(
 /// call's safepoint map must be registered: the map lookup selects the nearest
 /// map at or before a PC, so a map placed after the result store would resolve a
 /// caller frame to an older map.
-pub(super) fn emit_call(assembler: &mut Assembler) -> Result<u32, CodegenError> {
+pub(super) fn emit_call_instruction(
+    assembler: &mut Assembler,
+    register: Reg,
+) -> Result<SafepointSite, CodegenError> {
+    let start_offset = checked_u32(assembler.bytes().len())?;
+    emit(assembler, Inst::CallReg(register))?;
+    let end_offset = checked_u32(assembler.bytes().len())?;
+    Ok(SafepointSite::call(start_offset, end_offset))
+}
+
+pub(super) fn emit_call(assembler: &mut Assembler) -> Result<SafepointSite, CodegenError> {
     emit(
         assembler,
         Inst::BinRI(BinOp::Sub, Reg::Rsp, CALLEE_HEADER_RESERVE),
     )?;
-    emit(assembler, Inst::CallReg(ENTRY))?;
-    let return_offset =
-        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
+    let site = emit_call_instruction(assembler, ENTRY)?;
     emit(
         assembler,
         Inst::BinRI(BinOp::Add, Reg::Rsp, CALLEE_HEADER_RESERVE),
     )?;
-    Ok(return_offset)
+    Ok(site)
 }
 
 #[path = "target_x86_64_lowering/runtime_ops.rs"]

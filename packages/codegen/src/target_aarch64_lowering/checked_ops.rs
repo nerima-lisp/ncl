@@ -1,7 +1,9 @@
 use super::{
-    CallCheckContext, CheckedCallMode, emit, lower_alloc, lower_builtin, lower_call,
-    lower_checked_call, lower_runtime_builtin, lower_safepoint, primitives, store_value,
+    CallCheckContext, CheckedCallMode, emit, emit_safepoint_call, lower_alloc, lower_builtin,
+    lower_call, lower_checked_call, lower_runtime_builtin, lower_safepoint, primitives,
+    store_value,
 };
+use crate::machine_verify::SafepointSite;
 use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Inst, Reg};
 use ncl_ir::{Function, HandlerRegionId, ValueId};
@@ -13,14 +15,14 @@ pub(super) fn lower_alloc_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
-    Ok(lower_alloc(assembler, words, result, allocation, abi, context)?.return_pc())
+) -> Result<SafepointSite, CodegenError> {
+    Ok(lower_alloc(assembler, words, result, allocation, abi, context)?.site())
 }
 
 pub(super) fn lower_safepoint_op(
     assembler: &mut Assembler,
     abi: &dyn RuntimeAbi,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     lower_safepoint(assembler, abi)
 }
 
@@ -32,7 +34,7 @@ pub(super) fn lower_call_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let call_pc = lower_checked_call(
         assembler,
         context,
@@ -41,10 +43,10 @@ pub(super) fn lower_call_op(
         CheckedCallMode::RuntimeAndNonLocal,
         |assembler| {
             lower_call(assembler, function, args, allocation)?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )?
-    .return_pc();
+    .site();
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(0))?;
     }
@@ -59,7 +61,7 @@ pub(super) fn lower_make_closure_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let call_pc = lower_checked_call(
         assembler,
         context,
@@ -78,10 +80,10 @@ pub(super) fn lower_make_closure_op(
                 allocation,
                 abi,
             )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )?
-    .return_pc();
+    .site();
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(0))?;
         // No allocation or safepoint occurs before these stores, so the new object cannot move.
@@ -99,7 +101,7 @@ pub(super) fn lower_make_value_cell_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let call_pc = lower_checked_call(
         assembler,
         context,
@@ -115,10 +117,10 @@ pub(super) fn lower_make_value_cell_op(
                 allocation,
                 abi,
             )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )?
-    .return_pc();
+    .site();
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(0))?;
     }
@@ -133,7 +135,7 @@ pub(super) fn lower_call_closure_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     primitives::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi)?;
     let call_pc = lower_checked_call(
         assembler,
@@ -141,9 +143,9 @@ pub(super) fn lower_call_closure_op(
         allocation,
         abi,
         CheckedCallMode::RuntimeAndNonLocal,
-        |assembler| emit(assembler, Inst::Blr { rn: Reg(17) }),
+        emit_safepoint_call,
     )?
-    .return_pc();
+    .site();
     Ok(call_pc)
 }
 
@@ -155,7 +157,7 @@ pub(super) fn lower_builtin_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let call_pc = lower_checked_call(
         assembler,
         context,
@@ -164,10 +166,10 @@ pub(super) fn lower_builtin_op(
         CheckedCallMode::RuntimeAndNonLocal,
         |assembler| {
             lower_builtin(assembler, name, args, allocation, abi)?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )?
-    .return_pc();
+    .site();
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(0))?;
     }
@@ -181,7 +183,7 @@ pub(super) fn lower_enter_handler_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let definition = function
         .handler_regions
         .iter()
@@ -231,10 +233,10 @@ pub(super) fn lower_enter_handler_op(
                 allocation,
                 abi,
             )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )
-    .map(super::CheckedCall::return_pc)
+    .map(super::CheckedCall::site)
 }
 
 pub(super) fn lower_leave_handler_op(
@@ -244,7 +246,7 @@ pub(super) fn lower_leave_handler_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let definition = function
         .handler_regions
         .iter()
@@ -271,10 +273,10 @@ pub(super) fn lower_leave_handler_op(
                 allocation,
                 abi,
             )?;
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )
-    .map(super::CheckedCall::return_pc)
+    .map(super::CheckedCall::site)
 }
 
 fn store_closure_capture(

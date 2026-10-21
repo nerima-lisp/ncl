@@ -1,3 +1,4 @@
+use crate::machine_verify::SafepointSite;
 use crate::{
     AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, allocate,
     checked_u32,
@@ -214,6 +215,7 @@ pub fn compile_function_x86_64(
         .map(|block| (block.id, assembler.new_label()))
         .collect::<std::collections::HashMap<_, _>>();
     let mut maps = Vec::new();
+    let mut safepoint_sites = Vec::new();
     emit(&mut assembler, Inst::Push(FRAME_POINTER))?;
     emit(&mut assembler, Inst::MovRR(FRAME_POINTER, Reg::Rsp))?;
     emit(
@@ -270,7 +272,7 @@ pub fn compile_function_x86_64(
     for block in &function.blocks {
         assembler.bind(labels[&block.id]);
         for op in &block.ops {
-            let call_pc = lower_op(
+            let call_site = lower_op(
                 &mut assembler,
                 op,
                 function,
@@ -280,15 +282,19 @@ pub fn compile_function_x86_64(
                 &labels,
             )?;
             if matches!(op.kind, OpKind::Alloc { .. }) {
+                let site = call_site.ok_or(CodegenError::MachineVerification(
+                    crate::MachineVerificationError::MachineSafepointPcMismatch,
+                ))?;
                 add_map(
                     &mut maps,
-                    call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
+                    site.end_offset,
                     function,
                     frame,
                     &value_slots,
                     position,
                     FLAG_ALLOCATION_SLOW,
                 )?;
+                safepoint_sites.push(site);
             } else if matches!(
                 op.kind,
                 OpKind::Call { .. }
@@ -301,15 +307,19 @@ pub fn compile_function_x86_64(
                     | OpKind::EnterHandler { .. }
                     | OpKind::LeaveHandler { .. }
             ) {
+                let site = call_site.ok_or(CodegenError::MachineVerification(
+                    crate::MachineVerificationError::MachineSafepointPcMismatch,
+                ))?;
                 add_map(
                     &mut maps,
-                    call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
+                    site.end_offset,
                     function,
                     frame,
                     &value_slots,
                     position,
                     FLAG_CALL,
                 )?;
+                safepoint_sites.push(site);
             }
             position = position.saturating_add(1);
         }
@@ -321,17 +331,21 @@ pub fn compile_function_x86_64(
                     .find(|candidate| candidate.id == *target)
                     .ok_or(CodegenError::UnknownBlock(*target))?;
                 move_args(&mut assembler, &value_slots, args, &destination.params)?;
+                let start_offset = checked_u32(assembler.bytes().len())?;
                 emit(&mut assembler, Inst::Jmp(labels[target]))?;
+                let end_offset = checked_u32(assembler.bytes().len())?;
                 if *target == block.id {
+                    let site = SafepointSite::loop_backedge(start_offset, end_offset);
                     add_map(
                         &mut maps,
-                        checked_u32(assembler.bytes().len())?,
+                        site.end_offset,
                         function,
                         frame,
                         &value_slots,
                         position,
                         FLAG_LOOP_BACKEDGE,
                     )?;
+                    safepoint_sites.push(site);
                 }
             }
             Terminator::Branch {
@@ -421,16 +435,17 @@ pub fn compile_function_x86_64(
                 args,
             } => {
                 lower_call(&mut assembler, *callee, args, &value_slots)?;
-                let call_pc = emit_call(&mut assembler)?;
+                let call_site = emit_call(&mut assembler)?;
                 add_map(
                     &mut maps,
-                    call_pc,
+                    call_site.end_offset,
                     function,
                     frame,
                     &value_slots,
                     position,
                     FLAG_CALL,
                 )?;
+                safepoint_sites.push(call_site);
                 emit_epilogue(&mut assembler, value_slots.callee_saved_base)?;
             }
             Terminator::TailCall { function, args } => {
@@ -457,6 +472,12 @@ pub fn compile_function_x86_64(
     let blob = assembler
         .finish()
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    crate::machine_verify::verify_safepoint_sites(
+        AllocationTarget::X86_64,
+        &blob.bytes,
+        &maps,
+        &safepoint_sites,
+    )?;
     Ok(CompiledFunction {
         code: blob.bytes,
         entry_offset: 0,

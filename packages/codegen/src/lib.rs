@@ -18,6 +18,8 @@ mod tests;
 #[cfg(test)]
 mod tests_aarch64;
 #[cfg(test)]
+mod tests_machine_safepoint_pc;
+#[cfg(test)]
 mod tests_machine_verify;
 #[cfg(test)]
 mod tests_x86_64;

@@ -1,9 +1,10 @@
 use super::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, VALUE_COUNT, ValueSlots, dispatch, emit, load_immediate, load_slot, slot_mem_of,
-    store_slot,
+    RETURN_VALUE, VALUE_COUNT, ValueSlots, dispatch, emit, emit_call_instruction, load_immediate,
+    load_slot, slot_mem_of, store_slot,
 };
 use crate::isa_x86_64::THREAD_CONTEXT;
+use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction, common_lisp_builtin};
 use ncl_asm_x86_64::{Assembler, Cond, Inst, Mem, Reg};
 use ncl_ir::ValueId;
@@ -101,7 +102,7 @@ pub(super) fn lower_alloc(
     words: u32,
     result: Option<ValueId>,
     context: &dispatch::CallCheckContext<'_>,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let slots = context.slots;
     let abi = context.abi;
     let bytes = words
@@ -141,20 +142,19 @@ pub(super) fn lower_alloc(
         runtime_address(abi, RuntimeFunction::AllocateSlow)?,
     )?;
     let checked_call = dispatch::checked_call(assembler, context, |assembler| {
-        emit(assembler, Inst::CallReg(ENTRY))?;
-        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)
+        emit_call_instruction(assembler, ENTRY)
     })?;
     if let Some(result) = result {
         store_slot(assembler, slots, result, RETURN_VALUE)?;
     }
     assembler.bind(done);
-    Ok(checked_call.return_pc())
+    Ok(checked_call.site())
 }
 
 pub(super) fn lower_safepoint(
     assembler: &mut Assembler,
     abi: &dyn RuntimeAbi,
-) -> Result<u32, CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     let done = assembler.new_label();
     emit(
         assembler,
@@ -176,11 +176,9 @@ pub(super) fn lower_safepoint(
     // three bytes (REX.B + FF /2 + ModRM), so the RIP-relative displacement from
     // the end of this `lea` to the instruction after the call is exactly three.
     emit(assembler, Inst::Lea(VALUE_COUNT, Mem::rip(3)))?;
-    emit(assembler, Inst::CallReg(ENTRY))?;
-    let call_pc =
-        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
+    let site = emit_call_instruction(assembler, ENTRY)?;
     assembler.bind(done);
-    Ok(call_pc)
+    Ok(site)
 }
 
 #[allow(clippy::similar_names)]

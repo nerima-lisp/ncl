@@ -1,9 +1,17 @@
 use std::collections::HashMap;
 
-use ncl_asm_aarch64::{Assembler, Label};
+use ncl_asm_aarch64::{Assembler, Inst, Label, Reg};
 use ncl_ir::{BlockId, Function};
 
 use super::{Allocation, CodegenError, RuntimeAbi, dispatch};
+use crate::machine_verify::SafepointSite;
+
+pub fn emit_safepoint_call(assembler: &mut Assembler) -> Result<SafepointSite, CodegenError> {
+    let start_offset = crate::checked_u32(assembler.offset())?;
+    super::emit(assembler, Inst::Blr { rn: Reg(17) })?;
+    let end_offset = crate::checked_u32(assembler.offset())?;
+    Ok(SafepointSite::call(start_offset, end_offset))
+}
 
 pub struct CallCheckContext<'a> {
     pub(crate) function: &'a Function,
@@ -19,12 +27,12 @@ pub enum CheckedCallMode {
 }
 
 pub struct CheckedCall {
-    return_pc: u32,
+    site: SafepointSite,
 }
 
 impl CheckedCall {
-    pub const fn return_pc(self) -> u32 {
-        self.return_pc
+    pub const fn site(self) -> SafepointSite {
+        self.site
     }
 }
 
@@ -34,10 +42,9 @@ pub fn lower_checked_call(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     mode: CheckedCallMode,
-    emit_call: impl FnOnce(&mut Assembler) -> Result<(), CodegenError>,
+    emit_call: impl FnOnce(&mut Assembler) -> Result<SafepointSite, CodegenError>,
 ) -> Result<CheckedCall, CodegenError> {
-    emit_call(assembler)?;
-    let return_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
+    let site = emit_call(assembler)?;
     dispatch::lower_checked_call_check(assembler, context, allocation, abi, mode)?;
-    Ok(CheckedCall { return_pc })
+    Ok(CheckedCall { site })
 }

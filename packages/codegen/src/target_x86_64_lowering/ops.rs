@@ -4,6 +4,7 @@ use super::{
     store_slot,
 };
 use crate::isa_x86_64::THREAD_CONTEXT;
+use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem};
 use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
@@ -134,7 +135,7 @@ pub fn lower_op(
     slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
     labels: &HashMap<BlockId, Label>,
-) -> Result<Option<u32>, CodegenError> {
+) -> Result<Option<SafepointSite>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
     let check_context = super::dispatch::CallCheckContext::new(function, block, slots, abi, labels);
     let mut call_pc = None;

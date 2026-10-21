@@ -21,7 +21,7 @@ fn assert_compiles(function: &ncl_ir::Function) -> CompiledFunction {
             debug: Vec::new(),
         };
     };
-    let compiled = compile_function(&parsed, &X86_64Abi);
+    let compiled = compile_function(&parsed, &FixtureAbi);
     assert!(compiled.is_ok(), "fixture failed to compile: {compiled:?}");
     compiled.unwrap_or_else(|_| CompiledFunction {
         code: Vec::new(),
@@ -50,9 +50,9 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
 }
 
 #[derive(Clone, Copy)]
-struct Aarch64FixtureAbi;
+struct FixtureAbi;
 
-impl RuntimeAbi for Aarch64FixtureAbi {
+impl RuntimeAbi for FixtureAbi {
     fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
         if identifier.name.as_str() == "identity" {
             Ok(0x1000)
@@ -106,7 +106,7 @@ fn lowers_fixnum_return_to_decodable_x86() {
             })
             .is_ok()
     );
-    let compiled_result = compile_function(&builder.finish(), &X86_64Abi);
+    let compiled_result = compile_function(&builder.finish(), &FixtureAbi);
     assert!(
         compiled_result.is_ok(),
         "valid IR failed to lower: {compiled_result:?}"
@@ -142,7 +142,7 @@ fn generates_maps_for_all_safepoint_kinds() {
             })
             .is_ok()
     );
-    let allocation_result = compile_function(&allocation.finish(), &X86_64Abi);
+    let allocation_result = compile_function(&allocation.finish(), &FixtureAbi);
     assert!(
         allocation_result.is_ok(),
         "allocation lowering failed: {allocation_result:?}"
@@ -164,7 +164,7 @@ fn generates_maps_for_all_safepoint_kinds() {
             .terminate(Terminator::Return { values: Vec::new() })
             .is_ok()
     );
-    let explicit_result = compile_function(&explicit.finish(), &X86_64Abi);
+    let explicit_result = compile_function(&explicit.finish(), &FixtureAbi);
     assert!(
         explicit_result.is_ok(),
         "poll lowering failed: {explicit_result:?}"
@@ -190,7 +190,7 @@ fn generates_maps_for_all_safepoint_kinds() {
             })
             .is_ok()
     );
-    let loop_result = compile_function(&loop_function.finish(), &X86_64Abi);
+    let loop_result = compile_function(&loop_function.finish(), &FixtureAbi);
     assert!(loop_result.is_ok(), "loop lowering failed: {loop_result:?}");
     let Ok(loop_function) = loop_result else {
         return;
@@ -373,7 +373,7 @@ fn golden_builtin_call_has_call_safepoint() {
 }
 
 fn assert_aarch64_fixture(function: &ncl_ir::Function) {
-    assert_aarch64_fixture_with_abi(function, &Aarch64FixtureAbi);
+    assert_aarch64_fixture_with_abi(function, &FixtureAbi);
 }
 
 fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn RuntimeAbi) {

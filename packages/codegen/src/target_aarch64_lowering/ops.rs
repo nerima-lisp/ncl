@@ -1,4 +1,5 @@
 use super::{CallCheckContext, constant_table_entry, emit, load_value, primitives, store_value};
+use crate::machine_verify::SafepointSite;
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Compare, Function, Op, OpKind, ValueId};
@@ -120,7 +121,7 @@ pub fn lower_op(
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     check_context: &CallCheckContext<'_>,
-) -> Result<Option<u32>, CodegenError> {
+) -> Result<Option<SafepointSite>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
     let mut call_pc = None;
     match &op.kind {

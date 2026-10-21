@@ -1,3 +1,4 @@
+use crate::machine_verify::SafepointSite;
 use crate::{
     AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, checked_u32,
 };
@@ -77,6 +78,7 @@ pub fn compile_function_aarch64(
         .map(|block| (block.id, assembler.new_label()))
         .collect::<std::collections::HashMap<_, _>>();
     let mut maps = Vec::new();
+    let mut safepoint_sites = Vec::new();
     emit(
         &mut assembler,
         Inst::Stp {
@@ -197,7 +199,7 @@ pub fn compile_function_aarch64(
                 body_bytes,
                 labels: &labels,
             };
-            let call_pc = lower_op(
+            let call_site = lower_op(
                 &mut assembler,
                 op,
                 function,
@@ -206,15 +208,19 @@ pub fn compile_function_aarch64(
                 &check_context,
             )?;
             if matches!(op.kind, OpKind::Alloc { .. }) {
+                let site = call_site.ok_or(CodegenError::MachineVerification(
+                    crate::MachineVerificationError::MachineSafepointPcMismatch,
+                ))?;
                 add_map(
                     &mut maps,
-                    call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    site.end_offset,
                     function,
                     frame,
                     &allocation,
                     position,
                     FLAG_ALLOCATION_SLOW,
                 )?;
+                safepoint_sites.push(site);
             } else if matches!(
                 op.kind,
                 OpKind::Call { .. }
@@ -227,15 +233,19 @@ pub fn compile_function_aarch64(
                     | OpKind::EnterHandler { .. }
                     | OpKind::LeaveHandler { .. }
             ) {
+                let site = call_site.ok_or(CodegenError::MachineVerification(
+                    crate::MachineVerificationError::MachineSafepointPcMismatch,
+                ))?;
                 add_map(
                     &mut maps,
-                    call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    site.end_offset,
                     function,
                     frame,
                     &allocation,
                     position,
                     FLAG_CALL,
                 )?;
+                safepoint_sites.push(site);
             }
             position = position.saturating_add(1);
         }
@@ -247,22 +257,26 @@ pub fn compile_function_aarch64(
                     .find(|candidate| candidate.id == *target)
                     .ok_or(CodegenError::UnknownBlock(*target))?;
                 move_args(&mut assembler, &allocation, args, &destination.params)?;
+                let start_offset = checked_u32(assembler.offset())?;
                 emit(
                     &mut assembler,
                     Inst::B {
                         label: labels[target],
                     },
                 )?;
+                let end_offset = checked_u32(assembler.offset())?;
                 if *target == block.id {
+                    let site = SafepointSite::loop_backedge(start_offset, end_offset);
                     add_map(
                         &mut maps,
-                        checked_u32(assembler.offset())?,
+                        site.end_offset,
                         function,
                         frame,
                         &allocation,
                         position,
                         FLAG_LOOP_BACKEDGE,
                     )?;
+                    safepoint_sites.push(site);
                 }
             }
             Terminator::Branch {
@@ -333,16 +347,17 @@ pub fn compile_function_aarch64(
                 args,
             } => {
                 lower_call(&mut assembler, *callee, args, &allocation)?;
-                emit(&mut assembler, Inst::Blr { rn: Reg(17) })?;
+                let call_site = lowering::emit_safepoint_call(&mut assembler)?;
                 add_map(
                     &mut maps,
-                    checked_u32(assembler.offset())?,
+                    call_site.end_offset,
                     function,
                     frame,
                     &allocation,
                     position,
                     FLAG_CALL,
                 )?;
+                safepoint_sites.push(call_site);
                 if body_bytes > 0 {
                     if body_bytes <= 4095 {
                         emit(
@@ -450,6 +465,12 @@ pub fn compile_function_aarch64(
     let blob = assembler
         .finish()
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    crate::machine_verify::verify_safepoint_sites(
+        AllocationTarget::AArch64,
+        &blob.bytes,
+        &maps,
+        &safepoint_sites,
+    )?;
     Ok(CompiledFunction {
         code: blob.bytes,
         entry_offset: 0,

@@ -1,3 +1,4 @@
+use crate::machine_verify::SafepointSite;
 use crate::{
     Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction,
     common_lisp_builtin,
@@ -320,7 +321,7 @@ fn lower_alloc(
             ) {
                 emit(assembler, instruction)?;
             }
-            emit(assembler, Inst::Blr { rn: Reg(17) })
+            emit_safepoint_call(assembler)
         },
     )?;
     if let Some(result) = result {
@@ -332,7 +333,10 @@ fn lower_alloc(
     Ok(checked_call)
 }
 
-fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u32, CodegenError> {
+fn lower_safepoint(
+    assembler: &mut Assembler,
+    abi: &dyn RuntimeAbi,
+) -> Result<SafepointSite, CodegenError> {
     let done = assembler.new_label();
     emit(
         assembler,
@@ -375,12 +379,11 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
             label: done,
         },
     )?;
-    emit(assembler, Inst::Blr { rn: Reg(17) })?;
-    let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
+    let site = emit_safepoint_call(assembler)?;
     assembler
         .bind(done)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
-    Ok(call_pc)
+    Ok(site)
 }
 
 fn lower_builtin(
@@ -491,6 +494,7 @@ pub(super) use moves::move_args;
 #[path = "target_aarch64_lowering/primitives.rs"]
 pub(super) mod primitives;
 pub(super) use calls::{lower_call, lower_closure_call};
+pub(super) use checked_call::emit_safepoint_call;
 pub(super) use checked_call::{CallCheckContext, CheckedCall, CheckedCallMode, lower_checked_call};
 pub(super) use dispatch::lower_return_or_throw;
 pub(super) use ops::lower_op;

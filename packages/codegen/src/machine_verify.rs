@@ -7,6 +7,89 @@ use std::collections::HashSet;
 mod machine_function;
 pub use machine_function::{verify_machine_function, verify_safepoint_map};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SafepointInstruction {
+    Call,
+    LoopBackedge,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SafepointSite {
+    pub start_offset: u32,
+    pub end_offset: u32,
+    pub instruction: SafepointInstruction,
+}
+
+impl SafepointSite {
+    pub const fn call(start_offset: u32, end_offset: u32) -> Self {
+        Self {
+            start_offset,
+            end_offset,
+            instruction: SafepointInstruction::Call,
+        }
+    }
+
+    pub const fn loop_backedge(start_offset: u32, end_offset: u32) -> Self {
+        Self {
+            start_offset,
+            end_offset,
+            instruction: SafepointInstruction::LoopBackedge,
+        }
+    }
+}
+
+pub fn verify_safepoint_sites(
+    target: AllocationTarget,
+    code: &[u8],
+    maps: &[crate::SafepointMap],
+    sites: &[SafepointSite],
+) -> Result<(), CodegenError> {
+    let mismatch =
+        || CodegenError::MachineVerification(MachineVerificationError::MachineSafepointPcMismatch);
+    if maps.len() != sites.len() {
+        return Err(mismatch());
+    }
+    for (map, site) in maps.iter().zip(sites) {
+        let expected_instruction = match (
+            map.map_flags & crate::FLAG_LOOP_BACKEDGE != 0,
+            map.map_flags & (crate::FLAG_CALL | crate::FLAG_ALLOCATION_SLOW) != 0,
+        ) {
+            (true, false) => SafepointInstruction::LoopBackedge,
+            (false, true) => SafepointInstruction::Call,
+            (false, false) | (true, true) => return Err(mismatch()),
+        };
+        let start = usize::try_from(site.start_offset).map_err(|_| mismatch())?;
+        let end = usize::try_from(site.end_offset).map_err(|_| mismatch())?;
+        if site.instruction != expected_instruction
+            || map.pc_offset != site.end_offset
+            || start >= end
+            || end > code.len()
+        {
+            return Err(mismatch());
+        }
+        let Some(bytes) = code.get(start..end) else {
+            return Err(mismatch());
+        };
+        let valid_instruction = match (target, expected_instruction) {
+            (AllocationTarget::X86_64, SafepointInstruction::Call) => bytes == [0x41, 0xff, 0xd3],
+            (AllocationTarget::X86_64, SafepointInstruction::LoopBackedge) => {
+                bytes.len() == 5 && bytes.first() == Some(&0xe9)
+            }
+            (AllocationTarget::AArch64, SafepointInstruction::Call) => {
+                bytes == [0x20, 0x02, 0x3f, 0xd6]
+            }
+            (AllocationTarget::AArch64, SafepointInstruction::LoopBackedge) => bytes
+                .try_into()
+                .map(u32::from_le_bytes)
+                .is_ok_and(|instruction| instruction & 0xfc00_0000 == 0x1400_0000),
+        };
+        if !valid_instruction {
+            return Err(mismatch());
+        }
+    }
+    Ok(())
+}
+
 /// A structural failure found in allocated machine state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MachineVerificationError {
@@ -28,6 +111,8 @@ pub enum MachineVerificationError {
     MachineSafepointMismatch,
     /// A block or safepoint program counter is outside the encoded function.
     MachineCodeBoundsMismatch,
+    /// A safepoint map PC does not follow its captured target instruction.
+    MachineSafepointPcMismatch,
 }
 
 impl core::fmt::Display for MachineVerificationError {

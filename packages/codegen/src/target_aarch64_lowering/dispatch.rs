@@ -13,8 +13,8 @@ use ncl_asm_aarch64::{Assembler, Cond, Inst, Label, MemOperand, Reg, RegOrSp, Sh
 use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
 
 use super::{
-    CallCheckContext, CheckedCallMode, context_mem, emit, load_value, lower_checked_call,
-    lower_runtime_builtin, store_value,
+    CallCheckContext, CheckedCallMode, context_mem, emit, emit_safepoint_call, load_value,
+    lower_checked_call, lower_runtime_builtin, store_value,
 };
 use crate::{Allocation, CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 
@@ -291,7 +291,7 @@ fn try_dispatch_candidates(
                             allocation,
                             abi,
                         )?;
-                        emit(assembler, Inst::Blr { rn: Reg(17) })
+                        emit_safepoint_call(assembler)
                     },
                 )?;
             }

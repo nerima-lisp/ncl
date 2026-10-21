@@ -1,8 +1,17 @@
+use crate::isa_x86_64::THREAD_CONTEXT;
+use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ConstantName, FrameLayout, RuntimeAbi, SafepointMap};
+use crate::{ContextField, RuntimeFunction};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL};
 use crate::{checked_i64, checked_u16, checked_u32};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Compare, Constant, Function, Op, OpKind, Prim, ValueId};
+
+#[derive(Default)]
+pub(super) struct SafepointOutput {
+    pub(super) maps: Vec<SafepointMap>,
+    pub(super) sites: Vec<SafepointSite>,
+}
 
 #[rustfmt::skip]
 pub(super) fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> { slots.iter().find(|(id, _)| *id == value).map(|(_, slot)| *slot).ok_or(CodegenError::UnknownValue(value)) }
@@ -59,7 +68,7 @@ pub(super) fn lower_op(
     slots: &[(ValueId, u32)],
     abi: &dyn RuntimeAbi,
     frame: FrameLayout,
-    maps: &mut Vec<SafepointMap>,
+    safepoints: &mut SafepointOutput,
 ) -> Result<(), CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
     match &op.kind {
@@ -120,9 +129,34 @@ pub(super) fn lower_op(
                 &Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
             )?;
         }
-        OpKind::Alloc { .. } => {
-            emit(assembler, &Inst::Nop(1))?;
-            add_map(assembler, frame, slots, maps, FLAG_ALLOCATION_SLOW)?;
+        OpKind::Alloc { words } => {
+            emit(assembler, &Inst::MovRR(THREAD_CONTEXT, Reg::Rdi))?;
+            emit(
+                assembler,
+                &Inst::MovRI(
+                    Reg::Rsi,
+                    Imm::I32(i32::try_from(*words).map_err(|_| CodegenError::FrameOverflow)?),
+                ),
+            )?;
+            let address = abi
+                .runtime_address(RuntimeFunction::AllocateSlow)
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) Runtime ABI may omit this required slow allocator.
+            emit(
+                assembler,
+                &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
+            )?;
+            let site = emit_safepoint_call(assembler)?;
+            if let Some(result) = result {
+                store(assembler, slots, result, Reg::Rax)?;
+            }
+            add_map(
+                frame,
+                slots,
+                &mut safepoints.maps,
+                site,
+                FLAG_ALLOCATION_SLOW,
+            )?;
+            safepoints.sites.push(site);
         }
         OpKind::LoadArg { index } => {
             let register = [Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8, Reg::R9]
@@ -143,11 +177,12 @@ pub(super) fn lower_op(
         }
         | OpKind::CallIndirect { callee, .. } => {
             load(assembler, slots, *callee, Reg::R11)?;
-            emit(assembler, &Inst::CallReg(Reg::R11))?;
+            let site = emit_safepoint_call(assembler)?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::Rax)?;
             }
-            add_map(assembler, frame, slots, maps, FLAG_CALL)?;
+            add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
+            safepoints.sites.push(site);
         }
         OpKind::Builtin { name, .. } => {
             let address = abi
@@ -157,11 +192,12 @@ pub(super) fn lower_op(
                 assembler,
                 &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
             )?;
-            emit(assembler, &Inst::CallReg(Reg::R11))?;
+            let site = emit_safepoint_call(assembler)?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::Rax)?;
             }
-            add_map(assembler, frame, slots, maps, FLAG_CALL)?;
+            add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
+            safepoints.sites.push(site);
         }
         OpKind::Prim { op: prim, args, .. } => lower_prim(assembler, prim, args, result, slots)?,
         OpKind::Compare { op, left, right } => {
@@ -183,7 +219,32 @@ pub(super) fn lower_op(
                 store(assembler, slots, result, Reg::Rax)?;
             }
         }
-        OpKind::Safepoint => add_map(assembler, frame, slots, maps, FLAG_CALL)?,
+        OpKind::Safepoint => {
+            let done = assembler.new_label();
+            let request_offset = abi
+                .field_offset(ContextField::SafepointRequest)
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) Runtime ABI may omit the safepoint request field.
+            emit(
+                assembler,
+                &Inst::MovRM(Reg::R10, Mem::base(THREAD_CONTEXT, request_offset)),
+            )?;
+            emit(assembler, &Inst::CmpRI(Reg::R10, 0))?;
+            emit(assembler, &Inst::Jcc(Cond::E, done))?;
+            emit(assembler, &Inst::MovRR(THREAD_CONTEXT, Reg::Rdi))?;
+            emit(assembler, &Inst::MovRR(Reg::Rbp, Reg::Rsi))?;
+            let address = abi
+                .runtime_address(RuntimeFunction::SafepointSlow)
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) Runtime ABI may omit this required slow path.
+            emit(
+                assembler,
+                &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
+            )?;
+            emit(assembler, &Inst::Lea(Reg::Rdx, Mem::rip(3)))?;
+            let site = emit_safepoint_call(assembler)?;
+            assembler.bind(done);
+            add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
+            safepoints.sites.push(site);
+        }
         _ => Err(CodegenError::Unsupported(
             "target-specific operation".into(),
         ))?,
@@ -212,10 +273,10 @@ fn lower_prim(assembler: &mut Assembler, prim: &Prim, args: &[ValueId], result: 
 }
 
 pub(super) fn add_map(
-    assembler: &Assembler,
     frame: FrameLayout,
     slots: &[(ValueId, u32)],
     maps: &mut Vec<SafepointMap>,
+    site: SafepointSite,
     flags: u32,
 ) -> Result<(), CodegenError> {
     let live: Vec<u16> = slots
@@ -224,7 +285,7 @@ pub(super) fn add_map(
         .collect::<Result<_, _>>()?;
     maps.push(
         SafepointMap::new(
-            checked_u32(assembler.bytes().len())?,
+            site.end_offset,
             checked_u16(frame.frame_words)?,
             checked_u16(frame.frame_words)?,
             &live,
@@ -234,6 +295,13 @@ pub(super) fn add_map(
         .map_err(|error| CodegenError::Encode(error.to_string()))?,
     );
     Ok(())
+}
+
+fn emit_safepoint_call(assembler: &mut Assembler) -> Result<SafepointSite, CodegenError> {
+    let start_offset = checked_u32(assembler.bytes().len())?;
+    emit(assembler, &Inst::CallReg(Reg::R11))?;
+    let end_offset = checked_u32(assembler.bytes().len())?;
+    Ok(SafepointSite::call(start_offset, end_offset))
 }
 
 pub(super) fn emit_return(

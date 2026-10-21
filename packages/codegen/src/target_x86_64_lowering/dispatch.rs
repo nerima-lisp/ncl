@@ -7,6 +7,7 @@ use ncl_ir::{BlockId, Function, HandlerKind, HandlerRegion, ValueId};
 
 use super::{emit, emit_call, load_immediate, load_slot, store_return_values, store_slot};
 use crate::isa_x86_64::THREAD_CONTEXT;
+use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 
 fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
@@ -183,7 +184,7 @@ pub fn lower_return_or_throw(
 /// Return address metadata for a helper call after its error and non-local-exit
 /// state have both been checked.
 pub(super) struct CheckedCall {
-    return_pc: u32,
+    site: SafepointSite,
 }
 
 pub(super) struct CallCheckContext<'a> {
@@ -213,8 +214,8 @@ impl<'a> CallCheckContext<'a> {
 }
 
 impl CheckedCall {
-    pub(super) const fn return_pc(&self) -> u32 {
-        self.return_pc
+    pub(super) const fn site(&self) -> SafepointSite {
+        self.site
     }
 }
 
@@ -223,9 +224,9 @@ impl CheckedCall {
 pub(super) fn checked_call(
     assembler: &mut Assembler,
     context: &CallCheckContext<'_>,
-    emit_helper: impl FnOnce(&mut Assembler) -> Result<u32, CodegenError>,
+    emit_helper: impl FnOnce(&mut Assembler) -> Result<SafepointSite, CodegenError>,
 ) -> Result<CheckedCall, CodegenError> {
-    let return_pc = emit_helper(assembler)?;
+    let site = emit_helper(assembler)?;
     lower_pending_check(
         assembler,
         context.function,
@@ -234,7 +235,7 @@ pub(super) fn checked_call(
         context.abi,
         context.labels,
     )?;
-    Ok(CheckedCall { return_pc })
+    Ok(CheckedCall { site })
 }
 
 /// Stop this function when a helper recorded a runtime error. The error flag

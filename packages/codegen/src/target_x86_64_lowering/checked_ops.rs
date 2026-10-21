@@ -2,6 +2,7 @@ use super::{
     RETURN_VALUE, checked_call, dispatch::CallCheckContext, emit_call, lower_builtin, lower_call,
     lower_closure_call, lower_runtime_builtin, store_closure_capture, store_slot,
 };
+use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, RuntimeFunction};
 use ncl_asm_x86_64::Assembler;
 use ncl_ir::{OpKind, ValueId};
@@ -12,7 +13,7 @@ pub(super) fn lower_checked_ops(
     op: &OpKind,
     result: Option<ValueId>,
     context: &CallCheckContext<'_>,
-) -> Result<Option<u32>, CodegenError> {
+) -> Result<Option<SafepointSite>, CodegenError> {
     let function = context.function;
     let slots = context.slots;
     let abi = context.abi;
@@ -27,7 +28,7 @@ pub(super) fn lower_checked_ops(
                 lower_call(assembler, *callee, args, slots)?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
@@ -48,7 +49,7 @@ pub(super) fn lower_checked_ops(
                 )?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
                 // No allocation or safepoint occurs before these stores, so the new object cannot move.
@@ -69,7 +70,7 @@ pub(super) fn lower_checked_ops(
                 )?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
@@ -91,7 +92,7 @@ pub(super) fn lower_checked_ops(
                 )?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
@@ -101,7 +102,7 @@ pub(super) fn lower_checked_ops(
                 lower_builtin(assembler, name, args, slots, abi)?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
@@ -152,7 +153,7 @@ pub(super) fn lower_checked_ops(
                 )?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
         }
         OpKind::LeaveHandler { region } => {
             let definition = function
@@ -177,7 +178,7 @@ pub(super) fn lower_checked_ops(
                 )?;
                 emit_call(assembler)
             })?;
-            call_pc = Some(checked.return_pc());
+            call_pc = Some(checked.site());
         }
         OpKind::Const { .. }
         | OpKind::Move { .. }

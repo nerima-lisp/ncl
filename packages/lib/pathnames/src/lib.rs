@@ -7,6 +7,7 @@ use ncl_object::{
 };
 
 mod filesystem;
+mod logical;
 mod pathname;
 
 use filesystem::{
@@ -16,7 +17,7 @@ use filesystem::{
 use pathname::{
     compile_file_pathname_builtin, make_pathname_builtin, merge_pathnames_builtin,
     namestring_builtin, pathname_builtin, pathname_name_builtin, pathname_type_builtin,
-    pathnamep_builtin, with_trailing_separator,
+    pathname_version_builtin, pathnamep_builtin, with_trailing_separator,
 };
 pub use pathname::{from_host_path, resolve_pathname};
 
@@ -76,6 +77,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("PATHNAME-DIRECTORY", 1, pathname_directory_builtin),
         ("PATHNAME-NAME", 1, pathname_name_builtin),
         ("PATHNAME-TYPE", 1, pathname_type_builtin),
+        ("PATHNAME-VERSION", 1, pathname_version_builtin),
         ("NAMESTRING", 1, namestring_builtin),
         ("COMPILE-FILE-PATHNAME", 1, compile_file_pathname_builtin),
         ("PROBE-FILE", 1, probe_file_builtin),
@@ -94,6 +96,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         merge_pathnames_builtin,
     )?;
     register_rest(ctx, runtime, "MAKE-PATHNAME", &[], make_pathname_builtin)?;
+    logical::register(ctx, runtime)?;
     Ok(())
 }
 
@@ -113,8 +116,19 @@ fn register_pathname_class(ctx: &mut ThreadContext, runtime: &Runtime) -> Result
         "NAMESTRING",
     )?;
     let slot = scope.root::<Word>(ncl_object::Local::from_word(slot));
+    let (version_slot, _) = Package::from_word(scope.get(package).as_word()).intern(
+        scope.context_mut(),
+        runtime,
+        "VERSION",
+    )?;
+    let version_slot = scope.root::<Word>(ncl_object::Local::from_word(version_slot));
     let slot_word = scope.get(slot).as_word();
-    let slot_handles = scope.root_many(&[ncl_object::Local::from_word(slot_word)]);
+    let version_slot_word = scope.get(version_slot).as_word();
+    let slot_words = [
+        ncl_object::Local::from_word(slot_word),
+        ncl_object::Local::from_word(version_slot_word),
+    ];
+    let slot_handles = scope.root_many(&slot_words);
     let slots = scope.make_simple_vector(runtime, &slot_handles)?;
     let superclass = runtime
         .class(scope.context_mut(), "T")

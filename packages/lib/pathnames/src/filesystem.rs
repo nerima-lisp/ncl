@@ -101,7 +101,13 @@ fn build_directory_list(
         let value = match component {
             Component::Normal(value) => {
                 let value = value.to_string_lossy();
-                scope.make_string(runtime, &value.chars().collect::<Vec<_>>())?
+                if value == "*" {
+                    scope.intern(runtime, "KEYWORD", "WILD")?
+                } else if value == "**" {
+                    scope.intern(runtime, "KEYWORD", "WILD-INFERIORS")?
+                } else {
+                    scope.make_string(runtime, &value.chars().collect::<Vec<_>>())?
+                }
             }
             Component::ParentDir => scope.intern(runtime, "KEYWORD", "UP")?,
             Component::CurDir | Component::RootDir | Component::Prefix(_) => continue,
@@ -242,10 +248,13 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use super::{canonical_path, expand_pattern, probe_file_builtin, wildcard_match};
-    use crate::pathname::pathname_from_path;
+    use super::{
+        canonical_path, expand_pattern, pathname_directory_builtin, probe_file_builtin,
+        wildcard_match,
+    };
+    use crate::pathname::{make_pathname_builtin, pathname_from_path};
     use ncl_object::{
-        BuiltinArgs, Local, MultipleValues, Package, Runtime, Scope, ThreadContext, Word,
+        BuiltinArgs, Local, MultipleValues, Package, Runtime, Scope, ThreadContext, Word, car, cdr,
         set_symbol_value,
     };
 
@@ -302,6 +311,57 @@ mod tests {
         assert!(!wildcard_match("file?.lisp", "file12.lisp"));
         assert!(wildcard_match("λ?.lisp", "λ語.lisp"));
         assert!(!wildcard_match("file.lisp", "files.lisp"));
+    }
+
+    #[test]
+    fn make_pathname_wild_directory_is_an_absolute_wild_component() {
+        let (runtime, mut ctx) = runtime_and_context();
+        let mut scope = Scope::new(&mut ctx);
+        let directory_keyword = scope
+            .intern(&runtime, "KEYWORD", "DIRECTORY")
+            .unwrap_or_else(|error| panic!("DIRECTORY keyword: {error:?}"));
+        let wild_keyword = scope
+            .intern(&runtime, "KEYWORD", "WILD")
+            .unwrap_or_else(|error| panic!("WILD keyword: {error:?}"));
+        let absolute_keyword = scope
+            .intern(&runtime, "KEYWORD", "ABSOLUTE")
+            .unwrap_or_else(|error| panic!("ABSOLUTE keyword: {error:?}"));
+        let arguments = [
+            scope.get(directory_keyword).as_word(),
+            scope.get(wild_keyword).as_word(),
+        ];
+        let mut values = MultipleValues::new();
+
+        let pathname = make_pathname_builtin(
+            scope.context_mut(),
+            &runtime,
+            &BuiltinArgs::new(&arguments),
+            &mut values,
+        )
+        .unwrap_or_else(|error| panic!("MAKE-PATHNAME: {error:?}"));
+        let pathname = scope.root::<Word>(Local::from_word(pathname));
+        let directory_args = [scope.get(pathname).as_word()];
+        let directory = pathname_directory_builtin(
+            scope.context_mut(),
+            &runtime,
+            &BuiltinArgs::new(&directory_args),
+            &mut values,
+        )
+        .unwrap_or_else(|error| panic!("PATHNAME-DIRECTORY: {error:?}"));
+        let directory = scope.root::<Word>(Local::from_word(directory));
+        let directory_word = scope.get(directory).as_word();
+        let first = car(scope.context_mut(), directory_word)
+            .unwrap_or_else(|error| panic!("absolute directory marker: {error:?}"));
+        let tail = cdr(scope.context_mut(), directory_word)
+            .unwrap_or_else(|error| panic!("wild directory tail: {error:?}"));
+        let second = car(scope.context_mut(), tail)
+            .unwrap_or_else(|error| panic!("wild directory component: {error:?}"));
+        let rest = cdr(scope.context_mut(), tail)
+            .unwrap_or_else(|error| panic!("directory list tail: {error:?}"));
+
+        assert_eq!(first, scope.get(absolute_keyword).as_word());
+        assert_eq!(second, scope.get(wild_keyword).as_word());
+        assert_eq!(rest, Word::NIL);
     }
 
     #[test]

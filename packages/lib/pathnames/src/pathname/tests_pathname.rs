@@ -1,6 +1,8 @@
+use super::construct::component_string;
+use super::construct::directory_from_word;
 use super::{
-    base_directory, component_string, directory_from_word, make_pathname_builtin, merge_paths,
-    path_from_word, path_name, path_type, with_trailing_separator,
+    base_directory, make_pathname_builtin, merge_paths, path_from_word, path_name, path_type,
+    with_trailing_separator,
 };
 use ncl_object::{
     BuiltinArgs, Local, MultipleValues, ObjectError, Runtime, Scope, ThreadContext, Word,
@@ -14,6 +16,42 @@ fn runtime_and_context() -> (Runtime, ThreadContext) {
     ncl_clos::register(&runtime).unwrap_or_else(|error| panic!("CLOS: {error:?}"));
     crate::register(&mut ctx, &runtime).unwrap_or_else(|error| panic!("pathnames: {error:?}"));
     (runtime, ctx)
+}
+
+fn make_pathname_name_with_case(case: &str, name: &str) -> std::path::PathBuf {
+    let (runtime, mut ctx) = runtime_and_context();
+    let mut scope = Scope::new(&mut ctx);
+    let case_keyword = scope
+        .intern(&runtime, "KEYWORD", "CASE")
+        .unwrap_or_else(|error| panic!("CASE keyword: {error:?}"));
+    let case_value = scope
+        .intern(&runtime, "KEYWORD", case)
+        .unwrap_or_else(|error| panic!("case value: {error:?}"));
+    let name_keyword = scope
+        .intern(&runtime, "KEYWORD", "NAME")
+        .unwrap_or_else(|error| panic!("NAME keyword: {error:?}"));
+    let name = scope
+        .make_string(&runtime, &name.chars().collect::<Vec<_>>())
+        .unwrap_or_else(|error| panic!("name: {error:?}"));
+    let arguments = [
+        scope.get(case_keyword).as_word(),
+        scope.get(case_value).as_word(),
+        scope.get(name_keyword).as_word(),
+        scope.get(name).as_word(),
+    ];
+    let mut values = MultipleValues::new();
+
+    let pathname = make_pathname_builtin(
+        scope.context_mut(),
+        &runtime,
+        &BuiltinArgs::new(&arguments),
+        &mut values,
+    )
+    .unwrap_or_else(|error| panic!("MAKE-PATHNAME: {error:?}"));
+    let pathname = scope.root::<Word>(Local::from_word(pathname));
+    let pathname_word = scope.get(pathname).as_word();
+    path_from_word(scope.context_mut(), &runtime, pathname_word)
+        .unwrap_or_else(|error| panic!("pathname conversion: {error:?}"))
 }
 
 #[test]
@@ -106,6 +144,7 @@ fn directory_components_apply_modes_and_parent_markers() {
         &runtime,
         directory_word,
         std::path::Path::new("/defaults/base.lisp"),
+        false,
     )
     .unwrap_or_else(|error| panic!("directory conversion: {error:?}"));
 
@@ -123,6 +162,7 @@ fn directory_components_apply_modes_and_parent_markers() {
         &runtime,
         relative_word,
         std::path::Path::new("/defaults/base.lisp"),
+        false,
     )
     .unwrap_or_else(|error| panic!("relative conversion: {error:?}"));
     assert_eq!(path, std::path::Path::new("/defaults/child/../*"));
@@ -132,7 +172,8 @@ fn directory_components_apply_modes_and_parent_markers() {
             scope.context_mut(),
             &runtime,
             Word::NIL,
-            std::path::Path::new("/defaults/base.lisp")
+            std::path::Path::new("/defaults/base.lisp"),
+            false,
         )
         .unwrap_or_else(|error| panic!("nil directory: {error:?}")),
         std::path::Path::new("/defaults")
@@ -179,6 +220,104 @@ fn make_pathname_uses_the_leftmost_duplicate_keyword() {
 }
 
 #[test]
+fn make_pathname_common_case_converts_uppercase_to_local_case() {
+    assert_eq!(
+        make_pathname_name_with_case("COMMON", "FOO")
+            .file_name()
+            .and_then(|name| name.to_str()),
+        Some("foo")
+    );
+}
+
+#[test]
+fn make_pathname_common_case_preserves_mixed_and_inverts_lowercase() {
+    let mixed = make_pathname_name_with_case("COMMON", "FoO");
+    let lowercase = make_pathname_name_with_case("COMMON", "foo");
+
+    assert_eq!(
+        mixed.file_name().and_then(|name| name.to_str()),
+        Some("FoO")
+    );
+    assert_eq!(
+        lowercase.file_name().and_then(|name| name.to_str()),
+        Some("FOO")
+    );
+}
+
+#[test]
+fn make_pathname_common_case_converts_directory_and_type() {
+    let (runtime, mut ctx) = runtime_and_context();
+    let mut scope = Scope::new(&mut ctx);
+    let case_keyword = scope
+        .intern(&runtime, "KEYWORD", "CASE")
+        .unwrap_or_else(|error| panic!("CASE keyword: {error:?}"));
+    let common_keyword = scope
+        .intern(&runtime, "KEYWORD", "COMMON")
+        .unwrap_or_else(|error| panic!("COMMON keyword: {error:?}"));
+    let directory_keyword = scope
+        .intern(&runtime, "KEYWORD", "DIRECTORY")
+        .unwrap_or_else(|error| panic!("DIRECTORY keyword: {error:?}"));
+    let absolute_keyword = scope
+        .intern(&runtime, "KEYWORD", "ABSOLUTE")
+        .unwrap_or_else(|error| panic!("ABSOLUTE keyword: {error:?}"));
+    let name_keyword = scope
+        .intern(&runtime, "KEYWORD", "NAME")
+        .unwrap_or_else(|error| panic!("NAME keyword: {error:?}"));
+    let type_keyword = scope
+        .intern(&runtime, "KEYWORD", "TYPE")
+        .unwrap_or_else(|error| panic!("TYPE keyword: {error:?}"));
+    let directory_component = scope
+        .make_string(&runtime, &['D', 'I', 'R'])
+        .unwrap_or_else(|error| panic!("directory component: {error:?}"));
+    let name = scope
+        .make_string(&runtime, &['F', 'O', 'O'])
+        .unwrap_or_else(|error| panic!("name: {error:?}"));
+    let kind = scope
+        .make_string(&runtime, &['T', 'X', 'T'])
+        .unwrap_or_else(|error| panic!("type: {error:?}"));
+    let directory_items = [
+        Local::from_word(scope.get(absolute_keyword).as_word()),
+        Local::from_word(scope.get(directory_component).as_word()),
+    ];
+    let directory_handles = scope.root_many(&directory_items);
+    let directory = scope
+        .make_list(&runtime, &directory_handles)
+        .unwrap_or_else(|error| panic!("directory: {error:?}"));
+    let arguments = [
+        scope.get(case_keyword).as_word(),
+        scope.get(common_keyword).as_word(),
+        scope.get(directory_keyword).as_word(),
+        scope.get(directory).as_word(),
+        scope.get(name_keyword).as_word(),
+        scope.get(name).as_word(),
+        scope.get(type_keyword).as_word(),
+        scope.get(kind).as_word(),
+    ];
+    let mut values = MultipleValues::new();
+
+    let pathname = make_pathname_builtin(
+        scope.context_mut(),
+        &runtime,
+        &BuiltinArgs::new(&arguments),
+        &mut values,
+    )
+    .unwrap_or_else(|error| panic!("MAKE-PATHNAME: {error:?}"));
+    let pathname = scope.root::<Word>(Local::from_word(pathname));
+    let pathname_word = scope.get(pathname).as_word();
+    let path = path_from_word(scope.context_mut(), &runtime, pathname_word)
+        .unwrap_or_else(|error| panic!("pathname conversion: {error:?}"));
+
+    assert_eq!(path, std::path::PathBuf::from("/dir/foo.txt"));
+}
+
+#[test]
+fn make_pathname_local_case_preserves_component_case() {
+    let path = make_pathname_name_with_case("LOCAL", "FOO");
+
+    assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("FOO"));
+}
+
+#[test]
 fn component_string_rejects_unsupported_keywords() {
     let (runtime, mut ctx) = runtime_and_context();
     let mut scope = Scope::new(&mut ctx);
@@ -211,4 +350,105 @@ fn component_string_keeps_supported_keywords() {
         component_string(scope.context(), &runtime, scope.get(unspecified).as_word()),
         Ok(None)
     ));
+}
+
+#[test]
+fn make_pathname_preserves_valid_version_components() {
+    let (runtime, mut ctx) = runtime_and_context();
+    let mut scope = Scope::new(&mut ctx);
+    let version_keyword = scope
+        .intern(&runtime, "KEYWORD", "VERSION")
+        .unwrap_or_else(|error| panic!("VERSION keyword: {error:?}"));
+
+    for name in ["WILD", "UNSPECIFIC", "NEWEST"] {
+        let version = scope
+            .intern(&runtime, "KEYWORD", name)
+            .unwrap_or_else(|error| panic!("{name} version: {error:?}"));
+        let expected = scope.get(version).as_word();
+        let arguments = [scope.get(version_keyword).as_word(), expected];
+        let mut values = MultipleValues::new();
+        let pathname = make_pathname_builtin(
+            scope.context_mut(),
+            &runtime,
+            &BuiltinArgs::new(&arguments),
+            &mut values,
+        )
+        .unwrap_or_else(|error| panic!("MAKE-PATHNAME :VERSION {name}: {error:?}"));
+        let pathname = scope.root::<Word>(Local::from_word(pathname));
+        let pathname_word = scope.get(pathname).as_word();
+        let version = ncl_object::slot_ref(
+            scope.context(),
+            ncl_object::Instance::from_word(pathname_word),
+            1,
+        )
+        .unwrap_or_else(|error| panic!("PATHNAME version slot: {error:?}"));
+
+        assert_eq!(version, expected);
+    }
+
+    let arguments = [scope.get(version_keyword).as_word(), Word::fixnum(1)];
+    let mut values = MultipleValues::new();
+    let pathname = make_pathname_builtin(
+        scope.context_mut(),
+        &runtime,
+        &BuiltinArgs::new(&arguments),
+        &mut values,
+    )
+    .unwrap_or_else(|error| panic!("MAKE-PATHNAME :VERSION 1: {error:?}"));
+    let pathname = scope.root::<Word>(Local::from_word(pathname));
+    let pathname_word = scope.get(pathname).as_word();
+    let version = ncl_object::slot_ref(
+        scope.context(),
+        ncl_object::Instance::from_word(pathname_word),
+        1,
+    )
+    .unwrap_or_else(|error| panic!("PATHNAME version slot: {error:?}"));
+
+    assert_eq!(version, Word::fixnum(1));
+
+    let arguments = [scope.get(version_keyword).as_word(), Word::fixnum(0)];
+    let mut values = MultipleValues::new();
+    let pathname = make_pathname_builtin(
+        scope.context_mut(),
+        &runtime,
+        &BuiltinArgs::new(&arguments),
+        &mut values,
+    )
+    .unwrap_or_else(|error| panic!("MAKE-PATHNAME :VERSION 0: {error:?}"));
+    let pathname = scope.root::<Word>(Local::from_word(pathname));
+    let pathname_word = scope.get(pathname).as_word();
+    let version = ncl_object::slot_ref(
+        scope.context(),
+        ncl_object::Instance::from_word(pathname_word),
+        1,
+    )
+    .unwrap_or_else(|error| panic!("PATHNAME version slot: {error:?}"));
+
+    assert_eq!(version, Word::fixnum(0));
+}
+
+#[test]
+fn make_pathname_rejects_invalid_version_components() {
+    let (runtime, mut ctx) = runtime_and_context();
+    let mut scope = Scope::new(&mut ctx);
+    let version_keyword = scope
+        .intern(&runtime, "KEYWORD", "VERSION")
+        .unwrap_or_else(|error| panic!("VERSION keyword: {error:?}"));
+    let invalid_keyword = scope
+        .intern(&runtime, "KEYWORD", "NOT-A-VERSION")
+        .unwrap_or_else(|error| panic!("invalid version: {error:?}"));
+
+    for version in [Word::fixnum(-1), scope.get(invalid_keyword).as_word()] {
+        let arguments = [scope.get(version_keyword).as_word(), version];
+        let mut values = MultipleValues::new();
+        assert!(matches!(
+            make_pathname_builtin(
+                scope.context_mut(),
+                &runtime,
+                &BuiltinArgs::new(&arguments),
+                &mut values,
+            ),
+            Err(ObjectError::TypeError)
+        ));
+    }
 }

@@ -288,8 +288,11 @@ fn assert_capture_index_two_load(code: &[u8]) {
 }
 
 fn assert_named_closure_unbound_dispatch(code: &[u8]) {
+    let unbound = i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes());
+    let unbound_immediate =
+        i32::try_from(unbound).expect("UNBOUND fits in a sign-extended x86-64 immediate");
     let unbound_compare = encode([
-        Inst::MovRI(Reg::Rax, Imm::I32(-7)),
+        Inst::MovRI(Reg::Rax, Imm::I32(unbound_immediate)),
         Inst::CmpRR(Reg::R11, Reg::Rax),
     ]);
     let compare_start = code

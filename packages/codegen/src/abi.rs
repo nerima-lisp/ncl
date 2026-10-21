@@ -99,6 +99,8 @@ pub enum RuntimeFunction {
     MakeClosure,
     /// Construct a GC-managed value cell object.
     MakeValueCell,
+    /// Record a heap reference store without entering the Lisp runtime.
+    WriteBarrier,
     /// Enter a catch handler.
     EnterCatch,
     /// Enter an unwind-protect handler.

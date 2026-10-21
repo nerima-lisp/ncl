@@ -7,8 +7,8 @@ use ncl_ffi::{
     sap_set,
 };
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, make_bignum_from_i128,
-    with_rooted_slice,
+    Bignum, FunctionObject, ObjectError, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
+    make_bignum_from_i128, make_bignum_from_limbs, with_rooted_slice,
 };
 
 fn fixture() -> (Runtime, ThreadContext) {
@@ -68,6 +68,60 @@ fn int_sap_rejects_negative_and_non_integer() {
         SystemAreaPointer::from_word(&ctx, too_wide),
         Err(FfiError::ValueOutOfRange { .. })
     ));
+
+    let negative_bignum = make_bignum_from_i128(&mut ctx, &runtime, -i128::from(u64::MAX))
+        .unwrap()
+        .as_word();
+    assert!(matches!(
+        SystemAreaPointer::from_word(&ctx, negative_bignum),
+        Err(FfiError::ValueOutOfRange { .. })
+    ));
+
+    let above_u128 = make_bignum_from_limbs(&mut ctx, &runtime, false, &[0, 0, 0, 0, 1])
+        .unwrap()
+        .as_word();
+    assert!(matches!(
+        SystemAreaPointer::from_word(&ctx, above_u128),
+        Err(FfiError::ValueOutOfRange { .. })
+    ));
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn sap_difference_encodes_fixnums_and_signed_bignums() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+
+    assert_eq!(
+        call_builtin(
+            &mut ctx,
+            &runtime,
+            "SAP-",
+            &[Word::fixnum(0x1000), Word::fixnum(0x1020)],
+        )
+        .unwrap(),
+        Word::fixnum(-32)
+    );
+
+    let high = SystemAreaPointer::new(1_usize << 62)
+        .to_word(&mut ctx, &runtime)
+        .unwrap();
+    let positive = call_builtin(&mut ctx, &runtime, "SAP-", &[high, Word::fixnum(0)]).unwrap();
+    assert_bignum(&ctx, positive, false, &[0, 1 << 30]);
+
+    let above_fixnum = SystemAreaPointer::new((1_usize << 62) + 1)
+        .to_word(&mut ctx, &runtime)
+        .unwrap();
+    let negative =
+        call_builtin(&mut ctx, &runtime, "SAP-", &[Word::fixnum(0), above_fixnum]).unwrap();
+    assert_bignum(&ctx, negative, true, &[1, 1 << 30]);
+}
+
+fn assert_bignum(ctx: &ThreadContext, value: Word, negative: bool, limbs: &[u32]) {
+    assert_eq!(value.as_fixnum(), None);
+    let value = Bignum::from_word(value);
+    assert_eq!(bignum_sign(ctx, value), Ok(negative));
+    assert_eq!(bignum_limbs(ctx, value), Ok(limbs.to_vec()));
 }
 
 #[test]

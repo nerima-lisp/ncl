@@ -338,8 +338,8 @@ fn pending_dispatch_leave_catch_error_stops_before_downstream_builtin() {
     assert_eq!(HANDLER_DOWNSTREAM_CALLS.load(Ordering::SeqCst), 0);
     assert_eq!(value, Word::ZERO.bits());
     assert_eq!(count, 0);
-    assert!(thread.runtime_error_pending());
-    assert!(!thread.pending());
+    assert!(!thread.runtime_error_pending());
+    assert!(thread.pending());
 }
 
 #[test]

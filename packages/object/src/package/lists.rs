@@ -415,3 +415,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "lists_behavior_tests.rs"]
+mod behavior_tests;

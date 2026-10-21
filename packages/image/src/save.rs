@@ -386,3 +386,7 @@ const fn invalid(field: &'static str) -> ImageError {
 const fn unsupported(kind: &'static str) -> ImageError {
     ImageError::UnsupportedKind { kind }
 }
+
+#[cfg(test)]
+#[path = "tests_save.rs"]
+mod tests;

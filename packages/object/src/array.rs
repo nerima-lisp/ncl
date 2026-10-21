@@ -449,3 +449,7 @@ pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
 #[cfg(test)]
 #[path = "array_coverage_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests_array_behavior.rs"]
+mod behavior_tests;

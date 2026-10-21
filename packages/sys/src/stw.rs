@@ -117,8 +117,6 @@ mod tests {
             worker_heap.unregister_thread(&thread);
         });
         let pointer = pointer_receiver.recv().unwrap_or(0);
-        ready.wait();
-
         {
             let mut stop_world = heap
                 .stop_world
@@ -127,6 +125,7 @@ mod tests {
             stop_world.requested = true;
             stop_world.epoch = 1;
         }
+        ready.wait();
         heap.stop_world_ready.notify_all();
 
         let mut stop_world = heap

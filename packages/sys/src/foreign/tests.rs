@@ -7,6 +7,61 @@ use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::path::Path;
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+use std::path::PathBuf;
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn loaded_libc_path() -> Result<PathBuf, std::io::Error> {
+    unsafe extern "C" {
+        fn abs(value: i32) -> i32;
+    }
+
+    // `abs` is the C-library symbol exercised below.
+    let address = abs as *const () as usize;
+    let maps = std::fs::read_to_string("/proc/self/maps")?;
+    maps.lines()
+        .find_map(|line| {
+            let range_end = line.find(char::is_whitespace)?;
+            let range = &line[..range_end];
+            // `/proc/self/maps` lists address range, permissions, offset, device, and inode before the path.
+            let mut path = line;
+            for _ in 0..5 {
+                let field = path.trim_start();
+                let field_end = field.find(char::is_whitespace)?;
+                path = &field[field_end..];
+            }
+            let path = path.trim_start();
+            let (start, end) = range.split_once('-')?;
+            let start = usize::from_str_radix(start, 16).ok()?;
+            let end = usize::from_str_radix(end, 16).ok()?;
+            let library_path = Path::new(path);
+            let is_libc = library_path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                // glibc may map `libc.so.6` or `libc-<version>.so`.
+                // musl may map `libc.so`, `libc.musl-*`, or `ld-musl-*`.
+                name == "libc.so"
+                    || name.starts_with("libc.so.")
+                    || name.starts_with("libc-")
+                    || name.starts_with("libc.musl-")
+                    || name.starts_with("ld-musl-")
+            });
+            (start <= address && address < end && library_path.is_absolute() && is_libc)
+                .then(|| library_path.to_path_buf())
+        })
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "could not find an absolute libc mapping containing libc's abs symbol",
+            )
+        })
+}
+
 fn allocate_region(length: u64) -> Result<ForeignRegion, ForeignError> {
     let alignment = Alignment::new(8)?;
     ForeignRegion::allocate(ByteLength::new(length), alignment)
@@ -82,25 +137,25 @@ fn library_loading_requires_an_exact_absolute_path() {
 #[cfg(all(target_family = "unix", target_arch = "x86_64", target_os = "macos"))]
 #[test]
 fn exact_system_library_supports_a_scalar_call() -> Result<(), Box<dyn std::error::Error>> {
-    scalar_tests::scalar_abs_call("/usr/lib/libSystem.B.dylib")
+    scalar_tests::scalar_abs_call(Path::new("/usr/lib/libSystem.B.dylib"))
 }
 
 #[cfg(all(target_family = "unix", target_arch = "aarch64", target_os = "macos"))]
 #[test]
 fn exact_system_library_supports_a_scalar_call() -> Result<(), Box<dyn std::error::Error>> {
-    scalar_tests::scalar_abs_call("/usr/lib/libSystem.B.dylib")
+    scalar_tests::scalar_abs_call(Path::new("/usr/lib/libSystem.B.dylib"))
 }
 
 #[cfg(all(target_family = "unix", target_arch = "x86_64", target_os = "linux"))]
 #[test]
 fn exact_system_library_supports_a_scalar_call() -> Result<(), Box<dyn std::error::Error>> {
-    scalar_tests::scalar_abs_call("/lib/x86_64-linux-gnu/libc.so.6")
+    scalar_tests::scalar_abs_call(&loaded_libc_path()?)
 }
 
 #[cfg(all(target_family = "unix", target_arch = "aarch64", target_os = "linux"))]
 #[test]
 fn exact_system_library_supports_a_scalar_call() -> Result<(), Box<dyn std::error::Error>> {
-    scalar_tests::scalar_abs_call("/lib/aarch64-linux-gnu/libc.so.6")
+    scalar_tests::scalar_abs_call(&loaded_libc_path()?)
 }
 
 #[cfg(any(
@@ -112,8 +167,8 @@ fn exact_system_library_supports_a_scalar_call() -> Result<(), Box<dyn std::erro
 mod scalar_tests {
     use super::*;
 
-    pub(super) fn scalar_abs_call(path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let library = ForeignLibrary::load_exact(Path::new(path))?;
+    pub(super) fn scalar_abs_call(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        let library = ForeignLibrary::load_exact(path)?;
         let signature = ForeignSignature::new(ForeignType::I32, vec![ForeignType::I32]);
         let function = library.symbol(c"abs")?;
         assert!(matches!(

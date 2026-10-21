@@ -232,8 +232,8 @@ impl std::error::Error for ForeignCallError {}
 
 /// Call a resolved function using a caller-supplied scalar or pointer ABI signature.
 ///
-/// Fixed scalar and pointer calls are supported on Unix targets with the x86_64
-/// or AArch64 architecture.
+/// Fixed scalar and pointer calls are supported on Unix targets with the `x86_64`
+/// or `AArch64` architecture.
 /// Other targets, variadic signatures, and aggregate signatures return
 /// [`ForeignCallError::UnsupportedAbi`].
 ///

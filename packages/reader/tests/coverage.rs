@@ -61,7 +61,6 @@ fn registration_survives_gc_and_does_not_install_unbound_builtins() {
     ncl_reader::register(&runtime).unwrap();
 
     for name in [
-        "COPY-READTABLE",
         "GET-DISPATCH-MACRO-CHARACTER",
         "GET-MACRO-CHARACTER",
         "MAKE-DISPATCH-MACRO-CHARACTER",
@@ -78,5 +77,10 @@ fn registration_survives_gc_and_does_not_install_unbound_builtins() {
     ] {
         assert_eq!(runtime.function(&mut ctx, "COMMON-LISP", name), None);
     }
+    assert!(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "COPY-READTABLE")
+            .is_some()
+    );
     assert_eq!(runtime.class(&mut ctx, "READTABLE"), None);
 }

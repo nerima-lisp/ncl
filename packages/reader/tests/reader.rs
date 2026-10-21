@@ -349,6 +349,31 @@ fn feature_conditionals_select_forms() {
         classify(read_one(&runtime, &mut ctx, "#-my-feature 1 2")),
         ObjectRef::Fixnum(2)
     );
+    assert_eq!(
+        classify(read_one(
+            &runtime,
+            &mut ctx,
+            "#+ncl-reader-test-absent (ncl-reader-missing-package::value) 17"
+        )),
+        ObjectRef::Fixnum(17)
+    );
+    runtime.add_feature("NCL-READER-TEST-INNER");
+    assert_eq!(
+        classify(read_one(
+            &runtime,
+            &mut ctx,
+            "#+ncl-reader-test-absent (progn #+(and ncl-reader-test-inner (not ncl-reader-test-absent)) (ncl-reader-missing-package::value) 17) 23"
+        )),
+        ObjectRef::Fixnum(23)
+    );
+    assert_eq!(
+        classify(read_one(
+            &runtime,
+            &mut ctx,
+            "#+ncl-reader-test-absent (progn (or #+ncl-reader-test-absent 500 #+ncl-reader-test-absent 3000)) 23"
+        )),
+        ObjectRef::Fixnum(23)
+    );
 }
 
 #[test]

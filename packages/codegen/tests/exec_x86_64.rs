@@ -14,7 +14,7 @@ use ncl_ir::{
     Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
 };
 use ncl_sys::{
-    RuntimeErrorSource, Thread, Word, alloc_code, enter_native, invoke_entry,
+    NativeError, NativeOperation, Thread, Word, alloc_code, enter_native, invoke_entry,
     invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
     thread_layout, tlab_bump, write_code,
 };
@@ -67,8 +67,9 @@ fn fixnum_word(builder: &mut FunctionBuilder, value: i64) -> ValueId {
 }
 
 const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
-    let mut payload = None::<()>;
-    ctx.record_runtime_error_payload(RuntimeErrorSource::Object, &mut payload, ());
+    ctx.set_native_error(NativeError::ThreadNotRegistered {
+        operation: NativeOperation::Cons,
+    });
 }
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {

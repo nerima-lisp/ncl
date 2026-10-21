@@ -40,8 +40,9 @@ pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
 pub use native_words::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, copy_native_words};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{
-    ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, RuntimeErrorSource,
-    SafepointState, Thread, ThreadAccess, ThreadLayout, thread_layout,
+    ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, RuntimeErrorPayloadKind,
+    RuntimeErrorPayloadSlot, RuntimeErrorSource, SafepointState, Thread, ThreadAccess,
+    ThreadLayout, thread_layout,
 };
 
 impl Thread {

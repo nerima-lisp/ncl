@@ -214,7 +214,7 @@ fn key_values_can_bind_a_nested_pattern() -> Result<(), ObjectError> {
 }
 
 #[test]
-fn malformed_key_specs_and_aux_markers_return_type_errors() -> Result<(), ObjectError> {
+fn malformed_key_specs_and_unsupported_aux_marker_return_type_errors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let key_marker = symbol(&mut ctx, &runtime, "&KEY")?;
     let aux_marker = symbol(&mut ctx, &runtime, "&AUX")?;
@@ -233,5 +233,103 @@ fn malformed_key_specs_and_aux_markers_return_type_errors() -> Result<(), Object
         expand_destructuring_bind(&mut ctx, &runtime, malformed, value, &[]),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+#[test]
+fn registered_incf_adapter_preserves_the_place_and_delta() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    crate::register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let operator = symbol(&mut ctx, &runtime, "INCF")?;
+    let variable = symbol(&mut ctx, &runtime, "COUNTER")?;
+    let form = list(&mut ctx, &runtime, &[operator, variable, Word::fixnum(5)])?;
+    let function = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "INCF")
+            .ok_or(ObjectError::TypeError)?,
+    )?;
+    let expansion = runtime.call_builtin(&mut ctx, function, &[form])?;
+
+    let parts = elements(&mut ctx, expansion)?;
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET")?);
+    let bindings = elements(&mut ctx, parts[1])?;
+    assert_eq!(bindings.len(), 1);
+    let binding = elements(&mut ctx, bindings[0])?;
+    assert_eq!(binding.len(), 2);
+    assert_ne!(binding[0], variable);
+    let value = elements(&mut ctx, binding[1])?;
+    assert_eq!(
+        value,
+        vec![symbol(&mut ctx, &runtime, "+")?, variable, Word::fixnum(5),]
+    );
+    let store = elements(&mut ctx, parts[2])?;
+    assert_eq!(
+        store,
+        vec![symbol(&mut ctx, &runtime, "SETQ")?, variable, binding[0]]
+    );
+    Ok(())
+}
+
+#[test]
+fn macro_adapters_reject_missing_and_empty_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    for input in [&[][..], &[Word::NIL][..]] {
+        let args = ncl_object::BuiltinArgs::new(input);
+        let result = crate::incf_adapter(
+            &mut ctx,
+            &runtime,
+            &args,
+            &mut ncl_object::MultipleValues::new(),
+        );
+        assert_eq!(result, Err(ObjectError::TypeError));
+    }
+    Ok(())
+}
+
+#[test]
+fn get_setf_expansion_builtin_returns_all_five_expansion_values() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    crate::register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let car = symbol(&mut ctx, &runtime, "CAR")?;
+    let target = symbol(&mut ctx, &runtime, "TARGET")?;
+    let place = list(&mut ctx, &runtime, &[car, target])?;
+    let function = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GET-SETF-EXPANSION")
+            .ok_or(ObjectError::TypeError)?,
+    )?;
+    let access = runtime.call_builtin(&mut ctx, function, &[place])?;
+    let values = ctx.values().to_vec();
+    assert_eq!(values.len(), 5);
+    assert_eq!(access, values[4]);
+
+    let temporaries = elements(&mut ctx, values[0])?;
+    let value_forms = elements(&mut ctx, values[1])?;
+    let stores = elements(&mut ctx, values[2])?;
+    assert_eq!(temporaries.len(), 1);
+    assert_eq!(value_forms, vec![target]);
+    assert_eq!(stores.len(), 1);
+    assert_ne!(temporaries[0], target);
+
+    let access_form = elements(&mut ctx, values[4])?;
+    assert_eq!(access_form, vec![car, temporaries[0]]);
+    let store_form = elements(&mut ctx, values[3])?;
+    assert_eq!(store_form[0], symbol(&mut ctx, &runtime, "PROGN")?);
+    let mutation = elements(&mut ctx, store_form[1])?;
+    assert_eq!(
+        mutation,
+        vec![
+            symbol(&mut ctx, &runtime, "RPLACA")?,
+            temporaries[0],
+            stores[0],
+        ]
+    );
+    assert_eq!(store_form[2], stores[0]);
     Ok(())
 }

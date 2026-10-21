@@ -215,7 +215,7 @@ mod tests {
         _args: &BuiltinArgs<'_>,
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
-        values.clear();
+        values.set(&[]);
         Ok(Word::NIL)
     }
 

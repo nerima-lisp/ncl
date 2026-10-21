@@ -223,20 +223,32 @@ impl BuiltinIdentifier {
 #[derive(Debug, Default)]
 pub struct MultipleValues {
     values: Vec<Word>,
+    explicit: bool,
 }
 impl MultipleValues {
     #[must_use]
     pub const fn new() -> Self {
-        Self { values: Vec::new() }
+        Self {
+            values: Vec::new(),
+            explicit: false,
+        }
     }
     pub fn clear(&mut self) {
         self.values.clear();
+        self.explicit = false;
     }
     pub fn set(&mut self, values: &[Word]) {
         self.values = values.to_vec();
+        self.explicit = true;
     }
     pub fn push(&mut self, value: Word) {
         self.values.push(value);
+        self.explicit = true;
+    }
+    /// Whether the callback explicitly set its returned value list.
+    #[must_use]
+    pub const fn is_explicit(&self) -> bool {
+        self.explicit
     }
     #[must_use]
     pub fn as_slice(&self) -> &[Word] {

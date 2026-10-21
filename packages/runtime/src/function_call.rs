@@ -44,13 +44,23 @@ impl FunctionCaller for RuntimeFunctionCaller {
             runtime.call_builtin_if_registered(ctx, function, args.as_slice(), values)
         {
             let result = result?;
-            values.set(ctx.values());
+            publish_context_values(ctx, result, values);
             return Ok(result);
         }
 
-        ncl_object::with_rooted_slice(ctx, args.as_slice(), |ctx, rooted_args| {
+        let result = ncl_object::with_rooted_slice(ctx, args.as_slice(), |ctx, rooted_args| {
             call_native(ctx, runtime, function, rooted_args, values)
-        })
+        })?;
+        publish_context_values(ctx, result, values);
+        Ok(result)
+    }
+}
+
+fn publish_context_values(ctx: &mut ThreadContext, primary: Word, values: &MultipleValues) {
+    if values.is_explicit() {
+        ctx.set_values(values.as_slice());
+    } else {
+        ctx.set_values(std::slice::from_ref(&primary));
     }
 }
 
@@ -88,9 +98,30 @@ fn call_native(
     );
     let pending_errors = ctx.take_pending_runtime_errors();
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
+    if ctx.take_non_local_exit() {
+        let non_local_values = {
+            let thread = ctx.thread_access();
+            thread
+                .multiple_values()
+                .get(..thread.multiple_value_count())
+                .ok_or(ObjectError::Layout)?
+                .to_vec()
+        };
+        values.clear();
+        values.set(&non_local_values);
+        ctx.set_non_local_exit(true);
+        return Err(ObjectError::NonLocalExit);
+    }
+    if pending_errors.native.is_some() {
+        values.clear();
+        return Err(ObjectError::Layout);
+    }
     values.clear();
     let result = match count {
-        0 => Word::NIL,
+        0 => {
+            values.set(&[]);
+            Word::NIL
+        }
         1 => {
             let value = Word::from_bits(result);
             values.set(&[value]);
@@ -106,13 +137,6 @@ fn call_native(
             Word::from_bits(result)
         }
     };
-    if ctx.take_non_local_exit() {
-        ctx.set_non_local_exit(true);
-        return Err(ObjectError::NonLocalExit);
-    }
-    if pending_errors.native.is_some() {
-        return Err(ObjectError::Layout);
-    }
     if let Some(error) = pending_errors.lisp
         && let Some(converter) = runtime.lisp_error_converter()
     {
@@ -128,6 +152,7 @@ fn call_native(
         }
     }
     if let Some(error) = pending_errors.object {
+        values.clear();
         return Err(error);
     }
     Ok(result)
@@ -152,336 +177,5 @@ fn resolve_function(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
-mod tests {
-    use super::RuntimeFunctionCaller;
-    use crate::Runtime;
-    use ncl_object::typed::FunctionDesignator;
-    use ncl_object::{
-        Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-        BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller, LambdaList, MultipleValues,
-        Package, Parameter, ParameterType, Word, make_closure, make_code_object,
-    };
-
-    const TEST_ID: BuiltinIdentifier =
-        BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("RUNTIME-CALL"));
-    const PARAMETERS: &[Parameter] = &[
-        Parameter {
-            name: BuiltinName::new("LEFT"),
-            ty: ParameterType::Fixnum,
-        },
-        Parameter {
-            name: BuiltinName::new("RIGHT"),
-            ty: ParameterType::Fixnum,
-        },
-    ];
-
-    fn add(
-        _ctx: &mut ncl_object::ThreadContext,
-        _runtime: &ncl_object::Runtime,
-        args: &BuiltinArgs<'_>,
-        _values: &mut MultipleValues,
-    ) -> Result<Word, ncl_object::ObjectError> {
-        let left = args
-            .required(0)?
-            .as_fixnum()
-            .ok_or(ncl_object::ObjectError::TypeError)?;
-        let right = args
-            .required(1)?
-            .as_fixnum()
-            .ok_or(ncl_object::ObjectError::TypeError)?;
-        Ok(Word::fixnum(left + right))
-    }
-
-    fn register_builtin(runtime: &mut Runtime) -> ncl_object::FunctionObject {
-        let descriptor = Builtin {
-            lambda_list: LambdaList::new(PARAMETERS, &[], None, &[], false),
-            convention: BuiltinConvention::Direct(Arity::exact(2)),
-        };
-        runtime
-            .object
-            .register_builtin(
-                &mut runtime.context,
-                TEST_ID,
-                BuiltinImplementation::direct(descriptor, add),
-            )
-            .unwrap_or_else(|error| panic!("register builtin: {error:?}"))
-    }
-
-    #[test]
-    fn closure_entries_survive_gc_stress_and_strict_forwarding() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        runtime.context.set_gc_stress(true);
-        runtime.context.set_strict_forwarding(true);
-        let value = runtime
-            .eval("(funcall (let ((y 5)) (lambda (x) (+ x y))) 10)")
-            .unwrap_or_else(|error| panic!("closure evaluation: {error:?}"));
-        assert_eq!(runtime.format_result(value), "15");
-    }
-
-    #[test]
-    fn generic_builtin_trampoline_survives_gc_stress_and_strict_forwarding_in_a_loop() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        // Compile the recursive helper before enabling stress mode: `DEFUN`'s
-        // own macro expansion is unrelated to the generic builtin trampoline
-        // this test exercises, and is not part of this task's scope.
-        runtime
-            .eval(
-                "(defun count-down (n acc) \
-                   (if (< n 1) acc (count-down (- n 1) (length (list n n)))))",
-            )
-            .unwrap_or_else(|error| panic!("defining count-down: {error:?}"));
-        runtime.context.set_gc_stress(true);
-        runtime.context.set_strict_forwarding(true);
-        // `LIST` and `LENGTH` have no ISA-specific fast path, so every
-        // recursive call below dispatches through the generic native
-        // trampoline (`crate::builtin_trampoline`) and allocates, forcing a
-        // collection on nearly every call under `gc_stress`.
-        let value = runtime
-            .eval("(count-down 20 0)")
-            .unwrap_or_else(|error| panic!("gc-stress builtin loop: {error:?}"));
-        assert_eq!(runtime.format_result(value), "2");
-    }
-
-    #[test]
-    fn generic_builtin_trampoline_forwards_all_list_arguments() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        for (count, expected) in [
-            (7, "(1 2 3 4 5 6 7)"),
-            (8, "(1 2 3 4 5 6 7 8)"),
-            (10, "(1 2 3 4 5 6 7 8 9 10)"),
-        ] {
-            let form = format!(
-                "(list {})",
-                (1..=count)
-                    .map(|value| value.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-            let value = runtime
-                .eval(&form)
-                .unwrap_or_else(|error| panic!("evaluating {form}: {error:?}"));
-            assert_eq!(runtime.format_result(value), expected);
-        }
-    }
-
-    #[test]
-    fn extended_builtin_arguments_survive_gc_stress_and_strict_forwarding() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        runtime
-            .eval(
-                "(defun list-cons-pairs () \
-                   (list (cons 1 2) (cons 3 4) (cons 5 6) (cons 7 8) \
-                         (cons 9 10) (cons 11 12) (cons 13 14)))",
-            )
-            .unwrap_or_else(|error| panic!("defining list-cons-pairs: {error:?}"));
-        runtime.context.set_gc_stress(true);
-        runtime.context.set_strict_forwarding(true);
-
-        let value = runtime
-            .eval("(list-cons-pairs)")
-            .unwrap_or_else(|error| panic!("evaluating list-cons-pairs: {error:?}"));
-        assert_eq!(
-            runtime.format_result(value),
-            "((1 . 2) (3 . 4) (5 . 6) (7 . 8) (9 . 10) (11 . 12) (13 . 14))"
-        );
-    }
-
-    #[test]
-    #[cfg(target_arch = "aarch64")]
-    fn make_rest_list_survives_gc_stress_and_strict_forwarding() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        runtime.context.set_gc_stress(true);
-        runtime.context.set_strict_forwarding(true);
-        let value = runtime
-            .eval("(funcall (lambda (&rest values) values) 1 2 3 4 5 6)")
-            .unwrap_or_else(|error| panic!("make-rest-list evaluation: {error:?}"));
-        assert_eq!(runtime.format_result(value), "(1 2 3 4 5 6)");
-    }
-
-    #[test]
-    fn calls_registered_builtin_through_function_and_symbol_designators_under_gc_stress_and_forwarding()
-     {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let function = register_builtin(&mut runtime);
-        let package = runtime
-            .object
-            .find_package(&runtime.context, "NCL-TEST")
-            .and_then(|word| {
-                Package::from_word(word)
-                    .intern(&mut runtime.context, &runtime.object, "RUNTIME-CALL")
-                    .ok()
-            })
-            .map_or_else(
-                || panic!("test symbol was not interned"),
-                |(symbol, _)| ncl_object::typed::Symbol::from_word(symbol),
-            );
-        runtime.context.set_gc_stress(true);
-        runtime.context.set_strict_forwarding(true);
-        let argument_words = [Word::fixnum(2), Word::fixnum(3)];
-        let args = FunctionArguments::new(&argument_words);
-        let mut caller = RuntimeFunctionCaller;
-
-        let mut values = MultipleValues::new();
-        assert_eq!(
-            caller.call_function(
-                &mut runtime.context,
-                &runtime.object,
-                FunctionDesignator::Function(function),
-                args,
-                &mut values,
-            ),
-            Ok(Word::fixnum(5))
-        );
-        assert!(values.is_empty());
-
-        let mut values = MultipleValues::new();
-        assert_eq!(
-            caller.call_function(
-                &mut runtime.context,
-                &runtime.object,
-                FunctionDesignator::Symbol(package),
-                args,
-                &mut values,
-            ),
-            Ok(Word::fixnum(5))
-        );
-    }
-
-    #[test]
-    fn successful_registered_builtin_clears_reused_values_buffer() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let function = register_builtin(&mut runtime);
-        let arguments = [Word::fixnum(2), Word::fixnum(3)];
-        let mut caller = RuntimeFunctionCaller;
-        let mut values = MultipleValues::new();
-        values.set(&[Word::fixnum(7), Word::fixnum(8)]);
-
-        assert_eq!(
-            caller.call_function(
-                &mut runtime.context,
-                &runtime.object,
-                FunctionDesignator::Function(function),
-                FunctionArguments::new(&arguments),
-                &mut values,
-            ),
-            Ok(Word::fixnum(5))
-        );
-        assert!(values.is_empty());
-    }
-
-    #[test]
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-    fn calls_a_published_simple_fun_through_the_native_abi() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        #[cfg(target_arch = "x86_64")]
-        let machine_code = [
-            0xb8, 0x54, 0, 0, 0, // mov eax, (42 << 1)
-            0xba, 1, 0, 0, 0,    // mov edx, 1
-            0xc3, // ret
-        ];
-        #[cfg(target_arch = "aarch64")]
-        let machine_code = [
-            0x80, 0x0a, 0x80, 0xd2, // mov x0, #84
-            0x21, 0x00, 0x80, 0xd2, // mov x1, #1
-            0xc0, 0x03, 0x5f, 0xd6, // ret
-        ];
-        let mut native = ncl_sys::alloc_code(machine_code.len()).unwrap();
-        ncl_sys::write_code(&mut native, 0, &machine_code).unwrap();
-        ncl_sys::publish_code(&mut native).unwrap();
-        let code = make_code_object(
-            &mut runtime.context,
-            &runtime.object,
-            0,
-            machine_code.len(),
-            Word::NIL,
-            Word::NIL,
-            Word::NIL,
-        )
-        .unwrap_or_else(|error| panic!("code object: {error:?}"));
-        let closure = make_closure(
-            &mut runtime.context,
-            &runtime.object,
-            native.address(),
-            Word::NIL,
-            Word::NIL,
-            code,
-            &[],
-        )
-        .unwrap_or_else(|error| panic!("closure: {error:?}"));
-        let function = ncl_object::FunctionObject::try_from(closure.as_word())
-            .unwrap_or_else(|error| panic!("function object: {error:?}"));
-        let mut caller = RuntimeFunctionCaller;
-        let mut values = MultipleValues::new();
-
-        assert_eq!(
-            caller.call_function(
-                &mut runtime.context,
-                &runtime.object,
-                FunctionDesignator::Function(function),
-                FunctionArguments::new(&[]),
-                &mut values,
-            ),
-            Ok(Word::fixnum(42))
-        );
-        assert_eq!(values.as_slice(), &[Word::fixnum(42)]);
-    }
-
-    #[test]
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-    fn native_call_reports_pending_non_local_exit_after_preserving_values() {
-        let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        #[cfg(target_arch = "x86_64")]
-        let machine_code = [
-            0xb8, 0x54, 0, 0, 0, // mov eax, (42 << 1)
-            0xba, 1, 0, 0, 0,    // mov edx, 1
-            0xc3, // ret
-        ];
-        #[cfg(target_arch = "aarch64")]
-        let machine_code = [
-            0x80, 0x0a, 0x80, 0xd2, // mov x0, #84
-            0x21, 0x00, 0x80, 0xd2, // mov x1, #1
-            0xc0, 0x03, 0x5f, 0xd6, // ret
-        ];
-        let mut native = ncl_sys::alloc_code(machine_code.len()).unwrap();
-        ncl_sys::write_code(&mut native, 0, &machine_code).unwrap();
-        ncl_sys::publish_code(&mut native).unwrap();
-        let code = make_code_object(
-            &mut runtime.context,
-            &runtime.object,
-            0,
-            machine_code.len(),
-            Word::NIL,
-            Word::NIL,
-            Word::NIL,
-        )
-        .unwrap_or_else(|error| panic!("code object: {error:?}"));
-        let closure = make_closure(
-            &mut runtime.context,
-            &runtime.object,
-            native.address(),
-            Word::NIL,
-            Word::NIL,
-            code,
-            &[],
-        )
-        .unwrap_or_else(|error| panic!("closure: {error:?}"));
-        let function = ncl_object::FunctionObject::try_from(closure.as_word())
-            .unwrap_or_else(|error| panic!("function object: {error:?}"));
-        let mut caller = RuntimeFunctionCaller;
-        let mut values = MultipleValues::new();
-        runtime.context.set_non_local_exit(true);
-
-        assert_eq!(
-            caller.call_function(
-                &mut runtime.context,
-                &runtime.object,
-                FunctionDesignator::Function(function),
-                FunctionArguments::new(&[]),
-                &mut values,
-            ),
-            Err(ncl_object::ObjectError::NonLocalExit)
-        );
-        assert_eq!(values.as_slice(), &[Word::fixnum(42)]);
-        assert!(runtime.context.take_non_local_exit());
-    }
-}
+#[path = "tests_function_call.rs"]
+mod tests;

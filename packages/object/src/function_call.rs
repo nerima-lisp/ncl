@@ -1,10 +1,14 @@
 //! The object-layer port for calling Lisp functions from Rust builtins.
 
+mod builtin_execution;
+mod publish_values;
 use crate::typed::{FunctionDesignator, LispError, ProgramError};
 use crate::{
     Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
     function_entry, symbol_is_macro,
 };
+use builtin_execution::call_nested_builtin;
+use publish_values::publish_builtin_values;
 
 impl crate::BuiltinImplementation {
     /// `entry` starts at the `0` sentinel; registration resolves it to the shared trampoline.
@@ -152,7 +156,11 @@ impl FunctionCaller for BuiltinFunctionCaller {
                     call_native(ctx, runtime, function, rooted_args, values)
                 })?
             };
-            values.set(ctx.values());
+            if values.is_explicit() {
+                ctx.set_values(values.as_slice());
+            } else {
+                ctx.set_values(std::slice::from_ref(&result));
+            }
             Ok(result)
         })
     }
@@ -191,18 +199,30 @@ fn call_native(
     let pending_errors = ctx.take_pending_runtime_errors();
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     let non_local_exit = ctx.take_non_local_exit();
-    let non_local_values = ctx.thread_access().multiple_values().to_vec();
-    values.clear();
     if non_local_exit {
+        let non_local_values = {
+            let thread = ctx.thread_access();
+            thread
+                .multiple_values()
+                .get(..thread.multiple_value_count())
+                .ok_or(ObjectError::Layout)?
+                .to_vec()
+        };
+        values.clear();
         values.set(&non_local_values);
         ctx.set_non_local_exit(true);
         return Err(ObjectError::NonLocalExit);
     }
     if pending_errors.native.is_some() {
+        values.clear();
         return Err(ObjectError::Layout);
     }
+    values.clear();
     let result = match count {
-        0 => Word::NIL,
+        0 => {
+            values.set(&[]);
+            Word::NIL
+        }
         1 => {
             let value = Word::from_bits(result);
             values.set(&[value]);
@@ -279,36 +299,7 @@ impl Runtime {
         let implementation = implementation.ok_or(ObjectError::Unbound)?;
         values.clear();
         if implementation.nested_evaluation {
-            let original = args.to_vec();
-            let callback_args = if let Some(adapter) = implementation.keyword_adapter {
-                adapter(&crate::BuiltinArgs::new(&original))?
-            } else {
-                original
-            };
-            let callback_args = crate::BuiltinArgs::new(&callback_args);
-            let result = (implementation.function)(ctx, self, &callback_args, values);
-            ctx.set_values(values.as_slice());
-            let pending_errors = ctx.take_pending_runtime_errors();
-            if pending_errors.native.is_some() {
-                return Err(ObjectError::Layout);
-            }
-            if let Some(error) = pending_errors.lisp
-                && let Some(converter) = self.lisp_error_converter()
-            {
-                let converted = converter(ctx, self, error);
-                let converted_errors = ctx.take_pending_runtime_errors();
-                let condition = converted?;
-                ctx.set_pending_condition(condition);
-                if converted_errors.native.is_some() {
-                    return Err(ObjectError::Layout);
-                }
-                if let Some(error) = converted_errors.object {
-                    return Err(error);
-                }
-            } else if let Some(error) = pending_errors.lisp {
-                ctx.set_pending_lisp_error(error);
-            }
-            return pending_errors.object.map_or(result, Err);
+            return call_nested_builtin(ctx, self, args, values, implementation);
         }
         let mut rooted_values = Vec::with_capacity(args.len() + 1);
         rooted_values.push(function.as_word());
@@ -342,10 +333,18 @@ impl Runtime {
                 (implementation.function)(ctx, self, &callback_args, values)
             }))
         });
-        ctx.set_values(values.as_slice());
         let pending_errors = ctx.take_pending_runtime_errors();
-        let result = result?;
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                values.clear();
+                ctx.set_values(&[]);
+                return Err(error);
+            }
+        };
         if pending_errors.native.is_some() {
+            values.clear();
+            ctx.set_values(&[]);
             return Err(ObjectError::Layout);
         }
         if let Some(error) = pending_errors.lisp
@@ -359,10 +358,14 @@ impl Runtime {
                 return Err(ObjectError::Layout);
             }
             if let Some(error) = converted_errors.object {
+                values.clear();
+                ctx.set_values(&[]);
                 return Err(error);
             }
         }
-        pending_errors.object.map_or(result, Err)
+        let result = pending_errors.object.map_or(result, Err);
+        publish_builtin_values(ctx, &result, values);
+        result
     }
 
     /// Call a registered builtin from generated code. Generated code checks the pending-error

@@ -1,7 +1,8 @@
 use super::{
     FunctionObject, NativeCallResult, NativeInvocation, ObjectRuntime, ThreadContext, Word,
-    error_result, ok_result, unregister_heap_roots,
+    error_result, unregister_heap_roots,
 };
+use ncl_object::MultipleValues;
 
 /// Record an error at the native boundary without retaining a transient exit.
 pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
@@ -35,6 +36,7 @@ pub(super) fn dispatch_with_context(
         context.set_pending(ncl_object::ObjectError::Unbound);
         return error_result();
     };
+    let mut values = MultipleValues::new();
     let result = if count <= registers.len() {
         let mut arguments = [Word::NIL; 4];
         for (target, source) in arguments.iter_mut().zip(registers).take(count) {
@@ -49,7 +51,14 @@ pub(super) fn dispatch_with_context(
             context.set_pending(ncl_object::ObjectError::Layout);
             return error_result();
         };
-        call_with_heap_rooted_arguments(context, object, function.as_word(), arguments, root_tokens)
+        call_with_heap_rooted_arguments(
+            context,
+            object,
+            function.as_word(),
+            arguments,
+            root_tokens,
+            &mut values,
+        )
     } else {
         let Ok(mut arguments) = copy_extended_arguments(registers, rest, count) else {
             context.set_pending(ncl_object::ObjectError::Layout);
@@ -62,10 +71,11 @@ pub(super) fn dispatch_with_context(
             function.as_word(),
             &mut arguments,
             &mut root_tokens,
+            &mut values,
         )
     };
     match result {
-        Ok(value) => ok_result(value, context.values().len()),
+        Ok(value) => publish_result(context, value, &values),
         Err(ncl_object::ObjectError::NonLocalExit) => {
             record_boundary_error(context, ncl_object::ObjectError::NonLocalExit);
             error_result()
@@ -73,7 +83,11 @@ pub(super) fn dispatch_with_context(
         Err(error) => {
             if let Some(condition) = context.take_pending_condition() {
                 match ncl_conditions::error(context, condition) {
-                    Ok(()) => return ok_result(Word::NIL, context.values().len()),
+                    Ok(()) => {
+                        let values = context.values().to_vec();
+                        let value = values.first().copied().unwrap_or(Word::NIL);
+                        return publish_values(context, value, &values);
+                    }
                     Err(condition_error) => {
                         let error = match condition_error {
                             ncl_conditions::ConditionError::Object(error) => error,
@@ -113,6 +127,7 @@ fn call_with_heap_rooted_arguments(
     function: Word,
     arguments: &mut [Word],
     root_tokens: &mut [Option<ncl_sys::RootToken>],
+    values: &mut MultipleValues,
 ) -> Result<Word, ncl_object::ObjectError> {
     if arguments.len() != root_tokens.len() {
         return Err(ncl_object::ObjectError::Layout);
@@ -122,8 +137,11 @@ fn call_with_heap_rooted_arguments(
     for (argument, token) in arguments.iter_mut().zip(root_tokens.iter_mut()) {
         *token = Some(ncl_object::push_heap_root(object, argument));
     }
-    let result = FunctionObject::try_from(rooted_function)
-        .and_then(|function| object.call_builtin_from_generated_code(context, function, arguments));
+    let result = FunctionObject::try_from(rooted_function).and_then(|function| {
+        object
+            .call_builtin_if_registered(context, function, arguments, values)
+            .ok_or(ncl_object::ObjectError::Unbound)?
+    });
     let arguments_popped = unregister_heap_roots(
         object,
         root_tokens.iter_mut().rev().filter_map(Option::take),
@@ -133,6 +151,31 @@ fn call_with_heap_rooted_arguments(
         return Err(ncl_object::ObjectError::RootStackCorrupted);
     }
     result
+}
+
+fn publish_result(
+    context: &mut ThreadContext,
+    value: Word,
+    values: &MultipleValues,
+) -> NativeCallResult {
+    if !values.is_explicit() {
+        return publish_values(context, value, &[value]);
+    }
+    publish_values(context, value, values.as_slice())
+}
+
+fn publish_values(context: &mut ThreadContext, value: Word, words: &[Word]) -> NativeCallResult {
+    if context.is_unwinding() {
+        return error_result();
+    }
+    if let Err(error) = context.set_multiple_value_area(words) {
+        context.set_pending(error);
+        return error_result();
+    }
+    NativeCallResult {
+        value: value.bits(),
+        count: u64::try_from(words.len()).unwrap_or(0),
+    }
 }
 
 #[cfg(test)]

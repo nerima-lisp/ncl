@@ -28,6 +28,18 @@ fn add_builtin(
     Ok(Word::fixnum(left + right))
 }
 
+fn optional_empty_values_builtin(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    if args.required(0)? == Word::TRUE {
+        values.set(&[]);
+    }
+    Ok(Word::fixnum(7))
+}
+
 fn keyword_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ncl_object::ObjectError> {
     if args.len() == 2 {
         Ok(vec![args.required(1)?, args.required(0)?])
@@ -40,6 +52,12 @@ const TEST_ID: BuiltinIdentifier =
     BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD"));
 const ADAPTED_ID: BuiltinIdentifier =
     BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADAPTED"));
+const EMPTY_VALUES_ID: BuiltinIdentifier =
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("EMPTY-VALUES"));
+const EMPTY_PARAMETER: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("EMPTY"),
+    ty: ParameterType::Any,
+}];
 
 const REQUIRED_PARAMETERS: &[Parameter] = &[
     Parameter {
@@ -298,6 +316,75 @@ fn builtin_function_caller_preserves_multiple_values() {
     );
     assert_eq!(result, Ok(Word::fixnum(5)));
     assert_eq!(values.as_slice(), &[Word::fixnum(99), Word::fixnum(100)]);
+}
+
+#[test]
+fn multiple_values_tracks_explicit_empty_and_nonempty_results() {
+    let mut values = MultipleValues::new();
+    assert!(!values.is_explicit());
+
+    values.set(&[]);
+    assert!(values.is_explicit());
+    assert!(values.is_empty());
+
+    values.clear();
+    assert!(!values.is_explicit());
+
+    values.set(&[Word::fixnum(1)]);
+    assert!(values.is_explicit());
+    assert_eq!(values.as_slice(), &[Word::fixnum(1)]);
+
+    values.set(&[Word::fixnum(1), Word::fixnum(2)]);
+    assert!(values.is_explicit());
+    assert_eq!(values.as_slice(), &[Word::fixnum(1), Word::fixnum(2)]);
+}
+
+#[test]
+fn builtin_function_caller_preserves_unset_and_explicit_empty_results() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::fixed(EMPTY_PARAMETER),
+        convention: BuiltinConvention::Direct(Arity::exact(1)),
+    };
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            EMPTY_VALUES_ID,
+            BuiltinImplementation::direct(descriptor, optional_empty_values_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(function),
+            FunctionArguments::new(&[Word::NIL]),
+            &mut values,
+        ),
+        Ok(Word::fixnum(7))
+    );
+    assert!(!values.is_explicit());
+    assert_eq!(ctx.values(), &[Word::fixnum(7)]);
+
+    assert_eq!(
+        caller.call_function(
+            &mut ctx,
+            &runtime,
+            FunctionDesignator::Function(function),
+            FunctionArguments::new(&[Word::TRUE]),
+            &mut values,
+        ),
+        Ok(Word::fixnum(7))
+    );
+    assert!(values.is_explicit());
+    assert!(values.is_empty());
+    assert!(ctx.values().is_empty());
 }
 
 #[test]

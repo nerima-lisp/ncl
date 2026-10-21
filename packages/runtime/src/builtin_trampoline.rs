@@ -81,12 +81,6 @@ const fn error_result() -> NativeCallResult {
         count: 0,
     }
 }
-fn ok_result(value: Word, value_count: usize) -> NativeCallResult {
-    NativeCallResult {
-        value: value.bits(),
-        count: u64::try_from(value_count).unwrap_or(1).max(1),
-    }
-}
 /// Registers available to the generic trampoline stub, in the order the
 /// shared `extern "C"` dispatcher receives them. `argc`/`a0..a3`/`rest` mirror
 /// the native Lisp calling convention's own argument-count/argument-list

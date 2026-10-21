@@ -40,6 +40,12 @@ impl<'a> ThreadAccess<'a> {
         self.thread.multiple_values()
     }
 
+    /// Return the number of live words in the multiple-value area.
+    #[must_use]
+    pub const fn multiple_value_count(&self) -> usize {
+        self.thread.mv_count()
+    }
+
     /// Return the number of active generated-code handler frames.
     #[must_use]
     pub const fn handler_depth(&self) -> usize {

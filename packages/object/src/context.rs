@@ -184,6 +184,17 @@ impl ThreadContext {
         self.values.clear();
         self.values.extend_from_slice(values);
     }
+    /// Publish native return values into the thread's multiple-value area.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::Layout`] when the result exceeds the native ABI area.
+    pub fn set_multiple_value_area(&mut self, values: &[Word]) -> Result<(), ObjectError> {
+        if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
+            return Err(ObjectError::Layout);
+        }
+        self.thread.set_multiple_value_area(values);
+        Ok(())
+    }
     /// Read multiple values.
     #[must_use]
     pub fn values(&self) -> &[Word] {
@@ -363,7 +374,7 @@ impl Default for ThreadContext {
 #[cfg(test)]
 mod tests {
     use super::{LispError, ObjectError, PendingRuntimeErrors, ThreadContext};
-    use ncl_sys::{NativeError, NativeOperation};
+    use ncl_sys::{NativeError, NativeOperation, Word};
 
     #[test]
     fn pending_error_payloads_keep_source_flags_in_sync() {
@@ -379,6 +390,24 @@ mod tests {
             Some(LispError::EndOfFile)
         );
         assert!(!context.thread.runtime_error_pending());
+    }
+
+    #[test]
+    fn multiple_value_area_rejects_results_over_the_native_limit() {
+        let mut context = ThreadContext::new();
+        let twenty = (0..ncl_sys::MULTIPLE_VALUE_AREA_WORDS)
+            .map(|value| Word::fixnum(i64::try_from(value).unwrap_or(0)))
+            .collect::<Vec<_>>();
+        assert_eq!(context.set_multiple_value_area(&twenty), Ok(()));
+        assert_eq!(context.thread_access().multiple_values(), twenty);
+
+        let twenty_one = (0..=ncl_sys::MULTIPLE_VALUE_AREA_WORDS)
+            .map(|value| Word::fixnum(i64::try_from(value).unwrap_or(0)))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            context.set_multiple_value_area(&twenty_one),
+            Err(ObjectError::Layout)
+        );
     }
 
     #[test]

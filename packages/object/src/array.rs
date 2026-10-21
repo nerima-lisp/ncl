@@ -305,6 +305,9 @@ pub fn array_row_major_ref(
             Some(layout::widetag::SPECIALIZED_ARRAY) => {
                 specialized_array_ref(ctx, displaced, target)
             }
+            Some(layout::widetag::STRING) => {
+                string_ref(ctx, displaced, target).map(|value| Word::character(u32::from(value)))
+            }
             Some(layout::widetag::NON_SIMPLE_ARRAY) => array_row_major_ref(ctx, displaced, target),
             _ => Err(ObjectError::TypeError),
         };

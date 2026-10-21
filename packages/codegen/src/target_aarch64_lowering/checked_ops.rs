@@ -88,7 +88,7 @@ pub(super) fn lower_make_closure_op(
         store_value(assembler, allocation, result, Reg(0))?;
         // No allocation or safepoint occurs before these stores, so the new object cannot move.
         for (index, capture) in captures.iter().copied().enumerate() {
-            store_closure_capture(assembler, result, index, capture, allocation)?;
+            store_closure_capture(assembler, result, index, capture, allocation, abi)?;
         }
     }
     Ok(call_pc)
@@ -285,14 +285,16 @@ fn store_closure_capture(
     index: usize,
     capture: ValueId,
     allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     use ncl_asm_aarch64::{MemOperand, RegOrSp};
 
-    let offset = ncl_object::function_offset::CAPTURES
+    let slot = ncl_object::function_offset::CAPTURES
         .checked_add(index)
-        .and_then(|slot| slot.checked_add(1))
+        .ok_or(CodegenError::FrameOverflow)?;
+    let byte_offset = slot
+        .checked_add(1)
         .and_then(|slot| slot.checked_mul(8))
-        .and_then(|offset| i16::try_from(offset).ok())
         .ok_or(CodegenError::FrameOverflow)?;
     super::load_value(assembler, allocation, closure, Reg(16))?;
     super::load_value(assembler, allocation, capture, Reg(17))?;
@@ -304,14 +306,46 @@ fn store_closure_capture(
             imm: !ncl_sys::LOWTAG_MASK,
         },
     )?;
+    let store_offset = if byte_offset <= 255 {
+        i16::try_from(byte_offset).map_err(|_| CodegenError::FrameOverflow)?
+    } else {
+        let mut remaining = byte_offset;
+        while remaining >= (1 << 12) {
+            let high = u16::try_from((remaining >> 12).min(0x0fff))
+                .map_err(|_| CodegenError::FrameOverflow)?;
+            emit(
+                assembler,
+                Inst::AddImm {
+                    rd: RegOrSp::Reg(Reg(16)),
+                    rn: RegOrSp::Reg(Reg(16)),
+                    imm: high,
+                    shift: true,
+                },
+            )?;
+            remaining -= usize::from(high) << 12;
+        }
+        if remaining != 0 {
+            emit(
+                assembler,
+                Inst::AddImm {
+                    rd: RegOrSp::Reg(Reg(16)),
+                    rn: RegOrSp::Reg(Reg(16)),
+                    imm: u16::try_from(remaining).map_err(|_| CodegenError::FrameOverflow)?,
+                    shift: false,
+                },
+            )?;
+        }
+        0
+    };
     emit(
         assembler,
         Inst::Str {
             rt: Reg(17),
             mem: MemOperand::Unscaled {
                 base: RegOrSp::Reg(Reg(16)),
-                offset,
+                offset: store_offset,
             },
         },
-    )
+    )?;
+    super::ops::lower_write_barrier_call(assembler, closure, slot, allocation, abi)
 }

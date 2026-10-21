@@ -192,9 +192,6 @@ pub(super) fn lower_runtime_builtin(
             rn: RegOrSp::Reg(Reg(21)),
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
-        emit(assembler, instruction)?;
-    }
     for (index, value) in immediate_args.iter().copied().enumerate() {
         for instruction in ncl_asm_aarch64::mov_imm64(
             Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
@@ -211,6 +208,9 @@ pub(super) fn lower_runtime_builtin(
             Reg(u8::try_from(immediate_args.len() + index + 1)
                 .map_err(|_| CodegenError::FrameOverflow)?),
         )?;
+    }
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
+        emit(assembler, instruction)?;
     }
     Ok(())
 }

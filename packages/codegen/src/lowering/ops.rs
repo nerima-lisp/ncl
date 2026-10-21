@@ -26,6 +26,27 @@ pub(super) fn store(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: 
 #[rustfmt::skip]
 pub(super) const fn compare_condition(op: Compare) -> Cond { match op { Compare::Eq => Cond::E, Compare::Ne => Cond::Ne, Compare::Lt => Cond::L, Compare::Le => Cond::Le, Compare::Gt => Cond::G, Compare::Ge => Cond::Ge } }
 
+fn lower_write_barrier(
+    assembler: &mut Assembler,
+    owner: ValueId,
+    slot: i64,
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    emit(assembler, &Inst::MovRR(Reg::Rdi, THREAD_CONTEXT))?;
+    emit(assembler, &Inst::MovRI(Reg::Rsi, Imm::I64(slot)))?;
+    load(assembler, slots, owner, Reg::Rdx)?;
+    let address = abi
+        .runtime_address(RuntimeFunction::WriteBarrier)
+        // check-added-lines: allow(unsupported) preserve runtime ABI lookup failures.
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
+    emit(
+        assembler,
+        &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
+    )?;
+    emit(assembler, &Inst::CallReg(Reg::R11))
+}
+
 pub(super) fn constant_value(
     constant: &Constant,
     abi: &dyn RuntimeAbi,
@@ -128,6 +149,7 @@ pub(super) fn lower_op(
                 assembler,
                 &Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
             )?;
+            lower_write_barrier(assembler, *object, i64::from(*field), slots, abi)?;
         }
         OpKind::Alloc { words } => {
             emit(assembler, &Inst::MovRR(THREAD_CONTEXT, Reg::Rdi))?;
@@ -199,7 +221,9 @@ pub(super) fn lower_op(
             add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
             safepoints.sites.push(site);
         }
-        OpKind::Prim { op: prim, args, .. } => lower_prim(assembler, prim, args, result, slots)?,
+        OpKind::Prim { op: prim, args, .. } => {
+            lower_prim(assembler, prim, args, result, slots, abi)?;
+        }
         OpKind::Compare { op, left, right } => {
             load(assembler, slots, *left, Reg::R10)?;
             load(assembler, slots, *right, Reg::R11)?;
@@ -253,7 +277,7 @@ pub(super) fn lower_op(
 }
 
 #[rustfmt::skip]
-fn lower_prim(assembler: &mut Assembler, prim: &Prim, args: &[ValueId], result: Option<ValueId>, slots: &[(ValueId, u32)]) -> Result<(), CodegenError> {
+fn lower_prim(assembler: &mut Assembler, prim: &Prim, args: &[ValueId], result: Option<ValueId>, slots: &[(ValueId, u32)], abi: &dyn RuntimeAbi) -> Result<(), CodegenError> {
     let Some(first) = args.first() else { return Err(CodegenError::Unsupported("primitive has no operands".into())); };
     load(assembler, slots, *first, Reg::R10)?;
     if let Some(second) = args.get(1) { load(assembler, slots, *second, Reg::R11)?; }
@@ -265,10 +289,18 @@ fn lower_prim(assembler: &mut Assembler, prim: &Prim, args: &[ValueId], result: 
         Prim::FixnumLt => { emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?; emit(assembler, &Inst::Setcc(Cond::L, Reg::R10))?; }
         Prim::FixnumLe => { emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?; emit(assembler, &Inst::Setcc(Cond::Le, Reg::R10))?; }
         Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => { emit(assembler, &Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 0)))?; }
-        Prim::Rplaca | Prim::Rplacd | Prim::Aset => { emit(assembler, &Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?; }
+        Prim::Rplaca | Prim::Rplacd | Prim::Aset => {
+            emit(assembler, &Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?;
+            lower_write_barrier(assembler, *first, 0, slots, abi)?;
+        }
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => return Err(CodegenError::Unsupported(format!("primitive is not available in fixed templates: {prim:?}"))),
     }
-    if let Some(result) = result { store(assembler, slots, result, Reg::R10)?; }
+    if let Some(result) = result {
+        if matches!(prim, Prim::Rplaca | Prim::Rplacd | Prim::Aset) {
+            load(assembler, slots, *first, Reg::R10)?;
+        }
+        store(assembler, slots, result, Reg::R10)?;
+    }
     Ok(())
 }
 

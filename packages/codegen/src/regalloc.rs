@@ -9,6 +9,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 #[path = "regalloc_handler_intervals.rs"]
 mod handler_intervals;
 
+#[path = "regalloc_calls.rs"]
+mod regalloc_calls;
+pub use regalloc_calls::{is_call, is_safepoint};
+
 /// The target register classes used by the phase 1b allocator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AllocationTarget {
@@ -79,6 +83,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut safepoint_positions = BTreeSet::new();
     let mut safepoints = Vec::new();
     let mut handler_values = HashSet::new();
+    let mut results_across_internal_calls = HashSet::new();
     let mut enter_positions = HashMap::<HandlerRegionId, u32>::new();
     let mut block_param_values = HashSet::new();
     let mut position = 0u32;
@@ -98,6 +103,10 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
         for op in &block.ops {
             for (value, ty) in &op.results {
                 definitions.insert(*value, (position, *ty));
+                if matches!(&op.kind, OpKind::MakeClosure { captures, .. } if !captures.is_empty())
+                {
+                    results_across_internal_calls.insert(*value);
+                }
             }
             let mut operands = Vec::new();
             operands_of_op(&op.kind, &mut operands);
@@ -113,7 +122,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             if matches!(op.kind, OpKind::Safepoint | OpKind::Alloc { .. }) {
                 safepoint_positions.insert(position);
             }
-            if matches!(op.kind, OpKind::Safepoint | OpKind::Alloc { .. }) || is_call(&op.kind) {
+            if is_safepoint(&op.kind) {
                 safepoints.push(position);
             }
             position = position.saturating_add(1);
@@ -156,14 +165,15 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             } else {
                 start
             };
-            let crosses_call = call_positions.iter().any(|&call| {
-                (start_bound < call
-                    || (start == 0
-                        && call == 0
-                        && block_param_values.contains(&value)
-                        && last_use.contains_key(&value)))
-                    && call <= end
-            });
+            let crosses_call = results_across_internal_calls.contains(&value)
+                || call_positions.iter().any(|&call| {
+                    (start_bound < call
+                        || (start == 0
+                            && call == 0
+                            && block_param_values.contains(&value)
+                            && last_use.contains_key(&value)))
+                        && call <= end
+                });
             let crosses_safepoint = safepoint_positions.iter().any(|&safepoint| {
                 (start_bound < safepoint
                     || (start == 0
@@ -240,24 +250,6 @@ pub const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
         AllocationTarget::X86_64 => &[11, 12, 13],
         AllocationTarget::AArch64 => &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     }
-}
-
-pub const fn is_call(kind: &OpKind) -> bool {
-    matches!(
-        kind,
-        OpKind::Call { .. }
-            | OpKind::CallIndirect { .. }
-            | OpKind::CallClosure { .. }
-            | OpKind::Builtin { .. }
-            | OpKind::MakeClosure { .. }
-            | OpKind::MakeValueCell { .. }
-            // `EnterHandler`/`LeaveHandler` (catch/unwind-protect/progv)
-            // call a native runtime function just like `Builtin`, so a value
-            // crossing one is not guaranteed to survive in a register and
-            // must be forced to a frame slot too.
-            | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. }
-    )
 }
 
 fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {

@@ -48,6 +48,10 @@ const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
 
 const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;
 
+extern "C" fn write_barrier(thread: &mut Thread, slot: usize, owner: Word) {
+    ncl_sys::write_barrier(thread, owner, slot);
+}
+
 fn convert(
     builder: &mut FunctionBuilder,
     op: Convert,
@@ -202,6 +206,7 @@ impl RuntimeAbi for BuiltinAbi {
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         match function {
+            RuntimeFunction::WriteBarrier => Ok(write_barrier as *const () as usize as u64),
             RuntimeFunction::AllocateSlow => Ok(alloc_slow as *const () as usize as u64),
             RuntimeFunction::MakeClosure => Ok(make_closure_error as *const () as usize as u64),
             RuntimeFunction::MakeValueCell => {

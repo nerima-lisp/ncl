@@ -23,6 +23,24 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
     }
 }
 
+pub(super) fn lower_write_barrier_call(
+    assembler: &mut Assembler,
+    object: ValueId,
+    slot: usize,
+    allocation: &Allocation,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    super::lower_runtime_builtin(
+        assembler,
+        crate::RuntimeFunction::WriteBarrier,
+        &[u64::try_from(slot).map_err(|_| CodegenError::FrameOverflow)?],
+        &[object],
+        allocation,
+        abi,
+    )?;
+    emit(assembler, Inst::Blr { rn: Reg(17) })
+}
+
 fn load_heap_constant(
     assembler: &mut Assembler,
     index: ncl_ir::ConstantIndex,
@@ -223,6 +241,10 @@ pub fn lower_op(
                     },
                 },
             )?;
+            if let OpKind::StoreField { field, .. } = &op.kind {
+                let slot = usize::try_from(*field).map_err(|_| CodegenError::FrameOverflow)?;
+                lower_write_barrier_call(assembler, *address, slot, allocation, abi)?;
+            }
         }
         OpKind::LoadArg { index } => {
             if let Some(result) = result {
@@ -249,7 +271,7 @@ pub fn lower_op(
             }
         }
         OpKind::Prim { op, args, .. } => {
-            primitives::lower_prim(assembler, op, args, result, allocation)?;
+            primitives::lower_prim(assembler, op, args, result, allocation, abi)?;
         }
         OpKind::Compare { op, left, right } => {
             load_value(assembler, allocation, *left, Reg(16))?;

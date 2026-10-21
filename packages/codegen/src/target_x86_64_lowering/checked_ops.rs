@@ -54,7 +54,7 @@ pub(super) fn lower_checked_ops(
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
                 // No allocation or safepoint occurs before these stores, so the new object cannot move.
                 for (index, capture) in captures.iter().copied().enumerate() {
-                    store_closure_capture(assembler, result, index, capture, slots)?;
+                    store_closure_capture(assembler, result, index, capture, slots, abi)?;
                 }
             }
         }

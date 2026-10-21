@@ -1,8 +1,8 @@
 use super::{
-    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, ValueSlots, emit, load_immediate,
-    load_slot,
+    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, ValueSlots, emit, emit_call,
+    load_immediate, load_slot, lower_runtime_builtin,
 };
-use crate::CodegenError;
+use crate::{CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{BinOp, Inst, Mem};
 use ncl_ir::ValueId;
 
@@ -56,11 +56,14 @@ pub fn store_closure_capture(
     index: usize,
     capture: ValueId,
     slots: &ValueSlots,
+    abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
+    let capture_slot = ncl_object::function_offset::CAPTURES
+        .checked_add(index)
+        .ok_or(CodegenError::FrameOverflow)?;
     let offset = i32::try_from(
-        ncl_object::function_offset::CAPTURES
-            .checked_add(index)
-            .and_then(|slot| slot.checked_add(1))
+        capture_slot
+            .checked_add(1)
             .and_then(|slot| slot.checked_mul(8))
             .ok_or(CodegenError::FrameOverflow)?,
     )
@@ -76,5 +79,14 @@ pub fn store_closure_capture(
     emit(
         assembler,
         Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), RETURN_VALUE),
-    )
+    )?;
+    lower_runtime_builtin(
+        assembler,
+        RuntimeFunction::WriteBarrier,
+        &[i64::try_from(capture_slot).map_err(|_| CodegenError::FrameOverflow)?],
+        &[closure],
+        slots,
+        abi,
+    )?;
+    emit_call(assembler).map(|_| ())
 }

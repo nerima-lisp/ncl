@@ -161,15 +161,30 @@ pub(super) fn emit_epilogue(
         )?;
     }
     if body_bytes > 0 {
-        emit(
-            assembler,
-            Inst::AddImm {
-                rd: RegOrSp::Sp,
-                rn: RegOrSp::Sp,
-                imm: u16::try_from(body_bytes).map_err(|_| CodegenError::FrameOverflow)?,
-                shift: false,
-            },
-        )?;
+        if body_bytes <= 4095 {
+            emit(
+                assembler,
+                Inst::AddImm {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    imm: u16::try_from(body_bytes).map_err(|_| CodegenError::FrameOverflow)?,
+                    shift: false,
+                },
+            )?;
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), u64::from(body_bytes)) {
+                emit(assembler, instruction)?;
+            }
+            emit(
+                assembler,
+                Inst::Add {
+                    rd: RegOrSp::Sp,
+                    rn: RegOrSp::Sp,
+                    rm: Reg(16),
+                    shift: ncl_asm_aarch64::Shift::Lsl(0),
+                },
+            )?;
+        }
     }
     emit(
         assembler,

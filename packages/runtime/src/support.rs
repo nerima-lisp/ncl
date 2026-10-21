@@ -18,6 +18,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{PublishedFunction, RuntimeError};
 
+mod write_barrier;
+
 pub struct NativeInvocation<'a> {
     pub(crate) object: &'a ObjectRuntime,
     pub(crate) context: &'a mut ThreadContext,
@@ -112,9 +114,11 @@ impl RuntimeAbi for NativeAbi<'_> {
             RuntimeFunction::MakeValueCell => ncl_sys::function_address!(native_make_value_cell)
                 .map_err(|error| RuntimeError::Native(error.to_string()))
                 .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
-            RuntimeFunction::WriteBarrier => ncl_sys::function_address!(native_write_barrier)
-                .map_err(|error| RuntimeError::Native(error.to_string()))
-                .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::WriteBarrier => {
+                ncl_sys::function_address!(write_barrier::native_write_barrier)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
             RuntimeFunction::EnterCatch => {
                 ncl_sys::function_address!(crate::nonlocal::native_enter_catch)
                     .map_err(|error| RuntimeError::Native(error.to_string()))
@@ -394,15 +398,6 @@ pub extern "C" fn native_make_value_cell(thread: NonNull<Thread>, value: Word) -
         }
     })
     .unwrap_or(Word::NIL)
-}
-
-pub extern "C" fn native_write_barrier(thread: NonNull<Thread>, slot: usize, owner: Word) {
-    let _ = ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        invocation
-            .context
-            .thread_access()
-            .write_barrier(owner, slot);
-    });
 }
 
 pub fn resolve_constant(

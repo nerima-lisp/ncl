@@ -30,6 +30,30 @@ fn assert_contains(code: &[u8], expected: &[u8], behavior: &str) {
     );
 }
 
+struct WriteBarrierFixtureAbi;
+
+impl RuntimeAbi for WriteBarrierFixtureAbi {
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        X86_64FixtureAbi.builtin_address(identifier)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        X86_64FixtureAbi.field_offset(field)
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        if function == RuntimeFunction::WriteBarrier {
+            Ok(0x3000)
+        } else {
+            X86_64FixtureAbi.runtime_address(function)
+        }
+    }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        X86_64FixtureAbi.constant_word(name)
+    }
+}
+
 #[test]
 fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
     for (index, (primitive, condition)) in [
@@ -150,8 +174,8 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
 
         let function = builder.finish();
         let allocation = allocate(&function, AllocationTarget::X86_64);
-        let compiled =
-            compile_function_x86_64(&function, &X86_64FixtureAbi).expect("cons primitive lowers");
+        let compiled = compile_function_x86_64(&function, &WriteBarrierFixtureAbi)
+            .expect("cons primitive lowers");
         let expected = if is_load {
             encode([
                 load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),

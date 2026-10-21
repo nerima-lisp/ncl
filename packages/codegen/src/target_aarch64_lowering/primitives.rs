@@ -128,6 +128,7 @@ pub(super) fn lower_prim(
     args: &[ValueId],
     result: Option<ValueId>,
     allocation: &Allocation,
+    abi: &dyn crate::RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
@@ -240,6 +241,8 @@ pub(super) fn lower_prim(
                     },
                 },
             )?;
+            let slot = usize::from(u8::from(matches!(prim, Prim::Rplacd)));
+            super::ops::lower_write_barrier_call(assembler, *first, slot, allocation, abi)?;
         }
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
             // check-added-lines: allow(unsupported) existing codegen error variant

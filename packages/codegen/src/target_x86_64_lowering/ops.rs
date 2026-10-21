@@ -1,11 +1,11 @@
 use super::{
-    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, VALUE_COUNT, ValueSlots, emit, load_heap_constant,
-    load_immediate, load_slot, lower_alloc, lower_load_capture, lower_safepoint, slot_mem_of,
-    store_slot,
+    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, VALUE_COUNT, ValueSlots, emit, emit_call,
+    load_heap_constant, load_immediate, load_slot, lower_alloc, lower_load_capture,
+    lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::isa_x86_64::THREAD_CONTEXT;
 use crate::machine_verify::SafepointSite;
-use crate::{CodegenError, ConstantName, RuntimeAbi};
+use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem};
 use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 use std::collections::HashMap;
@@ -65,6 +65,24 @@ fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> 
     emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
 }
 
+fn lower_write_barrier(
+    assembler: &mut Assembler,
+    owner: ValueId,
+    slot: i64,
+    slots: &ValueSlots,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    lower_runtime_builtin(
+        assembler,
+        RuntimeFunction::WriteBarrier,
+        &[slot],
+        &[owner],
+        slots,
+        abi,
+    )?;
+    emit_call(assembler).map(|_| ())
+}
+
 #[allow(clippy::too_many_lines)]
 fn lower_prim(
     assembler: &mut Assembler,
@@ -72,6 +90,7 @@ fn lower_prim(
     args: &[ValueId],
     result: Option<ValueId>,
     slots: &ValueSlots,
+    abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
         // check-added-lines: allow(unsupported) existing codegen error variant
@@ -112,6 +131,13 @@ fn lower_prim(
                 assembler,
                 Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), ENTRY),
             )?;
+            lower_write_barrier(
+                assembler,
+                *first,
+                i64::from(u8::from(matches!(prim, Prim::Rplacd))),
+                slots,
+                abi,
+            )?;
         }
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
             // check-added-lines: allow(unsupported) existing codegen error variant
@@ -121,6 +147,9 @@ fn lower_prim(
         }
     }
     if let Some(result) = result {
+        if matches!(prim, Prim::Rplaca | Prim::Rplacd | Prim::Aset) {
+            load_slot(assembler, slots, *first, FUNCTION_OBJECT)?;
+        }
         store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
     }
     Ok(())
@@ -193,26 +222,27 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
-        OpKind::Store { address, value }
-        | OpKind::StoreField {
-            object: address,
-            value,
-            ..
-        } => {
+        OpKind::Store { address, value } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
             untag_function_object(assembler)?;
             load_slot(assembler, slots, *value, ENTRY)?;
-            let offset = match &op.kind {
-                OpKind::StoreField { field, .. } => {
-                    i32::try_from(field.saturating_add(1).saturating_mul(8))
-                        .map_err(|_| CodegenError::FrameOverflow)?
-                }
-                _ => 0,
-            };
+            emit(assembler, Inst::MovMR(Mem::base(FUNCTION_OBJECT, 0), ENTRY))?;
+        }
+        OpKind::StoreField {
+            object,
+            field,
+            value,
+        } => {
+            load_slot(assembler, slots, *object, FUNCTION_OBJECT)?;
+            untag_function_object(assembler)?;
+            load_slot(assembler, slots, *value, ENTRY)?;
+            let offset = i32::try_from(field.saturating_add(1).saturating_mul(8))
+                .map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
                 Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), ENTRY),
             )?;
+            lower_write_barrier(assembler, *object, i64::from(*field), slots, abi)?;
         }
         OpKind::LoadArg { index } => {
             if let Some(result) = result {
@@ -237,7 +267,7 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
-        OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, slots)?,
+        OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, slots, abi)?,
         OpKind::Compare { op, left, right } => {
             load_slot(assembler, slots, *left, FUNCTION_OBJECT)?;
             load_slot(assembler, slots, *right, ENTRY)?;

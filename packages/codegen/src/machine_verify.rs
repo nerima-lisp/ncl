@@ -432,11 +432,7 @@ fn safepoint_positions(function: &Function) -> HashSet<u32> {
     let mut position = 0u32;
     for block in &function.blocks {
         for op in &block.ops {
-            if matches!(
-                op.kind,
-                ncl_ir::OpKind::Safepoint | ncl_ir::OpKind::Alloc { .. }
-            ) || crate::regalloc::is_call(&op.kind)
-            {
+            if crate::regalloc::is_safepoint(&op.kind) {
                 positions.insert(position);
             }
             position = position.saturating_add(1);

@@ -27,6 +27,7 @@ impl RuntimeAbi for X86_64FixtureAbi {
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
         match function {
+            RuntimeFunction::WriteBarrier => Ok(0x3000),
             RuntimeFunction::SafepointSlow
             | RuntimeFunction::MakeClosure
             | RuntimeFunction::EnterCatch

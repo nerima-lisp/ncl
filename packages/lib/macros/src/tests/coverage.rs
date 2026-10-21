@@ -18,6 +18,12 @@ fn expand_pattern(
     expand_destructuring_bind(ctx, runtime, pattern, value, &[body])
 }
 
+fn string_text(ctx: &ThreadContext, string: Word) -> Result<String, ObjectError> {
+    (0..ncl_object::string_length(ctx, string)?)
+        .map(|index| ncl_object::string_ref(ctx, string, index))
+        .collect()
+}
+
 fn binding_value(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -37,6 +43,29 @@ fn binding_value(
         }
     }
     Ok(value)
+}
+
+fn source_binding(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    expansion: Word,
+) -> Result<Word, ObjectError> {
+    let form = elements(ctx, expansion)?;
+    if form.first().copied() != Some(symbol(ctx, runtime, "LET*")?) {
+        return Err(ObjectError::TypeError);
+    }
+    let bindings = elements(ctx, *form.get(1).ok_or(ObjectError::TypeError)?)?;
+    let input_plist = symbol(ctx, runtime, "INPUT-PLIST")?;
+    for binding in bindings {
+        let source = elements(ctx, binding)?;
+        if source.get(1).copied() == Some(input_plist) {
+            if source.len() != 2 {
+                return Err(ObjectError::TypeError);
+            }
+            return Ok(source[0]);
+        }
+    }
+    Err(ObjectError::TypeError)
 }
 
 fn binding_value_before(
@@ -64,25 +93,65 @@ fn binding_value_before(
     Ok(value)
 }
 
-fn contains_quoted_symbol(
+fn assert_keyword_lookup(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     tree: Word,
     expected: Word,
-) -> Result<bool, ObjectError> {
-    if !tree.is_cons() {
-        return Ok(false);
-    }
-    let parts = elements(ctx, tree)?;
-    if parts.len() == 2 && parts[0] == symbol(ctx, runtime, "QUOTE")? && parts[1] == expected {
-        return Ok(true);
-    }
-    let head = ncl_object::car(ctx, tree)?;
-    if contains_quoted_symbol(ctx, runtime, head, expected)? {
-        return Ok(true);
-    }
-    let tail = ncl_object::cdr(ctx, tree)?;
-    contains_quoted_symbol(ctx, runtime, tail, expected)
+    input_list: Word,
+) -> Result<(), ObjectError> {
+    let labels = elements(ctx, tree)?;
+    assert_eq!(labels.len(), 3);
+    assert_eq!(labels[0], symbol(ctx, runtime, "LABELS")?);
+    let definitions = elements(ctx, labels[1])?;
+    assert_eq!(definitions.len(), 1);
+    let definition = elements(ctx, definitions[0])?;
+    assert_eq!(definition.len(), 3);
+    let finder = definition[0];
+    let parameters = elements(ctx, definition[1])?;
+    assert_eq!(parameters.len(), 1);
+    let param = parameters[0];
+
+    let cond = elements(ctx, definition[2])?;
+    assert_eq!(cond.len(), 4);
+    assert_eq!(cond[0], symbol(ctx, runtime, "COND")?);
+    let stop_clause = elements(ctx, cond[1])?;
+    assert_eq!(stop_clause.len(), 2);
+    assert_eq!(stop_clause[1], Word::NIL);
+    let null_test = elements(ctx, stop_clause[0])?;
+    assert_eq!(null_test, vec![symbol(ctx, runtime, "NULL")?, param]);
+
+    let match_clause = elements(ctx, cond[2])?;
+    assert_eq!(match_clause.len(), 2);
+    assert_eq!(match_clause[1], param);
+    let equality = elements(ctx, match_clause[0])?;
+    assert_eq!(equality.len(), 3);
+    assert_eq!(equality[0], symbol(ctx, runtime, "EQ")?);
+    let car_call = elements(ctx, equality[1])?;
+    assert_eq!(car_call, vec![symbol(ctx, runtime, "CAR")?, param]);
+    let quoted_keyword = elements(ctx, equality[2])?;
+    assert_eq!(
+        quoted_keyword,
+        vec![symbol(ctx, runtime, "QUOTE")?, expected]
+    );
+
+    let recurse_clause = elements(ctx, cond[3])?;
+    assert_eq!(recurse_clause.len(), 2);
+    assert_eq!(recurse_clause[0], symbol(ctx, runtime, "T")?);
+    let recurse_call = elements(ctx, recurse_clause[1])?;
+    assert_eq!(recurse_call.len(), 2);
+    assert_eq!(recurse_call[0], finder);
+    let cddr = elements(ctx, recurse_call[1])?;
+    assert_eq!(cddr.len(), 2);
+    assert_eq!(cddr[0], symbol(ctx, runtime, "CDR")?);
+    let inner_cdr = elements(ctx, cddr[1])?;
+    assert_eq!(inner_cdr, vec![symbol(ctx, runtime, "CDR")?, param]);
+
+    let initial_call = elements(ctx, labels[2])?;
+    assert_eq!(initial_call.len(), 2);
+    assert_eq!(initial_call[0], finder);
+    assert_eq!(initial_call[1], input_list);
+    Ok(())
 }
 
 #[test]
@@ -108,12 +177,8 @@ fn bare_key_uses_its_keyword_default_and_skips_allow_other_keys() -> Result<(), 
     let found_value =
         binding_value(&mut ctx, &runtime, expansion, found)?.ok_or(ObjectError::TypeError)?;
     let keyword = symbol(&mut ctx, &runtime, "KEYWORD::ITEM")?;
-    assert!(contains_quoted_symbol(
-        &mut ctx,
-        &runtime,
-        found_value,
-        keyword
-    )?);
+    let input_list = source_binding(&mut ctx, &runtime, expansion)?;
+    assert_keyword_lookup(&mut ctx, &runtime, found_value, keyword, input_list)?;
     assert_eq!(
         binding_value(&mut ctx, &runtime, expansion, allow_other_keys)?,
         None
@@ -158,12 +223,8 @@ fn explicit_key_default_and_supplied_p_share_the_lookup_result() -> Result<(), O
 
     let found_value =
         binding_value(&mut ctx, &runtime, expansion, found)?.ok_or(ObjectError::TypeError)?;
-    assert!(contains_quoted_symbol(
-        &mut ctx,
-        &runtime,
-        found_value,
-        keyword
-    )?);
+    let input_list = source_binding(&mut ctx, &runtime, expansion)?;
+    assert_keyword_lookup(&mut ctx, &runtime, found_value, keyword, input_list)?;
     Ok(())
 }
 
@@ -193,6 +254,25 @@ fn key_values_can_bind_a_nested_pattern() -> Result<(), ObjectError> {
     let right_consp = elements(&mut ctx, right_parts[1])?;
     assert_eq!(right_consp[0], symbol(&mut ctx, &runtime, "CONSP")?);
     let right_cursor = right_consp[1];
+    let cursor_initial = binding_value_before(&mut ctx, &runtime, expansion, right_cursor, left)?
+        .ok_or(ObjectError::TypeError)?;
+    let cursor_parts = elements(&mut ctx, cursor_initial)?;
+    assert_eq!(cursor_parts.len(), 4);
+    assert_eq!(cursor_parts[0], symbol(&mut ctx, &runtime, "IF")?);
+    let found = cursor_parts[1];
+    assert_eq!(cursor_parts[3], Word::NIL);
+    let found_value = elements(&mut ctx, cursor_parts[2])?;
+    assert_eq!(
+        found_value,
+        vec![symbol(&mut ctx, &runtime, "CADR")?, found]
+    );
+    let finder =
+        binding_value(&mut ctx, &runtime, expansion, found)?.ok_or(ObjectError::TypeError)?;
+    let input_list = source_binding(&mut ctx, &runtime, expansion)?;
+    assert_keyword_lookup(&mut ctx, &runtime, finder, keyword, input_list)?;
+    let left_consp = elements(&mut ctx, left_parts[1])?;
+    assert_eq!(left_consp[0], symbol(&mut ctx, &runtime, "CONSP")?);
+    assert_eq!(left_consp[1], right_cursor);
     let right_car = elements(&mut ctx, right_parts[2])?;
     assert_eq!(right_car[0], symbol(&mut ctx, &runtime, "CAR")?);
     assert_eq!(right_car[1], right_cursor);
@@ -208,8 +288,15 @@ fn key_values_can_bind_a_nested_pattern() -> Result<(), ObjectError> {
     let advance_cdr = elements(&mut ctx, advanced_parts[2])?;
     assert_eq!(advance_cdr[0], symbol(&mut ctx, &runtime, "CDR")?);
     assert_eq!(advance_cdr[1], right_cursor);
-    let too_short = elements(&mut ctx, advanced_parts[3])?;
-    assert_eq!(too_short[0], symbol(&mut ctx, &runtime, "ERROR")?);
+    for too_short in [left_parts[3], advanced_parts[3], right_parts[3]] {
+        let error = elements(&mut ctx, too_short)?;
+        assert_eq!(error.len(), 2);
+        assert_eq!(error[0], symbol(&mut ctx, &runtime, "ERROR")?);
+        assert_eq!(
+            string_text(&ctx, error[1])?,
+            "destructuring-bind: too few elements"
+        );
+    }
     Ok(())
 }
 

@@ -1,0 +1,425 @@
+#![allow(missing_docs, clippy::expect_used)]
+
+use crate::tests_x86_64_fixture::X86_64FixtureAbi;
+use crate::{
+    AbiError, Allocation, AllocationTarget, ContextField, Location, RuntimeAbi, RuntimeFunction,
+    allocate, compile_function_x86_64,
+};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
+use ncl_ir::{Constant, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId};
+
+fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+    let mut assembler = Assembler::new();
+    for instruction in instructions {
+        assembler
+            .emit(&instruction)
+            .expect("expected x86-64 instruction encoding");
+    }
+    assembler.bytes().to_vec()
+}
+
+fn assert_contains(code: &[u8], expected: &[u8], behavior: &str) {
+    assert!(
+        code.windows(expected.len())
+            .any(|window| window == expected),
+        "{behavior}: expected {expected:02x?} in {code:02x?}"
+    );
+}
+
+#[test]
+fn x86_64_fixnum_comparisons_materialize_their_own_conditions() {
+    for (index, (primitive, condition)) in [
+        (Prim::FixnumEq, Cond::E),
+        (Prim::FixnumLt, Cond::L),
+        (Prim::FixnumLe, Cond::Le),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let function_id = 200 + u32::try_from(index).expect("function index fits");
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(function_id),
+            "fixnum-comparison-lowering",
+            vec![
+                Param {
+                    name: "left".into(),
+                    ty: Ty::I64,
+                },
+                Param {
+                    name: "right".into(),
+                    ty: Ty::I64,
+                },
+            ],
+            vec![Ty::Bool],
+        );
+        let result = builder
+            .push_op(
+                OpKind::Prim {
+                    op: primitive.clone(),
+                    args: vec![ValueId(0), ValueId(1)],
+                    condition: None,
+                },
+                &[Ty::Bool],
+            )
+            .expect("comparison primitive")[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![result],
+            })
+            .expect("comparison return");
+
+        let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+            .expect("comparison lowers");
+        let expected = encode([
+            Inst::CmpRR(Reg::R10, Reg::R11),
+            Inst::Setcc(condition, Reg::R10),
+            Inst::Movzx(Reg::R10, Reg::R10, 8),
+        ]);
+        assert_contains(
+            &compiled.code,
+            &expected,
+            &format!("{primitive:?} must use {condition:?} and zero-extend"),
+        );
+    }
+}
+
+#[test]
+fn x86_64_cons_primitives_use_their_field_offsets() {
+    for (index, (primitive, offset, is_load)) in [
+        (Prim::Car, 0, true),
+        (Prim::Cdr, 8, true),
+        (Prim::Rplaca, 0, false),
+        (Prim::Rplacd, 8, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let function_id = 210 + u32::try_from(index).expect("function index fits");
+        let mut params = vec![Param {
+            name: "object".into(),
+            ty: Ty::Word,
+        }];
+        let args = if is_load {
+            vec![ValueId(0)]
+        } else {
+            params.push(Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            });
+            vec![ValueId(0), ValueId(1)]
+        };
+        let result_types = if is_load { vec![Ty::Word] } else { Vec::new() };
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(function_id),
+            "cons-primitive-offset",
+            params,
+            result_types,
+        );
+        let op_result_types = if is_load { &[Ty::Word][..] } else { &[] };
+        let results = builder
+            .push_op(
+                OpKind::Prim {
+                    op: primitive.clone(),
+                    args,
+                    condition: None,
+                },
+                op_result_types,
+            )
+            .expect("cons primitive");
+        builder
+            .terminate(Terminator::Return { values: results })
+            .expect("cons primitive return");
+
+        let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+            .expect("cons primitive lowers");
+        let expected = if is_load {
+            encode([Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset))])
+        } else {
+            encode([Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11)])
+        };
+        assert_contains(
+            &compiled.code,
+            &expected,
+            &format!("{primitive:?} must access byte offset {offset}"),
+        );
+    }
+}
+
+fn load_value_into_r10(function: &Function, allocation: &Allocation, value: ValueId) -> Inst {
+    match allocation.location(value).expect("value is allocated") {
+        Location::Register(register) => Inst::MovRR(
+            Reg::R10,
+            Reg::from_id(u8::try_from(register).expect("register id fits"))
+                .expect("allocated register exists"),
+        ),
+        Location::Spill(spill) => {
+            let local_words = function
+                .blocks
+                .iter()
+                .map(|block| {
+                    block.params.len() + block.ops.iter().map(|op| op.results.len()).sum::<usize>()
+                })
+                .sum::<usize>();
+            let spill_base =
+                u32::try_from(function.params.len() + local_words).expect("frame slot count fits");
+            let slot = spill_base.checked_add(spill).expect("spill slot fits");
+            let bytes = slot
+                .checked_add(1)
+                .and_then(|slot| slot.checked_mul(8))
+                .and_then(|bytes| i32::try_from(bytes).ok())
+                .expect("spill byte offset fits");
+            Inst::MovRM(Reg::R10, Mem::base(Reg::Rbp, -bytes))
+        }
+    }
+}
+
+#[test]
+fn x86_64_set_multiple_values_stores_distinct_consecutive_values_and_count() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(220),
+        "multiple-value-stores",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let first_constant = builder.add_constant(Constant::Fixnum(11));
+    let first = builder
+        .push_op(
+            OpKind::Const {
+                result: first_constant,
+            },
+            &[Ty::Word],
+        )
+        .expect("first value")[0];
+    let second_constant = builder.add_constant(Constant::Fixnum(22));
+    let second = builder
+        .push_op(
+            OpKind::Const {
+                result: second_constant,
+            },
+            &[Ty::Word],
+        )
+        .expect("second value")[0];
+    let result = builder
+        .push_op(
+            OpKind::SetMultipleValues {
+                values: vec![first, second],
+            },
+            &[Ty::Word],
+        )
+        .expect("set multiple values")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("single-value return after the multiple-value operation");
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert_ne!(
+        allocation.location(first),
+        allocation.location(second),
+        "both values must have distinct live locations"
+    );
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi)
+        .expect("multiple-value function lowers");
+    let layout = ncl_sys::thread_layout();
+    let area = i32::try_from(layout.mv).expect("multiple-value area offset fits");
+    let second_area = area.checked_add(8).expect("second slot offset fits");
+    let count = i32::try_from(layout.mv_count).expect("multiple-value count offset fits");
+
+    let expected_stores = encode([
+        load_value_into_r10(&function, &allocation, first),
+        Inst::MovMR(Mem::base(Reg::R15, area), Reg::R10),
+        load_value_into_r10(&function, &allocation, second),
+        Inst::MovMR(Mem::base(Reg::R15, second_area), Reg::R10),
+        Inst::MovRI(Reg::Rdx, Imm::I32(2)),
+        Inst::MovMR(Mem::base(Reg::R15, count), Reg::Rdx),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &expected_stores,
+        "SetMultipleValues must load each input, store adjacent slots, and set count to two",
+    );
+}
+
+struct UndefinedFunctionFixtureAbi;
+
+impl RuntimeAbi for UndefinedFunctionFixtureAbi {
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        X86_64FixtureAbi.builtin_address(identifier)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        X86_64FixtureAbi.field_offset(field)
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        if function == RuntimeFunction::UndefinedFunction {
+            Ok(0x1234)
+        } else {
+            X86_64FixtureAbi.runtime_address(function)
+        }
+    }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        X86_64FixtureAbi.constant_word(name)
+    }
+}
+
+fn assert_capture_index_two_load(code: &[u8]) {
+    let capture_offset = i32::try_from(
+        ncl_object::function_offset::CAPTURES
+            .checked_add(2)
+            .and_then(|index| index.checked_add(1))
+            .and_then(|index| index.checked_mul(8))
+            .expect("capture offset fits usize"),
+    )
+    .expect("capture offset fits i32");
+    let capture_load = encode([
+        Inst::MovRM(Reg::Rax, Mem::base(Reg::Rbp, 16)),
+        Inst::MovRI(Reg::R11, Imm::I32(-8)),
+        Inst::BinRR(BinOp::And, Reg::Rax, Reg::R11),
+        Inst::MovRM(Reg::R10, Mem::base(Reg::Rax, capture_offset)),
+    ]);
+    assert_contains(
+        code,
+        &capture_load,
+        "capture index two must load CAPTURES + three words after untagging the closure",
+    );
+}
+
+fn assert_named_closure_unbound_dispatch(code: &[u8]) {
+    let unbound_compare = encode([
+        Inst::MovRI(Reg::Rax, Imm::I32(-7)),
+        Inst::CmpRR(Reg::R11, Reg::Rax),
+    ]);
+    let compare_start = code
+        .windows(unbound_compare.len())
+        .position(|window| window == unbound_compare)
+        .expect("named dispatch compares against the unbound sentinel");
+    let branch_start = compare_start + unbound_compare.len();
+    assert_eq!(
+        &code[branch_start..branch_start + 2],
+        &[0x0f, 0x85],
+        "a bound closure must branch around the UndefinedFunction path"
+    );
+    let undefined_target_start = branch_start + 6;
+    let undefined_target = encode([Inst::MovRI(Reg::R11, Imm::I32(0x1234))]);
+    assert_eq!(
+        &code[undefined_target_start..undefined_target_start + undefined_target.len()],
+        undefined_target,
+        "the unbound fallthrough must load the UndefinedFunction runtime address"
+    );
+    let jump_start = undefined_target_start + undefined_target.len();
+    assert_eq!(
+        code[jump_start], 0xe9,
+        "the undefined path must jump to the call setup"
+    );
+    let jump_displacement = i32::from_le_bytes(
+        code[jump_start + 1..jump_start + 5]
+            .try_into()
+            .expect("relative jump has four displacement bytes"),
+    );
+    let call_setup = encode([
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
+        Inst::CallReg(Reg::R11),
+    ]);
+    let call_setup_start = code[branch_start..]
+        .windows(call_setup.len())
+        .position(|window| window == call_setup)
+        .map(|offset| branch_start + offset)
+        .expect("named dispatch must reach the indirect call setup");
+    let jump_target = jump_start
+        + 5
+        + usize::try_from(jump_displacement)
+            .expect("undefined path jumps forward to the shared call setup");
+    assert_eq!(
+        jump_target, call_setup_start,
+        "the undefined path must skip the bound-closure setup and rejoin at its call"
+    );
+    let branch_displacement = i32::from_le_bytes(
+        code[branch_start + 2..branch_start + 6]
+            .try_into()
+            .expect("conditional branch has four displacement bytes"),
+    );
+    let branch_target = branch_start
+        + 6
+        + usize::try_from(branch_displacement)
+            .expect("bound path jumps forward over the undefined fallback");
+    assert_eq!(
+        branch_target,
+        jump_start + 5,
+        "the bound path must branch to the first instruction after the undefined fallback"
+    );
+}
+
+#[test]
+fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(221),
+        "capture-and-named-closure",
+        vec![
+            Param {
+                name: "argument-count".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "closure".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let capture = builder
+        .push_op(OpKind::LoadCapture { index: 2 }, &[Ty::Word])
+        .expect("capture load")[0];
+    let symbol_constant = builder.add_constant(Constant::Symbol {
+        package: "COMMON-LISP".into(),
+        name: "CAR".into(),
+    });
+    let symbol = builder
+        .push_op(
+            OpKind::Const {
+                result: symbol_constant,
+            },
+            &[Ty::Word],
+        )
+        .expect("named function symbol")[0];
+    let entry_constant = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(222)));
+    let entry = builder
+        .push_op(
+            OpKind::Const {
+                result: entry_constant,
+            },
+            &[Ty::Word],
+        )
+        .expect("closure entry")[0];
+    let closure = builder
+        .push_op(
+            OpKind::MakeClosure {
+                entry,
+                captures: Vec::new(),
+            },
+            &[Ty::Word],
+        )
+        .expect("closure value")[0];
+    let _call_result = builder
+        .push_op(
+            OpKind::CallClosure {
+                closure,
+                args: vec![ValueId(0)],
+                named_symbol: Some(symbol),
+            },
+            &[Ty::Word],
+        )
+        .expect("named closure call")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![capture],
+        })
+        .expect("return captured value");
+
+    let compiled = compile_function_x86_64(&builder.finish(), &UndefinedFunctionFixtureAbi)
+        .expect("named closure function lowers");
+    assert_capture_index_two_load(&compiled.code);
+    assert_named_closure_unbound_dispatch(&compiled.code);
+}

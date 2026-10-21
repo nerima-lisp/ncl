@@ -12,6 +12,7 @@ use ncl_object::{
     Package, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
     slot_ref, symbol_name,
 };
+use std::collections::HashSet;
 
 fn with_rooted_words<T>(
     ctx: &mut ThreadContext,
@@ -104,7 +105,11 @@ pub fn package_arg(
 
 pub fn list_items(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
     let mut result = Vec::new();
+    let mut visited = HashSet::new();
     while list != Word::NIL {
+        if !visited.insert(list.bits()) {
+            return Err(ObjectError::TypeError);
+        }
         result.push(ncl_object::car(ctx, list)?);
         list = ncl_object::cdr(ctx, list)?;
     }
@@ -326,8 +331,8 @@ fn mutate_symbols(
     operation: fn(Package, &mut ThreadContext, &Runtime, Word) -> Result<bool, ObjectError>,
 ) -> Result<Word, ObjectError> {
     let mut symbols = list_items(ctx, args.required(0)?)?;
-    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
     with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for symbol in symbols.iter().copied() {
                 let name = match classify_object(ctx, symbol) {
@@ -403,8 +408,8 @@ fn shadow(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut names = list_items(ctx, args.required(0)?)?;
-    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
     with_rooted_words(ctx, &mut names, |ctx, names| {
+        let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for name in names.iter().copied() {
                 let name = string_designator(ctx, name)?.as_word();
@@ -421,10 +426,18 @@ fn use_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let used = package_arg(ctx, runtime, args, 0)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    package.use_package(ctx, runtime, used.as_word())?;
-    Ok(Word::TRUE)
+    let mut used = package_designator_list(ctx, runtime, args.required(0)?)?;
+    with_rooted_words(ctx, &mut used, |ctx, used| {
+        let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            for designator in used.iter().copied() {
+                let used = package_designator(ctx, runtime, designator)?;
+                let package_word = package.first().copied().ok_or(ObjectError::Layout)?;
+                Package::from_word(package_word).use_package(ctx, runtime, used.as_word())?;
+            }
+            Ok(Word::TRUE)
+        })
+    })
 }
 
 fn unuse_package(
@@ -433,13 +446,37 @@ fn unuse_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let used = package_arg(ctx, runtime, args, 0)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    Ok(if package.unuse_package(ctx, used.as_word())? {
-        Word::TRUE
-    } else {
-        Word::NIL
+    let mut used = package_designator_list(ctx, runtime, args.required(0)?)?;
+    with_rooted_words(ctx, &mut used, |ctx, used| {
+        let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            let mut changed = false;
+            for designator in used.iter().copied() {
+                let used = package_designator(ctx, runtime, designator)?;
+                let package_word = package.first().copied().ok_or(ObjectError::Layout)?;
+                changed |= Package::from_word(package_word).unuse_package(ctx, used.as_word())?;
+            }
+            Ok(if changed { Word::TRUE } else { Word::NIL })
+        })
     })
+}
+
+fn package_designator_list(
+    ctx: &ThreadContext,
+    runtime: &Runtime,
+    word: Word,
+) -> Result<Vec<Word>, ObjectError> {
+    let designators = if word == Word::NIL {
+        Vec::new()
+    } else if word.is_cons() {
+        list_items(ctx, word)?
+    } else {
+        vec![word]
+    };
+    for designator in designators.iter().copied() {
+        package_designator(ctx, runtime, designator)?;
+    }
+    Ok(designators)
 }
 
 #[cfg(test)]

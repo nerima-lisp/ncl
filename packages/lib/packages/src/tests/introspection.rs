@@ -176,6 +176,189 @@ fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn use_and_unuse_package_accept_package_list_designators() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let function = |ctx: &mut ThreadContext, name: &str| {
+        FunctionObject::try_from(
+            runtime
+                .function(ctx, "COMMON-LISP", name)
+                .ok_or(ObjectError::Layout)?,
+        )
+    };
+
+    let by_package = runtime.ensure_package(&mut ctx, "N25-USE-LIST-PACKAGE")?;
+    let by_string = runtime.ensure_package(&mut ctx, "N25-USE-LIST-STRING")?;
+    let by_symbol = runtime.ensure_package(&mut ctx, "N25-USE-LIST-SYMBOL")?;
+    let target = runtime.ensure_package(&mut ctx, "N25-USE-LIST-TARGET")?;
+    let string_designator = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-USE-LIST-STRING".chars().collect::<Vec<_>>(),
+    )?;
+    let common = Package::from_word(
+        runtime
+            .find_package(&ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?,
+    );
+    let symbol_designator = common.intern(&mut ctx, &runtime, "N25-USE-LIST-SYMBOL")?.0;
+    let tail = ncl_object::make_cons(&mut ctx, &runtime, symbol_designator, Word::NIL)?;
+    let tail = ncl_object::make_cons(&mut ctx, &runtime, string_designator, tail)?;
+    let designators = ncl_object::make_cons(&mut ctx, &runtime, by_package, tail)?;
+    let use_package = function(&mut ctx, "USE-PACKAGE")?;
+    let unuse_package = function(&mut ctx, "UNUSE-PACKAGE")?;
+    let package_use_list = function(&mut ctx, "PACKAGE-USE-LIST")?;
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[designators, target]),
+        Ok(Word::TRUE)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    let used = list_items(&ctx, used)?;
+    assert_eq!(used.len(), 3);
+    assert!(used.contains(&by_package));
+    assert!(used.contains(&by_string));
+    assert!(used.contains(&by_symbol));
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, unuse_package, &[designators, target]),
+        Ok(Word::TRUE)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    assert!(list_items(&ctx, used)?.is_empty());
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, unuse_package, &[designators, target]),
+        Ok(Word::NIL)
+    );
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[by_string, target]),
+        Ok(Word::TRUE)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    assert_eq!(list_items(&ctx, used)?, vec![by_string]);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, unuse_package, &[by_string, target]),
+        Ok(Word::TRUE)
+    );
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[Word::NIL, target]),
+        Ok(Word::TRUE)
+    );
+    let invalid_tail = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(0), Word::NIL)?;
+    let invalid_designators = ncl_object::make_cons(&mut ctx, &runtime, by_package, invalid_tail)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[invalid_designators, target]),
+        Err(ObjectError::TypeError)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    assert!(list_items(&ctx, used)?.is_empty());
+
+    let circular = ncl_object::make_cons(&mut ctx, &runtime, by_package, Word::NIL)?;
+    ncl_object::rplacd(&mut ctx, circular, circular)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[circular, target]),
+        Err(ObjectError::TypeError)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    assert!(list_items(&ctx, used)?.is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn use_package_rejects_improper_designator_list_before_mutation() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let source = runtime.ensure_package(&mut ctx, "N25-IMPROPER-USE-SOURCE")?;
+    let target = runtime.ensure_package(&mut ctx, "N25-IMPROPER-USE-TARGET")?;
+    let improper = ncl_object::make_cons(&mut ctx, &runtime, source, Word::fixnum(25))?;
+    let use_package = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "USE-PACKAGE")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let package_use_list = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "PACKAGE-USE-LIST")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[improper, target]),
+        Err(ObjectError::TypeError)
+    );
+    let used = runtime.call_builtin(&mut ctx, package_use_list, &[target])?;
+    assert!(list_items(&ctx, used)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn use_package_uses_omitted_current_package_under_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let source = runtime.ensure_package(&mut ctx, "N25-GC-USE-PACKAGE")?;
+    runtime.ensure_package(&mut ctx, "N25-GC-USE-STRING")?;
+    runtime.ensure_package(&mut ctx, "N25-GC-USE-SYMBOL")?;
+    let mut target = runtime.ensure_package(&mut ctx, "N25-GC-USE-TARGET")?;
+    let target_token = ncl_object::push_root(&mut ctx, &mut target);
+    let common = Package::from_word(
+        runtime
+            .find_package(&ctx, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?,
+    );
+    let mut package_variable = common.intern(&mut ctx, &runtime, "*PACKAGE*")?.0;
+    let package_variable_token = ncl_object::push_root(&mut ctx, &mut package_variable);
+    ncl_object::set_symbol_value(&mut ctx, package_variable, target)?;
+
+    let string_designator = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-GC-USE-STRING".chars().collect::<Vec<_>>(),
+    )?;
+    let symbol_designator = common.intern(&mut ctx, &runtime, "N25-GC-USE-SYMBOL")?.0;
+    let tail = ncl_object::make_cons(&mut ctx, &runtime, symbol_designator, Word::NIL)?;
+    let tail = ncl_object::make_cons(&mut ctx, &runtime, string_designator, tail)?;
+    let designators = ncl_object::make_cons(&mut ctx, &runtime, source, tail)?;
+    let use_package = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "USE-PACKAGE")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[designators]),
+        Ok(Word::TRUE)
+    );
+    let used = Package::from_word(target).use_list(&ctx)?;
+    let used = list_items(&ctx, used)?;
+    assert_eq!(used.len(), 3);
+    for name in [
+        "N25-GC-USE-PACKAGE",
+        "N25-GC-USE-STRING",
+        "N25-GC-USE-SYMBOL",
+    ] {
+        let expected = runtime
+            .find_package(&ctx, name)
+            .ok_or(ObjectError::Layout)?;
+        assert!(used.contains(&expected));
+    }
+
+    assert!(ncl_object::pop_root(&mut ctx, package_variable_token));
+    assert!(ncl_object::pop_root(&mut ctx, target_token));
+    Ok(())
+}
+
+#[test]
 fn package_operations_survive_gc_stress() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

@@ -132,15 +132,12 @@ fn class_object_metaclass(
     runtime: &Runtime,
     object: Word,
 ) -> Result<Option<Word>, ObjectError> {
+    if !matches!(classify_object(ctx, object), ObjectRef::SimpleVector(_)) {
+        return Ok(None);
+    }
     let mut scope = Scope::new(ctx);
     let object: ncl_object::Handle<'_, Word> = scope.root(Local::from_word(object));
     let object_word = scope.get(object).as_word();
-    if !matches!(
-        classify_object(scope.context(), object_word),
-        ObjectRef::SimpleVector(_)
-    ) {
-        return Ok(None);
-    }
     let length = simple_vector_length(scope.context(), object_word)?;
     if length < 3 {
         return Ok(None);

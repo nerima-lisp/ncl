@@ -6,7 +6,9 @@ mod control;
 mod root_token;
 mod stack;
 pub use access::ThreadAccess;
-pub use control::{ControlFrameKind, RuntimeErrorSource};
+pub use control::{
+    ControlFrameKind, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
+};
 pub use root_token::RootToken;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;

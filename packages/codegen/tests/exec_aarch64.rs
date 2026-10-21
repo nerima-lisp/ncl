@@ -14,7 +14,7 @@ use ncl_codegen::{
 };
 use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
-    RuntimeErrorSource, Thread, Word, alloc_code, enter_native, invoke_entry,
+    NativeError, NativeOperation, Thread, Word, alloc_code, enter_native, invoke_entry,
     invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
     thread_layout, tlab_bump, write_code,
 };
@@ -41,8 +41,9 @@ static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
 const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
-    let mut payload = None::<()>;
-    ctx.record_runtime_error_payload(RuntimeErrorSource::Object, &mut payload, ());
+    ctx.set_native_error(NativeError::ThreadNotRegistered {
+        operation: NativeOperation::Cons,
+    });
 }
 
 const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;

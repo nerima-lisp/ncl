@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 /// A collection of functions optimized together.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Module {
-    /// Functions indexed by their stable [`FunctionId`], not by vector position.
+    /// Functions indexed by their stable [`ncl_ir::FunctionId`], not by vector position.
     pub functions: Vec<Function>,
 }
 

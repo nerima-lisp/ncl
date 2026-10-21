@@ -3,11 +3,24 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, ObjectError, Runtime, ThreadContext,
-    Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name, symbol_plist,
+    BuiltinName, BuiltinPackage, FunctionObject, HandleVec, LambdaList, ObjectError, Runtime,
+    Scope, ThreadContext, Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name,
+    symbol_plist,
 };
 
-use crate::form::{list, symbol};
+use crate::form::{elements, list, symbol};
+
+#[path = "definition_support_defsetf.rs"]
+mod defsetf;
+use defsetf::declaration_form;
+
+pub fn defsetf_body_forms<'scope>(
+    scope: &mut Scope<'scope>,
+    runtime: &Runtime,
+    definitions: &HandleVec<'scope, Word>,
+) -> Result<HandleVec<'scope, Word>, ObjectError> {
+    defsetf::defsetf_body_forms(scope, runtime, definitions)
+}
 
 const CL: BuiltinPackage = BuiltinPackage::CommonLisp;
 
@@ -21,6 +34,10 @@ const PROPERTY: ncl_object::Parameter = ncl_object::Parameter {
 };
 const VALUE: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("VALUE"),
+    ty: ncl_object::ParameterType::Any,
+};
+const DOCUMENTATION_TYPE: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("DOCUMENTATION-TYPE"),
     ty: ncl_object::ParameterType::Any,
 };
 
@@ -83,7 +100,7 @@ fn set_macro_function_builtin(
     Ok(function)
 }
 
-fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
+pub fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
     checked_symbol(ctx, name)?;
     let mut plist = symbol_plist(ctx, name)?;
     while plist != Word::NIL {
@@ -110,6 +127,87 @@ fn get_builtin(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     get_property(ctx, args.required(0)?, args.required(1)?)
+}
+
+fn defsetf_documentation(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    mut name: Word,
+) -> Result<Word, ObjectError> {
+    ncl_object::with_root(ctx, &mut name, |ctx, name| {
+        let mut property = symbol(ctx, runtime, "NCL::DEFINITION")?;
+        ncl_object::with_root(ctx, &mut property, |ctx, property| {
+            let definition = get_property(ctx, *name, *property)?;
+            ncl_object::with_root(ctx, &mut definition.clone(), |ctx, definition| {
+                if *definition == Word::NIL {
+                    return Ok(Word::NIL);
+                }
+                let parts = elements(ctx, *definition)?;
+                ncl_object::with_roots(ctx, &parts, |ctx, roots| {
+                    let first = roots.first().ok_or(ObjectError::TypeError)?.get();
+                    if first != Word::NIL
+                        && matches!(
+                            ncl_object::classify_object(ctx, first),
+                            ncl_object::ObjectRef::Symbol(_)
+                        )
+                    {
+                        return roots.get(1).map_or(Ok(Word::NIL), |doc| {
+                            let word = doc.get();
+                            if matches!(
+                                ncl_object::classify_object(ctx, word),
+                                ncl_object::ObjectRef::String(_)
+                            ) {
+                                Ok(word)
+                            } else {
+                                Ok(Word::NIL)
+                            }
+                        });
+                    }
+                    let mut leading = true;
+                    for form in roots.iter().skip(2) {
+                        let word = form.get();
+                        if leading
+                            && matches!(
+                                ncl_object::classify_object(ctx, word),
+                                ncl_object::ObjectRef::String(_)
+                            )
+                        {
+                            return Ok(word);
+                        }
+                        if leading && declaration_form(ctx, runtime, word)? {
+                            continue;
+                        }
+                        leading = false;
+                    }
+                    Ok(Word::NIL)
+                })
+            })
+        })
+    })
+}
+
+fn documentation_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let name = checked_symbol(ctx, args.required(0)?)?;
+    let kind = args.required(1)?;
+    ncl_object::with_roots(ctx, &[name, kind], |ctx, roots| {
+        let mut setf = symbol(ctx, runtime, "SETF")?;
+        ncl_object::with_root(ctx, &mut setf, |ctx, setf| {
+            if roots.get(1).ok_or(ObjectError::TypeError)?.get() == *setf {
+                defsetf_documentation(
+                    ctx,
+                    runtime,
+                    roots.first().ok_or(ObjectError::TypeError)?.get(),
+                )
+            } else {
+                Ok(Word::NIL)
+            }
+        })
+    })
 }
 
 fn set_get_builtin(
@@ -311,6 +409,11 @@ pub fn register_runtime_support(
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
         ("GET", get_builtin, LambdaList::fixed(&[SYMBOL, PROPERTY])),
+        (
+            "DOCUMENTATION",
+            documentation_builtin,
+            LambdaList::fixed(&[SYMBOL, DOCUMENTATION_TYPE]),
+        ),
         (
             "NCL-EXT::GET-SET",
             set_get_builtin,

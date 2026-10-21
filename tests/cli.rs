@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[path = "cli/setf.rs"]
+mod setf;
+
 fn ncl() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
 }
@@ -161,20 +164,6 @@ fn evals_internal_time_constant_and_functions() {
         };
         assert!(ticks >= 0, "{source} returned negative time {ticks}");
     }
-}
-
-#[test]
-fn setf_get_retains_the_written_value_and_evaluates_place_once() {
-    let direct = output(ncl().args(["--eval", "(progn (setf (get 'x 'y) 42) (get 'x 'y))"]));
-    assert!(direct.status.success(), "{direct:?}");
-    assert_eq!(String::from_utf8_lossy(&direct.stdout).trim(), "42");
-
-    let output = output(ncl().args([
-        "--eval",
-        "(let ((n 0)) (setf (get (progn (incf n) 'foo) (progn (incf n) 'bar)) 7) (list n (get 'foo 'bar)))",
-    ]));
-    assert!(output.status.success(), "{output:?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "(2 7)");
 }
 
 #[test]

@@ -160,6 +160,166 @@ fn nth_place(
     })
 }
 
+fn elt_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 2 {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+        ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+            let temporary_variables = roots
+                .iter()
+                .map(|_| fresh_symbol(ctx, runtime))
+                .collect::<Result<Vec<_>, _>>()?;
+            ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
+                let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                let index = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                let mut access_form = call_form(ctx, runtime, "ELT", &[sequence, index])?;
+                ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                    let mut list_test = call_form(ctx, runtime, "LISTP", &[sequence])?;
+                    ncl_object::with_root(ctx, &mut list_test, |ctx, list_test| {
+                        let mut nthcdr_form =
+                            call_form(ctx, runtime, "NTHCDR", &[index, sequence])?;
+                        ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
+                            let mut mutate_form =
+                                call_form(ctx, runtime, "RPLACA", &[*nthcdr_form, *variable])?;
+                            ncl_object::with_root(ctx, &mut mutate_form, |ctx, mutate_form| {
+                                let mut list_store_form =
+                                    call_form(ctx, runtime, "PROGN", &[*mutate_form, *variable])?;
+                                ncl_object::with_root(
+                                    ctx,
+                                    &mut list_store_form,
+                                    |ctx, list_store_form| {
+                                        let mut vector_store_form = call_form(
+                                            ctx,
+                                            runtime,
+                                            "NCL-EXT::AREF-SET",
+                                            &[sequence, index, *variable],
+                                        )?;
+                                        ncl_object::with_root(
+                                            ctx,
+                                            &mut vector_store_form,
+                                            |ctx, vector_store_form| {
+                                                let mut branch = call_form(
+                                                    ctx,
+                                                    runtime,
+                                                    "IF",
+                                                    &[
+                                                        *list_test,
+                                                        *list_store_form,
+                                                        *vector_store_form,
+                                                    ],
+                                                )?;
+                                                ncl_object::with_root(
+                                                    ctx,
+                                                    &mut branch,
+                                                    |ctx, branch| {
+                                                        let store_form = call_form(
+                                                            ctx,
+                                                            runtime,
+                                                            "PROGN",
+                                                            &[*access_form, *branch],
+                                                        )?;
+                                                        Ok(SetfExpansion {
+                                                            temporary_variables: temporaries
+                                                                .iter()
+                                                                .map(|value| **value)
+                                                                .collect(),
+                                                            value_forms: roots
+                                                                .iter()
+                                                                .map(|value| **value)
+                                                                .collect(),
+                                                            store_variables: vec![*variable],
+                                                            store_form,
+                                                            access_form: *access_form,
+                                                        })
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    },
+                                )
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
+}
+
+fn subseq_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if !(2..=3).contains(&args.len()) {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+        ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+            let temporary_variables = roots
+                .iter()
+                .map(|_| fresh_symbol(ctx, runtime))
+                .collect::<Result<Vec<_>, _>>()?;
+            ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
+                let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                let start = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                let arguments = temporaries.iter().map(|value| **value).collect::<Vec<_>>();
+                let mut access_form = call_form(ctx, runtime, "SUBSEQ", &arguments)?;
+                ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                    let mut start_key = symbol(ctx, runtime, "KEYWORD::START")?;
+                    ncl_object::with_root(ctx, &mut start_key, |ctx, start_key| {
+                        let mut end_key = symbol(ctx, runtime, "KEYWORD::END")?;
+                        ncl_object::with_root(ctx, &mut end_key, |ctx, end_key| {
+                            let mut replace_args = vec![sequence, *variable, *start_key, start];
+                            if let Some(end) = temporaries.get(2) {
+                                replace_args.push(*end_key);
+                                replace_args.push(**end);
+                            }
+                            let mut replace_form =
+                                call_form(ctx, runtime, "REPLACE", &replace_args)?;
+                            ncl_object::with_root(ctx, &mut replace_form, |ctx, replace_form| {
+                                let store_form =
+                                    call_form(ctx, runtime, "PROGN", &[*replace_form, *variable])?;
+                                Ok(SetfExpansion {
+                                    temporary_variables: temporaries
+                                        .iter()
+                                        .map(|value| **value)
+                                        .collect(),
+                                    value_forms: roots.iter().map(|value| **value).collect(),
+                                    store_variables: vec![*variable],
+                                    store_form,
+                                    access_form: *access_form,
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
+}
+
+fn cadr_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let mut parent_form = call_form(ctx, runtime, "CDR", args)?;
+    ncl_object::with_root(ctx, &mut parent_form, |ctx, parent_form| {
+        mutator_place(ctx, runtime, &[*parent_form], "CAR", "RPLACA")
+    })
+}
+
 fn car_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -241,6 +401,9 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("FIRST", first_place as PlaceExpander),
         ("REST", rest_place as PlaceExpander),
         ("NTH", nth_place as PlaceExpander),
+        ("ELT", elt_place as PlaceExpander),
+        ("SUBSEQ", subseq_place as PlaceExpander),
+        ("CADR", cadr_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),

@@ -58,10 +58,13 @@ pub(crate) fn ensure_form_operator(
     parts: &[Word],
     name: &str,
 ) -> Result<(), ObjectError> {
-    if required(parts, 0)? != symbol(ctx, runtime, name)? {
-        return Err(ObjectError::TypeError);
-    }
-    Ok(())
+    let mut actual = required(parts, 0)?;
+    ncl_object::with_root(ctx, &mut actual, |ctx, actual| {
+        if actual.get() != symbol(ctx, runtime, name)? {
+            return Err(ObjectError::TypeError);
+        }
+        Ok(())
+    })
 }
 
 fn ensure_list(ctx: &mut ThreadContext, value: Word) -> Result<(), ObjectError> {
@@ -71,10 +74,14 @@ fn ensure_list(ctx: &mut ThreadContext, value: Word) -> Result<(), ObjectError> 
 pub(crate) fn quote(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    value: Word,
+    mut value: Word,
 ) -> Result<Word, ObjectError> {
-    let quote = symbol(ctx, runtime, "QUOTE")?;
-    list(ctx, runtime, &[quote, value])
+    ncl_object::with_root(ctx, &mut value, |ctx, value| {
+        let mut quote = symbol(ctx, runtime, "QUOTE")?;
+        ncl_object::with_root(ctx, &mut quote, |ctx, quote| {
+            list(ctx, runtime, &[quote.get(), value.get()])
+        })
+    })
 }
 
 fn progn_with_definition(
@@ -84,11 +91,25 @@ fn progn_with_definition(
     operation: Word,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, &[name, operation], |ctx, roots| {
-        let name = **roots.first().ok_or(ObjectError::TypeError)?;
-        let operation = **roots.get(1).ok_or(ObjectError::TypeError)?;
-        let progn = symbol(ctx, runtime, "PROGN")?;
-        let quoted_name = quote(ctx, runtime, name)?;
-        list(ctx, runtime, &[progn, operation, quoted_name])
+        let mut progn = symbol(ctx, runtime, "PROGN")?;
+        ncl_object::with_root(ctx, &mut progn, |ctx, progn| {
+            let mut quoted_name = quote(
+                ctx,
+                runtime,
+                roots.first().ok_or(ObjectError::TypeError)?.get(),
+            )?;
+            ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
+                list(
+                    ctx,
+                    runtime,
+                    &[
+                        progn.get(),
+                        roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                        quoted_name.get(),
+                    ],
+                )
+            })
+        })
     })
 }
 
@@ -122,11 +143,13 @@ fn property_definition(
     value: Word,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, &[name, value], |ctx, roots| {
-        let name = **roots.first().ok_or(ObjectError::TypeError)?;
-        let value = **roots.get(1).ok_or(ObjectError::TypeError)?;
         let mut get_symbol = symbol(ctx, runtime, "GET")?;
         ncl_object::with_root(ctx, &mut get_symbol, |ctx, get_symbol| {
-            let mut quoted_name = quote(ctx, runtime, name)?;
+            let mut quoted_name = quote(
+                ctx,
+                runtime,
+                roots.first().ok_or(ObjectError::TypeError)?.get(),
+            )?;
             ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
                 let property_symbol = symbol(ctx, runtime, property)?;
                 let mut quoted_property = quote(ctx, runtime, property_symbol)?;
@@ -135,13 +158,29 @@ fn property_definition(
                     // must be the quoted property symbol (a bare one would
                     // compile as a read of the variable of that name, which
                     // is never bound).
-                    let mut place =
-                        list(ctx, runtime, &[*get_symbol, *quoted_name, *quoted_property])?;
+                    let mut place = list(
+                        ctx,
+                        runtime,
+                        &[get_symbol.get(), quoted_name.get(), quoted_property.get()],
+                    )?;
                     ncl_object::with_root(ctx, &mut place, |ctx, place| {
                         let mut setf_symbol = symbol(ctx, runtime, "SETF")?;
                         ncl_object::with_root(ctx, &mut setf_symbol, |ctx, setf_symbol| {
-                            let operation = list(ctx, runtime, &[*setf_symbol, *place, value])?;
-                            progn_with_definition(ctx, runtime, name, operation)
+                            let operation = list(
+                                ctx,
+                                runtime,
+                                &[
+                                    setf_symbol.get(),
+                                    place.get(),
+                                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                                ],
+                            )?;
+                            progn_with_definition(
+                                ctx,
+                                runtime,
+                                roots.first().ok_or(ObjectError::TypeError)?.get(),
+                                operation,
+                            )
                         })
                     })
                 })
@@ -322,21 +361,31 @@ fn defsetf(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
-        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
+    ncl_object::with_roots(ctx, &parts, |ctx, roots| {
+        let parts = roots.iter().map(|value| value.get()).collect::<Vec<_>>();
         ensure_form_operator(ctx, runtime, &parts, "DEFSETF")?;
-        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
-        let definitions = parts.get(2..).ok_or(ObjectError::TypeError)?;
-        if definitions.is_empty() {
+        let name = roots.get(1).ok_or(ObjectError::TypeError)?.get();
+        ensure_symbol(ctx, name)?;
+        if roots.len() < 3 {
             return Err(ObjectError::TypeError);
         }
-        let definitions = definitions.to_vec();
         let mut quote_symbol = symbol(ctx, runtime, "QUOTE")?;
         ncl_object::with_root(ctx, &mut quote_symbol, |ctx, quote_symbol| {
+            let definitions = roots
+                .iter()
+                .skip(2)
+                .map(|value| value.get())
+                .collect::<Vec<_>>();
             let mut definition = list(ctx, runtime, &definitions)?;
             ncl_object::with_root(ctx, &mut definition, |ctx, definition| {
-                let value = list(ctx, runtime, &[*quote_symbol, *definition])?;
-                property_definition(ctx, runtime, name, DEFINITION_PROPERTY, value)
+                let value = list(ctx, runtime, &[quote_symbol.get(), definition.get()])?;
+                property_definition(
+                    ctx,
+                    runtime,
+                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                    DEFINITION_PROPERTY,
+                    value,
+                )
             })
         })
     })

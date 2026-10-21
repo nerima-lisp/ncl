@@ -44,6 +44,9 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     place!("FIRST", [list_symbol]);
     place!("REST", [list_symbol]);
     place!("NTH", [Word::fixnum(0), list_symbol]);
+    place!("ELT", [list_symbol, Word::fixnum(0)]);
+    place!("SUBSEQ", [list_symbol, Word::fixnum(0), Word::fixnum(1)]);
+    place!("CADR", [list_symbol]);
     place!("SYMBOL-VALUE", [var_symbol]);
     place!("SBIT", [var_symbol, Word::fixnum(0)]);
     cases.push(var_symbol);

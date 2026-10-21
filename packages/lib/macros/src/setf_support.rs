@@ -1,5 +1,5 @@
 use crate::{PlaceRegistry, SetfExpansion, expand_get_setf_expansion, list};
-use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{HeapRootedWord, ObjectError, Runtime, ThreadContext, Word};
 
 pub fn expansion_values(
     ctx: &mut ThreadContext,
@@ -10,13 +10,28 @@ pub fn expansion_values(
         ctx,
         expansion,
         |ctx, temporary, value_forms, store, store_form, access_form| {
-            let mut temporary = list(ctx, runtime, temporary)?;
+            let temporary_words = temporary
+                .iter()
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
+            let mut temporary = list(ctx, runtime, &temporary_words)?;
             ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-                let mut value_forms = list(ctx, runtime, value_forms)?;
+                let value_words = value_forms
+                    .iter()
+                    .map(HeapRootedWord::get)
+                    .collect::<Vec<_>>();
+                let mut value_forms = list(ctx, runtime, &value_words)?;
                 ncl_object::with_root(ctx, &mut value_forms, |ctx, value_forms| {
-                    let mut store = list(ctx, runtime, store)?;
+                    let store_words = store.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+                    let mut store = list(ctx, runtime, &store_words)?;
                     ncl_object::with_root(ctx, &mut store, |_, store| {
-                        Ok([*temporary, *value_forms, *store, store_form, access_form])
+                        Ok([
+                            *temporary,
+                            *value_forms,
+                            *store,
+                            store_form.get(),
+                            access_form.get(),
+                        ])
                     })
                 })
             })
@@ -37,7 +52,14 @@ pub fn get_setf_expansion_values(
 pub fn with_expansion_roots<T>(
     ctx: &mut ThreadContext,
     expansion: &SetfExpansion,
-    f: impl FnOnce(&mut ThreadContext, &[Word], &[Word], &[Word], Word, Word) -> Result<T, ObjectError>,
+    f: impl FnOnce(
+        &mut ThreadContext,
+        &[HeapRootedWord],
+        &[HeapRootedWord],
+        &[HeapRootedWord],
+        &HeapRootedWord,
+        &HeapRootedWord,
+    ) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
     if expansion.temporary_variables.len() != expansion.value_forms.len()
         || expansion.store_variables.len() != 1
@@ -53,40 +75,20 @@ pub fn with_expansion_roots<T>(
     words.extend_from_slice(&expansion.store_variables);
     words.push(expansion.store_form);
     words.push(expansion.access_form);
-    ncl_object::with_roots(ctx, &words, |ctx, roots| {
-        let temporary = roots
-            .get(..temporary_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|root| **root)
-            .collect::<Vec<_>>();
+    ncl_object::with_heap_rooted_slice(ctx, &words, |ctx, roots| {
+        let temporary = roots.get(..temporary_len).ok_or(ObjectError::TypeError)?;
         let values = roots
             .get(temporary_len..temporary_len + value_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|root| **root)
-            .collect::<Vec<_>>();
+            .ok_or(ObjectError::TypeError)?;
         let stores = roots
             .get(temporary_len + value_len..temporary_len + value_len + store_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|root| **root)
-            .collect::<Vec<_>>();
-        let store_form = **roots
+            .ok_or(ObjectError::TypeError)?;
+        let store_form = roots
             .get(temporary_len + value_len + store_len)
             .ok_or(ObjectError::TypeError)?;
-        let access_form = **roots
+        let access_form = roots
             .get(temporary_len + value_len + store_len + 1)
             .ok_or(ObjectError::TypeError)?;
-        ncl_object::with_roots(ctx, &[store_form, access_form], |ctx, fixed| {
-            f(
-                ctx,
-                &temporary,
-                &values,
-                &stores,
-                **fixed.first().ok_or(ObjectError::TypeError)?,
-                **fixed.get(1).ok_or(ObjectError::TypeError)?,
-            )
-        })
+        f(ctx, temporary, values, stores, store_form, access_form)
     })
 }

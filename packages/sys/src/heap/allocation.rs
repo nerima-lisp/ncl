@@ -266,7 +266,7 @@ impl Heap {
         {
             thread.publish_snapshot();
         }
-        let pointer = std::ptr::from_mut(thread).addr();
+        let pointer = std::ptr::from_mut(thread).expose_provenance();
         loop {
             let observed_generation = *self
                 .slow_path_generation

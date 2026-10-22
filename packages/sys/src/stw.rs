@@ -14,7 +14,8 @@ impl StopWorld {
         self.parked.clone_from(&self.gate_parked);
         self.parked.retain(|pointer| {
             // SAFETY: gate waiters remain registered until their entry is removed under this lock.
-            unsafe { (&*(*pointer as *const Thread)).native_state() != NativeState::Native }
+            let thread = std::ptr::with_exposed_provenance::<Thread>(*pointer);
+            unsafe { (&*thread).native_state() != NativeState::Native }
         });
     }
 }
@@ -35,7 +36,7 @@ impl Heap {
     }
 
     pub(crate) fn poll_thread(&self, thread: &mut Thread) {
-        let pointer = std::ptr::from_mut(thread) as usize;
+        let pointer = std::ptr::from_mut(thread).expose_provenance();
         let mut stop_world = self
             .stop_world
             .lock()
@@ -74,7 +75,7 @@ impl Heap {
         if thread.native_state() != crate::NativeState::Native {
             stop_world
                 .parked
-                .insert(std::ptr::from_mut(thread) as usize);
+                .insert(std::ptr::from_mut(thread).expose_provenance());
         }
         while stop_world.parked.len() < self.active_mutators() {
             stop_world = self

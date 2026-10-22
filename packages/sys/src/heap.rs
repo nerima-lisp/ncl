@@ -245,8 +245,8 @@ impl Heap {
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world.parked.remove(&(pointer as usize));
-        stop_world.gate_parked.remove(&(pointer as usize));
+        stop_world.parked.remove(&pointer.expose_provenance());
+        stop_world.gate_parked.remove(&pointer.expose_provenance());
         drop(stop_world);
 
         let mut state = self.lock_state();

@@ -4,15 +4,12 @@
 )]
 
 use super::fill_objects;
+use crate::image_builtin_support::{BUILTIN, BUILTIN_ID, BUILTIN_NAME, image_builtin};
 use crate::record::{BuiltinIdentity, Record, Ref};
-use image_builtin_support::{BUILTIN, BUILTIN_ID, BUILTIN_NAME, image_builtin};
 use ncl_object::{
     BuiltinImplementation, Function, Runtime, ThreadContext, Word, function_entry, function_name,
     function_offset,
 };
-
-#[path = "../tests/support/image_builtin.rs"]
-mod image_builtin_support;
 
 #[test]
 fn builtin_fill_skips_registered_object_even_without_descriptor_lookup() {

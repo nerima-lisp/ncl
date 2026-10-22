@@ -14,9 +14,7 @@ use ncl_object::{
     simple_vector_ref,
 };
 
-#[path = "../tests/support/image_builtin.rs"]
-mod image_builtin_support;
-use image_builtin_support::{BUILTIN, BUILTIN_ID, image_builtin};
+use crate::image_builtin_support::{BUILTIN, BUILTIN_ID, BUILTIN_NAME, image_builtin};
 
 fn object_root(image: &ImageFile, index: usize) -> &Record {
     let Ref::Object(id) = image.roots[index] else {
@@ -263,7 +261,7 @@ fn registered_builtin_capture_zeros_the_entry() -> Result<(), crate::ImageError>
             entry: 0,
             builtin: Some(identity),
             ..
-        } if identity.package == "NCL-TEST" && identity.name == image_builtin_support::BUILTIN_NAME
+        } if identity.package == "NCL-TEST" && identity.name == BUILTIN_NAME
     )));
     Ok(())
 }

@@ -54,6 +54,10 @@ mod register;
 mod restore;
 mod save;
 
+#[cfg(test)]
+#[path = "../tests/support/image_builtin.rs"]
+mod image_builtin_support;
+
 pub use code::CodeImage;
 pub use error::ImageError;
 pub use register::register;

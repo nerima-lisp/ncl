@@ -2,11 +2,8 @@
 
 use super::{FORMAT_VERSION, Reader, get_record};
 use crate::ImageError;
-use image_builtin_support::{BUILTIN, BUILTIN_ID, image_builtin};
+use crate::image_builtin_support::{BUILTIN, BUILTIN_ID, image_builtin};
 use ncl_object::{BuiltinImplementation, Runtime, ThreadContext};
-
-#[path = "../tests/support/image_builtin.rs"]
-mod image_builtin_support;
 
 fn registered_builtin_image() -> Vec<u8> {
     let runtime = Runtime::new().unwrap();

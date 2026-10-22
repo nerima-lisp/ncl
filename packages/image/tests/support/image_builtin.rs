@@ -3,15 +3,15 @@ use ncl_object::{
     LambdaList, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
 };
 
-pub(crate) const BUILTIN_NAME: &str = "IMAGE-ROUND-TRIP";
-pub(crate) const BUILTIN_ID: BuiltinIdentifier =
+pub const BUILTIN_NAME: &str = "IMAGE-ROUND-TRIP";
+pub const BUILTIN_ID: BuiltinIdentifier =
     BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new(BUILTIN_NAME));
-pub(crate) const BUILTIN: Builtin = Builtin {
+pub const BUILTIN: Builtin = Builtin {
     lambda_list: LambdaList::fixed(&[]),
     convention: BuiltinConvention::Direct(Arity::exact(0)),
 };
 
-pub(crate) const fn image_builtin(
+pub const fn image_builtin(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,

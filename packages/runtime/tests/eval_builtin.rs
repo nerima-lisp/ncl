@@ -36,6 +36,24 @@ fn eval_preserves_zero_one_and_multiple_values_through_the() {
 }
 
 #[test]
+fn eval_multiple_value_prog1_preserves_all_values() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(multiple-value-list (eval '(multiple-value-prog1 (values 1 2) nil)))")
+        .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(1 2)");
+}
+
+#[test]
+fn eval_unwind_protect_preserves_all_values() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(multiple-value-list (eval '(unwind-protect (values 1 2) nil)))")
+        .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(1 2)");
+}
+
+#[test]
 fn eval_undefined_function_is_caught_by_ignore_errors() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let value = runtime

@@ -159,6 +159,28 @@ pub fn compile_function_x86_64(
     function: &Function,
     abi: &dyn RuntimeAbi,
 ) -> Result<CompiledFunction, CodegenError> {
+    compile_function_x86_64_with_multiple_values(function, abi, false)
+}
+
+/// Lowers an EVAL-compiled IR function while preserving its published value count.
+///
+/// # Errors
+///
+/// Returns [`CodegenError`] when the function cannot be represented by the
+/// fixed frame and instruction templates.
+pub fn compile_function_x86_64_preserving_multiple_values(
+    function: &Function,
+    abi: &dyn RuntimeAbi,
+) -> Result<CompiledFunction, CodegenError> {
+    compile_function_x86_64_with_multiple_values(function, abi, true)
+}
+
+#[allow(clippy::too_many_lines)]
+fn compile_function_x86_64_with_multiple_values(
+    function: &Function,
+    abi: &dyn RuntimeAbi,
+    preserve_multiple_values: bool,
+) -> Result<CompiledFunction, CodegenError> {
     let Some(_entry) = function.blocks.first() else {
         return Err(CodegenError::EmptyFunction);
     };
@@ -428,6 +450,7 @@ pub fn compile_function_x86_64(
                     &value_slots,
                     abi,
                     &labels,
+                    preserve_multiple_values,
                 )?;
             }
             Terminator::CallReturn {
@@ -461,6 +484,7 @@ pub fn compile_function_x86_64(
                     &value_slots,
                     abi,
                     &labels,
+                    false,
                 )?;
             }
             Terminator::Unreachable => {

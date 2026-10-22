@@ -119,35 +119,7 @@ impl Context<'_> {
         let mut values = Vec::with_capacity(arguments.len());
         for argument in arguments {
             self.lower_expr(f, argument)?;
-            let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "CAPTURE-MULTIPLE-VALUES"))?;
-            let helper = f.one(
-                OpKind::LoadField {
-                    object: helper,
-                    field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
-                        LowerError::Ir {
-                            detail: "function symbol offset does not fit u32".to_owned(),
-                        }
-                    })?,
-                },
-                Ty::Word,
-            )?;
-            let zero = f.fixnum(0)?;
-            let zero = f.one(
-                OpKind::Convert {
-                    op: Convert::I64ToWord,
-                    value: zero,
-                },
-                Ty::Word,
-            )?;
-            f.safepoint()?;
-            values.push(f.one(
-                OpKind::CallClosure {
-                    closure: helper,
-                    args: vec![zero],
-                    named_symbol: None,
-                },
-                Ty::Word,
-            )?);
+            values.push(self.capture_multiple_values(f)?);
         }
         let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "MULTIPLE-VALUE-CALL-LIST"))?;
         let helper = f.one(
@@ -180,6 +152,78 @@ impl Context<'_> {
                 closure: helper,
                 args: call_args,
                 named_symbol: None,
+            },
+            Ty::Word,
+        )
+    }
+
+    pub(super) fn capture_multiple_values(
+        &mut self,
+        f: &mut FunctionLowerer,
+    ) -> Result<ValueId, LowerError> {
+        let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "CAPTURE-MULTIPLE-VALUES"))?;
+        let helper = f.one(
+            OpKind::LoadField {
+                object: helper,
+                field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                    LowerError::Ir {
+                        detail: "function symbol offset does not fit u32".to_owned(),
+                    }
+                })?,
+            },
+            Ty::Word,
+        )?;
+        let zero = f.fixnum(0)?;
+        let zero = f.one(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: zero,
+            },
+            Ty::Word,
+        )?;
+        f.safepoint()?;
+        f.one(
+            OpKind::CallClosure {
+                closure: helper,
+                args: vec![zero],
+                named_symbol: None,
+            },
+            Ty::Word,
+        )
+    }
+
+    pub(super) fn restore_multiple_values(
+        &mut self,
+        f: &mut FunctionLowerer,
+        values: ValueId,
+    ) -> Result<ValueId, LowerError> {
+        let name = SymbolRef::interned("COMMON-LISP", "VALUES-LIST");
+        let symbol = f.symbol(&name)?;
+        let function = f.one(
+            OpKind::LoadField {
+                object: symbol,
+                field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(|_| {
+                    LowerError::Ir {
+                        detail: "function symbol offset does not fit u32".to_owned(),
+                    }
+                })?,
+            },
+            Ty::Word,
+        )?;
+        let raw_argc = f.fixnum(1)?;
+        let argc = f.one(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: raw_argc,
+            },
+            Ty::Word,
+        )?;
+        f.safepoint()?;
+        f.one(
+            OpKind::CallClosure {
+                closure: function,
+                args: vec![argc, values],
+                named_symbol: Some(symbol),
             },
             Ty::Word,
         )
@@ -249,7 +293,11 @@ impl Context<'_> {
                 });
             }
             bind_required(&mut nested, &definition.lambda.lambda_list, 1)?;
-            let mut child = Context::with_targets(self.module, self.targets.clone());
+            let mut child = Context::with_targets(
+                self.module,
+                self.targets.clone(),
+                self.preserve_multiple_values,
+            );
             child.bind_optional(&mut nested, &definition.lambda.lambda_list, 1)?;
             child.bind_rest_and_keys(&mut nested, &definition.lambda.lambda_list)?;
             child.bind_aux(&mut nested, &definition.lambda.lambda_list)?;

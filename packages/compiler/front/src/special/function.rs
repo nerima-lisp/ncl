@@ -7,6 +7,7 @@ use ncl_object::{Word, car};
 use crate::ast::{Expr, FunctionDesignator};
 use crate::error::FrontError;
 use crate::expand::FormExpander;
+use crate::literal::Literal;
 use crate::special::{self, SpecialForm};
 use crate::types::TypeSpecifier;
 
@@ -80,7 +81,12 @@ fn the(expander: &mut FormExpander<'_>, kind: SpecialForm, form: Word) -> Result
     let [type_form, value] = arguments.as_slice() else {
         return Err(special::arity(kind, "a type and a form", arguments.len()));
     };
-    let type_specifier = TypeSpecifier::new(expander.datum(*type_form)?);
+    let type_form = if *type_form == Word::TRUE {
+        Literal::T
+    } else {
+        expander.datum(*type_form)?
+    };
+    let type_specifier = TypeSpecifier::new(type_form);
     let value = expander.expand(*value)?;
     Ok(Expr::The {
         type_specifier,

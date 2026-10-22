@@ -11,6 +11,7 @@
 
 use ncl_codegen::{
     Aarch64Abi, ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64,
+    compile_function_aarch64_preserving_multiple_values,
 };
 use ncl_ir::{Compare, Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
@@ -293,6 +294,50 @@ fn executes_fixnum_add_of_two_arguments() {
     );
     assert_eq!(value, Word::fixnum(3).bits());
     assert_eq!(count, 1);
+}
+
+#[test]
+fn eval_return_preserves_an_explicit_zero_value_count() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(32),
+        "eval-zero-values",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let nil_constant = builder.add_constant(Constant::Nil);
+    let nil = builder
+        .push_op(
+            OpKind::Const {
+                result: nil_constant,
+            },
+            &[Ty::Word],
+        )
+        .expect("nil constant")[0];
+    builder
+        .push_op(OpKind::SetMultipleValues { values: Vec::new() }, &[])
+        .expect("zero multiple values");
+    builder
+        .terminate(Terminator::Return { values: vec![nil] })
+        .expect("return terminator");
+
+    let compiled =
+        compile_function_aarch64_preserving_multiple_values(&builder.finish(), &Aarch64Abi)
+            .expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        0,
+        [0; 4],
+        0,
+    );
+
+    assert_eq!(value, Word::NIL.bits());
+    assert_eq!(count, 0);
 }
 
 #[test]

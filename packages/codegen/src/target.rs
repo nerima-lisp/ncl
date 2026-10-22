@@ -84,4 +84,6 @@ impl TargetIsa for AArch64TargetIsa {
 
 #[path = "target_aarch64.rs"]
 mod target_aarch64;
-pub use target_aarch64::compile_function_aarch64;
+pub use target_aarch64::{
+    compile_function_aarch64, compile_function_aarch64_preserving_multiple_values,
+};

@@ -45,8 +45,13 @@ pub use safepoint::{
     FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
     SafepointMap,
 };
-pub use target::{AArch64TargetIsa, TargetIsa, compile_function_aarch64};
-pub use target_x86_64::compile_function_x86_64;
+pub use target::{
+    AArch64TargetIsa, TargetIsa, compile_function_aarch64,
+    compile_function_aarch64_preserving_multiple_values,
+};
+pub use target_x86_64::{
+    compile_function_x86_64, compile_function_x86_64_preserving_multiple_values,
+};
 pub use templates::TemplateKind;
 
 pub(crate) fn checked_u32(value: usize) -> Result<u32, CodegenError> {

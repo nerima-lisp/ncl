@@ -6,7 +6,7 @@ use fixture::X86_64FixtureAbi;
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
 use ncl_codegen::{
     AbiError, Allocation, AllocationTarget, ContextField, Location, RuntimeAbi, RuntimeFunction,
-    allocate, compile_function_x86_64,
+    allocate, compile_function_x86_64, compile_function_x86_64_preserving_multiple_values,
 };
 use ncl_ir::{
     Constant, Convert, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
@@ -307,6 +307,44 @@ fn x86_64_set_multiple_values_stores_distinct_consecutive_values_and_count() {
         &compiled.code,
         &expected_stores,
         "SetMultipleValues must load each input, store adjacent slots, and set count to two",
+    );
+}
+
+#[test]
+fn x86_64_eval_return_reads_the_published_multiple_value_count() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(221),
+        "eval-multiple-values",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let first = add_fixnum_word(&mut builder, 11);
+    let second = add_fixnum_word(&mut builder, 22);
+    builder
+        .push_op(
+            OpKind::SetMultipleValues {
+                values: vec![first, second],
+            },
+            &[],
+        )
+        .expect("set multiple values");
+    builder
+        .terminate(Terminator::Return {
+            values: vec![first],
+        })
+        .expect("return first value");
+
+    let compiled =
+        compile_function_x86_64_preserving_multiple_values(&builder.finish(), &X86_64FixtureAbi)
+            .expect("EVAL return lowers");
+    let layout = ncl_sys::thread_layout();
+    let count = i32::try_from(layout.mv_count).expect("multiple-value count offset fits");
+    let expected_count_load = encode([Inst::MovRM(Reg::Rdx, Mem::base(Reg::R15, count))]);
+
+    assert_contains(
+        &compiled.code,
+        &expected_count_load,
+        "EVAL return must read the published multiple-value count",
     );
 }
 

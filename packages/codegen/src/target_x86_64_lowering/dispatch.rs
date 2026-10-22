@@ -34,30 +34,54 @@ fn emit_epilogue(
     abi: &dyn RuntimeAbi,
     values: &[ValueId],
     preserve_mv_count: bool,
+    dynamic_mv_count: bool,
 ) -> Result<(), CodegenError> {
-    store_return_values(assembler, slots, values, abi)?;
-    if let Some(value) = values.first() {
-        load_slot(assembler, slots, *value, super::RETURN_VALUE)?;
-    } else {
-        load_immediate(
-            assembler,
-            super::RETURN_VALUE,
-            i64::from_ne_bytes(ncl_sys::Word::ZERO.bits().to_ne_bytes()),
-        )?;
-    }
-    load_immediate(
-        assembler,
-        super::VALUE_COUNT,
-        i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
-    )?;
-    if !preserve_mv_count {
+    if dynamic_mv_count {
+        if let Some(value) = values.first() {
+            load_slot(assembler, slots, *value, super::RETURN_VALUE)?;
+        } else {
+            load_immediate(
+                assembler,
+                super::RETURN_VALUE,
+                i64::from_ne_bytes(ncl_sys::Word::ZERO.bits().to_ne_bytes()),
+            )?;
+        }
         emit(
             assembler,
-            Inst::MovMR(
-                context_mem(abi, ContextField::MultipleValueCount)?,
+            Inst::MovMR(mv_area_mem(abi, 0)?, super::RETURN_VALUE),
+        )?;
+        emit(
+            assembler,
+            Inst::MovRM(
                 super::VALUE_COUNT,
+                context_mem(abi, ContextField::MultipleValueCount)?,
             ),
         )?;
+    } else {
+        store_return_values(assembler, slots, values, abi)?;
+        if let Some(value) = values.first() {
+            load_slot(assembler, slots, *value, super::RETURN_VALUE)?;
+        } else {
+            load_immediate(
+                assembler,
+                super::RETURN_VALUE,
+                i64::from_ne_bytes(ncl_sys::Word::ZERO.bits().to_ne_bytes()),
+            )?;
+        }
+        load_immediate(
+            assembler,
+            super::VALUE_COUNT,
+            i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+        )?;
+        if !preserve_mv_count {
+            emit(
+                assembler,
+                Inst::MovMR(
+                    context_mem(abi, ContextField::MultipleValueCount)?,
+                    super::VALUE_COUNT,
+                ),
+            )?;
+        }
     }
     super::restore_callee_saved_registers(assembler, slots.callee_saved_base)?;
     emit(assembler, Inst::MovRR(Reg::Rsp, super::FRAME_POINTER))?;
@@ -164,6 +188,7 @@ pub fn lower_return_or_throw(
     slots: &super::ValueSlots,
     abi: &dyn RuntimeAbi,
     labels: &HashMap<BlockId, Label>,
+    preserve_multiple_values: bool,
 ) -> Result<(), CodegenError> {
     let normal = assembler.new_label();
     emit(
@@ -176,9 +201,16 @@ pub fn lower_return_or_throw(
     emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
     emit(assembler, Inst::Jcc(Cond::E, normal))?;
     try_dispatch_candidates(assembler, function, block, slots, abi, labels)?;
-    emit_epilogue(assembler, slots, abi, &[], true)?;
+    emit_epilogue(assembler, slots, abi, &[], true, false)?;
     assembler.bind(normal);
-    emit_epilogue(assembler, slots, abi, values.unwrap_or(&[]), false)
+    emit_epilogue(
+        assembler,
+        slots,
+        abi,
+        values.unwrap_or(&[]),
+        false,
+        preserve_multiple_values,
+    )
 }
 
 /// Return address metadata for a helper call after its error and non-local-exit
@@ -279,7 +311,7 @@ pub(super) fn lower_runtime_error_check(
     emit(assembler, Inst::Jmp(normal))?;
 
     assembler.bind(error_without_non_local_exit);
-    emit_epilogue(assembler, slots, abi, &[], false)?;
+    emit_epilogue(assembler, slots, abi, &[], false, false)?;
 
     assembler.bind(normal);
     Ok(())
@@ -305,7 +337,7 @@ pub fn lower_pending_check(
     emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
     emit(assembler, Inst::Jcc(Cond::E, normal))?;
     try_dispatch_candidates(assembler, function, block, slots, abi, labels)?;
-    emit_epilogue(assembler, slots, abi, &[], true)?;
+    emit_epilogue(assembler, slots, abi, &[], true, false)?;
     assembler.bind(normal);
     Ok(())
 }

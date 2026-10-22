@@ -69,12 +69,32 @@ pub struct Lowered {
 ///
 /// Returns [`LowerError`] when a form has no `ncl-ir` representation.
 pub fn lower_toplevel(expr: &Expr) -> Result<Lowered, LowerError> {
+    lower_toplevel_with_multiple_values(expr, false)
+}
+
+/// Lower one form while preserving the dynamic multiple-value count for `EVAL`.
+///
+/// Before each expression, the lowering publishes the ordinary one-value
+/// default. An explicit multiple-value operation can replace that count, which
+/// the runtime's EVAL-only return path reads when the generated function exits.
+///
+/// # Errors
+///
+/// Returns [`LowerError`] when a form has no `ncl-ir` representation.
+pub fn lower_toplevel_for_eval(expr: &Expr) -> Result<Lowered, LowerError> {
+    lower_toplevel_with_multiple_values(expr, true)
+}
+
+fn lower_toplevel_with_multiple_values(
+    expr: &Expr,
+    preserve_multiple_values: bool,
+) -> Result<Lowered, LowerError> {
     let mut module = function::Lowerer::new();
     let mut entry = function::FunctionLowerer::entry("toplevel");
     // Function zero is the entry function. Reserve it before allocating nested
     // function identities for FunctionEntry constants.
     let _entry_id = module.fresh_function();
-    let mut lowering = v2::Context::new(&mut module);
+    let mut lowering = v2::Context::new(&mut module, preserve_multiple_values);
     let value = lowering.lower_expr(&mut entry, expr)?;
     entry.return_value(value)?;
     let mut entry_function = entry.into_function();

@@ -122,43 +122,68 @@ pub(super) fn emit_epilogue(
     body_bytes: u32,
     values: &[ValueId],
     preserve_mv_count: bool,
+    dynamic_mv_count: bool,
 ) -> Result<(), CodegenError> {
-    if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
-        return Err(CodegenError::MultipleValueAreaOverflow {
-            count: values.len(),
-            capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
-        });
-    }
-    for (index, value) in values.iter().copied().enumerate() {
-        load_value(assembler, allocation, value, Reg(16))?;
-        let index = i32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?;
+    if dynamic_mv_count {
+        if let Some(value) = values.first() {
+            load_value(assembler, allocation, *value, Reg(0))?;
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::ZERO.bits()) {
+                emit(assembler, instruction)?;
+            }
+        }
         emit(
             assembler,
             Inst::Str {
-                rt: Reg(16),
-                mem: mv_area_mem(abi, index)?,
+                rt: Reg(0),
+                mem: mv_area_mem(abi, 0)?,
             },
         )?;
-    }
-    if let Some(value) = values.first() {
-        load_value(assembler, allocation, *value, Reg(0))?;
-    } else {
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::ZERO.bits()) {
-            emit(assembler, instruction)?;
-        }
-    }
-    let count = u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
-        emit(assembler, instruction)?;
-    }
-    if !preserve_mv_count {
         emit(
             assembler,
-            Inst::Str {
+            Inst::Ldr {
                 rt: Reg(1),
                 mem: context_mem(abi, ContextField::MultipleValueCount)?,
             },
         )?;
+    } else {
+        if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
+            return Err(CodegenError::MultipleValueAreaOverflow {
+                count: values.len(),
+                capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
+            });
+        }
+        for (index, value) in values.iter().copied().enumerate() {
+            load_value(assembler, allocation, value, Reg(16))?;
+            let index = i32::try_from(index).map_err(|_| CodegenError::FrameOverflow)?;
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(16),
+                    mem: mv_area_mem(abi, index)?,
+                },
+            )?;
+        }
+        if let Some(value) = values.first() {
+            load_value(assembler, allocation, *value, Reg(0))?;
+        } else {
+            for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::ZERO.bits()) {
+                emit(assembler, instruction)?;
+            }
+        }
+        let count = u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), count) {
+            emit(assembler, instruction)?;
+        }
+        if !preserve_mv_count {
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(1),
+                    mem: context_mem(abi, ContextField::MultipleValueCount)?,
+                },
+            )?;
+        }
     }
     if body_bytes > 0 {
         if body_bytes <= 4095 {
@@ -328,6 +353,7 @@ pub fn lower_return_or_throw(
     abi: &dyn RuntimeAbi,
     body_bytes: u32,
     labels: &HashMap<BlockId, Label>,
+    preserve_multiple_values: bool,
 ) -> Result<(), CodegenError> {
     lower_runtime_error_check(assembler, allocation, abi, body_bytes)?;
     let normal = assembler.new_label();
@@ -348,7 +374,7 @@ pub fn lower_return_or_throw(
     try_dispatch_candidates(
         assembler, function, block, allocation, abi, body_bytes, labels,
     )?;
-    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true, false)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
@@ -359,6 +385,7 @@ pub fn lower_return_or_throw(
         body_bytes,
         values.unwrap_or(&[]),
         false,
+        preserve_multiple_values,
     )
 }
 
@@ -400,7 +427,7 @@ pub fn lower_pending_check(
     try_dispatch_candidates(
         assembler, function, block, allocation, abi, body_bytes, labels,
     )?;
-    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true)?;
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], true, false)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))
@@ -465,7 +492,7 @@ fn lower_runtime_error_check(
     assembler
         .bind(error_without_non_local_exit)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
-    emit_epilogue(assembler, allocation, abi, body_bytes, &[], false)?;
+    emit_epilogue(assembler, allocation, abi, body_bytes, &[], false, false)?;
     assembler
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))

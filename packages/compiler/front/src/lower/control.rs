@@ -450,6 +450,11 @@ impl Context<'_> {
             .collect::<Vec<_>>();
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
+        let saved_values = if normal_path && self.preserve_multiple_values {
+            Some(self.capture_multiple_values(f)?)
+        } else {
+            None
+        };
         let merge = self.block(f, vec![(Ty::Word, result)]);
         if normal_path {
             f.position(body_end)?;
@@ -460,12 +465,17 @@ impl Context<'_> {
                 }
             }
             if !f.is_terminated() {
-                f.none(OpKind::SetMultipleValues {
-                    values: vec![value],
-                })?;
+                let result = if let Some(saved_values) = saved_values {
+                    self.restore_multiple_values(f, saved_values)?
+                } else {
+                    f.none(OpKind::SetMultipleValues {
+                        values: vec![value],
+                    })?;
+                    value
+                };
                 f.terminate(Terminator::Jump {
                     target: merge,
-                    args: vec![value],
+                    args: vec![result],
                 })?;
             }
         }

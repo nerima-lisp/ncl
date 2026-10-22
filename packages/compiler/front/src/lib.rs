@@ -47,7 +47,7 @@ pub use error::FrontError;
 pub use expand::{Body, FormExpander, LambdaListKind};
 pub use lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 pub use literal::{Literal, NumberLiteral};
-pub use lower::{LowerError, Lowered, lower_toplevel};
+pub use lower::{LowerError, Lowered, lower_toplevel, lower_toplevel_for_eval};
 pub use macro_caller::MacroCaller;
 pub use register::{owned_symbol_count, register};
 pub use special::SpecialForm;

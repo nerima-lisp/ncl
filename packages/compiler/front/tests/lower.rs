@@ -11,7 +11,7 @@ mod forms;
 
 use forms::Fixture;
 
-use ncl_compiler_front::lower_toplevel;
+use ncl_compiler_front::{lower_toplevel, lower_toplevel_for_eval};
 use ncl_ir::{Compare, Constant, Function, HandlerKind, OpKind, Terminator, verify};
 use ncl_object::Word;
 
@@ -36,6 +36,27 @@ fn any_terminator(function: &Function, predicate: impl Fn(&Terminator) -> bool) 
         .blocks
         .iter()
         .any(|block| predicate(&block.terminator))
+}
+
+#[test]
+fn eval_lowering_publishes_single_value_defaults_in_nested_functions() {
+    let mut fx = Fixture::new();
+    let lambda_symbol = fx.cl("LAMBDA");
+    let lambda = fx.list(&[lambda_symbol, Word::NIL, Word::fixnum(17)]);
+    let expr = fx.expand(lambda).expect("expand lambda");
+
+    let ordinary = lower_toplevel(&expr).expect("ordinary lower");
+    let eval = lower_toplevel_for_eval(&expr).expect("EVAL lower");
+
+    let is_value_default =
+        |kind: &OpKind| matches!(kind, OpKind::SetMultipleValues { values } if values.len() == 1);
+    assert!(
+        !any_op(&ordinary.entry, is_value_default),
+        "ordinary lowering does not publish EVAL return state"
+    );
+    assert!(any_op(&eval.entry, is_value_default));
+    assert_eq!(eval.nested.len(), 1);
+    assert!(any_op(&eval.nested[0], is_value_default));
 }
 
 /// Rule: a variable captured and assigned by two closures is boxed in one cell.

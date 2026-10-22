@@ -41,21 +41,27 @@ pub(super) struct Context<'a> {
     active: Vec<HandlerRegionId>,
     blocks: Vec<BlockId>,
     targets: Vec<NonLocalTarget>,
+    preserve_multiple_values: bool,
     next_region: u32,
 }
 
 impl<'a> Context<'a> {
-    pub(super) fn new(module: &'a mut Lowerer) -> Self {
-        Self::with_targets(module, Vec::new())
+    pub(super) fn new(module: &'a mut Lowerer, preserve_multiple_values: bool) -> Self {
+        Self::with_targets(module, Vec::new(), preserve_multiple_values)
     }
 
-    fn with_targets(module: &'a mut Lowerer, targets: Vec<NonLocalTarget>) -> Self {
+    fn with_targets(
+        module: &'a mut Lowerer,
+        targets: Vec<NonLocalTarget>,
+        preserve_multiple_values: bool,
+    ) -> Self {
         Self {
             module,
             regions: Vec::new(),
             active: Vec::new(),
             blocks: vec![BlockId(0)],
             targets,
+            preserve_multiple_values,
             next_region: 0,
         }
     }

@@ -23,7 +23,7 @@ pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
 use native_error::native_failure;
-use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel};
+use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel_for_eval};
 use ncl_object::{
     Function, HeapRootedWord, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word,
     function_code, make_simple_vector, slot_ref, symbol_name,
@@ -184,7 +184,7 @@ impl Runtime {
         let mut expander = FormExpander::new(&mut self.context, &self.object, &registry);
         expander.set_caller(&mut caller);
         let expr = expander.expand(form)?;
-        let lowered = lower_toplevel(&expr)?;
+        let lowered = lower_toplevel_for_eval(&expr)?;
         let mut module = ncl_opt::Module {
             functions: std::iter::once(lowered.entry)
                 .chain(lowered.nested)
@@ -240,9 +240,9 @@ impl Runtime {
             undefined_function_stub: self.undefined_function_stub,
         };
         let compiled = if cfg!(target_arch = "aarch64") {
-            ncl_codegen::compile_function_aarch64(function, &abi)
+            ncl_codegen::compile_function_aarch64_preserving_multiple_values(function, &abi)
         } else {
-            ncl_codegen::compile_function_x86_64(function, &abi)
+            ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi)
         }
         .map_err(|error| RuntimeError::Native(error.to_string()))?;
         let mut code = alloc_code(compiled.code.len())

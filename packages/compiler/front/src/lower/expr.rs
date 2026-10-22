@@ -38,6 +38,10 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         expr: &Expr,
     ) -> Result<ValueId, LowerError> {
+        if self.preserve_multiple_values {
+            let nil = f.nil()?;
+            f.none(OpKind::SetMultipleValues { values: vec![nil] })?;
+        }
         match expr {
             Expr::Constant(literal) => lower_literal(f, literal),
             Expr::Variable(name) => self.lower_variable(f, name),
@@ -78,13 +82,21 @@ impl Context<'_> {
             } => self.lower_multiple_value_call(f, function, arguments),
             Expr::MultipleValueProg1 { first, forms } => {
                 let value = self.lower_expr(f, first)?;
-                for form in forms {
-                    self.lower_expr(f, form)?;
+                if self.preserve_multiple_values {
+                    let saved_values = self.capture_multiple_values(f)?;
+                    for form in forms {
+                        self.lower_expr(f, form)?;
+                    }
+                    self.restore_multiple_values(f, saved_values)
+                } else {
+                    for form in forms {
+                        self.lower_expr(f, form)?;
+                    }
+                    f.none(OpKind::SetMultipleValues {
+                        values: vec![value],
+                    })?;
+                    Ok(value)
                 }
-                f.none(OpKind::SetMultipleValues {
-                    values: vec![value],
-                })?;
-                Ok(value)
             }
             Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {
                 self.lower_expr(f, value)
@@ -410,7 +422,11 @@ impl Context<'_> {
             });
         }
         bind_required(&mut nested, &lambda.lambda_list, 1)?;
-        let mut child = Context::with_targets(self.module, self.targets.clone());
+        let mut child = Context::with_targets(
+            self.module,
+            self.targets.clone(),
+            self.preserve_multiple_values,
+        );
         if let Some(name) = self_name {
             let callee = nested.one(OpKind::LoadFunctionObject, Ty::Word)?;
             nested.env().bind_function(FunctionEntry {

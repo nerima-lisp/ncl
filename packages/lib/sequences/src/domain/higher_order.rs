@@ -7,6 +7,7 @@ use ncl_object::{
     MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word, make_simple_vector,
     simple_vector_length, simple_vector_ref,
 };
+use std::collections::HashSet;
 
 fn scope_roots<T>(
     ctx: &mut ThreadContext,
@@ -37,9 +38,10 @@ fn values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectEr
     match sequence {
         Sequence::List(list) => {
             let mut result = Vec::new();
+            let mut seen = HashSet::new();
             let mut cursor = list_word(list);
             while cursor != Word::NIL {
-                if !cursor.is_cons() {
+                if !cursor.is_cons() || !seen.insert(cursor) {
                     return Err(ObjectError::TypeError);
                 }
                 result.push(ncl_object::car(ctx, cursor)?);
@@ -53,8 +55,23 @@ fn values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectEr
                 .map(|index| simple_vector_ref(ctx, word, index))
                 .collect()
         }
-        Sequence::String(_) => Err(ObjectError::TypeError),
+        Sequence::String(string) => {
+            let word: Word = string.into();
+            (0..ncl_object::string_length(ctx, word)?)
+                .map(|index| {
+                    ncl_object::string_ref(ctx, word, index)
+                        .map(|character| Word::character(u32::from(character)))
+                })
+                .collect()
+        }
     }
+}
+
+fn list_values(ctx: &ThreadContext, sequence: Sequence) -> Result<Vec<Word>, ObjectError> {
+    if !matches!(sequence, Sequence::List(_)) {
+        return Err(ObjectError::TypeError);
+    }
+    values(ctx, sequence)
 }
 
 struct RootedNested<'a> {
@@ -126,7 +143,7 @@ fn callback(ctx: &ThreadContext, word: Word) -> Result<FunctionDesignator, Objec
     FunctionDesignator::try_from_word(ctx, word)
 }
 
-/// MAP over zero or more list/vector sequences.
+/// MAP over zero or more list/vector/string sequences.
 pub fn map<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -218,7 +235,18 @@ pub fn map_into<C: FunctionCaller>(
                             ncl_object::simple_vector_set(ctx, word, index, value)?;
                         }
                     }
-                    Sequence::String(_) => return Err(ObjectError::TypeError),
+                    Sequence::String(string) => {
+                        let word: Word = string.into();
+                        for (index, value) in
+                            rooted_destination.iter().take(length).copied().enumerate()
+                        {
+                            let character = value
+                                .as_character()
+                                .and_then(char::from_u32)
+                                .ok_or(ObjectError::TypeError)?;
+                            ncl_object::string_set(ctx, word, index, character)?;
+                        }
+                    }
                 }
                 Ok(*roots.first().ok_or(ObjectError::Layout)?)
             })
@@ -239,6 +267,9 @@ pub fn predicate<C: FunctionCaller>(
     sequences: &[Sequence],
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
+    if sequences.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
     let callback_root = [function];
     scope_roots(ctx, &callback_root, |ctx, root| {
         let callback = callback(ctx, *root.first().ok_or(ObjectError::Layout)?)?;
@@ -249,12 +280,14 @@ pub fn predicate<C: FunctionCaller>(
         rooted_nested(ctx, &source_values, |ctx, source_values| {
             let length = source_values.iter().map(<[Word]>::len).min().unwrap_or(0);
             let mut result = matches!(kind, Predicate::Every | Predicate::NotAny);
+            let mut some_result = Word::NIL;
             for index in 0..length {
                 let args = source_values
                     .iter()
                     .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
                     .collect::<Result<Vec<_>, _>>()?;
-                let truth = call(ctx, runtime, caller, callback, &args)?.0 != Word::NIL;
+                let predicate_result = call(ctx, runtime, caller, callback, &args)?.0;
+                let truth = predicate_result != Word::NIL;
                 result = match kind {
                     Predicate::Every | Predicate::Some => truth,
                     Predicate::NotAny | Predicate::NotEvery => !truth,
@@ -262,10 +295,19 @@ pub fn predicate<C: FunctionCaller>(
                 if matches!(kind, Predicate::Every | Predicate::NotEvery) && !truth
                     || matches!(kind, Predicate::Some | Predicate::NotAny) && truth
                 {
+                    if kind == Predicate::Some {
+                        some_result = predicate_result;
+                    }
                     break;
                 }
             }
-            Ok(if result { Word::TRUE } else { Word::NIL })
+            Ok(if kind == Predicate::Some {
+                some_result
+            } else if result {
+                Word::TRUE
+            } else {
+                Word::NIL
+            })
         })
     })
 }
@@ -286,17 +328,16 @@ fn list_map<C: FunctionCaller>(
     caller: &mut C,
     tails: bool,
 ) -> Result<Vec<Word>, ObjectError> {
+    if lists.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
     let list_roots = lists.to_vec();
     scope_roots(ctx, &list_roots, |ctx, lists| {
         let function_root = [function];
         scope_roots(ctx, &function_root, |ctx, function_root| {
-            let sequences = lists
+            let sources = lists
                 .iter()
-                .map(|list| super::sequence_value(ctx, *list))
-                .collect::<Result<Vec<_>, _>>()?;
-            let sources = sequences
-                .iter()
-                .map(|sequence| values(ctx, *sequence))
+                .map(|list| list_values(ctx, super::sequence_value(ctx, *list)?))
                 .collect::<Result<Vec<_>, _>>()?;
             let length = sources.iter().map(Vec::len).min().unwrap_or(0);
             rooted_nested(ctx, &sources, |ctx, sources| {
@@ -412,12 +453,9 @@ fn flatten_results(
     results: &[Word],
 ) -> Result<Word, ObjectError> {
     scope_rooted_slice(ctx, results, |ctx, rooted_results| {
-        let mut flattened = Vec::new();
-        for result in rooted_results.iter().copied() {
-            flattened.extend(values(ctx, super::sequence_value(ctx, result)?)?);
-        }
-        scope_rooted_slice(ctx, &flattened, |ctx, rooted_flattened| {
-            super::list_from(ctx, runtime, rooted_flattened)
+        super::list::nconc(ctx, runtime, rooted_results).map_err(|error| {
+            ctx.set_pending_lisp_error(error);
+            ObjectError::TypeError
         })
     })
 }

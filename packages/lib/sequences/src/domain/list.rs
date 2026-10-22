@@ -209,13 +209,22 @@ pub fn nconc(ctx: &mut ThreadContext, _: &Runtime, values: &[Word]) -> Result<Wo
     };
     let mut result = last;
     for &list in lists.iter().rev() {
-        proper_list(ctx, list)?;
         if list == Word::NIL {
             continue;
         }
+        if !list.is_cons() {
+            return Err(LispError::TypeError {
+                datum: list,
+                expected: ncl_object::ObjectType::Cons,
+            });
+        }
         let mut tail = list;
-        while object_cdr(ctx, tail)? != Word::NIL {
-            tail = object_cdr(ctx, tail)?;
+        loop {
+            let next = object_cdr(ctx, tail)?;
+            if !next.is_cons() {
+                break;
+            }
+            tail = next;
         }
         object_rplacd(ctx, tail, result)?;
         result = list;

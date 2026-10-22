@@ -407,7 +407,3 @@ const fn unsupported(kind: &'static str) -> ImageError {
 #[cfg(test)]
 #[path = "tests_save.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "save_tests.rs"]
-mod builtin_tests;

@@ -237,7 +237,7 @@ pub fn get_refs(reader: &mut Reader<'_>) -> Result<Vec<Ref>, ImageError> {
 
 /// Decode one object record.
 #[allow(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
-pub fn get_record(reader: &mut Reader<'_>, version: u16) -> Result<Record, ImageError> {
+pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
     let kind = reader.u8()?;
     Ok(match kind {
         KIND_CONS => Record::Cons {
@@ -303,22 +303,18 @@ pub fn get_record(reader: &mut Reader<'_>, version: u16) -> Result<Record, Image
             let lambda_list = get_ref(reader)?;
             let code = get_ref(reader)?;
             let captures = get_refs(reader)?;
-            let builtin = if version >= 2 {
-                match reader.u8()? {
-                    0 => None,
-                    1 => Some(BuiltinIdentity {
-                        package: reader.string()?,
-                        name: reader.string()?,
-                    }),
-                    tag => {
-                        return Err(ImageError::UnknownTag {
-                            space: "builtin identity",
-                            tag,
-                        });
-                    }
+            let builtin = match reader.u8()? {
+                0 => None,
+                1 => Some(BuiltinIdentity {
+                    package: reader.string()?,
+                    name: reader.string()?,
+                }),
+                tag => {
+                    return Err(ImageError::UnknownTag {
+                        space: "builtin identity",
+                        tag,
+                    });
                 }
-            } else {
-                None
             };
             Record::Function {
                 closure,
@@ -369,35 +365,8 @@ pub fn get_record(reader: &mut Reader<'_>, version: u16) -> Result<Record, Image
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{
-        BuiltinIdentity, KIND_FUNCTION, Record, Ref, get_record, put_record, put_ref, put_refs,
-    };
-    use crate::format::{Reader, put_u8, put_u64};
-
-    #[test]
-    fn version_one_function_records_have_no_builtin_identity() {
-        let mut bytes = Vec::new();
-        put_u8(&mut bytes, KIND_FUNCTION);
-        put_u8(&mut bytes, 0);
-        put_u64(&mut bytes, 123);
-        for reference in [Ref::Immediate(1), Ref::Immediate(2), Ref::Immediate(3)] {
-            put_ref(&mut bytes, reference);
-        }
-        put_refs(&mut bytes, &[]).unwrap();
-        let record = get_record(&mut Reader::new(&bytes), 1).unwrap();
-        assert_eq!(
-            record,
-            Record::Function {
-                closure: false,
-                entry: 123,
-                name: Ref::Immediate(1),
-                lambda_list: Ref::Immediate(2),
-                code: Ref::Immediate(3),
-                captures: Vec::new(),
-                builtin: None,
-            }
-        );
-    }
+    use super::{BuiltinIdentity, Record, Ref, get_record, put_record};
+    use crate::format::Reader;
 
     #[test]
     fn version_two_function_records_preserve_builtin_identity() {
@@ -415,6 +384,6 @@ mod tests {
         };
         let mut bytes = Vec::new();
         put_record(&mut bytes, &record).unwrap();
-        assert_eq!(get_record(&mut Reader::new(&bytes), 2).unwrap(), record);
+        assert_eq!(get_record(&mut Reader::new(&bytes)).unwrap(), record);
     }
 }

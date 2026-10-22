@@ -13,7 +13,7 @@ use crate::record::{Record, Ref, get_code, get_record, get_ref, put_code, put_re
 pub const MAGIC: &[u8; 8] = b"NCLIMAGE";
 /// Size of the fixed image header in bytes.
 pub const HEADER_SIZE: usize = 64;
-/// Format version this build writes and accepts.
+/// The only format version this build writes and accepts.
 pub const FORMAT_VERSION: u16 = 2;
 const POINTER_WIDTH: u8 = 8;
 const ENDIAN_LITTLE: u8 = 1;
@@ -81,7 +81,7 @@ impl ImageFile {
             return Err(ImageError::BadMagic);
         }
         let version = reader.u16()?;
-        if version != 1 && version != FORMAT_VERSION {
+        if version != FORMAT_VERSION {
             return Err(ImageError::UnsupportedVersion {
                 found: version,
                 supported: FORMAT_VERSION,
@@ -127,7 +127,7 @@ impl ImageFile {
         let mut reader = Reader::new(payload);
         let mut objects = Vec::with_capacity(object_count);
         for _ in 0..object_count {
-            objects.push(get_record(&mut reader, version)?);
+            objects.push(get_record(&mut reader)?);
         }
         let mut roots = Vec::with_capacity(root_count);
         for _ in 0..root_count {
@@ -253,3 +253,7 @@ impl<'a> Reader<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid("string encoding"))
     }
 }
+
+#[cfg(test)]
+#[path = "tests_format.rs"]
+mod tests;

@@ -60,5 +60,5 @@ pub use register::register;
 pub use restore::{LoadedImage, load};
 pub use save::save;
 
-/// Image format version written and accepted by this build.
+/// The only image format version this build writes and accepts.
 pub const FORMAT_VERSION: u16 = format::FORMAT_VERSION;

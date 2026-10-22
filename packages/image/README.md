@@ -69,7 +69,7 @@ code blobs, and feature strings in that order.
 | offset | size | field |
 | ---: | ---: | --- |
 | 0 | 8 | magic `NCLIMAGE` |
-| 8 | 2 | version (2; version 1 is also accepted) |
+| 8 | 2 | version (2; version 1 is rejected) |
 | 10 | 1 | architecture, 1 x86-64, 2 AArch64 |
 | 11 | 1 | pointer width (8) |
 | 12 | 1 | endianness (1 little) |
@@ -153,11 +153,8 @@ and name strings. When an identity is present, the function record's
 entry-address field is saved as zero, and `load` resolves it to the most
 recently registered matching builtin. It returns
 `ImageError::UnregisteredBuiltin` if the target runtime has no matching
-registration. Version 1 records have no builtin identity, so `load` retains a
-builtin's serialized native entry address and does not rebind it. The
-raw-address constraint above applies. Version 1 uses the same header and other
-record and code-blob encodings; its kind 9 records end after the captured-value
-references, without the version 2 identity tag.
+registration. `load` rejects version 1 images with
+`ImageError::UnsupportedVersion`; this build accepts only version 2.
 
 ## Save and load semantics
 

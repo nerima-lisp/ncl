@@ -2,9 +2,9 @@
 
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, code_offset, function_offset,
-    instance_offset, make_simple_vector, number_offset, rplaca, rplacd, simple_vector_offset,
-    simple_vector_set, specialized_array_offset, string_offset, structure_offset, symbol_offset,
+    ObjectError, Runtime, ThreadContext, Word, code_offset, function_offset, instance_offset,
+    make_simple_vector, number_offset, rplaca, rplacd, simple_vector_offset, simple_vector_set,
+    specialized_array_offset, string_offset, structure_offset, symbol_offset,
 };
 use ncl_sys::StorageCondition;
 
@@ -147,15 +147,10 @@ pub(super) fn fill_objects(
                 lambda_list,
                 code,
                 captures,
-                closure,
                 builtin,
+                ..
             } => {
-                if !*closure
-                    && builtin.is_some()
-                    && runtime
-                        .builtin_descriptor(ctx, FunctionObject::try_from(word)?)
-                        .is_some()
-                {
+                if builtin.is_some() {
                     continue;
                 }
                 put(ctx, word, function_offset::ENTRY, fix_u64(*entry)?)?;
@@ -286,3 +281,7 @@ fn fix_u64(value: u64) -> Result<Word, ImageError> {
         i64::try_from(value).map_err(|_| invalid("address"))?,
     ))
 }
+
+#[cfg(test)]
+#[path = "tests_restore_fill.rs"]
+mod tests;

@@ -3,15 +3,20 @@
     reason = "save tests assert on valid fixture construction"
 )]
 
-use super::save;
+use super::{Capture, save};
 use crate::format::{HEADER_SIZE, ImageFile};
 use crate::record::{Record, Ref};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, Package, Runtime, ThreadContext, Word, car, cdr, make_array,
-    make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio, make_readtable,
-    make_simple_vector, make_specialized_array, make_stream, make_string, simple_vector_ref,
+    ArrayElementType, ArrayOptions, BuiltinImplementation, Package, Runtime, ThreadContext, Word,
+    car, cdr, make_array, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
+    make_readtable, make_simple_vector, make_specialized_array, make_stream, make_string,
+    simple_vector_ref,
 };
+
+#[path = "../tests/support/image_builtin.rs"]
+mod image_builtin_support;
+use image_builtin_support::{BUILTIN, BUILTIN_ID, image_builtin};
 
 fn object_root(image: &ImageFile, index: usize) -> &Record {
     let Ref::Object(id) = image.roots[index] else {
@@ -235,6 +240,32 @@ fn save_reports_exact_unsupported_kind_payloads() {
             Err(crate::ImageError::UnsupportedKind { kind })
         );
     }
+}
+
+#[test]
+fn registered_builtin_capture_zeros_the_entry() -> Result<(), crate::ImageError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let function = runtime.register_builtin(
+        &mut ctx,
+        BUILTIN_ID,
+        BuiltinImplementation::direct(BUILTIN, image_builtin).with_entry(0x1234_5678),
+    )?;
+
+    let mut capture = Capture::new(&runtime);
+    capture.run(&mut ctx, &[function.as_word()])?;
+    let records = capture.finish();
+
+    assert!(records.iter().any(|record| matches!(
+        record,
+        Record::Function {
+            entry: 0,
+            builtin: Some(identity),
+            ..
+        } if identity.package == "NCL-TEST" && identity.name == image_builtin_support::BUILTIN_NAME
+    )));
+    Ok(())
 }
 
 #[test]

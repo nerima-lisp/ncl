@@ -12,9 +12,8 @@ use std::collections::HashSet;
 use ncl_image::{load, save};
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, CodeObject, Function, FunctionObject, LambdaList, MultipleValues,
-    ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify_object,
+    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, CodeObject, Function,
+    FunctionObject, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify_object,
     code_constants, code_debug, code_entry, code_size, code_stack_map, function_code,
     function_entry, function_lambda_list, function_name, make_code_object, make_cons,
     make_simple_fun, make_simple_vector, make_string, push_root, set_symbol_value,
@@ -23,27 +22,11 @@ use ncl_object::{
 };
 use ncl_sys::LowTag;
 
-const IMAGE_BUILTIN_ID: BuiltinIdentifier = BuiltinIdentifier::new(
-    BuiltinPackage::NclTest,
-    BuiltinName::new("IMAGE-ROUND-TRIP"),
-);
-const IMAGE_BUILTIN: Builtin = Builtin {
-    lambda_list: LambdaList::fixed(&[]),
-    convention: BuiltinConvention::Direct(Arity::exact(0)),
+#[path = "support/image_builtin.rs"]
+mod image_builtin_support;
+use image_builtin_support::{
+    BUILTIN as IMAGE_BUILTIN, BUILTIN_ID as IMAGE_BUILTIN_ID, image_builtin,
 };
-
-const fn image_builtin(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    if args.is_empty() {
-        Ok(Word::fixnum(17))
-    } else {
-        Err(ObjectError::TypeError)
-    }
-}
 
 /// One built graph plus the roots handed to the image.
 struct Graph {
@@ -245,6 +228,41 @@ fn registered_builtin_without_target_registration_rejects_image() {
     let runtime2 = Runtime::new().unwrap();
     let mut ctx2 = ThreadContext::new();
     ctx2.register(&runtime2).unwrap();
+
+    assert!(matches!(
+        load(&image, &runtime2, &mut ctx2),
+        Err(ncl_image::ImageError::UnregisteredBuiltin)
+    ));
+}
+
+#[test]
+fn registered_builtin_with_mismatched_target_name_rejects_image() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            IMAGE_BUILTIN_ID,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(123),
+        )
+        .unwrap();
+    let image = save(&runtime, &mut ctx, &[function.as_word()], &[]).unwrap();
+
+    let runtime2 = Runtime::new().unwrap();
+    let mut ctx2 = ThreadContext::new();
+    ctx2.register(&runtime2).unwrap();
+    let other_id = BuiltinIdentifier::new(
+        BuiltinPackage::NclTest,
+        BuiltinName::new("IMAGE-ROUND-TRIP-OTHER"),
+    );
+    runtime2
+        .register_builtin(
+            &mut ctx2,
+            other_id,
+            BuiltinImplementation::direct(IMAGE_BUILTIN, image_builtin).with_entry(456),
+        )
+        .unwrap();
 
     assert!(matches!(
         load(&image, &runtime2, &mut ctx2),

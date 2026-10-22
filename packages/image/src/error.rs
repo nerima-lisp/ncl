@@ -16,7 +16,7 @@ pub enum ImageError {
     },
     /// The leading magic bytes did not match an NCL image.
     BadMagic,
-    /// The image was written by an incompatible format version.
+    /// The image uses a format version this build does not accept.
     UnsupportedVersion {
         /// Version found in the image header.
         found: u16,
@@ -61,7 +61,10 @@ impl std::fmt::Display for ImageError {
             }
             Self::BadMagic => f.write_str("not an NCL image"),
             Self::UnsupportedVersion { found, supported } => {
-                write!(f, "image version {found}, this build supports {supported}")
+                write!(
+                    f,
+                    "unsupported image version {found}; this build only supports {supported}"
+                )
             }
             Self::UnregisteredBuiltin => {
                 f.write_str("image references a builtin that is not registered")

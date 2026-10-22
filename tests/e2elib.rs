@@ -148,3 +148,83 @@ fn gensym_rejects_arguments_outside_strings_and_nonnegative_integers() {
         );
     }
 }
+
+#[test]
+fn find_package_accepts_package_objects_and_string_designators() {
+    let source = "(let ((package (make-package \"OO15-FIND-PACKAGE\" :use nil))) (and (eq (find-package package) package) (eq (find-package \"OO15-FIND-PACKAGE\") package) (eq (find-package 'oo15-find-package) package) (null (find-package \"OO15-NOT-FOUND\"))))";
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(actual, "T", "{source}");
+}
+
+#[test]
+fn find_package_rejects_values_outside_package_and_string_designators() {
+    for source in ["(find-package 1)", "(find-package #\\a)"] {
+        let (success, actual) = eval(source);
+        assert!(
+            !success && actual.contains("TypeError"),
+            "{source} did not reject the invalid name (success={success}, output={actual})"
+        );
+    }
+}
+
+#[test]
+fn find_symbol_and_intern_report_package_accessibility_statuses() {
+    let source = r#"
+        (let* ((package (make-package "OO15-STATUS-PKG" :use nil))
+               (created (let ((*package* package))
+                          (multiple-value-list (intern "LOCAL"))))
+               (found (multiple-value-list (find-symbol "LOCAL" package)))
+               (repeated (multiple-value-list (intern "LOCAL" package)))
+               (missing (multiple-value-list (find-symbol "MISSING" package)))
+               (keyword-created (multiple-value-list (intern "OO15-KEYWORD" "KEYWORD")))
+               (keyword-repeat (multiple-value-list (intern "OO15-KEYWORD" "KEYWORD")))
+               (keyword-found (multiple-value-list (find-symbol "OO15-KEYWORD" "KEYWORD"))))
+          (export (list (first created)) package)
+          (let ((external-find (multiple-value-list (find-symbol "LOCAL" package)))
+                (external-intern (multiple-value-list (intern "LOCAL" package)))
+                (inherited-find (multiple-value-list (find-symbol "CAR" 'common-lisp-user)))
+                (inherited-intern (multiple-value-list (intern "CAR" 'common-lisp-user))))
+            (list (eq (second created) nil)
+                  (eq (first created) (first found))
+                  (eq (second found) :internal)
+                  (eq (first repeated) (first created))
+                  (eq (second repeated) :internal)
+                  (null (first missing))
+                  (null (second missing))
+                  (eq (second keyword-created) nil)
+                  (eq (first keyword-repeat) (first keyword-created))
+                  (eq (second keyword-repeat) :external)
+                  (eq (first keyword-found) (first keyword-created))
+                  (eq (second keyword-found) :external)
+                  (eq (symbol-value (first keyword-created)) (first keyword-created))
+                  (eq (second external-find) :external)
+                  (eq (second external-intern) :external)
+                  (eq (first inherited-find) 'car)
+                  (eq (second inherited-find) :inherited)
+                  (eq (first inherited-intern) 'car)
+                  (eq (second inherited-intern) :inherited))))
+    "#;
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(
+        actual, "(T T T T T T T T T T T T T T T T T T T)",
+        "{source}"
+    );
+}
+
+#[test]
+fn find_symbol_and_intern_reject_non_string_designator_names() {
+    for source in [
+        "(find-symbol 1)",
+        "(find-symbol (find-package \"COMMON-LISP\"))",
+        "(intern 1)",
+        "(intern (find-package \"COMMON-LISP\"))",
+    ] {
+        let (success, actual) = eval(source);
+        assert!(
+            !success && actual.contains("TypeError"),
+            "{source} did not reject the invalid name (success={success}, output={actual})"
+        );
+    }
+}

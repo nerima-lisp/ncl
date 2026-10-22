@@ -45,7 +45,7 @@ fn builtin_call_with_keywords_and_eight_arguments_does_not_lowering_error() {
 #[test]
 fn make_pathname_accepts_wild_path_components() {
     let output = run_ncl(
-        r#"(let ((pathname (make-pathname :directory '(:relative :wild) :name :wild :type "fasl"))) (list (pathnamep pathname) (pathname-name pathname) (pathname-type pathname) (equal (car (reverse (pathname-directory pathname))) "*")))"#,
+        r#"(let ((pathname (make-pathname :directory '(:relative :wild) :name :wild :type "fasl"))) (list (pathnamep pathname) (pathname-name pathname) (pathname-type pathname) (equal (car (reverse (pathname-directory pathname))) :wild)))"#,
     );
     assert!(
         output.status.success(),

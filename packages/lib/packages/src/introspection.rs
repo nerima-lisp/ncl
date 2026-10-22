@@ -48,6 +48,10 @@ const NAME: Parameter = Parameter {
     name: BuiltinName::new("NAME"),
     ty: ParameterType::StringDesignator,
 };
+const FIND_PACKAGE_NAME: Parameter = Parameter {
+    name: BuiltinName::new("NAME"),
+    ty: ParameterType::Any,
+};
 const SYMBOLS: Parameter = Parameter {
     name: BuiltinName::new("SYMBOLS"),
     ty: ParameterType::List,
@@ -55,6 +59,7 @@ const SYMBOLS: Parameter = Parameter {
 const ONE_PACKAGE: &[Parameter] = &[PACKAGE];
 const ONE_OBJECT: &[Parameter] = &[OBJECT];
 const ONE_NAME: &[Parameter] = &[NAME];
+const ONE_FIND_PACKAGE_NAME: &[Parameter] = &[FIND_PACKAGE_NAME];
 const ONE_SYMBOLS: &[Parameter] = &[SYMBOLS];
 pub fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
     match classify_object(ctx, word) {
@@ -140,7 +145,11 @@ fn find_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = string_designator(ctx, args.required(0)?)?;
+    let argument = args.required(0)?;
+    if matches!(classify_object(ctx, argument), ObjectRef::Package(_)) {
+        return Ok(argument);
+    }
+    let name = string_designator(ctx, argument)?;
     let length = ncl_object::string_length(ctx, name.as_word())?;
     let name = (0..length)
         .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
@@ -311,14 +320,31 @@ fn intern(
 ) -> Result<Word, ObjectError> {
     let name = string_designator(ctx, args.required(0)?)?;
     let package = package_arg(ctx, runtime, args, 1)?;
-    let length = ncl_object::string_length(ctx, name.as_word())?;
+    let name_word = name.as_word();
+    let was_accessible = package.find_symbol(ctx, name_word)?.is_some();
+    let keyword_package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::Layout)?;
+    let is_keyword_package = package.as_word() == keyword_package;
+    let length = ncl_object::string_length(ctx, name_word)?;
     let name = (0..length)
-        .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
+        .map(|index| ncl_object::string_ref(ctx, name_word, index))
         .collect::<Result<String, _>>()?;
     let (symbol, status) = package.intern(ctx, runtime, &name)?;
     let mut symbol = symbol;
-    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
-        status_word(ctx, runtime, status)
+    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, words| {
+        if !was_accessible && is_keyword_package {
+            if !package.export(ctx, runtime, name_word)? {
+                return Err(ObjectError::Layout);
+            }
+            ncl_object::set_symbol_value(ctx, words[0], words[0])?;
+            ncl_object::set_symbol_constant(ctx, words[0], true)?;
+            Ok(Word::NIL)
+        } else if was_accessible {
+            status_word(ctx, runtime, status)
+        } else {
+            Ok(Word::NIL)
+        }
     })?;
     values.set(&[symbol, status]);
     Ok(symbol)

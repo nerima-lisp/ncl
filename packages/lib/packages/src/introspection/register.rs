@@ -1,10 +1,11 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE, ONE_SYMBOLS, ObjectError,
-    Parameter, Runtime, ThreadContext, export, find_all_symbols, find_package, find_symbol, import,
-    intern, list_all_packages, package_error_package, package_management, package_name,
-    package_nicknames, package_shadowing_symbols, package_use_list, package_used_by_list, packagep,
-    shadow, unexport, unintern, unuse_package, use_package,
+    BuiltinPackage, LambdaList, NAME, ONE_FIND_PACKAGE_NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE,
+    ONE_SYMBOLS, ObjectError, Parameter, Runtime, ThreadContext, export, find_all_symbols,
+    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
+    package_management, package_name, package_nicknames, package_shadowing_symbols,
+    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
+    use_package,
 };
 
 const NO_PARAMETERS: &[Parameter] = &[];
@@ -15,7 +16,12 @@ type BuiltinRegistration = (
     ncl_object::RustBuiltin,
 );
 const REGISTRATIONS: &[BuiltinRegistration] = &[
-    ("FIND-PACKAGE", ONE_NAME, NO_PARAMETERS, find_package),
+    (
+        "FIND-PACKAGE",
+        ONE_FIND_PACKAGE_NAME,
+        NO_PARAMETERS,
+        find_package,
+    ),
     ("PACKAGE-NAME", ONE_PACKAGE, NO_PARAMETERS, package_name),
     (
         "PACKAGE-NICKNAMES",

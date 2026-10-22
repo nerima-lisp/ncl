@@ -38,6 +38,15 @@ fn proper_list(ctx: &ThreadContext, mut cursor: Word) -> Result<(), LispError> {
     }
 }
 
+fn last_cons(ctx: &ThreadContext, mut cursor: Word) -> Result<Option<Word>, LispError> {
+    let mut last = None;
+    while cursor.is_cons() {
+        last = Some(cursor);
+        cursor = object_cdr(ctx, cursor)?;
+    }
+    Ok(last)
+}
+
 #[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 pub fn atom(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
     Ok(if value.is_cons() {
@@ -55,8 +64,8 @@ pub fn cons_p(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, L
     })
 }
 #[allow(clippy::unnecessary_wraps)]
-pub fn list_p(ctx: &ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
-    Ok(if proper_list(ctx, value).is_ok() {
+pub fn list_p(_: &ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
+    Ok(if value == Word::NIL || value.is_cons() {
         Word::TRUE
     } else {
         Word::NIL
@@ -212,20 +221,12 @@ pub fn nconc(ctx: &mut ThreadContext, _: &Runtime, values: &[Word]) -> Result<Wo
         if list == Word::NIL {
             continue;
         }
-        if !list.is_cons() {
+        let Some(tail) = last_cons(ctx, list)? else {
             return Err(LispError::TypeError {
                 datum: list,
                 expected: ncl_object::ObjectType::Cons,
             });
-        }
-        let mut tail = list;
-        loop {
-            let next = object_cdr(ctx, tail)?;
-            if !next.is_cons() {
-                break;
-            }
-            tail = next;
-        }
+        };
         object_rplacd(ctx, tail, result)?;
         result = list;
     }
@@ -303,8 +304,12 @@ pub fn reverse(
 ) -> Result<Word, LispError> {
     sequence_reverse(ctx, runtime, value).map_err(LispError::from)
 }
-pub fn nreverse(ctx: &mut ThreadContext, _: &Runtime, value: Sequence) -> Result<Word, LispError> {
-    sequence_nreverse(ctx, value).map_err(LispError::from)
+pub fn nreverse(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Sequence,
+) -> Result<Word, LispError> {
+    sequence_nreverse(ctx, runtime, value).map_err(LispError::from)
 }
 pub fn subseq(
     ctx: &mut ThreadContext,
@@ -461,7 +466,11 @@ fn sequence_subseq(
     let result = sequence_result_scope(&mut scope, runtime, value, &values[start..end])?;
     Ok(scope.get(result).as_word())
 }
-fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, ObjectError> {
+fn sequence_nreverse(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Sequence,
+) -> Result<Word, ObjectError> {
     match value {
         Sequence::List(list) => {
             proper_list(ctx, list_word(list)).map_err(|_| ObjectError::TypeError)?;
@@ -475,7 +484,7 @@ fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, O
             }
             Ok(previous)
         }
-        _ => Err(ObjectError::TypeError),
+        Sequence::String(_) | Sequence::Vector(_) => sequence_reverse(ctx, runtime, value),
     }
 }
 

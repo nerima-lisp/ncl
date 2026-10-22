@@ -142,6 +142,7 @@ pub(super) fn fill_objects(
                 }
             }
             Record::Function {
+                closure,
                 entry,
                 name,
                 lambda_list,
@@ -150,7 +151,7 @@ pub(super) fn fill_objects(
                 builtin,
                 ..
             } => {
-                if builtin.is_some() {
+                if !*closure && builtin.is_some() {
                     continue;
                 }
                 put(ctx, word, function_offset::ENTRY, fix_u64(*entry)?)?;

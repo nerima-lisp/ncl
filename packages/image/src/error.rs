@@ -30,6 +30,13 @@ pub enum ImageError {
         /// Name of the offending field.
         field: &'static str,
     },
+    /// A record combines fields that are invalid for its kind.
+    InvalidRecord {
+        /// Kind of the invalid record.
+        kind: &'static str,
+        /// Why the record is invalid.
+        reason: &'static str,
+    },
     /// A record or reference tag byte is not defined by this format.
     UnknownTag {
         /// Name of the tag space.
@@ -70,6 +77,9 @@ impl std::fmt::Display for ImageError {
                 f.write_str("image references a builtin that is not registered")
             }
             Self::InvalidField { field } => write!(f, "invalid image field: {field}"),
+            Self::InvalidRecord { kind, reason } => {
+                write!(f, "invalid {kind} record: {reason}")
+            }
             Self::UnknownTag { space, tag } => write!(f, "unknown {space} tag {tag}"),
             Self::UnsupportedKind { kind } => write!(f, "unsupported object kind: {kind}"),
             Self::InvalidLayout { field } => write!(f, "image layout overflow: {field}"),

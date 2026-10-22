@@ -316,6 +316,12 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
                     });
                 }
             };
+            if closure && builtin.is_some() {
+                return Err(ImageError::InvalidRecord {
+                    kind: "function",
+                    reason: "closure has builtin identity",
+                });
+            }
             Record::Function {
                 closure,
                 entry,

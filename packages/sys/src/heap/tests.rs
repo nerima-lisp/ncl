@@ -23,6 +23,29 @@ fn allocation_and_limit() {
 }
 
 #[test]
+fn collection_rewrites_heap_owned_precise_root_slot() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+
+    let allocation = h.alloc_cons(&mut t, Word::NIL, Word::NIL);
+    assert!(
+        allocation.is_ok(),
+        "cons allocation failed in root relocation test"
+    );
+    let Ok(mut root) = allocation else { return };
+    let old = root;
+    let token = h.push_root(&mut root);
+
+    h.collect(false);
+
+    assert_ne!(root, old, "the heap-owned root slot should be rewritten");
+    assert_eq!(h.forwarded_word(old), Some(root));
+    assert!(h.pop_root(token));
+    h.unregister_thread(&t);
+}
+
+#[test]
 fn duplicate_layout_rejected() {
     let h = Heap::new(HeapConfig::default());
     let l = ReferenceLayout {

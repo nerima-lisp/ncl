@@ -237,12 +237,12 @@ fn cases() -> Vec<BuiltinEntry> {
         BuiltinEntry {
             builtin: "STRING<=",
             source: r#"(string<= "abc" "abc")"#,
-            expected: "T",
+            expected: "NIL",
         },
         BuiltinEntry {
             builtin: "STRING>=",
             source: r#"(string>= "abc" "abc")"#,
-            expected: "T",
+            expected: "NIL",
         },
         BuiltinEntry {
             builtin: "STRING-EQUAL",
@@ -267,12 +267,12 @@ fn cases() -> Vec<BuiltinEntry> {
         BuiltinEntry {
             builtin: "STRING-NOT-GREATERP",
             source: r#"(string-not-greaterp "abc" "abc")"#,
-            expected: "T",
+            expected: "NIL",
         },
         BuiltinEntry {
             builtin: "STRING-NOT-LESSP",
             source: r#"(string-not-lessp "abc" "abc")"#,
-            expected: "T",
+            expected: "NIL",
         },
         BuiltinEntry {
             builtin: "STRING-UPCASE",
@@ -412,11 +412,51 @@ fn all_registered_string_builtins_work_through_compiled_code() {
 }
 
 #[test]
+fn string_comparisons_honor_bounds_and_return_original_mismatch_indices() {
+    for (source, expected) in [
+        (
+            r#"(string-lessp "012AAAA789" "01aaab6" :start1 3 :end1 7 :start2 2 :end2 6)"#,
+            "6",
+        ),
+        (
+            r#"(string= "xxabc" "yyabc" :start1 2 :end1 nil :start2 2 :end2 nil)"#,
+            "T",
+        ),
+        (
+            r#"(string/= "xyabcd" "zwabXd" :start1 2 :end1 nil :start2 2 :end2 nil)"#,
+            "4",
+        ),
+        (r#"(string-not-greaterp "abc" "abcd")"#, "3"),
+        (r#"(string-not-greaterp "abc" "abd")"#, "2"),
+        (r#"(string-not-lessp "abd" "abc")"#, "2"),
+    ] {
+        let output = run_ncl(source);
+        assert!(
+            output.status.success(),
+            "{source} exited {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            expected,
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn string_builtins_return_typed_conditions_for_invalid_arguments_and_ranges() {
     for (builtin, source) in [
         ("CHAR", r#"(char "" 0)"#),
         ("CHAR-CODE", r#"(char-code "A")"#),
         ("STRING=", r#"(string= t "A")"#),
+        ("STRING=", r#"(string= "A" "A" :end1 "invalid")"#),
+        ("STRING=", r#"(string= "A" "A" :end1 -1)"#),
+        ("STRING=", r#"(string= "abc" "abc" :start1 2 :end1 1)"#),
+        ("STRING=", r#"(string= "abc" "abc" :end1 4)"#),
+        ("STRING=", r#"(string= "abc" "abc" :start2 2 :end2 1)"#),
+        ("STRING=", r#"(string= "abc" "abc" :end2 4)"#),
         ("STRING-UPCASE", r#"(string-upcase "A" :start 2)"#),
         ("MAKE-STRING", r#"(make-string -1)"#),
         (

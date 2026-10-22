@@ -6,7 +6,7 @@ fn string_compare_builtin(
     comparison: StringComparison,
     fold: bool,
 ) -> Result<Word, ObjectError> {
-    let (left, right) = string_compare_values(ctx, args, fold)?;
+    let (left, right, left_start) = string_compare_values(ctx, args, fold)?;
     let ordering = left.as_slice().cmp(right.as_slice());
     let index = left
         .iter()
@@ -21,14 +21,17 @@ fn string_compare_builtin(
         StringComparison::NotGreater => ordering != std::cmp::Ordering::Greater,
         StringComparison::NotLess => ordering != std::cmp::Ordering::Less,
     };
-    if !result {
+    if !result
+        || (ordering == std::cmp::Ordering::Equal && !matches!(comparison, StringComparison::Equal))
+    {
         return Ok(Word::NIL);
     }
-    if matches!(comparison, StringComparison::Equal | StringComparison::NotGreater | StringComparison::NotLess)
-    {
+    if matches!(comparison, StringComparison::Equal) {
         Ok(Word::TRUE)
     } else {
-        Ok(Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::TypeError)?))
+        Ok(Word::fixnum(
+            i64::try_from(left_start + index).map_err(|_| ObjectError::TypeError)?,
+        ))
     }
 }
 
@@ -46,7 +49,7 @@ fn string_compare_values(
     ctx: &ThreadContext,
     args: &BuiltinArgs<'_>,
     fold: bool,
-) -> Result<(Vec<char>, Vec<char>), ObjectError> {
+) -> Result<(Vec<char>, Vec<char>, usize), ObjectError> {
     let left_value = args.required(0)?;
     let right_value = args.required(1)?;
     let left_chars = string_chars(ctx, left_value)?;
@@ -59,8 +62,16 @@ fn string_compare_values(
     while index < args.len() {
         let name = keyword_name(ctx, args.required(index)?)?;
         let value = args.required(index + 1)?;
-        let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-            .map_err(|_| ObjectError::TypeError)?;
+        let number = if value == Word::NIL {
+            match name.as_str() {
+                "END" | "END1" => left_chars.len(),
+                "END2" => right_chars.len(),
+                _ => return Err(ObjectError::TypeError),
+            }
+        } else {
+            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                .map_err(|_| ObjectError::TypeError)?
+        };
         if matches!(name.as_str(), "START" | "START1") {
             left_start = number;
         } else if matches!(name.as_str(), "END" | "END1") {
@@ -105,7 +116,7 @@ fn string_compare_values(
     } else {
         right_range.to_vec()
     };
-    Ok((left, right))
+    Ok((left, right, left_start))
 }
 
 fn string_equal_builtin(
@@ -114,14 +125,7 @@ fn string_equal_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Equal,
-        false,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Equal, false)
 }
 fn string_not_equal_builtin(
     ctx: &mut ThreadContext,
@@ -144,14 +148,7 @@ fn string_less_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Less,
-        false,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Less, false)
 }
 fn string_greater_builtin(
     ctx: &mut ThreadContext,
@@ -159,14 +156,7 @@ fn string_greater_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Greater,
-        false,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Greater, false)
 }
 fn string_not_greater_builtin(
     ctx: &mut ThreadContext,
@@ -189,14 +179,7 @@ fn string_not_less_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::NotLess,
-        false,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::NotLess, false)
 }
 fn string_equal_ci_builtin(
     ctx: &mut ThreadContext,
@@ -204,14 +187,7 @@ fn string_equal_ci_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Equal,
-        true,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Equal, true)
 }
 fn string_not_equal_ci_builtin(
     ctx: &mut ThreadContext,
@@ -219,14 +195,7 @@ fn string_not_equal_ci_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::NotEqual,
-        true,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::NotEqual, true)
 }
 fn string_less_ci_builtin(
     ctx: &mut ThreadContext,
@@ -234,14 +203,7 @@ fn string_less_ci_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Less,
-        true,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Less, true)
 }
 fn string_greater_ci_builtin(
     ctx: &mut ThreadContext,
@@ -249,14 +211,7 @@ fn string_greater_ci_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::Greater,
-        true,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::Greater, true)
 }
 fn string_not_greater_ci_builtin(
     ctx: &mut ThreadContext,
@@ -279,14 +234,7 @@ fn string_not_less_ci_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    string_compare_builtin(
-        ctx,
-        runtime,
-        args,
-        values,
-        StringComparison::NotLess,
-        true,
-    )
+    string_compare_builtin(ctx, runtime, args, values, StringComparison::NotLess, true)
 }
 
 fn string_case_builtin(
@@ -339,8 +287,7 @@ fn string_capitalize_builtin(
 ) -> Result<Word, ObjectError> {
     let mut start = true;
     let chars = string_chars(ctx, args.required(0)?)?;
-    let (range_start, range_end) =
-        string_range(ctx, args, 1, chars.len(), &["START"], &["END"])?;
+    let (range_start, range_end) = string_range(ctx, args, 1, chars.len(), &["START"], &["END"])?;
     make_result_string(
         ctx,
         runtime,

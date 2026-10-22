@@ -28,7 +28,7 @@ const START1: Parameter = Parameter {
 };
 const END1: Parameter = Parameter {
     name: BuiltinName::new("END1"),
-    ty: ParameterType::Fixnum,
+    ty: ParameterType::Any,
 };
 const START2: Parameter = Parameter {
     name: BuiltinName::new("START2"),
@@ -36,7 +36,7 @@ const START2: Parameter = Parameter {
 };
 const END2: Parameter = Parameter {
     name: BuiltinName::new("END2"),
-    ty: ParameterType::Fixnum,
+    ty: ParameterType::Any,
 };
 const START: Parameter = Parameter {
     name: BuiltinName::new("START"),
@@ -282,13 +282,21 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     register!("STRINGP", LambdaList::fixed(&[OBJECT]), stringp_builtin);
     register!("STRING", LambdaList::fixed(&[OBJECT]), string_builtin);
-    register!("STRING=", LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false), string_equal_builtin);
+    register!(
+        "STRING=",
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
+        string_equal_builtin
+    );
     register!(
         "STRING/=",
         LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_equal_builtin
     );
-    register!("STRING<", LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false), string_less_builtin);
+    register!(
+        "STRING<",
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
+        string_less_builtin
+    );
     register!(
         "STRING>",
         LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),

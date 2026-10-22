@@ -95,17 +95,23 @@ fn parse_options_with_minimum(
                 options.start = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                     .map_err(|_| ObjectError::TypeError)?;
             } else if keyword == "END" {
-                options.end = Some(
-                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                        .map_err(|_| ObjectError::TypeError)?,
-                );
+                options.end = if value == Word::NIL {
+                    None
+                } else {
+                    Some(
+                        usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                            .map_err(|_| ObjectError::TypeError)?,
+                    )
+                };
             } else if keyword == "FROM-END" {
                 options.from_end = value != Word::NIL;
             } else if keyword == "COUNT" {
-                options.count = Some(
-                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                        .map_err(|_| ObjectError::TypeError)?,
-                );
+                options.count = if value == Word::NIL {
+                    None
+                } else {
+                    let count = value.as_fixnum().ok_or(ObjectError::TypeError)?;
+                    Some(usize::try_from(count.max(0)).map_err(|_| ObjectError::TypeError)?)
+                };
             } else if keyword == "KEY" {
                 options.key = Some(value);
             } else if keyword == "TEST" {
@@ -207,7 +213,7 @@ fn matches<C: FunctionCaller>(
         let result = if options.test.is_some() {
             let designator = function(ctx, *roots.get(3).ok_or(ObjectError::Layout)?)?;
             let mut values = MultipleValues::new();
-            let args = [keyed, object];
+            let args = [object, keyed];
             caller.call_function(
                 ctx,
                 runtime,
@@ -218,7 +224,7 @@ fn matches<C: FunctionCaller>(
         } else if options.test_not.is_some() {
             let designator = function(ctx, *roots.get(4).ok_or(ObjectError::Layout)?)?;
             let mut values = MultipleValues::new();
-            let args = [keyed, object];
+            let args = [object, keyed];
             caller.call_function(
                 ctx,
                 runtime,
@@ -286,6 +292,9 @@ pub fn matching_indices<C: FunctionCaller>(
                 })
             };
             let (start, end) = bounds(options, values.len())?;
+            if options.count == Some(0) {
+                return Ok(Vec::new());
+            }
             let mut indices = (start..end).collect::<Vec<_>>();
             if options.from_end {
                 indices.reverse();

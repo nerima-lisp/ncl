@@ -11,10 +11,12 @@ fn eval(source: &str) -> (bool, String) {
         .args(["--eval", source])
         .output()
         .unwrap_or_else(|error| panic!("failed to run {source}: {error}"));
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-    )
+    let output_text = if output.status.success() {
+        String::from_utf8_lossy(&output.stdout)
+    } else {
+        String::from_utf8_lossy(&output.stderr)
+    };
+    (output.status.success(), output_text.trim().to_owned())
 }
 
 #[test]
@@ -70,4 +72,79 @@ fn make_array_rejects_conflicting_initial_options() {
         .output()
         .unwrap_or_else(|error| panic!("failed to run: {error}"));
     assert!(!output.status.success());
+}
+
+#[test]
+fn gensym_defaults_to_g_and_uses_a_string_prefix_for_one_call() {
+    let source =
+        "(let ((*gensym-counter* 12)) (list (gensym) (gensym \"TMP\") (gensym) *gensym-counter*))";
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed");
+    assert_eq!(actual, "(#:G12 #:TMP13 #:G14 15)", "{source}");
+}
+
+#[test]
+fn gensym_counter_accepts_a_bignum_and_increments_it_exactly() {
+    let source = r"(list
+        (let ((*gensym-counter* 18446744073709551616))
+          (list (symbol-name (gensym)) *gensym-counter*))
+        (let ((*gensym-counter* 18446744073709551615))
+          (list (symbol-name (gensym)) *gensym-counter*)))";
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(
+        actual,
+        "((\"G18446744073709551616\" 18446744073709551617) (\"G18446744073709551615\" 18446744073709551616))",
+        "{source}"
+    );
+}
+
+#[test]
+fn gensym_counter_promotes_past_the_largest_fixnum() {
+    let source = "(let ((*gensym-counter* 4611686018427387903)) (list (symbol-name (gensym)) *gensym-counter*))";
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(
+        actual, "(\"G4611686018427387903\" 4611686018427387904)",
+        "{source}"
+    );
+}
+
+#[test]
+fn gensym_counter_rejects_negative_and_noninteger_values() {
+    for source in [
+        "(let ((*gensym-counter* -18446744073709551616)) (gensym))",
+        "(let ((*gensym-counter* 'foo)) (gensym))",
+    ] {
+        let (success, actual) = eval(source);
+        assert!(
+            !success && actual.contains("TypeError"),
+            "{source} did not reject the invalid counter (success={success}, output={actual})"
+        );
+    }
+}
+
+#[test]
+fn gensym_integer_suffix_is_fresh_and_does_not_advance_the_counter() {
+    let source = "(let ((*gensym-counter* 70)) (let ((first (gensym 5)) (second (gensym 5)) (large (gensym 18446744073709551616)) (next (gensym))) (and (not (eq first second)) (null (symbol-package first)) (null (symbol-package second)) (equal (symbol-name first) \"G5\") (equal (symbol-name large) \"G18446744073709551616\") (equal (symbol-name next) \"G70\") (= *gensym-counter* 71))))";
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(actual, "T", "{source}");
+}
+
+#[test]
+fn gensym_rejects_arguments_outside_strings_and_nonnegative_integers() {
+    for source in [
+        "(gensym 'foo)",
+        "(gensym #\\a)",
+        "(gensym -1)",
+        "(gensym -18446744073709551616)",
+        "(gensym 1.5)",
+    ] {
+        let (success, actual) = eval(source);
+        assert!(
+            !success && actual.contains("TypeError"),
+            "{source} did not signal a type error (success={success}, output={actual})"
+        );
+    }
 }

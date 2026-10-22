@@ -8,11 +8,11 @@ mod predicates;
 mod symbol_registration;
 
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    Arity, Bignum, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, car, cdr, make_string, make_symbol,
-    set_symbol_special, set_symbol_value, symbol_function, symbol_name, symbol_package,
-    symbol_plist, symbol_value,
+    ParameterType, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr,
+    make_bignum_from_i128, make_bignum_from_limbs, make_string, make_symbol, set_symbol_special,
+    set_symbol_value, symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
 };
 
 fn with_rooted_words<T>(
@@ -265,16 +265,25 @@ fn gensym(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let prefix = args
-        .get(0)
-        .map(|word| text(ctx, word))
-        .transpose()?
-        .unwrap_or_else(|| "G".to_owned());
-    let counter = next_gensym_counter(ctx, runtime)?;
+    let (prefix, suffix) = match args.get(0) {
+        None => ("G".to_owned(), next_gensym_counter(ctx, runtime)?),
+        Some(word) => match ncl_object::classify_object(ctx, word) {
+            ObjectRef::String(_) => (text(ctx, word)?, next_gensym_counter(ctx, runtime)?),
+            ObjectRef::Fixnum(value) if value >= 0 => ("G".to_owned(), value.to_string()),
+            ObjectRef::Bignum(value) => {
+                let value = Bignum::from_word(value);
+                if bignum_sign(ctx, value)? {
+                    return Err(ObjectError::TypeError);
+                }
+                ("G".to_owned(), nonnegative_bignum_decimal(ctx, value)?)
+            }
+            _ => return Err(ObjectError::TypeError),
+        },
+    };
     let name = make_string(
         ctx,
         runtime,
-        &format!("{prefix}{counter}").chars().collect::<Vec<_>>(),
+        &format!("{prefix}{suffix}").chars().collect::<Vec<_>>(),
     )?;
     let mut roots = [name];
     with_rooted_words(ctx, &mut roots, |ctx, roots| {
@@ -282,19 +291,75 @@ fn gensym(
     })
 }
 
-fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<i64, ObjectError> {
+fn nonnegative_bignum_decimal(ctx: &ThreadContext, value: Bignum) -> Result<String, ObjectError> {
+    let limbs = bignum_limbs(ctx, value)?;
+    let mut digits = vec![0_u8];
+    for limb in limbs.into_iter().rev() {
+        let mut carry = u64::from(limb);
+        for digit in &mut digits {
+            let current = u64::from(*digit) * (1_u64 << 32) + carry;
+            *digit = (current % 10) as u8;
+            carry = current / 10;
+        }
+        while carry != 0 {
+            digits.push((carry % 10) as u8);
+            carry /= 10;
+        }
+    }
+    Ok(digits
+        .into_iter()
+        .rev()
+        .map(|digit| char::from(b'0' + digit))
+        .collect())
+}
+
+fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<String, ObjectError> {
     let common = Package::from_word(
         runtime
             .find_package(ctx, "COMMON-LISP")
             .ok_or(ObjectError::Layout)?,
     );
     let (counter_symbol, _) = common.intern(ctx, runtime, "*GENSYM-COUNTER*")?;
-    let counter = symbol_value(ctx, counter_symbol)?
-        .as_fixnum()
-        .ok_or(ObjectError::Layout)?;
-    let next = counter.checked_add(1).ok_or(ObjectError::Layout)?;
-    set_symbol_value(ctx, counter_symbol, Word::fixnum(next))?;
-    Ok(counter)
+    let counter = symbol_value(ctx, counter_symbol)?;
+    let (suffix, next) = match ncl_object::classify_object(ctx, counter) {
+        ObjectRef::Fixnum(value) if value >= 0 => {
+            let next = value + 1;
+            let next_word = Word::fixnum(next);
+            let next_word = if next_word.as_fixnum() == Some(next) {
+                next_word
+            } else {
+                make_bignum_from_i128(ctx, runtime, i128::from(next))?.into()
+            };
+            (value.to_string(), next_word)
+        }
+        ObjectRef::Bignum(value) => {
+            let value = Bignum::from_word(value);
+            if bignum_sign(ctx, value)? {
+                return Err(ObjectError::TypeError);
+            }
+            let suffix = nonnegative_bignum_decimal(ctx, value)?;
+            let mut limbs = bignum_limbs(ctx, value)?;
+            let mut carry = true;
+            for limb in &mut limbs {
+                let (sum, overflow) = limb.overflowing_add(1);
+                *limb = sum;
+                if !overflow {
+                    carry = false;
+                    break;
+                }
+            }
+            if carry {
+                limbs.push(1);
+            }
+            (
+                suffix,
+                make_bignum_from_limbs(ctx, runtime, false, &limbs)?.into(),
+            )
+        }
+        _ => return Err(ObjectError::TypeError),
+    };
+    set_symbol_value(ctx, counter_symbol, next)?;
+    Ok(suffix)
 }
 
 fn package_arg(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<Package, ObjectError> {

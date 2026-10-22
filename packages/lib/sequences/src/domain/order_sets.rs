@@ -372,29 +372,30 @@ pub(super) fn set_operation(
                     .collect()
             };
             let mut result = vec![Word::NIL; candidates.len()];
+            let mut result_rows = vec![0; candidates.len()];
             {
                 let mut result_len = 0;
                 for &(candidate_row, candidate_index) in &candidates {
-                    let mut in_left = false;
-                    for candidate in rows.first().ok_or(ObjectError::Layout)? {
-                        let value = *rows
-                            .get(candidate_row)
-                            .and_then(|row| row.get(candidate_index))
-                            .ok_or(ObjectError::Layout)?;
-                        if matches(ctx, runtime, value, *candidate, opts)? {
-                            in_left = true;
-                            break;
+                    let value = *rows
+                        .get(candidate_row)
+                        .and_then(|row| row.get(candidate_index))
+                        .ok_or(ObjectError::Layout)?;
+                    let mut in_left = candidate_row == 0;
+                    if candidate_row == 1 {
+                        for candidate in rows.first().ok_or(ObjectError::Layout)? {
+                            if matches(ctx, runtime, *candidate, value, opts)? {
+                                in_left = true;
+                                break;
+                            }
                         }
                     }
-                    let mut in_right = false;
-                    for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
-                        let value = *rows
-                            .get(candidate_row)
-                            .and_then(|row| row.get(candidate_index))
-                            .ok_or(ObjectError::Layout)?;
-                        if matches(ctx, runtime, value, *candidate, opts)? {
-                            in_right = true;
-                            break;
+                    let mut in_right = candidate_row == 1;
+                    if candidate_row == 0 {
+                        for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
+                            if matches(ctx, runtime, value, *candidate, opts)? {
+                                in_right = true;
+                                break;
+                            }
                         }
                     }
                     let include = if difference {
@@ -405,12 +406,18 @@ pub(super) fn set_operation(
                         true
                     };
                     let mut duplicate = false;
-                    for candidate in result.iter().take(result_len) {
+                    for (index, candidate) in result.iter().take(result_len).enumerate() {
                         let value = *rows
                             .get(candidate_row)
                             .and_then(|row| row.get(candidate_index))
                             .ok_or(ObjectError::Layout)?;
-                        if matches(ctx, runtime, value, *candidate, opts)? {
+                        let row = *result_rows.get(index).ok_or(ObjectError::Layout)?;
+                        let (first, second) = if row == 0 && candidate_row == 1 {
+                            (*candidate, value)
+                        } else {
+                            (value, *candidate)
+                        };
+                        if matches(ctx, runtime, first, second, opts)? {
                             duplicate = true;
                             break;
                         }
@@ -421,6 +428,8 @@ pub(super) fn set_operation(
                             .and_then(|row| row.get(candidate_index))
                             .ok_or(ObjectError::Layout)?;
                         *result.get_mut(result_len).ok_or(ObjectError::Layout)? = value;
+                        *result_rows.get_mut(result_len).ok_or(ObjectError::Layout)? =
+                            candidate_row;
                         result_len += 1;
                     }
                 }

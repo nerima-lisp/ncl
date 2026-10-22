@@ -82,9 +82,26 @@ jobs:
       - run: cargo check --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace --all-features --all-targets
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      # Smoke-check that a release build succeeds; artifacts are not uploaded because
-      # they warm the incremental cache for the release test run below and are not
-      # meant to be distributable (see Install section in README.md for that path).
+
+  release-check:
+    name: Release check (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86-64 Linux
+            runner: ubuntu-24.04
+          - name: aarch64 macOS
+            runner: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+      # Build first to warm the incremental cache for the release tests below.
       - run: cargo build --locked --workspace --release
       - run: cargo test --locked --workspace --all-features --all-targets --release
 

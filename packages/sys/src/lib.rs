@@ -63,12 +63,6 @@ impl Thread {
                 .is_some_and(|end| end == self.roots.len())
             && (0..token.count).all(|_| self.roots.pop().is_some())
     }
-
-    /// Return the number of currently registered precise roots.
-    #[must_use]
-    pub(crate) const fn root_len(&self) -> usize {
-        self.roots.len()
-    }
 }
 
 /// Run a callback with the opaque context installed for synchronous native execution.
@@ -345,11 +339,7 @@ pub fn publish_conservative_root(thread: &mut Thread, value: Word) {
 
 /// Register a contiguous set of precise root slots.
 pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken {
-    let token = RootToken::spanning(thread.root_len(), values.len());
-    thread
-        .roots
-        .extend(values.iter_mut().map(std::ptr::from_mut));
-    token
+    thread.register_root_set(values)
 }
 
 /// Register a precise root slot owned by a heap-level registry.

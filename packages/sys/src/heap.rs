@@ -295,17 +295,16 @@ impl Heap {
         state.objects[index].alive.then_some(index)
     }
     fn find_conservative(state: &State, value: Word) -> Option<usize> {
-        let expected = if value.is_list() {
-            PageKind::Cons
-        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
-            PageKind::HeaderObject
-        } else {
-            return None;
-        };
         let index = Self::find_raw(state, value)?;
-        let object = &state.objects[index];
-        (object.kind == expected && value.address() == object.words.as_ptr() as usize)
-            .then_some(index)
+        let object = state.objects.get(index)?;
+        let kind_matches = if value.is_list() {
+            object.kind == PageKind::Cons
+        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
+            matches!(object.kind, PageKind::HeaderObject | PageKind::Large)
+        } else {
+            false
+        };
+        (kind_matches && value.address() == object.words.as_ptr().addr()).then_some(index)
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();

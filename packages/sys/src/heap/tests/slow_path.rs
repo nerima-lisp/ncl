@@ -79,14 +79,14 @@ fn slow_path_cons_forwards_rooted_inputs_before_writing_the_new_cell() {
 }
 
 #[test]
-fn native_stack_snapshot_retains_unrooted_cons_input() {
+fn native_stack_snapshot_retains_unrooted_large_input() {
     let heap = Heap::new(HeapConfig::default());
     let mut collector = Thread::new();
     let mut native = Thread::new();
     assert_eq!(heap.register_thread(&mut collector), Ok(()));
     assert_eq!(heap.register_thread(&mut native), Ok(()));
-    let object = heap.alloc_cons(&mut native, Word::fixnum(7), Word::NIL);
-    assert!(object.is_ok(), "setup cons should allocate");
+    let object = heap.alloc_large(&mut native, TypeTag { widetag: 13 }, 1023);
+    assert!(object.is_ok(), "setup large object should allocate");
     let mut car = object.unwrap_or(Word::NIL);
     assert!(native.roots.is_empty());
     let car_pointer = core::ptr::addr_of_mut!(car);
@@ -101,9 +101,136 @@ fn native_stack_snapshot_retains_unrooted_cons_input() {
 
     // SAFETY: the local root slot remains alive until the collection completes.
     car = unsafe { car_pointer.read_volatile() };
-    assert_eq!(heap.read_word(car, 0), Some(Word::fixnum(7)));
+    assert_eq!(heap.widetag(car), Some(13));
     heap.unregister_thread(&native);
     heap.unregister_thread(&collector);
+}
+
+#[test]
+fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
+    let heap = Arc::new(Heap::new(HeapConfig::default()));
+    let mut setup = Thread::new();
+    assert_eq!(heap.register_thread(&mut setup), Ok(()));
+    let large = heap
+        .alloc_large(&mut setup, TypeTag { widetag: 13 }, 1023)
+        .unwrap_or(Word::NIL);
+    assert_eq!(heap.widetag(large), Some(13));
+    heap.unregister_thread(&setup);
+
+    let (blocker_ready_sender, blocker_ready_receiver) = mpsc::channel();
+    let (poll_sender, poll_receiver) = mpsc::channel();
+    let blocker_heap = Arc::clone(&heap);
+    let blocker = thread::spawn(move || {
+        let mut blocker = Thread::new();
+        assert_eq!(blocker_heap.register_thread(&mut blocker), Ok(()));
+        assert!(blocker_ready_sender.send(()).is_ok());
+        assert!(poll_receiver.recv().is_ok());
+        blocker.poll_safepoint();
+        blocker_heap.unregister_thread(&blocker);
+    });
+    assert!(blocker_ready_receiver.recv().is_ok());
+
+    let (native_ready_sender, native_ready_receiver) = mpsc::channel();
+    let (native_pointer_sender, native_pointer_receiver) = mpsc::channel();
+    let (argument_sender, argument_receiver) = mpsc::channel();
+    let (allocation_sender, allocation_receiver) = mpsc::channel();
+    let native_heap = Arc::clone(&heap);
+    let native = thread::spawn(move || {
+        let mut native = Thread::new();
+        assert_eq!(native_heap.register_thread(&mut native), Ok(()));
+        native.enter_native();
+        assert!(
+            native_pointer_sender
+                .send(std::ptr::from_mut(&mut native).expose_provenance())
+                .is_ok()
+        );
+        assert!(native_ready_sender.send(()).is_ok());
+        let object = argument_receiver
+            .recv()
+            .expect("test should send the Native allocation argument");
+        let allocation = native_heap.alloc_cons(&mut native, object, Word::NIL);
+        assert!(allocation_sender.send(allocation).is_ok());
+        native_heap.unregister_thread(&native);
+    });
+    assert!(native_ready_receiver.recv().is_ok());
+    let native_pointer = std::ptr::with_exposed_provenance::<Thread>(
+        native_pointer_receiver
+            .recv()
+            .expect("Native worker should publish its thread pointer"),
+    );
+
+    let (collector_ready_sender, collector_ready_receiver) = mpsc::channel();
+    let collector_heap = Arc::clone(&heap);
+    let collector = thread::spawn(move || {
+        let mut collector = Thread::new();
+        assert_eq!(collector_heap.register_thread(&mut collector), Ok(()));
+        assert!(collector_ready_sender.send(()).is_ok());
+        collector_heap.collect_with_thread(&mut collector, true);
+        collector_heap.unregister_thread(&collector);
+    });
+    assert!(collector_ready_receiver.recv().is_ok());
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut stop_world = heap
+        .stop_world
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    while !stop_world.requested {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "collector did not request a safepoint"
+        );
+        let (next, wait) = heap
+            .stop_world_ready
+            .wait_timeout(stop_world, remaining)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stop_world = next;
+        assert!(!wait.timed_out() || stop_world.requested);
+    }
+    drop(stop_world);
+
+    assert!(argument_sender.send(large).is_ok());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut stop_world = heap
+        .stop_world
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    loop {
+        // SAFETY: the registered Native thread is waiting under this lock after publishing.
+        let snapshot = unsafe { (&*native_pointer).conservative_snapshot() };
+        if snapshot.contains(&large) {
+            break;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "Native alloc_cons argument was absent from the refreshed stack snapshot"
+        );
+        let (next, wait) = heap
+            .stop_world_ready
+            .wait_timeout(stop_world, remaining)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stop_world = next;
+        assert!(!wait.timed_out(), "Native stack snapshot was not refreshed");
+    }
+    drop(stop_world);
+
+    assert!(matches!(
+        allocation_receiver.recv_timeout(Duration::from_millis(50)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    assert!(poll_sender.send(()).is_ok());
+    assert!(collector.join().is_ok());
+
+    let allocation = allocation_receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("Native cons allocation should resume");
+    let cell = allocation.expect("Native cons allocation should succeed");
+    assert_eq!(heap.read_word(cell, 0), Some(large));
+    assert_eq!(heap.widetag(large), Some(13));
+    assert!(blocker.join().is_ok());
+    assert!(native.join().is_ok());
 }
 
 struct ForwardingRoots {

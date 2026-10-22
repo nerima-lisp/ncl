@@ -168,14 +168,26 @@ impl Thread {
         })
     }
     /// Push a precise root. The referenced slot must outlive the token.
+    /// Registered threads enter Lisp state before changing the root set.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {
-        let token = RootToken::spanning(self.roots.len(), 1);
-        self.roots.push(ptr::from_mut(value));
+        let mut thread = self.enter_lisp_state();
+        let token = RootToken::spanning(thread.roots.len(), 1);
+        thread.roots.push(ptr::from_mut(value));
+        token
+    }
+    /// Register a contiguous set of precise root slots.
+    /// Registered threads enter Lisp state before changing the root set.
+    pub fn register_root_set(&mut self, values: &mut [Word]) -> RootToken {
+        let mut thread = self.enter_lisp_state();
+        let token = RootToken::spanning(thread.roots.len(), values.len());
+        thread.roots.extend(values.iter_mut().map(ptr::from_mut));
         token
     }
     /// Pop the most recently pushed root.
+    /// Registered threads enter Lisp state before changing the root set.
     pub fn pop_root(&mut self, token: RootToken) -> bool {
-        self.pop_root_span(token)
+        let mut thread = self.enter_lisp_state();
+        thread.pop_root_span(token)
     }
     /// Return the native ABI multiple-value area.
     #[must_use]

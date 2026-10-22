@@ -205,6 +205,9 @@ impl Runtime {
                     })?;
                     nicknames = next;
                 }
+                if removed {
+                    put(ctx, *package, NAME, Word::NIL)?;
+                }
                 Ok(removed)
             })
         })

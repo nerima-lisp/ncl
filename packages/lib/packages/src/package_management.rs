@@ -38,20 +38,29 @@ pub(super) fn rename_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut package = package_arg(ctx, runtime, args, 0)?.as_word();
-    with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
-        let name = string_designator(ctx, args.required(1)?)?;
-        let nicknames = args.get(2).unwrap_or(Word::NIL);
-        for nickname in list_items(ctx, nicknames)? {
-            let _ = string_designator(ctx, nickname)?;
-        }
-        runtime.rename_package(
-            ctx,
-            Package::from_word(package[0]),
-            name.as_word(),
-            nicknames,
-        )?;
-        Ok(package[0])
+    let package = package_arg(ctx, runtime, args, 0)?.as_word();
+    let name = string_designator(ctx, args.required(1)?)?.as_word();
+    let mut roots = [package, name];
+    let mut nicknames = list_items(ctx, args.get(2).unwrap_or(Word::NIL))?;
+    with_rooted_words(ctx, &mut roots, |ctx, roots| {
+        with_rooted_words(ctx, &mut nicknames, |ctx, nicknames| {
+            for nickname in nicknames.iter_mut() {
+                *nickname = string_designator(ctx, *nickname)?.as_word();
+            }
+
+            let mut nickname_list = Word::NIL;
+            with_rooted_words(
+                ctx,
+                std::slice::from_mut(&mut nickname_list),
+                |ctx, list| {
+                    for nickname in nicknames.iter().rev().copied() {
+                        list[0] = ncl_object::make_cons(ctx, runtime, nickname, list[0])?;
+                    }
+                    runtime.rename_package(ctx, Package::from_word(roots[0]), roots[1], list[0])?;
+                    Ok(roots[0])
+                },
+            )
+        })
     })
 }
 

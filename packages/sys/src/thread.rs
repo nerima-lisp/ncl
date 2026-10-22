@@ -3,6 +3,7 @@ use crate::word::Word;
 use std::ptr;
 mod access;
 mod control;
+mod native;
 mod root_token;
 mod stack;
 pub use access::ThreadAccess;
@@ -36,6 +37,10 @@ pub enum SafepointState {
     Collecting,
     /// The mutator is outside the managed heap and safe to stop.
     Safe,
+    /// This thread owns the heap slow-path collection gate.
+    Collector = 5,
+    /// This thread has published roots and is waiting for the collection gate.
+    Parked = 6,
 }
 /// Machine-visible mutator context.
 ///
@@ -252,25 +257,7 @@ impl Thread {
     pub(crate) const fn has_native_frame_snapshot(&self) -> bool {
         self.frame_address.is_some()
     }
-    /// Enter the native runtime state.
-    pub const fn enter_native(&mut self) {
-        self.native = NativeState::Native;
-        self.state = SafepointState::Safe;
-    }
-    /// Leave the native runtime state and deliver a pending poll.
-    pub fn leave_native(&mut self) {
-        self.native = NativeState::Lisp;
-        self.state = SafepointState::Running;
-        self.poll_safepoint();
-    }
     pub(crate) fn heap_collect(&mut self, full: bool) {
-        #[cfg(target_arch = "x86_64")]
-        {
-            // Native callbacks can allocate before a precise generated-frame
-            // capture is available. Refresh the conservative snapshot at the
-            // collection site so the active generated frame is included.
-            self.publish_snapshot();
-        }
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {

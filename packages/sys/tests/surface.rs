@@ -237,8 +237,10 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     let mut sibling = Thread::new();
     assert!(register_thread_with_thread(&thread, &mut sibling).is_ok());
     assert!(register_thread_with_thread(&unregistered, &mut Thread::new()).is_err());
+    ncl_sys::unregister_thread(&sibling);
 
-    let object = alloc(&mut thread, &heap, TypeTag { widetag: 7 }, 2).unwrap_or(Word::NIL);
+    let mut object = alloc(&mut thread, &heap, TypeTag { widetag: 7 }, 2).unwrap_or(Word::NIL);
+    let object_root = push_root(&mut thread, &mut object);
     assert_eq!(object_widetag(&thread, object), Some(7));
     assert_eq!(
         read_object_word(&thread, object, 0),
@@ -279,9 +281,9 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     write_barrier(NonNull::from(&mut thread), object, 1);
     assert_eq!(make_weak(&thread, object, Weakness::Value), object);
     assert_eq!(weak_value(&thread, object), Word::fixnum(8));
-    ncl_sys::unregister_thread(&sibling);
     collect(&mut thread, false);
     assert!(heap_epoch(&thread) >= 1);
+    assert!(pop_root(&mut thread, object_root));
     ncl_sys::unregister_thread(&thread);
 }
 

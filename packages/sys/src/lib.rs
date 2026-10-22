@@ -377,7 +377,7 @@ pub fn unregister_heap_root(heap: &Heap, token: RootToken) -> Result<(), HeapRoo
 }
 
 /// Enter a foreign/native section.
-pub const fn enter_native(thread: &mut Thread) {
+pub fn enter_native(thread: &mut Thread) {
     thread.enter_native();
 }
 

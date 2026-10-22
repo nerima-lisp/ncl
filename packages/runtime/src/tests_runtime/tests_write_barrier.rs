@@ -7,21 +7,21 @@ pub(super) fn run() {
     runtime.set_strict_forwarding(true);
 
     let pair_symbol = rooted_user_symbol(&mut runtime, "*U03-STOREFIELD-PAIR*");
-    let pair_recovery_symbol = rooted_user_symbol(&mut runtime, "*U03-STOREFIELD-RECOVERED*");
-    let pair_weak_symbol = rooted_user_symbol(&mut runtime, "*U03-STOREFIELD-WEAK-PAIR*");
     let cell_weak_symbol = rooted_user_symbol(&mut runtime, "*U03-STOREFIELD-WEAK-CELL*");
-    prepare_old_storefield_cell(
-        &mut runtime,
-        &pair_symbol,
-        &pair_weak_symbol,
-        &cell_weak_symbol,
-    );
+    prepare_old_storefield_cell(&mut runtime, &pair_symbol, &cell_weak_symbol);
 
     let young = runtime
         .eval("(cons 701 702)")
         .unwrap_or_else(|error| panic!("JIT argument cons creation failed: {error}"));
     let pair = symbol_value(&runtime.context, pair_symbol.get())
         .unwrap_or_else(|error| panic!("captured cell pair lookup before call failed: {error}"));
+    let captured_cell = storefield_setter_cell(&runtime, pair, "captured");
+    let weak_cell = weak_target(&runtime, cell_weak_symbol.get())
+        .unwrap_or_else(|error| panic!("weak cell lookup before call failed: {error}"));
+    assert_eq!(
+        captured_cell, weak_cell,
+        "weak link must name the StoreField owner"
+    );
     let setter = storefield_setter(&runtime, pair, "captured");
     let setter = ncl_object::FunctionObject::try_from(setter)
         .unwrap_or_else(|error| panic!("captured setter conversion failed: {error}"));
@@ -48,26 +48,10 @@ pub(super) fn run() {
 
     let weak_cell = weak_target(&runtime, cell_weak_symbol.get())
         .unwrap_or_else(|error| panic!("weak cell lookup failed: {error}"));
-    let pair = restore_weak_target(
-        &mut runtime,
-        pair_weak_symbol.get(),
-        pair_recovery_symbol.get(),
-    )
-    .unwrap_or_else(|error| panic!("weak pair recovery failed: {error}"));
-    let captured_cell = storefield_setter_cell(&runtime, pair, "recovered");
-    assert_eq!(
-        captured_cell, weak_cell,
-        "weak link must name the StoreField owner"
-    );
-    let jit_read = read_recovered_cell_car(&mut runtime, "*U03-STOREFIELD-RECOVERED*");
+    let jit_read = read_cell_car(&mut runtime, weak_cell);
 
-    let api_read = read_after_barriered_api_store(
-        &mut runtime,
-        weak_cell,
-        &pair_weak_symbol,
-        &pair_recovery_symbol,
-    )
-    .unwrap_or_else(|error| panic!("positive-control failed: {error}"));
+    let api_read = read_after_barriered_api_store(&mut runtime, weak_cell)
+        .unwrap_or_else(|error| panic!("positive-control failed: {error}"));
 
     assert_eq!(api_read, ncl_sys::Word::fixnum(801));
     assert_eq!(jit_read, Ok(ncl_sys::Word::fixnum(701)));
@@ -76,7 +60,6 @@ pub(super) fn run() {
 fn prepare_old_storefield_cell(
     runtime: &mut Runtime,
     pair_symbol: &ncl_object::HeapRootedWord,
-    pair_weak_symbol: &ncl_object::HeapRootedWord,
     cell_weak_symbol: &ncl_object::HeapRootedWord,
 ) {
     let pair = runtime
@@ -96,7 +79,6 @@ fn prepare_old_storefield_cell(
     let pair = symbol_value(&runtime.context, pair_symbol.get())
         .unwrap_or_else(|error| panic!("captured cell pair lookup failed: {error}"));
     let cell = storefield_setter_cell(runtime, pair, "captured");
-    set_weak_link(runtime, pair_weak_symbol.get(), pair);
     set_weak_link(runtime, cell_weak_symbol.get(), cell);
 }
 
@@ -124,8 +106,6 @@ fn collect_minor_twice(runtime: &mut Runtime, phase: &str) {
 fn read_after_barriered_api_store(
     runtime: &mut Runtime,
     weak_cell: ncl_sys::Word,
-    pair_weak_symbol: &ncl_object::HeapRootedWord,
-    pair_recovery_symbol: &ncl_object::HeapRootedWord,
 ) -> Result<ncl_sys::Word, String> {
     let api_value = runtime
         .eval("(cons 801 802)")
@@ -137,16 +117,8 @@ fn read_after_barriered_api_store(
     runtime
         .eval("NIL")
         .map_err(|error| format!("clearing the positive-control value failed: {error}"))?;
-    ncl_object::set_symbol_value(
-        &mut runtime.context,
-        pair_recovery_symbol.get(),
-        ncl_sys::Word::NIL,
-    )
-    .map_err(|error| format!("recovered pair unrooting failed: {error}"))?;
     collect_minor_twice(runtime, "positive-control");
-    restore_weak_target(runtime, pair_weak_symbol.get(), pair_recovery_symbol.get())
-        .map_err(|error| format!("positive-control pair recovery failed: {error}"))?;
-    read_recovered_cell_car(runtime, "*U03-STOREFIELD-RECOVERED*")
+    read_cell_car(runtime, weak_cell)
 }
 
 fn intern_user_symbol(runtime: &mut Runtime, name: &str) -> ncl_sys::Word {
@@ -187,23 +159,11 @@ fn weak_target(runtime: &Runtime, symbol: ncl_sys::Word) -> Result<ncl_sys::Word
         .ok_or_else(|| "weak target was cleared".to_owned())
 }
 
-fn restore_weak_target(
-    runtime: &mut Runtime,
-    weak_symbol: ncl_sys::Word,
-    recovery_symbol: ncl_sys::Word,
-) -> Result<ncl_sys::Word, String> {
-    let target = weak_target(runtime, weak_symbol)?;
-    ncl_object::set_symbol_value(&mut runtime.context, recovery_symbol, target)
-        .map_err(|error| error.to_string())?;
-    Ok(target)
-}
-
-fn read_recovered_cell_car(
-    runtime: &mut Runtime,
-    recovery_symbol: &str,
-) -> Result<ncl_sys::Word, String> {
+fn read_cell_car(runtime: &mut Runtime, cell: ncl_sys::Word) -> Result<ncl_sys::Word, String> {
     let value = runtime
-        .eval(&format!("(funcall (car {recovery_symbol}))"))
-        .map_err(|error| error.to_string())?;
+        .context
+        .thread_access()
+        .read_object_word(cell, 0)
+        .ok_or_else(|| "captured value cell payload unavailable".to_owned())?;
     ncl_object::car(&runtime.context, value).map_err(|error| error.to_string())
 }

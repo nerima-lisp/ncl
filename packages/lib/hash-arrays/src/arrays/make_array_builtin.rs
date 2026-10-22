@@ -65,6 +65,18 @@ fn byte_size(ctx: &ThreadContext, value: Word) -> Result<(), ObjectError> {
     }
 }
 
+fn mod_element_type(ctx: &ThreadContext, size: Word) -> Result<ArrayElementType, ObjectError> {
+    if matches!(classify_object(ctx, size), ObjectRef::Symbol(_)) {
+        return Err(ObjectError::TypeError);
+    }
+    byte_size(ctx, size)?;
+    Ok(if matches!(size.as_fixnum(), Some(1 | 2)) {
+        ArrayElementType::Bit
+    } else {
+        ArrayElementType::Unsigned
+    })
+}
+
 fn integer_element_type(
     ctx: &ThreadContext,
     lower: Option<Word>,
@@ -81,34 +93,60 @@ fn integer_element_type(
     })
 }
 
+fn mod_element(value: Word, modulus: Word, ctx: &ThreadContext) -> Result<bool, ObjectError> {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(value) if value >= 0 => match classify_object(ctx, modulus) {
+            ObjectRef::Fixnum(modulus) => Ok(value < modulus),
+            ObjectRef::Bignum(_) => Ok(true),
+            // The parsed MOD size is a positive integer.
+            _ => Err(ObjectError::TypeError),
+        },
+        ObjectRef::Bignum(value) if !bignum_sign(ctx, Bignum::from_word(value))? => {
+            let ObjectRef::Bignum(modulus) = classify_object(ctx, modulus) else {
+                return Ok(false);
+            };
+            let value_limbs = bignum_limbs(ctx, Bignum::from_word(value))?;
+            let modulus_limbs = bignum_limbs(ctx, Bignum::from_word(modulus))?;
+            Ok(value_limbs.len() < modulus_limbs.len()
+                || (value_limbs.len() == modulus_limbs.len()
+                    && value_limbs.iter().rev().cmp(modulus_limbs.iter().rev())
+                        == std::cmp::Ordering::Less))
+        }
+        // MOD contains only non-negative integers.
+        _ => Ok(false),
+    }
+}
+
 fn element_type_designator(
     ctx: &ThreadContext,
     designator: Word,
-) -> Result<ArrayElementType, ObjectError> {
+) -> Result<(ArrayElementType, Option<Word>), ObjectError> {
     match classify_object(ctx, designator) {
-        ObjectRef::Symbol(_) => {
-            named_element_type(&symbol_text(ctx, designator)?).ok_or(ObjectError::TypeError)
-        }
+        ObjectRef::Symbol(_) => Ok((
+            named_element_type(&symbol_text(ctx, designator)?).ok_or(ObjectError::TypeError)?,
+            None,
+        )),
         ObjectRef::Cons(_) => {
             let parts = list_values(ctx, designator)?;
             match parts.as_slice() {
                 [name] => match symbol_text(ctx, *name)?.to_ascii_uppercase().as_str() {
-                    "INTEGER" => integer_element_type(ctx, None, None),
-                    "SIGNED-BYTE" => Ok(ArrayElementType::Signed),
-                    "UNSIGNED-BYTE" => Ok(ArrayElementType::Unsigned),
+                    "INTEGER" => Ok((integer_element_type(ctx, None, None)?, None)),
+                    "SIGNED-BYTE" => Ok((ArrayElementType::Signed, None)),
+                    "UNSIGNED-BYTE" => Ok((ArrayElementType::Unsigned, None)),
                     _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported element type names
                 },
                 [name, width] => {
                     let name = symbol_text(ctx, *name)?.to_ascii_uppercase();
                     match name.as_str() {
-                        "INTEGER" => integer_element_type(ctx, Some(*width), None),
+                        "INTEGER" => Ok((integer_element_type(ctx, Some(*width), None)?, None)),
+                        "MOD" => Ok((mod_element_type(ctx, *width)?, Some(*width))),
                         "SIGNED-BYTE" => {
                             byte_size(ctx, *width)?;
-                            Ok(ArrayElementType::Signed)
+                            Ok((ArrayElementType::Signed, None))
                         }
                         "UNSIGNED-BYTE" => {
                             byte_size(ctx, *width)?;
-                            Ok(ArrayElementType::Unsigned)
+                            Ok((ArrayElementType::Unsigned, None))
                         }
                         _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject unsupported element type names
                     }
@@ -116,7 +154,7 @@ fn element_type_designator(
                 [name, lower, upper]
                     if symbol_text(ctx, *name)?.eq_ignore_ascii_case("INTEGER") =>
                 {
-                    integer_element_type(ctx, Some(*lower), Some(*upper))
+                    Ok((integer_element_type(ctx, Some(*lower), Some(*upper))?, None))
                 }
                 _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) reject malformed type lists
             }
@@ -133,6 +171,7 @@ pub(super) fn make_array_builtin(
 ) -> Result<Word, ObjectError> {
     let dimensions = dimension_values(ctx, args.required(0)?)?;
     let mut element_type = ArrayElementType::T;
+    let mut modulus = None;
     let mut initial_element = Word::NIL;
     let mut initial_element_set = false;
     let mut initial_contents = None;
@@ -150,7 +189,7 @@ pub(super) fn make_array_builtin(
             .trim_start_matches(':')
         {
             "ELEMENT-TYPE" => {
-                element_type = element_type_designator(ctx, value)?;
+                (element_type, modulus) = element_type_designator(ctx, value)?;
             }
             "INITIAL-ELEMENT" => {
                 initial_element = value;
@@ -176,6 +215,12 @@ pub(super) fn make_array_builtin(
     // CLHS 7.2 for MAKE-ARRAY: it is an error to supply both :initial-element
     // and :initial-contents.
     if initial_element_set && initial_contents.is_some() {
+        return Err(ObjectError::TypeError);
+    }
+    if let Some(modulus) = modulus
+        && initial_element_set
+        && !mod_element(initial_element, modulus, ctx)?
+    {
         return Err(ObjectError::TypeError);
     }
     if !initial_element_set {
@@ -204,6 +249,13 @@ pub(super) fn make_array_builtin(
     // Flatten the nested `:initial-contents` structure before allocating so
     // that every referenced Lisp object is rooted across the allocation.
     let flattened = flatten_initial_contents(ctx, contents, &dimensions)?;
+    if let Some(modulus) = modulus {
+        for &value in &flattened {
+            if !mod_element(value, modulus, ctx)? {
+                return Err(ObjectError::TypeError);
+            }
+        }
+    }
     with_rooted_slice(ctx, &flattened, |ctx, rooted| {
         let array = make_array(ctx, runtime, &dimensions, array_options)?;
         for (index, value) in rooted.iter().enumerate() {

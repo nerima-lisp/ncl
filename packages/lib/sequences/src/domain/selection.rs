@@ -15,6 +15,7 @@ use ncl_object::{
 mod selection_options;
 #[path = "selection_values.rs"]
 mod selection_values;
+pub use self::selection_options::{PairSelectionOptions, parse_pair_options};
 pub use self::selection_options::{SelectionOptions, parse_options, parse_options_single};
 
 pub fn list_from_values(
@@ -163,11 +164,19 @@ fn matches<C: FunctionCaller>(
 }
 
 fn bounds(options: SelectionOptions, length: usize) -> Result<(usize, usize), ObjectError> {
-    let end = options.end.unwrap_or(length);
-    if options.start > end || end > length {
+    bounds_from(options.start, options.end, length)
+}
+
+fn bounds_from(
+    start: usize,
+    end: Option<usize>,
+    length: usize,
+) -> Result<(usize, usize), ObjectError> {
+    let end = end.unwrap_or(length);
+    if start > end || end > length {
         Err(ObjectError::TypeError)
     } else {
-        Ok((options.start, end))
+        Ok((start, end))
     }
 }
 
@@ -342,4 +351,6 @@ pub use selection_duplicates::remove_duplicates;
 
 #[path = "selection_search.rs"]
 mod selection_search;
+#[allow(unused_imports)]
 pub use selection_search::{mismatch, search};
+pub use selection_search::{mismatch_pair, search_pair};

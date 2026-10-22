@@ -354,13 +354,19 @@ fn selection_parse(
 ) -> Result<(Vec<Word>, domain::selection::SelectionOptions), ObjectError> {
     domain::selection::parse_options(ctx, args)
 }
+fn selection_pair_parse(
+    ctx: &ThreadContext,
+    args: &[Word],
+) -> Result<(Vec<Word>, domain::selection::PairSelectionOptions), ObjectError> {
+    domain::selection::parse_pair_options(ctx, args)
+}
 fn search_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = selection_parse(ctx, args.as_slice())?;
+    let (positional, options) = selection_pair_parse(ctx, args.as_slice())?;
     let left_word = *positional.first().ok_or(ObjectError::TypeError)?;
     let right_word = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut left = domain::selection::sequence_values(
@@ -373,7 +379,7 @@ fn search_entry(
     )?;
     let mut caller = BuiltinFunctionCaller;
     values.clear();
-    domain::selection::search(ctx, runtime, &mut caller, &mut left, &mut right, options)
+    domain::selection::search_pair(ctx, runtime, &mut caller, &mut left, &mut right, options)
 }
 fn mismatch_entry(
     ctx: &mut ThreadContext,
@@ -381,7 +387,7 @@ fn mismatch_entry(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = selection_parse(ctx, args.as_slice())?;
+    let (positional, options) = selection_pair_parse(ctx, args.as_slice())?;
     let left_word = *positional.first().ok_or(ObjectError::TypeError)?;
     let right_word = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut left = domain::selection::sequence_values(
@@ -394,5 +400,5 @@ fn mismatch_entry(
     )?;
     let mut caller = BuiltinFunctionCaller;
     values.clear();
-    domain::selection::mismatch(ctx, runtime, &mut caller, &mut left, &mut right, options)
+    domain::selection::mismatch_pair(ctx, runtime, &mut caller, &mut left, &mut right, options)
 }

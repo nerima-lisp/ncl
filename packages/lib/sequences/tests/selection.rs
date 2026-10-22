@@ -420,3 +420,713 @@ fn registered_remove_duplicates_respects_direction_and_range() -> TestResult {
     assert_list(&ctx, result, &[9, 1, 2, 8].map(Word::fixnum))?;
     Ok(())
 }
+
+mod search_mismatch_public_api {
+    use super::greater_predicate;
+    use ncl_object::{
+        Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+        BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError,
+        Parameter, ParameterType, Runtime, ThreadContext, Word,
+    };
+
+    const SELECTION_TEST_PARAMETERS: &[Parameter] = super::SELECTION_TEST_PARAMETERS;
+    const SELECTION_TEST_IDENTIFIER: BuiltinIdentifier = super::SELECTION_TEST_IDENTIFIER;
+    const SELECTION_ODD_PARAMETERS: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("OBJECT"),
+        ty: ParameterType::Fixnum,
+    }];
+    const SELECTION_ODD_IDENTIFIER: BuiltinIdentifier = BuiltinIdentifier::new(
+        BuiltinPackage::NclTest,
+        BuiltinName::new("SEQUENCE-TEST-ODD"),
+    );
+
+    fn call(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
+        super::call(runtime, ctx, name, args)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+    }
+
+    fn call_result(
+        runtime: &Runtime,
+        ctx: &mut ThreadContext,
+        name: &str,
+        args: &[Word],
+    ) -> Result<Word, ObjectError> {
+        super::call(runtime, ctx, name, args)
+    }
+
+    fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
+        super::keyword(ctx, runtime, name)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+    }
+
+    fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
+        super::list(ctx, runtime, values)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+    }
+
+    fn odd_predicate(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let object = args
+            .required(0)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?;
+        values.clear();
+        Ok(if object % 2 != 0 {
+            Word::TRUE
+        } else {
+            Word::NIL
+        })
+    }
+
+    fn registered_selection_runtime() -> (Runtime, ThreadContext) {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        (runtime, ctx)
+    }
+
+    #[test]
+    fn registered_search_returns_leftmost_rightmost_and_no_match_results() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let pattern = list(&mut ctx, &runtime, &[2, 3].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[1, 2, 3, 2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(&runtime, &mut ctx, "SEARCH", &[pattern, sequence]),
+            Word::fixnum(1)
+        );
+
+        let from_end = keyword(&mut ctx, &runtime, "FROM-END");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, from_end, Word::TRUE],
+            ),
+            Word::fixnum(3)
+        );
+
+        let absent_pattern = list(&mut ctx, &runtime, &[3, 1].map(Word::fixnum));
+        assert_eq!(
+            call(&runtime, &mut ctx, "SEARCH", &[absent_pattern, sequence]),
+            Word::NIL
+        );
+
+        let longer_pattern = list(&mut ctx, &runtime, &[1, 2, 3, 4, 5, 6].map(Word::fixnum));
+        assert_eq!(
+            call(&runtime, &mut ctx, "SEARCH", &[longer_pattern, sequence]),
+            Word::NIL
+        );
+    }
+
+    #[test]
+    fn registered_search_tests_sequence_one_before_sequence_two() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let predicate = runtime
+            .register_builtin(
+                &mut ctx,
+                SELECTION_TEST_IDENTIFIER,
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                        convention: BuiltinConvention::Direct(Arity::exact(2)),
+                    },
+                    greater_predicate,
+                ),
+            )
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let pattern = list(&mut ctx, &runtime, &[3].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[1, 4].map(Word::fixnum));
+        let test = keyword(&mut ctx, &runtime, "TEST");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, test, predicate.as_word()],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_search_applies_key_to_both_sequences() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let key = runtime
+            .register_builtin(
+                &mut ctx,
+                SELECTION_ODD_IDENTIFIER,
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::fixed(SELECTION_ODD_PARAMETERS),
+                        convention: BuiltinConvention::Direct(Arity::exact(1)),
+                    },
+                    odd_predicate,
+                ),
+            )
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+            .as_word();
+
+        let pattern = list(&mut ctx, &runtime, &[0, 1].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[2, 4, 6, 1, 3, 5].map(Word::fixnum));
+        let key_option = keyword(&mut ctx, &runtime, "KEY");
+
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, key_option, key],
+            ),
+            Word::fixnum(2)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_reports_leftmost_and_from_end_difference_positions() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let left = list(&mut ctx, &runtime, &[1, 2, 3, 4].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1, 9, 3, 8].map(Word::fixnum));
+        assert_eq!(
+            call(&runtime, &mut ctx, "MISMATCH", &[left, right]),
+            Word::fixnum(1)
+        );
+
+        let from_end = keyword(&mut ctx, &runtime, "FROM-END");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, from_end, Word::TRUE],
+            ),
+            Word::fixnum(4)
+        );
+
+        let aligned_left = list(&mut ctx, &runtime, &[3, 2, 1, 1, 2, 3].map(Word::fixnum));
+        let aligned_right = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[aligned_left, aligned_right, from_end, Word::TRUE],
+            ),
+            Word::fixnum(3)
+        );
+
+        let equal_left = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        let equal_right = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(&runtime, &mut ctx, "MISMATCH", &[equal_left, equal_right]),
+            Word::NIL
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_tests_sequence_one_before_sequence_two() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let predicate = runtime
+            .register_builtin(
+                &mut ctx,
+                SELECTION_TEST_IDENTIFIER,
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                        convention: BuiltinConvention::Direct(Arity::exact(2)),
+                    },
+                    greater_predicate,
+                ),
+            )
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let left = list(&mut ctx, &runtime, &[3].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1].map(Word::fixnum));
+        let test = keyword(&mut ctx, &runtime, "TEST");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, test, predicate.as_word()],
+            ),
+            Word::NIL
+        );
+
+        let test_not = keyword(&mut ctx, &runtime, "TEST-NOT");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, test_not, predicate.as_word()],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_applies_key_to_both_sequences() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let left_values = [1, 2].map(|value| {
+            ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(value), Word::NIL)
+                .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+        });
+        let left = list(&mut ctx, &runtime, &left_values);
+        let right_values = [1, 2].map(|value| {
+            ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(value), Word::NIL)
+                .unwrap_or_else(|error| panic!("test operation failed: {error:?}"))
+        });
+        let right = list(&mut ctx, &runtime, &right_values);
+        let key_function = runtime
+            .function(&mut ctx, "COMMON-LISP", "CAR")
+            .unwrap_or_else(|| panic!("missing builtin CAR"));
+        let key = FunctionObject::try_from(key_function)
+            .unwrap_or_else(|_| panic!("CAR is not a function"))
+            .as_word();
+        let key_option = keyword(&mut ctx, &runtime, "KEY");
+
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, key_option, key],
+            ),
+            Word::NIL
+        );
+    }
+
+    #[test]
+    fn registered_search_honors_start1() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let start1 = keyword(&mut ctx, &runtime, "START1");
+        let pattern = list(&mut ctx, &runtime, &[0, 2, 3].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, start1, Word::fixnum(1)],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_search_honors_end1() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end1 = keyword(&mut ctx, &runtime, "END1");
+        let pattern = list(&mut ctx, &runtime, &[2, 3, 0].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, end1, Word::fixnum(1)],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_search_honors_start2() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let start2 = keyword(&mut ctx, &runtime, "START2");
+        let pattern = list(&mut ctx, &runtime, &[2].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[2, 1, 2].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, start2, Word::fixnum(1)],
+            ),
+            Word::fixnum(2)
+        );
+    }
+
+    #[test]
+    fn registered_search_honors_end2() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end2 = keyword(&mut ctx, &runtime, "END2");
+        let from_end = keyword(&mut ctx, &runtime, "FROM-END");
+        let pattern = list(&mut ctx, &runtime, &[2].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[2, 9, 2].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[
+                    pattern,
+                    sequence,
+                    end2,
+                    Word::fixnum(2),
+                    from_end,
+                    Word::TRUE,
+                ],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_honors_start1() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let start1 = keyword(&mut ctx, &runtime, "START1");
+        let left = list(&mut ctx, &runtime, &[9, 1, 2].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[0, 1, 2].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, start1, Word::fixnum(1)],
+            ),
+            Word::fixnum(1)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_honors_end1() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end1 = keyword(&mut ctx, &runtime, "END1");
+        let left = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, end1, Word::fixnum(2)],
+            ),
+            Word::fixnum(2)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_honors_start2() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let start2 = keyword(&mut ctx, &runtime, "START2");
+        let left = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[9, 1, 2].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, start2, Word::fixnum(1)],
+            ),
+            Word::fixnum(2)
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_honors_end2() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end2 = keyword(&mut ctx, &runtime, "END2");
+        let left = list(&mut ctx, &runtime, &[1, 2].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1, 2, 9].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, end2, Word::fixnum(2)],
+            ),
+            Word::NIL
+        );
+    }
+
+    #[test]
+    fn registered_mismatch_aligns_bounded_subsequences_from_end() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let left = list(&mut ctx, &runtime, &[9, 1, 2, 3, 8].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[0, 1, 9, 1, 2, 3, 7].map(Word::fixnum));
+        let start1 = keyword(&mut ctx, &runtime, "START1");
+        let end1 = keyword(&mut ctx, &runtime, "END1");
+        let start2 = keyword(&mut ctx, &runtime, "START2");
+        let end2 = keyword(&mut ctx, &runtime, "END2");
+        let from_end = keyword(&mut ctx, &runtime, "FROM-END");
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[
+                    left,
+                    right,
+                    start1,
+                    Word::fixnum(1),
+                    end1,
+                    Word::fixnum(4),
+                    start2,
+                    Word::fixnum(1),
+                    end2,
+                    Word::fixnum(6),
+                    from_end,
+                    Word::TRUE,
+                ],
+            ),
+            Word::fixnum(1)
+        );
+
+        let equal_left = list(&mut ctx, &runtime, &[9, 1, 2, 3, 8].map(Word::fixnum));
+        let equal_right = list(&mut ctx, &runtime, &[0, 1, 2, 3, 7].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[
+                    equal_left,
+                    equal_right,
+                    start1,
+                    Word::fixnum(1),
+                    end1,
+                    Word::fixnum(4),
+                    start2,
+                    Word::fixnum(1),
+                    end2,
+                    Word::fixnum(4),
+                    from_end,
+                    Word::TRUE,
+                ],
+            ),
+            Word::NIL
+        );
+    }
+
+    #[test]
+    fn registered_search_treats_nil_end1_as_unbounded() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end1 = keyword(&mut ctx, &runtime, "END1");
+        let pattern = list(&mut ctx, &runtime, &[1, 9].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[1, 2, 1, 9].map(Word::fixnum));
+
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, end1, Word::NIL],
+            ),
+            Word::fixnum(2)
+        );
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, end1, Word::fixnum(1)],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_search_and_mismatch_enforce_declared_keywords() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let left = list(&mut ctx, &runtime, &[1].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1].map(Word::fixnum));
+        let start1 = keyword(&mut ctx, &runtime, "START1");
+        let allow_other_keys = keyword(&mut ctx, &runtime, "ALLOW-OTHER-KEYS");
+
+        for operation in ["SEARCH", "MISMATCH"] {
+            for name in ["START", "END", "COUNT", "UNRECOGNIZED"] {
+                let unsupported = keyword(&mut ctx, &runtime, name);
+                let result = call_result(
+                    &runtime,
+                    &mut ctx,
+                    operation,
+                    &[left, right, unsupported, Word::TRUE],
+                );
+                assert!(
+                    matches!(result, Err(ObjectError::TypeError)),
+                    "{operation} accepted :{name}"
+                );
+            }
+
+            let unrecognized = keyword(&mut ctx, &runtime, "UNRECOGNIZED");
+            let accepted = call(
+                &runtime,
+                &mut ctx,
+                operation,
+                &[
+                    left,
+                    right,
+                    unrecognized,
+                    Word::TRUE,
+                    allow_other_keys,
+                    Word::TRUE,
+                ],
+            );
+            let expected = if operation == "SEARCH" {
+                Word::fixnum(0)
+            } else {
+                Word::NIL
+            };
+            assert_eq!(accepted, expected);
+
+            let rejected = call_result(
+                &runtime,
+                &mut ctx,
+                operation,
+                &[
+                    left,
+                    right,
+                    unrecognized,
+                    Word::TRUE,
+                    allow_other_keys,
+                    Word::NIL,
+                ],
+            );
+            assert!(
+                matches!(rejected, Err(ObjectError::TypeError)),
+                "{operation} ignored :UNRECOGNIZED with :ALLOW-OTHER-KEYS NIL"
+            );
+        }
+
+        let left = list(&mut ctx, &runtime, &[9, 1].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1].map(Word::fixnum));
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[
+                    left,
+                    right,
+                    start1,
+                    Word::fixnum(0),
+                    start1,
+                    Word::fixnum(1),
+                ],
+            ),
+            Word::NIL
+        );
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[
+                    left,
+                    right,
+                    start1,
+                    Word::fixnum(0),
+                    start1,
+                    Word::fixnum(1),
+                ],
+            ),
+            Word::fixnum(0)
+        );
+    }
+
+    #[test]
+    fn registered_position_and_find_reject_search_mismatch_bounds() {
+        let runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        ncl_lib_sequences::register(&runtime)
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+
+        let values = list(&mut ctx, &runtime, &[1, 2].map(Word::fixnum));
+        let object = Word::fixnum(1);
+        for operation in ["POSITION", "FIND"] {
+            for name in ["START1", "END1", "START2", "END2"] {
+                let bound = keyword(&mut ctx, &runtime, name);
+                let result = call_result(
+                    &runtime,
+                    &mut ctx,
+                    operation,
+                    &[object, values, bound, Word::fixnum(1)],
+                );
+                assert!(
+                    matches!(result, Err(ObjectError::TypeError)),
+                    "{operation} accepted :{name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn registered_mismatch_treats_nil_end1_as_unbounded() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let end1 = keyword(&mut ctx, &runtime, "END1");
+        let left = list(&mut ctx, &runtime, &[1, 9].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1].map(Word::fixnum));
+
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, end1, Word::NIL],
+            ),
+            Word::fixnum(1)
+        );
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, end1, Word::fixnum(1)],
+            ),
+            Word::NIL
+        );
+    }
+}

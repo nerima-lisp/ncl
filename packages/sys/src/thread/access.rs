@@ -116,7 +116,7 @@ impl<'a> ThreadAccess<'a> {
 
     /// Record a reference store for the generational collector.
     pub fn write_barrier(&mut self, object: Word, slot: usize) {
-        crate::write_barrier(self.thread, object, slot);
+        crate::write_barrier(NonNull::from(&mut *self.thread), object, slot);
     }
 
     /// Return the collection epoch of this thread's heap.

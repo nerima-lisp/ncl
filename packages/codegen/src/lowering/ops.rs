@@ -296,9 +296,6 @@ fn lower_prim(assembler: &mut Assembler, prim: &Prim, args: &[ValueId], result: 
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => return Err(CodegenError::Unsupported(format!("primitive is not available in fixed templates: {prim:?}"))),
     }
     if let Some(result) = result {
-        if matches!(prim, Prim::Rplaca | Prim::Rplacd | Prim::Aset) {
-            load(assembler, slots, *first, Reg::R10)?;
-        }
         store(assembler, slots, result, Reg::R10)?;
     }
     Ok(())

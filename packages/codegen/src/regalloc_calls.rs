@@ -25,15 +25,13 @@ pub const fn is_call(kind: &OpKind) -> bool {
 
 pub const fn is_safepoint(kind: &OpKind) -> bool {
     matches!(kind, OpKind::Safepoint | OpKind::Alloc { .. })
-        || matches!(
-            kind,
-            OpKind::Call { .. }
-                | OpKind::CallIndirect { .. }
-                | OpKind::CallClosure { .. }
-                | OpKind::Builtin { .. }
-                | OpKind::MakeClosure { .. }
-                | OpKind::MakeValueCell { .. }
-                | OpKind::EnterHandler { .. }
-                | OpKind::LeaveHandler { .. }
-        )
+        || (is_call(kind)
+            && !matches!(
+                kind,
+                OpKind::StoreField { .. }
+                    | OpKind::Prim {
+                        op: Prim::Rplaca | Prim::Rplacd | Prim::Aset,
+                        ..
+                    }
+            ))
 }

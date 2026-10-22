@@ -1,8 +1,8 @@
 use super::{
-    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, ValueSlots, emit, emit_call,
-    load_immediate, load_slot, lower_runtime_builtin,
+    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, ValueSlots, emit, load_immediate,
+    load_slot,
 };
-use crate::{CodegenError, RuntimeAbi, RuntimeFunction};
+use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_x86_64::{BinOp, Inst, Mem};
 use ncl_ir::ValueId;
 
@@ -80,13 +80,11 @@ pub fn store_closure_capture(
         assembler,
         Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), RETURN_VALUE),
     )?;
-    lower_runtime_builtin(
+    super::ops::lower_write_barrier(
         assembler,
-        RuntimeFunction::WriteBarrier,
-        &[i64::try_from(capture_slot).map_err(|_| CodegenError::FrameOverflow)?],
-        &[closure],
+        closure,
+        i64::try_from(capture_slot).map_err(|_| CodegenError::FrameOverflow)?,
         slots,
         abi,
-    )?;
-    emit_call(assembler).map(|_| ())
+    )
 }

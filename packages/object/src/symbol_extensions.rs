@@ -62,7 +62,11 @@ pub fn set_symbol_value(
     {
         return Err(ObjectError::TypeError);
     }
-    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::VALUE);
+    ncl_sys::write_barrier(
+        core::ptr::NonNull::from(ctx.thread.as_mut()),
+        symbol,
+        symbol_offset::VALUE,
+    );
     Ok(())
 }
 
@@ -97,7 +101,11 @@ pub fn set_symbol_plist(
     {
         return Err(ObjectError::TypeError);
     }
-    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::PLIST);
+    ncl_sys::write_barrier(
+        core::ptr::NonNull::from(ctx.thread.as_mut()),
+        symbol,
+        symbol_offset::PLIST,
+    );
     Ok(())
 }
 
@@ -231,6 +239,10 @@ fn set_symbol_flag(
     ) {
         return Err(ObjectError::TypeError);
     }
-    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::FLAGS);
+    ncl_sys::write_barrier(
+        core::ptr::NonNull::from(ctx.thread.as_mut()),
+        symbol,
+        symbol_offset::FLAGS,
+    );
     Ok(())
 }

@@ -276,7 +276,7 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
         .is_err()
     );
     set_strict_forwarding(&thread, true);
-    write_barrier(&mut thread, object, 1);
+    write_barrier(NonNull::from(&mut thread), object, 1);
     assert_eq!(make_weak(&thread, object, Weakness::Value), object);
     assert_eq!(weak_value(&thread, object), Word::fixnum(8));
     ncl_sys::unregister_thread(&sibling);
@@ -295,7 +295,7 @@ fn direct_heap_wrappers_and_unregistered_code_errors_are_observable() {
     assert_eq!(ncl_sys::widetag(&heap, object), None);
     assert_eq!(ncl_sys::make_weak(&thread, object, Weakness::Key), object);
     assert_eq!(ncl_sys::weak_value(&thread, object), Word::NIL);
-    ncl_sys::write_barrier(&mut thread, object, 0);
+    ncl_sys::write_barrier(NonNull::from(&mut thread), object, 0);
     ncl_sys::register_finalizer(&thread, object, |_| {});
     ncl_sys::run_pending_finalizers(&thread);
     let Ok(mut code) = ncl_sys::alloc_code(16) else {

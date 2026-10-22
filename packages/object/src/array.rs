@@ -39,7 +39,7 @@ pub(crate) fn write(
             ncl_sys::StorageCondition::ThreadNotRegistered,
         ));
     }
-    ncl_sys::write_barrier(&mut ctx.thread, object, slot);
+    ncl_sys::write_barrier(core::ptr::NonNull::from(ctx.thread.as_mut()), object, slot);
     Ok(())
 }
 

@@ -124,6 +124,10 @@ pub fn structure_set(
         return Err(ObjectError::TypeError);
     }
     put(ctx, object, structure_offset::SLOTS + index, value)?;
-    ncl_sys::write_barrier(&mut ctx.thread, object, structure_offset::SLOTS + index);
+    ncl_sys::write_barrier(
+        core::ptr::NonNull::from(ctx.thread.as_mut()),
+        object,
+        structure_offset::SLOTS + index,
+    );
     Ok(())
 }

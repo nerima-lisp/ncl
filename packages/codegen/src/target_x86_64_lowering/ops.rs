@@ -65,7 +65,7 @@ fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> 
     emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
 }
 
-fn lower_write_barrier(
+pub(super) fn lower_write_barrier(
     assembler: &mut Assembler,
     owner: ValueId,
     slot: i64,
@@ -147,9 +147,6 @@ fn lower_prim(
         }
     }
     if let Some(result) = result {
-        if matches!(prim, Prim::Rplaca | Prim::Rplacd | Prim::Aset) {
-            load_slot(assembler, slots, *first, FUNCTION_OBJECT)?;
-        }
         store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
     }
     Ok(())

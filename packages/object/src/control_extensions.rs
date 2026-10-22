@@ -13,7 +13,7 @@ impl ThreadContext {
         value: Word,
     ) -> Result<(), ObjectError> {
         if ncl_sys::write_object_word(&mut self.thread, object, slot, value) {
-            ncl_sys::write_barrier(&mut self.thread, object, slot);
+            ncl_sys::write_barrier(core::ptr::NonNull::from(self.thread.as_mut()), object, slot);
             Ok(())
         } else {
             Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))

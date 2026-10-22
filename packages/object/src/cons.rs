@@ -13,7 +13,7 @@ pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, 
     if !ncl_sys::write_cons_word(&mut ctx.thread, word, 0, value) {
         return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
     }
-    ncl_sys::write_barrier(&mut ctx.thread, word, 0);
+    ncl_sys::write_barrier(core::ptr::NonNull::from(ctx.thread.as_mut()), word, 0);
     Ok(word)
 }
 
@@ -29,6 +29,6 @@ pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, 
     if !ncl_sys::write_cons_word(&mut ctx.thread, word, 1, value) {
         return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
     }
-    ncl_sys::write_barrier(&mut ctx.thread, word, 1);
+    ncl_sys::write_barrier(core::ptr::NonNull::from(ctx.thread.as_mut()), word, 1);
     Ok(word)
 }

@@ -396,9 +396,11 @@ pub fn pop_root(thread: &mut Thread, token: RootToken) -> bool {
     thread.pop_root(token)
 }
 
-/// Record a reference store for the generational collector.
-pub fn write_barrier(thread: &mut Thread, object: Word, slot: usize) {
-    if let Some(heap) = thread.heap {
+/// Record a reference store for the generational collector from a live thread pointer.
+pub fn write_barrier(thread: core::ptr::NonNull<Thread>, object: Word, slot: usize) {
+    // SAFETY: callers pass a live Thread pointer; the raw read avoids an aliased mutable reference.
+    let heap = unsafe { core::ptr::addr_of!((*thread.as_ptr()).heap).read() };
+    if let Some(heap) = heap {
         // SAFETY: the heap pointer is installed only by register_thread.
         unsafe {
             (*heap).barrier(object, slot);

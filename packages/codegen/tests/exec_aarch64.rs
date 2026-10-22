@@ -18,6 +18,7 @@ use ncl_sys::{
     invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
     thread_layout, tlab_bump, write_code,
 };
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
@@ -48,7 +49,7 @@ const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
 
 const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;
 
-extern "C" fn write_barrier(thread: &mut Thread, slot: usize, owner: Word) {
+extern "C" fn write_barrier(thread: NonNull<Thread>, slot: usize, owner: Word) {
     ncl_sys::write_barrier(thread, owner, slot);
 }
 

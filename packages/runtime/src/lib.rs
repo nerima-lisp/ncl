@@ -425,5 +425,4 @@ impl Drop for Runtime {
     }
 }
 #[cfg(test)]
-#[path = "runtime_tests.rs"]
-mod tests;
+mod tests_runtime;

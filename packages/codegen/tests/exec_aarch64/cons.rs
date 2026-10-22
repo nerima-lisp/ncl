@@ -48,6 +48,61 @@ fn register_real_frame_code(
     .expect("register code metadata");
 }
 
+struct PreciseFrameAbi;
+
+impl RuntimeAbi for PreciseFrameAbi {
+    fn builtin_address(
+        &self,
+        identifier: ncl_object::BuiltinIdentifier,
+    ) -> Result<u64, ncl_codegen::AbiError> {
+        BuiltinAbi.builtin_address(identifier)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, ncl_codegen::AbiError> {
+        BuiltinAbi.field_offset(field)
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
+        if function == RuntimeFunction::SafepointSlow {
+            Ok(collect_precise_frame as *const () as usize as u64)
+        } else {
+            BuiltinAbi.runtime_address(function)
+        }
+    }
+}
+
+extern "C" fn collect_precise_frame(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
+    SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
+    ctx.capture_native_frame(frame_fp, return_pc);
+    if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
+        FRAME_WORD_BEFORE.store(
+            ctx.frame_word(2)
+                .expect("captured frame function object")
+                .bits(),
+            Ordering::SeqCst,
+        );
+        FRAME_LOCAL_BEFORE.store(
+            ctx.frame_word(4).expect("captured live local").bits(),
+            Ordering::SeqCst,
+        );
+        ctx.clear_safepoint_request();
+        ncl_sys::collect(ctx, true);
+        FRAME_WORD_AFTER.store(
+            ctx.last_written_frame_word(2)
+                .expect("written-back frame function object")
+                .bits(),
+            Ordering::SeqCst,
+        );
+        FRAME_LOCAL_AFTER.store(
+            ctx.last_written_frame_word(4)
+                .expect("written-back live local")
+                .bits(),
+            Ordering::SeqCst,
+        );
+    }
+    ctx.clear_safepoint_request();
+}
+
 fn build_cons_function() -> ncl_ir::Function {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(6),
@@ -279,7 +334,7 @@ fn forwards_function_object_from_generated_frame_map_simulation() {
     builder
         .terminate(Terminator::Return { values: Vec::new() })
         .expect("return");
-    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let compiled = compile_function_aarch64(&builder.finish(), &PreciseFrameAbi).expect("lowering");
     let map = compiled.safepoint_maps.first().expect("safepoint map");
     let sys_map = ncl_sys::Safepoint {
         pc_offset: map.pc_offset,
@@ -359,7 +414,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
             values: vec![live_local],
         })
         .expect("return");
-    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let compiled = compile_function_aarch64(&builder.finish(), &PreciseFrameAbi).expect("lowering");
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
@@ -368,6 +423,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let slow_before = SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst);
     COLLECT_IN_SAFEPOINT.store(true, Ordering::SeqCst);
     thread.request_poll();
+    drop(object_context);
     let old = function.bits();
     let result = invoke_entry_with_function(
         &code,
@@ -383,12 +439,17 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let after = function.bits();
     assert_eq!(result, (after, 1));
     assert_ne!(old, after);
+    // Frame word 2 holds the function object; word 4 holds the live local.
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(FRAME_LOCAL_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_LOCAL_AFTER.load(Ordering::SeqCst), after);
+    let mut name_context = ncl_object::ThreadContext::new();
+    name_context
+        .register(&runtime)
+        .expect("register function-name context");
     assert_eq!(
-        ncl_object::function_name(&object_context, ncl_object::Function::from_word(*function),),
+        ncl_object::function_name(&name_context, ncl_object::Function::from_word(*function),),
         Ok(Word::NIL)
     );
 }

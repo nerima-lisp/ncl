@@ -85,7 +85,7 @@ impl<'a> ThreadAccess<'a> {
     }
 
     /// Enter a foreign or native section.
-    pub const fn enter_native(&mut self) {
+    pub fn enter_native(&mut self) {
         crate::enter_native(self.thread);
     }
 

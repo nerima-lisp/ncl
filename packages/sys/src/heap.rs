@@ -7,6 +7,8 @@ use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
+#[path = "heap/allocation.rs"]
+mod allocation;
 #[path = "heap/collect.rs"]
 mod collect;
 #[path = "heap/roots.rs"]
@@ -29,6 +31,9 @@ pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
     strict_forwarding: AtomicBool,
+    slow_path_gate: Mutex<()>,
+    slow_path_generation: Mutex<u64>,
+    slow_path_ready: Condvar,
     pub(crate) stop_world: Mutex<crate::stw::StopWorld>,
     pub(crate) stop_world_ready: Condvar,
 }
@@ -63,6 +68,9 @@ impl Heap {
                 code_registry: crate::CodeRegistry::default(),
             }),
             strict_forwarding: AtomicBool::new(false),
+            slow_path_gate: Mutex::new(()),
+            slow_path_generation: Mutex::new(0),
+            slow_path_ready: Condvar::new(),
             stop_world: Mutex::new(crate::stw::StopWorld::default()),
             stop_world_ready: Condvar::new(),
         }
@@ -125,14 +133,29 @@ impl Heap {
         }
     }
     pub(crate) fn register_thread(&self, thread: &mut Thread) -> Result<(), StorageCondition> {
+        let mut stop_world = self
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while stop_world.requested {
+            stop_world = self
+                .stop_world_ready
+                .wait(stop_world)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
         let mut state = self.lock_state();
         let pointer = std::ptr::from_mut(thread);
         if state.threads.contains(&pointer) {
             return Err(StorageCondition::ThreadNotRegistered);
         }
+        if thread.native_state() == crate::NativeState::Native {
+            // Native threads are outside the mutator quorum from registration onward.
+            thread.publish_snapshot();
+        }
         state.threads.push(pointer);
-        drop(state);
         thread.heap = Some(self);
+        drop(state);
+        drop(stop_world);
         Ok(())
     }
     /// Register published code metadata for precise native frame scanning.
@@ -178,6 +201,7 @@ impl Heap {
             return Err(CodeError::NotRegistered);
         }
         let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
+        let _gate = self.acquire_slow_path_gate(thread);
         self.begin_collection(thread);
         let registered = {
             let state = self.lock_state();
@@ -221,7 +245,8 @@ impl Heap {
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world.parked.remove(&(pointer as usize));
+        stop_world.parked.remove(&pointer.expose_provenance());
+        stop_world.gate_parked.remove(&pointer.expose_provenance());
         drop(stop_world);
 
         let mut state = self.lock_state();
@@ -242,97 +267,6 @@ impl Heap {
                 }
             })
             .count()
-    }
-    pub(crate) fn alloc(
-        &self,
-        thread: &mut Thread,
-        tag: TypeTag,
-        words: usize,
-    ) -> Result<Word, StorageCondition> {
-        self.allocate(
-            thread,
-            PageKind::HeaderObject,
-            tag,
-            words.checked_add(1).ok_or(StorageCondition::InvalidSize)?,
-        )
-    }
-    pub(crate) fn alloc_large(
-        &self,
-        thread: &mut Thread,
-        tag: TypeTag,
-        words: usize,
-    ) -> Result<Word, StorageCondition> {
-        self.allocate(
-            thread,
-            PageKind::Large,
-            tag,
-            words.checked_add(1).ok_or(StorageCondition::InvalidSize)?,
-        )
-    }
-    pub(crate) fn alloc_cons(
-        &self,
-        thread: &mut Thread,
-        car: Word,
-        cdr: Word,
-    ) -> Result<Word, StorageCondition> {
-        let value = self.allocate(thread, PageKind::Cons, TypeTag { widetag: 0 }, 2)?;
-        self.write_words(value, &[(0, car), (1, cdr)]);
-        Ok(value)
-    }
-    fn allocate(
-        &self,
-        thread: &mut Thread,
-        kind: PageKind,
-        tag: TypeTag,
-        words: usize,
-    ) -> Result<Word, StorageCondition> {
-        if words == 0 || words > (1 << 20) {
-            return Err(StorageCondition::InvalidSize);
-        }
-        if thread.heap != Some(self) {
-            return Err(StorageCondition::ThreadNotRegistered);
-        }
-        let bytes = words.checked_mul(8).ok_or(StorageCondition::InvalidSize)?;
-        let mut state = self.lock_state();
-        if state
-            .used
-            .checked_add(bytes)
-            .is_none_or(|size| size > self.config.dynamic_space_size)
-        {
-            return Err(StorageCondition::CapacityExceeded);
-        }
-        let mut data = vec![0_u64; words].into_boxed_slice();
-        if kind != PageKind::Cons {
-            data[0] = u64::from(tag.widetag);
-        }
-        let address = data.as_ptr() as usize;
-        if address < MIN_HEAP_ADDRESS {
-            return Err(StorageCondition::HeapAddressTooLow);
-        }
-        state.used += bytes;
-        let index = state.objects.len();
-        state.object_starts.insert(address, index);
-        state.objects.push(Object {
-            words: data,
-            kind,
-            generation: if bytes >= LARGE_OBJECT { 2 } else { 0 },
-            survived: 0,
-            pinned: false,
-            weak: None,
-            finalizer: None,
-            alive: true,
-            forwarded_to: None,
-        });
-        drop(state);
-        thread.bytes_cons += bytes;
-        Ok(Word::pointer(
-            address,
-            if kind == PageKind::Cons {
-                crate::LowTag::List
-            } else {
-                crate::LowTag::OtherPointer
-            },
-        ))
     }
     fn find_raw(state: &State, value: Word) -> Option<usize> {
         let address = value.address();
@@ -361,17 +295,16 @@ impl Heap {
         state.objects[index].alive.then_some(index)
     }
     fn find_conservative(state: &State, value: Word) -> Option<usize> {
-        let expected = if value.is_list() {
-            PageKind::Cons
-        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
-            PageKind::HeaderObject
-        } else {
-            return None;
-        };
         let index = Self::find_raw(state, value)?;
-        let object = &state.objects[index];
-        (object.kind == expected && value.address() == object.words.as_ptr() as usize)
-            .then_some(index)
+        let object = state.objects.get(index)?;
+        let kind_matches = if value.is_list() {
+            object.kind == PageKind::Cons
+        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
+            matches!(object.kind, PageKind::HeaderObject | PageKind::Large)
+        } else {
+            false
+        };
+        (kind_matches && value.address() == object.words.as_ptr().addr()).then_some(index)
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();
@@ -481,5 +414,8 @@ unsafe impl Sync for State {}
 #[cfg(test)]
 #[path = "heap/registry_tests.rs"]
 mod registry_tests;
+#[cfg(test)]
+#[path = "heap/tests/slow_path.rs"]
+mod slow_path_tests;
 #[cfg(test)]
 mod tests;

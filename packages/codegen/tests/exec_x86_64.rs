@@ -18,6 +18,7 @@ use ncl_sys::{
     invoke_entry_with_function, leave_native, publish_code, request_safepoint, set_tlab,
     thread_layout, tlab_bump, write_code,
 };
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
@@ -74,6 +75,9 @@ const fn set_runtime_error_for_codegen_test(ctx: &mut Thread) {
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
+}
+extern "C" fn write_barrier(thread: NonNull<Thread>, slot: usize, owner: Word) {
+    ncl_sys::write_barrier(thread, owner, slot);
 }
 extern "C" fn make_closure_error(ctx: &mut Thread, capture_count: u64, entry: u64) -> u64 {
     assert_eq!(capture_count, Word::fixnum(1).bits());
@@ -155,6 +159,7 @@ impl RuntimeAbi for BuiltinAbi {
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         match function {
+            RuntimeFunction::WriteBarrier => Ok(write_barrier as *const () as usize as u64),
             RuntimeFunction::MakeClosure => Ok(make_closure_error as *const () as usize as u64),
             RuntimeFunction::MakeValueCell => {
                 Ok(make_value_cell_error as *const () as usize as u64)

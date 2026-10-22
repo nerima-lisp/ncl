@@ -3,13 +3,14 @@
 //! Both predicates are pure and read-only: they never allocate, so no
 //! GC rooting is required around the comparisons themselves.
 
+use ncl_object::array::{array_element_type, array_has_fill_pointer_p, fill_pointer};
 use ncl_object::hash_table::HashTable;
 use ncl_object::{
     ArrayElementType, Bignum, Complex, DoubleFloat, LispError, ObjectError, ObjectRef, Ratio,
     Runtime, ThreadContext, Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign,
     car, cdr, classify_object, complex_imag, complex_real, double_value, ratio_denominator,
-    ratio_numerator, simple_vector_length, simple_vector_ref, specialized_array_element_type,
-    specialized_array_ref, string_length, string_ref,
+    ratio_numerator, simple_vector_length, simple_vector_ref, specialized_array_ref, string_length,
+    string_ref,
 };
 
 /// Recursion depth limit shared with the hash-table content-equality helper,
@@ -87,14 +88,21 @@ fn equal_at(
             && equal_at(ctx, cdr(ctx, left)?, cdr(ctx, right)?, depth + 1)?);
     }
     match (classify_object(ctx, left), classify_object(ctx, right)) {
-        (ObjectRef::String(_), ObjectRef::String(_)) => strings_equal(ctx, left, right, false),
         (
-            ObjectRef::SpecializedArray(_) | ObjectRef::SimpleVector(_) | ObjectRef::Array(_),
-            ObjectRef::SpecializedArray(_) | ObjectRef::SimpleVector(_) | ObjectRef::Array(_),
+            ObjectRef::SpecializedArray(_)
+            | ObjectRef::SimpleVector(_)
+            | ObjectRef::Array(_)
+            | ObjectRef::String(_),
+            ObjectRef::SpecializedArray(_)
+            | ObjectRef::SimpleVector(_)
+            | ObjectRef::Array(_)
+            | ObjectRef::String(_),
         ) => {
-            // CLHS restricts EQUAL's elementwise array handling to bit
-            // vectors; every other array kind falls back to identity.
-            if specialized_bit_vector(ctx, left)? && specialized_bit_vector(ctx, right)? {
+            // CLHS limits EQUAL's elementwise array handling to strings and bit
+            // vectors; other arrays fall back to identity.
+            if (character_vector(ctx, left)? && character_vector(ctx, right)?)
+                || (bit_vector(ctx, left)? && bit_vector(ctx, right)?)
+            {
                 arrays_equal(ctx, left, right, false, depth)
             } else {
                 Ok(false)
@@ -201,12 +209,32 @@ fn strings_equal(
     Ok(true)
 }
 
-fn specialized_bit_vector(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectError> {
-    if let ObjectRef::SpecializedArray(_) = classify_object(ctx, word) {
-        Ok(specialized_array_element_type(ctx, word)? == ArrayElementType::Bit)
-    } else {
-        Ok(false)
+fn bit_vector(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectError> {
+    if !matches!(
+        classify_object(ctx, word),
+        ObjectRef::SpecializedArray(_) | ObjectRef::Array(_)
+    ) {
+        return Ok(false);
     }
+    Ok(array_dimensions(ctx, word)?.len() == 1
+        && array_element_type(ctx, word)? == ArrayElementType::Bit)
+}
+
+fn character_vector(ctx: &ThreadContext, word: Word) -> Result<bool, ObjectError> {
+    if matches!(classify_object(ctx, word), ObjectRef::String(_)) {
+        return Ok(true);
+    }
+    if !matches!(
+        classify_object(ctx, word),
+        ObjectRef::SpecializedArray(_) | ObjectRef::Array(_)
+    ) {
+        return Ok(false);
+    }
+    Ok(array_dimensions(ctx, word)?.len() == 1
+        && matches!(
+            array_element_type(ctx, word)?,
+            ArrayElementType::Character | ArrayElementType::BaseChar
+        ))
 }
 
 /// Shape (dimensions) of any array-like object: string, simple vector,
@@ -215,7 +243,16 @@ fn shape_of(ctx: &ThreadContext, word: Word) -> Result<Vec<usize>, ObjectError> 
     match classify_object(ctx, word) {
         ObjectRef::String(value) => Ok(vec![string_length(ctx, value)?]),
         ObjectRef::SimpleVector(value) => Ok(vec![simple_vector_length(ctx, value)?]),
-        ObjectRef::SpecializedArray(_) | ObjectRef::Array(_) => array_dimensions(ctx, word),
+        ObjectRef::SpecializedArray(_) => array_dimensions(ctx, word),
+        ObjectRef::Array(_) => {
+            let mut dimensions = array_dimensions(ctx, word)?;
+            if let [length] = dimensions.as_mut_slice()
+                && array_has_fill_pointer_p(ctx, word)?
+            {
+                *length = fill_pointer(ctx, word)?;
+            }
+            Ok(dimensions)
+        }
         _ => Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) non-array kinds are rejected.
     }
 }

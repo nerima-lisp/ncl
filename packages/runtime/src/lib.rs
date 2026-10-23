@@ -8,6 +8,7 @@ mod constant_tests;
 mod error;
 mod eval_builtins;
 mod evalwhen;
+mod file_environment;
 mod function_call;
 pub(crate) mod load;
 mod local_macro;
@@ -16,6 +17,8 @@ mod makeclosure_tests;
 mod native_error;
 mod nonlocal;
 mod support;
+#[cfg(test)]
+mod tests_file_environment;
 #[cfg(test)]
 mod tests_function_call_drain;
 mod time;
@@ -67,6 +70,7 @@ impl Runtime {
             builtin_trampoline::install(&object, &mut context)?;
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
+        file_environment::register(&mut context, &object)?;
         time::register_builtins(&mut context, &object)?;
         eval_builtins::register(&mut context, &object)?;
         builtin_trampoline::install_arith_fast(&object)?;
@@ -129,11 +133,26 @@ impl Runtime {
         &mut self,
         path: impl AsRef<std::path::Path>,
     ) -> Result<Word, RuntimeError> {
+        let path = path.as_ref();
+        let pathname = file_environment::absolute_path(path)?;
+        let truename = std::fs::canonicalize(&pathname).map_err(|error| RuntimeError::Io {
+            path: pathname.display().to_string(),
+            error,
+        })?;
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
         self.context.set_evaluator_runtime(evaluator);
-        let result = compile::file(self, path.as_ref());
+        let result = (|| {
+            file_environment::enter_compile_file(self, &pathname, &truename)?;
+            let compiled = compile::file(self, &pathname);
+            let restored = self.context.leave_progv().map_err(RuntimeError::from);
+            match (compiled, restored) {
+                (Err(error), _) => Err(error),
+                (Ok(_), Err(error)) => Err(error),
+                (Ok(value), Ok(())) => Ok(value),
+            }
+        })();
         self.clear_pending_undefined_function_condition();
         self.context.clear_evaluator_runtime();
         result

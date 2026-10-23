@@ -83,11 +83,7 @@ fn restart_name_form<'ctx>(
     form(scope, runtime, "QUOTE", &[name_string_handle])
 }
 
-/// Expand a list of `(token push-restart-call)` `LET` bindings, wrapping
-/// `body` in `UNWIND-PROTECT`... deliberately not: pairing `unwind-protect`
-/// with a handler/restart closure that performs `return-from` trips a
-/// front-end defect (see `handler_bind::expand`'s note), so this uses the
-/// same `progn`-plus-explicit-pop pattern as `handler-bind`.
+/// Wrap the body in nested restart bindings whose cleanup pops each token.
 fn wrap_restarts<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
@@ -113,8 +109,7 @@ fn wrap_restarts<'ctx>(
         let binding_pair = cons_list(scope, runtime, &[token, push])?;
         let binding_list = cons_list(scope, runtime, &[binding_pair])?;
         let pop = form(scope, runtime, "NCL-EXT::POP-RESTART", &[token])?;
-        // `prog1`, not `progn`: this form's value is `result`'s, not `pop`'s.
-        let body_form = form(scope, runtime, "PROG1", &[result, pop])?;
+        let body_form = form(scope, runtime, "UNWIND-PROTECT", &[result, pop])?;
         result = form(scope, runtime, "LET", &[binding_list, body_form])?;
     }
     Ok(result)

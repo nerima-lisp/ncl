@@ -17,6 +17,7 @@ mod local_macro;
 mod makeclosure_tests;
 mod native_error;
 mod nonlocal;
+mod optimization;
 mod support;
 #[cfg(test)]
 mod tests_file_environment;
@@ -38,10 +39,12 @@ use ncl_sys::{
     CodeObjectMetadata, CodePtr, RootToken, SafepointMap, SourceLocation, alloc_code,
     invoke_entry_with_function, publish_code, write_code,
 };
+pub use optimization::{OptimizationMode, RuntimeOptions};
 use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
 /// A running NCL instance and its published native code.
 #[derive(Debug)]
 pub struct Runtime {
+    options: RuntimeOptions,
     context: ThreadContext,
     code: Vec<CodePtr>,
     undefined_function_stub: usize,
@@ -62,6 +65,13 @@ impl Runtime {
     /// # Errors
     /// Returns an initialization error from the object or standard-library layers.
     pub fn new() -> Result<Self, RuntimeError> {
+        Self::with_options(RuntimeOptions::default())
+    }
+    /// Create a runtime with explicit optimization options.
+    ///
+    /// # Errors
+    /// Returns an initialization error from the object or standard-library layers.
+    pub fn with_options(options: RuntimeOptions) -> Result<Self, RuntimeError> {
         let object = ObjectRuntime::new()?;
         let mut context = ThreadContext::new();
         context.register(&object)?;
@@ -80,6 +90,7 @@ impl Runtime {
         object.set_load_port(Box::new(load::RuntimeLoadPort));
         load::register_builtin(&mut context, &object)?;
         Ok(Self {
+            options,
             object,
             context,
             code: vec![builtin_trampoline, undefined_function_stub],
@@ -210,11 +221,21 @@ impl Runtime {
                 .chain(lowered.nested)
                 .collect(),
         };
-        let mut passes = ncl_opt::PassManager::new();
-        passes.add_function_pass(ncl_opt::InlineDirectCalls::default());
-        passes
-            .run(&mut module)
-            .map_err(|error| RuntimeError::Native(error.to_string()))?;
+        module.verify().map_err(|error| {
+            RuntimeError::Native(format!(
+                "IR verification before optimization failed: {error}"
+            ))
+        })?;
+        if self.options.optimization == OptimizationMode::Default {
+            let mut passes = ncl_opt::PassManager::new();
+            passes.add_default_optimization_pipeline();
+            let result = if self.options.opt_diagnostics {
+                passes.run_with_observer(&mut module, |event| eprintln!("{event}"))
+            } else {
+                passes.run(&mut module)
+            };
+            result.map_err(|error| RuntimeError::Native(error.to_string()))?;
+        }
         module.functions.sort_by_key(|function| function.id);
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())

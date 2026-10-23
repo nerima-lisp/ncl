@@ -221,21 +221,7 @@ impl Runtime {
                 .chain(lowered.nested)
                 .collect(),
         };
-        module.verify().map_err(|error| {
-            RuntimeError::Native(format!(
-                "IR verification before optimization failed: {error}"
-            ))
-        })?;
-        if self.options.optimization == OptimizationMode::Default {
-            let mut passes = ncl_opt::PassManager::new();
-            passes.add_default_optimization_pipeline();
-            let result = if self.options.opt_diagnostics {
-                passes.run_with_observer(&mut module, |event| eprintln!("{event}"))
-            } else {
-                passes.run(&mut module)
-            };
-            result.map_err(|error| RuntimeError::Native(error.to_string()))?;
-        }
+        optimization::verify_and_optimize(&mut module, self.options)?;
         module.functions.sort_by_key(|function| function.id);
         let entry = module.functions.first().cloned().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())

@@ -354,6 +354,28 @@ fn load_merges_relative_pathname_and_binds_load_pathname_and_truename() {
 }
 
 #[test]
+fn load_accepts_pathname_designators() {
+    let filename = format!("ncl-load-pathname-designator-{}.lisp", std::process::id());
+    let input = std::env::temp_dir().join(filename);
+    if let Err(error) = fs::write(&input, ":pathname-load-ok") {
+        panic!("LOAD source creation failed: {error}");
+    }
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
+    let form = format!("(load (pathname {}))", lisp_string(&input));
+    let result = match runtime.eval(&form) {
+        Ok(value) => value,
+        Err(error) => panic!("LOAD pathname designator failed: {error}"),
+    };
+    assert_eq!(runtime.format_result(result), ":PATHNAME-LOAD-OK");
+    if let Err(error) = fs::remove_file(&input) {
+        panic!("LOAD source cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn load_missing_file_signals_file_error() {
     let mut runtime = match Runtime::new() {
         Ok(runtime) => runtime,

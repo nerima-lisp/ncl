@@ -17,6 +17,17 @@ fn eval_builtin_evaluates_a_form() {
 }
 
 #[test]
+fn progv_assert_preserves_lexical_value_after_handler_region() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval(
+            "(progv '(cl:*compile-file-truename* cl:*load-truename*) (list nil #p\"init.lsp\") (let ((x 1)) (assert t) x))",
+        )
+        .unwrap_or_else(|error| panic!("form evaluation failed: {error}"));
+    assert_eq!(runtime.format_result(value), "1");
+}
+
+#[test]
 fn eval_preserves_zero_one_and_multiple_values_through_the() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     for (source, expected) in [

@@ -3,7 +3,10 @@
 #![allow(clippy::all)]
 #![allow(clippy::too_many_lines)]
 
+mod dominance;
+
 use crate::{BasicBlock, BlockId, Function, HandlerRegionId, Op, OpKind, Terminator, Ty, ValueId};
+use dominance::reachable_blocks;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -334,6 +337,17 @@ fn predecessors(
             }
         }
     }
+    for region in &function.handler_regions {
+        if let Some(preds) = result.get_mut(&region.handler) {
+            preds.extend(
+                region
+                    .protected
+                    .iter()
+                    .filter(|block| blocks.contains_key(block))
+                    .copied(),
+            );
+        }
+    }
     result
 }
 
@@ -346,6 +360,7 @@ fn compute_dominators(
     let Some(entry) = function.blocks.first().map(|block| block.id) else {
         return HashMap::new();
     };
+    let reachable = reachable_blocks(entry, predecessors);
     let mut dominators = blocks
         .keys()
         .map(|id| {
@@ -366,6 +381,7 @@ fn compute_dominators(
                 .get(&id)
                 .into_iter()
                 .flatten()
+                .filter(|pred| reachable.contains(*pred) == reachable.contains(&id))
                 .filter_map(|pred| dominators.get(pred));
             let Some(first) = incoming.next() else {
                 continue;

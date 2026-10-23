@@ -480,3 +480,128 @@ fn function_builder_usage_example_builds_and_verifies() {
     );
     assert!(verify(&builder.finish()).is_ok());
 }
+
+#[test]
+fn verifier_uses_handler_edges_for_dominance() {
+    let function = finish(
+        "handler-dominance",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::EnterHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Throw {
+                    condition: ValueId(0),
+                },
+            ),
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![BlockParam {
+                    value: ValueId(1),
+                    ty: Ty::Word,
+                }],
+                ops: vec![op(
+                    &[],
+                    OpKind::LeaveHandler {
+                        region: HandlerRegionId(0),
+                    },
+                )],
+                terminator: Terminator::Jump {
+                    target: BlockId(3),
+                    args: Vec::new(),
+                },
+            },
+            block(
+                3,
+                Vec::new(),
+                Terminator::Return {
+                    values: vec![ValueId(0)],
+                },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Catch,
+            protected: vec![BlockId(1)],
+            handler: BlockId(2),
+            cleanup: None,
+            catch_tag: Some(ValueId(0)),
+            binding_targets: Vec::new(),
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn unreachable_predecessor_does_not_break_reachable_dominance() {
+    let function = finish(
+        "unreachable-predecessor",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Nil, Constant::T],
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[(0, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(2),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                vec![op(
+                    &[(1, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(1),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(2),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                2,
+                Vec::new(),
+                Terminator::Return {
+                    values: vec![ValueId(0)],
+                },
+            ),
+        ],
+        Vec::new(),
+    );
+
+    assert!(verify(&function).is_ok());
+}

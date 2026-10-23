@@ -145,18 +145,7 @@ pub(super) fn expand(
         let bindings_word = bindings(ctx, runtime, &[(token.get(), push.get())])?;
         let bindings = HeapRootedWord::new(ctx, bindings_word)?;
         let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token.get()])?;
-        // `unwind-protect` would be the ANSI-correct wrapper here (a
-        // non-local exit out of `result` should still pop this handler), but
-        // pairing `unwind-protect` with a `lambda` that performs `return-from`
-        // to an enclosing block currently trips a front-end/codegen defect
-        // (observed: `EscapingControl`/`inline-direct-calls` failures, outside
-        // this lane's conditions/macros scope, not chased further here).
-        // `prog1`, not `progn`: the handler-bind form's value is `result`'s
-        // (primary) value, not `pop`'s; the handler is popped on normal exit
-        // either way, and stays installed (harmlessly stale, per the
-        // pre-existing contract) if `result` transfers control past this
-        // form.
-        let body = form(ctx, runtime, "PROG1", &[result.get(), pop])?;
+        let body = form(ctx, runtime, "UNWIND-PROTECT", &[result.get(), pop])?;
         result.set(form(ctx, runtime, "LET", &[bindings.get(), body])?);
     }
     Ok(result.get())

@@ -58,6 +58,21 @@ fn handler_bind_pops_on_normal_exit() {
 }
 
 #[test]
+fn handler_bind_pops_after_nonlocal_exit_before_later_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
+        .args([
+            "--eval",
+            "(progn (block b (handler-bind ((error (lambda (c) (return-from b :caught)))) (error \"first\"))) (error \"after\"))",
+        ])
+        .output()
+        .expect("ncl executable");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("after"), "{stderr}");
+    assert!(!stderr.contains("ControlError"), "{stderr}");
+}
+
+#[test]
 fn handler_bind_handles_error_with_throw() {
     let mut runtime = Runtime::new().expect("runtime");
     let result = runtime
@@ -245,6 +260,17 @@ fn restart_bind_establishes_a_restart_around_its_body() {
         .eval("(restart-bind ((foo (lambda () 1))) 2)")
         .expect("restart-bind evaluation");
     assert_eq!(runtime.format_result(result), "2");
+}
+
+#[test]
+fn restart_bind_pops_after_nonlocal_exit() {
+    let mut runtime = Runtime::new().expect("runtime");
+    let result = runtime
+        .eval(
+            "(progn (block b (restart-bind ((leave (lambda () :invoked))) (return-from b :returned))) (null (find-restart 'leave)))",
+        )
+        .expect("restart-bind evaluation");
+    assert_eq!(runtime.format_result(result), "T");
 }
 
 #[test]

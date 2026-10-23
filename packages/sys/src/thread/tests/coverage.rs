@@ -25,7 +25,10 @@ fn native_poll_and_conservative_snapshot_cover_unregistered_paths() {
     let values = thread.conservative_snapshot();
     assert!(values.contains(&Word::TRUE));
     assert!(!thread.has_native_frame_snapshot());
-    thread.heap_collect(false);
+    assert_eq!(
+        thread.heap_collect(false),
+        Err(crate::StorageCondition::ThreadNotRegistered)
+    );
     assert!(!thread.frame_snapshot_failed());
 }
 

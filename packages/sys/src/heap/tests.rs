@@ -3,6 +3,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
+#[path = "tests/metadata_capacity.rs"]
+mod metadata_capacity;
+
 #[test]
 fn tags_round_trip() {
     let v = Word::fixnum(-42);
@@ -35,9 +38,14 @@ fn collection_rewrites_heap_owned_precise_root_slot() {
     );
     let Ok(mut root) = allocation else { return };
     let old = root;
-    let token = h.push_root(&mut root);
+    let token_result = h.try_push_root(&mut root);
+    assert!(
+        token_result.is_ok(),
+        "heap root registration failed: {token_result:?}"
+    );
+    let Ok(token) = token_result else { return };
 
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
 
     assert_ne!(root, old, "the heap-owned root slot should be rewritten");
     assert_eq!(h.forwarded_word(old), Some(root));
@@ -85,7 +93,7 @@ fn boxed_tail_layout_moves_every_capture() {
         .unwrap_or(Word::NIL);
     h.write_words(closure, &[(1, first), (2, second), (3, third)]);
     let token = t.push_root(&mut closure);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     let state = h.lock_state();
     let index = Heap::find(&state, closure).unwrap_or(usize::MAX);
     for slot in 1..=3 {
@@ -148,7 +156,7 @@ fn collection_updates_registered_frame_snapshot() {
         ],
         Vec::new(),
     );
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     assert_ne!(t.frame_chain[2], old_function);
     assert_ne!(t.frame_chain[4], old_local);
     let state = h.lock_state();
@@ -184,7 +192,7 @@ fn strict_forwarding_rejects_stale_mutator_words() {
         .unwrap_or(Word::NIL);
     let stale = value;
     let token = t.push_root(&mut value);
-    h.collect(true);
+    assert_eq!(h.collect(true), Ok(()));
     assert_ne!(stale, value);
     assert!(h.read_word(stale, 0).is_some());
     h.set_strict_forwarding(true);
@@ -209,7 +217,7 @@ fn nursery_chain_is_copied_and_relinked() {
     }
     let old = root;
     let token = t.push_root(&mut root);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     assert_ne!(root, old);
     let mut cursor = root;
     for value in (0..10_000).rev() {
@@ -237,7 +245,7 @@ fn duplicate_roots_share_one_copy() {
     let mut second = value;
     let first_token = t.push_root(&mut first);
     let second_token = t.push_root(&mut second);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     assert_eq!(first, second);
     assert!(t.pop_root(second_token));
     assert!(t.pop_root(first_token));
@@ -275,7 +283,7 @@ fn unreachable_nursery_is_reclaimed_and_raw_layout_words_are_unchanged() {
     };
     let before = h.lock_state().used;
     let token = t.push_root(&mut live);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     let state = h.lock_state();
     let index = Heap::find(&state, live).unwrap_or(usize::MAX);
     assert_eq!(state.objects[index].words[2], raw);
@@ -303,14 +311,14 @@ fn dirty_card_keeps_old_to_young_reference() {
         .alloc(&mut t, TypeTag { widetag: 12 }, 1)
         .unwrap_or(Word::NIL);
     let token = t.push_root(&mut old);
-    h.collect(false);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
+    assert_eq!(h.collect(false), Ok(()));
     let child = h
         .alloc_cons(&mut t, Word::fixnum(99), Word::NIL)
         .unwrap_or(Word::NIL);
     h.write_words(old, &[(1, child)]);
     h.barrier(old, 1);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     let state = h.lock_state();
     let index = Heap::find(&state, old).unwrap_or(usize::MAX);
     let retained = Word::from_bits(state.objects[index].words[1]);
@@ -329,14 +337,14 @@ fn aging_promotes_after_two_minor_collections() {
         .alloc_cons(&mut t, Word::fixnum(1), Word::NIL)
         .unwrap_or(Word::NIL);
     let token = t.push_root(&mut value);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     let state = h.lock_state();
     assert_eq!(
         state.objects[Heap::find(&state, value).unwrap_or(usize::MAX)].generation,
         1
     );
     drop(state);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     let state = h.lock_state();
     assert_eq!(
         state.objects[Heap::find(&state, value).unwrap_or(usize::MAX)].generation,
@@ -356,12 +364,12 @@ fn full_collection_reclaims_old_cycle() {
     let second = h.alloc_cons(&mut t, first, Word::NIL).unwrap_or(Word::NIL);
     h.write_words(first, &[(1, second)]);
     let token = t.push_root(&mut first);
-    h.collect(false);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
+    assert_eq!(h.collect(false), Ok(()));
     first = Word::NIL;
     assert_eq!(first, Word::NIL);
     assert!(t.pop_root(token));
-    h.collect(true);
+    assert_eq!(h.collect(true), Ok(()));
     let state = h.lock_state();
     assert_eq!(
         state.objects.iter().filter(|object| object.alive).count(),
@@ -412,16 +420,16 @@ fn weak_value_clears_and_finalizer_runs_once() {
     h.write_words(weak, &[(1, referent)]);
     let token = t.push_root(&mut weak);
     let _ = crate::make_weak(&t, weak, Weakness::Value);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     assert_eq!(crate::weak_value(&t, weak), Word::NIL);
     assert!(t.pop_root(token));
     let finalizable = h
         .alloc_cons(&mut t, Word::NIL, Word::NIL)
         .unwrap_or(Word::NIL);
     crate::register_finalizer(&t, finalizable, callback);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     crate::run_pending_finalizers(&t);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     crate::run_pending_finalizers(&t);
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 }
@@ -436,7 +444,7 @@ fn conservative_root_pins_object_address() {
         .unwrap_or(Word::NIL);
     let address = value.address();
     crate::publish_conservative_root(&mut t, value);
-    h.collect(false);
+    assert_eq!(h.collect(false), Ok(()));
     assert_eq!(value.address(), address);
     let state = h.lock_state();
     assert!(Heap::find(&state, value).is_some());
@@ -457,7 +465,7 @@ fn stop_the_world_waits_for_mutator_poll() {
         }
         worker_heap.unregister_thread(&thread);
     });
-    crate::collect(&mut collector, false);
+    assert_eq!(crate::collect(&mut collector, false), Ok(()));
     assert!(worker.join().is_ok());
 }
 
@@ -477,7 +485,7 @@ fn conservative_scan_rejects_interior_and_wrong_tag() {
         &mut thread,
         Word::pointer(object.address(), crate::LowTag::OtherPointer),
     );
-    heap.collect(false);
+    assert_eq!(heap.collect(false), Ok(()));
     let state = heap.lock_state();
     assert!(!state.objects.iter().any(|candidate| candidate.alive));
     drop(state);

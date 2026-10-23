@@ -45,6 +45,12 @@ pub enum CodeError {
     CodeInUse,
     /// The code allocation is not present in the heap registry.
     NotRegistered,
+    /// The configured heap metadata budget cannot reserve the code metadata.
+    MetadataCapacityExceeded,
+    /// Collection required by code release failed.
+    CollectionFailed(crate::StorageCondition),
+    /// The code registry violated its ordered-range invariant.
+    RegistryInvariantViolation,
 }
 
 /// A page-backed, non-moving code allocation.

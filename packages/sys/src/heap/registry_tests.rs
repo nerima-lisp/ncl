@@ -95,7 +95,7 @@ fn collection_scans_frames_across_registered_code_objects() {
         ],
         registers,
     );
-    h.collect(true);
+    assert_eq!(h.collect(true), Ok(()));
     for (index, old) in [
         (2, old_functions[0]),
         (10, old_functions[1]),

@@ -1,10 +1,11 @@
 //! Evaluation, compilation, loading, and registration orchestration.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ptr::NonNull;
 mod builtin_trampoline;
 mod compile;
 #[cfg(test)]
 mod constant_tests;
+mod constants;
 mod error;
 mod eval_builtins;
 mod evalwhen;
@@ -22,6 +23,7 @@ mod tests_file_environment;
 #[cfg(test)]
 mod tests_function_call_drain;
 mod time;
+mod uninterned_symbols;
 pub use error::RuntimeError;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
@@ -226,18 +228,22 @@ impl Runtime {
             self.functions
                 .insert(function.id.0, PublishedFunction { entry });
         }
+        let mut uninterned_symbols = HashMap::new();
         for (function, (code, metadata)) in compiled.iter().skip(1) {
             let entry = code.address().saturating_add(metadata.entry_offset);
             let (_function_object, entry_code) =
-                self.make_function_object(function, &(code, metadata))?;
+                self.make_function_object(function, &(code, metadata), &mut uninterned_symbols)?;
             self.root_entry_code(entry, entry_code);
         }
         let (entry_code, entry_metadata) = &compiled
             .first()
             .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
             .1;
-        let (entry_function, entry_constants) =
-            self.make_function_object(&entry, &(entry_code, entry_metadata))?;
+        let (entry_function, entry_constants) = self.make_function_object(
+            &entry,
+            &(entry_code, entry_metadata),
+            &mut uninterned_symbols,
+        )?;
         let entry_address = entry_code
             .address()
             .saturating_add(entry_metadata.entry_offset);
@@ -295,9 +301,10 @@ impl Runtime {
         &mut self,
         function: &ncl_ir::Function,
         compiled: &(&CodePtr, &CodeObjectMetadata),
+        uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
     ) -> Result<(Word, Word), RuntimeError> {
         let entry = compiled.0.address().saturating_add(compiled.1.entry_offset);
-        let constants = self.make_constants(function)?;
+        let constants = self.make_constants(function, uninterned_symbols)?;
         let code_object = ncl_object::make_code_object(
             &mut self.context,
             &self.object,
@@ -325,26 +332,33 @@ impl Runtime {
         let token = ncl_object::push_root(&mut self.context, &mut rooted);
         self.entry_codes.insert(entry, (rooted, token));
     }
-    fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
+    fn make_constants(
+        &mut self,
+        function: &ncl_ir::Function,
+        uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
+    ) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
         let mut roots = Vec::with_capacity(function.constants.len());
         for constant in &function.constants {
-            let value = match constant {
-                ncl_ir::Constant::FunctionEntry(id) => {
-                    let entry = self
-                        .functions
-                        .get(&id.0)
-                        .ok_or_else(|| {
-                            RuntimeError::Native(format!("function entry {} is unavailable", id.0))
-                        })?
-                        .entry;
-                    Word::from_bits(u64::try_from(entry).map_err(|_| {
-                        RuntimeError::Native(
-                            "function entry does not fit a machine word".to_owned(),
-                        )
-                    })?)
-                }
-                _ => support::resolve_constant(&mut self.context, &self.object, constant, &values)?, // check-added-lines: allow(wildcard) delegate all non-entry constants
+            let value = if let ncl_ir::Constant::FunctionEntry(id) = constant {
+                let entry = self
+                    .functions
+                    .get(&id.0)
+                    .ok_or_else(|| {
+                        RuntimeError::Native(format!("function entry {} is unavailable", id.0))
+                    })?
+                    .entry;
+                Word::from_bits(u64::try_from(entry).map_err(|_| {
+                    RuntimeError::Native("function entry does not fit a machine word".to_owned())
+                })?)
+            } else {
+                constants::resolve_constant(
+                    &mut self.context,
+                    &self.object,
+                    constant,
+                    &values,
+                    uninterned_symbols,
+                )?
             };
             values.push(value);
             let value = values
@@ -475,3 +489,5 @@ impl Drop for Runtime {
 }
 #[cfg(test)]
 mod tests_runtime;
+#[cfg(test)]
+mod tests_uninterned_symbols;

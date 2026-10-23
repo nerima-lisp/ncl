@@ -45,9 +45,26 @@ mod v2;
 
 pub use error::LowerError;
 
-use ncl_ir::Function;
+use ncl_ir::{Constant, Function};
 
 use crate::ast::Expr;
+use crate::symbols::SymbolRef;
+
+pub(super) fn symbol_constant(symbol: &SymbolRef) -> Result<Constant, LowerError> {
+    match (&symbol.package, symbol.uninterned) {
+        (Some(package), None) => Ok(Constant::Symbol {
+            package: package.clone(),
+            name: symbol.name.clone(),
+        }),
+        (None, Some(identity)) => Ok(Constant::UninternedSymbol {
+            identity,
+            name: symbol.name.clone(),
+        }),
+        (Some(_), Some(_)) | (None, None) => Err(LowerError::Ir {
+            detail: "symbol package and identity do not agree".to_owned(),
+        }),
+    }
+}
 
 /// The functions produced by lowering one form.
 #[derive(Clone, Debug)]

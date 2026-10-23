@@ -69,6 +69,7 @@ pub(super) fn constant_value(
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .ok_or_else(|| CodegenError::Unsupported("entry unavailable".into())),
         Constant::Symbol { .. }
+        | Constant::UninternedSymbol { .. }
         | Constant::Object(_)
         | Constant::StringBytes(_)
         | Constant::Bignum { .. }

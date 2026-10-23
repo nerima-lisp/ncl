@@ -32,6 +32,7 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
         ncl_ir::Constant::SingleFloat(_)
         | ncl_ir::Constant::DoubleFloat(_)
         | ncl_ir::Constant::Symbol { .. }
+        | ncl_ir::Constant::UninternedSymbol { .. }
         | ncl_ir::Constant::Object(_) // check-added-lines: allow(unsupported) explicit unsupported constant
         | ncl_ir::Constant::StringBytes(_)
         | ncl_ir::Constant::Bignum { .. }
@@ -174,6 +175,7 @@ pub fn lower_op(
             if matches!(
                 value,
                 ncl_ir::Constant::Symbol { .. }
+                    | ncl_ir::Constant::UninternedSymbol { .. }
                     | ncl_ir::Constant::Object(_)
                     | ncl_ir::Constant::StringBytes(_)
                     | ncl_ir::Constant::Structure { .. }

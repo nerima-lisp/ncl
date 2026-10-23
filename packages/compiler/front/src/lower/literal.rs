@@ -118,13 +118,7 @@ fn scalar_or_structure_constant(
     match literal {
         Literal::Nil => Ok(Constant::Nil),
         Literal::T => Ok(Constant::T),
-        Literal::Symbol(symbol) => Ok(Constant::Symbol {
-            package: symbol
-                .package
-                .as_ref()
-                .map_or_else(|| "NCL-UNINTERNED".to_owned(), Clone::clone),
-            name: symbol.name.clone(),
-        }),
+        Literal::Symbol(symbol) => super::symbol_constant(symbol),
         Literal::Character(character) => Ok(Constant::Character(*character)),
         Literal::String(characters) => {
             let mut bytes = Vec::new();

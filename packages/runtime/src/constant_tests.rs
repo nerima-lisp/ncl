@@ -1,4 +1,6 @@
 use super::Runtime;
+use std::collections::HashMap;
+
 use ncl_ir::{Constant, ConstantIndex, Function, FunctionId};
 use ncl_object::{Word, simple_vector_ref};
 #[test]
@@ -23,7 +25,7 @@ fn constant_object_aliases_survive_gc_stress_and_strict_forwarding() -> Result<(
         debug: Vec::new(),
     };
     let table = runtime
-        .make_constants(&function)
+        .make_constants(&function, &mut HashMap::new())
         .map_err(|error| format!("constants: {error:?}"))?;
     let first = simple_vector_ref(&runtime.context, table, 0)
         .map_err(|error| format!("first constant: {error:?}"))?;

@@ -210,6 +210,10 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
             real: ConstantIndex(u32(r.u()?)?),
             imaginary: ConstantIndex(u32(r.u()?)?),
         },
+        15 => Constant::UninternedSymbol {
+            identity: u32(r.u()?)?,
+            name: r.s()?,
+        },
         _ => return Err(ParseError("bad constant".into())),
     })
 }

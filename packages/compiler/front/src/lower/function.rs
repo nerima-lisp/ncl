@@ -159,13 +159,7 @@ impl FunctionLowerer {
 
     /// Append the `Word` descriptor for a symbol.
     pub(super) fn symbol(&mut self, symbol: &SymbolRef) -> Result<ValueId, LowerError> {
-        self.word_constant(Constant::Symbol {
-            package: symbol
-                .package
-                .clone()
-                .unwrap_or_else(|| "NCL-UNINTERNED".to_owned()),
-            name: symbol.name.clone(),
-        })
+        self.word_constant(super::symbol_constant(symbol)?)
     }
 
     /// Append a GC safepoint.
@@ -246,6 +240,7 @@ const fn constant_type(constant: &Constant) -> Ty {
         Constant::SingleFloat(_) | Constant::DoubleFloat(_) => Ty::F64,
         Constant::Character(_)
         | Constant::Symbol { .. }
+        | Constant::UninternedSymbol { .. }
         | Constant::Object(_)
         | Constant::StringBytes(_)
         | Constant::Structure { .. }

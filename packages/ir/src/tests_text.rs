@@ -378,6 +378,10 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                         package: "CL".into(),
                         name: "T".into(),
                     },
+                    Constant::UninternedSymbol {
+                        identity: 7,
+                        name: "ALPHA".into(),
+                    },
                     Constant::Object(ConstantIndex(0)),
                     Constant::StringBytes(vec![0, 1, 255]),
                     Constant::Nil,

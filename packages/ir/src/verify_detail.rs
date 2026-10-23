@@ -64,6 +64,7 @@ pub(super) fn check_op(
                     | crate::Constant::SingleFloat(_)
                     | crate::Constant::DoubleFloat(_)
                     | crate::Constant::Symbol { .. }
+                    | crate::Constant::UninternedSymbol { .. }
                     | crate::Constant::StringBytes(_)
                     | crate::Constant::Bignum { .. }
                     | crate::Constant::Nil
@@ -418,6 +419,7 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         crate::Constant::SingleFloat(_) | crate::Constant::DoubleFloat(_) => Ty::F64,
         crate::Constant::Character(_)
         | crate::Constant::Symbol { .. }
+        | crate::Constant::UninternedSymbol { .. }
         | crate::Constant::Object(_)
         | crate::Constant::StringBytes(_)
         | crate::Constant::Structure { .. }

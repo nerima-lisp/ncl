@@ -191,6 +191,11 @@ fn constant(w: &mut Writer, c: &Constant) {
             w.u(real.0.into());
             w.u(imaginary.0.into());
         }
+        Constant::UninternedSymbol { identity, name } => {
+            w.u(15);
+            w.u((*identity).into());
+            w.s(name);
+        }
     }
 }
 fn block(w: &mut Writer, b: &BasicBlock) {

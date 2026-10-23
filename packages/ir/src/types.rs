@@ -123,6 +123,10 @@ pub enum Constant {
         package: String,
         name: String,
     },
+    UninternedSymbol {
+        identity: u32,
+        name: String,
+    },
     Object(ConstantIndex),
     StringBytes(Vec<u8>),
     Structure {

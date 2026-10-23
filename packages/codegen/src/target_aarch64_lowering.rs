@@ -4,24 +4,7 @@ use crate::{
     common_lisp_builtin,
 };
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{Constant, ConstantIndex, ValueId};
-
-pub(super) fn constant_table_entry(
-    constants: &[Constant],
-    index: ConstantIndex,
-) -> Result<&Constant, CodegenError> {
-    let raw_index = index.0;
-    let index = usize::try_from(raw_index).map_err(|_| CodegenError::InvalidConstantIndex {
-        index: raw_index,
-        length: constants.len(),
-    })?;
-    constants
-        .get(index)
-        .ok_or(CodegenError::InvalidConstantIndex {
-            index: raw_index,
-            length: constants.len(),
-        })
-}
+use ncl_ir::ValueId;
 
 #[allow(clippy::needless_pass_by_value)]
 pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -484,10 +467,14 @@ pub(super) mod calls;
 mod checked_call;
 #[path = "target_aarch64_lowering/checked_ops.rs"]
 mod checked_ops;
+#[path = "target_aarch64_lowering/constants.rs"]
+mod constants;
 #[path = "target_aarch64_lowering/dispatch.rs"]
 pub(super) mod dispatch;
 #[path = "target_aarch64_lowering/moves.rs"]
 mod moves;
+#[path = "target_aarch64_lowering/multiple_values.rs"]
+pub(super) mod multiple_values;
 #[path = "target_aarch64_lowering/ops.rs"]
 pub(super) mod ops;
 pub(super) use moves::move_args;

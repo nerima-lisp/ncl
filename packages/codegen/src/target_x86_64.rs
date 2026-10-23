@@ -7,73 +7,16 @@ use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
 
-fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
-    let mut maximum = 0_usize;
-    for block in &function.blocks {
-        for op in &block.ops {
-            let count = match &op.kind {
-                OpKind::Call { args, .. } | OpKind::CallIndirect { args, .. } => args
-                    .len()
-                    .saturating_sub(1)
-                    .saturating_sub(ARGUMENT_REGISTERS.len()),
-                OpKind::CallClosure { closure, args, .. } => {
-                    let capture_staging_words =
-                        closure_capture_count(function, *closure)?.unwrap_or(0);
-                    let stack_argument_words = args
-                        .len()
-                        .saturating_sub(1)
-                        .saturating_sub(ARGUMENT_REGISTERS.len());
-                    capture_staging_words
-                        .checked_add(stack_argument_words)
-                        .ok_or(CodegenError::FrameOverflow)?
-                }
-                OpKind::Const { .. }
-                | OpKind::Move { .. }
-                | OpKind::Load { .. }
-                | OpKind::Store { .. }
-                | OpKind::LoadField { .. }
-                | OpKind::StoreField { .. }
-                | OpKind::Alloc { .. }
-                | OpKind::LoadArg { .. }
-                | OpKind::LoadCapture { .. }
-                | OpKind::LoadFunctionObject
-                | OpKind::MakeClosure { .. }
-                | OpKind::MakeValueCell { .. }
-                | OpKind::Builtin { .. }
-                | OpKind::Prim { .. }
-                | OpKind::Compare { .. }
-                | OpKind::Convert { .. }
-                | OpKind::SetMultipleValues { .. }
-                | OpKind::Safepoint
-                | OpKind::EnterHandler { .. }
-                | OpKind::LeaveHandler { .. } => 0,
-            };
-            maximum = maximum.max(count);
-        }
-        let count = match &block.terminator {
-            Terminator::CallReturn { args, .. } | Terminator::TailCall { args, .. } => args
-                .len()
-                .saturating_sub(1)
-                .saturating_sub(ARGUMENT_REGISTERS.len()),
-            Terminator::Jump { .. }
-            | Terminator::Branch { .. }
-            | Terminator::Switch { .. }
-            | Terminator::Return { .. }
-            | Terminator::Throw { .. }
-            | Terminator::Unreachable => 0,
-        };
-        maximum = maximum.max(count);
-    }
-    u32::try_from(maximum).map_err(|_| CodegenError::FrameOverflow)
-}
-
 #[path = "target_x86_64_lowering.rs"]
 mod lowering;
 use lowering::{
     ARGUMENT_COUNT, ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT,
-    RETURN_VALUE, ValueSlots, closure_capture_count, emit, emit_call, load_slot, lower_call,
-    lower_op, lower_return_or_throw, move_args, slots,
+    RETURN_VALUE, ValueSlots, emit, emit_call, load_slot, lower_call, lower_op,
+    lower_return_or_throw, move_args, slots,
 };
+#[path = "target_x86_64_frame.rs"]
+mod frame;
+use frame::outgoing_words;
 #[path = "target_x86_64_safepoint.rs"]
 mod safepoint;
 use safepoint::add_map;

@@ -1,4 +1,5 @@
-use super::{CallCheckContext, constant_table_entry, emit, load_value, primitives, store_value};
+use super::constants::constant_table_entry;
+use super::{CallCheckContext, emit, load_value, primitives, store_value};
 use crate::machine_verify::SafepointSite;
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
@@ -296,7 +297,9 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
-            super::dispatch::lower_set_multiple_values(assembler, values, result, allocation, abi)?;
+            super::multiple_values::lower_set_multiple_values(
+                assembler, values, result, allocation, abi,
+            )?;
         }
         OpKind::Alloc { words } => {
             call_pc = Some(super::checked_ops::lower_alloc_op(

@@ -18,15 +18,8 @@ mod switch;
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
 use lowering::{
-    CallCheckContext, load_value, lower_call, lower_op, lower_return_or_throw, move_args,
+    CallCheckContext, emit, load_value, lower_call, lower_op, lower_return_or_throw, move_args,
 };
-
-#[allow(clippy::needless_pass_by_value)]
-fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
-    assembler
-        .emit(&instruction)
-        .map_err(|error| CodegenError::Encode(error.to_string()))
-}
 
 /// Lowers an IR function to `AArch64` machine code using the native frame ABI.
 ///

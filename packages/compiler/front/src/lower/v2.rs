@@ -19,6 +19,8 @@ mod control;
 mod control_escape;
 #[path = "control_regions.rs"]
 mod control_regions;
+#[path = "control_unwind.rs"]
+mod control_unwind;
 #[path = "dynamic_binding.rs"]
 mod dynamic_binding;
 #[path = "expr.rs"]

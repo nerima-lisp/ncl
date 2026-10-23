@@ -8,8 +8,8 @@ mod equalp;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
-use ncl_sys::StorageCondition;
 use ncl_sys::Word;
+use ncl_sys::{HeapConfig, StorageCondition};
 
 fn setup() -> (Runtime, Box<ThreadContext>) {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -46,19 +46,42 @@ fn unregistered_context_rejects_collection_and_allocation() {
 
 #[test]
 fn package_failure_releases_all_roots_before_collection() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let heap_config = HeapConfig {
+        dynamic_space_size: 16 * 1024 * 1024,
+        bytes_considered_between_gcs: 4 * 1024 * 1024,
+    };
+    let root_count = heap_config.dynamic_space_size / (64 * std::mem::size_of::<Word>()) + 1;
+    let runtime = Runtime::with_config(heap_config)
+        .unwrap_or_else(|error| panic!("Runtime::with_config failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
-    while allocate(&mut ctx, &runtime, 0x7f, 64).is_ok() {}
     let mut sentinel = Word::NIL;
     let sentinel_token = ncl_object::push_root(&mut ctx, &mut sentinel);
-    let result = Package::new(&mut ctx, &runtime, "ROOT-FAILURE");
-    assert_eq!(
+    let roots = vec![Word::NIL; root_count];
+    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let mut allocated = 0;
+        while allocated < roots.len() {
+            match allocate(ctx, &runtime, 0x7f, 64) {
+                Ok(value) => {
+                    roots[allocated] = value;
+                    allocated += 1;
+                }
+                Err(ncl_object::ObjectError::Storage(StorageCondition::CapacityExceeded)) => break,
+                Err(error) => return Err(error),
+            }
+        }
+        assert!(allocated > 0);
+        assert!(allocated < roots.len());
+        roots[allocated - 1] = Word::NIL;
+        ctx.collect(true)?;
+        Ok(Package::new(ctx, &runtime, "ROOT-FAILURE"))
+    });
+    assert!(matches!(
         result,
-        Err(ncl_object::ObjectError::Storage(
+        Ok(Err(ncl_object::ObjectError::Storage(
             StorageCondition::CapacityExceeded
-        ))
-    );
+        )))
+    ));
     assert!(ncl_object::pop_root(&mut ctx, sentinel_token));
     assert!(ctx.collect(true).is_ok());
 }

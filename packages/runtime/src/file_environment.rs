@@ -5,6 +5,8 @@ use ncl_object::{
 };
 use std::path::{Path, PathBuf};
 
+mod compile_builtins;
+
 pub fn absolute_path(path: &Path) -> Result<PathBuf, RuntimeError> {
     if path.is_absolute() {
         return Ok(path.to_path_buf());
@@ -35,7 +37,8 @@ pub fn register(context: &mut ThreadContext, object: &ObjectRuntime) -> Result<(
         set_symbol_special(context, symbol, true)?;
         set_symbol_value(context, symbol, Word::NIL)?;
         Ok(())
-    })
+    })?;
+    compile_builtins::register(context, object)
 }
 
 pub fn enter_load(

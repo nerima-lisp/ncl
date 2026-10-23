@@ -48,8 +48,8 @@ impl FunctionCaller for RuntimeFunctionCaller {
             return Ok(result);
         }
 
-        let result = ncl_object::with_rooted_slice(ctx, args.as_slice(), |ctx, rooted_args| {
-            call_native(ctx, runtime, function, rooted_args, values)
+        let result = ncl_object::with_heap_rooted_mut_slice(runtime, args.as_slice(), |args| {
+            call_native(ctx, runtime, function, args, values)
         })?;
         publish_context_values(ctx, result, values);
         Ok(result)

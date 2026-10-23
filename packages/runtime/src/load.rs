@@ -6,9 +6,8 @@ use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FileError, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError,
-    ObjectRef, ObjectType, Parameter, ParameterType, Readtable as ObjectReadtable,
-    Runtime as ObjectRuntime, ThreadContext, Word, car, cdr, classify_object, make_cons,
-    symbol_name, symbol_package,
+    ObjectRef, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
+    ThreadContext, Word, car, cdr, classify_object, make_cons, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -70,15 +69,7 @@ fn load_with_runtime(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let path_word = args.required(0)?;
-    let ObjectRef::String(_) = classify_object(ctx, path_word) else {
-        ctx.set_pending_lisp_error(LispError::TypeError {
-            datum: path_word,
-            expected: ObjectType::String,
-        });
-        return Err(ObjectError::TypeError);
-    };
-    let path = ncl_lib_pathnames::resolve_pathname(ctx, object, path_word)?;
+    let path = ncl_lib_pathnames::resolve_pathname(ctx, object, args.required(0)?)?;
     let mut if_missing = true;
     for index in (1..args.len()).step_by(2) {
         let keyword = args.get(index).ok_or(ObjectError::Layout)?;

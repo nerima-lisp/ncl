@@ -1,0 +1,23 @@
+(progn
+  (defparameter *compile-file-result-values* nil)
+  (defparameter *compile-file-loaded-result* nil)
+  (defparameter *compile-file-pathname-observed* nil)
+  (defparameter *compile-file-truename-observed* nil)
+  (defun compile-and-load (pathname)
+    (let ((compile-file-values (multiple-value-list (compile-file pathname))))
+      (setq *compile-file-result-values* compile-file-values)
+      (setq *compile-file-loaded-result*
+            (load (first compile-file-values)))))
+  (compile-and-load SOURCE-PATHNAME-HERE)
+  (let ((output-truename (first *compile-file-result-values*))
+        (warnings-p (second *compile-file-result-values*))
+        (failure-p (third *compile-file-result-values*)))
+    (list (= (length *compile-file-result-values*) 3)
+          (pathnamep output-truename)
+          (null warnings-p)
+          (null failure-p)
+          (equal (namestring output-truename) OUTPUT-TRUENAME-NAMESTRING-HERE)
+          (equal *compile-file-pathname-observed* INPUT-NAMESTRING-HERE)
+          (equal *compile-file-truename-observed*
+                 INPUT-TRUENAME-NAMESTRING-HERE)
+          (equal *compile-file-loaded-result* "MINIMAL-LOAD-OK"))))

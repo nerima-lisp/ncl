@@ -123,19 +123,7 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 let token = fresh_symbol(ctx, runtime)?;
                 let bindings = bindings(ctx, runtime, &[(token, push)])?;
                 let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;
-                // `unwind-protect` would be the ANSI-correct wrapper here (a
-                // non-local exit out of `result` should still pop this
-                // handler), but pairing `unwind-protect` with a `lambda`
-                // that performs `return-from` to an enclosing block
-                // currently trips a front-end/codegen defect (observed:
-                // `EscapingControl`/`inline-direct-calls` failures, outside
-                // this lane's conditions/macros scope, not chased further
-                // here). `prog1`, not `progn`: the handler-bind form's value
-                // is `result`'s (primary) value, not `pop`'s; the handler is
-                // popped on normal exit either way, and stays installed
-                // (harmlessly stale, per the pre-existing contract) if
-                // `result` transfers control past this form.
-                let body = form(ctx, runtime, "PROG1", &[*result, pop])?;
+                let body = form(ctx, runtime, "UNWIND-PROTECT", &[*result, pop])?;
                 ncl_object::with_roots(ctx, &[bindings, body], |ctx, roots| {
                     let bindings = roots.first().ok_or(ObjectError::Layout)?;
                     let body = roots.get(1).ok_or(ObjectError::Layout)?;

@@ -363,7 +363,7 @@ fn bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding() {
         ("(+ most-positive-fixnum 1)", "4611686018427387904"),
         ("(expt 2 100)", "1267650600228229401496703205376"),
         (
-            "(* 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30)",
+            "(loop with r = 1 for i from 1 to 30 do (setq r (* r i)) finally (return r))",
             "265252859812191058636308480000000",
         ),
     ] {

@@ -83,11 +83,11 @@ impl Context<'_> {
             Expr::MultipleValueProg1 { first, forms } => {
                 let value = self.lower_expr(f, first)?;
                 if self.preserve_multiple_values {
-                    let saved_values = self.capture_multiple_values(f, value)?;
+                    let saved_values = Self::capture_multiple_values(f, value)?;
                     for form in forms {
                         self.lower_expr(f, form)?;
                     }
-                    self.restore_multiple_values(f, saved_values)
+                    Self::restore_multiple_values(f, saved_values)
                 } else {
                     for form in forms {
                         self.lower_expr(f, form)?;

@@ -1,7 +1,7 @@
 use super::{NativeState, SafepointState, Thread};
 use core::ops::{Deref, DerefMut};
 
-pub(crate) struct LispStateGuard<'a> {
+pub struct LispStateGuard<'a> {
     thread: &'a mut Thread,
     restore_native: bool,
 }
@@ -29,7 +29,7 @@ impl Drop for LispStateGuard<'_> {
 }
 
 impl Thread {
-    fn transition_to_lisp_if_idle(&mut self, stop_world: &crate::stw::StopWorld) -> bool {
+    const fn transition_to_lisp_if_idle(&mut self, stop_world: &crate::stw::StopWorld) -> bool {
         if stop_world.requested {
             return false;
         }
@@ -188,7 +188,7 @@ mod tests {
         assert!(ready_receiver.recv().is_ok());
         let pointer = pointer_receiver
             .recv()
-            .expect("Native worker should publish its thread pointer");
+            .unwrap_or_else(|_| panic!("Native worker should publish its thread pointer"));
         let thread_pointer = std::ptr::with_exposed_provenance_mut::<Thread>(pointer);
         {
             let mut stop_world = heap
@@ -200,6 +200,7 @@ mod tests {
             // The worker waits for this lock before attempting the transition.
             // SAFETY: the registered worker is waiting on mutate_receiver.
             unsafe { (*thread_pointer).stack_bounds = None };
+            drop(stop_world);
         }
         heap.stop_world_ready.notify_all();
         assert!(mutate_sender.send(()).is_ok());
@@ -240,7 +241,7 @@ mod tests {
 
         let (roots_len, native_state) = result_receiver
             .recv_timeout(Duration::from_secs(5))
-            .expect("root mutation should complete after the request");
+            .unwrap_or_else(|_| panic!("root mutation should complete after the request"));
         assert_eq!(roots_len, 1);
         assert_eq!(native_state, NativeState::Native);
         assert!(worker.join().is_ok());

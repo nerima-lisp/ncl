@@ -67,23 +67,23 @@ impl Heap {
         let mut cdr = cdr;
         let native_roots = if thread.native_state() == crate::NativeState::Native {
             // Keep native arguments visible to stack scanning while transition waits for collection.
-            let car_pointer = core::ptr::addr_of_mut!(car);
-            let cdr_pointer = core::ptr::addr_of_mut!(cdr);
+            let first_slot = core::ptr::addr_of_mut!(car);
+            let tail_slot = core::ptr::addr_of_mut!(cdr);
             // SAFETY: these pointers address the live local root slots until the reads below.
             unsafe {
-                car_pointer.write_volatile(car);
-                cdr_pointer.write_volatile(cdr);
+                first_slot.write_volatile(car);
+                tail_slot.write_volatile(cdr);
             }
-            Some((car_pointer, cdr_pointer))
+            Some((first_slot, tail_slot))
         } else {
             None
         };
         let mut thread = thread.enter_lisp_state();
-        if let Some((car_pointer, cdr_pointer)) = native_roots {
+        if let Some((first_slot, tail_slot)) = native_roots {
             // SAFETY: both pointers still address the locals initialized before the transition.
             unsafe {
-                car = car_pointer.read_volatile();
-                cdr = cdr_pointer.read_volatile();
+                car = first_slot.read_volatile();
+                cdr = tail_slot.read_volatile();
             }
         }
         self.allocate_cons_with_coordinator(&mut thread, &mut car, &mut cdr)

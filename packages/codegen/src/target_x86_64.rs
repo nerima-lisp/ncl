@@ -385,14 +385,17 @@ fn compile_function_x86_64_with_multiple_values(
                 }
             }
             Terminator::Return { values } => {
-                lower_return_or_throw(
-                    &mut assembler,
+                let context = lowering::dispatch::CallCheckContext::new(
                     function,
                     block.id,
-                    Some(values),
                     &value_slots,
                     abi,
                     &labels,
+                );
+                lower_return_or_throw(
+                    &mut assembler,
+                    &context,
+                    Some(values),
                     preserve_multiple_values,
                 )?;
             }
@@ -419,16 +422,14 @@ fn compile_function_x86_64_with_multiple_values(
                 emit_tail_transfer(&mut assembler, value_slots.callee_saved_base)?;
             }
             Terminator::Throw { .. } => {
-                lower_return_or_throw(
-                    &mut assembler,
+                let context = lowering::dispatch::CallCheckContext::new(
                     function,
                     block.id,
-                    None,
                     &value_slots,
                     abi,
                     &labels,
-                    false,
-                )?;
+                );
+                lower_return_or_throw(&mut assembler, &context, None, false)?;
             }
             Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Ud2)?;

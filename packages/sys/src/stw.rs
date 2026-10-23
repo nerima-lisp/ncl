@@ -13,8 +13,8 @@ impl StopWorld {
     fn sync_parked_gate_waiters(&mut self) {
         self.parked.clone_from(&self.gate_parked);
         self.parked.retain(|pointer| {
-            // SAFETY: gate waiters remain registered until their entry is removed under this lock.
             let thread = std::ptr::with_exposed_provenance::<Thread>(*pointer);
+            // SAFETY: callers hold the stop-world lock, keeping registered threads alive during this read.
             unsafe { (&*thread).native_state() != NativeState::Native }
         });
     }

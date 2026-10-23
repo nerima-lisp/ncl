@@ -20,6 +20,7 @@ const SELECTION_TEST_IDENTIFIER: BuiltinIdentifier = BuiltinIdentifier::new(
     BuiltinPackage::NclTest,
     BuiltinName::new("SEQUENCE-TEST-GREATER"),
 );
+type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn greater_predicate(
     _ctx: &mut ThreadContext,
@@ -43,7 +44,7 @@ fn greater_predicate(
     })
 }
 
-fn call_result(
+fn call(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
     name: &str,
@@ -51,97 +52,95 @@ fn call_result(
 ) -> Result<Word, ObjectError> {
     let function = runtime
         .function(ctx, "COMMON-LISP", name)
-        .unwrap_or_else(|| panic!("missing builtin {name}"));
-    let function =
-        FunctionObject::try_from(function).unwrap_or_else(|_| panic!("{name} is not a function"));
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let function = FunctionObject::try_from(function)?;
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let rooted_args = roots.iter().map(|root| **root).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
     })
 }
 
-fn call(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
-    call_result(runtime, ctx, name, args).unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
-}
-
-fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
+fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
     let package = runtime
         .find_package(ctx, "KEYWORD")
-        .unwrap_or_else(|| panic!("missing KEYWORD package"));
-    let (symbol, _) = Package::from_word(package)
-        .intern(ctx, runtime, name)
-        .unwrap_or_else(|error| panic!("intern {name}: {error:?}"));
-    symbol.into()
+        .ok_or(ObjectError::Layout)?;
+    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, name)?;
+    Ok(symbol)
 }
 
-fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Word {
+fn list(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result<Word, ObjectError> {
     let mut result = Word::NIL;
     for &value in values.iter().rev() {
-        result = ncl_object::make_cons(ctx, runtime, value, result)
-            .unwrap_or_else(|error| panic!("make list: {error:?}"));
+        result = ncl_object::make_cons(ctx, runtime, value, result)?;
     }
-    result
+    Ok(result)
 }
 
-fn assert_list(ctx: &ThreadContext, mut actual: Word, expected: &[Word]) {
+fn assert_list(
+    ctx: &ThreadContext,
+    mut actual: Word,
+    expected: &[Word],
+) -> Result<(), ObjectError> {
     for &value in expected {
         assert!(actual.is_cons());
-        assert_eq!(ncl_object::car(ctx, actual), Ok(value));
-        actual = ncl_object::cdr(ctx, actual).unwrap_or_else(|error| panic!("cdr: {error:?}"));
+        assert_eq!(ncl_object::car(ctx, actual)?, value);
+        actual = ncl_object::cdr(ctx, actual)?;
     }
     assert_eq!(actual, Word::NIL);
+    Ok(())
 }
 
 #[test]
-fn registered_remove_obeys_nil_and_negative_count() {
-    let runtime = Runtime::new().unwrap();
+fn registered_remove_obeys_nil_and_negative_count() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
-    let count = keyword(&mut ctx, &runtime, "COUNT");
+    let count = keyword(&mut ctx, &runtime, "COUNT")?;
     let values = [2, 1, 2].map(Word::fixnum);
-    let sequence = list(&mut ctx, &runtime, &values);
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let removed = call(
         &runtime,
         &mut ctx,
         "REMOVE",
         &[Word::fixnum(2), sequence, count, Word::NIL],
-    );
-    assert_list(&ctx, removed, &[Word::fixnum(1)]);
+    )?;
+    assert_list(&ctx, removed, &[Word::fixnum(1)])?;
 
-    let sequence = list(&mut ctx, &runtime, &values);
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let unchanged = call(
         &runtime,
         &mut ctx,
         "REMOVE",
         &[Word::fixnum(2), sequence, count, Word::fixnum(-1)],
-    );
-    assert_list(&ctx, unchanged, &values);
+    )?;
+    assert_list(&ctx, unchanged, &values)?;
+    Ok(())
 }
 
 #[test]
-fn registered_position_obeys_nil_end_and_explicit_from_end_range() {
-    let runtime = Runtime::new().unwrap();
+fn registered_position_obeys_nil_end_and_explicit_from_end_range() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
-    let end = keyword(&mut ctx, &runtime, "END");
-    let sequence = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+    let end = keyword(&mut ctx, &runtime, "END")?;
+    let sequence = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum))?;
     assert_eq!(
         call(
             &runtime,
             &mut ctx,
             "POSITION",
             &[Word::fixnum(3), sequence, end, Word::NIL],
-        ),
+        )?,
         Word::fixnum(2)
     );
 
-    let start = keyword(&mut ctx, &runtime, "START");
-    let from_end = keyword(&mut ctx, &runtime, "FROM-END");
-    let sequence = list(&mut ctx, &runtime, &[1, 2, 2, 3].map(Word::fixnum));
+    let start = keyword(&mut ctx, &runtime, "START")?;
+    let from_end = keyword(&mut ctx, &runtime, "FROM-END")?;
+    let sequence = list(&mut ctx, &runtime, &[1, 2, 2, 3].map(Word::fixnum))?;
     assert_eq!(
         call(
             &runtime,
@@ -157,62 +156,62 @@ fn registered_position_obeys_nil_end_and_explicit_from_end_range() {
                 from_end,
                 Word::TRUE,
             ],
-        ),
+        )?,
         Word::fixnum(2)
     );
+    Ok(())
 }
 
 #[test]
-fn registered_remove_passes_object_before_sequence_element() {
-    let runtime = Runtime::new().unwrap();
+fn registered_remove_passes_object_before_sequence_element() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
-    let predicate = runtime
-        .register_builtin(
-            &mut ctx,
-            SELECTION_TEST_IDENTIFIER,
-            BuiltinImplementation::direct(
-                Builtin {
-                    lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
-                    convention: BuiltinConvention::Direct(Arity::exact(2)),
-                },
-                greater_predicate,
-            ),
-        )
-        .unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
+    let predicate = runtime.register_builtin(
+        &mut ctx,
+        SELECTION_TEST_IDENTIFIER,
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                convention: BuiltinConvention::Direct(Arity::exact(2)),
+            },
+            greater_predicate,
+        ),
+    )?;
     let values = [1, 2, 4, 1, 3, 4, 5].map(Word::fixnum);
-    let test = keyword(&mut ctx, &runtime, "TEST");
-    let sequence = list(&mut ctx, &runtime, &values);
+    let test = keyword(&mut ctx, &runtime, "TEST")?;
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let removed = call(
         &runtime,
         &mut ctx,
         "REMOVE",
         &[Word::fixnum(3), sequence, test, predicate.as_word()],
-    );
-    assert_list(&ctx, removed, &[4, 3, 4, 5].map(Word::fixnum));
+    )?;
+    assert_list(&ctx, removed, &[4, 3, 4, 5].map(Word::fixnum))?;
 
-    let test_not = keyword(&mut ctx, &runtime, "TEST-NOT");
-    let sequence = list(&mut ctx, &runtime, &values);
+    let test_not = keyword(&mut ctx, &runtime, "TEST-NOT")?;
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let removed = call(
         &runtime,
         &mut ctx,
         "REMOVE",
         &[Word::fixnum(3), sequence, test_not, predicate.as_word()],
-    );
-    assert_list(&ctx, removed, &[1, 2, 1].map(Word::fixnum));
+    )?;
+    assert_list(&ctx, removed, &[1, 2, 1].map(Word::fixnum))?;
+    Ok(())
 }
 
 #[test]
-fn registered_zero_count_preserves_substitution_and_validates_bounds() {
-    let runtime = Runtime::new().unwrap();
+fn registered_zero_count_preserves_substitution_and_validates_bounds() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
-    let count = keyword(&mut ctx, &runtime, "COUNT");
+    let count = keyword(&mut ctx, &runtime, "COUNT")?;
     let values = [1, 2, 2].map(Word::fixnum);
-    let sequence = list(&mut ctx, &runtime, &values);
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let substituted = call(
         &runtime,
         &mut ctx,
@@ -224,12 +223,12 @@ fn registered_zero_count_preserves_substitution_and_validates_bounds() {
             count,
             Word::fixnum(0),
         ],
-    );
-    assert_list(&ctx, substituted, &values);
+    )?;
+    assert_list(&ctx, substituted, &values)?;
 
-    let start = keyword(&mut ctx, &runtime, "START");
-    let sequence = list(&mut ctx, &runtime, &values);
-    let error = call_result(
+    let start = keyword(&mut ctx, &runtime, "START")?;
+    let sequence = list(&mut ctx, &runtime, &values)?;
+    let error = call(
         &runtime,
         &mut ctx,
         "REMOVE",
@@ -243,19 +242,20 @@ fn registered_zero_count_preserves_substitution_and_validates_bounds() {
         ],
     );
     assert!(matches!(error, Err(ObjectError::TypeError)));
+    Ok(())
 }
 
 #[test]
-fn registered_from_end_count_removes_the_last_match() {
-    let runtime = Runtime::new().unwrap();
+fn registered_from_end_count_removes_the_last_match() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
-    let from_end = keyword(&mut ctx, &runtime, "FROM-END");
-    let count = keyword(&mut ctx, &runtime, "COUNT");
+    let from_end = keyword(&mut ctx, &runtime, "FROM-END")?;
+    let count = keyword(&mut ctx, &runtime, "COUNT")?;
     let values = [1, 2, 3, 2, 4].map(Word::fixnum);
-    let sequence = list(&mut ctx, &runtime, &values);
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let removed = call(
         &runtime,
         &mut ctx,
@@ -268,34 +268,35 @@ fn registered_from_end_count_removes_the_last_match() {
             count,
             Word::fixnum(1),
         ],
-    );
-    assert_list(&ctx, removed, &[1, 2, 3, 4].map(Word::fixnum));
+    )?;
+    assert_list(&ctx, removed, &[1, 2, 3, 4].map(Word::fixnum))?;
+    Ok(())
 }
 
 #[test]
-fn registered_selection_handles_empty_vectors_and_list_vector_string_inputs() {
-    let runtime = Runtime::new().unwrap();
+fn registered_selection_handles_empty_vectors_and_list_vector_string_inputs() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
     let values = [1, 2, 3].map(Word::fixnum);
-    let sequence = list(&mut ctx, &runtime, &values);
+    let sequence = list(&mut ctx, &runtime, &values)?;
     assert_eq!(
-        call(&runtime, &mut ctx, "POSITION", &[Word::fixnum(9), sequence],),
+        call(&runtime, &mut ctx, "POSITION", &[Word::fixnum(9), sequence],)?,
         Word::NIL
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "COUNT", &[Word::fixnum(2), sequence]),
+        call(&runtime, &mut ctx, "COUNT", &[Word::fixnum(2), sequence])?,
         Word::fixnum(1)
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(9), sequence]),
+        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(9), sequence])?,
         Word::NIL
     );
-    let empty_vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[]).unwrap();
+    let empty_vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &[])?;
     assert_eq!(
-        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(9), empty_vector]),
+        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(9), empty_vector])?,
         Word::NIL
     );
     assert_eq!(
@@ -304,68 +305,67 @@ fn registered_selection_handles_empty_vectors_and_list_vector_string_inputs() {
             &mut ctx,
             "POSITION",
             &[Word::fixnum(9), empty_vector],
-        ),
+        )?,
         Word::NIL
     );
 
-    let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &values).unwrap();
+    let vector = ncl_object::make_simple_vector(&mut ctx, &runtime, &values)?;
     assert_eq!(
-        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(2), vector]),
+        call(&runtime, &mut ctx, "FIND", &[Word::fixnum(2), vector])?,
         Word::fixnum(2)
     );
 
-    let string = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c']).unwrap();
+    let string = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b', 'c'])?;
     assert_eq!(
         call(
             &runtime,
             &mut ctx,
             "POSITION",
             &[Word::character(u32::from('b')), string],
-        ),
+        )?,
         Word::fixnum(1)
     );
+    Ok(())
 }
 
 #[test]
-fn registered_key_maps_list_elements_before_matching() {
-    let runtime = Runtime::new().unwrap();
+fn registered_key_maps_list_elements_before_matching() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    ncl_lib_sequences::register(&runtime).unwrap();
-    let predicate = runtime
-        .register_builtin(
-            &mut ctx,
-            SELECTION_TEST_IDENTIFIER,
-            BuiltinImplementation::direct(
-                Builtin {
-                    lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
-                    convention: BuiltinConvention::Direct(Arity::exact(2)),
-                },
-                greater_predicate,
-            ),
-        )
-        .unwrap();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
+    let predicate = runtime.register_builtin(
+        &mut ctx,
+        SELECTION_TEST_IDENTIFIER,
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                convention: BuiltinConvention::Direct(Arity::exact(2)),
+            },
+            greater_predicate,
+        ),
+    )?;
 
     let values = [1, 2, 3]
         .map(Word::fixnum)
-        .map(|value| ncl_object::make_cons(&mut ctx, &runtime, value, Word::NIL).unwrap());
-    let sequence = list(&mut ctx, &runtime, &values);
+        .map(|value| ncl_object::make_cons(&mut ctx, &runtime, value, Word::NIL))
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+    let sequence = list(&mut ctx, &runtime, &values)?;
     let key = runtime
         .function(&mut ctx, "COMMON-LISP", "CAR")
-        .unwrap_or_else(|| panic!("missing builtin CAR"));
-    let key = FunctionObject::try_from(key)
-        .unwrap_or_else(|_| panic!("CAR is not a function"))
-        .as_word();
-    let key_option = keyword(&mut ctx, &runtime, "KEY");
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let key = FunctionObject::try_from(key)?.as_word();
+    let key_option = keyword(&mut ctx, &runtime, "KEY")?;
     let found = call(
         &runtime,
         &mut ctx,
         "FIND",
         &[Word::fixnum(2), sequence, key_option, key],
-    );
+    )?;
     assert_eq!(ncl_object::car(&ctx, found), Ok(Word::fixnum(2)));
 
-    let test_option = keyword(&mut ctx, &runtime, "TEST");
+    let test_option = keyword(&mut ctx, &runtime, "TEST")?;
     let found = call(
         &runtime,
         &mut ctx,
@@ -378,31 +378,30 @@ fn registered_key_maps_list_elements_before_matching() {
             test_option,
             predicate.as_word(),
         ],
-    );
+    )?;
     assert_eq!(ncl_object::car(&ctx, found), Ok(Word::fixnum(1)));
+    Ok(())
 }
 
 #[test]
-fn registered_remove_duplicates_respects_direction_and_range() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+fn registered_remove_duplicates_respects_direction_and_range() -> TestResult {
+    let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime)
-        .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
-    ncl_lib_sequences::register(&runtime)
-        .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
 
-    let start = keyword(&mut ctx, &runtime, "START");
-    let end = keyword(&mut ctx, &runtime, "END");
-    let from_end = keyword(&mut ctx, &runtime, "FROM-END");
-    let sequence = list(&mut ctx, &runtime, &[9, 1, 1, 2, 1, 8].map(Word::fixnum));
+    let start = keyword(&mut ctx, &runtime, "START")?;
+    let end = keyword(&mut ctx, &runtime, "END")?;
+    let from_end = keyword(&mut ctx, &runtime, "FROM-END")?;
+    let sequence = list(&mut ctx, &runtime, &[9, 1, 1, 2, 1, 8].map(Word::fixnum))?;
 
     let result = call(
         &runtime,
         &mut ctx,
         "REMOVE-DUPLICATES",
         &[sequence, start, Word::fixnum(1), end, Word::fixnum(5)],
-    );
-    assert_list(&ctx, result, &[9, 2, 1, 8].map(Word::fixnum));
+    )?;
+    assert_list(&ctx, result, &[9, 2, 1, 8].map(Word::fixnum))?;
 
     let result = call(
         &runtime,
@@ -417,6 +416,7 @@ fn registered_remove_duplicates_respects_direction_and_range() {
             from_end,
             Word::TRUE,
         ],
-    );
-    assert_list(&ctx, result, &[9, 1, 2, 8].map(Word::fixnum));
+    )?;
+    assert_list(&ctx, result, &[9, 1, 2, 8].map(Word::fixnum))?;
+    Ok(())
 }

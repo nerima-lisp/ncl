@@ -182,12 +182,8 @@ fn try_dispatch_candidates(
 
 pub fn lower_return_or_throw(
     assembler: &mut Assembler,
-    function: &Function,
-    block: BlockId,
+    context: &CallCheckContext<'_>,
     values: Option<&[ValueId]>,
-    slots: &super::ValueSlots,
-    abi: &dyn RuntimeAbi,
-    labels: &HashMap<BlockId, Label>,
     preserve_multiple_values: bool,
 ) -> Result<(), CodegenError> {
     let normal = assembler.new_label();
@@ -195,18 +191,25 @@ pub fn lower_return_or_throw(
         assembler,
         Inst::MovRM(
             super::FUNCTION_OBJECT,
-            context_mem(abi, ContextField::Pending)?,
+            context_mem(context.abi, ContextField::Pending)?,
         ),
     )?;
     emit(assembler, Inst::CmpRI(super::FUNCTION_OBJECT, 0))?;
     emit(assembler, Inst::Jcc(Cond::E, normal))?;
-    try_dispatch_candidates(assembler, function, block, slots, abi, labels)?;
-    emit_epilogue(assembler, slots, abi, &[], true, false)?;
+    try_dispatch_candidates(
+        assembler,
+        context.function,
+        context.block,
+        context.slots,
+        context.abi,
+        context.labels,
+    )?;
+    emit_epilogue(assembler, context.slots, context.abi, &[], true, false)?;
     assembler.bind(normal);
     emit_epilogue(
         assembler,
-        slots,
-        abi,
+        context.slots,
+        context.abi,
         values.unwrap_or(&[]),
         false,
         preserve_multiple_values,
@@ -219,7 +222,7 @@ pub(super) struct CheckedCall {
     site: SafepointSite,
 }
 
-pub(super) struct CallCheckContext<'a> {
+pub(in crate::target_x86_64) struct CallCheckContext<'a> {
     pub(super) function: &'a Function,
     pub(super) block: BlockId,
     pub(super) slots: &'a super::ValueSlots,
@@ -228,7 +231,7 @@ pub(super) struct CallCheckContext<'a> {
 }
 
 impl<'a> CallCheckContext<'a> {
-    pub(super) fn new(
+    pub(in crate::target_x86_64) fn new(
         function: &'a Function,
         block: BlockId,
         slots: &'a super::ValueSlots,

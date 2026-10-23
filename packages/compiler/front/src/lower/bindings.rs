@@ -119,7 +119,7 @@ impl Context<'_> {
         let mut values = Vec::with_capacity(arguments.len());
         for argument in arguments {
             let primary = self.lower_expr(f, argument)?;
-            values.push(self.capture_multiple_values(f, primary)?);
+            values.push(Self::capture_multiple_values(f, primary)?);
         }
         let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "MULTIPLE-VALUE-CALL-LIST"))?;
         let helper = f.one(
@@ -158,7 +158,6 @@ impl Context<'_> {
     }
 
     pub(super) fn capture_multiple_values(
-        &mut self,
         f: &mut FunctionLowerer,
         primary: ValueId,
     ) -> Result<ValueId, LowerError> {
@@ -194,7 +193,6 @@ impl Context<'_> {
     }
 
     pub(super) fn restore_multiple_values(
-        &mut self,
         f: &mut FunctionLowerer,
         values: ValueId,
     ) -> Result<ValueId, LowerError> {

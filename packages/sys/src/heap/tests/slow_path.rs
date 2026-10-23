@@ -147,7 +147,7 @@ fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
         assert!(native_ready_sender.send(()).is_ok());
         let object = argument_receiver
             .recv()
-            .expect("test should send the Native allocation argument");
+            .unwrap_or_else(|_| panic!("test should send the Native allocation argument"));
         let allocation = native_heap.alloc_cons(&mut native, object, Word::NIL);
         assert!(allocation_sender.send(allocation).is_ok());
         native_heap.unregister_thread(&native);
@@ -156,7 +156,7 @@ fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
     let native_pointer = std::ptr::with_exposed_provenance::<Thread>(
         native_pointer_receiver
             .recv()
-            .expect("Native worker should publish its thread pointer"),
+            .unwrap_or_else(|_| panic!("Native worker should publish its thread pointer")),
     );
 
     let (collector_ready_sender, collector_ready_receiver) = mpsc::channel();
@@ -170,6 +170,30 @@ fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
     });
     assert!(collector_ready_receiver.recv().is_ok());
 
+    wait_for_safepoint_request(&heap);
+
+    assert!(argument_sender.send(large).is_ok());
+    wait_for_native_argument_snapshot(&heap, native_pointer, large);
+
+    assert!(matches!(
+        allocation_receiver.recv_timeout(Duration::from_millis(50)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    assert!(poll_sender.send(()).is_ok());
+    assert!(collector.join().is_ok());
+
+    let allocation = allocation_receiver
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap_or_else(|_| panic!("Native cons allocation should resume"));
+    let cell = allocation
+        .unwrap_or_else(|error| panic!("Native cons allocation should succeed: {error:?}"));
+    assert_eq!(heap.read_word(cell, 0), Some(large));
+    assert_eq!(heap.widetag(large), Some(13));
+    assert!(blocker.join().is_ok());
+    assert!(native.join().is_ok());
+}
+
+fn wait_for_safepoint_request(heap: &Heap) {
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut stop_world = heap
         .stop_world
@@ -189,48 +213,31 @@ fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
         assert!(!wait.timed_out() || stop_world.requested);
     }
     drop(stop_world);
+}
 
-    assert!(argument_sender.send(large).is_ok());
+fn wait_for_native_argument_snapshot(heap: &Heap, native_pointer: *const Thread, large: Word) {
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut stop_world = heap
-        .stop_world
-        .lock()
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let (stop_world, _) = heap
+        .stop_world_ready
+        .wait_timeout_while(
+            heap.stop_world
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            remaining,
+            |_| {
+                // SAFETY: this wait predicate holds the lock protecting the registered thread's snapshot.
+                !unsafe { (&*native_pointer).conservative_snapshot() }.contains(&large)
+            },
+        )
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    loop {
-        // SAFETY: the registered Native thread is waiting under this lock after publishing.
-        let snapshot = unsafe { (&*native_pointer).conservative_snapshot() };
-        if snapshot.contains(&large) {
-            break;
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        assert!(
-            !remaining.is_zero(),
-            "Native alloc_cons argument was absent from the refreshed stack snapshot"
-        );
-        let (next, wait) = heap
-            .stop_world_ready
-            .wait_timeout(stop_world, remaining)
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world = next;
-        assert!(!wait.timed_out(), "Native stack snapshot was not refreshed");
-    }
+    // SAFETY: the returned guard still holds the lock protecting the registered thread's snapshot.
+    let contains_argument = unsafe { (&*native_pointer).conservative_snapshot() }.contains(&large);
     drop(stop_world);
-
-    assert!(matches!(
-        allocation_receiver.recv_timeout(Duration::from_millis(50)),
-        Err(mpsc::RecvTimeoutError::Timeout)
-    ));
-    assert!(poll_sender.send(()).is_ok());
-    assert!(collector.join().is_ok());
-
-    let allocation = allocation_receiver
-        .recv_timeout(Duration::from_secs(5))
-        .expect("Native cons allocation should resume");
-    let cell = allocation.expect("Native cons allocation should succeed");
-    assert_eq!(heap.read_word(cell, 0), Some(large));
-    assert_eq!(heap.widetag(large), Some(13));
-    assert!(blocker.join().is_ok());
-    assert!(native.join().is_ok());
+    assert!(
+        contains_argument,
+        "Native stack snapshot was not refreshed before the deadline"
+    );
 }
 
 struct ForwardingRoots {

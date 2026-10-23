@@ -303,6 +303,7 @@ dependencies = [
  "ncl-ffi",
  "ncl-image",
  "ncl-ir",
+ "ncl-lib-pathnames",
  "ncl-object",
  "ncl-objfile",
  "ncl-opt",

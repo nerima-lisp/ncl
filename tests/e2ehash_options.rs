@@ -42,8 +42,18 @@ fn make_hash_table_accepts_function_objects_for_standard_tests() {
 }
 
 #[test]
+fn make_hash_table_accepts_symbol_designators_for_standard_tests() {
+    assert_eval(
+        "(list (hash-table-test (make-hash-table :test 'eq)) (hash-table-test (make-hash-table :test 'eql)) (hash-table-test (make-hash-table :test 'equal)) (hash-table-test (make-hash-table :test 'equalp)))",
+        "(EQ EQL EQUAL EQUALP)",
+    );
+}
+
+#[test]
 fn make_hash_table_rejects_invalid_test_designators() {
     assert_type_error("(make-hash-table :test 1)");
+    assert_type_error("(make-hash-table :test 'car)");
+    assert_type_error("(make-hash-table :test 'foo)");
     assert_type_error("(make-hash-table :test #'car)");
     assert_type_error("(make-hash-table :test (symbol-function 'car))");
     assert_type_error("(make-hash-table :test #'(lambda (left right) t))");

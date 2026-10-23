@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::evalwhen::{TopLevelMode, eval_when_start};
-use crate::{Runtime, RuntimeError, compile};
+use crate::{Runtime, RuntimeError, compile, file_environment};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
@@ -13,6 +13,21 @@ use ncl_object::{
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
 pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
+    let pathname = file_environment::absolute_path(path)?;
+    let truename = std::fs::canonicalize(&pathname).map_err(|error| RuntimeError::Io {
+        path: pathname.display().to_string(),
+        error,
+    })?;
+    file_environment::enter_load(runtime, &pathname, &truename)?;
+    let result = file_contents(runtime, &pathname);
+    let restored = runtime.context.leave_progv().map_err(RuntimeError::from);
+    match (result, restored) {
+        (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+        (Ok(value), Ok(())) => Ok(value),
+    }
+}
+
+fn file_contents(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
     let bytes = std::fs::read(path).map_err(|error| RuntimeError::Io {
         path: path.display().to_string(),
         error,
@@ -63,8 +78,7 @@ fn load_with_runtime(
         });
         return Err(ObjectError::TypeError);
     };
-    let path = ncl_compiler_front::form::word_string(ctx, path_word)
-        .map_err(|_| ObjectError::TypeError)?;
+    let path = ncl_lib_pathnames::resolve_pathname(ctx, object, path_word)?;
     let mut if_missing = true;
     for index in (1..args.len()).step_by(2) {
         let keyword = args.get(index).ok_or(ObjectError::Layout)?;
@@ -91,7 +105,7 @@ fn load_with_runtime(
             }
         }
     }
-    match file(runtime, Path::new(&path)) {
+    match file(runtime, &path) {
         Ok(value) => {
             values.set(&[value]);
             Ok(value)

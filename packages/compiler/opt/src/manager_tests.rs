@@ -91,17 +91,34 @@ fn manager_reports_module_passes_limits_and_errors() {
 fn manager_rejects_an_invalid_function_after_a_pass() {
     let mut manager = PassManager::new();
     manager.add_function_pass(InvalidatingPass);
-    let Err(error) = manager.run(&mut Module {
-        functions: vec![leaf()],
-    }) else {
+    let mut events = Vec::new();
+    let result = manager.run_with_observer(
+        &mut Module {
+            functions: vec![leaf()],
+        },
+        |event| events.push(event.clone()),
+    );
+    let Err(error) = result else {
         std::process::exit(1)
     };
     assert_eq!(error.pass, "invalidating");
     assert!(error.message.contains("DuplicateValue"));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].changed, Some(true));
+    assert!(matches!(
+        events[0].verification,
+        crate::PassVerification::Failed(_)
+    ));
+    assert!(
+        events[0]
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("DuplicateValue"))
+    );
 }
 
 #[test]
-fn default_pipeline_registers_phase_three_passes_in_order() {
+fn default_pipeline_registers_gc_safe_passes_in_order() {
     let mut manager = PassManager::new();
     manager.add_default_optimization_pipeline();
     let report = manager
@@ -114,15 +131,55 @@ fn default_pipeline_registers_phase_three_passes_in_order() {
         .iter()
         .map(|stat| stat.pass.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
-            "inline-direct-calls",
-            "global-value-numbering",
-            "sccp",
-            "dead-code-elimination",
-        ]
+    assert_eq!(names, vec!["sccp", "dead-code-elimination"]);
+}
+
+#[test]
+fn observer_reports_pass_context_and_verification() {
+    let mut manager = PassManager::with_options(PassManagerOptions {
+        max_iterations: 1,
+        verify_after_each_pass: true,
+    });
+    manager.add_function_pass(TogglePass { changed: true });
+    let mut events = Vec::new();
+    manager
+        .run_with_observer(
+            &mut Module {
+                functions: vec![leaf()],
+            },
+            |event| events.push(event.clone()),
+        )
+        .fixture();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].iteration, 1);
+    assert_eq!(events[0].function.as_deref(), Some("leaf"));
+    assert_eq!(events[0].pass, "toggle");
+    assert_eq!(events[0].changed, Some(true));
+    assert_eq!(events[0].verification, crate::PassVerification::Passed);
+    assert!(events[0].error.is_none());
+    let formatted = events[0].to_string();
+    assert!(formatted.contains("function=\"leaf\""));
+    assert!(formatted.contains("pass=\"toggle\""));
+    assert!(formatted.contains("changed=true verification=passed elapsed_ns="));
+}
+
+#[test]
+fn observer_reports_pass_failures() {
+    let mut manager = PassManager::new();
+    manager.add_function_pass(FailingPass);
+    let mut events = Vec::new();
+    let result = manager.run_with_observer(
+        &mut Module {
+            functions: vec![leaf()],
+        },
+        |event| events.push(event.clone()),
     );
+    assert!(result.is_err());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].pass, "failing");
+    assert_eq!(events[0].changed, None);
+    assert_eq!(events[0].verification, crate::PassVerification::NotRun);
+    assert_eq!(events[0].error.as_deref(), Some("boom"));
 }
 
 #[test]

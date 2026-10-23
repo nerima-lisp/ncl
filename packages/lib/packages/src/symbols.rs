@@ -277,6 +277,7 @@ fn gensym(
                 }
                 ("G".to_owned(), nonnegative_bignum_decimal(ctx, value)?)
             }
+            // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
             _ => return Err(ObjectError::TypeError),
         },
     };
@@ -298,11 +299,11 @@ fn nonnegative_bignum_decimal(ctx: &ThreadContext, value: Bignum) -> Result<Stri
         let mut carry = u64::from(limb);
         for digit in &mut digits {
             let current = u64::from(*digit) * (1_u64 << 32) + carry;
-            *digit = (current % 10) as u8;
+            *digit = (current % 10) as u8; // check-added-lines: allow(as-cast) the remainder is below 10.
             carry = current / 10;
         }
         while carry != 0 {
-            digits.push((carry % 10) as u8);
+            digits.push((carry % 10) as u8); // check-added-lines: allow(as-cast) the remainder is below 10.
             carry /= 10;
         }
     }
@@ -356,6 +357,7 @@ fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Str
                 make_bignum_from_limbs(ctx, runtime, false, &limbs)?.into(),
             )
         }
+        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
         _ => return Err(ObjectError::TypeError),
     };
     set_symbol_value(ctx, counter_symbol, next)?;

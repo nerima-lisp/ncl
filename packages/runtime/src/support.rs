@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::MacroCaller;
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, Function, FunctionObject, ObjectError, Package,
+    BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
     make_bignum_from_limbs, make_closure, make_complex, make_cons, make_double, make_ratio,
     make_simple_vector, make_string, make_value_cell, symbol_function,
@@ -183,6 +183,8 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         name: &ncl_compiler_front::SymbolRef,
         form: Word,
     ) -> Result<Word, ncl_compiler_front::FrontError> {
+        let form_root =
+            HeapRootedWord::new(ctx, form).map_err(|error| expansion(name, &error.to_string()))?;
         let package = name
             .package_name()
             .ok_or_else(|| expansion(name, "uninterned macro has no function cell"))?;
@@ -192,9 +194,8 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         let (symbol, _) = Package::from_word(package_word)
             .intern(ctx, runtime, &name.name)
             .map_err(|error| expansion(name, &error.to_string()))?;
-        let function =
-            symbol_function(ctx, symbol).map_err(|error| expansion(name, &error.to_string()))?;
-        let function = FunctionObject::try_from(function)
+        let function = symbol_function(ctx, symbol).map_err(|e| expansion(name, &e.to_string()))?;
+        let function_root = HeapRootedWord::new(ctx, function)
             .map_err(|error| expansion(name, &error.to_string()))?;
         let form = if name.package_name() == Some("COMMON-LISP") {
             let package = runtime
@@ -203,7 +204,8 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
             let (head, _) = Package::from_word(package)
                 .intern(ctx, runtime, &name.name)
                 .map_err(|error| expansion(name, &error.to_string()))?;
-            let tail = cdr(ctx, form).map_err(|error| expansion(name, &error.to_string()))?;
+            let tail =
+                cdr(ctx, form_root.get()).map_err(|error| expansion(name, &error.to_string()))?;
             ncl_object::with_roots(ctx, &[head, tail], |ctx, roots| {
                 make_cons(
                     ctx,
@@ -214,8 +216,10 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
             })
             .map_err(|error| expansion(name, &error.to_string()))?
         } else {
-            form
+            form_root.get()
         };
+        let function = FunctionObject::try_from(function_root.get())
+            .map_err(|error| expansion(name, &error.to_string()))?;
         if runtime.builtin_descriptor(ctx, function).is_some() {
             return runtime
                 .call_builtin(ctx, function, &[form])

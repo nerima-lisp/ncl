@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ptr::NonNull;
 mod builtin_trampoline;
 mod compile;
+mod compile_builtins;
 #[cfg(test)]
 mod constant_tests;
 mod constants;
@@ -73,6 +74,7 @@ impl Runtime {
         let undefined_function_stub_address = undefined_function_stub.address();
         ncl_stdlib::register_all(&mut context, &object)?;
         file_environment::register(&mut context, &object)?;
+        compile_builtins::register(&mut context, &object)?;
         time::register_builtins(&mut context, &object)?;
         eval_builtins::register(&mut context, &object)?;
         builtin_trampoline::install_arith_fast(&object)?;

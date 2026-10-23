@@ -6,6 +6,57 @@ fn lisp_string(value: &Path) -> String {
 }
 
 #[test]
+fn compile_file_builtin_compiles_and_loads_fasl_with_three_values() {
+    let input =
+        std::env::temp_dir().join(format!("ncl-compile-and-load-{}.lisp", std::process::id()));
+    if let Err(error) = fs::write(
+        &input,
+        include_str!("../tests/fixtures/compile-file-source.lisp"),
+    ) {
+        panic!("COMPILE-FILE source creation failed: {error}");
+    }
+    let input_truename = match fs::canonicalize(&input) {
+        Ok(path) => path,
+        Err(error) => panic!("COMPILE-FILE source canonicalization failed: {error}"),
+    };
+    let output_truename = input_truename.with_extension("fasl");
+    let harness = include_str!("../tests/fixtures/compile-and-load.lisp")
+        .replace(
+            "SOURCE-PATHNAME-HERE",
+            &format!("#p{}", lisp_string(&input)),
+        )
+        .replace("INPUT-NAMESTRING-HERE", &lisp_string(&input))
+        .replace(
+            "INPUT-TRUENAME-NAMESTRING-HERE",
+            &lisp_string(&input_truename),
+        )
+        .replace(
+            "OUTPUT-TRUENAME-NAMESTRING-HERE",
+            &lisp_string(&output_truename),
+        );
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
+    let result = match runtime.eval(&harness) {
+        Ok(value) => value,
+        Err(error) => panic!("COMPILE-FILE and LOAD failed: {error}"),
+    };
+    assert_eq!(runtime.format_result(result), "(T T T T T T T T)");
+    let output_bytes = match fs::read(&output_truename) {
+        Ok(bytes) => bytes,
+        Err(error) => panic!("COMPILE-FILE output read failed: {error}"),
+    };
+    assert!(output_bytes.starts_with(b"NCLFASL\0"));
+    if let Err(error) = fs::remove_file(&input) {
+        panic!("COMPILE-FILE source cleanup failed: {error}");
+    }
+    if let Err(error) = fs::remove_file(&output_truename) {
+        panic!("COMPILE-FILE output cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn compile_file_binds_pathname_and_truename() {
     let filename = format!("ncl-compile-file-truename-{}.lisp", std::process::id());
     let base = std::env::temp_dir();

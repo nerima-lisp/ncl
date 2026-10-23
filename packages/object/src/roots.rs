@@ -226,6 +226,63 @@ pub fn with_heap_rooted_slice<T>(
     result
 }
 
+/// Run a callback with a contiguous mutable slice held in the heap root registry.
+///
+/// # Errors
+/// Returns the callback error or `ObjectError::RootStackCorrupted` if a root cannot be removed.
+pub fn with_heap_rooted_mut_slice<T>(
+    runtime: &crate::Runtime,
+    values: &[Word],
+    f: impl FnOnce(&mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut rooted = HeapRootedMutSlice {
+        heap: Arc::clone(&runtime.heap),
+        values: values.to_vec(),
+        tokens: Vec::with_capacity(values.len()),
+    };
+    for value in &mut rooted.values {
+        rooted
+            .tokens
+            .push(ncl_sys::push_heap_root(&rooted.heap, value));
+    }
+    let result = f(&mut rooted.values);
+    if !rooted.unregister_all() {
+        rooted.preserve_failed_roots();
+        return Err(ObjectError::RootStackCorrupted);
+    }
+    result
+}
+
+struct HeapRootedMutSlice {
+    heap: Arc<Heap>,
+    values: Vec<Word>,
+    tokens: Vec<RootToken>,
+}
+
+impl HeapRootedMutSlice {
+    fn unregister_all(&mut self) -> bool {
+        let mut valid = true;
+        for token in self.tokens.drain(..).rev() {
+            if self.heap.unregister_root(token).is_err() {
+                valid = false;
+            }
+        }
+        valid
+    }
+
+    fn preserve_failed_roots(&mut self) {
+        std::mem::forget(std::mem::take(&mut self.values));
+    }
+}
+
+impl Drop for HeapRootedMutSlice {
+    fn drop(&mut self) {
+        if !self.unregister_all() {
+            self.preserve_failed_roots();
+        }
+    }
+}
+
 /// Pop a thread root and return the callback result.
 ///
 pub fn finish_root<T>(

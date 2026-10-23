@@ -88,7 +88,9 @@ pub use roots::{
     HeapRootedWord, pop_heap_root, pop_root, push_heap_root, push_root, try_pop_root,
     try_push_root, unregister_heap_root,
 };
-pub use roots::{with_heap_rooted_slice, with_root, with_rooted_slice, with_roots};
+pub use roots::{
+    with_heap_rooted_mut_slice, with_heap_rooted_slice, with_root, with_rooted_slice, with_roots,
+};
 pub use runtime::Runtime;
 pub use scope::{Handle, HandleVec, Local, Scope};
 pub use specialized_array::{

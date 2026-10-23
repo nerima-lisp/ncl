@@ -90,7 +90,8 @@ pub(super) fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(),
             },
             multiple_value_call_list,
             |args| Ok(args.as_slice().to_vec()),
-        ),
+        )
+        .with_nested_evaluation(),
     )?;
     Ok(())
 }

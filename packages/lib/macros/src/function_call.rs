@@ -69,8 +69,8 @@ fn call_designator(
                 }
             });
     }
-    ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
-        let designator_word = *rooted[0];
+    ncl_object::with_heap_rooted_mut_slice(runtime, &rooted, |rooted| {
+        let designator_word = *rooted.first().ok_or(ObjectError::Layout)?;
         let designator = match function_designator(ctx, designator_word) {
             Ok(designator) => designator,
             Err(error) => {
@@ -81,14 +81,14 @@ fn call_designator(
                 return Err(error);
             }
         };
-        let arguments: Vec<Word> = rooted[1..].iter().map(|word| **word).collect();
+        let arguments = rooted.get(1..).ok_or(ObjectError::Layout)?;
         let mut caller = BuiltinFunctionCaller;
         caller
             .call_function(
                 ctx,
                 runtime,
                 designator,
-                FunctionArguments::new(&arguments),
+                FunctionArguments::new(arguments),
                 values,
             )
             .map_err(|error| {

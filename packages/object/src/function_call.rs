@@ -133,28 +133,28 @@ impl FunctionCaller for BuiltinFunctionCaller {
         let mut rooted_values = Vec::with_capacity(args.len() + 1);
         rooted_values.push(designator_word);
         rooted_values.extend_from_slice(args.as_slice());
-        crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
+        crate::with_heap_rooted_mut_slice(runtime, &rooted_values, |rooted_values| {
             let function = match designator {
-                FunctionDesignator::Function(_) => FunctionObject::try_from(*rooted_values[0])
-                    .map_err(|_| ObjectError::UndefinedFunction)?,
+                FunctionDesignator::Function(_) => {
+                    FunctionObject::try_from(*rooted_values.first().ok_or(ObjectError::Layout)?)
+                        .map_err(|_| ObjectError::UndefinedFunction)?
+                }
                 FunctionDesignator::Symbol(_) => {
                     let designator = rooted_values.first().ok_or(ObjectError::Layout)?;
-                    if symbol_is_macro(ctx, **designator)? {
+                    if symbol_is_macro(ctx, *designator)? {
                         return Err(ObjectError::UndefinedFunction);
                     }
-                    let word = crate::symbol_function(ctx, **designator)?;
+                    let word = crate::symbol_function(ctx, *designator)?;
                     FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
                 }
             };
-            let current_args: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
+            let current_args = rooted_values.get_mut(1..).ok_or(ObjectError::Layout)?;
             let result = if let Some(result) =
-                runtime.call_builtin_if_registered(ctx, function, &current_args, values)
+                runtime.call_builtin_if_registered(ctx, function, current_args, values)
             {
                 result?
             } else {
-                crate::with_rooted_slice(ctx, &current_args, |ctx, rooted_args| {
-                    call_native(ctx, runtime, function, rooted_args, values)
-                })?
+                call_native(ctx, runtime, function, current_args, values)?
             };
             if values.is_explicit() {
                 ctx.set_values(values.as_slice());

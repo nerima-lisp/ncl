@@ -201,6 +201,12 @@ impl DeadCodeElimination {
         {
             live.insert(tag);
         }
+        live.extend(
+            function
+                .handler_regions
+                .iter()
+                .flat_map(|region| region.binding_targets.iter().copied()),
+        );
         for block in function
             .blocks
             .iter()

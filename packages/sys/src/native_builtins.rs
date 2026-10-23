@@ -227,7 +227,12 @@ pub unsafe extern "C" fn native_safepoint(mut thread: NonNull<Thread>, frame: *m
     let thread = unsafe { thread.as_mut() };
     thread.capture_native_frame(frame.addr(), pc);
     thread.enter_native();
-    collect(thread, false);
+    if let Err(condition) = collect(thread, false) {
+        thread.set_native_error(NativeError::Allocation {
+            operation: NativeOperation::Safepoint,
+            condition,
+        });
+    }
     thread.leave_native();
     thread.clear_safepoint_request();
 }

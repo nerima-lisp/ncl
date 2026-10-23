@@ -1,5 +1,7 @@
 use super::registry::CodeRegistry;
 use crate::Word;
+use crate::heap::metadata::MetadataError;
+use core::alloc::Layout;
 
 /// One decoded safepoint entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +63,25 @@ pub fn walk_frame_headers(words: &[Word], first: usize, limit: usize) -> Vec<Fra
 }
 
 impl SafepointMap {
+    pub(crate) fn requested_capacity_bytes(&self) -> Result<usize, MetadataError> {
+        let mut bytes = Layout::array::<Safepoint>(self.entries.capacity())
+            .map_err(|_| MetadataError::CapacityOverflow)?
+            .size();
+        for entry in &self.entries {
+            let bitmap_bytes = Layout::array::<u8>(entry.slot_bitmap.capacity())
+                .map_err(|_| MetadataError::CapacityOverflow)?
+                .size();
+            let register_bytes = Layout::array::<u16>(entry.register_ids.capacity())
+                .map_err(|_| MetadataError::CapacityOverflow)?
+                .size();
+            bytes = bytes
+                .checked_add(bitmap_bytes)
+                .and_then(|sum| sum.checked_add(register_bytes))
+                .ok_or(MetadataError::CapacityOverflow)?;
+        }
+        Ok(bytes)
+    }
+
     /// Decode entries from the fixed little-endian wire representation.
     ///
     /// # Errors

@@ -3,12 +3,20 @@ use std::sync::{Arc, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+const AUTO_GC_TEST_METADATA_LIMIT: usize = 1 << 20;
+
 #[test]
 fn slow_path_budget_collects_minor_once_and_resets_other_mutator_debt() {
-    let heap = Heap::new(HeapConfig {
-        dynamic_space_size: 256,
-        bytes_considered_between_gcs: 16,
-    });
+    let heap = Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 256,
+            bytes_considered_between_gcs: 16,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    );
     let mut collector = Thread::new();
     let mut native = Thread::new();
     assert_eq!(heap.register_thread(&mut collector), Ok(()));
@@ -30,10 +38,16 @@ fn slow_path_budget_collects_minor_once_and_resets_other_mutator_debt() {
 
 #[test]
 fn slow_path_cons_resolves_rooted_inputs_before_writing_the_new_cell() {
-    let heap = Arc::new(Heap::new(HeapConfig {
-        dynamic_space_size: 256,
-        bytes_considered_between_gcs: 4096,
-    }));
+    let heap = Arc::new(Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 256,
+            bytes_considered_between_gcs: 4096,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    ));
     let mut roots = setup_forwarding_roots(Arc::clone(&heap));
     assert_eq!(roots.values.len(), 2);
     assert_eq!(roots.addresses.len(), 2);
@@ -88,10 +102,16 @@ fn slow_path_cons_resolves_rooted_inputs_before_writing_the_new_cell() {
 
 #[test]
 fn slow_path_cons_preserves_explicitly_pinned_inputs() {
-    let heap = Arc::new(Heap::new(HeapConfig {
-        dynamic_space_size: 256,
-        bytes_considered_between_gcs: 4096,
-    }));
+    let heap = Arc::new(Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 256,
+            bytes_considered_between_gcs: 4096,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    ));
     let ForwardingRoots { values, addresses } = setup_forwarding_roots(Arc::clone(&heap));
     assert_eq!(values.len(), 2);
     assert_eq!(addresses.len(), 2);
@@ -151,9 +171,9 @@ fn native_stack_snapshot_retains_unrooted_large_input() {
     native.enter_native();
     assert!(native.stack_bounds.is_some());
 
-    heap.begin_collection(&mut collector);
-    heap.collect(true);
-    heap.end_collection();
+    assert_eq!(heap.begin_collection(&mut collector), Ok(()));
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_eq!(heap.end_collection(), Ok(()));
 
     // SAFETY: the local root slot remains alive until the collection completes.
     car = unsafe { car_pointer.read_volatile() };
@@ -221,7 +241,10 @@ fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
         let mut collector = Thread::new();
         assert_eq!(collector_heap.register_thread(&mut collector), Ok(()));
         assert!(collector_ready_sender.send(()).is_ok());
-        collector_heap.collect_with_thread(&mut collector, true);
+        assert_eq!(
+            collector_heap.collect_with_thread(&mut collector, true),
+            Ok(())
+        );
         collector_heap.unregister_thread(&collector);
     });
     assert!(collector_ready_receiver.recv().is_ok());
@@ -328,10 +351,16 @@ fn setup_forwarding_roots(heap: Arc<Heap>) -> ForwardingRoots {
 
 #[test]
 fn slow_path_retries_56_byte_request_after_reclaiming_with_16_bytes_free() {
-    let heap = Heap::new(HeapConfig {
-        dynamic_space_size: 128,
-        bytes_considered_between_gcs: 4096,
-    });
+    let heap = Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 128,
+            bytes_considered_between_gcs: 4096,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    );
     let mut thread = Thread::new();
     assert_eq!(heap.register_thread(&mut thread), Ok(()));
     let mut live = heap
@@ -357,10 +386,16 @@ fn slow_path_retries_56_byte_request_after_reclaiming_with_16_bytes_free() {
 
 #[test]
 fn slow_path_returns_capacity_error_when_full_collection_cannot_fit_live_set() {
-    let heap = Heap::new(HeapConfig {
-        dynamic_space_size: 128,
-        bytes_considered_between_gcs: 4096,
-    });
+    let heap = Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 128,
+            bytes_considered_between_gcs: 4096,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    );
     let mut thread = Thread::new();
     assert_eq!(heap.register_thread(&mut thread), Ok(()));
     let mut live = Vec::with_capacity(7);
@@ -627,10 +662,16 @@ fn native_gate_waiter_does_not_satisfy_running_mutator_quorum() {
 fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     native_waiter: bool,
 ) {
-    let heap = Arc::new(Heap::new(HeapConfig {
-        dynamic_space_size: 4096,
-        bytes_considered_between_gcs: 16,
-    }));
+    let heap = Arc::new(Heap::with_options(
+        HeapConfig {
+            dynamic_space_size: 4096,
+            bytes_considered_between_gcs: 16,
+        },
+        HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(AUTO_GC_TEST_METADATA_LIMIT),
+        },
+    ));
     let mut setup = Thread::new();
     assert_eq!(heap.register_thread(&mut setup), Ok(()));
     let root_result = heap.alloc_cons(&mut setup, Word::fixnum(1), Word::NIL);

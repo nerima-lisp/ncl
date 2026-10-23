@@ -306,18 +306,54 @@ fn subseq_place(
     })
 }
 
+fn compound_cons_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+    parent_accessors: &[&str],
+    access_operator: &str,
+    mutator_operator: &str,
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let mut parent_form = **roots.first().ok_or(ObjectError::TypeError)?;
+        for accessor in parent_accessors {
+            parent_form = call_form(ctx, runtime, accessor, &[parent_form])?;
+        }
+        mutator_place(
+            ctx,
+            runtime,
+            &[parent_form],
+            access_operator,
+            mutator_operator,
+        )
+    })
+}
+
 fn cadr_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<SetfExpansion, ObjectError> {
-    if args.len() != 1 {
-        return Err(ObjectError::TypeError);
-    }
-    let mut parent_form = call_form(ctx, runtime, "CDR", args)?;
-    ncl_object::with_root(ctx, &mut parent_form, |ctx, parent_form| {
-        mutator_place(ctx, runtime, &[*parent_form], "CAR", "RPLACA")
-    })
+    compound_cons_place(ctx, runtime, args, &["CDR"], "CAR", "RPLACA")
+}
+
+fn caddr_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    compound_cons_place(ctx, runtime, args, &["CDR", "CDR"], "CAR", "RPLACA")
+}
+
+fn cdddr_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    compound_cons_place(ctx, runtime, args, &["CDR", "CDR"], "CDR", "RPLACD")
 }
 
 fn car_place(
@@ -404,6 +440,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("ELT", elt_place as PlaceExpander),
         ("SUBSEQ", subseq_place as PlaceExpander),
         ("CADR", cadr_place as PlaceExpander),
+        ("CADDR", caddr_place as PlaceExpander),
+        ("CDDDR", cdddr_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),

@@ -97,10 +97,10 @@ fn escaping_throw_runs_cleanup_and_restores_progv_bindings() {
                  (throw 'r2-unmatched-tag :payload) \
                  (setq *r2-cleanup-value* *r2-progv-value*)))",
     );
-    assert!(matches!(
-        result,
-        Err(RuntimeError::Object(ObjectError::ControlError))
-    ));
+    assert!(
+        matches!(result, Err(RuntimeError::Object(ObjectError::ControlError))),
+        "unexpected result: {result:?}"
+    );
     let _ = runtime.context.take_non_local_exit();
 
     let cleanup_ran = runtime

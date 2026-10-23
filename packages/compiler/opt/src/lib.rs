@@ -4,7 +4,7 @@ use ncl_ir::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, ValueId}
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// A collection of functions optimized together.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -80,6 +80,65 @@ impl Display for PassError {
 }
 impl Error for PassError {}
 
+/// Whether the module verifier ran after one pass invocation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PassVerification {
+    /// Verification did not run because the pass itself failed.
+    NotRun,
+    /// Verification was disabled for this manager.
+    Skipped,
+    /// The module passed verification.
+    Passed,
+    /// Verification rejected the module.
+    Failed(String),
+}
+
+/// Details for one pass invocation, including failed invocations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PassEvent {
+    /// One-based fixed-point iteration.
+    pub iteration: usize,
+    /// Name of the function, or `None` for a module pass.
+    pub function: Option<String>,
+    /// Pass name.
+    pub pass: String,
+    /// Whether the pass changed the module, or `None` if it failed.
+    pub changed: Option<bool>,
+    /// Verification outcome after this invocation.
+    pub verification: PassVerification,
+    /// Wall-clock time spent running the pass, in nanoseconds.
+    pub elapsed: Duration,
+    /// Pass or verification failure detail.
+    pub error: Option<String>,
+}
+
+impl Display for PassEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ncl-opt iteration={} function={} pass={:?} changed={} verification=",
+            self.iteration,
+            self.function
+                .as_deref()
+                .map_or_else(|| "-".to_owned(), |name| format!("{name:?}")),
+            self.pass,
+            self.changed
+                .map_or_else(|| "failed".to_owned(), |changed| changed.to_string()),
+        )?;
+        match &self.verification {
+            PassVerification::NotRun => f.write_str("not-run")?,
+            PassVerification::Skipped => f.write_str("skipped")?,
+            PassVerification::Passed => f.write_str("passed")?,
+            PassVerification::Failed(_) => f.write_str("failed")?,
+        }
+        write!(f, " elapsed_ns={}", self.elapsed.as_nanos())?;
+        if let Some(error) = &self.error {
+            write!(f, " error={error:?}")?;
+        }
+        Ok(())
+    }
+}
+
 /// One timed pass invocation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PassStat {
@@ -135,100 +194,6 @@ pub struct PassManager {
     options: PassManagerOptions,
     function_passes: Vec<Box<dyn FunctionPass>>,
     module_passes: Vec<Box<dyn ModulePass>>,
-}
-
-impl PassManager {
-    /// Creates a manager with the default eight-iteration limit and verification enabled.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Creates a manager with explicit options.
-    #[must_use]
-    pub const fn with_options(options: PassManagerOptions) -> Self {
-        Self {
-            options,
-            function_passes: Vec::new(),
-            module_passes: Vec::new(),
-        }
-    }
-
-    /// Adds a function pass in pipeline order.
-    pub fn add_function_pass(&mut self, pass: impl FunctionPass + 'static) {
-        self.function_passes.push(Box::new(pass));
-    }
-
-    /// Adds a module pass in pipeline order.
-    pub fn add_module_pass(&mut self, pass: impl ModulePass + 'static) {
-        self.module_passes.push(Box::new(pass));
-    }
-
-    /// Adds the default Phase 3 pipeline in dependency order.
-    pub fn add_default_optimization_pipeline(&mut self) {
-        self.add_function_pass(InlineDirectCalls::default());
-        self.add_function_pass(GlobalValueNumbering);
-        self.add_function_pass(Sccp);
-        self.add_function_pass(DeadCodeElimination);
-    }
-
-    /// Runs all passes until unchanged or until the configured limit.
-    ///
-    /// # Errors
-    ///
-    /// Returns a pass error or a post-pass verification failure.
-    pub fn run(&mut self, module: &mut Module) -> Result<PassReport, PassError> {
-        let mut report = PassReport::default();
-        for iteration in 0..self.options.max_iterations {
-            let mut changed = false;
-            for pass in &mut self.function_passes {
-                for index in 0..module.functions.len() {
-                    let snapshot = module.clone();
-                    let started = Instant::now();
-                    let pass_name = pass.name().to_owned();
-                    let result = pass.run(&mut module.functions[index], &snapshot);
-                    let did_change =
-                        result.map_err(|error| PassError::new(&pass_name, error.message))?;
-                    report.stats.push(PassStat {
-                        pass: pass_name.clone(),
-                        changed: did_change,
-                        elapsed: started.elapsed(),
-                    });
-                    changed |= did_change;
-                    verify_after(self.options.verify_after_each_pass, &pass_name, module)?;
-                }
-            }
-            for pass in &mut self.module_passes {
-                let started = Instant::now();
-                let pass_name = pass.name().to_owned();
-                let did_change = pass
-                    .run(module)
-                    .map_err(|error| PassError::new(&pass_name, error.message))?;
-                report.stats.push(PassStat {
-                    pass: pass_name.clone(),
-                    changed: did_change,
-                    elapsed: started.elapsed(),
-                });
-                changed |= did_change;
-                verify_after(self.options.verify_after_each_pass, &pass_name, module)?;
-            }
-            report.iterations = iteration + 1;
-            if !changed {
-                return Ok(report);
-            }
-        }
-        report.hit_iteration_limit = self.options.max_iterations != 0;
-        Ok(report)
-    }
-}
-
-fn verify_after(enabled: bool, pass: &str, module: &Module) -> Result<(), PassError> {
-    if enabled {
-        module
-            .verify()
-            .map_err(|message| PassError::new(pass, message))?;
-    }
-    Ok(())
 }
 
 /// The conservative first optimization: inline direct calls to small leaf functions.
@@ -395,6 +360,7 @@ impl FunctionPass for InlineDirectCalls {
 pub(crate) mod remap;
 use remap::{next_value, remap_kind, remap_op_values, remap_term_values};
 mod gvn;
+mod manager;
 pub use gvn::GlobalValueNumbering;
 mod sccp;
 pub use sccp::Sccp;

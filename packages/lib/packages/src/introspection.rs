@@ -337,7 +337,7 @@ fn intern(
             if !package.export(ctx, runtime, name_word)? {
                 return Err(ObjectError::Layout);
             }
-            ncl_object::set_symbol_value(ctx, words[0], words[0])?;
+            ncl_object::set_symbol_value(ctx, words[0], words[0])?; // check-added-lines: allow(index) from_mut above roots one symbol.
             ncl_object::set_symbol_constant(ctx, words[0], true)?;
             Ok(Word::NIL)
         } else if was_accessible {

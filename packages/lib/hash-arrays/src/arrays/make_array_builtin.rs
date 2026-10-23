@@ -99,6 +99,7 @@ fn mod_element(value: Word, modulus: Word, ctx: &ThreadContext) -> Result<bool, 
             ObjectRef::Fixnum(modulus) => Ok(value < modulus),
             ObjectRef::Bignum(_) => Ok(true),
             // The parsed MOD size is a positive integer.
+            // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
             _ => Err(ObjectError::TypeError),
         },
         ObjectRef::Bignum(value) if !bignum_sign(ctx, Bignum::from_word(value))? => {
@@ -113,6 +114,7 @@ fn mod_element(value: Word, modulus: Word, ctx: &ThreadContext) -> Result<bool, 
                         == std::cmp::Ordering::Less))
         }
         // MOD contains only non-negative integers.
+        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
         _ => Ok(false),
     }
 }

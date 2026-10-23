@@ -66,6 +66,7 @@ fn string_compare_values(
             match name.as_str() {
                 "END" | "END1" => left_chars.len(),
                 "END2" => right_chars.len(),
+                // check-added-lines: allow(wildcard) unknown end designators are rejected.
                 _ => return Err(ObjectError::TypeError),
             }
         } else {

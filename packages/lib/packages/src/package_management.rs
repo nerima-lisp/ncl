@@ -54,9 +54,9 @@ pub(super) fn rename_package(
                 std::slice::from_mut(&mut nickname_list),
                 |ctx, list| {
                     for nickname in nicknames.iter().rev().copied() {
-                        list[0] = ncl_object::make_cons(ctx, runtime, nickname, list[0])?;
+                        list[0] = ncl_object::make_cons(ctx, runtime, nickname, list[0])?; // check-added-lines: allow(index) from_mut above roots one nickname list.
                     }
-                    runtime.rename_package(ctx, Package::from_word(roots[0]), roots[1], list[0])?;
+                    runtime.rename_package(ctx, Package::from_word(roots[0]), roots[1], list[0])?; // check-added-lines: allow(index) roots has two words and list has one.
                     Ok(roots[0])
                 },
             )

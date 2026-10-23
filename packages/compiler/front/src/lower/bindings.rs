@@ -118,8 +118,8 @@ impl Context<'_> {
         let callee = self.lower_expr(f, function)?;
         let mut values = Vec::with_capacity(arguments.len());
         for argument in arguments {
-            self.lower_expr(f, argument)?;
-            values.push(self.capture_multiple_values(f)?);
+            let primary = self.lower_expr(f, argument)?;
+            values.push(self.capture_multiple_values(f, primary)?);
         }
         let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "MULTIPLE-VALUE-CALL-LIST"))?;
         let helper = f.one(
@@ -160,6 +160,7 @@ impl Context<'_> {
     pub(super) fn capture_multiple_values(
         &mut self,
         f: &mut FunctionLowerer,
+        primary: ValueId,
     ) -> Result<ValueId, LowerError> {
         let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "CAPTURE-MULTIPLE-VALUES"))?;
         let helper = f.one(
@@ -173,11 +174,11 @@ impl Context<'_> {
             },
             Ty::Word,
         )?;
-        let zero = f.fixnum(0)?;
-        let zero = f.one(
+        let argc = f.fixnum(1)?;
+        let argc = f.one(
             OpKind::Convert {
                 op: Convert::I64ToWord,
-                value: zero,
+                value: argc,
             },
             Ty::Word,
         )?;
@@ -185,7 +186,7 @@ impl Context<'_> {
         f.one(
             OpKind::CallClosure {
                 closure: helper,
-                args: vec![zero],
+                args: vec![argc, primary],
                 named_symbol: None,
             },
             Ty::Word,

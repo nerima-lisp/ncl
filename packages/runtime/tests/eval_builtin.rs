@@ -45,12 +45,53 @@ fn eval_multiple_value_prog1_preserves_all_values() {
 }
 
 #[test]
+fn eval_multiple_value_prog1_preserves_single_value() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(multiple-value-list (eval '(multiple-value-prog1 7 nil)))")
+        .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(7)");
+}
+
+#[test]
 fn eval_unwind_protect_preserves_all_values() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let value = runtime
         .eval("(multiple-value-list (eval '(unwind-protect (values 1 2) nil)))")
         .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
     assert_eq!(runtime.format_result(value), "(1 2)");
+}
+
+#[test]
+fn eval_unwind_protect_preserves_single_value() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(multiple-value-list (eval '(unwind-protect 7 nil)))")
+        .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(7)");
+}
+
+#[test]
+fn eval_value_capture_preserves_zero_values() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    for source in [
+        "(multiple-value-list (eval '(multiple-value-prog1 (values) nil)))",
+        "(multiple-value-list (eval '(unwind-protect (values) nil)))",
+    ] {
+        let value = runtime
+            .eval(source)
+            .unwrap_or_else(|error| panic!("EVAL failed for {source}: {error}"));
+        assert_eq!(runtime.format_result(value), "NIL", "{source}");
+    }
+}
+
+#[test]
+fn eval_multiple_value_call_captures_single_value_arguments() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(multiple-value-list (multiple-value-call #'values 7 8))")
+        .unwrap_or_else(|error| panic!("EVAL failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(7 8)");
 }
 
 #[test]

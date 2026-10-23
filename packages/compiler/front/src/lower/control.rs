@@ -451,7 +451,7 @@ impl Context<'_> {
         let body_end = f.current_block();
         let normal_path = !f.is_terminated();
         let saved_values = if normal_path && self.preserve_multiple_values {
-            Some(self.capture_multiple_values(f)?)
+            Some(self.capture_multiple_values(f, value)?)
         } else {
             None
         };

@@ -10,6 +10,10 @@ const FUNCTION: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("FUNCTION"),
     ty: ncl_object::ParameterType::FunctionDesignator,
 };
+const PRIMARY_VALUE: ncl_object::Parameter = ncl_object::Parameter {
+    name: BuiltinName::new("PRIMARY-VALUE"),
+    ty: ncl_object::ParameterType::Any,
+};
 const REST_ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARGUMENTS"),
     ty: ncl_object::ParameterType::Any,
@@ -18,10 +22,22 @@ const REST_ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
 fn capture_multiple_values(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let values = ctx.values().to_vec();
+    let values = {
+        let thread = ctx.thread_access();
+        let count = thread.multiple_value_count();
+        thread
+            .multiple_values()
+            .get(..count)
+            .ok_or(ObjectError::Layout)?
+            .to_vec()
+    };
+    let mut values = values;
+    if let Some(first) = values.first_mut() {
+        *first = args.required(0)?;
+    }
     ncl_object::with_roots(ctx, &values, |ctx, roots| {
         let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
         list(ctx, runtime, &values)
@@ -55,8 +71,8 @@ pub(super) fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(),
         ),
         BuiltinImplementation::direct(
             Builtin {
-                lambda_list: LambdaList::fixed(&[]),
-                convention: BuiltinConvention::Direct(Arity::exact(0)),
+                lambda_list: LambdaList::fixed(&[PRIMARY_VALUE]),
+                convention: BuiltinConvention::Direct(Arity::exact(1)),
             },
             capture_multiple_values,
         ),

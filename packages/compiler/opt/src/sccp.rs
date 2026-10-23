@@ -288,11 +288,6 @@ impl Sccp {
         let constants = function.constants.clone();
         for block in &mut function.blocks {
             if !reachable.contains(&block.id) {
-                if !matches!(block.terminator, Terminator::Unreachable) || !block.ops.is_empty() {
-                    block.ops.clear();
-                    block.terminator = Terminator::Unreachable;
-                    changed = true;
-                }
                 continue;
             }
             for op in &mut block.ops {

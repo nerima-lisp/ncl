@@ -1,7 +1,21 @@
 #!/bin/sh
 set -u
 
-ncl=${1:?usage: ncl-driver.sh /path/to/ncl}
+if [ "$#" -ne 2 ]; then
+    printf '%s\n' 'usage: ncl-driver.sh /path/to/ncl default|off' >&2
+    exit 2
+fi
+
+ncl=$1
+mode=$2
+case "$mode" in
+    default|off) ;;
+    *)
+        printf '%s\n' 'mode must be default or off' >&2
+        exit 2
+        ;;
+esac
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # Run the complete harness in the checkout supplied by the scoreboard runner.
@@ -12,11 +26,8 @@ output=$(mktemp)
 trap 'rm -f "$output"' EXIT HUP INT TERM
 
 set +e
-"$ncl" --eval "(load \"$script_dir/ncl-driver.lisp\")" >"$output"
+"$ncl" "--optimization=$mode" --eval "(load \"$script_dir/ncl-driver.lisp\")" >"$output"
 status=$?
 set -e
-if [ "$status" -ne 0 ]; then
-    printf '%s\n' '{"status":"failed","times":[]}'
-    exit "$status"
-fi
 cat "$output"
+exit "$status"

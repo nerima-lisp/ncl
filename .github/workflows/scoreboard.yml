@@ -29,7 +29,7 @@ jobs:
           python3 scripts/conformance_scoreboard.py \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
             --ansi-command "python3 ${GITHUB_WORKSPACE}/scripts/ansi_test_inclusion.py unmeasured --reason 'Linux x86_64 baseline is unmeasured because this workflow has no same-day SBCL 2.6.0 baseline.'" \
-            --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${GITHUB_WORKSPACE}/target/release/ncl" \
+            --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${GITHUB_WORKSPACE}/target/release/ncl default" \
             --output "conformance/scoreboard/$(date -u +%F)-${GITHUB_SHA}.json"
       - uses: actions/upload-artifact@v4
         if: always()

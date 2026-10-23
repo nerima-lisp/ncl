@@ -1,3 +1,5 @@
+use super::RuntimeError;
+
 /// Whether runtime compilation applies the default optimization pipeline.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum OptimizationMode {
@@ -26,4 +28,26 @@ impl RuntimeOptions {
             opt_diagnostics,
         }
     }
+}
+
+pub fn verify_and_optimize(
+    module: &mut ncl_opt::Module,
+    options: RuntimeOptions,
+) -> Result<(), RuntimeError> {
+    module.verify().map_err(|error| {
+        RuntimeError::Native(format!(
+            "IR verification before optimization failed: {error}"
+        ))
+    })?;
+    if options.optimization == OptimizationMode::Default {
+        let mut passes = ncl_opt::PassManager::new();
+        passes.add_default_optimization_pipeline();
+        let result = if options.opt_diagnostics {
+            passes.run_with_observer(module, |event| eprintln!("{event}"))
+        } else {
+            passes.run(module)
+        };
+        result.map_err(|error| RuntimeError::Native(error.to_string()))?;
+    }
+    Ok(())
 }

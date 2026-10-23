@@ -8,7 +8,8 @@ use ncl_sys::{
     pop_root, publish_conservative_root, publish_safepoint, push_root, read_cons_word,
     read_object_word, register_layout, register_root_set, register_thread,
     register_thread_with_thread, request_safepoint, set_strict_forwarding, set_tlab, tlab_bump,
-    weak_value, write_barrier, write_cons_word, write_object_word,
+    try_push_heap_root, try_push_heap_root_cell, weak_value, write_barrier, write_cons_word,
+    write_object_word,
 };
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -90,7 +91,7 @@ fn native_cons_and_car_survive_gc_stress_with_strict_forwarding() {
     let mut pair = unsafe { native_cons(thread_ptr, Word::fixnum(42), Word::NIL) };
     assert!(pair.is_cons());
     let root = push_root(&mut thread, &mut pair);
-    collect(&mut thread, true);
+    assert_eq!(collect(&mut thread, true), Ok(()));
     // SAFETY: the pair is rooted and the thread remains registered.
     assert_eq!(unsafe { native_car(thread_ptr, pair) }, Word::fixnum(42));
     assert!(pop_root(&mut thread, root));
@@ -219,6 +220,7 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     let heap = Heap::new(HeapConfig {
         dynamic_space_size: 16384,
         bytes_considered_between_gcs: 128,
+        ..HeapConfig::default()
     });
     assert_eq!(heap.dynamic_space_size(), 16384);
     assert_eq!(heap.bytes_considered_between_gcs(), 128);
@@ -281,10 +283,66 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     write_barrier(NonNull::from(&mut thread), object, 1);
     assert_eq!(make_weak(&thread, object, Weakness::Value), object);
     assert_eq!(weak_value(&thread, object), Word::fixnum(8));
-    collect(&mut thread, false);
+    assert_eq!(collect(&mut thread, false), Ok(()));
     assert!(heap_epoch(&thread) >= 1);
     assert!(pop_root(&mut thread, object_root));
     ncl_sys::unregister_thread(&thread);
+}
+
+#[test]
+fn legacy_heap_config_and_root_apis_keep_their_call_shapes() {
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 8192,
+        bytes_considered_between_gcs: 512,
+    });
+    assert_eq!(heap.max_metadata_bytes(), None);
+    assert!(!heap.auto_gc());
+
+    let mut value = Word::NIL;
+    let method_token = heap.push_root(&mut value);
+    assert!(heap.pop_root(method_token));
+
+    let mut exported_value = Word::TRUE;
+    let exported_token = ncl_sys::push_heap_root(&heap, &mut exported_value);
+    assert!(ncl_sys::pop_heap_root(&heap, exported_token));
+
+    let cell = std::cell::Cell::new(Word::NIL);
+    let cell_token = ncl_sys::push_heap_root_cell(&heap, &cell);
+    assert!(heap.pop_root(cell_token));
+}
+
+#[test]
+fn heap_options_configure_metadata_and_auto_collection() {
+    let heap = Heap::with_options(
+        HeapConfig::default(),
+        ncl_sys::HeapOptions {
+            auto_gc: true,
+            max_metadata_bytes: Some(4096),
+        },
+    );
+    assert!(heap.auto_gc());
+    assert_eq!(heap.max_metadata_bytes(), Some(4096));
+}
+
+#[test]
+fn fallible_heap_root_exports_report_metadata_exhaustion() {
+    let heap = Heap::with_options(
+        HeapConfig::default(),
+        ncl_sys::HeapOptions {
+            max_metadata_bytes: Some(0),
+            ..ncl_sys::HeapOptions::default()
+        },
+    );
+    let mut value = Word::NIL;
+    assert_eq!(
+        try_push_heap_root(&heap, &mut value),
+        Err(ncl_sys::HeapRootError::MetadataCapacityExceeded)
+    );
+    let cell = std::cell::Cell::new(Word::NIL);
+    assert_eq!(
+        try_push_heap_root_cell(&heap, &cell),
+        Err(ncl_sys::HeapRootError::MetadataCapacityExceeded)
+    );
 }
 
 #[test]
@@ -359,25 +417,28 @@ fn heap_level_roots_and_after_gc_hooks_are_released() {
     let mut thread_value = Word::TRUE;
     let thread_token = ncl_sys::push_root(&mut thread, &mut thread_value);
     let mut value = alloc_cons(&mut thread, &heap, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
-    let heap_token = ncl_sys::push_heap_root(&heap, &mut value);
+    let heap_token = try_push_heap_root(&heap, &mut value)
+        .unwrap_or_else(|error| panic!("heap root registration failed: {error:?}"));
     assert!(!ncl_sys::pop_root(&mut thread, heap_token));
     assert!(ncl_sys::pop_root(&mut thread, thread_token));
     let mut second_value = Word::TRUE;
-    let second_token = ncl_sys::push_heap_root(&heap, &mut second_value);
+    let second_token = try_push_heap_root(&heap, &mut second_value)
+        .unwrap_or_else(|error| panic!("heap root registration failed: {error:?}"));
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
     assert_eq!(heap.unregister_root(heap_token), Ok(()));
     assert!(ncl_sys::pop_heap_root(&heap, second_token));
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
     let mut reused_value = Word::NIL;
-    let reused_token = ncl_sys::push_heap_root(&heap, &mut reused_value);
+    let reused_token = try_push_heap_root(&heap, &mut reused_value)
+        .unwrap_or_else(|error| panic!("heap root registration failed: {error:?}"));
     assert_eq!(
         heap.unregister_root(heap_token),
         Err(ncl_sys::HeapRootError::InvalidToken)
     );
     assert!(!ncl_sys::pop_heap_root(&heap, heap_token));
     assert_eq!(heap.unregister_root(reused_token), Ok(()));
-    ncl_sys::register_after_gc_hook(&heap, hook);
-    collect(&mut thread, true);
+    assert_eq!(ncl_sys::register_after_gc_hook(&heap, hook), Ok(()));
+    assert_eq!(collect(&mut thread, true), Ok(()));
     ncl_sys::register_finalizer(&thread, value, finalizer);
     ncl_sys::run_pending_finalizers(&thread);
     assert!(HOOK_RUNS.load(std::sync::atomic::Ordering::Relaxed) >= 1);
@@ -388,9 +449,11 @@ fn heap_root_tokens_cannot_remove_roots_from_another_heap() {
     let first_heap = Heap::new(HeapConfig::default());
     let second_heap = Heap::new(HeapConfig::default());
     let mut first_value = Word::TRUE;
-    let first_token = ncl_sys::push_heap_root(&first_heap, &mut first_value);
+    let first_token = try_push_heap_root(&first_heap, &mut first_value)
+        .unwrap_or_else(|error| panic!("heap root registration failed: {error:?}"));
     let mut second_value = Word::NIL;
-    let second_token = ncl_sys::push_heap_root(&second_heap, &mut second_value);
+    let second_token = try_push_heap_root(&second_heap, &mut second_value)
+        .unwrap_or_else(|error| panic!("heap root registration failed: {error:?}"));
 
     assert_eq!(
         ncl_sys::unregister_heap_root(&second_heap, first_token),

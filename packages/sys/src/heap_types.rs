@@ -5,6 +5,10 @@ use crate::Word;
 pub enum StorageCondition {
     /// The configured dynamic space cannot satisfy the allocation.
     CapacityExceeded,
+    /// The configured collector metadata budget cannot satisfy the operation.
+    HeapMetadataCapacityExceeded,
+    /// The allocation coordinator observed collection preparation while holding its gate.
+    CollectionInProgress,
     /// The requested object size cannot be represented or is outside the heap contract.
     InvalidSize,
     /// An operation requiring a mutator was attempted by an unregistered thread.
@@ -40,9 +44,14 @@ pub struct ReferenceLayout {
     /// Header-inclusive index from which every word to the object end is boxed.
     pub boxed_from: Option<usize>,
 }
-#[derive(Debug)]
-/// Returned when a widetag layout would replace an existing layout.
-pub struct LayoutError;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Failure while registering a widetag layout.
+pub enum LayoutError {
+    /// The widetag already has a registered layout.
+    AlreadyRegistered,
+    /// The collector metadata limit cannot reserve layout capacity.
+    MetadataCapacityExceeded,
+}
 #[derive(Clone, Copy, Debug)]
 /// Capacity and scheduling limits used when constructing a heap.
 pub struct HeapConfig {
@@ -50,6 +59,14 @@ pub struct HeapConfig {
     pub dynamic_space_size: usize,
     /// Allocation debt that requests the next collection.
     pub bytes_considered_between_gcs: usize,
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// Optional collection settings used when constructing a heap.
+pub struct HeapOptions {
+    /// Whether allocation slow paths may request automatic collection.
+    pub auto_gc: bool,
+    /// Maximum bytes reserved for collector-owned metadata, if configured.
+    pub max_metadata_bytes: Option<usize>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Which component of a weak object is retained when its referent dies.

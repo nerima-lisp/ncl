@@ -29,8 +29,8 @@ pub use code::{
 pub use codegen::{set_tlab, tlab_bump};
 pub use function_address::{FunctionAddressError, function_address};
 pub use heap::{
-    Finalizer, Heap, HeapConfig, HeapRootError, LayoutError, PageKind, ReferenceLayout,
-    StorageCondition, TypeTag, Weakness,
+    Finalizer, Heap, HeapConfig, HeapOptions, HeapRootError, LayoutError, PageKind,
+    ReferenceLayout, StorageCondition, TypeTag, Weakness,
 };
 pub use invoke::{invoke_entry, invoke_entry_with_function, invoke_entry_with_function_address};
 pub use native_builtins::{
@@ -343,13 +343,36 @@ pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken 
 }
 
 /// Register a precise root slot owned by a heap-level registry.
+///
+/// Aborts the process if root metadata cannot be reserved.
 pub fn push_heap_root(heap: &Heap, value: &mut Word) -> RootToken {
     heap.push_root(value)
 }
 
+/// Register a precise root slot owned by a heap-level registry.
+///
+/// # Errors
+/// Returns [`HeapRootError::MetadataCapacityExceeded`] when root registry storage cannot grow.
+pub fn try_push_heap_root(heap: &Heap, value: &mut Word) -> Result<RootToken, HeapRootError> {
+    heap.try_push_root(value)
+}
+
 /// Register a heap root backed by interior-mutable storage.
+///
+/// Aborts the process if root metadata cannot be reserved.
 pub fn push_heap_root_cell(heap: &Heap, value: &core::cell::Cell<Word>) -> RootToken {
     heap.push_root_cell(value)
+}
+
+/// Register a heap root backed by interior-mutable storage.
+///
+/// # Errors
+/// Returns [`HeapRootError::MetadataCapacityExceeded`] when root registry storage cannot grow.
+pub fn try_push_heap_root_cell(
+    heap: &Heap,
+    value: &core::cell::Cell<Word>,
+) -> Result<RootToken, HeapRootError> {
+    heap.try_push_root_cell(value)
 }
 
 /// Remove the most recently registered heap-level root.
@@ -402,7 +425,9 @@ pub fn write_barrier(thread: core::ptr::NonNull<Thread>, object: Word, slot: usi
 ///
 /// # Errors
 ///
-/// Returns `LayoutError` when the widetag already has a layout.
+/// Returns `LayoutError::AlreadyRegistered` when the widetag already has a
+/// layout or `LayoutError::MetadataCapacityExceeded` when its metadata cannot
+/// be reserved.
 pub fn register_layout(
     heap: &Heap,
     widetag: u8,
@@ -412,13 +437,21 @@ pub fn register_layout(
 }
 
 /// Register a callback run after a collection releases its roots.
-pub fn register_after_gc_hook(heap: &Heap, hook: fn()) {
-    heap.register_after_gc_hook(hook);
+///
+/// # Errors
+/// Returns [`StorageCondition::HeapMetadataCapacityExceeded`] when the heap
+/// cannot reserve storage for the callback.
+pub fn register_after_gc_hook(heap: &Heap, hook: fn()) -> Result<(), StorageCondition> {
+    heap.register_after_gc_hook(hook)
 }
 
 /// Start a collection and update registered precise roots.
-pub fn collect(thread: &mut Thread, full: bool) {
-    thread.heap_collect(full);
+///
+/// # Errors
+/// Returns a collection error from the thread's heap, or
+/// [`StorageCondition::ThreadNotRegistered`] when the thread has no heap.
+pub fn collect(thread: &mut Thread, full: bool) -> Result<(), StorageCondition> {
+    thread.heap_collect(full)
 }
 
 /// Return the collection epoch of the thread's heap.

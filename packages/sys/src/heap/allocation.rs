@@ -135,6 +135,20 @@ impl Heap {
         words: usize,
     ) -> Result<CoordinatedAllocation<'_>, StorageCondition> {
         let bytes = self.validate_allocation(thread, words)?;
+        if !self.options.auto_gc {
+            match self.allocate_once(thread, kind, tag, words) {
+                Ok(value) => return Ok(CoordinatedAllocation { value, _gate: None }),
+                Err(StorageCondition::CollectionInProgress) => {
+                    let gate = self.acquire_slow_path_gate(thread)?;
+                    let value = self.allocate_once(thread, kind, tag, words)?;
+                    return Ok(CoordinatedAllocation {
+                        value,
+                        _gate: Some(gate),
+                    });
+                }
+                Err(error) => return Err(error),
+            }
+        }
         if thread.native_state() == crate::NativeState::Lisp
             && thread
                 .bytes_cons
@@ -143,12 +157,16 @@ impl Heap {
         {
             match self.allocate_once(thread, kind, tag, words) {
                 Ok(value) => return Ok(CoordinatedAllocation { value, _gate: None }),
-                Err(StorageCondition::CapacityExceeded) => {}
+                Err(
+                    StorageCondition::CapacityExceeded
+                    | StorageCondition::HeapMetadataCapacityExceeded
+                    | StorageCondition::CollectionInProgress,
+                ) => {}
                 Err(error) => return Err(error),
             }
         }
 
-        let gate = self.acquire_slow_path_gate(thread);
+        let gate = self.acquire_slow_path_gate(thread)?;
         let value = self.allocate_after_gate(thread, kind, tag, words, bytes)?;
         Ok(CoordinatedAllocation {
             value,
@@ -179,6 +197,9 @@ impl Heap {
     ) -> Result<Word, StorageCondition> {
         let bytes = words.checked_mul(8).ok_or(StorageCondition::InvalidSize)?;
         let mut state = self.lock_state();
+        if state.collection_preparing {
+            return Err(StorageCondition::CollectionInProgress);
+        }
         if state
             .used
             .checked_add(bytes)
@@ -186,6 +207,14 @@ impl Heap {
         {
             return Err(StorageCondition::CapacityExceeded);
         }
+        state
+            .objects
+            .reserve(1)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
+        state
+            .object_starts
+            .reserve(1)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
         let mut data = vec![0_u64; words].into_boxed_slice();
         if kind != PageKind::Cons {
             let Some(first) = data.first_mut() else {
@@ -197,10 +226,12 @@ impl Heap {
         if address < MIN_HEAP_ADDRESS {
             return Err(StorageCondition::HeapAddressTooLow);
         }
-        state.used += bytes;
         let index = state.objects.len();
-        state.object_starts.insert(address, index);
-        state.objects.push(Object {
+        state
+            .object_starts
+            .insert(address, index)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
+        let object = Object {
             words: data,
             kind,
             generation: if bytes >= LARGE_OBJECT { 2 } else { 0 },
@@ -210,7 +241,13 @@ impl Heap {
             finalizer: None,
             alive: true,
             forwarded_to: None,
-        });
+        };
+        if state.objects.push(object).is_err() {
+            state.object_starts.remove(&address);
+            return Err(StorageCondition::HeapMetadataCapacityExceeded);
+        }
+        state.used += bytes;
+        state.forwarding.remove(&address);
         drop(state);
         thread.bytes_cons = thread.bytes_cons.saturating_add(bytes);
         Ok(Word::pointer(
@@ -231,6 +268,9 @@ impl Heap {
         words: usize,
         bytes: usize,
     ) -> Result<Word, StorageCondition> {
+        if !self.options.auto_gc {
+            return self.allocate_once(thread, kind, tag, words);
+        }
         let mut minor_collected = false;
         let mut full_collected = false;
 
@@ -239,19 +279,25 @@ impl Heap {
             .checked_add(bytes)
             .is_none_or(|debt| debt > self.config.bytes_considered_between_gcs)
         {
-            self.collect_with_gate(thread, false);
+            self.collect_with_gate(thread, false)?;
             minor_collected = true;
         }
 
         loop {
             match self.allocate_once(thread, kind, tag, words) {
                 Ok(value) => return Ok(value),
-                Err(StorageCondition::CapacityExceeded) if !minor_collected => {
-                    self.collect_with_gate(thread, false);
+                Err(
+                    StorageCondition::CapacityExceeded
+                    | StorageCondition::HeapMetadataCapacityExceeded,
+                ) if !minor_collected => {
+                    self.collect_with_gate(thread, false)?;
                     minor_collected = true;
                 }
-                Err(StorageCondition::CapacityExceeded) if !full_collected => {
-                    self.collect_with_gate(thread, true);
+                Err(
+                    StorageCondition::CapacityExceeded
+                    | StorageCondition::HeapMetadataCapacityExceeded,
+                ) if !full_collected => {
+                    self.collect_with_gate(thread, true)?;
                     full_collected = true;
                 }
                 Err(error) => return Err(error),
@@ -259,7 +305,10 @@ impl Heap {
         }
     }
 
-    pub(crate) fn acquire_slow_path_gate(&self, thread: &mut Thread) -> SlowPathGuard<'_> {
+    pub(crate) fn acquire_slow_path_gate(
+        &self,
+        thread: &mut Thread,
+    ) -> Result<SlowPathGuard<'_>, StorageCondition> {
         #[cfg(target_arch = "x86_64")]
         if thread.native_state() != crate::NativeState::Native
             && !thread.has_native_frame_snapshot()
@@ -279,10 +328,10 @@ impl Heap {
                         thread.publish_snapshot();
                     }
                     self.unpark_gate_waiter(thread, pointer);
-                    return SlowPathGuard {
+                    return Ok(SlowPathGuard {
                         heap: self,
                         guard: Some(guard),
-                    };
+                    });
                 }
                 Err(TryLockError::Poisoned(error)) => {
                     #[cfg(target_arch = "x86_64")]
@@ -290,13 +339,13 @@ impl Heap {
                         thread.publish_snapshot();
                     }
                     self.unpark_gate_waiter(thread, pointer);
-                    return SlowPathGuard {
+                    return Ok(SlowPathGuard {
                         heap: self,
                         guard: Some(error.into_inner()),
-                    };
+                    });
                 }
                 Err(TryLockError::WouldBlock) => {
-                    self.park_gate_waiter(thread, pointer);
+                    self.park_gate_waiter(thread, pointer)?;
                     let mut generation = self
                         .slow_path_generation
                         .lock()
@@ -312,18 +361,31 @@ impl Heap {
         }
     }
 
-    fn park_gate_waiter(&self, thread: &mut Thread, pointer: usize) {
+    fn park_gate_waiter(
+        &self,
+        thread: &mut Thread,
+        pointer: usize,
+    ) -> Result<(), StorageCondition> {
         let mut stop_world = self
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world.gate_parked.insert(pointer);
+        stop_world
+            .gate_parked
+            .insert(pointer)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
         if thread.native_state() != crate::NativeState::Native {
+            let previous_state = thread.state;
             thread.state = crate::SafepointState::Parked;
-            stop_world.parked.insert(pointer);
+            if stop_world.parked.insert(pointer).is_err() {
+                stop_world.gate_parked.remove(&pointer);
+                thread.state = previous_state;
+                return Err(StorageCondition::HeapMetadataCapacityExceeded);
+            }
         }
         drop(stop_world);
         self.stop_world_ready.notify_all();
+        Ok(())
     }
 
     fn unpark_gate_waiter(&self, thread: &mut Thread, pointer: usize) {
@@ -350,5 +412,65 @@ impl Heap {
             // SAFETY: callers hold the stop-the-world phase until every debt is reset.
             unsafe { (*thread).bytes_cons = 0 };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Heap;
+    use crate::{HeapConfig, SafepointState, StorageCondition, Thread};
+
+    #[test]
+    fn failed_gate_park_restores_thread_state_and_gate_set() {
+        const METADATA_LIMIT: usize = 64 * 1024;
+
+        let heap = Heap::with_options(
+            HeapConfig::default(),
+            crate::HeapOptions {
+                max_metadata_bytes: Some(METADATA_LIMIT),
+                ..crate::HeapOptions::default()
+            },
+        );
+        let mut thread = Thread::new();
+        assert_eq!(heap.register_thread(&mut thread), Ok(()));
+        thread.state = SafepointState::PollRequested;
+        let pointer = std::ptr::from_mut(&mut thread).expose_provenance();
+
+        {
+            let mut stop_world = heap
+                .stop_world
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for value in 1..=6 {
+                assert!(stop_world.parked.insert(value).is_ok());
+            }
+            for value in 101..=105 {
+                assert!(stop_world.gate_parked.insert(value).is_ok());
+            }
+            drop(stop_world);
+        }
+
+        let remaining = METADATA_LIMIT.saturating_sub(heap.metadata_budget.used_bytes());
+        let _budget_fill = heap
+            .metadata_budget
+            .reserve(remaining)
+            .unwrap_or_else(|error| {
+                panic!("remaining test budget should be reservable: {error:?}")
+            });
+
+        assert_eq!(
+            heap.park_gate_waiter(&mut thread, pointer),
+            Err(StorageCondition::HeapMetadataCapacityExceeded)
+        );
+        assert_eq!(thread.state, SafepointState::PollRequested);
+        let stop_world = heap
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(!stop_world.gate_parked.contains(&pointer));
+        assert!(!stop_world.parked.contains(&pointer));
+        drop(stop_world);
+
+        heap.unregister_thread(&thread);
     }
 }

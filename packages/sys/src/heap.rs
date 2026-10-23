@@ -1,16 +1,24 @@
-use crate::heap_state::{Object, State};
+use crate::heap::metadata::{MetadataBudget, MetadataVec};
+use crate::heap::metadata_map::MetadataMap;
+use crate::heap_state::{LayoutEntry, Object, State};
 pub use crate::heap_types::{
-    Finalizer, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
-    Weakness,
+    Finalizer, HeapConfig, HeapOptions, LayoutError, PageKind, ReferenceLayout, StorageCondition,
+    TypeTag, Weakness,
 };
 use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
-use std::collections::{HashMap, HashSet};
+use std::alloc::Layout;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/allocation.rs"]
 mod allocation;
 #[path = "heap/collect.rs"]
 mod collect;
+#[path = "heap/config.rs"]
+mod config;
+#[path = "heap/config_accessors.rs"]
+mod config_accessors;
+pub mod metadata;
+pub mod metadata_map;
 #[path = "heap/roots.rs"]
 mod roots;
 #[path = "heap/scan.rs"]
@@ -24,11 +32,21 @@ static NEXT_HEAP_ID: AtomicU64 = AtomicU64::new(1);
 /// Heap objects must not occupy the address range used by immediate values.
 pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
 
+const fn map_storage_code_error(error: StorageCondition) -> CodeError {
+    match error {
+        StorageCondition::ThreadNotRegistered => CodeError::NotRegistered,
+        StorageCondition::HeapMetadataCapacityExceeded => CodeError::MetadataCapacityExceeded,
+        condition => CodeError::CollectionFailed(condition),
+    }
+}
+
 #[derive(Debug)]
 /// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
     root_namespace: u64,
     config: HeapConfig,
+    options: HeapOptions,
+    metadata_budget: MetadataBudget,
     state: Mutex<State>,
     strict_forwarding: AtomicBool,
     slow_path_gate: Mutex<()>,
@@ -37,41 +55,31 @@ pub struct Heap {
     pub(crate) stop_world: Mutex<crate::stw::StopWorld>,
     pub(crate) stop_world_ready: Condvar,
 }
-impl Default for HeapConfig {
-    fn default() -> Self {
-        Self {
-            dynamic_space_size: 64 * 1024 * 1024,
-            bytes_considered_between_gcs: 4 * 1024 * 1024,
-        }
-    }
-}
 impl Heap {
     #[must_use]
     /// Construct an empty heap with the supplied capacity policy.
+    ///
+    /// This uses [`HeapOptions::default()`], which disables automatic collection
+    /// and leaves collector metadata unbounded.
     pub fn new(config: HeapConfig) -> Self {
+        Self::with_options(config, HeapOptions::default())
+    }
+
+    #[must_use]
+    /// Construct an empty heap with explicit collection and metadata settings.
+    pub fn with_options(config: HeapConfig, options: HeapOptions) -> Self {
+        let metadata_budget = MetadataBudget::new(options.max_metadata_bytes);
         Self {
             root_namespace: NEXT_HEAP_ID.fetch_add(1, Ordering::Relaxed),
             config,
-            state: Mutex::new(State {
-                used: 0,
-                gc_epoch: 0,
-                objects: Vec::new(),
-                object_starts: HashMap::new(),
-                layouts: HashMap::new(),
-                threads: Vec::new(),
-                dirty_cards: HashSet::new(),
-                roots: Vec::new(),
-                root_generations: Vec::new(),
-                next_root_generation: 1,
-                finalizers: Vec::new(),
-                after_gc_hooks: Vec::new(),
-                code_registry: crate::CodeRegistry::default(),
-            }),
+            options,
+            metadata_budget: metadata_budget.clone(),
+            state: Mutex::new(State::new(metadata_budget.clone())),
             strict_forwarding: AtomicBool::new(false),
             slow_path_gate: Mutex::new(()),
             slow_path_generation: Mutex::new(0),
             slow_path_ready: Condvar::new(),
-            stop_world: Mutex::new(crate::stw::StopWorld::default()),
+            stop_world: Mutex::new(crate::stw::StopWorld::new(metadata_budget)),
             stop_world_ready: Condvar::new(),
         }
     }
@@ -87,14 +95,6 @@ impl Heap {
         (probe.as_ptr() as usize >= MIN_HEAP_ADDRESS)
             .then_some(())
             .ok_or(StorageCondition::HeapAddressTooLow)
-    }
-    /// Return the configured dynamic-space capacity in bytes.
-    pub const fn dynamic_space_size(&self) -> usize {
-        self.config.dynamic_space_size
-    }
-    /// Return the allocation debt threshold that triggers collection.
-    pub const fn bytes_considered_between_gcs(&self) -> usize {
-        self.config.bytes_considered_between_gcs
     }
     /// Return the monotonically increasing collection epoch.
     #[must_use]
@@ -123,14 +123,31 @@ impl Heap {
         Some(Word::pointer(address, tag))
     }
     /// # Errors
-    /// Returns `LayoutError` when the widetag is already registered.
+    /// Returns `LayoutError::AlreadyRegistered` for an existing widetag or
+    /// `LayoutError::MetadataCapacityExceeded` when the configured limit cannot reserve it.
     pub fn register_layout(&self, widetag: u8, layout: ReferenceLayout) -> Result<(), LayoutError> {
         let mut state = self.lock_state();
-        if state.layouts.insert(widetag, layout).is_some() {
-            Err(LayoutError)
-        } else {
-            Ok(())
+        if state.layouts.contains_key(&widetag) {
+            return Err(LayoutError::AlreadyRegistered);
         }
+        let nested_bytes = Layout::array::<usize>(layout.reference_words.capacity())
+            .map_err(|_| LayoutError::MetadataCapacityExceeded)?
+            .size();
+        let charge = self
+            .metadata_budget
+            .reserve(nested_bytes)
+            .map_err(|_| LayoutError::MetadataCapacityExceeded)?;
+        state
+            .layouts
+            .insert(
+                widetag,
+                LayoutEntry {
+                    layout,
+                    _charge: charge,
+                },
+            )
+            .map(|_| ())
+            .map_err(|_| LayoutError::MetadataCapacityExceeded)
     }
     pub(crate) fn register_thread(&self, thread: &mut Thread) -> Result<(), StorageCondition> {
         let mut stop_world = self
@@ -148,11 +165,33 @@ impl Heap {
         if state.threads.contains(&pointer) {
             return Err(StorageCondition::ThreadNotRegistered);
         }
+        let max_waiters = state
+            .threads
+            .len()
+            .checked_add(1)
+            .ok_or(StorageCondition::HeapMetadataCapacityExceeded)?;
+        state
+            .threads
+            .reserve(1)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
+        let parked_additional = max_waiters.saturating_sub(stop_world.parked.len());
+        let gate_parked_additional = max_waiters.saturating_sub(stop_world.gate_parked.len());
+        stop_world
+            .parked
+            .reserve(parked_additional)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
+        stop_world
+            .gate_parked
+            .reserve(gate_parked_additional)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
         if thread.native_state() == crate::NativeState::Native {
             // Native threads are outside the mutator quorum from registration onward.
             thread.publish_snapshot();
         }
-        state.threads.push(pointer);
+        state
+            .threads
+            .push(pointer)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)?;
         thread.heap = Some(self);
         drop(state);
         drop(stop_world);
@@ -162,7 +201,8 @@ impl Heap {
     ///
     /// # Errors
     ///
-    /// Returns `CodeError::NotPublished` when the code is not executable yet.
+    /// Returns `CodeError::NotPublished` when the code is not executable yet, or
+    /// `CodeError::MetadataCapacityExceeded` when the metadata limit is reached.
     pub fn register_code(
         &self,
         code: &CodePtr,
@@ -201,14 +241,19 @@ impl Heap {
             return Err(CodeError::NotRegistered);
         }
         let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
-        let _gate = self.acquire_slow_path_gate(thread);
-        self.begin_collection(thread);
+        let _gate = self
+            .acquire_slow_path_gate(thread)
+            .map_err(map_storage_code_error)?;
+        if let Err(error) = self.begin_collection(thread) {
+            let _ = self.end_collection();
+            return Err(map_storage_code_error(error));
+        }
         let registered = {
             let state = self.lock_state();
             state.code_registry.find(code.address()).is_some()
         };
         if !registered {
-            self.end_collection();
+            let _ = self.end_collection();
             return Err(CodeError::NotRegistered);
         }
         let live = {
@@ -226,18 +271,18 @@ impl Heap {
             })
         };
         if live {
-            self.end_collection();
+            let _ = self.end_collection();
             return Err(CodeError::CodeInUse);
         }
         let code = owned.take().ok_or(CodeError::NotRegistered)?;
         let removed = self.lock_state().code_registry.unregister(&code);
-        self.end_collection();
+        let end_result = self.end_collection();
         if removed.is_none() {
             *owned = Some(code);
             return Err(CodeError::NotRegistered);
         }
         drop(code);
-        Ok(())
+        end_result.map_err(map_storage_code_error)
     }
     pub(crate) fn unregister_thread(&self, thread: &Thread) {
         let pointer = std::ptr::from_ref(thread).cast_mut();
@@ -270,7 +315,10 @@ impl Heap {
     }
     fn find_raw(state: &State, value: Word) -> Option<usize> {
         let address = value.address();
-        let &index = state.object_starts.get(&address)?;
+        let index = state.object_starts.get(&address).copied().or_else(|| {
+            let forwarded_address = state.forwarding.get(&address)?;
+            state.object_starts.get(forwarded_address).copied()
+        })?;
         let object = state.objects.get(index)?;
         (object.alive || object.forwarded_to.is_some()).then_some(index)
     }
@@ -282,12 +330,17 @@ impl Heap {
         state.objects[index].alive.then_some(index)
     }
     fn find_for_mutator(&self, state: &State, value: Word) -> Option<usize> {
-        let index = Self::find_raw(state, value)?;
-        if self.strict_forwarding.load(Ordering::Relaxed)
-            && state.objects[index].forwarded_to.is_some()
-        {
+        let address = value.address();
+        let points_to_forwarded_object = state.forwarding.contains_key(&address)
+            || state
+                .object_starts
+                .get(&address)
+                .and_then(|index| state.objects.get(*index))
+                .is_some_and(|object| object.forwarded_to.is_some());
+        if self.strict_forwarding.load(Ordering::Relaxed) && points_to_forwarded_object {
             return None;
         }
+        let index = Self::find_raw(state, value)?;
         let mut index = index;
         while let Some(next) = state.objects[index].forwarded_to {
             index = next;
@@ -347,8 +400,20 @@ impl Heap {
             && state.objects[index].generation > 0
             && slot < state.objects[index].words.len()
         {
+            if state.collection_preparing {
+                // The scratch snapshot cannot grow after preflight; overflow makes
+                // the minor collector scan all old objects and preserves this write.
+                state.remembered_set_overflow = true;
+                return;
+            }
             let address = state.objects[index].words.as_ptr() as usize + slot * 8;
-            state.dirty_cards.insert((index, address / CARD_SIZE));
+            if state
+                .dirty_cards
+                .insert((index, address / CARD_SIZE))
+                .is_err()
+            {
+                state.remembered_set_overflow = true;
+            }
         }
     }
     pub(crate) fn make_weak(&self, value: Word, weakness: Weakness) -> Word {
@@ -372,14 +437,20 @@ impl Heap {
     }
     pub(crate) fn run_pending_finalizers(&self) {
         let mut state = self.lock_state();
-        let pending = std::mem::take(&mut state.finalizers);
+        let pending = std::mem::replace(
+            &mut state.finalizers,
+            MetadataVec::new(self.metadata_budget.clone()),
+        );
         drop(state);
-        for (_, callback) in pending {
+        for (_, callback) in pending.iter().copied() {
             callback(Word::NIL);
         }
     }
-    pub(crate) fn register_after_gc_hook(&self, hook: fn()) {
-        self.lock_state().after_gc_hooks.push(hook);
+    pub(crate) fn register_after_gc_hook(&self, hook: fn()) -> Result<(), StorageCondition> {
+        self.lock_state()
+            .after_gc_hooks
+            .push(hook)
+            .map_err(|_| StorageCondition::HeapMetadataCapacityExceeded)
     }
     fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
         self.state
@@ -388,13 +459,20 @@ impl Heap {
     }
     fn relocated_address(
         state: &State,
-        moved: &HashMap<usize, usize>,
+        moved: &MetadataMap<usize, usize>,
         value: Word,
     ) -> Option<usize> {
+        let fallback_address = value.address();
+        let current_address = state
+            .forwarding
+            .get(&fallback_address)
+            .copied()
+            .unwrap_or(fallback_address);
         let index = Self::find_raw(state, value)?;
         let object = &state.objects[index];
-        let new_base = moved.get(&(object.words.as_ptr() as usize))?;
-        Some(new_base + (value.address() - object.words.as_ptr() as usize))
+        let object_address = object.words.as_ptr().addr();
+        let new_base = moved.get(&object_address)?;
+        Some(new_base + (current_address - object_address))
     }
     const fn relocated_word(value: Word, address: usize) -> Word {
         Word::pointer(

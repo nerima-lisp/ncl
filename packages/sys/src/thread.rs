@@ -217,7 +217,7 @@ impl Thread {
             self.publish_snapshot();
             if let Some(heap) = self.heap {
                 // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
-                unsafe { (*heap).poll_thread(self) };
+                let _ = unsafe { (*heap).poll_thread(self) };
             } else {
                 self.state = SafepointState::Running;
             }
@@ -229,7 +229,7 @@ impl Thread {
             self.safepoint_request = 1;
             if let Some(heap) = self.heap {
                 // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
-                unsafe { (*heap).request_epoch() };
+                let _ = unsafe { (*heap).request_epoch() };
             }
         }
     }
@@ -237,6 +237,7 @@ impl Thread {
         self.stack_bounds = stack::current_stack_bounds();
         self.callee_saved = crate::snapshot_callee_saved();
     }
+    #[cfg(test)]
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();
         values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
@@ -269,14 +270,15 @@ impl Thread {
     pub(crate) const fn has_native_frame_snapshot(&self) -> bool {
         self.frame_address.is_some()
     }
-    pub(crate) fn heap_collect(&mut self, full: bool) {
-        if let Some(heap) = self.heap {
-            // SAFETY: registration stores this thread's heap pointer for its lifetime.
-            unsafe {
-                (*heap).collect_with_thread(self, full);
-            }
-        }
+    pub(crate) fn heap_collect(&mut self, full: bool) -> Result<(), crate::StorageCondition> {
+        let result = self
+            .heap
+            .map_or(Err(crate::StorageCondition::ThreadNotRegistered), |heap| {
+                // SAFETY: registration stores this thread's heap pointer for its lifetime.
+                unsafe { (*heap).collect_with_thread(self, full) }
+            });
         self.write_back_frame_snapshot();
+        result
     }
     /// Request delivery of an interrupt at the next safepoint.
     pub const fn request_interrupt(&mut self) {

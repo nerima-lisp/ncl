@@ -1,8 +1,8 @@
 use super::control::{args, bindings, form};
 use crate::{elements, fresh_symbol};
 use ncl_object::{
-    BuiltinArgs, Local, MultipleValues, ObjectError, Runtime, Scope, ThreadContext, Word,
-    symbol_name,
+    BuiltinArgs, HeapRootedWord, HeapRootedWords, Local, MultipleValues, ObjectError, Runtime,
+    Scope, ThreadContext, Word, symbol_name,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -104,7 +104,7 @@ pub fn expand_multiple_value_setq(
         &[Word::fixnum(0), value_list_word],
     )?;
     let primary = scope.root(Local::<Word>::from_word(primary));
-    let mut assignments = Vec::with_capacity(variable_handles.len().saturating_mul(2));
+    let mut assignments = HeapRootedWords::default();
     for (index, variable) in variable_handles.iter().enumerate() {
         let index = i64::try_from(index).map_err(|_| ObjectError::TypeError)?;
         let value_list_word = scope.get(value_list).as_word();
@@ -115,14 +115,27 @@ pub fn expand_multiple_value_setq(
             &[Word::fixnum(index), value_list_word],
         )?;
         let value = scope.root(Local::<Word>::from_word(value));
-        assignments.extend([scope.get(*variable).as_word(), scope.get(value).as_word()]);
+        let variable_word = scope.get(*variable).as_word();
+        assignments.push(scope.context_mut(), variable_word)?;
+        let value_word = scope.get(value).as_word();
+        assignments.push(scope.context_mut(), value_word)?;
     }
-    let mut body_values = vec![scope.get(primary).as_word()];
+    let primary_word = scope.get(primary).as_word();
+    let mut body_values = HeapRootedWords::new(scope.context_mut(), &[primary_word])?;
     if !assignments.is_empty() {
-        let assignment = form(scope.context_mut(), runtime, "SETQ", &assignments)?;
+        let assignment_values = assignments
+            .iter()
+            .map(HeapRootedWord::get)
+            .collect::<Vec<_>>();
+        let assignment = form(scope.context_mut(), runtime, "SETQ", &assignment_values)?;
         let assignment = scope.root(Local::<Word>::from_word(assignment));
-        body_values.push(scope.get(assignment).as_word());
+        let assignment_word = scope.get(assignment).as_word();
+        body_values.push(scope.context_mut(), assignment_word)?;
     }
+    let body_values = body_values
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
     let body = form(scope.context_mut(), runtime, "PROG1", &body_values)?;
     let body = scope.root(Local::<Word>::from_word(body));
     let body = scope.get(body).as_word();

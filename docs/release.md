@@ -32,11 +32,11 @@ The ANSI comparison must complete, and every test passed by the matching SBCL ba
    ```
 
    Replace `X.Y.Z` with the version in `Cargo.toml`. The workflow fails if the tag does not match that version or the changelog has no matching section.
-6. Open the `Release` workflow run for the tag. Confirm that both target jobs pass their release build, workspace tests, CLI smoke checks, and checksum verification. Confirm that the GitHub Release contains both target archives and their `.sha256` files, and that its notes match the corresponding changelog section.
+6. Open the `Release` workflow run for the tag. Confirm that all four target jobs pass their release build, workspace tests, CLI smoke checks, and checksum verification. Confirm that the GitHub Release contains all four target archives and their `.sha256` files, and that its notes match the corresponding changelog section.
 
 ## Dry-run a candidate
 
-The `workflow_dispatch` event builds and tests both targets and uploads their archives and checksums without creating a tag or GitHub Release. GitHub requires the workflow file to exist on the default branch before it can be dispatched, and the candidate branch must already be pushed to GitHub. Authenticate `gh` with an account allowed to dispatch workflows and download their artifacts, then confirm the workflow and branch prerequisites:
+The `workflow_dispatch` event runs the release build, workspace tests, and CLI smoke checks on all four D-12 targets, then uploads one archive and checksum per target without creating a tag or GitHub Release. The targets are `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, and `aarch64-apple-darwin`. GitHub requires the workflow file to exist on the default branch before it can be dispatched, and the candidate branch must already be pushed to GitHub. Authenticate `gh` with an account allowed to dispatch workflows and download their artifacts, then confirm the workflow and branch prerequisites:
 
 ```sh
 gh auth status
@@ -45,13 +45,17 @@ gh run list --workflow release.yml --branch <candidate-branch> --limit 5
 gh run view <run-id>
 ```
 
-Select the run for the candidate commit, wait for both build jobs to succeed, and download both artifacts using that run ID. Verify their checksums:
+Select the run for the candidate commit, wait for all four build jobs to succeed, and download all four artifacts using that run ID. Verify each artifact's checksums:
 
 ```sh
-gh run download <run-id> --name ncl-x86_64-unknown-linux-gnu --dir artifacts/linux
-gh run download <run-id> --name ncl-aarch64-apple-darwin --dir artifacts/macos
-(cd artifacts/linux && shasum -a 256 -c ./*.sha256)
-(cd artifacts/macos && shasum -a 256 -c ./*.sha256)
+gh run download <run-id> --name ncl-x86_64-unknown-linux-gnu --dir artifacts/linux-x64
+gh run download <run-id> --name ncl-aarch64-unknown-linux-gnu --dir artifacts/linux-arm64
+gh run download <run-id> --name ncl-x86_64-apple-darwin --dir artifacts/macos-x64
+gh run download <run-id> --name ncl-aarch64-apple-darwin --dir artifacts/macos-arm64
+(cd artifacts/linux-x64 && shasum -a 256 -c ./*.sha256)
+(cd artifacts/linux-arm64 && shasum -a 256 -c ./*.sha256)
+(cd artifacts/macos-x64 && shasum -a 256 -c ./*.sha256)
+(cd artifacts/macos-arm64 && shasum -a 256 -c ./*.sha256)
 ```
 
 ## Cancel or recover from a failed release

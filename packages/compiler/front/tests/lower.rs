@@ -149,6 +149,44 @@ fn lowers_a_non_escaping_block_and_tagbody_to_jump() {
     assert!(lowered.entry.handler_regions.is_empty());
 }
 
+/// Rule: a LET initializer that exits an enclosing block skips the LET body.
+#[test]
+fn let_initializer_return_from_escaping_block_verifies() {
+    let mut fx = Fixture::new();
+    let failure = fx.user("FAILURE");
+    let tag = fx.user("TAG");
+    let handler = fx.user("HANDLER");
+    let value = fx.user("VALUE");
+
+    let assign_failure = fx.form("SETQ", &[failure, Word::NIL]);
+    let handler_return = fx.form("RETURN-FROM", &[tag, assign_failure]);
+    let lambda = fx.form("LAMBDA", &[Word::NIL, handler_return]);
+    let handler_function = fx.form("FUNCTION", &[lambda]);
+    let handler_binding = fx.list(&[handler, handler_function]);
+    let handler_bindings = fx.list(&[handler_binding]);
+
+    let return_value = fx.form("RETURN-FROM", &[tag, Word::NIL]);
+    let value_binding = fx.list(&[value, return_value]);
+    let value_bindings = fx.list(&[value_binding]);
+    let body = fx.form("PROGN", &[Word::NIL, value]);
+    let value_let = fx.form("LET", &[value_bindings, body]);
+    let handler_let = fx.form("LET", &[handler_bindings, value_let]);
+    let block = fx.form("BLOCK", &[tag, handler_let]);
+    let failure_binding = fx.list(&[failure, Word::NIL]);
+    let failure_bindings = fx.list(&[failure_binding]);
+    let form = fx.form("LET", &[failure_bindings, block]);
+
+    let expr = fx.expand(form).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_eq!(lowered.nested.len(), 1, "the handler lambda is lowered");
+    assert!(!lowered.entry.handler_regions.is_empty());
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+}
+
 /// Rule: multiple-value forms use the existing indirect-call path and
 /// `SetMultipleValues`; lowering must not emit an unimplemented adapter.
 #[test]

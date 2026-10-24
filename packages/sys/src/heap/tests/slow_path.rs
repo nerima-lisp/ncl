@@ -59,6 +59,28 @@ fn slow_path_cons_forwards_rooted_inputs_before_writing_the_new_cell() {
         let forwarded_second = collection_heap.read_word(cell, 1).unwrap_or(Word::NIL);
         let old_first_address = addresses.first().copied().unwrap_or(0);
         let old_second_address = addresses.get(1).copied().unwrap_or(0);
+        let state = collection_heap.lock_state();
+        let pin_state = |address| {
+            let current_address = state
+                .forwarding
+                .get(&address)
+                .copied()
+                .unwrap_or(address);
+            state
+                .object_starts
+                .get(&current_address)
+                .copied()
+                .and_then(|index| state.objects.get(index))
+                .map(|object| (current_address, object.pinned))
+        };
+        eprintln!(
+            "pin probe: first old={old_first_address:#x} current/cell={:?}/{:#x}; second old={old_second_address:#x} current/cell={:?}/{:#x}",
+            pin_state(old_first_address),
+            forwarded_first.address(),
+            pin_state(old_second_address),
+            forwarded_second.address(),
+        );
+        drop(state);
         assert_ne!(forwarded_first.address(), old_first_address);
         assert_ne!(forwarded_second.address(), old_second_address);
         assert_eq!(

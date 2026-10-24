@@ -1,8 +1,8 @@
 #!/bin/sh
 set -u
 
-if [ "$#" -ne 2 ]; then
-    printf '%s\n' 'usage: ncl-driver.sh /path/to/ncl default|off' >&2
+if [ "$#" -lt 2 ]; then
+    printf '%s\n' 'usage: ncl-driver.sh /path/to/ncl default|off [benchmark ...]' >&2
     exit 2
 fi
 
@@ -17,6 +17,21 @@ case "$mode" in
 esac
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+shift 2
+selection=
+if [ "$#" -gt 0 ]; then
+    selection="("
+    for benchmark in "$@"; do
+        case "$benchmark" in
+            ''|*[!a-zA-Z0-9/-]*)
+                printf '%s\n' 'benchmark names may contain only letters, digits, slash, or hyphen' >&2
+                exit 2
+                ;;
+        esac
+        selection="$selection \"$benchmark\""
+    done
+    selection="$selection )"
+fi
 
 # Run the complete harness in the checkout supplied by the scoreboard runner.
 # ncl-driver.lisp loads every pinned benchmark file and calls BENCH-RUN after
@@ -26,7 +41,12 @@ output=$(mktemp)
 trap 'rm -f "$output"' EXIT HUP INT TERM
 
 set +e
-"$ncl" "--optimization=$mode" --eval "(load \"$script_dir/ncl-driver.lisp\")" >"$output"
+if [ -n "$selection" ]; then
+    form="(progn (setf *cl-bench-selection* '$selection) (load \"$script_dir/ncl-driver.lisp\"))"
+else
+    form="(load \"$script_dir/ncl-driver.lisp\")"
+fi
+"$ncl" "--optimization=$mode" --eval "$form" >"$output"
 status=$?
 set -e
 cat "$output"

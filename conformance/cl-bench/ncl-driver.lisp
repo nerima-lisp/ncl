@@ -17,7 +17,10 @@
 (defparameter *results* nil)
 (defparameter *load-results* nil)
 (defparameter *load-failed* nil)
-
+(defvar *benchmark-selection*
+  (if (boundp 'common-lisp-user::*cl-bench-selection*)
+      common-lisp-user::*cl-bench-selection*
+      nil))
 (defun ncl-gc ()
   ;; NCL's collector is deliberately called through its NCL extension.  This
   ;; is not an ASDF or trivial-garbage compatibility shim.
@@ -123,7 +126,14 @@
 
 (defun bench-run ()
   (setf *results* nil)
-  (dolist (benchmark (nreverse *benchmarks*))
+  (dolist (benchmark
+           (remove-if-not
+            (lambda (benchmark)
+              (or (null *benchmark-selection*)
+                  (member (benchmark-name-text (first benchmark))
+                          *benchmark-selection*
+                          :test #'string-equal)))
+            (nreverse *benchmarks*)))
     (bench-run-1 benchmark))
   (setf *results* (nreverse *results*))
   (write-json-result *results* *standard-output*)

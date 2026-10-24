@@ -15,10 +15,11 @@ import conformance_scoreboard as scoreboard
 
 
 class FakeRunner:
-    def __init__(self, root, *, fail_one_benchmark=False):
+    def __init__(self, root, *, fail_one_benchmark=False, benchmark_names=None):
         self.source = root / "pinned-source"
         self.source.mkdir()
         self.fail_one_benchmark = fail_one_benchmark
+        self.benchmark_names = benchmark_names or baseline.BENCHMARKS
         self.calls = []
         self.revision_commands = []
         self.ncl_counts = {"off": 0, "default": 0}
@@ -57,7 +58,7 @@ class FakeRunner:
 
         self.calls.append((runtime, mode, call, command, cwd, timeout))
         benchmarks = {}
-        for name in baseline.BENCHMARKS:
+        for name in self.benchmark_names:
             disabled = runtime == "sbcl" and name == baseline.DISABLED_BENCHMARK
             status = "disabled" if disabled else "passed"
             times = [] if disabled else [value]
@@ -98,8 +99,13 @@ class FakeRunner:
 
 
 class OptimizationBaselineTests(unittest.TestCase):
-    def _run(self, root, *, fail_one_benchmark=False):
-        fake_runner = FakeRunner(root, fail_one_benchmark=fail_one_benchmark)
+    def _run(self, root, *, fail_one_benchmark=False, benchmarks=None):
+        benchmark_names = baseline._select_benchmarks(benchmarks)
+        fake_runner = FakeRunner(
+            root,
+            fail_one_benchmark=fail_one_benchmark,
+            benchmark_names=benchmark_names,
+        )
         with patch.object(baseline, "_timed_command", side_effect=lambda command, **kwargs: (
             fake_runner(command, cwd=kwargs["cwd"], timeout=kwargs["timeout"]),
             0.125,
@@ -108,6 +114,7 @@ class OptimizationBaselineTests(unittest.TestCase):
                 ncl=str(root / "ncl"),
                 sbcl="sbcl",
                 cache_dir=root / "cache",
+                benchmarks=benchmarks,
             )
         checkout.assert_called_once_with("cl-bench", root / "cache")
         return report, fake_runner
@@ -211,6 +218,45 @@ class OptimizationBaselineTests(unittest.TestCase):
             self.assertIn("stderr", run["process"])
             self.assertEqual(run["process"]["wall_seconds"], 0.125)
         self.assertTrue(all(call[-1] == scoreboard.DEFAULT_COMMAND_TIMEOUT for call in runner.calls))
+
+    def test_selected_benchmarks_are_case_insensitive_and_passed_to_both_drivers(self):
+        selected = ["frpoly/fixnum", "fib", "tak", "factorial", "ackermann"]
+        expected = ["FRPOLY/FIXNUM", "FIB", "TAK", "FACTORIAL", "ACKERMANN"]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report, runner = self._run(root, benchmarks=selected)
+
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["protocol"]["benchmarks"], expected)
+        self.assertEqual(report["scores"]["common_benchmarks"], expected)
+        self.assertEqual(report["scores"]["common_benchmark_count"], 5)
+        self.assertTrue(all(len(run["benchmarks"]) == 5 for run in report["runs"]))
+        for call in runner.calls:
+            if call[0] == "ncl":
+                self.assertEqual(call[3][3:], expected)
+            else:
+                evaluations = [
+                    call[3][index + 1]
+                    for index, argument in enumerate(call[3][:-1])
+                    if argument == "--eval"
+                ]
+                selection_eval = next(
+                    evaluation
+                    for evaluation in evaluations
+                    if "*cl-bench-selection*" in evaluation.lower()
+                )
+                for name in expected:
+                    self.assertIn(f'"{name}"', selection_eval)
+
+    def test_selected_benchmarks_reject_unknown_and_duplicate_names(self):
+        for names, message in (
+            (["not-a-benchmark"], "unknown benchmark"),
+            (["FIB", "fib"], "duplicate benchmark"),
+            ([], "at least one benchmark"),
+        ):
+            with self.subTest(names=names):
+                with self.assertRaisesRegex(ValueError, message):
+                    baseline._select_benchmarks(names)
 
     def test_failed_run_is_kept_and_machine_details_are_redacted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

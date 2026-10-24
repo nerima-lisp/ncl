@@ -118,6 +118,25 @@ def _positive_count(value: str) -> int:
     return count
 
 
+def _select_benchmarks(names: Sequence[str] | None) -> tuple[str, ...]:
+    if names is None:
+        return BENCHMARKS
+    by_casefold = {name.casefold(): name for name in BENCHMARKS}
+    selected: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        if not isinstance(name, str) or name.casefold() not in by_casefold:
+            raise ValueError(f"unknown benchmark: {name}")
+        canonical = by_casefold[name.casefold()]
+        if canonical in seen:
+            raise ValueError(f"duplicate benchmark: {canonical}")
+        selected.append(canonical)
+        seen.add(canonical)
+    if not selected:
+        raise ValueError("at least one benchmark must be selected")
+    return tuple(selected)
+
+
 def _redact(text: str) -> tuple[str, bool]:
     if len(text) > MAX_RUNNER_OUTPUT_CHARS:
         return "<diagnostic omitted: size limit exceeded>", True
@@ -283,11 +302,14 @@ def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     return {"status": status, "times": times, "error": error, "reason": reason}
 
 
-def _driver_data(process: scoreboard.ProcessResult) -> tuple[str | None, list[Any], dict[str, Any], str | None, list[str]]:
+def _driver_data(
+    process: scoreboard.ProcessResult,
+    benchmark_names: Sequence[str] = BENCHMARKS,
+) -> tuple[str | None, list[Any], dict[str, Any], str | None, list[str]]:
     report = _parse_json_object(process.stdout)
     if report is None:
         error = "driver stdout did not contain a valid benchmark JSON object"
-        return None, [], {name: _failed_benchmark(error) for name in BENCHMARKS}, error, []
+        return None, [], {name: _failed_benchmark(error) for name in benchmark_names}, error, []
 
     driver_status = report.get("status")
     if not isinstance(driver_status, str) or driver_status not in {"passed", "failed"}:
@@ -303,17 +325,17 @@ def _driver_data(process: scoreboard.ProcessResult) -> tuple[str | None, list[An
     if not isinstance(reported, dict):
         error = driver_error or "driver benchmarks must be an object"
         return driver_status, flat_times, {
-            name: _failed_benchmark(error) for name in BENCHMARKS
+            name: _failed_benchmark(error) for name in benchmark_names
         }, error, []
 
     benchmarks = {
         name: _benchmark_record(reported.get(name), name=name)
         if name in reported
         else _failed_benchmark("benchmark missing from driver output")
-        for name in BENCHMARKS
+        for name in benchmark_names
     }
     unexpected = sorted(
-        _safe_error(name) or "" for name in reported.keys() if name not in BENCHMARKS
+        _safe_error(name) or "" for name in reported.keys() if name not in benchmark_names
     )
     if unexpected and driver_error is None:
         driver_error = "driver reported unexpected benchmark names"
@@ -342,9 +364,12 @@ def _run_benchmark_process(
     mode: str | None = None,
     pair: int | None = None,
     sample: int | None = None,
+    benchmark_names: Sequence[str] = BENCHMARKS,
 ) -> dict[str, Any]:
     process_result, wall_seconds = _timed_command(command, cwd=cwd, timeout=timeout)
-    driver_status, flat_times, benchmarks, driver_error, unexpected = _driver_data(process_result)
+    driver_status, flat_times, benchmarks, driver_error, unexpected = _driver_data(
+        process_result, benchmark_names
+    )
     process = _process_record(process_result, wall_seconds)
     record: dict[str, Any] = {
         "phase": phase,
@@ -390,6 +415,7 @@ def _score_runs(
     *,
     pairs: int,
     sbcl_samples: int,
+    benchmark_names: Sequence[str] = BENCHMARKS,
 ) -> dict[str, Any]:
     measured = [run for run in runs if run["phase"] == "measurement"]
     by_runtime: dict[str, list[Mapping[str, Any]]] = {
@@ -407,17 +433,17 @@ def _score_runs(
             name: _median_for_benchmark(runtime_runs, name)
             if len(runtime_runs) == expected_counts[runtime]
             else None
-            for name in BENCHMARKS
+            for name in benchmark_names
         }
         for runtime, runtime_runs in by_runtime.items()
     }
     common = [
-        name for name in BENCHMARKS
+        name for name in benchmark_names
         if name != DISABLED_BENCHMARK
         and all(medians[runtime][name] is not None for runtime in medians)
     ]
     missing = {}
-    for name in BENCHMARKS:
+    for name in benchmark_names:
         if name in common:
             continue
         if name == DISABLED_BENCHMARK:
@@ -479,6 +505,7 @@ def _score_runs(
             for runtime in by_runtime
         }
         for name in (DISABLED_BENCHMARK,)
+        if name in benchmark_names
     }
     excluded = [
         {
@@ -519,6 +546,7 @@ def _report_status(
     revision: Mapping[str, Any],
     runtimes: Mapping[str, Any],
     scores: Mapping[str, Any],
+    benchmark_names: Sequence[str] = BENCHMARKS,
 ) -> str:
     if revision["status"] != "passed":
         return "failed"
@@ -530,10 +558,13 @@ def _report_status(
         run for run in runs
         if run["phase"] == "measurement" and run.get("mode") is None
     ]
-    if not sbcl_runs or any(
-        run["benchmarks"][DISABLED_BENCHMARK]["status"] != "disabled"
-        or not run["benchmarks"][DISABLED_BENCHMARK]["reason"]
-        for run in sbcl_runs
+    if DISABLED_BENCHMARK in benchmark_names and (
+        not sbcl_runs
+        or any(
+            run["benchmarks"][DISABLED_BENCHMARK]["status"] != "disabled"
+            or not run["benchmarks"][DISABLED_BENCHMARK]["reason"]
+            for run in sbcl_runs
+        )
     ):
         return "failed"
     for run in runs:
@@ -545,26 +576,42 @@ def _report_status(
             for name, benchmark in run["benchmarks"].items()
         ):
             return "failed"
-    if scores["common_benchmark_count"] != len(BENCHMARKS) - 1:
+    expected_common = len(benchmark_names) - int(DISABLED_BENCHMARK in benchmark_names)
+    if scores["common_benchmark_count"] != expected_common:
         return "failed"
     return "passed"
 
 
-def _ncl_command(binary: Path, mode: str) -> list[str]:
-    return [str(NCL_DRIVER), str(binary), mode]
+def _ncl_command(
+    binary: Path,
+    mode: str,
+    benchmark_names: Sequence[str] = BENCHMARKS,
+) -> list[str]:
+    command = [str(NCL_DRIVER), str(binary), mode]
+    if tuple(benchmark_names) != BENCHMARKS:
+        command.extend(benchmark_names)
+    return command
 
 
-def _sbcl_command(binary: str) -> list[str]:
-    return [
-        binary,
-        "--noinform",
-        "--userinit",
-        "/dev/null",
+def _sbcl_command(
+    binary: str,
+    benchmark_names: Sequence[str] = BENCHMARKS,
+) -> list[str]:
+    command = [binary, "--noinform", "--userinit", "/dev/null"]
+    if tuple(benchmark_names) != BENCHMARKS:
+        selection = " ".join(f'"{name}"' for name in benchmark_names)
+        command.extend([
+            "--eval",
+            '(setf common-lisp-user::*cl-bench-selection* '
+            f"'({selection})))",
+        ])
+    command.extend([
         "--load",
         str(SBCL_DRIVER),
         "--eval",
         "(sb-ext:exit)",
-    ]
+    ])
+    return command
 
 
 def run_baseline(
@@ -575,8 +622,10 @@ def run_baseline(
     warmups: int = 1,
     pairs: int = 3,
     sbcl_samples: int = 3,
+    benchmarks: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     ncl_binary = Path(ncl).expanduser().resolve()
+    benchmark_names = _select_benchmarks(benchmarks)
     revision = _revision_record()
     ncl_runtime = _runtime_probe([str(ncl_binary), "--version"], cwd=REPO_ROOT)
     sbcl_runtime = _runtime_probe([sbcl, "--version"], cwd=REPO_ROOT)
@@ -594,11 +643,12 @@ def run_baseline(
         for sample in range(1, warmups + 1):
             runs.append(_run_benchmark_process(
                 phase="warmup",
-                command=_ncl_command(ncl_binary, mode),
+                command=_ncl_command(ncl_binary, mode, benchmark_names),
                 cwd=source,
                 timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
                 mode=mode,
                 sample=sample,
+                benchmark_names=benchmark_names,
             ))
 
     for pair in range(1, pairs + 1):
@@ -606,14 +656,15 @@ def run_baseline(
         for mode in order:
             runs.append(_run_benchmark_process(
                 phase="measurement",
-                command=_ncl_command(ncl_binary, mode),
+                command=_ncl_command(ncl_binary, mode, benchmark_names),
                 cwd=source,
                 timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
                 mode=mode,
                 pair=pair,
+                benchmark_names=benchmark_names,
             ))
 
-    sbcl_command = _sbcl_command(sbcl)
+    sbcl_command = _sbcl_command(sbcl, benchmark_names)
     for sample in range(1, warmups + 1):
         runs.append(_run_benchmark_process(
             phase="warmup",
@@ -621,6 +672,7 @@ def run_baseline(
             cwd=source,
             timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
             sample=sample,
+            benchmark_names=benchmark_names,
         ))
     for sample in range(1, sbcl_samples + 1):
         runs.append(_run_benchmark_process(
@@ -629,9 +681,15 @@ def run_baseline(
             cwd=source,
             timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
             sample=sample,
+            benchmark_names=benchmark_names,
         ))
 
-    scores = _score_runs(runs, pairs=pairs, sbcl_samples=sbcl_samples)
+    scores = _score_runs(
+        runs,
+        pairs=pairs,
+        sbcl_samples=sbcl_samples,
+        benchmark_names=benchmark_names,
+    )
     runtimes = {"ncl": ncl_runtime, "sbcl": sbcl_runtime}
     report = {
         "schema_version": 1,
@@ -658,11 +716,12 @@ def run_baseline(
             "sbcl_warmups": warmups,
             "sbcl_samples": sbcl_samples,
             "command_timeout_seconds": scoreboard.DEFAULT_COMMAND_TIMEOUT,
+            "benchmarks": list(benchmark_names),
         },
         "runs": runs,
         "scores": scores,
     }
-    report["status"] = _report_status(runs, revision, runtimes, scores)
+    report["status"] = _report_status(runs, revision, runtimes, scores, benchmark_names)
     return report
 
 
@@ -674,6 +733,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmups", type=_positive_count, default=1)
     parser.add_argument("--pairs", type=_positive_count, default=3)
     parser.add_argument("--sbcl-samples", type=_positive_count, default=3)
+    parser.add_argument(
+        "--benchmark",
+        action="append",
+        dest="benchmarks",
+        help="measure one selected benchmark; may be repeated",
+    )
     parser.add_argument("--output", type=Path, help="write the JSON report to this path")
     return parser
 
@@ -689,6 +754,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             warmups=args.warmups,
             pairs=args.pairs,
             sbcl_samples=args.sbcl_samples,
+            benchmarks=args.benchmarks,
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"optimization-baseline: {error}\n")

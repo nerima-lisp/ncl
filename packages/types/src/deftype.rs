@@ -107,7 +107,9 @@ fn expand_form(
             let whole = list(ctx, runtime, &[form.get()])?;
             let whole = HeapRootedWord::new(ctx, whole)?;
             let expansion = call_expander(ctx, runtime, expander.get(), whole.get(), caller)?;
-            return expand_form(ctx, runtime, expansion, property.get(), depth + 1, caller);
+            let (expanded, _) =
+                expand_form(ctx, runtime, expansion, property.get(), depth + 1, caller)?;
+            return Ok((expanded, true));
         }
         return Ok((form, false));
     }
@@ -122,7 +124,9 @@ fn expand_form(
     }
     if let Some(expander) = find_expander(ctx, operator.get(), property.get())? {
         let expansion = call_expander(ctx, runtime, expander.get(), form.get(), caller)?;
-        return expand_form(ctx, runtime, expansion, property.get(), depth + 1, caller);
+        let (expanded, _) =
+            expand_form(ctx, runtime, expansion, property.get(), depth + 1, caller)?;
+        return Ok((expanded, true));
     }
 
     let operator_name = symbol_name_string(ctx, operator.get())?;

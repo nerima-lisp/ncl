@@ -47,6 +47,14 @@ fn deftype_expands_through_type_queries_and_declarations() {
         .eval("(typep 11 '(or r6-b1-range string))")
         .unwrap_or_else(|error| panic!("nested TYPEP with DEFTYPE failed: {error}"));
     assert_eq!(runtime.format_result(outside_range), "NIL");
+    let nested_or = runtime
+        .eval("(typep 5 '(or r6-b1-range string))")
+        .unwrap_or_else(|error| panic!("positive nested TYPEP with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(nested_or), "T");
+    let function_type = runtime
+        .eval("(typep #'identity '(function (r6-b1-range) r6-b1-range))")
+        .unwrap_or_else(|error| panic!("FUNCTION type with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(function_type), "T");
 
     let subtype = runtime
         .eval("(subtypep 'r6-b1-range 'integer)")
@@ -119,6 +127,11 @@ fn deftype_expands_through_type_queries_and_declarations() {
         .eval("(typep 5 '(r6-b1-rest 0 10))")
         .unwrap_or_else(|error| panic!("DEFTYPE rest arguments failed: {error}"));
     assert_eq!(runtime.format_result(rest_arguments), "T");
+
+    runtime
+        .eval("(deftype r6-b1-recursive () 'r6-b1-recursive)")
+        .unwrap_or_else(|error| panic!("recursive DEFTYPE definition failed: {error}"));
+    assert!(runtime.eval("(typep 1 'r6-b1-recursive)").is_err());
 }
 
 #[test]

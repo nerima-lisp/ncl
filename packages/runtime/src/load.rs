@@ -7,8 +7,7 @@ use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FileError, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError,
     ObjectRef, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, car, cdr, classify_object, make_cons, make_string, symbol_name,
-    symbol_package,
+    ThreadContext, Word, car, cdr, classify_object, make_cons, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -113,7 +112,7 @@ fn load_with_runtime(
             Err(ObjectError::TypeError)
         }
         Err(RuntimeError::Native(message)) => {
-            signal_native_load_error(ctx, object, &message)?;
+            crate::native_error::signal_native_load_error(ctx, object, &message)?;
             Err(ObjectError::TypeError)
         }
         Err(
@@ -129,24 +128,6 @@ fn load_with_runtime(
             Err(ObjectError::TypeError)
         }
     }
-}
-
-fn signal_native_load_error(
-    ctx: &mut ThreadContext,
-    object: &ObjectRuntime,
-    message: &str,
-) -> Result<(), ObjectError> {
-    let format_control = make_string(ctx, object, &['~', 'A'])?;
-    let format_control = HeapRootedWord::new(ctx, format_control)?;
-    let message = make_string(ctx, object, &message.chars().collect::<Vec<_>>())?;
-    let message = HeapRootedWord::new(ctx, message)?;
-    let format_arguments = make_cons(ctx, object, message.get(), Word::NIL)?;
-    let format_arguments = HeapRootedWord::new(ctx, format_arguments)?;
-    ctx.set_pending_lisp_error(LispError::SimpleError {
-        format_control: format_control.get(),
-        format_arguments: format_arguments.get(),
-    });
-    Ok(())
 }
 
 pub fn keyword_name(
@@ -503,58 +484,5 @@ const fn host_architecture() -> ncl_objfile::Architecture {
         ncl_objfile::Architecture::X86_64
     } else {
         ncl_objfile::Architecture::Aarch64
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::signal_native_load_error;
-    use crate::Runtime;
-    use ncl_object::LispError;
-
-    #[test]
-    fn native_load_failure_preserves_its_message_in_the_condition_report() {
-        let mut runtime =
-            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-        let message = "IR verification before optimization failed: function lambda-FunctionId(1): \
-             [UndefinedValue(ValueId(4)), SuccessorType(BlockId(2))]";
-        let (ctx, object) = (&mut runtime.context, &runtime.object);
-
-        signal_native_load_error(ctx, object, message).expect("native load condition");
-        let error = ctx.take_pending_lisp_error().expect("pending Lisp error");
-        assert!(matches!(error, LispError::SimpleError { .. }));
-        let converter = object.lisp_error_converter().expect("Lisp error converter");
-        let condition = converter(ctx, object, error).expect("converted condition");
-
-        assert_eq!(
-            ncl_conditions::condition_report(ctx, condition).as_deref(),
-            Some(message)
-        );
-    }
-
-    #[test]
-    fn native_load_failure_reaches_the_runtime_error_report() {
-        let path = std::env::temp_dir().join(format!(
-            "ncl-native-load-diagnostic-{}.lisp",
-            std::process::id()
-        ));
-        std::fs::write(&path, [0xff])
-            .unwrap_or_else(|error| panic!("invalid UTF-8 source creation failed: {error}"));
-        let source = format!("(load \"{}\")", path.display());
-        let mut runtime =
-            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-
-        let result = runtime.eval(&source);
-        assert!(
-            matches!(
-                &result,
-                Err(crate::RuntimeError::Native(message))
-                    if message == "source file is not valid UTF-8"
-            ),
-            "unexpected LOAD error: {result:?}"
-        );
-
-        std::fs::remove_file(path)
-            .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
     }
 }

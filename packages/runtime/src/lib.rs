@@ -31,8 +31,8 @@ pub use native_error::NativeCondition;
 use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel_for_eval};
 use ncl_object::{
-    Function, HeapRootedWord, Instance, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word,
-    function_code, make_simple_vector, slot_ref, symbol_name,
+    Function, HeapRootedWord, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word,
+    function_code, make_simple_vector,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
@@ -431,36 +431,12 @@ impl Runtime {
             }
         }
         if let Some(error) = pending_errors.object {
-            if matches!(error, ObjectError::UndefinedFunction)
-                && let Some(condition) = context.take_pending_condition()
-            {
-                let condition = HeapRootedWord::new(context, condition)?;
-                #[allow(clippy::option_if_let_else)]
-                let name = match slot_ref(context, Instance::from_word(condition.get()), 0)
-                    .and_then(|name| symbol_name(context, name))
-                    .and_then(|name| {
-                        ncl_compiler_front::form::word_string(context, name)
-                            .map_err(|_| ObjectError::Layout)
-                    }) {
-                    Ok(name) => name,
-                    Err(_) => "<unknown>".to_owned(),
-                };
-                self.pending_undefined_function_condition = Some(condition);
-                return Err(RuntimeError::UndefinedFunction { name });
-            }
-            if matches!(error, ObjectError::TypeError)
-                && let Some(condition) = context.take_pending_condition()
-            {
-                let condition = HeapRootedWord::new(context, condition)?;
-                let simple_error =
-                    ncl_conditions::ConditionIdentifier::SimpleError.class(context, &self.object);
-                if ncl_conditions::condition_class_of(context, condition.get()).ok() == simple_error
-                    && let Some(report) = ncl_conditions::condition_report(context, condition.get())
-                {
-                    return Err(RuntimeError::Native(report));
-                }
-            }
-            return Err(error.into());
+            return Err(native_error::pending_object_error(
+                context,
+                &self.object,
+                error,
+                &mut self.pending_undefined_function_condition,
+            )?);
         }
         if context.take_non_local_exit() {
             return Err(ObjectError::ControlError.into());

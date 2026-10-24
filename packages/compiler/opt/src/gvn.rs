@@ -1,23 +1,20 @@
-use ncl_ir::{BasicBlock, BlockId, Function, Op, OpKind, Terminator, ValueId};
+use ncl_ir::{BasicBlock, BlockId, Function, Op, OpKind, Terminator, Ty, ValueId};
 use std::collections::{HashMap, HashSet};
 
-use crate::{FunctionPass, Module, PassError, PassResult};
+use crate::{FunctionFacts, FunctionPass, Module, PassError, PassResult, is_scalar_value};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum Expression {
-    Const(ncl_ir::ConstantIndex),
-    Move(ValueId),
-    Load(ValueId),
-    LoadField(ValueId, u32),
-    Prim(String, Vec<ValueId>, Option<BlockId>),
-    Compare(String, ValueId, ValueId),
-    Convert(String, ValueId),
+    Const(ncl_ir::ConstantIndex, String),
+    Move(ValueId, String),
+    Prim(String, Vec<ValueId>, String),
+    Compare(String, ValueId, ValueId, String),
+    Convert(String, ValueId, String),
 }
 
 #[derive(Clone, Debug, Default)]
 struct Tables {
     expressions: HashMap<Expression, ValueId>,
-    loads: HashMap<Expression, ValueId>,
     replacements: HashMap<ValueId, ValueId>,
 }
 
@@ -31,10 +28,6 @@ impl Tables {
             value = next;
         }
         value
-    }
-
-    fn invalidate_loads(&mut self) {
-        self.loads.clear();
     }
 }
 
@@ -194,39 +187,30 @@ impl GlobalValueNumbering {
         block: &mut BasicBlock,
         children: &HashMap<BlockId, Vec<BlockId>>,
         blocks: &mut HashMap<BlockId, BasicBlock>,
+        types: &HashMap<ValueId, Ty>,
+        facts: &FunctionFacts,
         mut tables: Tables,
     ) -> bool {
         let mut changed = false;
         let old_ops = std::mem::take(&mut block.ops);
         let mut new_ops = Vec::with_capacity(old_ops.len());
-        for mut op in old_ops {
+        for (index, mut op) in old_ops.into_iter().enumerate() {
             Self::rewrite_op(&mut op, &tables);
-            let key = Self::expression(&op);
-            let load = Self::is_load(&op.kind);
-            let pure = key.is_some();
-            if Self::invalidates_memory(&op.kind) {
-                tables.invalidate_loads();
-            }
+            let key = Self::expression(&op, block.id, index, types, facts);
             if let Some(key) = key {
-                let table = if load {
-                    &mut tables.loads
-                } else {
-                    &mut tables.expressions
-                };
-                if op.results.len() == 1 {
-                    if let Some(&existing) = table.get(&key) {
-                        let Some(&(result, _)) = op.results.first() else {
-                            continue;
-                        };
-                        tables.replacements.insert(result, existing);
-                        changed = true;
+                if let Some(&existing) = tables.expressions.get(&key) {
+                    let Some(&(result, _)) = op.results.first() else {
                         continue;
-                    }
-                    table.insert(key, op.results[0].0);
+                    };
+                    tables.replacements.insert(result, existing);
+                    changed = true;
+                    continue;
                 }
-            }
-            if !pure && Self::invalidates_memory(&op.kind) {
-                tables.invalidate_loads();
+                let Some((result, _)) = op.results.first() else {
+                    new_ops.push(op);
+                    continue;
+                };
+                tables.expressions.insert(key, *result);
             }
             new_ops.push(op);
         }
@@ -234,7 +218,14 @@ impl GlobalValueNumbering {
         Self::rewrite_term(&mut block.terminator, &tables);
         for child in children.get(&block.id).into_iter().flatten().copied() {
             if let Some(mut child_block) = blocks.remove(&child) {
-                changed |= Self::process_block(&mut child_block, children, blocks, tables.clone());
+                changed |= Self::process_block(
+                    &mut child_block,
+                    children,
+                    blocks,
+                    types,
+                    facts,
+                    tables.clone(),
+                );
                 blocks.insert(child, child_block);
             }
         }
@@ -292,60 +283,70 @@ impl GlobalValueNumbering {
         }
     }
 
-    fn expression(op: &Op) -> Option<Expression> {
-        Some(match &op.kind {
-            OpKind::Const { result } => Expression::Const(*result),
-            OpKind::Move { value } => Expression::Move(*value),
-            OpKind::Load { address } => Expression::Load(*address),
-            OpKind::LoadField { object, field } => Expression::LoadField(*object, *field),
+    fn expression(
+        op: &Op,
+        block: BlockId,
+        index: usize,
+        types: &HashMap<ValueId, Ty>,
+        facts: &FunctionFacts,
+    ) -> Option<Expression> {
+        let [(result, result_ty)] = op.results.as_slice() else {
+            return None;
+        };
+        if facts
+            .effects
+            .get(&(block, index))
+            .is_some_and(|effects| *effects != crate::EffectSet::default())
+            || !is_scalar_value(types, facts, *result)
+        {
+            return None;
+        }
+        let operands_are_scalar = match &op.kind {
+            OpKind::Const { .. } => true,
+            OpKind::Convert {
+                op: ncl_ir::Convert::AddressToWord | ncl_ir::Convert::WordToAddress,
+                ..
+            } => false,
+            OpKind::Move { value } | OpKind::Convert { value, .. } => {
+                is_scalar_value(types, facts, *value)
+            }
             OpKind::Prim {
                 op,
                 args,
-                condition,
-            } if op.is_pure() => Expression::Prim(format!("{op:?}"), args.clone(), *condition),
-            OpKind::Compare { op, left, right } => {
-                Expression::Compare(format!("{op:?}"), *left, *right)
+                condition: None,
+            } if op.is_pure() => args
+                .iter()
+                .all(|value| is_scalar_value(types, facts, *value)),
+            OpKind::Compare { left, right, .. } => {
+                is_scalar_value(types, facts, *left) && is_scalar_value(types, facts, *right)
             }
-            OpKind::Convert { op, value } => Expression::Convert(format!("{op:?}"), *value),
+            // check-added-lines: allow(wildcard) GVN accepts only the explicit scalar expression whitelist.
+            _ => false,
+        };
+        if !operands_are_scalar {
+            return None;
+        }
+        let result_ty = format!("{result_ty:?}");
+        Some(match &op.kind {
+            OpKind::Const { result } => Expression::Const(*result, result_ty),
+            OpKind::Move { value } => Expression::Move(*value, result_ty),
+            OpKind::Prim {
+                op,
+                args,
+                condition: None,
+            } if op.is_pure() => Expression::Prim(format!("{op:?}"), args.clone(), result_ty),
+            OpKind::Compare { op, left, right } => {
+                Expression::Compare(format!("{op:?}"), *left, *right, result_ty)
+            }
+            OpKind::Convert {
+                op: ncl_ir::Convert::AddressToWord | ncl_ir::Convert::WordToAddress,
+                ..
+            } => return None,
+            OpKind::Convert { op, value } => {
+                Expression::Convert(format!("{op:?}"), *value, result_ty)
+            }
             _ => return None,
         })
-    }
-
-    const fn is_load(kind: &OpKind) -> bool {
-        matches!(kind, OpKind::Load { .. } | OpKind::LoadField { .. })
-            || matches!(
-                kind,
-                OpKind::Prim { op, .. } if op.reads_memory()
-            )
-    }
-
-    const fn invalidates_memory(kind: &OpKind) -> bool {
-        match kind {
-            OpKind::Prim { op, .. } => op.invalidates_memory(),
-            OpKind::Store { .. }
-            | OpKind::StoreField { .. }
-            | OpKind::Call { .. }
-            | OpKind::CallIndirect { .. }
-            | OpKind::CallClosure { .. }
-            | OpKind::Builtin { .. }
-            | OpKind::MakeClosure { .. }
-            | OpKind::MakeValueCell { .. } => true,
-            OpKind::Const { .. }
-            | OpKind::Move { .. }
-            | OpKind::TypeHint { .. }
-            | OpKind::Load { .. }
-            | OpKind::LoadField { .. }
-            | OpKind::Alloc { .. }
-            | OpKind::LoadArg { .. }
-            | OpKind::LoadCapture { .. }
-            | OpKind::Compare { .. }
-            | OpKind::Convert { .. }
-            | OpKind::SetMultipleValues { .. }
-            | OpKind::Safepoint
-            | OpKind::EnterHandler { .. }
-            | OpKind::LeaveHandler { .. }
-            | OpKind::LoadFunctionObject => false,
-        }
     }
 }
 
@@ -355,6 +356,13 @@ impl FunctionPass for GlobalValueNumbering {
     }
 
     fn run(&mut self, function: &mut Function, _module: &Module) -> PassResult {
+        let block_order = function
+            .blocks
+            .iter()
+            .map(|block| block.id)
+            .collect::<Vec<_>>();
+        let types = super::value_types(function);
+        let facts = FunctionFacts::analyze(function);
         let tree = Self::dominator_tree(function);
         let Some(entry) = function.blocks.first().map(|block| block.id) else {
             ncl_ir::verify(function)
@@ -369,10 +377,26 @@ impl FunctionPass for GlobalValueNumbering {
         let mut entry_block = blocks.remove(&entry).ok_or_else(|| {
             PassError::new(self.name(), "entry block disappeared while running GVN")
         })?;
-        let changed = Self::process_block(&mut entry_block, &tree, &mut blocks, Tables::default());
-        function.blocks = std::iter::once(entry_block)
-            .chain(blocks.into_values())
-            .collect();
+        let changed = Self::process_block(
+            &mut entry_block,
+            &tree,
+            &mut blocks,
+            &types,
+            &facts,
+            Tables::default(),
+        );
+        let mut ordered_blocks = Vec::with_capacity(block_order.len());
+        ordered_blocks.push(entry_block);
+        for block_id in block_order.into_iter().skip(1) {
+            let Some(block) = blocks.remove(&block_id) else {
+                return Err(PassError::new(
+                    self.name(),
+                    "block disappeared while restoring function order",
+                ));
+            };
+            ordered_blocks.push(block);
+        }
+        function.blocks = ordered_blocks;
         ncl_ir::verify(function)
             .map_err(|errors| PassError::new(self.name(), format!("{errors:?}")))?;
         Ok(changed)

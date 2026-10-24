@@ -81,7 +81,10 @@ impl std::error::Error for TypeError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LispError {
-    TypeError { datum: Word, expected: ObjectType },
+    TypeError {
+        datum: Word,
+        expected: ObjectType,
+    },
     ProgramError(ProgramError),
     ArithmeticError(ArithmeticError),
     ControlError(ControlError),
@@ -90,6 +93,10 @@ pub enum LispError {
     StreamError(StreamError),
     EndOfFile,
     FileError(FileError),
+    SimpleError {
+        format_control: Word,
+        format_arguments: Word,
+    },
     Object(ObjectError),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

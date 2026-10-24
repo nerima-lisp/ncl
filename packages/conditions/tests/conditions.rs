@@ -15,9 +15,9 @@ use ncl_conditions::{
 };
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FunctionObject, LispError, ObjectType, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, car, cdr, make_string, pop_root, push_root, slot_ref,
-    string_length, string_ref, typed_builtin,
+    BuiltinPackage, FunctionObject, HeapRootedWord, LispError, ObjectType, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, car, cdr, make_string, pop_root, push_root,
+    slot_ref, string_length, string_ref, typed_builtin,
 };
 
 const fn fail_type_error(
@@ -460,6 +460,38 @@ fn typed_builtin_error_becomes_pending_type_condition() {
         expected_type
     );
     pop_root(&mut ctx, condition_token);
+}
+
+#[test]
+fn simple_error_preserves_its_formatted_report() {
+    let (runtime, mut ctx) = setup();
+    let expected = "IR verification failed in lambda-FunctionId(1): UndefinedValue(ValueId(4))";
+
+    let format_control = make_string(&mut ctx, &runtime, &['~', 'A']).expect("format control");
+    let format_control = HeapRootedWord::new(&ctx, format_control).expect("rooted format control");
+    let message = make_string(&mut ctx, &runtime, &expected.chars().collect::<Vec<_>>())
+        .expect("message string");
+    let message = HeapRootedWord::new(&ctx, message).expect("rooted message");
+    let format_arguments = ncl_object::make_cons(&mut ctx, &runtime, message.get(), Word::NIL)
+        .expect("format arguments");
+    let format_arguments =
+        HeapRootedWord::new(&ctx, format_arguments).expect("rooted format arguments");
+
+    let condition = ncl_conditions::condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::SimpleError {
+            format_control: format_control.get(),
+            format_arguments: format_arguments.get(),
+        },
+    )
+    .expect("simple error condition");
+    let condition = HeapRootedWord::new(&ctx, condition).expect("rooted condition");
+
+    assert_eq!(
+        ncl_conditions::condition_report(&ctx, condition.get()).as_deref(),
+        Some(expected)
+    );
 }
 
 #[test]

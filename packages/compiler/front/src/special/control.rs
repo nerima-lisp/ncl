@@ -191,8 +191,18 @@ fn if_form(
         .copied()
         .map(|argument| HeapRootedWord::new(expander.ctx(), argument).map_err(Into::into))
         .collect::<Result<Vec<_>, FrontError>>()?;
-    let test = expander.expand(rooted_arguments[0].get())?;
-    let then = expander.expand(rooted_arguments[1].get())?;
+    let Some(test_form) = rooted_arguments.first() else {
+        return Err(special::arity(kind, "a test and a then form", 0));
+    };
+    let Some(then_form) = rooted_arguments.get(1) else {
+        return Err(special::arity(
+            kind,
+            "a test and a then form",
+            arguments.len(),
+        ));
+    };
+    let test = expander.expand(test_form.get())?;
+    let then = expander.expand(then_form.get())?;
     let otherwise = rooted_arguments
         .get(2)
         .map(|value| expander.expand(value.get()))

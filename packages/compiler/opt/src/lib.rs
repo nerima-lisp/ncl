@@ -1,6 +1,6 @@
 //! Conservative, dependency-free optimization passes for [`ncl_ir`].
 
-use ncl_ir::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, ValueId};
+use ncl_ir::{Function, Ty, ValueId};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -25,6 +25,46 @@ impl Module {
                 .map_err(|errors| format!("function {}: {errors:?}", function.name))?;
         }
         Ok(())
+    }
+}
+
+fn value_types(function: &Function) -> HashMap<ValueId, Ty> {
+    let mut types = HashMap::new();
+    for (index, parameter) in function.params.iter().enumerate() {
+        if let Ok(index) = u32::try_from(index) {
+            types.insert(ValueId(index), parameter.ty);
+        }
+    }
+    for block in &function.blocks {
+        for parameter in &block.params {
+            types.insert(parameter.value, parameter.ty);
+        }
+        for op in &block.ops {
+            types.extend(op.results.iter().map(|(value, ty)| (*value, *ty)));
+        }
+    }
+    types
+}
+
+const fn proven_scalar_word(fact: Option<&ScalarFact>) -> bool {
+    matches!(
+        fact,
+        Some(ScalarFact::Known {
+            ty: ScalarType::Fixnum | ScalarType::Boolean,
+            evidence: Evidence::Proven,
+        })
+    )
+}
+
+pub(crate) fn is_scalar_value(
+    types: &HashMap<ValueId, Ty>,
+    facts: &FunctionFacts,
+    value: ValueId,
+) -> bool {
+    match types.get(&value) {
+        Some(Ty::I64 | Ty::F64 | Ty::Bool) => true,
+        Some(Ty::Word) => proven_scalar_word(facts.values.get(&value)),
+        Some(Ty::Address | Ty::Unit) | None => false,
     }
 }
 
@@ -91,6 +131,8 @@ pub enum PassVerification {
     Passed,
     /// Verification rejected the module.
     Failed(String),
+    /// Verification rejected the pass output and the module was restored.
+    RolledBack(String),
 }
 
 /// Details for one pass invocation, including failed invocations.
@@ -130,6 +172,7 @@ impl Display for PassEvent {
             PassVerification::Skipped => f.write_str("skipped")?,
             PassVerification::Passed => f.write_str("passed")?,
             PassVerification::Failed(_) => f.write_str("failed")?,
+            PassVerification::RolledBack(_) => f.write_str("rolled-back")?,
         }
         write!(f, " elapsed_ns={}", self.elapsed.as_nanos())?;
         if let Some(error) = &self.error {
@@ -196,169 +239,9 @@ pub struct PassManager {
     module_passes: Vec<Box<dyn ModulePass>>,
 }
 
-/// The conservative first optimization: inline direct calls to small leaf functions.
-#[derive(Clone, Debug)]
-pub struct InlineDirectCalls {
-    /// Maximum number of callee operations that may be copied.
-    pub max_ops: usize,
-}
-
-impl Default for InlineDirectCalls {
-    fn default() -> Self {
-        Self { max_ops: 32 }
-    }
-}
-
-impl InlineDirectCalls {
-    fn prohibited(function: &Function) -> bool {
-        !function.handler_regions.is_empty()
-            || function.blocks.iter().flat_map(|b| &b.ops).any(|op| {
-                matches!(
-                    op.kind,
-                    OpKind::MakeClosure { .. }
-                        | OpKind::MakeValueCell { .. }
-                        | OpKind::CallClosure { .. }
-                        | OpKind::SetMultipleValues { .. }
-                )
-            })
-    }
-
-    fn callee_for<'a>(caller: &Function, call: &Op, module: &'a Module) -> Option<&'a Function> {
-        let OpKind::Call { function, .. } = call.kind else {
-            return None;
-        };
-        let entry = caller.blocks.iter().flat_map(|b| &b.ops).find_map(|op| {
-            if op.results.len() == 1 && op.results[0].0 == function {
-                match op.kind {
-                    OpKind::Const { result } => usize::try_from(result.0)
-                        .ok()
-                        .and_then(|index| caller.constants.get(index)),
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        })?;
-        let Constant::FunctionEntry(id) = entry else {
-            return None;
-        };
-        module
-            .functions
-            .iter()
-            .find(|candidate| candidate.id == *id)
-    }
-}
-
-impl FunctionPass for InlineDirectCalls {
-    fn name(&self) -> &'static str {
-        "inline-direct-calls"
-    }
-
-    fn run(&mut self, function: &mut Function, module: &Module) -> PassResult {
-        if Self::prohibited(function) {
-            return Ok(false);
-        }
-        let mut changed = false;
-        let mut replacements = HashMap::new();
-        let function_view = function.clone();
-        let mut next_value = next_value(function);
-        let caller_constants = &mut function.constants;
-        for block in &mut function.blocks {
-            let old_ops = std::mem::take(&mut block.ops);
-            let mut new_ops = Vec::with_capacity(old_ops.len());
-            for call in old_ops {
-                let Some(callee) = Self::callee_for(&function_view, &call, module) else {
-                    new_ops.push(call);
-                    continue;
-                };
-                if callee.id == function.id
-                    || Self::prohibited(callee)
-                    || callee.blocks.len() != 1
-                    || callee.blocks[0].ops.len() > self.max_ops
-                    || callee.blocks[0].ops.iter().any(|op| {
-                        matches!(op.kind, OpKind::Call { .. } | OpKind::CallIndirect { .. })
-                    })
-                {
-                    new_ops.push(call);
-                    continue;
-                }
-                let Terminator::Return { values } = &callee.blocks[0].terminator else {
-                    new_ops.push(call);
-                    continue;
-                };
-                let OpKind::Call { args, .. } = &call.kind else {
-                    new_ops.push(call);
-                    continue;
-                };
-                if args.len() != callee.params.len() || values.len() != call.results.len() {
-                    new_ops.push(call);
-                    continue;
-                }
-                let Some(mut values_map) = callee
-                    .params
-                    .iter()
-                    .enumerate()
-                    .map(|(index, _)| {
-                        u32::try_from(index)
-                            .ok()
-                            .map(|id| (ValueId(id), args[index]))
-                    })
-                    .collect::<Option<HashMap<_, _>>>()
-                else {
-                    new_ops.push(call);
-                    continue;
-                };
-                let mut constants = HashMap::<ConstantIndex, ConstantIndex>::new();
-                for op in &callee.blocks[0].ops {
-                    let kind = remap_kind(
-                        &op.kind,
-                        &values_map,
-                        &mut constants,
-                        caller_constants,
-                        callee,
-                    );
-                    let mut results = Vec::with_capacity(op.results.len());
-                    for (old, ty) in &op.results {
-                        let fresh = ValueId(next_value);
-                        next_value = next_value.saturating_add(1);
-                        values_map.insert(*old, fresh);
-                        results.push((fresh, *ty));
-                    }
-                    new_ops.push(Op {
-                        results,
-                        kind,
-                        loc: op.loc,
-                    });
-                }
-                let Some(mapped_returns) = values
-                    .iter()
-                    .map(|value| values_map.get(value).copied())
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    new_ops.push(call);
-                    continue;
-                };
-                for ((result, _), mapped) in call.results.iter().zip(mapped_returns) {
-                    replacements.insert(*result, mapped);
-                }
-                changed = true;
-            }
-            block.ops = new_ops;
-        }
-        if changed {
-            for block in &mut function.blocks {
-                for op in &mut block.ops {
-                    remap_op_values(op, &replacements);
-                }
-                remap_term_values(&mut block.terminator, &replacements);
-            }
-        }
-        Ok(changed)
-    }
-}
-
+mod inline;
 pub(crate) mod remap;
-use remap::{next_value, remap_kind, remap_op_values, remap_term_values};
+pub use inline::InlineDirectCalls;
 mod gvn;
 mod manager;
 pub use gvn::GlobalValueNumbering;

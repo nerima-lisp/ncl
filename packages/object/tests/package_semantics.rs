@@ -2,8 +2,8 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    BuiltinPackage, Runtime, ThreadContext, Word, cdr, make_string, string_length, string_ref,
-    symbol_name, symbol_package,
+    BuiltinName, BuiltinPackage, ObjectError, Runtime, ThreadContext, Word, cdr, make_string,
+    pop_root, push_root, string_length, string_ref, symbol_name, symbol_package,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -134,6 +134,78 @@ fn object_owned_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
         assert!(ncl_object::pop_root(&mut ctx, sb_package_token));
         assert!(ncl_object::pop_root(&mut ctx, source_package_token));
     }
+}
+
+#[test]
+fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let mut source = runtime
+        .ensure_package(&mut ctx, BuiltinPackage::NclTest.as_str())
+        .unwrap_or_else(|error| panic!("NCL-TEST package: {error:?}"));
+    let source_token = push_root(&mut ctx, &mut source);
+    let mut name = string(&mut ctx, &runtime, "R6-PRIVATE-SYMBOL");
+    let name_token = push_root(&mut ctx, &mut name);
+    let (mut source_symbol, _) = Package::from_word(source)
+        .intern(&mut ctx, &runtime, "R6-PRIVATE-SYMBOL")
+        .unwrap_or_else(|error| panic!("source intern: {error:?}"));
+    let symbol_token = push_root(&mut ctx, &mut source_symbol);
+
+    runtime
+        .register_sb_symbol(
+            &mut ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new("R6-PRIVATE-SYMBOL"),
+            false,
+        )
+        .unwrap_or_else(|error| panic!("SB import: {error:?}"));
+    let mut target = runtime
+        .find_package(&ctx, BuiltinPackage::SbDebug.as_str())
+        .unwrap_or_else(|| panic!("SB-DEBUG package missing"));
+    let target_token = push_root(&mut ctx, &mut target);
+    assert_eq!(
+        Package::from_word(target).find_symbol(&mut ctx, name),
+        Ok(Some((source_symbol, FindStatus::Internal)))
+    );
+    assert_eq!(symbol_package(&ctx, source_symbol), Ok(source));
+
+    for (source_package, target_package, symbol_name) in [
+        (
+            BuiltinPackage::CommonLisp,
+            BuiltinPackage::SbDebug,
+            "R6-PRIVATE-SYMBOL",
+        ),
+        (
+            BuiltinPackage::NclTest,
+            BuiltinPackage::NclFfi,
+            "R6-PRIVATE-SYMBOL",
+        ),
+        (
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            "R6-ABSENT-SYMBOL",
+        ),
+    ] {
+        assert_eq!(
+            runtime.register_sb_symbol(
+                &mut ctx,
+                source_package,
+                target_package,
+                BuiltinName::new(symbol_name),
+                false,
+            ),
+            Err(ObjectError::Unsupported)
+        );
+    }
+
+    assert!(pop_root(&mut ctx, target_token));
+    assert!(pop_root(&mut ctx, symbol_token));
+    assert!(pop_root(&mut ctx, name_token));
+    assert!(pop_root(&mut ctx, source_token));
 }
 
 #[test]

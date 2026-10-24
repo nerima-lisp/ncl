@@ -31,12 +31,6 @@ impl Context<'_> {
         )?;
         let start = f.current_block();
         let result = f.fresh_value();
-        // Any variable assigned in either arm (transitively, through nested
-        // ifs/blocks/tagbodies) needs its post-if value merged through a block
-        // parameter, the same mechanism `lower_block`/`lower_tagbody` use.
-        // Only `Slot::Value` bindings need this: `Slot::Cell` bindings (boxed
-        // for closure capture) are mutated in place and already observe
-        // writes from either arm without a merge.
         let mut assigned: std::collections::BTreeSet<SymbolRef> =
             capture::analyze(std::slice::from_ref(then))
                 .assigned_names()
@@ -45,17 +39,11 @@ impl Context<'_> {
         if let Some(form) = otherwise {
             assigned.extend(capture::analyze(std::slice::from_ref(form)).assigned_names());
         }
-        // Snapshot each live variable's value as of just before the branch:
-        // both arms start from this same value, since they are mutually
-        // exclusive alternatives over the same lexical env (there is no
-        // per-branch env to fork, unlike a real interpreter).
+        // Escaping control forms can rebind a captured cell at their join point,
+        // so its SSA value must be merged along with ordinary value slots.
         let live = assigned
             .into_iter()
-            .filter_map(|name| match f.env().lookup_variable(&name) {
-                Some(Slot::Value(value)) => Some((name, value)),
-                // check-added-lines: allow(wildcard) cells need no merge.
-                _ => None,
-            })
+            .filter_map(|name| f.env().lookup_variable(&name).map(|slot| (name, slot)))
             .collect::<Vec<_>>();
         let live_values = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
         let then_block = self.block(f, Vec::new());
@@ -84,9 +72,8 @@ impl Context<'_> {
             args.extend(
                 live.iter()
                     .filter_map(|(name, _)| match f.env().lookup_variable(name) {
-                        Some(Slot::Value(value)) => Some(value),
-                        // check-added-lines: allow(wildcard) only value slots are live here.
-                        _ => None,
+                        Some(Slot::Value(value) | Slot::Cell(value)) => Some(value),
+                        None => None,
                     }),
             );
             f.terminate(Terminator::Jump {
@@ -94,11 +81,10 @@ impl Context<'_> {
                 args,
             })?;
         }
-        // Undo whatever the `then` arm did to the live variables before
-        // lowering `else`: the two arms are alternatives, not a sequence, so
-        // `else` must see the pre-branch values, not `then`'s writes.
-        for (name, value) in &live {
-            f.env().rebind_variable(name, Slot::Value(*value));
+        // Undo whatever the then arm did before lowering the mutually exclusive
+        // else arm.
+        for (name, slot) in &live {
+            f.env().rebind_variable(name, *slot);
         }
         self.active.clone_from(&branch_active);
         f.position(else_block)?;
@@ -111,9 +97,8 @@ impl Context<'_> {
             args.extend(
                 live.iter()
                     .filter_map(|(name, _)| match f.env().lookup_variable(name) {
-                        Some(Slot::Value(value)) => Some(value),
-                        // check-added-lines: allow(wildcard) only value slots are live here.
-                        _ => None,
+                        Some(Slot::Value(value) | Slot::Cell(value)) => Some(value),
+                        None => None,
                     }),
             );
             f.terminate(Terminator::Jump {
@@ -123,8 +108,12 @@ impl Context<'_> {
         }
         self.active.clone_from(&branch_active);
         f.position(merge)?;
-        for ((name, _), value) in live.into_iter().zip(live_values) {
-            f.env().rebind_variable(&name, Slot::Value(value));
+        for ((name, slot), value) in live.into_iter().zip(live_values) {
+            let slot = match slot {
+                Slot::Value(_) => Slot::Value(value),
+                Slot::Cell(_) => Slot::Cell(value),
+            };
+            f.env().rebind_variable(&name, slot);
         }
         Ok(result)
     }

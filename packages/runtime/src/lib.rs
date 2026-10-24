@@ -448,6 +448,18 @@ impl Runtime {
                 self.pending_undefined_function_condition = Some(condition);
                 return Err(RuntimeError::UndefinedFunction { name });
             }
+            if matches!(error, ObjectError::TypeError)
+                && let Some(condition) = context.take_pending_condition()
+            {
+                let condition = HeapRootedWord::new(context, condition)?;
+                let simple_error =
+                    ncl_conditions::ConditionIdentifier::SimpleError.class(context, &self.object);
+                if ncl_conditions::condition_class_of(context, condition.get()).ok() == simple_error
+                    && let Some(report) = ncl_conditions::condition_report(context, condition.get())
+                {
+                    return Err(RuntimeError::Native(report));
+                }
+            }
             return Err(error.into());
         }
         if context.take_non_local_exit() {

@@ -245,6 +245,10 @@ impl Heap {
         if !thread.has_native_frame_snapshot() {
             thread.publish_snapshot();
         }
+        #[cfg(target_arch = "aarch64")]
+        if thread.has_native_context() && !thread.has_native_frame_snapshot() {
+            thread.publish_snapshot();
+        }
         {
             let stop_world = self
                 .stop_world

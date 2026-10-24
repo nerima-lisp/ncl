@@ -271,6 +271,7 @@ impl Thread {
         self.frame_address.is_some()
     }
     pub(crate) fn heap_collect(&mut self, full: bool) -> Result<(), crate::StorageCondition> {
+        #[cfg(target_arch = "x86_64")]
         if self.native_state() != NativeState::Native && !self.has_native_frame_snapshot() {
             self.publish_snapshot();
         }
@@ -332,6 +333,9 @@ impl Thread {
         // SAFETY: the installing caller guarantees that the slot points to a
         // live T until the synchronous native invocation returns.
         Some(callback(unsafe { &mut *context.as_ptr().cast::<T>() }))
+    }
+    pub(crate) const fn has_native_context(&self) -> bool {
+        self.native_context.is_some()
     }
     /// Install a precise native frame and register snapshot for collection.
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {

@@ -1,22 +1,37 @@
 //! Integration coverage for the registered sequence builtins.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word};
 
 fn call(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
-    functions: &HashMap<String, FunctionObject>,
+    functions: &HashSet<String>,
     name: &str,
     args: &[Word],
 ) -> Word {
-    let function = *functions
-        .get(name)
-        .unwrap_or_else(|| panic!("missing builtin {name}"));
-    ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
-        runtime.call_builtin(ctx, function, &rooted_args)
+    assert!(functions.contains(name), "missing builtin {name}");
+    ncl_object::with_roots(ctx, args, |ctx, arg_roots| {
+        let function = runtime
+            .function(ctx, "COMMON-LISP", name)
+            .ok_or(ncl_object::ObjectError::Unbound)?;
+        let function = FunctionObject::try_from(function)?;
+        let args = arg_roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let mut rooted_values = Vec::with_capacity(args.len() + 1);
+        rooted_values.push(function.as_word());
+        rooted_values.extend_from_slice(&args);
+        ncl_object::with_roots(ctx, &rooted_values, |ctx, roots| {
+            let function =
+                FunctionObject::try_from(**roots.first().ok_or(ncl_object::ObjectError::Layout)?)?;
+            let rooted_args = roots
+                .get(1..)
+                .ok_or(ncl_object::ObjectError::Layout)?
+                .iter()
+                .map(|root| **root)
+                .collect::<Vec<_>>();
+            runtime.call_builtin(ctx, function, &rooted_args)
+        })
     })
     .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
 }
@@ -34,7 +49,7 @@ fn assert_list(ctx: &ThreadContext, list: Word, expected: &[Word]) {
 fn with_list(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
-    functions: &HashMap<String, FunctionObject>,
+    functions: &HashSet<String>,
     values: &[Word],
     f: impl FnOnce(&mut ThreadContext, ncl_object::RootSlot<'_>),
 ) {
@@ -45,20 +60,20 @@ fn with_list(
     })
     .unwrap_or_else(|error| panic!("rooted list: {error:?}"));
 }
-fn probe(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    functions: &HashMap<String, FunctionObject>,
-    name: &str,
-) {
-    let function = *functions
-        .get(name)
+fn probe(runtime: &Runtime, ctx: &mut ThreadContext, functions: &HashSet<String>, name: &str) {
+    assert!(functions.contains(name), "missing builtin {name}");
+    let function = runtime
+        .function(ctx, "COMMON-LISP", name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
-    let _ = ncl_object::with_roots(ctx, &[Word::NIL], |ctx, roots| {
+    let function =
+        FunctionObject::try_from(function).unwrap_or_else(|_| panic!("{name} is not a function"));
+    let _ = ncl_object::with_roots(ctx, &[function.as_word(), Word::NIL], |ctx, roots| {
+        let function =
+            FunctionObject::try_from(**roots.first().ok_or(ncl_object::ObjectError::Layout)?)?;
         runtime.call_builtin(
             ctx,
             function,
-            &[roots.first().ok_or(ncl_object::ObjectError::Layout)?.get()],
+            &[**roots.get(1).ok_or(ncl_object::ObjectError::Layout)?],
         )
     });
 }
@@ -143,13 +158,10 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
             let word = runtime
                 .function(&mut ctx, "COMMON-LISP", name)
                 .unwrap_or_else(|| panic!("missing builtin {name}"));
-            (
-                name.to_owned(),
-                FunctionObject::try_from(word)
-                    .unwrap_or_else(|_| panic!("{name} is not a function")),
-            )
+            FunctionObject::try_from(word).unwrap_or_else(|_| panic!("{name} is not a function"));
+            name.to_owned()
         })
-        .collect::<HashMap<_, _>>();
+        .collect::<HashSet<_>>();
     let package = runtime
         .find_package(&ctx, "COMMON-LISP")
         .unwrap_or_else(|| panic!("missing COMMON-LISP package"));
@@ -465,13 +477,10 @@ fn remove_duplicates_keeps_the_last_occurrence() {
             let word = runtime
                 .function(&mut ctx, "COMMON-LISP", name)
                 .unwrap_or_else(|| panic!("missing builtin {name}"));
-            (
-                name.to_owned(),
-                FunctionObject::try_from(word)
-                    .unwrap_or_else(|_| panic!("{name} is not a function")),
-            )
+            FunctionObject::try_from(word).unwrap_or_else(|_| panic!("{name} is not a function"));
+            name.to_owned()
         })
-        .collect::<HashMap<_, _>>();
+        .collect::<HashSet<_>>();
     let input = call(
         &runtime,
         &mut ctx,

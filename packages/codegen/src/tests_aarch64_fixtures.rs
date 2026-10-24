@@ -123,6 +123,7 @@ fn golden_aarch64_builtin_decodes() {
                     name: "identity".into(),
                     args: Vec::new(),
                     specialization: None,
+                    specialization_disabled: false,
                 },
                 &[Ty::Word]
             )

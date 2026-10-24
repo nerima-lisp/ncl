@@ -254,6 +254,7 @@ fn rejects_builtin_missing_from_execution_fixture_abi() {
                 name: "unregistered".into(),
                 args: Vec::new(),
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )

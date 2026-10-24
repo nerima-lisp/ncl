@@ -1,3 +1,6 @@
+#[path = "checked_ops/fixnum.rs"]
+mod fixnum;
+
 use super::{
     CallCheckContext, CheckedCallMode, emit, emit_safepoint_call, lower_alloc, lower_builtin,
     lower_call, lower_checked_call, lower_runtime_builtin, lower_safepoint, primitives,
@@ -6,7 +9,7 @@ use super::{
 use crate::machine_verify::SafepointSite;
 use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Inst, Reg};
-use ncl_ir::{Function, HandlerRegionId, ValueId};
+use ncl_ir::{FixnumSpecialization, Function, HandlerRegionId, ValueId};
 
 pub(super) fn lower_alloc_op(
     assembler: &mut Assembler,
@@ -149,15 +152,55 @@ pub(super) fn lower_call_closure_op(
     Ok(call_pc)
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct BuiltinCall<'a> {
+    name: &'a str,
+    args: &'a [ValueId],
+    specialization: Option<FixnumSpecialization>,
+    specialization_disabled: bool,
+}
+
+impl<'a> BuiltinCall<'a> {
+    pub(super) const fn new(
+        name: &'a str,
+        args: &'a [ValueId],
+        specialization: Option<FixnumSpecialization>,
+        specialization_disabled: bool,
+    ) -> Self {
+        Self {
+            name,
+            args,
+            specialization,
+            specialization_disabled,
+        }
+    }
+}
+
 pub(super) fn lower_builtin_op(
     assembler: &mut Assembler,
-    name: &str,
-    args: &[ValueId],
+    builtin: BuiltinCall<'_>,
     result: Option<ValueId>,
     allocation: &Allocation,
     abi: &dyn RuntimeAbi,
     context: &CallCheckContext<'_>,
 ) -> Result<SafepointSite, CodegenError> {
+    if !builtin.specialization_disabled
+        && let Some(specialization) = builtin.specialization
+    {
+        return fixnum::lower_checked_fixnum_builtin_op(
+            assembler,
+            fixnum::CheckedFixnumBuiltin {
+                name: builtin.name,
+                args: builtin.args,
+                specialization,
+            },
+            result,
+            allocation,
+            abi,
+            context,
+        );
+    }
+
     let call_pc = lower_checked_call(
         assembler,
         context,
@@ -165,7 +208,7 @@ pub(super) fn lower_builtin_op(
         abi,
         CheckedCallMode::RuntimeAndNonLocal,
         |assembler| {
-            lower_builtin(assembler, name, args, allocation, abi)?;
+            lower_builtin(assembler, builtin.name, builtin.args, allocation, abi)?;
             emit_safepoint_call(assembler)
         },
     )?

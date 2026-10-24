@@ -153,6 +153,7 @@ fn machine_safepoint_flags(function: &Function) -> Vec<u32> {
                 | ncl_ir::OpKind::Safepoint => flags.push(crate::FLAG_CALL),
                 ncl_ir::OpKind::Const { .. }
                 | ncl_ir::OpKind::Move { .. }
+                | ncl_ir::OpKind::TypeHint { .. }
                 | ncl_ir::OpKind::Load { .. }
                 | ncl_ir::OpKind::Store { .. }
                 | ncl_ir::OpKind::LoadField { .. }

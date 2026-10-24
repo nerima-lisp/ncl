@@ -33,6 +33,7 @@ fn build_handler_failure_function(id: u32, leave_before_downstream: bool) -> ncl
                 name: "after-handler-error".into(),
                 args: vec![value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -98,6 +99,7 @@ fn build_pending_dispatch_function() -> ncl_ir::Function {
                 name: "set-pending-exit".into(),
                 args: vec![pending_tag, payload],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -108,6 +110,7 @@ fn build_pending_dispatch_function() -> ncl_ir::Function {
                 name: "after-handler-error".into(),
                 args: vec![pending_value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -179,6 +182,7 @@ fn build_progv_failure_function(id: u32, leave_before_downstream: bool) -> ncl_i
                 name: "after-handler-error".into(),
                 args: vec![binding],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -245,6 +249,7 @@ fn build_unwind_protect_failure_function() -> ncl_ir::Function {
                 name: "after-handler-error".into(),
                 args: vec![value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )

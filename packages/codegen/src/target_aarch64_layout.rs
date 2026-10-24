@@ -12,6 +12,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 OpKind::CallClosure { args, .. } => args.len().saturating_sub(1),
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
+                | OpKind::TypeHint { .. }
                 | OpKind::Load { .. }
                 | OpKind::Store { .. }
                 | OpKind::LoadField { .. }

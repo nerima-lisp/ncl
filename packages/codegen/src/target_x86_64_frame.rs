@@ -25,6 +25,7 @@ pub(super) fn outgoing_words(function: &Function) -> Result<u32, CodegenError> {
                 }
                 OpKind::Const { .. }
                 | OpKind::Move { .. }
+                | OpKind::TypeHint { .. }
                 | OpKind::Load { .. }
                 | OpKind::Store { .. }
                 | OpKind::LoadField { .. }

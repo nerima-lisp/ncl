@@ -255,6 +255,7 @@ pub const fn allocatable_registers(target: AllocationTarget) -> &'static [u16] {
 fn operands_of_op(kind: &OpKind, out: &mut Vec<ValueId>) {
     match kind {
         OpKind::Move { value }
+        | OpKind::TypeHint { value, .. }
         | OpKind::Load { address: value }
         | OpKind::Convert { value, .. }
         | OpKind::MakeValueCell { value } => out.push(*value),

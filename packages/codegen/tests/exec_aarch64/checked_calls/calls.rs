@@ -19,6 +19,7 @@ fn build_error_callee() -> ncl_ir::Function {
                 name: "call-target-error".into(),
                 args: vec![value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -72,6 +73,7 @@ fn build_checked_call_caller(id: u32, indirect: bool) -> ncl_ir::Function {
                 name: "after-call-error".into(),
                 args: vec![result],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -123,6 +125,7 @@ fn build_closure_caller() -> ncl_ir::Function {
                 name: "after-call-error".into(),
                 args: vec![result],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )

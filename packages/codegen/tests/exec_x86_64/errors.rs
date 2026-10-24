@@ -140,6 +140,7 @@ fn builtin_error_skips_later_helper_calls() {
                 name: "error".into(),
                 args: vec![value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -150,6 +151,7 @@ fn builtin_error_skips_later_helper_calls() {
                 name: "observe-after-error".into(),
                 args: vec![failed],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )

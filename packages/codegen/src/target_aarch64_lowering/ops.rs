@@ -170,7 +170,7 @@ pub fn lower_op(
                 store_value(assembler, allocation, result, Reg(16))?;
             }
         }
-        OpKind::Move { value } | OpKind::Convert { value, .. } => {
+        OpKind::Move { value } | OpKind::Convert { value, .. } | OpKind::TypeHint { value, .. } => {
             load_value(assembler, allocation, *value, Reg(16))?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(16))?;
@@ -370,11 +370,20 @@ pub fn lower_op(
             }
             call_pc = Some(checked_call_pc);
         }
-        OpKind::Builtin { name, args, .. } => {
+        OpKind::Builtin {
+            name,
+            args,
+            specialization,
+            specialization_disabled,
+        } => {
             call_pc = Some(super::checked_ops::lower_builtin_op(
                 assembler,
-                name,
-                args,
+                super::checked_ops::BuiltinCall::new(
+                    name,
+                    args,
+                    *specialization,
+                    *specialization_disabled,
+                ),
                 result,
                 allocation,
                 abi,

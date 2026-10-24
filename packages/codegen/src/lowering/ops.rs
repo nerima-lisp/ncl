@@ -107,7 +107,7 @@ pub(super) fn lower_op(
                 store(assembler, slots, result, Reg::R10)?;
             }
         }
-        OpKind::Move { value } | OpKind::Convert { value, .. } => {
+        OpKind::Move { value } | OpKind::TypeHint { value, .. } | OpKind::Convert { value, .. } => {
             load(assembler, slots, *value, Reg::R10)?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::R10)?;

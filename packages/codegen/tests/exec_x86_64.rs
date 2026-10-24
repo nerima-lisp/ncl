@@ -320,6 +320,7 @@ fn executes_builtin_call_with_context_and_arguments() {
                 name: "add".into(),
                 args: vec![left, right],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )

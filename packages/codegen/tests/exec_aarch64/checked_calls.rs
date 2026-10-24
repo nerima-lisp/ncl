@@ -123,6 +123,7 @@ fn executes_builtin_call_with_context_and_arguments() {
                 name: "add".into(),
                 args: vec![left, right],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -231,6 +232,7 @@ fn make_value_cell_error_stops_before_downstream_builtin() {
                 name: "after-value-cell-error".into(),
                 args: vec![cell],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -285,6 +287,7 @@ fn builtin_error_stops_before_downstream_builtin() {
                 name: "error-return".into(),
                 args: vec![value],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -295,6 +298,7 @@ fn builtin_error_stops_before_downstream_builtin() {
                 name: "after-error".into(),
                 args: vec![error],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -332,3 +336,6 @@ mod calls;
 
 #[path = "checked_calls/handlers.rs"]
 mod handlers;
+
+#[path = "checked_calls/fixnum.rs"]
+mod fixnum;

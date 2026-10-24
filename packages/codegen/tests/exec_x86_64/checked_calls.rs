@@ -256,6 +256,7 @@ fn builtin(
             name: name.into(),
             args,
             specialization: None,
+            specialization_disabled: false,
         },
         Ty::Word,
     )

@@ -309,6 +309,26 @@ fn fixnum_overflow_promotes_to_bignum() {
     }
 }
 
+/// A declared fixnum does not suppress the runtime tag check when its value is
+/// actually a float; the generic arithmetic fallback must keep that value.
+#[test]
+fn declared_fixnum_mismatch_uses_generic_fallback() {
+    assert_eval("(let ((x 1.5)) (declare (type fixnum x)) (+ x 2))", "3.5");
+}
+
+/// A nonnumeric operand must reach the generic builtin and preserve its type
+/// condition instead of producing a tagged-arithmetic result.
+#[test]
+fn checked_fixnum_nonnumeric_operand_preserves_type_condition() {
+    let output = run_ncl("(+ \"x\" 1)");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim_end(),
+        "ncl: object error: TypeError"
+    );
+    assert!(output.stdout.is_empty());
+}
+
 /// `EXPT` must return an exact result for a rational base and an integer
 /// exponent (`packages/lib/numbers/src/transcendental.rs`); only a float or
 /// complex operand should fall back to the transcendental float path.

@@ -194,7 +194,7 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
-        OpKind::Move { value } | OpKind::Convert { value, .. } => {
+        OpKind::Move { value } | OpKind::Convert { value, .. } | OpKind::TypeHint { value, .. } => {
             load_slot(assembler, slots, *value, FUNCTION_OBJECT)?;
             if let Some(result) = result {
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;

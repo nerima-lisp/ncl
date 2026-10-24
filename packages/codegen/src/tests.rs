@@ -350,6 +350,7 @@ fn golden_builtin_call_has_call_safepoint() {
                     name: "identity".into(),
                     args: Vec::new(),
                     specialization: None,
+                    specialization_disabled: false,
                 },
                 &[Ty::Word]
             )

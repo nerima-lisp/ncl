@@ -5,10 +5,10 @@ use std::path::Path;
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, Local, ObjectRef, Runtime, Scope, ThreadContext, Word, car, cdr,
-    classify_object, make_complex, make_cons, make_simple_vector, make_specialized_array,
-    make_string, make_structure, make_symbol, pop_root, push_root, simple_vector_length,
-    simple_vector_ref, string_length, string_ref, symbol_name,
+    ArrayElementType, HeapRootedWord, HeapRootedWords, Local, ObjectRef, Runtime, Scope,
+    ThreadContext, Word, car, cdr, classify_object, make_complex, make_cons, make_simple_vector,
+    make_specialized_array, make_string, make_structure, make_symbol, pop_root, push_root,
+    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
 };
 
 use crate::error::ReadError;
@@ -38,9 +38,12 @@ pub fn read_sharp(
             let Some(form) = form else {
                 return Err(ReadError::UnexpectedEof);
             };
+            let form = HeapRootedWord::new(ctx, form)?;
             let function = intern_common_lisp(ctx, runtime, "FUNCTION")?;
-            let cell = make_cons(ctx, runtime, form, Word::NIL)?;
-            Ok(Some(make_cons(ctx, runtime, function, cell)?))
+            let function = HeapRootedWord::new(ctx, function)?;
+            let cell = make_cons(ctx, runtime, form.get(), Word::NIL)?;
+            let cell = HeapRootedWord::new(ctx, cell)?;
+            Ok(Some(make_cons(ctx, runtime, function.get(), cell.get())?))
         }
         '(' => {
             let list = read_list(ctx, runtime, source, opts, rt, labels)?;
@@ -156,7 +159,7 @@ fn read_structure(
     let class: ncl_object::Handle<'_, Word> = scope.root(Local::from_word(class_word));
     let slots = simple_vector_ref(scope.context(), scope.get(class).as_word(), 4)?;
     let slot_count = simple_vector_length(scope.context(), slots)?;
-    let mut values = vec![Word::NIL; slot_count];
+    let values = HeapRootedWords::new(scope.context(), &vec![Word::NIL; slot_count])?;
     let mut seen = vec![false; slot_count];
     let mut index = 1;
     while index < fields.len() {
@@ -191,11 +194,13 @@ fn read_structure(
             return Err(ReadError::StructureSyntax);
         }
         *seen.get_mut(slot_index).ok_or(ReadError::StructureSyntax)? = true;
-        *values
-            .get_mut(slot_index)
-            .ok_or(ReadError::StructureSyntax)? = scope.get(value).as_word();
+        values
+            .get(slot_index)
+            .ok_or(ReadError::StructureSyntax)?
+            .set(scope.get(value).as_word());
         index += 2;
     }
+    let values = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
     Ok(make_structure(
         scope.context_mut(),
         runtime,
@@ -218,12 +223,14 @@ fn list_to_vector(
     runtime: &Runtime,
     list: Word,
 ) -> Result<Word, ReadError> {
-    let mut elements: Vec<Word> = Vec::new();
-    let mut cursor = list;
-    while cursor != Word::NIL {
-        elements.push(car(ctx, cursor)?);
-        cursor = cdr(ctx, cursor)?;
+    let cursor = HeapRootedWord::new(ctx, list)?;
+    let mut elements = HeapRootedWords::default();
+    while cursor.get() != Word::NIL {
+        let element = car(ctx, cursor.get())?;
+        elements.push(ctx, element)?;
+        cursor.set(cdr(ctx, cursor.get())?);
     }
+    let elements = elements.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
     Ok(make_simple_vector(ctx, runtime, &elements)?)
 }
 
@@ -269,7 +276,8 @@ fn read_uninterned(
     let range = 0..token.characters().len();
     let name = token.fold_name(&range, case);
     let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-    Ok(make_symbol(ctx, runtime, name_word)?)
+    let name_word = HeapRootedWord::new(ctx, name_word)?;
+    Ok(make_symbol(ctx, runtime, name_word.get())?)
 }
 
 /// Read a `#+` or `#-` conditional, producing the form it selects.
@@ -402,14 +410,15 @@ fn read_complex(
         ));
     }
     let list = read_list(ctx, runtime, source, opts, rt, labels)?;
-    let real = car(ctx, list)?;
+    let real = HeapRootedWord::new(ctx, car(ctx, list)?)?;
     let rest = cdr(ctx, list)?;
     let imag = if rest == Word::NIL {
         Word::fixnum(0)
     } else {
         car(ctx, rest)?
     };
-    Ok(make_complex(ctx, runtime, real, imag)?.into())
+    let imag = HeapRootedWord::new(ctx, imag)?;
+    Ok(make_complex(ctx, runtime, real.get(), imag.get())?.into())
 }
 
 /// Read a `#n=` label definition and store the form for `#n#` references.

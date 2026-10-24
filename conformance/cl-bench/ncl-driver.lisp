@@ -26,8 +26,9 @@
 (defmacro defbench (name &rest options)
   (let ((function (getf options :function))
         (runs (or (getf options :runs) 1))
-        (setup (getf options :setup)))
-    `(push (list ',name ,function ,runs ,setup) *benchmarks*)))
+        (setup (getf options :setup))
+        (display-name (or (getf options :short) `(quote ,name))))
+    `(push (list ,display-name ,function ,runs ,setup) *benchmarks*)))
 
 (progn
   (defun elapsed-seconds (start finish)

@@ -181,6 +181,10 @@ fn if_form(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
+    let arguments = arguments
+        .into_iter()
+        .map(|argument| HeapRootedWord::new(expander.ctx(), argument))
+        .collect::<Result<Vec<_>, _>>()?;
     let Some((test, rest)) = arguments.split_first() else {
         return Err(special::arity(kind, "a test and a then form", 0));
     };
@@ -191,11 +195,11 @@ fn if_form(
             arguments.len(),
         ));
     }
-    let test = expander.expand(*test)?;
-    let then = expander.expand(rest[0])?;
+    let test = expander.expand(test.get())?;
+    let then = expander.expand(rest[0].get())?;
     let otherwise = rest
         .get(1)
-        .map(|value| expander.expand(*value))
+        .map(|value| expander.expand(value.get()))
         .transpose()?
         .map(Box::new);
     Ok(Expr::If {

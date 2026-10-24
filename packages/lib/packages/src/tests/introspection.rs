@@ -461,13 +461,356 @@ fn package_local_nickname_resolution_survives_gc_stress() -> Result<(), ObjectEr
     Package::from_word(owner).set_local_nicknames(&mut ctx, entries)?;
     assert_eq!(
         Package::from_word(owner)
-            .resolve_local_nickname(&ctx, StringObject::from_word(nickname),)?,
+            .resolve_local_nickname(&ctx, ncl_object::StringObject::from_word(nickname),)?,
         Some(Package::from_word(target))
     );
 
     assert!(ncl_object::pop_root(&mut ctx, entries_token));
     assert!(ncl_object::pop_root(&mut ctx, entry_token));
     assert!(ncl_object::pop_root(&mut ctx, nickname_token));
+    assert!(ncl_object::pop_root(&mut ctx, target_token));
+    assert!(ncl_object::pop_root(&mut ctx, owner_token));
+    Ok(())
+}
+
+#[test]
+fn package_and_string_designators_accept_characters() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let package = runtime.ensure_package(&mut ctx, "P")?;
+    let target = runtime.ensure_package(&mut ctx, "T")?;
+    let function = |ctx: &mut ThreadContext, name: &str| {
+        FunctionObject::try_from(
+            runtime
+                .function(ctx, "COMMON-LISP", name)
+                .ok_or(ObjectError::Layout)?,
+        )
+    };
+    let package_char = Word::character(u32::from('P'));
+    let target_char = Word::character(u32::from('T'));
+
+    let find_package = function(&mut ctx, "FIND-PACKAGE")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[package_char]),
+        Ok(package)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[package]),
+        Ok(package)
+    );
+
+    let package_name = function(&mut ctx, "PACKAGE-NAME")?;
+    let expected_package_name = Package::from_word(package).name(&ctx)?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, package_name, &[package_char]),
+        Ok(expected_package_name)
+    );
+    let package_nicknames = function(&mut ctx, "PACKAGE-NICKNAMES")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, package_nicknames, &[package_char]),
+        Ok(Word::NIL)
+    );
+    let package_shadowing_symbols = function(&mut ctx, "PACKAGE-SHADOWING-SYMBOLS")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, package_shadowing_symbols, &[package_char]),
+        Ok(Word::NIL)
+    );
+
+    let use_package = function(&mut ctx, "USE-PACKAGE")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, use_package, &[package_char, target_char]),
+        Ok(Word::TRUE)
+    );
+    let package_use_list = function(&mut ctx, "PACKAGE-USE-LIST")?;
+    let used_by_target = runtime.call_builtin(&mut ctx, package_use_list, &[target_char])?;
+    assert_eq!(list_items(&ctx, used_by_target)?, vec![package]);
+    let package_used_by_list = function(&mut ctx, "PACKAGE-USED-BY-LIST")?;
+    let users_of_package = runtime.call_builtin(&mut ctx, package_used_by_list, &[package_char])?;
+    assert_eq!(list_items(&ctx, users_of_package)?, vec![target]);
+
+    let intern = function(&mut ctx, "INTERN")?;
+    let character_name = Word::character(u32::from('Z'));
+    let string_name = ncl_object::make_string(&mut ctx, &runtime, &['Z'])?;
+    let symbol = runtime.call_builtin(&mut ctx, intern, &[string_name, package_char])?;
+    let find_symbol = function(&mut ctx, "FIND-SYMBOL")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_symbol, &[string_name, package_char]),
+        Ok(symbol)
+    );
+    let find_all_symbols = function(&mut ctx, "FIND-ALL-SYMBOLS")?;
+    let all_matching_symbols =
+        runtime.call_builtin(&mut ctx, find_all_symbols, &[character_name])?;
+    assert!(list_items(&ctx, all_matching_symbols)?.contains(&symbol));
+    let unintern = function(&mut ctx, "UNINTERN")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, unintern, &[symbol, package_char]),
+        Ok(Word::TRUE)
+    );
+
+    let shadow = function(&mut ctx, "SHADOW")?;
+    let shadow_name = ncl_object::make_cons(
+        &mut ctx,
+        &runtime,
+        Word::character(u32::from('X')),
+        Word::NIL,
+    )?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, shadow, &[shadow_name, package_char],),
+        Ok(Word::TRUE)
+    );
+    let shadowing = runtime.call_builtin(&mut ctx, package_shadowing_symbols, &[package_char])?;
+    let shadowing = list_items(&ctx, shadowing)?;
+    assert_eq!(shadowing.len(), 1);
+    let shadow_name = ncl_object::symbol_name(&ctx, shadowing[0])?;
+    assert_eq!(ncl_object::string_length(&ctx, shadow_name)?, 1);
+    assert_eq!(ncl_object::string_ref(&ctx, shadow_name, 0)?, 'X');
+
+    let delete_package = function(&mut ctx, "DELETE-PACKAGE")?;
+    runtime.ensure_package(&mut ctx, "D")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, delete_package, &[Word::character(u32::from('D'))],),
+        Ok(Word::TRUE)
+    );
+    Ok(())
+}
+
+#[test]
+fn make_and_rename_package_accept_character_designators() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let function = |ctx: &mut ThreadContext, name: &str| {
+        FunctionObject::try_from(
+            runtime
+                .function(ctx, "COMMON-LISP", name)
+                .ok_or(ObjectError::Layout)?,
+        )
+    };
+    let make_package = function(&mut ctx, "MAKE-PACKAGE")?;
+    let nicknames_key =
+        ncl_object::make_string(&mut ctx, &runtime, &"NICKNAMES".chars().collect::<Vec<_>>())?;
+    let nickname = Word::character(u32::from('R'));
+    let nickname_list = ncl_object::make_cons(&mut ctx, &runtime, nickname, Word::NIL)?;
+    let package = runtime.call_builtin(
+        &mut ctx,
+        make_package,
+        &[
+            Word::character(u32::from('Q')),
+            nicknames_key,
+            nickname_list,
+        ],
+    )?;
+    let find_package = function(&mut ctx, "FIND-PACKAGE")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[Word::character(u32::from('Q'))]),
+        Ok(package)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[nickname]),
+        Ok(package)
+    );
+    let package_nicknames = function(&mut ctx, "PACKAGE-NICKNAMES")?;
+    let nicknames = runtime.call_builtin(
+        &mut ctx,
+        package_nicknames,
+        &[Word::character(u32::from('Q'))],
+    )?;
+    let nicknames = list_items(&ctx, nicknames)?;
+    assert_eq!(nicknames.len(), 1);
+    assert_eq!(ncl_object::string_ref(&ctx, nicknames[0], 0)?, 'R');
+
+    let rename_package = function(&mut ctx, "RENAME-PACKAGE")?;
+    let renamed_nickname = Word::character(u32::from('S'));
+    let renamed_nicknames = ncl_object::make_cons(&mut ctx, &runtime, renamed_nickname, Word::NIL)?;
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            rename_package,
+            &[package, Word::character(u32::from('U')), renamed_nicknames,],
+        ),
+        Ok(package)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[Word::character(u32::from('U'))]),
+        Ok(package)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[renamed_nickname]),
+        Ok(package)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, find_package, &[Word::character(u32::from('Q'))]),
+        Ok(Word::NIL)
+    );
+
+    let use_source = runtime.ensure_package(&mut ctx, "V")?;
+    let use_key = ncl_object::make_string(&mut ctx, &runtime, &['U', 'S', 'E'])?;
+    let use_designator = ncl_object::make_cons(
+        &mut ctx,
+        &runtime,
+        Word::character(u32::from('V')),
+        Word::NIL,
+    )?;
+    let used_package = runtime.call_builtin(
+        &mut ctx,
+        make_package,
+        &[Word::character(u32::from('W')), use_key, use_designator],
+    )?;
+    let package_use_list = function(&mut ctx, "PACKAGE-USE-LIST")?;
+    let used_packages = runtime.call_builtin(
+        &mut ctx,
+        package_use_list,
+        &[Word::character(u32::from('W'))],
+    )?;
+    assert_eq!(list_items(&ctx, used_packages)?, vec![use_source]);
+    let used_package_name = Package::from_word(used_package).name(&ctx)?;
+    assert_eq!(ncl_object::string_length(&ctx, used_package_name)?, 1);
+    assert_eq!(ncl_object::string_ref(&ctx, used_package_name, 0)?, 'W');
+    Ok(())
+}
+
+#[test]
+fn gentemp_requires_string_prefix_and_accepts_package_designators_under_gc_stress()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let mut package = runtime.ensure_package(&mut ctx, "G")?;
+    let package_token = ncl_object::push_root(&mut ctx, &mut package);
+    let gentemp = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GENTEMP")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let mut string_prefix = ncl_object::make_string(&mut ctx, &runtime, &['S'])?;
+    let string_prefix_token = ncl_object::push_root(&mut ctx, &mut string_prefix);
+
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, gentemp, &[Word::character(u32::from('P'))]),
+        Err(ObjectError::TypeError)
+    );
+
+    let mut character_package_symbol = runtime
+        .call_builtin(
+            &mut ctx,
+            gentemp,
+            &[string_prefix, Word::character(u32::from('G'))],
+        )
+        .unwrap_or_else(|error| panic!("GENTEMP String prefix with Character package: {error:?}"));
+    let character_package_symbol_token =
+        ncl_object::push_root(&mut ctx, &mut character_package_symbol);
+    assert_eq!(
+        ncl_object::symbol_package(&ctx, character_package_symbol)?,
+        package
+    );
+    let character_package_name = ncl_object::symbol_name(&ctx, character_package_symbol)?;
+    assert_eq!(
+        ncl_object::string_ref(&ctx, character_package_name, 0)?,
+        'S'
+    );
+    assert!(ncl_object::pop_root(
+        &mut ctx,
+        character_package_symbol_token
+    ));
+
+    let mut object_package_symbol = runtime
+        .call_builtin(&mut ctx, gentemp, &[string_prefix, package])
+        .unwrap_or_else(|error| panic!("GENTEMP String prefix with Package object: {error:?}"));
+    let object_package_symbol_token = ncl_object::push_root(&mut ctx, &mut object_package_symbol);
+    assert_eq!(
+        ncl_object::symbol_package(&ctx, object_package_symbol)?,
+        package
+    );
+    let object_package_name = ncl_object::symbol_name(&ctx, object_package_symbol)?;
+    assert_eq!(ncl_object::string_ref(&ctx, object_package_name, 0)?, 'S');
+    assert!(ncl_object::pop_root(&mut ctx, object_package_symbol_token));
+
+    assert!(ncl_object::pop_root(&mut ctx, string_prefix_token));
+    assert!(ncl_object::pop_root(&mut ctx, package_token));
+    Ok(())
+}
+
+#[test]
+fn package_local_nickname_character_designators_survive_gc_stress() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    crate::register(&runtime)?;
+    let mut owner = runtime.ensure_package(&mut ctx, "O")?;
+    let owner_token = ncl_object::push_root(&mut ctx, &mut owner);
+    let mut target = runtime.ensure_package(&mut ctx, "T")?;
+    let target_token = ncl_object::push_root(&mut ctx, &mut target);
+    let function = |ctx: &mut ThreadContext, name: &str| {
+        FunctionObject::try_from(
+            runtime
+                .function(ctx, "NCL-EXT", name)
+                .ok_or(ObjectError::Layout)?,
+        )
+    };
+    let add = function(&mut ctx, "ADD-PACKAGE-LOCAL-NICKNAME")?;
+    let remove = function(&mut ctx, "REMOVE-PACKAGE-LOCAL-NICKNAME")?;
+    let list = function(&mut ctx, "PACKAGE-LOCAL-NICKNAMES")?;
+    let owner_designator = Word::character(u32::from('O'));
+    let nickname_designator = Word::character(u32::from('L'));
+    let target_designator = Word::character(u32::from('T'));
+
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let mut added = runtime
+        .call_builtin(
+            &mut ctx,
+            add,
+            &[nickname_designator, target_designator, owner_designator],
+        )
+        .unwrap_or_else(|error| panic!("ADD-PACKAGE-LOCAL-NICKNAME call: {error:?}"));
+    let added_token = ncl_object::push_root(&mut ctx, &mut added);
+    assert_eq!(
+        ncl_object::string_ref(&ctx, added, 0)
+            .unwrap_or_else(|error| panic!("added nickname character: {error:?}")),
+        'L'
+    );
+    let entries = runtime
+        .call_builtin(&mut ctx, list, &[owner_designator])
+        .unwrap_or_else(|error| panic!("PACKAGE-LOCAL-NICKNAMES call: {error:?}"));
+    let entry = ncl_object::car(&ctx, entries)
+        .unwrap_or_else(|error| panic!("local nickname entry: {error:?}"));
+    let stored_nickname = ncl_object::car(&ctx, entry)
+        .unwrap_or_else(|error| panic!("stored local nickname: {error:?}"));
+    assert_eq!(
+        ncl_object::string_ref(&ctx, stored_nickname, 0)
+            .unwrap_or_else(|error| panic!("stored nickname character: {error:?}")),
+        'L'
+    );
+    let stored_target = ncl_object::cdr(&ctx, entry)
+        .unwrap_or_else(|error| panic!("stored nickname target: {error:?}"));
+    assert_eq!(stored_target, target);
+    assert_eq!(
+        Package::from_word(owner)
+            .resolve_local_nickname(&ctx, ncl_object::StringObject::from_word(added),)?,
+        Some(Package::from_word(target))
+    );
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, remove, &[nickname_designator, owner_designator],),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        Package::from_word(owner)
+            .resolve_local_nickname(&ctx, ncl_object::StringObject::from_word(added),)?,
+        None
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, list, &[owner_designator]),
+        Ok(Word::NIL)
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, added_token));
     assert!(ncl_object::pop_root(&mut ctx, target_token));
     assert!(ncl_object::pop_root(&mut ctx, owner_token));
     Ok(())

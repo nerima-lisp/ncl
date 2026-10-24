@@ -365,17 +365,7 @@ fn next_gensym_counter(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Str
 }
 
 fn package_arg(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<Package, ObjectError> {
-    match ncl_object::classify_object(ctx, word) {
-        ObjectRef::Package(_) => Ok(Package::from_word(word)),
-        ObjectRef::String(_) | ObjectRef::Symbol(_) => {
-            let name = text(ctx, word)?;
-            runtime
-                .find_package(ctx, &name)
-                .map(Package::from_word)
-                .ok_or(ObjectError::TypeError)
-        }
-        _ => Err(ObjectError::TypeError),
-    }
+    super::introspection::package_designator(ctx, runtime, word)
 }
 
 fn gentemp(
@@ -384,33 +374,43 @@ fn gentemp(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let prefix = args
-        .get(0)
-        .map(|word| text(ctx, word))
-        .transpose()?
-        .unwrap_or_else(|| "T".to_owned());
+    let prefix = if let Some(word) = args.get(0) {
+        if !matches!(ncl_object::classify_object(ctx, word), ObjectRef::String(_)) {
+            return Err(ObjectError::TypeError);
+        }
+        text(ctx, word)?
+    } else {
+        "T".to_owned()
+    };
     let package_word = if let Some(word) = args.get(1) {
         word
     } else {
         runtime.ensure_package(ctx, "COMMON-LISP-USER")?
     };
-    let package = package_arg(ctx, runtime, package_word)?;
-    loop {
-        let counter = next_gensym_counter(ctx, runtime)?;
-        let name = format!("{prefix}{counter}");
-        let mut roots = [make_string(
-            ctx,
-            runtime,
-            &name.chars().collect::<Vec<_>>(),
-        )?];
-        if with_rooted_words(ctx, &mut roots, |ctx, roots| {
-            Ok(package.find_symbol(ctx, roots[0])?.is_some())
-        })? {
-            continue;
+    let mut package = package_arg(ctx, runtime, package_word)?.as_word();
+    with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+        loop {
+            let counter = next_gensym_counter(ctx, runtime)?;
+            let name = format!("{prefix}{counter}");
+            let mut roots = [make_string(
+                ctx,
+                runtime,
+                &name.chars().collect::<Vec<_>>(),
+            )?];
+            if with_rooted_words(ctx, &mut roots, |ctx, roots| {
+                let package_word = package.first().copied().ok_or(ObjectError::Layout)?;
+                let name_word = roots.first().copied().ok_or(ObjectError::Layout)?;
+                Ok(Package::from_word(package_word)
+                    .find_symbol(ctx, name_word)?
+                    .is_some())
+            })? {
+                continue;
+            }
+            let package_word = package.first().copied().ok_or(ObjectError::Layout)?;
+            let (symbol, _) = Package::from_word(package_word).intern(ctx, runtime, &name)?;
+            return Ok(symbol);
         }
-        let (symbol, _) = package.intern(ctx, runtime, &name)?;
-        return Ok(symbol);
-    }
+    })
 }
 
 /// Register Common Lisp symbol builtins.

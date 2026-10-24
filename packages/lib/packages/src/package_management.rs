@@ -1,4 +1,7 @@
-use super::{list_items, package_arg, package_designator, string_designator, with_rooted_words};
+use super::{
+    list_items, package_arg, package_designator, string_designator_text, string_designator_word,
+    with_rooted_words,
+};
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
     Runtime, ThreadContext, Word, classify_object,
@@ -39,13 +42,14 @@ pub(super) fn rename_package(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let package = package_arg(ctx, runtime, args, 0)?.as_word();
-    let name = string_designator(ctx, args.required(1)?)?.as_word();
-    let mut roots = [package, name];
-    let mut nicknames = list_items(ctx, args.get(2).unwrap_or(Word::NIL))?;
+    let mut roots = [package, Word::NIL];
     with_rooted_words(ctx, &mut roots, |ctx, roots| {
+        let name = string_designator_word(ctx, runtime, args.required(1)?)?;
+        *roots.get_mut(1).ok_or(ObjectError::Layout)? = name;
+        let mut nicknames = list_items(ctx, args.get(2).unwrap_or(Word::NIL))?;
         with_rooted_words(ctx, &mut nicknames, |ctx, nicknames| {
             for nickname in nicknames.iter_mut() {
-                *nickname = string_designator(ctx, *nickname)?.as_word();
+                *nickname = string_designator_word(ctx, runtime, *nickname)?;
             }
 
             let mut nickname_list = Word::NIL;
@@ -91,10 +95,7 @@ pub(super) fn make_package(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = string_designator(ctx, args.required(0)?)?;
-    let name = (0..ncl_object::string_length(ctx, name.as_word())?)
-        .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
-        .collect::<Result<String, _>>()?;
+    let name = string_designator_text(ctx, args.required(0)?)?;
     if runtime.find_package(ctx, &name).is_some() {
         return Err(ObjectError::PackageConflict);
     }
@@ -104,10 +105,7 @@ pub(super) fn make_package(
     while index < args.len() {
         let key = args.get(index).ok_or(ObjectError::TypeError)?;
         let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
-        let key = string_designator(ctx, key)?;
-        let key = (0..ncl_object::string_length(ctx, key.as_word())?)
-            .map(|offset| ncl_object::string_ref(ctx, key.as_word(), offset))
-            .collect::<Result<String, _>>()?;
+        let key = string_designator_text(ctx, key)?;
         match key.as_str() {
             "USE" => {
                 for used in list_items(ctx, value)? {
@@ -128,17 +126,10 @@ pub(super) fn make_package(
                 while index < args.len() {
                     let key = args.get(index).ok_or(ObjectError::TypeError)?;
                     let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
-                    let key = string_designator(ctx, key)?;
-                    let key = (0..ncl_object::string_length(ctx, key.as_word())?)
-                        .map(|offset| ncl_object::string_ref(ctx, key.as_word(), offset))
-                        .collect::<Result<String, _>>()?;
+                    let key = string_designator_text(ctx, key)?;
                     match key.as_str() {
                         "NICKNAMES" => {
-                            for nickname in list_items(ctx, value)? {
-                                let nickname = string_designator(ctx, nickname)?.as_word();
-                                nicknames[0] =
-                                    ncl_object::make_cons(ctx, runtime, nickname, nicknames[0])?;
-                            }
+                            append_package_nicknames(ctx, runtime, nicknames, value)?;
                         }
                         "USE" | "DOCUMENTATION" | "SIZE" => {}
                         _ => return Err(ObjectError::TypeError),
@@ -175,5 +166,28 @@ pub(super) fn make_package(
                 })
             },
         )
+    })
+}
+
+fn append_package_nicknames(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    nicknames: &mut [Word],
+    value: Word,
+) -> Result<(), ObjectError> {
+    let mut values = list_items(ctx, value)?;
+    with_rooted_words(ctx, &mut values, |ctx, values| {
+        for nickname in values.iter().copied() {
+            let mut nickname = string_designator_word(ctx, runtime, nickname)?;
+            with_rooted_words(ctx, std::slice::from_mut(&mut nickname), |ctx, nickname| {
+                let nickname_word = nickname.first().copied().ok_or(ObjectError::Layout)?;
+                let nicknames_tail = nicknames.first().copied().ok_or(ObjectError::Layout)?;
+                let next_nicknames =
+                    ncl_object::make_cons(ctx, runtime, nickname_word, nicknames_tail)?;
+                *nicknames.first_mut().ok_or(ObjectError::Layout)? = next_nicknames;
+                Ok(())
+            })?;
+        }
+        Ok(())
     })
 }

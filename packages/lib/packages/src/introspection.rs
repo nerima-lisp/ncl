@@ -3,7 +3,9 @@
 #[path = "package_management.rs"]
 mod package_management;
 
+mod designators;
 mod register;
+pub use designators::{package_designator, string_designator_text, string_designator_word};
 pub use register::register;
 
 mod intern_symbol;
@@ -64,33 +66,6 @@ const ONE_OBJECT: &[Parameter] = &[OBJECT];
 const ONE_NAME: &[Parameter] = &[NAME];
 const ONE_FIND_PACKAGE_NAME: &[Parameter] = &[FIND_PACKAGE_NAME];
 const ONE_SYMBOLS: &[Parameter] = &[SYMBOLS];
-pub fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
-    match classify_object(ctx, word) {
-        ObjectRef::String(_) => Ok(StringObject::from_word(word)),
-        ObjectRef::Symbol(symbol) => Ok(StringObject::from_word(symbol_name(ctx, symbol)?)),
-        _ => Err(ObjectError::TypeError),
-    }
-}
-
-pub fn package_designator(
-    ctx: &ThreadContext,
-    runtime: &Runtime,
-    word: Word,
-) -> Result<Package, ObjectError> {
-    if let ObjectRef::Package(package) = classify_object(ctx, word) {
-        return Ok(Package::from_word(package));
-    }
-    let name = string_designator(ctx, word)?;
-    let length = ncl_object::string_length(ctx, name.as_word())?;
-    let name = (0..length)
-        .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
-        .collect::<Result<String, _>>()?;
-    runtime
-        .find_package(ctx, &name)
-        .map(Package::from_word)
-        .ok_or(ObjectError::TypeError)
-}
-
 pub fn package_arg(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -124,6 +99,17 @@ pub fn list_items(ctx: &ThreadContext, mut list: Word) -> Result<Vec<Word>, Obje
     Ok(result)
 }
 
+fn string_designator(ctx: &ThreadContext, word: Word) -> Result<StringObject, ObjectError> {
+    let object = classify_object(ctx, word);
+    if let ObjectRef::String(_) = object {
+        Ok(StringObject::from_word(word))
+    } else if let ObjectRef::Symbol(symbol) = object {
+        Ok(StringObject::from_word(symbol_name(ctx, symbol)?))
+    } else {
+        Err(ObjectError::TypeError)
+    }
+}
+
 fn find_package(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -134,39 +120,35 @@ fn find_package(
     if matches!(classify_object(ctx, argument), ObjectRef::Package(_)) {
         return Ok(argument);
     }
-    let name = string_designator(ctx, argument)?;
-    let length = ncl_object::string_length(ctx, name.as_word())?;
-    let name = (0..length)
-        .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
-        .collect::<Result<String, _>>()?;
+    let name = string_designator_text(ctx, argument)?;
     Ok(runtime.find_package(ctx, &name).unwrap_or(Word::NIL))
 }
 
 fn package_name(
     ctx: &mut ThreadContext,
-    _: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Package::try_from_word(ctx, args.required(0)?)?.name(ctx)
+    package_arg(ctx, runtime, args, 0)?.name(ctx)
 }
 
 fn package_nicknames(
     ctx: &mut ThreadContext,
-    _: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Package::try_from_word(ctx, args.required(0)?)?.nicknames(ctx)
+    package_arg(ctx, runtime, args, 0)?.nicknames(ctx)
 }
 
 fn package_shadowing_symbols(
     ctx: &mut ThreadContext,
-    _: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Package::try_from_word(ctx, args.required(0)?)?.shadowing_symbols(ctx)
+    package_arg(ctx, runtime, args, 0)?.shadowing_symbols(ctx)
 }
 
 fn package_use_list(
@@ -211,31 +193,29 @@ fn find_all_symbols(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut name = string_designator(ctx, args.required(0)?).map(StringObject::as_word)?;
-    let name_length = ncl_object::string_length(ctx, name)?;
+    let name = string_designator_text(ctx, args.required(0)?)?
+        .chars()
+        .collect::<Vec<_>>();
+    let name_length = name.len();
     let mut candidates = Vec::new();
     for package in runtime.all_packages(ctx)? {
         Package::from_word(package).for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
     }
     let mut symbols = Vec::new();
-    with_rooted_words(ctx, std::slice::from_mut(&mut name), |ctx, name| {
-        with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
-            for symbol in candidates.iter().copied() {
-                if symbols.contains(&symbol) {
-                    continue;
-                }
-                let symbol_name = symbol_name(ctx, symbol)?;
-                if ncl_object::string_length(ctx, symbol_name)? == name_length
-                    && (0..name_length).all(|index| {
-                        ncl_object::string_ref(ctx, symbol_name, index)
-                            == ncl_object::string_ref(ctx, name[0], index)
-                    })
-                {
-                    symbols.push(symbol);
-                }
+    with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
+        for symbol in candidates.iter().copied() {
+            if symbols.contains(&symbol) {
+                continue;
             }
-            Ok(())
-        })?;
+            let symbol_name = symbol_name(ctx, symbol)?;
+            if ncl_object::string_length(ctx, symbol_name)? == name_length
+                && name.iter().copied().enumerate().all(|(index, character)| {
+                    ncl_object::string_ref(ctx, symbol_name, index) == Ok(character)
+                })
+            {
+                symbols.push(symbol);
+            }
+        }
         Ok(())
     })?;
     with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
@@ -283,8 +263,10 @@ fn find_symbol(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = string_designator(ctx, args.required(0)?)?;
+    let name = string_designator_text(ctx, name.as_word())?;
     let package = package_arg(ctx, runtime, args, 1)?;
-    let found = package.find_symbol(ctx, name.as_word())?;
+    let name_word = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+    let found = package.find_symbol(ctx, name_word)?;
     let Some((symbol, status)) = found else {
         values.set(&[Word::NIL, Word::NIL]);
         return Ok(Word::NIL);
@@ -343,9 +325,10 @@ fn unintern(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = string_designator(ctx, args.required(0)?)?;
+    let name = string_designator_text(ctx, args.required(0)?)?;
     let package = package_arg(ctx, runtime, args, 1)?;
-    Ok(if package.unintern(ctx, runtime, name.as_word())? {
+    let name_word = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+    Ok(if package.unintern(ctx, runtime, name_word)? {
         Word::TRUE
     } else {
         Word::NIL
@@ -385,7 +368,9 @@ fn shadow(
         let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
             for name in names.iter().copied() {
-                let name = string_designator(ctx, name)?.as_word();
+                let name = string_designator_text(ctx, name)?;
+                let name =
+                    ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
                 Package::from_word(package[0]).shadow(ctx, runtime, name)?;
             }
             Ok(Word::TRUE)

@@ -6,8 +6,7 @@ mod symbols;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FromLispArg, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    Package, PackageDesignator, PackageError, Parameter, ParameterType, Runtime, StringObject,
-    Symbol, ThreadContext, Word,
+    Package, PackageError, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word,
 };
 
 const PACKAGE: Parameter = Parameter {
@@ -34,7 +33,7 @@ const PACKAGE_DESIGNATOR: Parameter = Parameter {
 struct NicknameDesignator(Word);
 
 #[derive(Clone, Copy)]
-struct PackageDesignatorArg(PackageDesignator);
+struct PackageDesignatorArg(Word);
 
 fn with_rooted_words<T>(
     ctx: &mut ThreadContext,
@@ -60,30 +59,36 @@ fn with_rooted_words<T>(
 
 impl FromLispArg for NicknameDesignator {
     fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
-        match ncl_object::classify_object(ctx, word) {
-            ObjectRef::String(_) | ObjectRef::Symbol(_) => Ok(Self(word)),
-            _ => Err(LispError::TypeError {
+        if matches!(
+            ncl_object::classify_object(ctx, word),
+            ObjectRef::String(_) | ObjectRef::Symbol(_) | ObjectRef::Character(_)
+        ) {
+            Ok(Self(word))
+        } else {
+            Err(LispError::TypeError {
                 datum: word,
                 expected: ncl_object::ObjectType::String,
-            }),
+            })
         }
     }
 }
 
 impl FromLispArg for PackageDesignatorArg {
     fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
-        let designator = match ncl_object::classify_object(ctx, word) {
-            ObjectRef::Package(package) => PackageDesignator::Package(Package::from_word(package)),
-            ObjectRef::String(string) => PackageDesignator::String(StringObject::from_word(string)),
-            ObjectRef::Symbol(symbol) => PackageDesignator::Symbol(Symbol::from_word(symbol)),
-            _ => {
-                return Err(LispError::TypeError {
-                    datum: word,
-                    expected: ncl_object::ObjectType::Package,
-                });
-            }
-        };
-        Ok(Self(designator))
+        if matches!(
+            ncl_object::classify_object(ctx, word),
+            ObjectRef::Package(_)
+                | ObjectRef::String(_)
+                | ObjectRef::Symbol(_)
+                | ObjectRef::Character(_)
+        ) {
+            Ok(Self(word))
+        } else {
+            Err(LispError::TypeError {
+                datum: word,
+                expected: ncl_object::ObjectType::Package,
+            })
+        }
     }
 }
 
@@ -128,12 +133,18 @@ fn unlock_package(
 }
 
 fn designator_string(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
     designator: NicknameDesignator,
 ) -> Result<StringObject, LispError> {
     let word = match ncl_object::classify_object(ctx, designator.0) {
         ObjectRef::String(_) => StringObject::from_word(designator.0),
         ObjectRef::Symbol(symbol) => StringObject::from_word(ncl_object::symbol_name(ctx, symbol)?),
+        ObjectRef::Character(character) => {
+            let character =
+                char::from_u32(character).ok_or(LispError::Object(ObjectError::TypeError))?;
+            StringObject::from_word(ncl_object::make_string(ctx, runtime, &[character])?)
+        }
         _ => {
             return Err(LispError::TypeError {
                 datum: designator.0,
@@ -149,27 +160,14 @@ fn package_designator(
     runtime: &Runtime,
     designator: PackageDesignatorArg,
 ) -> Result<Package, LispError> {
-    match designator.0 {
-        PackageDesignator::Package(package) => Ok(package),
-        PackageDesignator::String(string) => {
-            let word = string.as_word();
-            let length = ncl_object::string_length(ctx, word)?;
-            let name = (0..length)
-                .map(|index| ncl_object::string_ref(ctx, word, index))
-                .collect::<Result<String, _>>()?;
-            runtime
-                .find_package(ctx, &name)
-                .map(Package::from_word)
-                .ok_or(LispError::PackageError(PackageError::NotFound))
-        }
-        PackageDesignator::Symbol(symbol) => package_designator(
-            ctx,
-            runtime,
-            PackageDesignatorArg(PackageDesignator::String(StringObject::from_word(
-                ncl_object::symbol_name(ctx, symbol.as_word())?,
-            ))),
-        ),
+    if let ObjectRef::Package(package) = ncl_object::classify_object(ctx, designator.0) {
+        return Ok(Package::from_word(package));
     }
+    let name = introspection::string_designator_text(ctx, designator.0)?;
+    runtime
+        .find_package(ctx, &name)
+        .map(Package::from_word)
+        .ok_or(LispError::PackageError(PackageError::NotFound))
 }
 
 fn ensure_unlocked(ctx: &mut ThreadContext, package: Package) -> Result<(), LispError> {
@@ -187,7 +185,7 @@ fn add_package_local_nickname_impl(
     target: PackageDesignatorArg,
     package: PackageDesignatorArg,
 ) -> Result<Word, LispError> {
-    let nickname = designator_string(ctx, nickname)?;
+    let nickname = designator_string(ctx, runtime, nickname)?;
     let package = package_designator(ctx, runtime, package)?;
     let target = package_designator(ctx, runtime, target)?;
     let mut roots = [nickname.as_word(), target.as_word(), package.as_word()];
@@ -199,22 +197,18 @@ fn add_package_local_nickname_impl(
             return Err(LispError::PackageError(PackageError::Conflict));
         }
         let mut entry = ncl_object::make_cons(ctx, runtime, roots[0], roots[1])?;
-        let entry_token = ncl_object::push_root(ctx, &mut entry);
-        let mut previous = package.local_nicknames(ctx)?;
-        let previous_token = ncl_object::push_root(ctx, &mut previous);
-        let result = ncl_object::make_cons(ctx, runtime, entry, previous)
-            .map_err(LispError::from)
-            .and_then(|entries| {
-                Package::from_word(roots[2]).set_local_nicknames(ctx, entries)?;
+        with_rooted_words(ctx, std::slice::from_mut(&mut entry), |ctx, entry| {
+            let package_word = roots.get(2).copied().ok_or(ObjectError::Layout)?;
+            let mut previous = Package::from_word(package_word).local_nicknames(ctx)?;
+            with_rooted_words(ctx, std::slice::from_mut(&mut previous), |ctx, previous| {
+                let entry_word = entry.first().copied().ok_or(ObjectError::Layout)?;
+                let previous_word = previous.first().copied().ok_or(ObjectError::Layout)?;
+                let entries = ncl_object::make_cons(ctx, runtime, entry_word, previous_word)?;
+                let package_word = roots.get(2).copied().ok_or(ObjectError::Layout)?;
+                Package::from_word(package_word).set_local_nicknames(ctx, entries)?;
                 Ok(roots[0])
-            });
-        let cleanup_ok =
-            ncl_object::pop_root(ctx, previous_token) && ncl_object::pop_root(ctx, entry_token);
-        if cleanup_ok {
-            result
-        } else {
-            Err(LispError::Object(ObjectError::Layout))
-        }
+            })
+        })
     })
 }
 
@@ -224,17 +218,25 @@ fn remove_package_local_nickname_impl(
     nickname: NicknameDesignator,
     package: PackageDesignatorArg,
 ) -> Result<Word, LispError> {
-    let nickname = designator_string(ctx, nickname)?;
+    let nickname = designator_string(ctx, runtime, nickname)?;
     let package = package_designator(ctx, runtime, package)?;
     ensure_unlocked(ctx, package)?;
+    let nickname_length = ncl_object::string_length(ctx, nickname.as_word())?;
     let mut entries = package.local_nicknames(ctx)?;
     let mut previous = Word::NIL;
     while entries != Word::NIL {
         let entry = ncl_object::car(ctx, entries)?;
         let next = ncl_object::cdr(ctx, entries)?;
         let entry_name = ncl_object::car(ctx, entry)?;
-        let entry_name = StringObject::from_word(entry_name);
-        if entry_name == nickname {
+        let mut matches = ncl_object::string_length(ctx, entry_name)? == nickname_length;
+        for index in 0..nickname_length {
+            if !matches {
+                break;
+            }
+            matches = ncl_object::string_ref(ctx, entry_name, index)?
+                == ncl_object::string_ref(ctx, nickname.as_word(), index)?;
+        }
+        if matches {
             if previous == Word::NIL {
                 package.set_local_nicknames(ctx, next)?;
             } else {

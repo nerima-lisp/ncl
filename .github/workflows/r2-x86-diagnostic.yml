@@ -27,4 +27,4 @@ jobs:
         run: |
           echo "attempt=${{ matrix.attempt }}"
           echo "revision=${{ github.sha }}"
-          nix build -L --rebuild .#checks.x86_64-linux.default
+          nix build -L .#checks.x86_64-linux.default

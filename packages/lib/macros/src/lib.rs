@@ -3,6 +3,7 @@
 
 mod backquote;
 mod control;
+mod declaim;
 mod defining;
 mod definition_support;
 pub(crate) mod destructuring;
@@ -246,6 +247,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "PSETF" => Some(psetf_adapter),
         "INCF" => Some(incf_adapter),
         "DECF" => Some(decf_adapter),
+        "DECLAIM" => Some(declaim::declaim_adapter),
         "PUSH" => Some(push_adapter),
         "PUSHNEW" => Some(pushnew_adapter),
         "POP" => Some(pop_adapter),

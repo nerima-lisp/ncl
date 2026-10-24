@@ -3,7 +3,7 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    car, cdr, classify_object,
+    car, cdr, classify_object, set_symbol_special, string_length, string_ref, symbol_name,
 };
 
 const VALUE: ncl_object::Parameter = ncl_object::Parameter {
@@ -79,6 +79,31 @@ fn values_list_builtin(
     Ok(result.first().copied().unwrap_or(Word::NIL))
 }
 
+fn proclaim_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let specifier = args.required(0)?;
+    let elements = super::elements(ctx, specifier)?;
+    let Some((name, arguments)) = elements.split_first() else {
+        return Err(ObjectError::TypeError);
+    };
+    let name_word = symbol_name(ctx, *name)?;
+    let name = (0..string_length(ctx, name_word)?)
+        .map(|index| string_ref(ctx, name_word, index))
+        .collect::<Result<String, _>>()?;
+    if name == "SPECIAL" {
+        for variable in arguments {
+            symbol_name(ctx, *variable)?;
+            set_symbol_special(ctx, *variable, true)?;
+        }
+    }
+    values.set(&[Word::NIL]);
+    Ok(Word::NIL)
+}
+
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
     let direct = |function| {
         BuiltinImplementation::direct(
@@ -97,6 +122,7 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         ("NULL", not_builtin),
         ("FUNCTIONP", functionp_builtin),
         ("COMPILED-FUNCTION-P", functionp_builtin),
+        ("PROCLAIM", proclaim_builtin),
     ] {
         runtime.register_builtin(
             ctx,

@@ -141,6 +141,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut y);
     let mut t = symbol(&mut ctx, &runtime, "T")?;
     root!(&mut t);
+    let mut special = symbol(&mut ctx, &runtime, "SPECIAL")?;
+    root!(&mut special);
     let one = Word::fixnum(1);
     let mut clause_keys = list(&mut ctx, &runtime, &[one])?;
     root!(&mut clause_keys);
@@ -194,6 +196,10 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut with_simple_restart_heading);
     let mut define_condition_parents = list(&mut ctx, &runtime, &[t])?;
     root!(&mut define_condition_parents);
+    let mut declaim_specifier = list(&mut ctx, &runtime, &[special, x])?;
+    root!(&mut declaim_specifier);
+    let mut declaim_declarations = list(&mut ctx, &runtime, &[declaim_specifier])?;
+    root!(&mut declaim_declarations);
     let nil = Word::NIL;
     let mut cases: Vec<(&str, Box<Word>)> = Vec::with_capacity(MACROS.len());
     macro_rules! case {
@@ -210,6 +216,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("COND", "COND", [clause]);
     case!("CTYPECASE", "CTYPECASE", [x, type_clause]);
     case!("DECF", "DECF", [x, one]);
+    case!("DECLAIM", "DECLAIM", [declaim_declarations]);
     case!("DEFCONSTANT", "DEFCONSTANT", [x, one]);
     case!("DEFINE-COMPILER-MACRO", "DEFMACRO", [x, nil, t]);
     case!("DEFINE-SETF-EXPANDER", "DEFSETF", [x, y]);

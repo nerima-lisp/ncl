@@ -1,6 +1,9 @@
 use crate::Runtime;
 use std::{fs, path::Path};
 
+#[path = "tests_declaim.rs"]
+mod tests_declaim;
+
 fn lisp_string(value: &Path) -> String {
     format!("{:?}", value.to_string_lossy())
 }

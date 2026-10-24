@@ -88,6 +88,11 @@ pub(super) fn dispatch_with_context(
                         let value = values.first().copied().unwrap_or(Word::NIL);
                         return publish_values(context, value, &values);
                     }
+                    Err(ncl_conditions::ConditionError::Unhandled) => {
+                        context.set_pending_condition(condition);
+                        record_boundary_error(context, error);
+                        return error_result();
+                    }
                     Err(condition_error) => {
                         let error = match condition_error {
                             ncl_conditions::ConditionError::Object(error) => error,

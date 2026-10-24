@@ -348,14 +348,8 @@ fn named(
         Kind::And => logical::and(ctx, runtime, values),
         Kind::Or => logical::or(ctx, runtime, values),
         Kind::Cond => cond(ctx, runtime, values),
-        Kind::Case => {
-            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
-            case::case(ctx, runtime, &words, false)
-        }
-        Kind::Ecase => {
-            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
-            case::case(ctx, runtime, &words, true)
-        }
+        Kind::Case => case::case(ctx, runtime, values, false),
+        Kind::Ecase => case::case(ctx, runtime, values, true),
         Kind::Prog1 => prog1(ctx, runtime, values),
         Kind::Prog2 => {
             let first = values.first().ok_or(ObjectError::TypeError)?;

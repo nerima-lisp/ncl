@@ -83,7 +83,9 @@ def remove_ownership_row(root: Path, key: tuple[str, str]) -> None:
                 writer.writerows(retained)
 
 
-def update_contrib_metadata(root: Path, name: str, **changes: str) -> dict[str, str]:
+def update_contrib_metadata(
+    root: Path, name: str, platform: str = "macos-arm64", **changes: str
+) -> dict[str, str]:
     path = root / "conformance" / "sbcl" / "symbols" / "contribs.tsv"
     with path.open(newline="") as stream:
         reader = csv.DictReader(stream, delimiter="\t")
@@ -91,12 +93,38 @@ def update_contrib_metadata(root: Path, name: str, **changes: str) -> dict[str, 
         rows = list(reader)
     target = next(row for row in rows if row["name"] == name)
     original = dict(target)
-    target.update(changes)
+    for field, value in changes.items():
+        column = field if field in target else f"{platform}-{field}"
+        target[column] = value
     with path.open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, delimiter="\t", lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     return original
+
+
+def write_legacy_contrib_metadata(root: Path) -> None:
+    path = root / "conformance" / "sbcl" / "symbols" / "contribs.tsv"
+    with path.open(newline="") as stream:
+        rows = list(csv.DictReader(stream, delimiter="\t"))
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=checker.LEGACY_CONTRIBS_HEADER,
+            delimiter="\t",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(
+            {
+                "name": row["name"],
+                "package": row["package"],
+                "status": row["macos-arm64-status"],
+                "external-count": row["macos-arm64-external-count"],
+                "reason": row["macos-arm64-reason"],
+            }
+            for row in rows
+        )
 
 
 def sb_ext_surface_row() -> tuple[tuple[str, str], dict[str, str]]:
@@ -367,7 +395,7 @@ class OwnershipCheckTests(unittest.TestCase):
                 status="failed",
                 **{"external-count": "0", "reason": "load-failed"},
             )
-            self.assertEqual(original["status"], "loaded")
+            self.assertEqual(original["macos-arm64-status"], "loaded")
             (root / "conformance" / "sbcl" / "symbols" / "contrib-sb-posix.tsv").unlink()
             stdout = io.StringIO()
             stderr = io.StringIO()
@@ -381,7 +409,7 @@ class OwnershipCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = copy_gate_inputs(Path(directory))
             original = update_contrib_metadata(root, "sb-posix")
-            declared_count = int(original["external-count"]) + 1
+            declared_count = int(original["macos-arm64-external-count"]) + 1
             update_contrib_metadata(root, "sb-posix", **{"external-count": str(declared_count)})
             stdout = io.StringIO()
             stderr = io.StringIO()
@@ -390,9 +418,100 @@ class OwnershipCheckTests(unittest.TestCase):
 
         self.assertEqual(status, 1)
         self.assertIn(
-            f"contrib sb-posix declares {declared_count} external rows, "
-            f"table has {original['external-count']}",
+            f"contrib sb-posix macos-arm64 declares {declared_count} external rows, "
+            f"table has {original['macos-arm64-external-count']}",
             stderr.getvalue(),
+        )
+
+    def test_legacy_contrib_metadata_is_read_as_macos_arm64(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            write_legacy_contrib_metadata(root)
+            with patch.object(checker, "ROOT", root):
+                metadata, errors = checker.contrib_metadata()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(metadata["sb-posix"]["macos-arm64-status"], "loaded")
+        self.assertEqual(metadata["sb-posix"]["macos-arm64-external-count"], "547")
+        self.assertEqual(metadata["sb-posix"]["linux-x86_64-status"], "")
+
+    def test_complete_matrix_rejects_a_blank_platform_triplet(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            with patch.object(checker, "ROOT", root):
+                _, errors = checker.contrib_metadata(require_complete_matrix=True)
+
+        self.assertEqual(len(errors), len(checker.EXPECTED_CONTRIBS))
+        self.assertTrue(
+            any("missing linux-x86_64 metadata for contrib sb-posix" in error for error in errors),
+            errors,
+        )
+
+    def test_linux_count_is_checked_against_the_shared_contrib_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            update_contrib_metadata(
+                root,
+                "sb-posix",
+                platform="linux-x86_64",
+                status="loaded",
+                **{"external-count": "547", "reason": "-"},
+            )
+            with patch.object(checker, "ROOT", root):
+                _, errors = checker.contrib_metadata()
+
+        self.assertEqual(errors, [])
+
+    def test_linux_simd_table_can_coexist_with_macos_out_of_scope_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            update_contrib_metadata(
+                root,
+                "sb-simd",
+                platform="linux-x86_64",
+                status="loaded",
+                **{"external-count": "1", "reason": "-"},
+            )
+            table = root / "conformance" / "sbcl" / "symbols" / "contrib-sb-simd.tsv"
+            with table.open("w", newline="") as stream:
+                writer = csv.DictWriter(
+                    stream,
+                    fieldnames=("package", "symbol", "present", "external", "kind", "lambda-list"),
+                    delimiter="\t",
+                    lineterminator="\n",
+                )
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "package": "SB-SIMD",
+                        "symbol": "SIMD-TEST",
+                        "present": "yes",
+                        "external": "yes",
+                        "kind": "function",
+                        "lambda-list": "()",
+                    }
+                )
+            with patch.object(checker, "ROOT", root):
+                _, errors = checker.surface_rows()
+
+        self.assertEqual(errors, [])
+
+    def test_linux_contrib_count_mismatch_is_reported_by_platform(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            update_contrib_metadata(
+                root,
+                "sb-posix",
+                platform="linux-x86_64",
+                status="loaded",
+                **{"external-count": "548", "reason": "-"},
+            )
+            with patch.object(checker, "ROOT", root):
+                _, errors = checker.contrib_metadata()
+
+        self.assertTrue(
+            any("contrib sb-posix linux-x86_64 declares 548 external rows, table has 547" in error for error in errors),
+            errors,
         )
 
 

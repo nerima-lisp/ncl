@@ -306,9 +306,9 @@
 (defun x86-64-linux-p ()
   (and (member :x86-64 *features*) (member :linux *features*)))
 
-(defun contrib-in-scope-p (name)
+(defun contrib-in-scope-p (name platform)
   (or (not (member name '("sb-simd" "sb-perf") :test #'string=))
-      (x86-64-linux-p)))
+      (string= platform "linux-x86_64")))
 
 (defun try-require (name)
   (handler-case (progn
@@ -345,54 +345,117 @@
       (length symbols))))
 
 (defun write-contribs ()
-  (let ((failures nil))
-    (with-open-file
-        (stream (table-path "contribs.tsv")
-                :direction
-                :output
-                :if-exists
-                :supersede
-                :if-does-not-exist
-                :create
-                :external-format
-                :utf-8)
-      (write-row stream '("name" "package" "status" "external-count" "reason"))
-      (dolist (entry (append *sbcl-contribs* *additional-systems*))
-        (destructuring-bind (name package-name) entry
+  (let* ((entries (append *sbcl-contribs* *additional-systems*))
+         (matrix-header
+          '("name" "package"
+            "macos-arm64-status" "macos-arm64-external-count" "macos-arm64-reason"
+            "linux-x86_64-status" "linux-x86_64-external-count" "linux-x86_64-reason"))
+         (legacy-header '("name" "package" "status" "external-count" "reason"))
+         (platform
           (cond
-            ((not (contrib-in-scope-p name))
-              (remove-stale-contrib-table name)
-              (write-row stream
-                         (list name
-                               package-name
-                               "out-of-scope"
-                               "0"
-                               "platform-not-in-scope")))
-            ((not (try-require name))
-              (push name failures)
-              (remove-stale-contrib-table name)
-              (write-row stream
-                         (list name package-name "failed" "0" "load-failed")))
+            ((x86-64-linux-p) "linux-x86_64")
+            ((and (member :darwin *features*)
+                  (or (member :arm64 *features*)
+                      (member :aarch64 *features*)))
+             "macos-arm64")
             (t
-             (let ((package (find-package package-name)))
-               (if package
-                   (let ((count (write-contrib-table name package-name package)))
-                     (write-row stream
-                                (list name
-                                      package-name
-                                      "loaded"
-                                      (princ-to-string count)
-                                      "-")))
-                   (progn
-                     (push name failures)
-                     (remove-stale-contrib-table name)
-                     (write-row stream
-                                (list name
-                                      package-name
-                                      "failed"
-                                      "0"
-                                      "package-not-found"))))))))))
-    (nreverse failures)))
+             (error "Unsupported extraction platform"))))
+         (base (if (string= platform "macos-arm64") 2 5))
+         (other-base (if (= base 2) 5 2)))
+    (labels ((read-existing ()
+               (let ((path (table-path "contribs.tsv"))
+                     (rows (make-hash-table :test #'equal)))
+                 (unless (probe-file path)
+                   (error "Contrib metadata is missing"))
+                 (with-open-file
+                     (stream path
+                             :direction :input
+                             :external-format :utf-8)
+                   (let* ((header-line (read-line stream nil nil))
+                          (header (and header-line (split-tsv-line header-line))))
+                     (unless (member header
+                                     (list legacy-header matrix-header)
+                                     :test #'equal)
+                       (error "Invalid contrib metadata header"))
+                     (loop for line = (read-line stream nil nil)
+                           while line
+                           do (let* ((fields (split-tsv-line line))
+                                     (row
+                                       (if (equal header legacy-header)
+                                           (append (subseq fields 0 2)
+                                                   (subseq fields 2)
+                                                   (list "" "" ""))
+                                           fields)))
+                                (unless (= (length fields) (length header))
+                                  (error "Malformed contrib metadata row"))
+                                (unless (= (length row) (length matrix-header))
+                                  (error "Malformed contrib metadata row"))
+                                (unless (find (first row) entries
+                                              :key #'first
+                                              :test #'string=)
+                                  (error "Unexpected contrib metadata row"))
+                                (when (gethash (first row) rows)
+                                  (error "Duplicate contrib metadata row"))
+                                (loop for start in '(2 5)
+                                      for values = (subseq row start (+ start 3))
+                                      unless (or (every (lambda (value)
+                                                          (zerop (length value)))
+                                                        values)
+                                                 (every (lambda (value)
+                                                          (plusp (length value)))
+                                                        values))
+                                        do (error "Incomplete platform contrib metadata"))
+                                (setf (gethash (first row) rows) row)))))
+                 (dolist (entry entries)
+                   (let ((row (gethash (first entry) rows)))
+                     (unless row
+                       (error "Missing contrib metadata row"))
+                     (unless (string= (second row) (second entry))
+                       (error "Contrib package does not match metadata"))))
+                 (unless (= (hash-table-count rows) (length entries))
+                   (error "Unexpected contrib metadata row count"))
+                 rows))
+             (set-platform-fields (row status count reason)
+               (setf (nth base row) status
+                     (nth (1+ base) row) count
+                     (nth (+ base 2) row) reason))
+             (remove-table-if-unused (name row)
+               (unless (string= (nth other-base row) "loaded")
+                 (remove-stale-contrib-table name))))
+      (let ((rows (read-existing))
+            (failures nil))
+        (dolist (entry entries)
+          (destructuring-bind (name package-name) entry
+            (let ((row (gethash name rows)))
+              (cond
+                ((not (contrib-in-scope-p name platform))
+                 (set-platform-fields row "out-of-scope" "0" "platform-not-in-scope")
+                 (remove-table-if-unused name row))
+                ((not (try-require name))
+                 (push name failures)
+                 (set-platform-fields row "failed" "0" "load-failed")
+                 (remove-table-if-unused name row))
+                (t
+                 (let ((package (find-package package-name)))
+                   (if package
+                       (let ((count (write-contrib-table name package-name package)))
+                         (set-platform-fields row "loaded"
+                                              (princ-to-string count)
+                                              "-"))
+                       (progn
+                         (push name failures)
+                         (set-platform-fields row "failed" "0" "package-not-found")
+                         (remove-table-if-unused name row)))))))))
+        (with-open-file
+            (stream (table-path "contribs.tsv")
+                    :direction :output
+                    :if-exists :supersede
+                    :if-does-not-exist :create
+                    :external-format :utf-8)
+          (write-row stream matrix-header)
+          (dolist (entry entries)
+            (write-row stream (gethash (first entry) rows))))
+        (nreverse failures)))))
 
 (defun main ()
   (unless (string= (lisp-implementation-version) "2.6.0")

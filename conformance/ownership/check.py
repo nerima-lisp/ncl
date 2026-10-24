@@ -24,7 +24,29 @@ INTERNAL_REFERENCE_HEADER = (
     "exported-in-sbcl-2.6.0",
 )
 INTERNAL_REFERENCE_COUNT = 58
-CONTRIBS_HEADER = ("name", "package", "status", "external-count", "reason")
+LEGACY_CONTRIBS_HEADER = ("name", "package", "status", "external-count", "reason")
+CONTRIBS_HEADER = (
+    "name",
+    "package",
+    "macos-arm64-status",
+    "macos-arm64-external-count",
+    "macos-arm64-reason",
+    "linux-x86_64-status",
+    "linux-x86_64-external-count",
+    "linux-x86_64-reason",
+)
+CONTRIB_PLATFORMS = {
+    "macos-arm64": (
+        "macos-arm64-status",
+        "macos-arm64-external-count",
+        "macos-arm64-reason",
+    ),
+    "linux-x86_64": (
+        "linux-x86_64-status",
+        "linux-x86_64-external-count",
+        "linux-x86_64-reason",
+    ),
+}
 PUBLIC_SURFACE_TABLES = {
     "common-lisp.tsv": "COMMON-LISP",
     "sb-ext.tsv": "SB-EXT",
@@ -99,7 +121,9 @@ def source_symbols() -> set[tuple[str, str]]:
         return {("COMMON-LISP", row["symbol"]) for row in csv.DictReader(stream, delimiter="\t")}
 
 
-def contrib_metadata() -> tuple[dict[str, dict[str, str]], list[str]]:
+def contrib_metadata(
+    *, require_complete_matrix: bool = False
+) -> tuple[dict[str, dict[str, str]], list[str]]:
     path = ROOT / "conformance" / "sbcl" / "symbols" / "contribs.tsv"
     if not path.is_file():
         return {}, [f"{path}: contrib metadata is missing"]
@@ -108,18 +132,36 @@ def contrib_metadata() -> tuple[dict[str, dict[str, str]], list[str]]:
     metadata: dict[str, dict[str, str]] = {}
     with path.open(newline="") as stream:
         reader = csv.DictReader(stream, delimiter="\t")
-        if tuple(reader.fieldnames or ()) != CONTRIBS_HEADER:
+        header = tuple(reader.fieldnames or ())
+        if header not in {LEGACY_CONTRIBS_HEADER, CONTRIBS_HEADER}:
             return {}, [f"{path}: invalid contrib metadata header"]
-        for line, row in enumerate(reader, 2):
+
+        for line, source_row in enumerate(reader, 2):
+            if None in source_row or any(value is None for value in source_row.values()):
+                errors.append(f"{path}:{line}: malformed contrib metadata row")
+                continue
+            if header == LEGACY_CONTRIBS_HEADER:
+                row = {
+                    "name": source_row["name"],
+                    "package": source_row["package"],
+                    "macos-arm64-status": source_row["status"],
+                    "macos-arm64-external-count": source_row["external-count"],
+                    "macos-arm64-reason": source_row["reason"],
+                    "linux-x86_64-status": "",
+                    "linux-x86_64-external-count": "",
+                    "linux-x86_64-reason": "",
+                }
+            else:
+                row = dict(source_row)
+
             name, package = row["name"], row["package"]
-            status, count, reason = row["status"], row["external-count"], row["reason"]
-            if not name or not package or not status or not count or not reason:
+            if not name or not package:
                 errors.append(f"{path}:{line}: empty required contrib metadata field")
                 continue
             if name in metadata:
                 errors.append(f"{path}:{line}: duplicate contrib metadata row {name}")
                 continue
-            metadata[name] = dict(row)
+            metadata[name] = row
             if name not in EXPECTED_CONTRIBS:
                 errors.append(f"{path}:{line}: unexpected contrib metadata row {name}")
             elif package != EXPECTED_CONTRIBS[name]:
@@ -128,20 +170,74 @@ def contrib_metadata() -> tuple[dict[str, dict[str, str]], list[str]]:
                     f"expected {EXPECTED_CONTRIBS[name]}"
                 )
 
-            try:
-                declared_count = int(count)
-                if declared_count < 0:
-                    raise ValueError
-            except ValueError:
-                errors.append(f"{path}:{line}: invalid external-count {count}")
-                declared_count = None
-
             table_path = path.parent / f"contrib-{name}.tsv"
-            if status == "loaded":
-                if reason != "-":
-                    errors.append(f"{path}:{line}: loaded contrib {name} has reason {reason}")
+            loaded_counts: list[tuple[str, int]] = []
+            for platform, columns in CONTRIB_PLATFORMS.items():
+                status_key, count_key, reason_key = columns
+                status, count, reason = row[status_key], row[count_key], row[reason_key]
+                if not any((status, count, reason)):
+                    if require_complete_matrix:
+                        errors.append(
+                            f"{path}:{line}: missing {platform} metadata for contrib {name}"
+                        )
+                    continue
+                if not all((status, count, reason)):
+                    errors.append(
+                        f"{path}:{line}: incomplete {platform} metadata for contrib {name}"
+                    )
+                    continue
+                try:
+                    declared_count = int(count)
+                    if declared_count < 0:
+                        raise ValueError
+                except ValueError:
+                    errors.append(
+                        f"{path}:{line}: invalid {platform} external-count {count}"
+                    )
+                    declared_count = None
+
+                if status == "loaded":
+                    if reason != "-":
+                        errors.append(
+                            f"{path}:{line}: loaded contrib {name} has {platform} reason {reason}"
+                        )
+                    if declared_count is not None:
+                        loaded_counts.append((platform, declared_count))
+                elif status == "out-of-scope":
+                    if platform != "macos-arm64" or name not in OUT_OF_SCOPE_CONTRIBS:
+                        errors.append(
+                            f"{path}:{line}: in-scope contrib {name} is out of scope on {platform}"
+                        )
+                    if reason != "platform-not-in-scope":
+                        errors.append(
+                            f"{path}:{line}: invalid out-of-scope reason for {name} on {platform}: {reason}"
+                        )
+                    if declared_count not in {None, 0}:
+                        errors.append(
+                            f"{path}:{line}: out-of-scope contrib {name} has {platform} external rows"
+                        )
+                elif status == "failed":
+                    if reason not in {"load-failed", "package-not-found"}:
+                        errors.append(
+                            f"{path}:{line}: invalid failure reason for {name} on {platform}: {reason}"
+                        )
+                    if declared_count not in {None, 0}:
+                        errors.append(
+                            f"{path}:{line}: failed contrib {name} has {platform} external rows"
+                        )
+                    errors.append(
+                        f"{path}:{line}: in-scope contrib {name} failed ({reason}) on {platform}"
+                    )
+                else:
+                    errors.append(
+                        f"{path}:{line}: invalid contrib status {status} for {name} on {platform}"
+                    )
+
+            if loaded_counts:
                 if not table_path.is_file():
-                    errors.append(f"{path}:{line}: loaded contrib table is missing: {table_path.name}")
+                    errors.append(
+                        f"{path}:{line}: loaded contrib table is missing: {table_path.name}"
+                    )
                 else:
                     with table_path.open(newline="") as table_stream:
                         table_reader = csv.DictReader(table_stream, delimiter="\t")
@@ -152,11 +248,12 @@ def contrib_metadata() -> tuple[dict[str, dict[str, str]], list[str]]:
                             )
                         else:
                             table_rows = list(table_reader)
-                            if declared_count is not None and len(table_rows) != declared_count:
-                                errors.append(
-                                    f"{path}:{line}: contrib {name} declares {declared_count} "
-                                    f"external rows, table has {len(table_rows)}"
-                                )
+                            for platform, declared_count in loaded_counts:
+                                if len(table_rows) != declared_count:
+                                    errors.append(
+                                        f"{path}:{line}: contrib {name} {platform} declares "
+                                        f"{declared_count} external rows, table has {len(table_rows)}"
+                                    )
                             for table_line, table_row in enumerate(table_rows, 2):
                                 if table_row["package"] != package:
                                     errors.append(
@@ -167,34 +264,19 @@ def contrib_metadata() -> tuple[dict[str, dict[str, str]], list[str]]:
                                     errors.append(
                                         f"{table_path}:{table_line}: loaded contrib rows must be present and external"
                                     )
-            elif status == "out-of-scope":
-                if name not in OUT_OF_SCOPE_CONTRIBS:
-                    errors.append(f"{path}:{line}: in-scope contrib {name} is out of scope")
-                if reason != "platform-not-in-scope":
-                    errors.append(f"{path}:{line}: invalid out-of-scope reason for {name}: {reason}")
-                if declared_count not in {None, 0}:
-                    errors.append(f"{path}:{line}: out-of-scope contrib {name} has external rows")
-                if table_path.exists():
-                    errors.append(f"{path}:{line}: out-of-scope contrib table exists: {table_path.name}")
-            elif status == "failed":
-                if reason not in {"load-failed", "package-not-found"}:
-                    errors.append(f"{path}:{line}: invalid failure reason for {name}: {reason}")
-                if declared_count not in {None, 0}:
-                    errors.append(f"{path}:{line}: failed contrib {name} has external rows")
-                errors.append(f"{path}:{line}: in-scope contrib {name} failed ({reason})")
-                if table_path.exists():
-                    errors.append(f"{path}:{line}: failed contrib table exists: {table_path.name}")
-            else:
-                errors.append(f"{path}:{line}: invalid contrib status {status} for {name}")
+            elif table_path.exists():
+                errors.append(f"{path}:{line}: no platform loads contrib {name}, but its table exists")
 
     for name in sorted(set(EXPECTED_CONTRIBS) - set(metadata)):
         errors.append(f"{path}: missing contrib metadata row {name}")
     return metadata, errors
 
 
-def surface_rows() -> tuple[dict[tuple[str, str], dict[str, str]], list[str]]:
+def surface_rows(
+    *, require_complete_matrix: bool = False
+) -> tuple[dict[tuple[str, str], dict[str, str]], list[str]]:
     rows: dict[tuple[str, str], dict[str, str]] = {}
-    metadata, errors = contrib_metadata()
+    metadata, errors = contrib_metadata(require_complete_matrix=require_complete_matrix)
     symbols_directory = ROOT / "conformance" / "sbcl" / "symbols"
     for name in sorted(PUBLIC_SURFACE_TABLES):
         if not (symbols_directory / name).is_file():
@@ -207,7 +289,7 @@ def surface_rows() -> tuple[dict[tuple[str, str], dict[str, str]], list[str]]:
     expected_contrib_tables = {
         f"contrib-{name}.tsv"
         for name, row in metadata.items()
-        if row["status"] == "loaded"
+        if any(row[columns[0]] == "loaded" for columns in CONTRIB_PLATFORMS.values())
     }
     for path in paths:
         if path.name.startswith("contrib-") and path.name not in expected_contrib_tables:
@@ -348,10 +430,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="PACKAGE",
         help="limit the missing SBCL surface report; repeat for multiple packages",
     )
+    parser.add_argument(
+        "--require-complete-contrib-matrix",
+        action="store_true",
+        help="require status, external count, and reason for both platforms on every contrib",
+    )
     args = parser.parse_args(argv)
 
     expected = source_symbols()
-    surface, surface_errors = surface_rows()
+    surface, surface_errors = surface_rows(
+        require_complete_matrix=args.require_complete_contrib_matrix
+    )
     actual, ownership_errors = ownership_rows(surface)
     errors = surface_errors + ownership_errors
     surface_packages = {package for package, _ in surface if package.startswith("SB-")} | KNOWN_SB_PACKAGES

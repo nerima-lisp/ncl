@@ -4,6 +4,7 @@ use std::cell::Cell;
 
 use ncl_object::{
     Package, Runtime, StringObject, ThreadContext, Word, make_string, pop_root, push_root,
+    string_length, string_ref, symbol_name, symbol_package,
 };
 
 use crate::error::ReadError;
@@ -358,9 +359,42 @@ fn intern_symbol(
     let package_token = push_root(ctx, &mut package);
     let result = Package::from_word(package)
         .intern(ctx, runtime, &symbol_name)
-        .map(|(symbol, _)| symbol);
+        .and_then(|(symbol, _)| {
+            if is_common_lisp_nil(ctx, symbol)? {
+                Ok(Word::NIL)
+            } else {
+                Ok(symbol)
+            }
+        });
     let _ = pop_root(ctx, package_token);
     result.map_err(ReadError::from)
+}
+
+fn is_common_lisp_nil(ctx: &ThreadContext, symbol: Word) -> Result<bool, ncl_object::ObjectError> {
+    let package = symbol_package(ctx, symbol)?;
+    if package == Word::NIL
+        || !string_is(ctx, Package::from_word(package).name(ctx)?, "COMMON-LISP")?
+    {
+        return Ok(false);
+    }
+    string_is(ctx, symbol_name(ctx, symbol)?, "NIL")
+}
+
+fn string_is(
+    ctx: &ThreadContext,
+    string: Word,
+    expected: &str,
+) -> Result<bool, ncl_object::ObjectError> {
+    let length = string_length(ctx, string)?;
+    if length != expected.chars().count() {
+        return Ok(false);
+    }
+    expected
+        .chars()
+        .enumerate()
+        .try_fold(true, |matches, (index, expected)| {
+            Ok(matches && string_ref(ctx, string, index)? == expected)
+        })
 }
 
 /// Intern a reader-generated symbol in the `COMMON-LISP` package.

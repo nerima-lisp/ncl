@@ -296,6 +296,48 @@ fn reads_quote_with_the_common_lisp_symbol() {
 }
 
 #[test]
+fn reads_common_lisp_nil_as_the_empty_list() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let common = Package::from_word(runtime.find_package(&ctx, "COMMON-LISP").unwrap());
+    let (nil, status) = common.intern(&mut ctx, &runtime, "NIL").unwrap();
+    assert_eq!(status, ncl_object::package::FindStatus::External);
+    assert_eq!(symbol_package(&ctx, nil), Ok(common.as_word()));
+
+    assert_eq!(read_one(&runtime, &mut ctx, "NIL"), Word::NIL);
+    assert_eq!(read_one(&runtime, &mut ctx, "CL:NIL"), Word::NIL);
+    assert_eq!(read_one(&runtime, &mut ctx, "COMMON-LISP:NIL"), Word::NIL);
+
+    let keyword = read_one(&runtime, &mut ctx, ":NIL");
+    assert_ne!(keyword, Word::NIL);
+    assert_eq!(
+        symbol_package(&ctx, keyword).unwrap(),
+        runtime.find_package(&ctx, "KEYWORD").unwrap()
+    );
+
+    let uninterned = read_one(&runtime, &mut ctx, "#:NIL");
+    assert_ne!(uninterned, Word::NIL);
+    assert_eq!(symbol_package(&ctx, uninterned), Ok(Word::NIL));
+
+    let shadow_package = runtime.ensure_package(&mut ctx, "SHADOW-NIL").unwrap();
+    let shadow = Package::from_word(shadow_package);
+    let (shadow_nil, _) = shadow.intern(&mut ctx, &runtime, "NIL").unwrap();
+    let shadow_name = symbol_name(&ctx, shadow_nil).unwrap();
+    shadow.shadow(&mut ctx, &runtime, shadow_name).unwrap();
+    shadow
+        .use_package(&mut ctx, &runtime, common.as_word())
+        .unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_current_package("SHADOW-NIL").unwrap();
+    let read_shadow_nil = read_from_string(&mut ctx, &runtime, "NIL", &opts)
+        .unwrap()
+        .unwrap();
+    assert_eq!(read_shadow_nil, shadow_nil);
+    assert_ne!(read_shadow_nil, Word::NIL);
+}
+
+#[test]
 fn reads_radix_integers() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

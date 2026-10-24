@@ -144,6 +144,15 @@ fn handler_bind_evaluates_a_function_form_once() {
 }
 
 #[test]
+fn handler_bind_accepts_an_empty_handler_list() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(handler-bind nil 42)")
+        .unwrap_or_else(|error| panic!("HANDLER-BIND with no handlers failed: {error}"));
+    assert_eq!(runtime.format_result(value), "42");
+}
+
+#[test]
 fn defstruct_accessor_is_a_setf_place() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let value = runtime

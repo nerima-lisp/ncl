@@ -147,10 +147,11 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWor
     let mut current = rest_variable;
     let mut selected_body = None;
     for position in 0..=index {
-        let current_word = scope.get(current).as_word();
-        let test = form(scope.context_mut(), runtime, "CONSP", &[current_word])?;
+        let test_current = scope.get(current).as_word();
+        let test = form(scope.context_mut(), runtime, "CONSP", &[test_current])?;
         let test: Handle<'_, Word> = scope.root(Local::from_word(test));
-        let head = form(scope.context_mut(), runtime, "CAR", &[current_word])?;
+        let head_current = scope.get(current).as_word();
+        let head = form(scope.context_mut(), runtime, "CAR", &[head_current])?;
         let head: Handle<'_, Word> = scope.root(Local::from_word(head));
         let test_word = scope.get(test).as_word();
         let head_word = scope.get(head).as_word();
@@ -165,7 +166,8 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWor
             selected_body = Some(selected_handle);
             break;
         }
-        let next = form(scope.context_mut(), runtime, "CDR", &[current_word])?;
+        let next_current = scope.get(current).as_word();
+        let next = form(scope.context_mut(), runtime, "CDR", &[next_current])?;
         current = scope.root(Local::from_word(next));
     }
     let selected = selected_body.ok_or(ObjectError::TypeError)?;

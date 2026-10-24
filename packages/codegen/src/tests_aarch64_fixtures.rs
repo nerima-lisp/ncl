@@ -121,7 +121,8 @@ fn golden_aarch64_builtin_decodes() {
             .push_op(
                 OpKind::Builtin {
                     name: "identity".into(),
-                    args: Vec::new()
+                    args: Vec::new(),
+                    specialization: None,
                 },
                 &[Ty::Word]
             )

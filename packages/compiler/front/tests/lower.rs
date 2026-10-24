@@ -261,7 +261,7 @@ fn lowers_a_rest_parameter_through_the_runtime_prologue() {
     assert_verifies(lambda_function);
     assert!(any_op(lambda_function, |kind| matches!(
         kind,
-        OpKind::Builtin { name, args } if name == "make-rest-list" && args.len() == 2
+        OpKind::Builtin { name, args, .. } if name == "make-rest-list" && args.len() == 2
     )));
 }
 
@@ -399,7 +399,11 @@ fn lowers_unary_increment_and_decrement_as_builtins() {
         assert!(
             any_op(&lowered.entry, |kind| matches!(
                 kind,
-                OpKind::Builtin { name: builtin, args }
+                OpKind::Builtin {
+                    name: builtin,
+                    args,
+                    ..
+                }
                     if builtin == name && args.len() == 1
             )),
             "{name} should lower to a one-argument builtin"

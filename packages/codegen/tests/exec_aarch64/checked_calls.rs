@@ -122,6 +122,7 @@ fn executes_builtin_call_with_context_and_arguments() {
             OpKind::Builtin {
                 name: "add".into(),
                 args: vec![left, right],
+                specialization: None,
             },
             &[Ty::Word],
         )
@@ -229,6 +230,7 @@ fn make_value_cell_error_stops_before_downstream_builtin() {
             OpKind::Builtin {
                 name: "after-value-cell-error".into(),
                 args: vec![cell],
+                specialization: None,
             },
             &[Ty::Word],
         )
@@ -282,6 +284,7 @@ fn builtin_error_stops_before_downstream_builtin() {
             OpKind::Builtin {
                 name: "error-return".into(),
                 args: vec![value],
+                specialization: None,
             },
             &[Ty::Word],
         )
@@ -291,6 +294,7 @@ fn builtin_error_stops_before_downstream_builtin() {
             OpKind::Builtin {
                 name: "after-error".into(),
                 args: vec![error],
+                specialization: None,
             },
             &[Ty::Word],
         )

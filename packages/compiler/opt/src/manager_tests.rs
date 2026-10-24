@@ -131,7 +131,7 @@ fn default_pipeline_registers_gc_safe_passes_in_order() {
         .iter()
         .map(|stat| stat.pass.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(names, vec!["sccp", "dead-code-elimination"]);
+    assert_eq!(names, vec!["sccp", "type-effect", "dead-code-elimination"]);
 }
 
 #[test]

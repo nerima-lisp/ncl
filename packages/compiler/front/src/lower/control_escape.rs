@@ -89,6 +89,7 @@ impl Context<'_> {
             OpKind::Builtin {
                 name: "throw".to_owned(),
                 args: vec![token, value],
+                specialization: None,
             },
             Ty::Word,
         )?;

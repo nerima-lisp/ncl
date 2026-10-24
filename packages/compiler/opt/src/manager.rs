@@ -1,6 +1,6 @@
 use super::{
     DeadCodeElimination, FunctionPass, Module, ModulePass, PassError, PassEvent, PassManager,
-    PassManagerOptions, PassReport, PassStat, PassVerification, Sccp,
+    PassManagerOptions, PassReport, PassStat, PassVerification, Sccp, TypeEffect,
 };
 use std::time::Instant;
 
@@ -33,10 +33,11 @@ impl PassManager {
 
     /// Adds the GC-safe default subset of optimization passes.
     ///
-    /// Inlining can copy raw stores, and GVN can reuse address values across safepoints,
-    /// so neither pass belongs in the runtime's default pipeline yet.
+    /// The runtime's default pipeline omits direct-call inlining, which can copy raw
+    /// stores, and GVN, which can reuse address values across safepoints.
     pub fn add_default_optimization_pipeline(&mut self) {
         self.add_function_pass(Sccp);
+        self.add_function_pass(TypeEffect);
         self.add_function_pass(DeadCodeElimination);
     }
 

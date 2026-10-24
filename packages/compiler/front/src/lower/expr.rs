@@ -208,6 +208,7 @@ impl Context<'_> {
                 OpKind::Builtin {
                     name: name.name.clone(),
                     args: values,
+                    specialization: None,
                 },
                 Ty::Word,
             );

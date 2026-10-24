@@ -255,6 +255,7 @@ fn builtin(
         OpKind::Builtin {
             name: name.into(),
             args,
+            specialization: None,
         },
         Ty::Word,
     )

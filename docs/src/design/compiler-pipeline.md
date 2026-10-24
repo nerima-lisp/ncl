@@ -156,7 +156,9 @@ Inline-cache keys are the triple `(call-site, generic-function identity, class-l
 以下は `Function` の `Display` 出力と `parse` が扱う payload の EBNF 相当表記である。空白は header の固定位置にのみ現れ、payload の atom はカンマで区切られる。`hex` は小文字 hexadecimal、`signed` は `i` に続く hexadecimal 表現、`id` は unsigned atom、`text` は escaped string atom である。`n * X` は X を n 回繰り返す。
 
 ```text
-function       = "fn @", escaped-name, " { ", function-payload, " }", newline ;
+function       = legacy-function | version-2-function ;
+legacy-function = "fn @", escaped-name, " { ", function-payload, " }", newline ;
+version-2-function = "fn @", escaped-name, " ir2 { ", function-payload, " }", newline ;
 function-payload = id, text, params, types, constants, blocks, locals,
                    handlers, debug ;
 params         = count, count * (text, type) ;
@@ -184,11 +186,11 @@ string-bytes  = tag, count, count * id ;
 nil           = tag ; true = tag ; unbound = tag ;
 ```
 
-`op-kind` は variant tag に続けて、`Const` は `id`、単一値 operand の `Move`/`Load`/`Convert` は `id`、二値 operand の `Store`/`Compare` は `id, id`、field 操作は object/value と field、`Alloc` と `LoadArg` は数値を記録する。`Call`/`CallIndirect` は callee と `count, count * id`、`Builtin` は `text, count, count * id`、`Prim` は primitive 名、`count, count * id`、condition block の optional id、`SetMultipleValues` は `count, count * id`、`Safepoint` は追加 atom なしである。
+`op-kind` は variant tag に続けて、`Const` は `id`、単一値 operand の `Move`/`Load`/`Convert` は `id`、二値 operand の `Store`/`Compare` は `id, id`、field 操作は object/value と field、`Alloc` と `LoadArg` は数値を記録する。`Call`/`CallIndirect` は callee と `count, count * id`、`Prim` は primitive 名、`count, count * id`、condition block の optional id、`SetMultipleValues` は `count, count * id`、`Safepoint` は追加 atom なしである。version 1 の `Builtin` は `text, count, count * id` を記録し、version 2 はその後に specialization flag を付ける。flag が1の場合は演算タグとガードマスクも続く。
 
 terminator の tag と payload は `Jump` が target と values、`Branch` が condition・then successor・else successor、`Switch` が value・case 数・各 signed case と successor・default successor、`CallReturn`/`TailCall` が callee と values、`Return` が values、`Throw` が condition、`Unreachable` が追加 payload なしである。全 successor の形式は `id, count, count * id` である。
 
-文字列 atom は ASCII の英数字、`_`、`-` をそのまま使い、それ以外の byte を `_hh` として escape する。payload の各数値は hexadecimal atom である。`parse` はこの形式を `Result<Function, ParseError>` として読み、余分な atom、未知の tag、壊れた escape を拒否する。front と codegen は `Function` を直接構築するか `parse` で読み、`verify(&function)` で構造・SSA 可視性・型・戻り値契約を検査してから利用する。現実装の parser は `Prim::CharacterPredicate` と `Prim::StructureSlot` の文字列表現を読み戻さないため、これらを含む関数では無条件の往復保証を置かない。
+文字列 atom は ASCII の英数字、`_`、`-` をそのまま使い、それ以外の byte を `_hh` として escape する。payload の各数値は hexadecimal atom である。header に version marker がない場合は version 1 として読み、`Display` は `ir2` header を出力する。parser は両形式を読み、version 1 の `Builtin` に specialization メタデータがないものとして扱う。未知の version marker、余分な atom、未知の tag、壊れた escape は拒否する。front と codegen は `Function` を直接構築するか `parse` で読み、`verify(&function)` で構造・SSA 可視性・型・戻り値契約を検査してから利用する。現実装の parser は `Prim::CharacterPredicate` と `Prim::StructureSlot` の文字列表現を読み戻さないため、これらを含む関数では無条件の往復保証を置かない。
 
 検証器は block id と SSA value id の重複、未定義値、CFG の successor 契約、各 `OpKind` と terminator の operand/result 型、関数の戻り値型を検査する。SSA の使用可能性はブロック走査順ではなく、CFG の支配関係で判定し、同一ブロックでは定義が使用より前にあることも要求する。`Call`、`CallIndirect`、`Builtin` の直前、`Alloc` の直後、後方エッジを持つブロックの terminator 直前には `Safepoint` が必要である。safepoint 不足は既存 API を変えないため `VerifyError::SafepointWarning` として同じ `Err` ベクタに返すが、意味上は warning である。
 

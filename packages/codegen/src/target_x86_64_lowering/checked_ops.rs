@@ -97,7 +97,7 @@ pub(super) fn lower_checked_ops(
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
         }
-        OpKind::Builtin { name, args } => {
+        OpKind::Builtin { name, args, .. } => {
             let checked = checked_call(assembler, context, |assembler| {
                 lower_builtin(assembler, name, args, slots, abi)?;
                 emit_call(assembler)

@@ -93,6 +93,7 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                             OpKind::Builtin {
                                 name: "cons".into(),
                                 args: vec![ValueId(0), ValueId(1)],
+                                specialization: None,
                             },
                         ),
                         op(
@@ -266,6 +267,7 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                         OpKind::Builtin {
                             name: "length".into(),
                             args: vec![ValueId(0)],
+                            specialization: None,
                         },
                     )],
                     Terminator::Return {
@@ -485,4 +487,83 @@ fn text_round_trips_requested_forms() {
         let dump = function.to_string();
         assert_eq!(parse(&dump), Ok(function), "round trip failed for {name}");
     }
+}
+
+#[test]
+fn text_round_trips_fixnum_specialization_metadata() {
+    let function = finish(
+        "checked-add",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Builtin {
+                        name: "+".into(),
+                        args: vec![ValueId(0), ValueId(1)],
+                        specialization: Some(
+                            FixnumSpecialization::new(FixnumOp::Add, &[true, true]).unwrap(),
+                        ),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(2)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    let dump = function.to_string();
+    assert!(dump.starts_with("fn @checked-add ir2 { "));
+    assert_eq!(parse(&dump), Ok(function));
+}
+
+#[test]
+fn text_parses_legacy_builtin_dump_without_specialization_metadata() {
+    let legacy = concat!(
+        "fn @legacy { ",
+        "1,legacy,1,x,0,1,0,0,1,0,0,1,1,1,0,ffffffffffffffff,c,_2b,1,0,",
+        "5,1,1,0,0,0,",
+        " }\n",
+    );
+    let expected = finish(
+        "legacy",
+        vec![Param {
+            name: "x".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(1, Ty::Word)],
+                OpKind::Builtin {
+                    name: "+".into(),
+                    args: vec![ValueId(0)],
+                    specialization: None,
+                },
+            )],
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    assert_eq!(parse(legacy), Ok(expected));
 }

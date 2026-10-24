@@ -37,6 +37,7 @@ fn remap_helpers_cover_ir_shapes() {
         OpKind::Builtin {
             name: "x".into(),
             args: vec![ValueId(0)],
+            specialization: None,
         },
         OpKind::Prim {
             op: ncl_ir::Prim::Car,

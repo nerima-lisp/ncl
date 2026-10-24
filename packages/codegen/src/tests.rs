@@ -348,7 +348,8 @@ fn golden_builtin_call_has_call_safepoint() {
             .push_op(
                 OpKind::Builtin {
                     name: "identity".into(),
-                    args: Vec::new()
+                    args: Vec::new(),
+                    specialization: None,
                 },
                 &[Ty::Word]
             )

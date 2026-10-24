@@ -319,6 +319,7 @@ fn executes_builtin_call_with_context_and_arguments() {
             OpKind::Builtin {
                 name: "add".into(),
                 args: vec![left, right],
+                specialization: None,
             },
             &[Ty::Word],
         )

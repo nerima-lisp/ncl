@@ -169,6 +169,7 @@ fn rejects_builtin_missing_from_execution_fixture_abi() {
             OpKind::Builtin {
                 name: "unregistered".into(),
                 args: Vec::new(),
+                specialization: None,
             },
             &[Ty::Word],
         )

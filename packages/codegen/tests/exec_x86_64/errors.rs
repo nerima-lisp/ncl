@@ -139,6 +139,7 @@ fn builtin_error_skips_later_helper_calls() {
             OpKind::Builtin {
                 name: "error".into(),
                 args: vec![value],
+                specialization: None,
             },
             &[Ty::Word],
         )
@@ -148,6 +149,7 @@ fn builtin_error_skips_later_helper_calls() {
             OpKind::Builtin {
                 name: "observe-after-error".into(),
                 args: vec![failed],
+                specialization: None,
             },
             &[Ty::Word],
         )

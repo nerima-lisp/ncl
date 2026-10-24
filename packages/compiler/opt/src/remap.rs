@@ -62,9 +62,11 @@ pub fn remap_kind(
         OpKind::MakeValueCell { value } => OpKind::MakeValueCell { value: v(*value) },
         OpKind::LoadArg { index } => OpKind::LoadArg { index: *index },
         OpKind::LoadCapture { index } => OpKind::LoadCapture { index: *index },
-        OpKind::Builtin { name, args } => OpKind::Builtin {
+        OpKind::Builtin { name, args, .. } => OpKind::Builtin {
             name: name.clone(),
             args: args.iter().map(|x| v(*x)).collect(),
+            // Remapped SSA operands need fresh proofs, so discard old guard metadata.
+            specialization: None,
         },
         OpKind::Prim {
             op,

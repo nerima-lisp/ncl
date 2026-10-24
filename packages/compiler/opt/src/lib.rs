@@ -366,6 +366,10 @@ mod sccp;
 pub use sccp::Sccp;
 mod dce;
 pub use dce::DeadCodeElimination;
+mod type_effect;
+pub use type_effect::{
+    Effect, EffectSet, Evidence, FunctionFacts, ScalarFact, ScalarType, TypeEffect, ValuesArity,
+};
 #[cfg(test)]
 #[path = "dce_tests.rs"]
 mod dce_tests;

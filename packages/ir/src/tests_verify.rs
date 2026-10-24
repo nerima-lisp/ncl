@@ -708,3 +708,447 @@ fn verifier_accepts_outer_values_used_by_unwind_cleanup() {
 
     assert!(verify(&function).is_ok());
 }
+
+#[test]
+fn proven_fixnum_values_flow_through_all_fixnum_branch_inputs() {
+    let function = finish(
+        "fixnum-join",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Fixnum(2), Constant::Fixnum(3)],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::I64)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[(1, Ty::Word)],
+                        OpKind::Convert {
+                            op: Convert::I64ToWord,
+                            value: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::I64)],
+                        OpKind::Const {
+                            result: ConstantIndex(1),
+                        },
+                    ),
+                    op(
+                        &[(3, Ty::Word)],
+                        OpKind::Convert {
+                            op: Convert::I64ToWord,
+                            value: ValueId(2),
+                        },
+                    ),
+                    op(
+                        &[(4, Ty::Bool)],
+                        OpKind::Compare {
+                            op: Compare::Eq,
+                            left: ValueId(0),
+                            right: ValueId(2),
+                        },
+                    ),
+                ],
+                Terminator::Branch {
+                    condition: ValueId(4),
+                    then_target: BlockId(1),
+                    then_args: Vec::new(),
+                    else_target: BlockId(2),
+                    else_args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: vec![ValueId(1)],
+                },
+            ),
+            block(
+                2,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: vec![ValueId(3)],
+                },
+            ),
+            BasicBlock {
+                id: BlockId(3),
+                params: vec![BlockParam {
+                    value: ValueId(5),
+                    ty: Ty::Word,
+                }],
+                ops: Vec::new(),
+                terminator: Terminator::Return {
+                    values: vec![ValueId(5)],
+                },
+            },
+        ],
+        Vec::new(),
+    );
+
+    assert!(proven_fixnum_values(&function).contains(&ValueId(5)));
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_treats_catch_payload_as_an_unproven_fixnum_input() {
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
+    let function = finish(
+        "catch-fixnum-join",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Fixnum(2), Constant::Nil],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::I64)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[(1, Ty::Word)],
+                        OpKind::Convert {
+                            op: Convert::I64ToWord,
+                            value: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::Bool)],
+                        OpKind::Compare {
+                            op: Compare::Eq,
+                            left: ValueId(0),
+                            right: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(3, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(1),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::EnterHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Branch {
+                    condition: ValueId(2),
+                    then_target: BlockId(2),
+                    then_args: vec![ValueId(1), ValueId(1)],
+                    else_target: BlockId(3),
+                    else_args: Vec::new(),
+                },
+            ),
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![
+                    BlockParam {
+                        value: ValueId(4),
+                        ty: Ty::Word,
+                    },
+                    BlockParam {
+                        value: ValueId(5),
+                        ty: Ty::Word,
+                    },
+                ],
+                ops: vec![
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(&[], OpKind::Safepoint),
+                    op(
+                        &[(6, Ty::Word)],
+                        OpKind::Builtin {
+                            name: "+".into(),
+                            args: vec![ValueId(4), ValueId(5)],
+                            specialization: Some(specialization),
+                        },
+                    ),
+                ],
+                terminator: Terminator::Return {
+                    values: vec![ValueId(6)],
+                },
+            },
+            block(
+                3,
+                Vec::new(),
+                Terminator::Throw {
+                    condition: ValueId(3),
+                },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Catch,
+            protected: vec![BlockId(1), BlockId(3)],
+            handler: BlockId(2),
+            cleanup: None,
+            catch_tag: Some(ValueId(3)),
+            binding_targets: vec![ValueId(1)],
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    assert!(!proven_fixnum_values(&function).contains(&ValueId(4)));
+    assert!(proven_fixnum_values(&function).contains(&ValueId(5)));
+    verify_has(
+        &function,
+        &VerifyError::InvalidFixnumSpecialization(BlockId(2)),
+    );
+
+    let mut binding_without_payload = function;
+    binding_without_payload.blocks[2].params.clear();
+    verify_has(
+        &binding_without_payload,
+        &VerifyError::HandlerMismatch(BlockId(2)),
+    );
+}
+
+#[test]
+fn verifier_does_not_use_progv_bindings_as_handler_parameters() {
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
+    let function = finish(
+        "progv-fixnum-join",
+        Vec::new(),
+        vec![Ty::Word],
+        vec![Constant::Fixnum(2), Constant::Nil],
+        vec![
+            block(
+                0,
+                vec![
+                    op(
+                        &[(0, Ty::I64)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[(1, Ty::Word)],
+                        OpKind::Convert {
+                            op: Convert::I64ToWord,
+                            value: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::Bool)],
+                        OpKind::Compare {
+                            op: Compare::Eq,
+                            left: ValueId(0),
+                            right: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(3, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(1),
+                        },
+                    ),
+                    op(
+                        &[],
+                        OpKind::EnterHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Branch {
+                    condition: ValueId(2),
+                    then_target: BlockId(2),
+                    then_args: vec![ValueId(1), ValueId(1)],
+                    else_target: BlockId(3),
+                    else_args: Vec::new(),
+                },
+            ),
+            BasicBlock {
+                id: BlockId(2),
+                params: vec![
+                    BlockParam {
+                        value: ValueId(4),
+                        ty: Ty::Word,
+                    },
+                    BlockParam {
+                        value: ValueId(5),
+                        ty: Ty::Word,
+                    },
+                ],
+                ops: vec![
+                    op(
+                        &[],
+                        OpKind::LeaveHandler {
+                            region: HandlerRegionId(0),
+                        },
+                    ),
+                    op(&[], OpKind::Safepoint),
+                    op(
+                        &[(6, Ty::Word)],
+                        OpKind::Builtin {
+                            name: "+".into(),
+                            args: vec![ValueId(5), ValueId(1)],
+                            specialization: Some(specialization),
+                        },
+                    ),
+                ],
+                terminator: Terminator::Return {
+                    values: vec![ValueId(6)],
+                },
+            },
+            block(
+                3,
+                Vec::new(),
+                Terminator::Throw {
+                    condition: ValueId(3),
+                },
+            ),
+        ],
+        vec![HandlerRegion {
+            id: HandlerRegionId(0),
+            kind: HandlerKind::Progv,
+            protected: vec![BlockId(1), BlockId(3)],
+            handler: BlockId(2),
+            cleanup: None,
+            catch_tag: None,
+            binding_targets: vec![ValueId(1)],
+            depth: 0,
+            parent: None,
+        }],
+    );
+
+    assert!(!proven_fixnum_values(&function).contains(&ValueId(5)));
+    verify_has(
+        &function,
+        &VerifyError::InvalidFixnumSpecialization(BlockId(2)),
+    );
+    verify_has(&function, &VerifyError::HandlerMismatch(BlockId(2)));
+
+    let mut unwind_protect = function;
+    unwind_protect.handler_regions[0].kind = HandlerKind::UnwindProtect;
+    unwind_protect.handler_regions[0].cleanup = Some(BlockId(2));
+    unwind_protect.handler_regions[0].binding_targets.clear();
+    verify_has(&unwind_protect, &VerifyError::HandlerMismatch(BlockId(2)));
+}
+
+#[test]
+fn verifier_rejects_fixnum_specialization_without_a_tag_guard() {
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
+    let function = finish(
+        "unguarded-parameter",
+        vec![Param {
+            name: "x".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Fixnum(1)],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::I64)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::I64ToWord,
+                        value: ValueId(1),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(3, Ty::Word)],
+                    OpKind::Builtin {
+                        name: "+".into(),
+                        args: vec![ValueId(0), ValueId(2)],
+                        specialization: Some(specialization),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(3)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::InvalidFixnumSpecialization(BlockId(0)),
+    );
+}
+
+#[test]
+fn verifier_rejects_fixnum_metadata_with_the_wrong_operation() {
+    assert!(FixnumSpecialization::new(FixnumOp::Add, &[true]).is_none());
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[true, true]).unwrap();
+    let function = finish(
+        "mismatched-operation",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Builtin {
+                        name: "-".into(),
+                        args: vec![ValueId(0), ValueId(1)],
+                        specialization: Some(specialization),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(2)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::InvalidFixnumSpecialization(BlockId(0)),
+    );
+}

@@ -41,12 +41,20 @@ fn unesc(s: &str) -> Result<String, ParseError> {
 /// Returns a [`ParseError`] when the input is malformed or contains values
 /// outside the representable IR ranges.
 pub fn parse(input: &str) -> Result<Function, ParseError> {
-    let payload = input
+    let header_and_payload = input
         .strip_prefix("fn @")
-        .and_then(|s| s.split_once(" { "))
-        .map(|(_, rest)| rest.strip_suffix(" }\n").unwrap_or(rest))
         .ok_or_else(|| ParseError("expected fn header".into()))?;
-    let mut r = Reader::new(payload);
+    let (header, payload) = header_and_payload
+        .split_once(" { ")
+        .ok_or_else(|| ParseError("expected fn header".into()))?;
+    let version = match header.rsplit_once(' ') {
+        Some((name, "ir2")) if !name.is_empty() => 2,
+        Some(_) => return Err(ParseError("unsupported IR text version".into())),
+        None if !header.is_empty() => 1,
+        None => return Err(ParseError("expected fn header".into())),
+    };
+    let payload = payload.strip_suffix(" }\n").unwrap_or(payload);
+    let mut r = Reader::new(payload, version);
     let function = decode_function(&mut r)?;
     if !r.done() {
         return Err(ParseError("trailing input".into()));
@@ -56,12 +64,14 @@ pub fn parse(input: &str) -> Result<Function, ParseError> {
 struct Reader<'a> {
     fields: Vec<&'a str>,
     at: usize,
+    version: u8,
 }
 impl<'a> Reader<'a> {
-    fn new(s: &'a str) -> Self {
+    fn new(s: &'a str, version: u8) -> Self {
         Self {
             fields: s.split(',').filter(|x| !x.is_empty()).collect(),
             at: 0,
+            version,
         }
     }
     fn next(&mut self) -> Result<&'a str, ParseError> {
@@ -255,6 +265,24 @@ fn block_read(r: &mut Reader<'_>) -> Result<BasicBlock, ParseError> {
 fn vals(r: &mut Reader<'_>) -> Result<Vec<ValueId>, ParseError> {
     (0..r.u()?).map(|_| Ok(ValueId(u32(r.u()?)?))).collect()
 }
+
+fn fixnum_specialization_read(
+    r: &mut Reader<'_>,
+) -> Result<Option<crate::FixnumSpecialization>, ParseError> {
+    match r.u()? {
+        0 => Ok(None),
+        1 => {
+            let operation = crate::FixnumOp::from_tag(r.u()?)
+                .ok_or_else(|| ParseError("bad fixnum operation".into()))?;
+            let mask = u8(r.u()?)?;
+            crate::FixnumSpecialization::from_mask(operation, mask)
+                .map(Some)
+                .ok_or_else(|| ParseError("bad fixnum guard mask".into()))
+        }
+        _ => Err(ParseError("bad fixnum specialization flag".into())),
+    }
+}
+
 fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
     let tag = r.u()?;
     let v = |r: &mut Reader<'_>| Ok(ValueId(u32(r.u()?)?));
@@ -307,6 +335,11 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
         12 => OpKind::Builtin {
             name: r.s()?,
             args: vals(r)?,
+            specialization: if r.version >= 2 {
+                fixnum_specialization_read(r)?
+            } else {
+                None
+            },
         },
         13 => {
             let name = r.s()?;

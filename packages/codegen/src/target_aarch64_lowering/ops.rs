@@ -370,7 +370,7 @@ pub fn lower_op(
             }
             call_pc = Some(checked_call_pc);
         }
-        OpKind::Builtin { name, args } => {
+        OpKind::Builtin { name, args, .. } => {
             call_pc = Some(super::checked_ops::lower_builtin_op(
                 assembler,
                 name,

@@ -110,6 +110,7 @@ impl Context<'_> {
                     OpKind::Builtin {
                         name: "CONS".to_owned(),
                         args: vec![keyword, allowed],
+                        specialization: None,
                     },
                     Ty::Word,
                 )?;
@@ -121,6 +122,7 @@ impl Context<'_> {
                     OpKind::Builtin {
                         name: "check-keywords".to_owned(),
                         args: check_arguments,
+                        specialization: None,
                     },
                     Ty::Word,
                 )?;
@@ -133,6 +135,7 @@ impl Context<'_> {
                     OpKind::Builtin {
                         name: "keyword-value".to_owned(),
                         args: vec![rest, keyword],
+                        specialization: None,
                     },
                     Ty::Word,
                 )?;
@@ -141,6 +144,7 @@ impl Context<'_> {
                     OpKind::Builtin {
                         name: "keyword-supplied-p".to_owned(),
                         args: vec![rest, keyword],
+                        specialization: None,
                     },
                     Ty::Word,
                 )?;
@@ -198,6 +202,7 @@ impl Context<'_> {
             OpKind::Builtin {
                 name: "make-rest-list".to_owned(),
                 args: vec![argc, start],
+                specialization: None,
             },
             Ty::Word,
         )

@@ -308,6 +308,7 @@ fn cleanup_dispatch_function() -> Result<ncl_ir::Function, String> {
             OpKind::Builtin {
                 name: "cleanup-test".to_owned(),
                 args: Vec::new(),
+                specialization: None,
             },
             &[Ty::Word],
         )

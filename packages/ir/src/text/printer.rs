@@ -17,7 +17,7 @@ impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut w = Writer::default();
         encode_function(&mut w, self);
-        writeln!(f, "fn @{} {{ {} }}", esc(&self.name), w.0)
+        writeln!(f, "fn @{} ir2 {{ {} }}", esc(&self.name), w.0)
     }
 }
 
@@ -304,11 +304,22 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
                 w.u(v.0.into());
             }
         }
-        OpKind::Builtin { name, args } => {
+        OpKind::Builtin {
+            name,
+            args,
+            specialization,
+        } => {
             w.s(name);
             vec_len(w, args.len());
             for v in args {
                 w.u(v.0.into());
+            }
+            if let Some(specialization) = specialization {
+                w.u(1);
+                w.u(specialization.operation().tag());
+                w.u(specialization.guard_mask().into());
+            } else {
+                w.u(0);
             }
         }
         OpKind::Compare { op, left, right } => {

@@ -137,6 +137,7 @@ impl Context<'_> {
             OpKind::Builtin {
                 name: "CONS".to_owned(),
                 args: vec![symbol, nil],
+                specialization: None,
             },
             Ty::Word,
         )?;
@@ -145,6 +146,7 @@ impl Context<'_> {
             OpKind::Builtin {
                 name: "CONS".to_owned(),
                 args: vec![value, nil],
+                specialization: None,
             },
             Ty::Word,
         )?;

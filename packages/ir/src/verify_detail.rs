@@ -1,6 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
-use crate::{ConstantIndex, Convert, Prim};
+use crate::{ConstantIndex, Convert, FixnumOp, Prim};
 
 /// Record an out-of-bounds error when a constant references a table index
 /// beyond the current constant table.
@@ -27,6 +27,7 @@ pub(super) fn check_op(
     blocks: &HashMap<BlockId, &BasicBlock>,
     definitions: &HashMap<ValueId, Definition>,
     dominators: &HashMap<BlockId, HashSet<BlockId>>,
+    proven_fixnums: &HashSet<ValueId>,
     errors: &mut Vec<VerifyError>,
 ) {
     let use_one = |value: ValueId, errors: &mut Vec<VerifyError>| {
@@ -145,9 +146,21 @@ pub(super) fn check_op(
             require_word_args(args, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }
-        OpKind::Builtin { args, .. } => {
+        OpKind::Builtin {
+            name,
+            args,
+            specialization,
+        } => {
             require_word_args(args, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
+            if specialization.is_some_and(|specialization| {
+                FixnumOp::from_builtin(name, args.len()) != Some(specialization.operation())
+                    || args.iter().enumerate().any(|(index, value)| {
+                        !specialization.needs_tag_check(index) && !proven_fixnums.contains(value)
+                    })
+            }) {
+                errors.push(VerifyError::InvalidFixnumSpecialization(block.id));
+            }
         }
         OpKind::Prim {
             op: primitive,

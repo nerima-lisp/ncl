@@ -1,8 +1,8 @@
 //! Calling convention metadata and the safe Rust builtin boundary.
 
 use crate::{
-    LispError, ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun,
-    with_root,
+    BuiltinPackage, LispError, ObjectError, Package, Runtime, ThreadContext, make_code_object,
+    make_simple_fun, with_root,
 };
 use ncl_sys::{RootSlot, Word};
 
@@ -143,47 +143,6 @@ impl BuiltinConvention {
 pub struct Builtin {
     pub lambda_list: LambdaList,
     pub convention: BuiltinConvention,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
-pub enum BuiltinPackage {
-    CommonLisp,
-    AsdfInterface,
-    UiopDriver,
-    NclThreads,
-    NclFfi,
-    NclMop,
-    NclGray,
-    NclGc,
-    NclImage,
-    NclUnicode,
-    NclOs,
-    NclExt,
-    NclSys,
-    NclTest,
-}
-
-impl BuiltinPackage {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::CommonLisp => "COMMON-LISP",
-            Self::AsdfInterface => "ASDF/INTERFACE",
-            Self::UiopDriver => "UIOP/DRIVER",
-            Self::NclThreads => "NCL-THREADS",
-            Self::NclFfi => "NCL-FFI",
-            Self::NclMop => "NCL-MOP",
-            Self::NclGray => "NCL-GRAY",
-            Self::NclGc => "NCL-GC",
-            Self::NclImage => "NCL-IMAGE",
-            Self::NclUnicode => "NCL-UNICODE",
-            Self::NclOs => "NCL-OS",
-            Self::NclExt => "NCL-EXT",
-            Self::NclSys => "NCL-SYS",
-            Self::NclTest => "NCL-TEST",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

@@ -167,6 +167,22 @@ impl ThreadContext {
             "KEYWORD",
             "NCL",
             "NCL-NLX",
+            "SB-EXT",
+            "SB-THREAD",
+            "SB-ALIEN",
+            "SB-SYS",
+            "SB-MOP",
+            "SB-GRAY",
+            "SB-UNICODE",
+            "SB-DEBUG",
+            "SB-ALIEN-INTERNALS",
+            "SB-C",
+            "SB-IMPL",
+            "SB-INT",
+            "SB-KERNEL",
+            "SB-PCL",
+            "SB-UNIX",
+            "SB-VM",
         ] {
             runtime.ensure_package(self, name)?;
         }

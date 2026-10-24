@@ -1,0 +1,4588 @@
+{
+  "build_revision": {
+    "commit": "23a9c2db3808423e0cb6a31ad8e56739cd113452",
+    "source": "committed source at @-",
+    "status": "passed",
+    "wall_seconds": 0.024322167
+  },
+  "measured_on": "2026-10-24",
+  "platform": {
+    "architecture": "arm64",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "protocol": {
+    "command_timeout_seconds": 900.0,
+    "ncl_pair_order": [
+      [
+        "off",
+        "default"
+      ],
+      [
+        "default",
+        "off"
+      ],
+      [
+        "off",
+        "default"
+      ]
+    ],
+    "ncl_pairs": 3,
+    "ncl_warmups_per_mode": 1,
+    "sbcl_samples": 3,
+    "sbcl_warmups": 1
+  },
+  "runs": [
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "off",
+      "phase": "warmup",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.12927137500000008
+      },
+      "sample": 1
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "default",
+      "phase": "warmup",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.13899704100000054
+      },
+      "sample": 1
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "off",
+      "pair": 1,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.12150633400000022
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "default",
+      "pair": 1,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.14254479100000061
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "default",
+      "pair": 2,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.12473879200000049
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "off",
+      "pair": 2,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.11844954100000038
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "off",
+      "pair": 3,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.11646041599999979
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "driver stdout did not contain a valid benchmark JSON object",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_error": "driver stdout did not contain a valid benchmark JSON object",
+      "driver_status": null,
+      "driver_times": [],
+      "mode": "default",
+      "pair": 3,
+      "phase": "measurement",
+      "process": {
+        "return_code": 1,
+        "status": "failed",
+        "stderr": "ncl: object error: TypeError\n",
+        "stderr_truncated": false,
+        "stdout": "",
+        "stdout_truncated": false,
+        "wall_seconds": 0.12576720800000007
+      }
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_status": "failed",
+      "driver_times": [],
+      "phase": "warmup",
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "CH.RICHARDS::PACKET\n;      CL-BENCH.RICHARDS::CURRENTTASK)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::ADDINPUT\n; \n; compilation unit finished\n;   Undefined function:\n;     ADDINPUT\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEDEVICE\n;     (CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-DEVICETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEHANDLER\n;     (CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-HANDLERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEIDLER\n;     (CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-IDLETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEWORKER\n;     (CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-WORKERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATETASK\n;     (CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK CL-BENCH.RICHARDS::TASKLIST\n;      IDENTITY CL-BENCH.RICHARDS::PRIORITY CL-BENCH.RICHARDS::WORK\n;      CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-TASKCONTROLBLOCK\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEPACKET\n;     (CL-BENCH.RICHARDS::CREATE-PACKET CL-BENCH.RICHARDS::LINK IDENTITY\n;      CL-BENCH.RICHARDS::KIND)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-PACKET\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-PACKET\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN RUNTASK\n;     (CL-BENCH.RICHARDS::RUN\n;      (CL-BENCH.RICHARDS::TASKCONTROLBLOCK-HANDLE CL-BENCH.RICHARDS::TCB)\n;      CL-BENCH.RICHARDS::MESSAGE)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::RUN\n; \n; compilation unit finished\n;   Undefined function:\n;     RUN\n;   caught 1 STYLE-WARNING condition\nfailed to load tests.lisp: Couldn't load #P\"files/tests.lisp\": file does not exist.\nWhile evaluating the form starting at line 161, column 0\n  of #P\"<absolute-path>\":\n\ndebugger invoked on a SIMPLE-ERROR in thread\n#<THREAD tid=259 \"main thread\" RUNNING {70033F0003}>:\n  cl-bench benchmark execution failed\n",
+        "stderr_truncated": true,
+        "stdout": "{\"status\":\"failed\",\"times\":[],\"benchmarks\":{}}\n\nType HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.\n\nrestarts (invokable by number or by possibly-abbreviated name):\n  0: [RETRY   ] Retry EVAL of current toplevel form.\n  1: [CONTINUE] Ignore error and continue loading file \"<absolute-path>\".\n  2: [ABORT   ] Abort loading file \"<absolute-path>\".\n  3:            Ignore runtime option --load \"<absolute-path>\".\n  4:            Skip rest of --eval and --load options.\n  5:            Skip to toplevel READ/EVAL/PRINT loop.\n  6: [EXIT    ] Exit SBCL (calling #'EXIT, killing the process).\n\n(SB-INT:SIMPLE-EVAL-IN-LEXENV (ERROR \"cl-bench benchmark execution failed\") #<NULL-LEXENV>)\n0] \n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.46005716699999954
+      },
+      "sample": 1
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_status": "failed",
+      "driver_times": [],
+      "phase": "measurement",
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "CH.RICHARDS::PACKET\n;      CL-BENCH.RICHARDS::CURRENTTASK)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::ADDINPUT\n; \n; compilation unit finished\n;   Undefined function:\n;     ADDINPUT\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEDEVICE\n;     (CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-DEVICETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEHANDLER\n;     (CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-HANDLERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEIDLER\n;     (CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-IDLETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEWORKER\n;     (CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-WORKERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATETASK\n;     (CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK CL-BENCH.RICHARDS::TASKLIST\n;      IDENTITY CL-BENCH.RICHARDS::PRIORITY CL-BENCH.RICHARDS::WORK\n;      CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-TASKCONTROLBLOCK\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEPACKET\n;     (CL-BENCH.RICHARDS::CREATE-PACKET CL-BENCH.RICHARDS::LINK IDENTITY\n;      CL-BENCH.RICHARDS::KIND)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-PACKET\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-PACKET\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN RUNTASK\n;     (CL-BENCH.RICHARDS::RUN\n;      (CL-BENCH.RICHARDS::TASKCONTROLBLOCK-HANDLE CL-BENCH.RICHARDS::TCB)\n;      CL-BENCH.RICHARDS::MESSAGE)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::RUN\n; \n; compilation unit finished\n;   Undefined function:\n;     RUN\n;   caught 1 STYLE-WARNING condition\nfailed to load tests.lisp: Couldn't load #P\"files/tests.lisp\": file does not exist.\nWhile evaluating the form starting at line 161, column 0\n  of #P\"<absolute-path>\":\n\ndebugger invoked on a SIMPLE-ERROR in thread\n#<THREAD tid=259 \"main thread\" RUNNING {70033F0003}>:\n  cl-bench benchmark execution failed\n",
+        "stderr_truncated": true,
+        "stdout": "{\"status\":\"failed\",\"times\":[],\"benchmarks\":{}}\n\nType HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.\n\nrestarts (invokable by number or by possibly-abbreviated name):\n  0: [RETRY   ] Retry EVAL of current toplevel form.\n  1: [CONTINUE] Ignore error and continue loading file \"<absolute-path>\".\n  2: [ABORT   ] Abort loading file \"<absolute-path>\".\n  3:            Ignore runtime option --load \"<absolute-path>\".\n  4:            Skip rest of --eval and --load options.\n  5:            Skip to toplevel READ/EVAL/PRINT loop.\n  6: [EXIT    ] Exit SBCL (calling #'EXIT, killing the process).\n\n(SB-INT:SIMPLE-EVAL-IN-LEXENV (ERROR \"cl-bench benchmark execution failed\") #<NULL-LEXENV>)\n0] \n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.4604746250000007
+      },
+      "sample": 1
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_status": "failed",
+      "driver_times": [],
+      "phase": "measurement",
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "CH.RICHARDS::PACKET\n;      CL-BENCH.RICHARDS::CURRENTTASK)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::ADDINPUT\n; \n; compilation unit finished\n;   Undefined function:\n;     ADDINPUT\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEDEVICE\n;     (CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-DEVICETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEHANDLER\n;     (CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-HANDLERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEIDLER\n;     (CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-IDLETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEWORKER\n;     (CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-WORKERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATETASK\n;     (CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK CL-BENCH.RICHARDS::TASKLIST\n;      IDENTITY CL-BENCH.RICHARDS::PRIORITY CL-BENCH.RICHARDS::WORK\n;      CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-TASKCONTROLBLOCK\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEPACKET\n;     (CL-BENCH.RICHARDS::CREATE-PACKET CL-BENCH.RICHARDS::LINK IDENTITY\n;      CL-BENCH.RICHARDS::KIND)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-PACKET\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-PACKET\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN RUNTASK\n;     (CL-BENCH.RICHARDS::RUN\n;      (CL-BENCH.RICHARDS::TASKCONTROLBLOCK-HANDLE CL-BENCH.RICHARDS::TCB)\n;      CL-BENCH.RICHARDS::MESSAGE)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::RUN\n; \n; compilation unit finished\n;   Undefined function:\n;     RUN\n;   caught 1 STYLE-WARNING condition\nfailed to load tests.lisp: Couldn't load #P\"files/tests.lisp\": file does not exist.\nWhile evaluating the form starting at line 161, column 0\n  of #P\"<absolute-path>\":\n\ndebugger invoked on a SIMPLE-ERROR in thread\n#<THREAD tid=259 \"main thread\" RUNNING {70033F0003}>:\n  cl-bench benchmark execution failed\n",
+        "stderr_truncated": true,
+        "stdout": "{\"status\":\"failed\",\"times\":[],\"benchmarks\":{}}\n\nType HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.\n\nrestarts (invokable by number or by possibly-abbreviated name):\n  0: [RETRY   ] Retry EVAL of current toplevel form.\n  1: [CONTINUE] Ignore error and continue loading file \"<absolute-path>\".\n  2: [ABORT   ] Abort loading file \"<absolute-path>\".\n  3:            Ignore runtime option --load \"<absolute-path>\".\n  4:            Skip rest of --eval and --load options.\n  5:            Skip to toplevel READ/EVAL/PRINT loop.\n  6: [EXIT    ] Exit SBCL (calling #'EXIT, killing the process).\n\n(SB-INT:SIMPLE-EVAL-IN-LEXENV (ERROR \"cl-bench benchmark execution failed\") #<NULL-LEXENV>)\n0] \n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.47309566699999994
+      },
+      "sample": 2
+    },
+    {
+      "benchmarks": {
+        "1D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "2D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "3D-ARRAYS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "ACKERMANN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BENCH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-100-1000": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-1000-100": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/ELEM-10000-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-100-10": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BIGNUM/PARI-200-5": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BITVECTORS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOEHM-GC": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BOYER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "BROWSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/complex-methods": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defclass": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/defmethod": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/method+after": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/methodcalls": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CLOS/simple-instantiate": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "COMPILER": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CRC40": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "CTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DDERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DEFLATE-FILE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DERIV": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DESTRUCTIVE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-1": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "DIV2-TEST-2": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "EQL-SPECIALIZED-FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FACTORIAL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FFT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FIB-RATIO": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/PRETTY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FPRINT/UGLY": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/BIGNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FIXNUM": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "FRPOLY/FLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-INTEGERS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "HASH-STRINGS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "LOAD-FASL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/COMPLEX": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MANDELBROT/DFLOAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "MRG32K3A": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-ATAN": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/BIG": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-DECIMAL/SMALL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PI-RATIOS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "PUZZLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "RICHARDS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SEARCH-SEQUENCE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SLURP-LINES": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "STRING-CONCAT": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "SUM-PERMUTATIONS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TAKL": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRAVERSE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRIANGLE": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "TRTAK": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/MESS": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "WALK-LIST/SEQ": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        },
+        "fill-strings/adjustable": {
+          "error": "benchmark missing from driver output",
+          "status": "failed",
+          "times": []
+        }
+      },
+      "driver_status": "failed",
+      "driver_times": [],
+      "phase": "measurement",
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "CH.RICHARDS::PACKET\n;      CL-BENCH.RICHARDS::CURRENTTASK)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::ADDINPUT\n; \n; compilation unit finished\n;   Undefined function:\n;     ADDINPUT\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEDEVICE\n;     (CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-DEVICETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-DEVICETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEHANDLER\n;     (CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-HANDLERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-HANDLERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEIDLER\n;     (CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-IDLETASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-IDLETASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATEWORKER\n;     (CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-WORKERTASKDATARECORD\n\n;     (CL-BENCH.RICHARDS::CREATETASK IDENTITY CL-BENCH.RICHARDS::PRIORITY\n;      CL-BENCH.RICHARDS::WORK CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATETASK\n; \n; compilation unit finished\n;   Undefined functions:\n;     CREATE-WORKERTASKDATARECORD CREATETASK\n;   caught 2 STYLE-WARNING conditions\n\n; <absolute-path>\n; in: DEFUN CREATETASK\n;     (CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK CL-BENCH.RICHARDS::TASKLIST\n;      IDENTITY CL-BENCH.RICHARDS::PRIORITY CL-BENCH.RICHARDS::WORK\n;      CL-BENCH.RICHARDS::STATE CL-BENCH.RICHARDS::DATA)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-TASKCONTROLBLOCK\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-TASKCONTROLBLOCK\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN CREATEPACKET\n;     (CL-BENCH.RICHARDS::CREATE-PACKET CL-BENCH.RICHARDS::LINK IDENTITY\n;      CL-BENCH.RICHARDS::KIND)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::CREATE-PACKET\n; \n; compilation unit finished\n;   Undefined function:\n;     CREATE-PACKET\n;   caught 1 STYLE-WARNING condition\n\n; <absolute-path>\n; in: DEFUN RUNTASK\n;     (CL-BENCH.RICHARDS::RUN\n;      (CL-BENCH.RICHARDS::TASKCONTROLBLOCK-HANDLE CL-BENCH.RICHARDS::TCB)\n;      CL-BENCH.RICHARDS::MESSAGE)\n; \n; caught STYLE-WARNING:\n;   undefined function: CL-BENCH.RICHARDS::RUN\n; \n; compilation unit finished\n;   Undefined function:\n;     RUN\n;   caught 1 STYLE-WARNING condition\nfailed to load tests.lisp: Couldn't load #P\"files/tests.lisp\": file does not exist.\nWhile evaluating the form starting at line 161, column 0\n  of #P\"<absolute-path>\":\n\ndebugger invoked on a SIMPLE-ERROR in thread\n#<THREAD tid=259 \"main thread\" RUNNING {70033F0003}>:\n  cl-bench benchmark execution failed\n",
+        "stderr_truncated": true,
+        "stdout": "{\"status\":\"failed\",\"times\":[],\"benchmarks\":{}}\n\nType HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.\n\nrestarts (invokable by number or by possibly-abbreviated name):\n  0: [RETRY   ] Retry EVAL of current toplevel form.\n  1: [CONTINUE] Ignore error and continue loading file \"<absolute-path>\".\n  2: [ABORT   ] Abort loading file \"<absolute-path>\".\n  3:            Ignore runtime option --load \"<absolute-path>\".\n  4:            Skip rest of --eval and --load options.\n  5:            Skip to toplevel READ/EVAL/PRINT loop.\n  6: [EXIT    ] Exit SBCL (calling #'EXIT, killing the process).\n\n(SB-INT:SIMPLE-EVAL-IN-LEXENV (ERROR \"cl-bench benchmark execution failed\") #<NULL-LEXENV>)\n0] \n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.45707125000000026
+      },
+      "sample": 3
+    }
+  ],
+  "runtimes": {
+    "ncl": {
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_truncated": false,
+        "stdout": "ncl 0.1.0\n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.004415792000000002
+      },
+      "version": "ncl 0.1.0"
+    },
+    "sbcl": {
+      "process": {
+        "return_code": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_truncated": false,
+        "stdout": "SBCL 2.6.0\n",
+        "stdout_truncated": false,
+        "wall_seconds": 0.004637292000000001
+      },
+      "version": "SBCL 2.6.0"
+    }
+  },
+  "schema_version": 1,
+  "scores": {
+    "benchmark_medians_seconds": {
+      "ncl_default": {},
+      "ncl_off": {},
+      "sbcl": {}
+    },
+    "benchmark_ncl_over_sbcl_ratio": {
+      "default_over_sbcl": {},
+      "off_over_sbcl": {}
+    },
+    "common_benchmark_count": 0,
+    "common_benchmarks": [],
+    "disabled_benchmarks": {
+      "WALK-LIST/MESS": {
+        "ncl_default": [
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          }
+        ],
+        "ncl_off": [
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "driver stdout did not contain a valid benchmark JSON object",
+            "status": "failed",
+            "times": []
+          }
+        ],
+        "sbcl": [
+          {
+            "error": "benchmark missing from driver output",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "benchmark missing from driver output",
+            "status": "failed",
+            "times": []
+          },
+          {
+            "error": "benchmark missing from driver output",
+            "status": "failed",
+            "times": []
+          }
+        ]
+      }
+    },
+    "geometric_mean_seconds": {
+      "ncl_default": null,
+      "ncl_off": null,
+      "sbcl": null
+    },
+    "missing_benchmarks": {
+      "1D-ARRAYS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "2D-ARRAYS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "3D-ARRAYS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "ACKERMANN": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BENCH-STRINGS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BIGNUM/ELEM-100-1000": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BIGNUM/ELEM-1000-100": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BIGNUM/ELEM-10000-1": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BIGNUM/PARI-100-10": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BIGNUM/PARI-200-5": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BITVECTORS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BOEHM-GC": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BOYER": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "BROWSE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/complex-methods": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/defclass": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/defmethod": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/instantiate": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/method+after": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/methodcalls": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CLOS/simple-instantiate": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "COMPILER": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CRC40": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "CTAK": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DDERIV": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DEFLATE-FILE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DERIV": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DESTRUCTIVE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DIV2-TEST-1": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "DIV2-TEST-2": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "EQL-SPECIALIZED-FIB": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FACTORIAL": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FFT": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FIB": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FIB-RATIO": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FPRINT/PRETTY": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FPRINT/UGLY": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FRPOLY/BIGNUM": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FRPOLY/FIXNUM": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "FRPOLY/FLOAT": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "HASH-INTEGERS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "HASH-STRINGS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "LOAD-FASL": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "MANDELBROT/COMPLEX": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "MANDELBROT/DFLOAT": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "MRG32K3A": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "PI-ATAN": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "PI-DECIMAL/BIG": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "PI-DECIMAL/SMALL": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "PI-RATIOS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "PUZZLE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "RICHARDS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "SEARCH-SEQUENCE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "SLURP-LINES": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "STAK": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "STRING-CONCAT": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "SUM-PERMUTATIONS": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "TAK": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "TAKL": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "TRAVERSE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "TRIANGLE": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "TRTAK": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "WALK-LIST/SEQ": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      },
+      "fill-strings/adjustable": {
+        "ncl_default": "no complete positive sample set",
+        "ncl_off": "no complete positive sample set",
+        "sbcl": "no complete positive sample set"
+      }
+    },
+    "ncl_over_sbcl_ratio": {
+      "default_over_sbcl": null,
+      "off_over_sbcl": null
+    }
+  },
+  "source": {
+    "commit": "553fbcdf88d2ca4e340a0cdf02679055f3279c8f",
+    "name": "cl-bench"
+  },
+  "status": "failed"
+}

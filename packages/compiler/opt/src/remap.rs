@@ -1,4 +1,4 @@
-use super::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, ValueId};
+use ncl_ir::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, ValueId};
 use std::collections::HashMap;
 
 pub fn next_value(function: &Function) -> u32 {

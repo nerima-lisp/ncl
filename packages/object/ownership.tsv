@@ -13,3 +13,17 @@ NCL-GC	WEAK-POINTER	class	ncl-object	1	no	NCL garbage-collection extension
 NCL-GC	WEAK-POINTER-P	function	ncl-object	1	no	NCL garbage-collection extension
 NCL-GC	WEAK-POINTER-VALUE	function	ncl-object	1	no	NCL garbage-collection extension
 NCL-GC	WEAK-VECTOR-P	function	ncl-object	1	no	NCL garbage-collection extension
+SB-EXT	*AFTER-GC-HOOKS*	variable	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	*GC-REAL-TIME*	variable	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	*GC-RUN-TIME*	variable	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	CANCEL-FINALIZATION	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	FINALIZE	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	GC	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	GENERATION-BYTES-ALLOCATED	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	HASH-TABLE-WEAKNESS	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	MAKE-WEAK-POINTER	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	MAKE-WEAK-VECTOR	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER	class+type	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER-P	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER-VALUE	function	ncl-object	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-VECTOR-P	function	ncl-object	1	no	Shared NCL-GC symbol identity

@@ -1,0 +1,51 @@
+name: Temporary SBCL Linux surface extraction
+
+on:
+  push:
+    branches:
+      - candidate/r6-r0-sbcl-linux-surface
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    name: Extract SBCL 2.6.0 surfaces (x86-64 Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Install SBCL 2.6.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/sbcl-2.6.0-x86-64-linux-binary.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://downloads.sourceforge.net/project/sbcl/sbcl/2.6.0/sbcl-2.6.0-x86-64-linux-binary.tar.bz2
+          tar -xjf "$archive" -C "$RUNNER_TEMP"
+          install_root="$RUNNER_TEMP/sbcl-2.6.0"
+          INSTALL_ROOT="$install_root" sh "$RUNNER_TEMP/sbcl-2.6.0-x86-64-linux/install.sh"
+          echo "$install_root/bin" >> "$GITHUB_PATH"
+          echo "SBCL_HOME=$install_root/lib/sbcl" >> "$GITHUB_ENV"
+          "$install_root/bin/sbcl" --version
+
+      - name: Extract contrib surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          nix develop --command "$RUNNER_TEMP/sbcl-2.6.0/bin/sbcl" --version
+          nix develop --command "$RUNNER_TEMP/sbcl-2.6.0/bin/sbcl" --script conformance/sbcl/extract-surface.lisp
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbcl-linux-surface
+          path: conformance/sbcl/symbols/*.tsv
+          if-no-files-found: error
+          retention-days: 7

@@ -66,6 +66,29 @@ fn type_error_condition(
     result
 }
 
+fn simple_error_condition(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    format_control: Word,
+    format_arguments: Word,
+) -> Result<Word, ObjectError> {
+    let mut format_control = format_control;
+    let mut format_arguments = format_arguments;
+    let format_control_token = push_root(ctx, &mut format_control);
+    let format_arguments_token = push_root(ctx, &mut format_arguments);
+    let result = make_typed_condition(
+        ctx,
+        runtime,
+        ConditionIdentifier::SimpleError,
+        &words(&[format_control, format_arguments]),
+    )
+    .map(ConditionRecord::as_word)
+    .map_err(object_error);
+    pop_root(ctx, format_arguments_token);
+    pop_root(ctx, format_control_token);
+    result
+}
+
 /// Construct the standard condition corresponding to a typed builtin error.
 ///
 /// # Errors
@@ -140,6 +163,10 @@ pub fn condition_from_lisp_error(
         LispError::StreamError(_) => (ConditionIdentifier::StreamError, Vec::new()),
         LispError::EndOfFile => (ConditionIdentifier::EndOfFile, Vec::new()),
         LispError::FileError(_) => (ConditionIdentifier::FileError, Vec::new()),
+        LispError::SimpleError {
+            format_control,
+            format_arguments,
+        } => return simple_error_condition(ctx, runtime, format_control, format_arguments),
         LispError::Object(ObjectError::TypeError) => (
             ConditionIdentifier::TypeError,
             words(&[Word::NIL, Word::NIL]),

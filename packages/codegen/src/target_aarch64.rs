@@ -57,6 +57,7 @@ fn compile_function_aarch64_with_multiple_values(
     let Some(_entry) = function.blocks.first() else {
         return Err(CodegenError::EmptyFunction);
     };
+    crate::machine_verify::verify_ir(function)?;
     let mut allocation = crate::allocate(function, AllocationTarget::AArch64);
     let outgoing_words = outgoing_words(function)?;
     let generated_lambda = function

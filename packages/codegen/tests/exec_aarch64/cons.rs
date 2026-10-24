@@ -114,32 +114,6 @@ fn build_cons_function() -> ncl_ir::Function {
         .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
         .expect("allocation")[0];
     let object_word = convert(&mut builder, Convert::AddressToWord, object, Ty::Word);
-    let car = fixnum_word(&mut builder, 10);
-    let cdr = fixnum_word(&mut builder, 20);
-    // A cons cell has no header word (`Prim::Car`/`Prim::Cdr` below read it
-    // directly at byte offsets 0/8), so it must be filled in with the
-    // matching headerless `Rplaca`/`Rplacd` primitives rather than the
-    // generic `StoreField`, whose `field` is header-relative.
-    builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::Rplaca,
-                args: vec![object_word, car],
-                condition: None,
-            },
-            &[Ty::Unit],
-        )
-        .expect("store car");
-    builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::Rplacd,
-                args: vec![object_word, cdr],
-                condition: None,
-            },
-            &[Ty::Unit],
-        )
-        .expect("store cdr");
     let first_loaded = builder
         .push_op(
             OpKind::Prim {
@@ -180,6 +154,96 @@ fn build_cons_function() -> ncl_ir::Function {
     builder.finish()
 }
 
+fn build_cons_store_function() -> ncl_ir::Function {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(40),
+        "cons-store",
+        vec![
+            Param {
+                name: "object".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "car".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "cdr".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let object = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("load object")[0];
+    let car = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("load car argument")[0];
+    let cdr = builder
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
+        .expect("load cdr argument")[0];
+    // Cons cells have no header word, so use their headerless stores rather
+    // than `StoreField`, whose field index is header-relative.
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Rplaca,
+                args: vec![object, car],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .expect("store car");
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Rplacd,
+                args: vec![object, cdr],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .expect("store cdr");
+    let first_loaded = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Car,
+                args: vec![object],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("load car")[0];
+    let second_loaded = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Cdr,
+                args: vec![object],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("load cdr")[0];
+    let first_loaded = convert(&mut builder, Convert::WordToI64, first_loaded, Ty::I64);
+    let second_loaded = convert(&mut builder, Convert::WordToI64, second_loaded, Ty::I64);
+    let sum = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![first_loaded, second_loaded],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .expect("sum")[0];
+    let sum = convert(&mut builder, Convert::I64ToWord, sum, Ty::Word);
+    builder
+        .terminate(Terminator::Return { values: vec![sum] })
+        .expect("return");
+    builder.finish()
+}
+
 #[test]
 fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
     let abi = BuiltinAbi;
@@ -199,7 +263,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
         [0; 4],
         0,
     );
-    assert_eq!(value, Word::fixnum(30).bits());
+    assert_eq!(value, Word::fixnum(0).bits());
     assert_eq!(count, 1);
     assert_eq!(tlab_bump(&thread), bump + 16);
     let Some(map) = compiled.safepoint_maps.first() else {
@@ -213,6 +277,34 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
             .text,
         "blr x17"
     );
+}
+
+#[test]
+fn executes_cons_stores_and_loads_for_word_argument() {
+    let abi = BuiltinAbi;
+    let compiled = compile_function_aarch64(&build_cons_store_function(), &abi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut storage = Box::new([0_u64; 2]);
+    let object = Word::pointer(storage.as_mut_ptr() as usize, ncl_sys::LowTag::List);
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        3,
+        [
+            object.bits(),
+            Word::fixnum(10).bits(),
+            Word::fixnum(20).bits(),
+            0,
+        ],
+        0,
+    );
+    assert_eq!(value, Word::fixnum(30).bits());
+    assert_eq!(count, 1);
+    assert_eq!(*storage, [Word::fixnum(10).bits(), Word::fixnum(20).bits()]);
 }
 
 #[test]

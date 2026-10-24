@@ -291,141 +291,9 @@ fn successor(
     }
 }
 
-pub(super) fn check_terminator(
-    term: &Terminator,
-    block: &BasicBlock,
-    function: &Function,
-    blocks: &HashMap<BlockId, &BasicBlock>,
-    definitions: &HashMap<ValueId, Definition>,
-    dominators: &HashMap<BlockId, HashSet<BlockId>>,
-    errors: &mut Vec<VerifyError>,
-) {
-    let position = block.ops.len() + block.params.len() + 1;
-    match term {
-        Terminator::Jump { target, args } => successor(
-            *target,
-            args,
-            block,
-            blocks,
-            definitions,
-            dominators,
-            errors,
-        ),
-        Terminator::Branch {
-            condition,
-            then_target,
-            then_args,
-            else_target,
-            else_args,
-        } => {
-            require_type(
-                use_value(
-                    *condition,
-                    block.id,
-                    position,
-                    definitions,
-                    dominators,
-                    errors,
-                ),
-                Ty::Bool,
-                block.id,
-                errors,
-            );
-            successor(
-                *then_target,
-                then_args,
-                block,
-                blocks,
-                definitions,
-                dominators,
-                errors,
-            );
-            successor(
-                *else_target,
-                else_args,
-                block,
-                blocks,
-                definitions,
-                dominators,
-                errors,
-            );
-        }
-        Terminator::Switch {
-            value,
-            cases,
-            default,
-            default_args,
-        } => {
-            require_type(
-                use_value(*value, block.id, position, definitions, dominators, errors),
-                Ty::I64,
-                block.id,
-                errors,
-            );
-            for (_, target, args) in cases {
-                successor(
-                    *target,
-                    args,
-                    block,
-                    blocks,
-                    definitions,
-                    dominators,
-                    errors,
-                );
-            }
-            successor(
-                *default,
-                default_args,
-                block,
-                blocks,
-                definitions,
-                dominators,
-                errors,
-            );
-        }
-        Terminator::CallReturn {
-            function: callee,
-            args,
-        }
-        | Terminator::TailCall {
-            function: callee,
-            args,
-        } => {
-            require_type(
-                use_value(*callee, block.id, position, definitions, dominators, errors),
-                Ty::Word,
-                block.id,
-                errors,
-            );
-            require_word_args(args, block, position, definitions, dominators, errors);
-        }
-        Terminator::Return { values } => {
-            if values.len() != function.return_types.len() {
-                errors.push(VerifyError::ReturnArity(block.id));
-            }
-            for (index, value) in values.iter().enumerate() {
-                let actual = use_value(*value, block.id, position, definitions, dominators, errors);
-                if let Some(expected) = function.return_types.get(index) {
-                    require_type(actual, *expected, block.id, errors);
-                }
-            }
-        }
-        Terminator::Throw { condition } => require_type(
-            use_value(
-                *condition,
-                block.id,
-                position,
-                definitions,
-                dominators,
-                errors,
-            ),
-            Ty::Word,
-            block.id,
-            errors,
-        ),
-        Terminator::Unreachable => {}
-    }
-}
+#[path = "verify_detail_terminator.rs"]
+mod terminator;
+pub(super) use terminator::check_terminator;
 
 const fn constant_type(constant: &crate::Constant) -> Ty {
     match constant {
@@ -465,5 +333,130 @@ pub(super) fn successors(term: &Terminator) -> Vec<BlockId> {
         | Terminator::Return { .. }
         | Terminator::Throw { .. }
         | Terminator::Unreachable => Vec::new(),
+    }
+}
+
+pub(super) fn op_uses(op: &Op) -> Vec<ValueId> {
+    match &op.kind {
+        OpKind::Const { .. }
+        | OpKind::Alloc { .. }
+        | OpKind::LoadArg { .. }
+        | OpKind::LoadCapture { .. }
+        | OpKind::LoadFunctionObject
+        | OpKind::Safepoint
+        | OpKind::EnterHandler { .. }
+        | OpKind::LeaveHandler { .. } => Vec::new(),
+        OpKind::Move { value }
+        | OpKind::TypeHint { value, .. }
+        | OpKind::Load { address: value }
+        | OpKind::MakeValueCell { value }
+        | OpKind::Convert { value, .. } => vec![*value],
+        OpKind::Store { address, value } => vec![*address, *value],
+        OpKind::LoadField { object, .. } => vec![*object],
+        OpKind::StoreField { object, value, .. } => vec![*object, *value],
+        OpKind::Call { function, args }
+        | OpKind::CallIndirect {
+            callee: function,
+            args,
+        } => std::iter::once(*function)
+            .chain(args.iter().copied())
+            .collect(),
+        OpKind::MakeClosure { entry, captures } => std::iter::once(*entry)
+            .chain(captures.iter().copied())
+            .collect(),
+        OpKind::CallClosure {
+            closure,
+            args,
+            named_symbol,
+        } => std::iter::once(*closure)
+            .chain(named_symbol.iter().copied())
+            .chain(args.iter().copied())
+            .collect(),
+        OpKind::Builtin { args, .. }
+        | OpKind::SetMultipleValues { values: args }
+        | OpKind::Prim { args, .. } => args.clone(),
+        OpKind::Compare { left, right, .. } => vec![*left, *right],
+    }
+}
+
+pub(super) fn terminator_uses(term: &Terminator) -> Vec<ValueId> {
+    match term {
+        Terminator::Jump { .. } | Terminator::Unreachable => Vec::new(),
+        Terminator::Branch { condition, .. } | Terminator::Throw { condition } => {
+            vec![*condition]
+        }
+        Terminator::Switch { value, .. } => vec![*value],
+        Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
+            std::iter::once(*function)
+                .chain(args.iter().copied())
+                .collect()
+        }
+        Terminator::Return { values } => values.clone(),
+    }
+}
+
+pub(super) fn successor_edges(term: &Terminator) -> Vec<(BlockId, Vec<ValueId>)> {
+    match term {
+        Terminator::Jump { target, args } => vec![(*target, args.clone())],
+        Terminator::Branch {
+            then_target,
+            then_args,
+            else_target,
+            else_args,
+            ..
+        } => vec![
+            (*then_target, then_args.clone()),
+            (*else_target, else_args.clone()),
+        ],
+        Terminator::Switch {
+            cases,
+            default,
+            default_args,
+            ..
+        } => cases
+            .iter()
+            .map(|(_, target, args)| (*target, args.clone()))
+            .chain(std::iter::once((*default, default_args.clone())))
+            .collect(),
+        Terminator::CallReturn { .. }
+        | Terminator::TailCall { .. }
+        | Terminator::Return { .. }
+        | Terminator::Throw { .. }
+        | Terminator::Unreachable => Vec::new(),
+    }
+}
+
+pub(super) fn op_successors(op: &Op) -> Vec<BlockId> {
+    match &op.kind {
+        OpKind::Prim {
+            condition: Some(target),
+            ..
+        } => vec![*target],
+        OpKind::Const { .. }
+        | OpKind::Move { .. }
+        | OpKind::TypeHint { .. }
+        | OpKind::Load { .. }
+        | OpKind::Store { .. }
+        | OpKind::LoadField { .. }
+        | OpKind::StoreField { .. }
+        | OpKind::Alloc { .. }
+        | OpKind::LoadArg { .. }
+        | OpKind::LoadCapture { .. }
+        | OpKind::LoadFunctionObject
+        | OpKind::Call { .. }
+        | OpKind::CallIndirect { .. }
+        | OpKind::MakeClosure { .. }
+        | OpKind::MakeValueCell { .. }
+        | OpKind::CallClosure { .. }
+        | OpKind::Builtin { .. }
+        | OpKind::Prim {
+            condition: None, ..
+        }
+        | OpKind::Compare { .. }
+        | OpKind::Convert { .. }
+        | OpKind::SetMultipleValues { .. }
+        | OpKind::Safepoint
+        | OpKind::EnterHandler { .. }
+        | OpKind::LeaveHandler { .. } => Vec::new(),
     }
 }

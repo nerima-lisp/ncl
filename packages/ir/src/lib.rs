@@ -11,7 +11,7 @@ pub use builder::FunctionBuilder;
 pub use fixnum::*;
 pub use text::{ParseError, parse};
 pub use types::*;
-pub use verify::{VerifyError, proven_fixnum_values, verify};
+pub use verify::{AddressLivenessBoundary, VerifyError, proven_fixnum_values, verify};
 
 #[cfg(test)]
 mod tests;

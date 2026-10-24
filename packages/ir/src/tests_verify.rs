@@ -15,6 +15,615 @@ fn verify_has(function: &Function, expected: &VerifyError) {
     );
 }
 
+#[test]
+fn verifier_accepts_address_dead_before_safepoint() {
+    let function = finish(
+        "address-dead-before-safepoint",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(0),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(2)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_rejects_address_provenance_through_conversions_at_safepoint() {
+    let function = finish(
+        "address-conversion-chain",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(&[(3, Ty::Word)], OpKind::Move { value: ValueId(2) }),
+                op(
+                    &[(4, Ty::I64)],
+                    OpKind::Convert {
+                        op: Convert::WordToI64,
+                        value: ValueId(3),
+                    },
+                ),
+                op(
+                    &[(5, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::I64ToWord,
+                        value: ValueId(4),
+                    },
+                ),
+                op(
+                    &[(6, Ty::F64)],
+                    OpKind::Convert {
+                        op: Convert::WordToF64,
+                        value: ValueId(5),
+                    },
+                ),
+                op(
+                    &[(7, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::F64ToWord,
+                        value: ValueId(6),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(8, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(7),
+                    },
+                ),
+                op(&[(9, Ty::Address)], OpKind::Move { value: ValueId(8) }),
+                op(
+                    &[(10, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(9),
+                    },
+                ),
+                op(
+                    &[(11, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(11)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(7),
+            boundary: AddressLivenessBoundary::Safepoint,
+        },
+    );
+}
+
+#[test]
+fn verifier_rejects_address_provenance_through_arithmetic_at_call() {
+    let function = finish(
+        "address-arithmetic-chain",
+        vec![
+            Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            },
+            Param {
+                name: "offset".into(),
+                ty: Ty::I64,
+            },
+        ],
+        vec![Ty::I64],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(&[(3, Ty::Word)], OpKind::Move { value: ValueId(2) }),
+                op(
+                    &[(4, Ty::I64)],
+                    OpKind::Convert {
+                        op: Convert::WordToI64,
+                        value: ValueId(3),
+                    },
+                ),
+                op(
+                    &[(5, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumAdd,
+                        args: vec![ValueId(4), ValueId(1)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(6, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumMul,
+                        args: vec![ValueId(5), ValueId(1)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(7, Ty::I64)],
+                    OpKind::Prim {
+                        op: Prim::FixnumDiv,
+                        args: vec![ValueId(6), ValueId(1)],
+                        condition: None,
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(7)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(6),
+            boundary: AddressLivenessBoundary::Call,
+        },
+    );
+}
+
+#[test]
+fn verifier_tracks_address_provenance_through_block_parameters() {
+    let function = finish(
+        "address-block-parameter",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[(1, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(1)],
+                },
+            ),
+            BasicBlock {
+                id: BlockId(1),
+                params: vec![BlockParam {
+                    value: ValueId(2),
+                    ty: Ty::Word,
+                }],
+                ops: vec![
+                    op(&[], OpKind::Safepoint),
+                    op(
+                        &[(3, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(2),
+                        },
+                    ),
+                    op(
+                        &[(4, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(3),
+                        },
+                    ),
+                    op(
+                        &[(5, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                ],
+                terminator: Terminator::Return {
+                    values: vec![ValueId(5)],
+                },
+            },
+        ],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(1),
+            value: ValueId(2),
+            boundary: AddressLivenessBoundary::Safepoint,
+        },
+    );
+}
+
+#[test]
+fn verifier_rejects_address_live_across_allocation() {
+    let function = finish(
+        "address-live-across-allocation",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(&[(2, Ty::Address)], OpKind::Alloc { words: 1 }),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(3, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(1),
+                    },
+                ),
+                op(
+                    &[(4, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(3),
+                    },
+                ),
+                op(
+                    &[(5, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(5)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(1),
+            boundary: AddressLivenessBoundary::Alloc,
+        },
+    );
+}
+
+#[test]
+fn verifier_rejects_address_live_across_call_operation() {
+    let function = finish(
+        "address-live-across-call",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(3, Ty::Word)],
+                    OpKind::Call {
+                        function: ValueId(1),
+                        args: vec![ValueId(2)],
+                    },
+                ),
+                op(
+                    &[(4, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(2),
+                    },
+                ),
+                op(
+                    &[(5, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(4),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(3)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(2),
+            boundary: AddressLivenessBoundary::Call,
+        },
+    );
+}
+
+#[test]
+fn verifier_treats_unknown_call_primitive_as_call_boundary() {
+    let function = finish(
+        "address-live-across-typep",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(3, Ty::Bool)],
+                    OpKind::Prim {
+                        op: Prim::Typep,
+                        args: vec![ValueId(1), ValueId(2)],
+                        condition: None,
+                    },
+                ),
+                op(
+                    &[(4, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(2),
+                    },
+                ),
+                op(
+                    &[(5, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(4),
+                    },
+                ),
+                op(
+                    &[(6, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(6)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(2),
+            boundary: AddressLivenessBoundary::Call,
+        },
+    );
+}
+
+#[test]
+fn verifier_rejects_address_passed_to_call_terminators() {
+    for terminator in [
+        Terminator::CallReturn {
+            function: ValueId(1),
+            args: vec![ValueId(2)],
+        },
+        Terminator::TailCall {
+            function: ValueId(1),
+            args: vec![ValueId(2)],
+        },
+    ] {
+        let function = finish(
+            "address-live-across-call-terminator",
+            vec![Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            }],
+            Vec::new(),
+            vec![Constant::Nil],
+            vec![block(
+                0,
+                vec![
+                    op(
+                        &[(1, Ty::Word)],
+                        OpKind::Const {
+                            result: ConstantIndex(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::Word)],
+                        OpKind::Convert {
+                            op: Convert::AddressToWord,
+                            value: ValueId(0),
+                        },
+                    ),
+                ],
+                terminator,
+            )],
+            Vec::new(),
+        );
+
+        verify_has(
+            &function,
+            &VerifyError::AddressLiveAcross {
+                block: BlockId(0),
+                value: ValueId(2),
+                boundary: AddressLivenessBoundary::Call,
+            },
+        );
+    }
+}
+
+#[test]
+fn verifier_rejects_address_live_across_loop_backedge() {
+    let function = finish(
+        "address-live-across-loop-backedge",
+        vec![
+            Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            },
+            Param {
+                name: "again".into(),
+                ty: Ty::Bool,
+            },
+        ],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[(2, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                )],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(2)],
+                },
+            ),
+            BasicBlock {
+                id: BlockId(1),
+                params: vec![BlockParam {
+                    value: ValueId(3),
+                    ty: Ty::Word,
+                }],
+                ops: Vec::new(),
+                terminator: Terminator::Branch {
+                    condition: ValueId(1),
+                    then_target: BlockId(2),
+                    then_args: Vec::new(),
+                    else_target: BlockId(3),
+                    else_args: Vec::new(),
+                },
+            },
+            block(
+                2,
+                vec![op(&[], OpKind::Safepoint)],
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(3)],
+                },
+            ),
+            block(
+                3,
+                vec![
+                    op(
+                        &[(4, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(3),
+                        },
+                    ),
+                    op(
+                        &[(5, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(4),
+                        },
+                    ),
+                ],
+                Terminator::Return {
+                    values: vec![ValueId(5)],
+                },
+            ),
+        ],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(2),
+            value: ValueId(3),
+            boundary: AddressLivenessBoundary::LoopBackedge { target: BlockId(1) },
+        },
+    );
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "the table keeps the required verifier fixtures together"

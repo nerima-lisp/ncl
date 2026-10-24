@@ -65,7 +65,7 @@ fn memory(
         format!("w{}", word & 31)
     };
     let base = spreg((word >> 5) & 31);
-    let is_register = word & 0x0000_0800 != 0;
+    let is_register = unscaled && word & 0x0000_0c00 == 0x0000_0800;
     let operand = if is_register {
         let option = (word >> 13) & 7;
         let amount = ((word >> 12) & 1) * size;
@@ -177,12 +177,9 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
         )
     } else if word & 0x9f00_0000 == 0x1000_0000 || word & 0x9f00_0000 == 0x9000_0000 {
         let page = word & 0x8000_0000 != 0;
-        let imm = signed(((word >> 5) & 0x7ffff) | ((word >> 24) & 0x3) << 19, 21)
-            | (if page {
-                0
-            } else {
-                signed((word >> 29) & 3, 2) << 19
-            });
+        let immhi = (word >> 5) & 0x7ffff;
+        let immlo = (word >> 29) & 3;
+        let imm = signed((immhi << 2) | immlo, 21);
         let d = if page { imm << 12 } else { imm };
         let base = if page { address & !0xfff } else { address };
         match target(base, d) {
@@ -192,14 +189,14 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
                     if page { "adrp" } else { "adr" },
                     reg(word & 31)
                 ),
-                Some(t),
+                None,
             )),
             Err(reason) => Err(reason),
         }
     } else if word & 0xff00_0000 == 0x5800_0000 {
         let d = signed((word >> 5) & 0x7ffff, 19) * 4;
         match target(address, d) {
-            Ok(t) => Ok((format!("ldr {}, #0x{t:x}", reg(word & 31)), Some(t))),
+            Ok(t) => Ok((format!("ldr {}, #0x{t:x}", reg(word & 31)), None)),
             Err(reason) => Err(reason),
         }
     } else if word & 0xff80_0000 == 0xd280_0000

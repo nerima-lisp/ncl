@@ -235,8 +235,22 @@ pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
 /// Read a cons payload word through a registered thread.
 #[must_use]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
-    let heap = thread.heap()?;
-    heap.read_word(object, slot)
+    let Some(heap) = thread.heap() else {
+        eprintln!(
+            "R2_DIAG read_cons_word rejected: reason=thread_has_no_heap object={object:?} slot={slot}\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+        return None;
+    };
+    let value = heap.read_word(object, slot);
+    if value.is_none() {
+        eprintln!(
+            "R2_DIAG read_cons_word rejected: reason=heap_read_failed object={object:?} slot={slot} gc_epoch={}\n{}",
+            heap.gc_epoch(),
+            std::backtrace::Backtrace::force_capture()
+        );
+    }
+    value
 }
 
 /// Read a header-object payload word through a registered thread.
@@ -257,9 +271,21 @@ pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: 
 /// Write a cons payload word through a registered thread.
 pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
     let Some(heap) = thread.heap() else {
+        eprintln!(
+            "R2_DIAG write_cons_word rejected: reason=thread_has_no_heap object={object:?} slot={slot} value={value:?}\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
         return false;
     };
-    heap.write_word_at(object, slot, value)
+    let written = heap.write_word_at(object, slot, value);
+    if !written {
+        eprintln!(
+            "R2_DIAG write_cons_word rejected: reason=heap_rejected object={object:?} slot={slot} value={value:?} gc_epoch={}\n{}",
+            heap.gc_epoch(),
+            std::backtrace::Backtrace::force_capture()
+        );
+    }
+    written
 }
 
 /// Register a mutator with a heap.

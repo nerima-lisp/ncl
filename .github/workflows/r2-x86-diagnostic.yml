@@ -1,0 +1,32 @@
+name: R2 x86 diagnostic
+
+on:
+  push:
+    branches:
+      - codex/r2-x86-diag-20261024
+      - codex/r2-x86-read-diag-20261024
+      - codex/r2-x86-suite-diag-20261024
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: x86-64 Linux LOOP diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record candidate revision
+        run: echo "checkout_sha=${{ github.sha }}"
+      - name: Repeat release all-features e2enum suite
+        run: |
+          for iteration in 1 2 3 4 5; do
+            echo "iteration=${iteration}"
+            nix develop -c cargo test --locked -j 4 -p ncl --all-features --release --test e2enum -- --nocapture
+          done

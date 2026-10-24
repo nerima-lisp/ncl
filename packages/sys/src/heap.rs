@@ -308,7 +308,29 @@ impl Heap {
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();
-        state.objects[self.find_for_mutator(&state, object)?]
+        let Some(index) = self.find_for_mutator(&state, object) else {
+            let raw_index = Self::find_raw(&state, object);
+            let forwarded_index = raw_index.and_then(|index| state.objects[index].forwarded_to);
+            let strict_forwarding = self.strict_forwarding.load(Ordering::Relaxed);
+            let reason = if strict_forwarding && forwarded_index.is_some() {
+                "strict_forwarding_rejected_forwarded_object"
+            } else if raw_index.is_none() {
+                "object_not_found"
+            } else {
+                "object_unavailable"
+            };
+            let forwarded_to =
+                forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
+            let gc_epoch = state.gc_epoch;
+            drop(state);
+            eprintln!(
+                "R2_DIAG heap.read_word rejected: reason={reason} object={object:?} address={:#x} slot={slot} forwarded_to={forwarded_to:?} gc_epoch={gc_epoch}\n{}",
+                object.address(),
+                std::backtrace::Backtrace::force_capture()
+            );
+            return None;
+        };
+        state.objects[index]
             .words
             .get(slot)
             .map(|value| Word::from_bits(*value))
@@ -318,6 +340,19 @@ impl Heap {
     }
     pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
         let mut state = self.lock_state();
+        if self.strict_forwarding.load(Ordering::Relaxed)
+            && let Some(index) = Self::find_raw(&state, object)
+            && let Some(forwarded_to) = state.objects[index].forwarded_to
+        {
+            let target_address = state.objects[forwarded_to].words.as_ptr().addr();
+            let gc_epoch = state.gc_epoch;
+            drop(state);
+            eprintln!(
+                "R2_DIAG strict_forwarding rejected forwarded object: object={object:?} address={:#x} target_address={target_address:#x} slot={slot} value={value:?} gc_epoch={gc_epoch}",
+                object.address()
+            );
+            return false;
+        }
         self.find_for_mutator(&state, object)
             .and_then(|index| state.objects[index].words.get_mut(slot))
             .map(|target| *target = value.bits())

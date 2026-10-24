@@ -83,57 +83,6 @@ fn quoted_symbol_name(ctx: &mut ThreadContext, value: Word) -> Result<Option<Str
     ))
 }
 
-fn held_form(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    name: &str,
-    indexes: &[usize],
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let args = indexes
-            .iter()
-            .map(|index| {
-                roots
-                    .get(*index)
-                    .map(|root| **root)
-                    .ok_or(ObjectError::TypeError)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let value = form(ctx, runtime, name, &args)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
-fn held_list(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    indexes: &[usize],
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let values = indexes
-            .iter()
-            .map(|index| {
-                roots
-                    .get(*index)
-                    .map(|root| **root)
-                    .ok_or(ObjectError::TypeError)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let value = list(ctx, runtime, &values)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
 fn rooted_held_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -173,94 +122,95 @@ fn rooted_held_list(
     Ok(held.len() - 1)
 }
 
-fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
-        let variable = spec.first().copied().ok_or(ObjectError::Layout)?;
-        if !matches!(classify_object(ctx, variable), ObjectRef::Symbol(_)) {
-            return Err(ObjectError::TypeError);
-        }
+fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWord]) -> Result {
+    let spec = elements(ctx, values.first().ok_or(ObjectError::TypeError)?.get())?;
+    let variable = spec.first().copied().ok_or(ObjectError::Layout)?;
+    if !matches!(classify_object(ctx, variable), ObjectRef::Symbol(_)) {
+        return Err(ObjectError::TypeError);
+    }
 
-        let mut initial_string = Word::NIL;
-        let mut has_initial_string = false;
-        let mut allow_other_keys = false;
-        let mut unknown_keyword = false;
-        let mut cursor = 1;
-        if let Some(value) = spec.get(cursor).copied()
-            && !is_keyword_symbol(ctx, runtime, value)?
-        {
-            initial_string = value;
-            has_initial_string = true;
-            cursor += 1;
-        }
-        while cursor < spec.len() {
-            let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;
-            let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
-            if is_keyword(ctx, runtime, key, "ELEMENT-TYPE")? {
-                if !has_initial_string
-                    && (value == Word::NIL
-                        || quoted_symbol_name(ctx, value)?
-                            .is_some_and(|name| name != "CHARACTER" && name != "T"))
-                {
-                    return Err(ObjectError::TypeError);
-                }
-            } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
-                allow_other_keys |= value != Word::NIL;
-            } else {
-                if !is_keyword_symbol(ctx, runtime, key)? {
-                    ctx.set_pending_lisp_error(LispError::ProgramError(
-                        ProgramError::UnknownKeyword,
-                    ));
-                    return Err(ObjectError::TypeError);
-                }
-                unknown_keyword = true;
+    let mut initial_string = Word::NIL;
+    let mut has_initial_string = false;
+    let mut allow_other_keys = false;
+    let mut unknown_keyword = false;
+    let mut cursor = 1;
+    if let Some(value) = spec.get(cursor).copied()
+        && !is_keyword_symbol(ctx, runtime, value)?
+    {
+        initial_string = value;
+        has_initial_string = true;
+        cursor += 1;
+    }
+    while cursor < spec.len() {
+        let key = *spec.get(cursor).ok_or(ObjectError::Layout)?;
+        let value = *spec.get(cursor + 1).ok_or(ObjectError::TypeError)?;
+        if is_keyword(ctx, runtime, key, "ELEMENT-TYPE")? {
+            if !has_initial_string
+                && (value == Word::NIL
+                    || quoted_symbol_name(ctx, value)?
+                        .is_some_and(|name| name != "CHARACTER" && name != "T"))
+            {
+                return Err(ObjectError::TypeError);
             }
-            cursor += 2;
-        }
-        if unknown_keyword && !allow_other_keys {
-            ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
-            return Err(ObjectError::TypeError);
-        }
-
-        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        let body_end = held.len();
-        let variable_index = held.len();
-        held.push(variable);
-        let initial_string_index = held.len();
-        held.push(initial_string);
-        let stream = held_form(ctx, runtime, &mut held, "MAKE-STRING-OUTPUT-STREAM", &[])?;
-        let binding = held_list(ctx, runtime, &mut held, &[variable_index, stream])?;
-        let bindings = held_list(ctx, runtime, &mut held, &[binding])?;
-        let body = held_form(
-            ctx,
-            runtime,
-            &mut held,
-            "PROGN",
-            &(1..body_end).collect::<Vec<_>>(),
-        )?;
-        let body = if has_initial_string {
-            let write_initial = held_form(
-                ctx,
-                runtime,
-                &mut held,
-                "WRITE-STRING",
-                &[initial_string_index, variable_index],
-            )?;
-            held_form(ctx, runtime, &mut held, "PROGN", &[write_initial, body])?
+        } else if is_keyword(ctx, runtime, key, "ALLOW-OTHER-KEYS")? {
+            allow_other_keys |= value != Word::NIL;
         } else {
-            body
-        };
-        let output = held_form(
+            if !is_keyword_symbol(ctx, runtime, key)? {
+                ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
+                return Err(ObjectError::TypeError);
+            }
+            unknown_keyword = true;
+        }
+        cursor += 2;
+    }
+    if unknown_keyword && !allow_other_keys {
+        ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
+        return Err(ObjectError::TypeError);
+    }
+
+    let mut held = HeapRootedWords::default();
+    for value in values {
+        held.push(ctx, value.get())?;
+    }
+    let body_end = held.len();
+    let variable_index = held.len();
+    held.push(ctx, variable)?;
+    let initial_string_index = held.len();
+    held.push(ctx, initial_string)?;
+    let stream = rooted_held_form(ctx, runtime, &mut held, "MAKE-STRING-OUTPUT-STREAM", &[])?;
+    let binding = rooted_held_list(ctx, runtime, &mut held, &[variable_index, stream])?;
+    let bindings = rooted_held_list(ctx, runtime, &mut held, &[binding])?;
+    let body = rooted_held_form(
+        ctx,
+        runtime,
+        &mut held,
+        "PROGN",
+        &(1..body_end).collect::<Vec<_>>(),
+    )?;
+    let body = if has_initial_string {
+        let write_initial = rooted_held_form(
             ctx,
             runtime,
             &mut held,
-            "GET-OUTPUT-STREAM-STRING",
-            &[variable_index],
+            "WRITE-STRING",
+            &[initial_string_index, variable_index],
         )?;
-        let result = held_form(ctx, runtime, &mut held, "PROGN", &[body, output])?;
-        let expansion = held_form(ctx, runtime, &mut held, "LET", &[bindings, result])?;
-        held.get(expansion).copied().ok_or(ObjectError::Layout)
-    })
+        rooted_held_form(ctx, runtime, &mut held, "PROGN", &[write_initial, body])?
+    } else {
+        body
+    };
+    let output = rooted_held_form(
+        ctx,
+        runtime,
+        &mut held,
+        "GET-OUTPUT-STREAM-STRING",
+        &[variable_index],
+    )?;
+    let result = rooted_held_form(ctx, runtime, &mut held, "PROGN", &[body, output])?;
+    let expansion = rooted_held_form(ctx, runtime, &mut held, "LET", &[bindings, result])?;
+    held.get(expansion)
+        .map(HeapRootedWord::get)
+        .ok_or(ObjectError::Layout)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -405,11 +355,7 @@ pub fn expand_output_adapter(
 ) -> Result {
     let form = args.required(0)?;
     let arguments = arguments(ctx, form)?;
-    let words = arguments
-        .iter()
-        .map(HeapRootedWord::get)
-        .collect::<Vec<_>>();
-    expand_output(ctx, runtime, &words)
+    expand_output(ctx, runtime, arguments.as_slice())
 }
 
 pub fn expand_input_adapter(

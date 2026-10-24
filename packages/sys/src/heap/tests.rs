@@ -293,7 +293,7 @@ fn unreachable_nursery_is_reclaimed_and_raw_layout_words_are_unchanged() {
 }
 
 #[test]
-fn dirty_card_keeps_old_to_young_reference() {
+fn dirty_card_keeps_old_to_young_reference_without_rooting_old_object() {
     let h = Heap::new(HeapConfig::default());
     let mut t = Thread::new();
     assert_eq!(h.register_thread(&mut t), Ok(()));
@@ -313,6 +313,7 @@ fn dirty_card_keeps_old_to_young_reference() {
     let token = t.push_root(&mut old);
     assert_eq!(h.collect(false), Ok(()));
     assert_eq!(h.collect(false), Ok(()));
+    assert!(t.pop_root(token));
     let child = h
         .alloc_cons(&mut t, Word::fixnum(99), Word::NIL)
         .unwrap_or(Word::NIL);
@@ -324,8 +325,6 @@ fn dirty_card_keeps_old_to_young_reference() {
     let retained = Word::from_bits(state.objects[index].words[1]);
     assert!(Heap::find(&state, retained).is_some());
     assert_eq!(state.objects[index].generation, 2);
-    drop(state);
-    assert!(t.pop_root(token));
 }
 
 #[test]

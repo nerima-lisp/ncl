@@ -131,7 +131,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
         }
         ctx.clear_safepoint_request();
         ctx.enter_native();
-        ncl_sys::collect(ctx, true);
+        assert_eq!(ncl_sys::collect(ctx, true), Ok(()));
         if tail_gc_stress {
             TAIL_GC_COLLECTIONS.fetch_add(1, Ordering::SeqCst);
         }

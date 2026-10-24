@@ -259,13 +259,13 @@ impl ThreadContext {
     pub const fn take_pending_condition(&mut self) -> Option<Word> {
         self.pending_condition.take()
     }
-    /// Run a collection for this registered context.
+    /// Run a minor collection when `full` is `false`, or a full collection when it is `true`.
     ///
     /// # Errors
-    /// Returns a storage error if this context is not registered.
+    /// Returns a storage error if the context is unregistered or heap collection cannot complete.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
         self.require_registered()?;
-        ncl_sys::collect(&mut self.thread, full);
+        ncl_sys::collect(&mut self.thread, full)?;
         Ok(())
     }
     /// Force a full collection before every object allocation when enabled.

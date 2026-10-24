@@ -77,8 +77,8 @@ struct BudgetState {
 
 /// A thread-safe byte budget shared by metadata containers.
 ///
-/// Per-thread root arrays are intentionally outside this budget. Their size follows the
-/// live native stack depth; this limit covers collector metadata that scales with heap objects.
+/// Thread-owned root storage is outside this budget because its size follows live native-stack depth,
+/// not heap object count.
 #[derive(Clone, Debug)]
 pub struct MetadataBudget {
     state: Arc<BudgetState>,

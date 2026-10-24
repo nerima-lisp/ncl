@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/allocation.rs"]
 mod allocation;
+#[path = "heap/barrier.rs"]
+mod barrier;
 #[path = "heap/collect.rs"]
 mod collect;
 #[path = "heap/config.rs"]
@@ -391,28 +393,6 @@ impl Heap {
                 if *slot < state.objects[index].words.len() {
                     state.objects[index].words[*slot] = value.bits();
                 }
-            }
-        }
-    }
-    pub(crate) fn barrier(&self, object: Word, slot: usize) {
-        let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, object)
-            && state.objects[index].generation > 0
-            && slot < state.objects[index].words.len()
-        {
-            if state.collection_preparing {
-                // The scratch snapshot cannot grow after preflight; overflow makes
-                // the minor collector scan all old objects and preserves this write.
-                state.remembered_set_overflow = true;
-                return;
-            }
-            let address = state.objects[index].words.as_ptr() as usize + slot * 8;
-            if state
-                .dirty_cards
-                .insert((index, address / CARD_SIZE))
-                .is_err()
-            {
-                state.remembered_set_overflow = true;
             }
         }
     }

@@ -140,6 +140,18 @@ fn retain_preserves_order_and_remains_valid_if_predicate_panics() {
 }
 
 #[test]
+fn retain_moves_values_across_interleaved_deletions() {
+    let mut values = MetadataVec::new(MetadataBudget::default());
+    for value in 0..4 {
+        assert!(values.push(value).is_ok());
+    }
+
+    values.retain(|value| *value % 2 == 1);
+
+    assert_eq!(values.as_slice(), &[1, 3]);
+}
+
+#[test]
 fn retain_does_not_redrop_an_element_when_its_destructor_panics() {
     struct PanicOnDrop {
         id: usize,

@@ -8,9 +8,9 @@
 //! minimal shape that L18 (`ncl-clos`) can later formalize into a real class.
 use crate::error::ConditionError;
 use ncl_object::{
-    Instance, ObjectError, Runtime, ThreadContext, Word, car, cdr, instance_class, make_cons,
-    make_instance, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
-    simple_vector_set, string_length, string_ref,
+    HeapRootedWord, HeapRootedWords, Instance, ObjectError, Runtime, ThreadContext, Word, car, cdr,
+    instance_class, make_cons, make_instance, make_simple_vector, make_string,
+    simple_vector_length, simple_vector_ref, simple_vector_set, string_length, string_ref,
 };
 /// Index of the class name string in a class descriptor.
 pub const NAME_SLOT: usize = 0;
@@ -350,24 +350,26 @@ pub fn wire_superclasses(
     name: &str,
     superclasses: &[&str],
 ) -> Result<(), ObjectError> {
-    let child = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
-    let parents = superclasses
-        .iter()
-        .map(|superclass| runtime.class(ctx, superclass).ok_or(ObjectError::Layout))
-        .collect::<Result<Vec<_>, _>>()?;
-    let value = match parents.as_slice() {
-        [] => Word::NIL,
-        [single] => *single,
-        // check-added-lines: allow(wildcard) slice-length match is exhaustive over 0/1/many
+    let child_word = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
+    let child = HeapRootedWord::new(ctx, child_word)?;
+    let mut parents = HeapRootedWords::default();
+    for superclass in superclasses {
+        let parent = runtime.class(ctx, superclass).ok_or(ObjectError::Layout)?;
+        parents.push(ctx, parent)?;
+    }
+
+    let value = HeapRootedWord::new(ctx, Word::NIL)?;
+    match parents.len() {
+        0 => {}
+        1 => value.set(parents.first().ok_or(ObjectError::Layout)?.get()),
         _ => {
-            let mut list = Word::NIL;
-            for parent in parents.iter().rev() {
-                list = make_cons(ctx, runtime, *parent, list)?;
+            for index in (0..parents.len()).rev() {
+                let parent = parents.get(index).ok_or(ObjectError::Layout)?.get();
+                value.set(make_cons(ctx, runtime, parent, value.get())?);
             }
-            list
         }
-    };
-    simple_vector_set(ctx, child, SUPERCLASS_SLOT, value)
+    }
+    simple_vector_set(ctx, child.get(), SUPERCLASS_SLOT, value.get())
 }
 
 /// Link the registered condition hierarchy to the runtime's `T` class.

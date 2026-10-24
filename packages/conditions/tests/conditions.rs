@@ -463,19 +463,16 @@ fn typed_builtin_error_becomes_pending_type_condition() {
 }
 
 #[test]
-fn simple_error_preserves_its_formatted_report() {
+fn simple_error_preserves_its_formatted_report() -> Result<(), Box<dyn std::error::Error>> {
     let (runtime, mut ctx) = setup();
     let expected = "IR verification failed in lambda-FunctionId(1): UndefinedValue(ValueId(4))";
 
-    let format_control = make_string(&mut ctx, &runtime, &['~', 'A']).expect("format control");
-    let format_control = HeapRootedWord::new(&ctx, format_control).expect("rooted format control");
-    let message = make_string(&mut ctx, &runtime, &expected.chars().collect::<Vec<_>>())
-        .expect("message string");
-    let message = HeapRootedWord::new(&ctx, message).expect("rooted message");
-    let format_arguments = ncl_object::make_cons(&mut ctx, &runtime, message.get(), Word::NIL)
-        .expect("format arguments");
-    let format_arguments =
-        HeapRootedWord::new(&ctx, format_arguments).expect("rooted format arguments");
+    let format_control = make_string(&mut ctx, &runtime, &['~', 'A'])?;
+    let format_control = HeapRootedWord::new(&ctx, format_control)?;
+    let message = make_string(&mut ctx, &runtime, &expected.chars().collect::<Vec<_>>())?;
+    let message = HeapRootedWord::new(&ctx, message)?;
+    let format_arguments = ncl_object::make_cons(&mut ctx, &runtime, message.get(), Word::NIL)?;
+    let format_arguments = HeapRootedWord::new(&ctx, format_arguments)?;
 
     let condition = ncl_conditions::condition_from_lisp_error(
         &mut ctx,
@@ -484,14 +481,14 @@ fn simple_error_preserves_its_formatted_report() {
             format_control: format_control.get(),
             format_arguments: format_arguments.get(),
         },
-    )
-    .expect("simple error condition");
-    let condition = HeapRootedWord::new(&ctx, condition).expect("rooted condition");
+    )?;
+    let condition = HeapRootedWord::new(&ctx, condition)?;
 
     assert_eq!(
         ncl_conditions::condition_report(&ctx, condition.get()).as_deref(),
         Some(expected)
     );
+    Ok(())
 }
 
 #[test]

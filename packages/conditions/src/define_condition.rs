@@ -14,9 +14,9 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, car, cdr, make_simple_vector, make_string,
-    slot_ref, string_length, string_ref, symbol_name,
+    BuiltinName, BuiltinPackage, HeapRootedWord, HeapRootedWords, Instance, LambdaList,
+    MultipleValues, ObjectError, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr,
+    make_simple_vector, make_string, slot_ref, string_length, string_ref, symbol_name,
 };
 
 use crate::class::wire_superclasses;
@@ -59,17 +59,34 @@ fn define_condition_class_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name_symbol = args.required(0)?;
-    let parents_list = args.required(1)?;
-    let slot_specs_list = args.required(2)?;
-    let report = args.required(3)?;
+    let arguments = HeapRootedWords::new(
+        ctx,
+        &[
+            args.required(0)?,
+            args.required(1)?,
+            args.required(2)?,
+            args.required(3)?,
+        ],
+    )?;
 
-    let name_text = symbol_text(ctx, name_symbol)?;
-    let name_word = make_string(ctx, runtime, &name_text.chars().collect::<Vec<_>>())?;
-    let descriptor = make_simple_vector(ctx, runtime, &[name_word, Word::NIL, Word::NIL, report])?;
-    runtime.define_class(ctx, name_text.clone(), descriptor)?;
+    let name_text = symbol_text(ctx, arguments.get(0).ok_or(ObjectError::Layout)?.get())?;
+    let name_word_value = make_string(ctx, runtime, &name_text.chars().collect::<Vec<_>>())?;
+    let name_word = HeapRootedWord::new(ctx, name_word_value)?;
+    let descriptor_value = make_simple_vector(
+        ctx,
+        runtime,
+        &[
+            name_word.get(),
+            Word::NIL,
+            Word::NIL,
+            arguments.get(3).ok_or(ObjectError::Layout)?.get(),
+        ],
+    )?;
+    let descriptor = HeapRootedWord::new(ctx, descriptor_value)?;
+    runtime.define_class(ctx, name_text.clone(), descriptor.get())?;
 
-    let mut parent_names = symbol_list_names(ctx, parents_list)?;
+    let mut parent_names =
+        symbol_list_names(ctx, arguments.get(1).ok_or(ObjectError::Layout)?.get())?;
     if parent_names.is_empty() {
         parent_names.push("CONDITION".to_owned());
     }
@@ -77,7 +94,7 @@ fn define_condition_class_builtin(
     wire_superclasses(ctx, runtime, &name_text, &parent_refs)?;
 
     let mut specs = Vec::new();
-    let mut cursor = slot_specs_list;
+    let mut cursor = arguments.get(2).ok_or(ObjectError::Layout)?.get();
     while cursor != Word::NIL {
         let pair = car(ctx, cursor)?;
         specs.push(SlotSpec {
@@ -86,9 +103,9 @@ fn define_condition_class_builtin(
         });
         cursor = cdr(ctx, cursor)?;
     }
-    set_slot_specs(ctx, runtime, descriptor, &specs)?;
+    set_slot_specs(ctx, runtime, descriptor.get(), &specs)?;
 
-    Ok(name_symbol)
+    Ok(arguments.get(0).ok_or(ObjectError::Layout)?.get())
 }
 
 /// `(ncl-ext::condition-slot-ref instance index)`.

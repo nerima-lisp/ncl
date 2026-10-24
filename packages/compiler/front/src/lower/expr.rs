@@ -1,5 +1,8 @@
 //! Expression lowering for the IR v2 path.
 
+#[path = "expr/symbol_cell.rs"]
+mod symbol_cell;
+
 use ncl_ir::{Constant, Convert, FunctionId, OpKind, Ty, ValueId};
 
 use crate::ast::{EvalSituation, Expr, FunctionDesignator, LambdaExpr, Operator};
@@ -13,7 +16,7 @@ use super::super::lambda;
 use super::super::literal::lower_literal;
 use super::Context;
 use super::analysis::mentions_exit;
-use super::params::{bind_captures, bind_required, lambda_params};
+use super::params::{bind_captures, lambda_params};
 
 fn is_closure_designator(expr: &Expr) -> bool {
     match expr {
@@ -44,7 +47,16 @@ impl Context<'_> {
         }
         match expr {
             Expr::Constant(literal) => lower_literal(f, literal),
-            Expr::Variable(name) => self.lower_variable(f, name),
+            Expr::Variable(name) => {
+                let value = self.lower_variable(f, name)?;
+                if f.env().lookup_variable(name).is_some()
+                    && let Some(ty) = self.variable_hint(name)
+                {
+                    Self::type_hint(f, value, ty)
+                } else {
+                    Ok(value)
+                }
+            }
             Expr::Call {
                 operator,
                 arguments,
@@ -81,26 +93,17 @@ impl Context<'_> {
                 arguments,
             } => self.lower_multiple_value_call(f, function, arguments),
             Expr::MultipleValueProg1 { first, forms } => {
-                let value = self.lower_expr(f, first)?;
-                if self.preserve_multiple_values {
-                    let saved_values = Self::capture_multiple_values(f, value)?;
-                    for form in forms {
-                        self.lower_expr(f, form)?;
-                    }
-                    Self::restore_multiple_values(f, saved_values)
-                } else {
-                    for form in forms {
-                        self.lower_expr(f, form)?;
-                    }
-                    f.none(OpKind::SetMultipleValues {
-                        values: vec![value],
-                    })?;
-                    Ok(value)
-                }
+                self.lower_multiple_value_prog1(f, first, forms)
             }
-            Expr::The { value, .. } | Expr::LoadTimeValue { form: value, .. } => {
-                self.lower_expr(f, value)
+            Expr::The {
+                type_specifier,
+                value,
+            } => {
+                let value = self.lower_expr(f, value)?;
+                super::scalar_hint(type_specifier.form())
+                    .map_or(Ok(value), |ty| Self::type_hint(f, value, ty))
             }
+            Expr::LoadTimeValue { form: value, .. } => self.lower_expr(f, value),
             Expr::EvalWhen { situations, body } => {
                 if situations.iter().any(|situation| {
                     matches!(situation, EvalSituation::Execute | EvalSituation::Eval)
@@ -110,15 +113,72 @@ impl Context<'_> {
                     f.word_constant(Constant::Nil)
                 }
             }
-            Expr::Locally { body, .. }
-            | Expr::Macrolet { body, .. }
-            | Expr::SymbolMacrolet { body, .. } => self.lower_body(f, body),
+            Expr::Locally { declarations, body }
+            | Expr::Macrolet {
+                declarations, body, ..
+            }
+            | Expr::SymbolMacrolet {
+                declarations, body, ..
+            } => self.lower_declared_body(f, declarations, body, None),
             Expr::Flet {
-                definitions, body, ..
-            } => self.lower_local_functions(f, definitions, body, false),
+                definitions,
+                declarations,
+                body,
+            } => self.lower_declared_body(f, declarations, body, Some((definitions, false))),
             Expr::Labels {
-                definitions, body, ..
-            } => self.lower_local_functions(f, definitions, body, true),
+                definitions,
+                declarations,
+                body,
+            } => self.lower_declared_body(f, declarations, body, Some((definitions, true))),
+        }
+    }
+
+    fn lower_declared_body(
+        &mut self,
+        f: &mut FunctionLowerer,
+        declarations: &[crate::declaration::Declaration],
+        body: &[Expr],
+        local_functions: Option<(&[crate::ast::LocalFunction], bool)>,
+    ) -> Result<ValueId, LowerError> {
+        self.push_declarations(declarations);
+        let result = if let Some((definitions, recursive)) = local_functions {
+            self.lower_local_functions(f, definitions, body, recursive)
+        } else {
+            self.lower_body(f, body)
+        };
+        self.pop_declarations();
+        result
+    }
+
+    fn type_hint(
+        f: &mut FunctionLowerer,
+        value: ValueId,
+        ty: ncl_ir::ScalarTypeHint,
+    ) -> Result<ValueId, LowerError> {
+        f.one(OpKind::TypeHint { value, ty }, Ty::Word)
+    }
+
+    fn lower_multiple_value_prog1(
+        &mut self,
+        f: &mut FunctionLowerer,
+        first: &Expr,
+        forms: &[Expr],
+    ) -> Result<ValueId, LowerError> {
+        let value = self.lower_expr(f, first)?;
+        if self.preserve_multiple_values {
+            let saved_values = Self::capture_multiple_values(f, value)?;
+            for form in forms {
+                self.lower_expr(f, form)?;
+            }
+            Self::restore_multiple_values(f, saved_values)
+        } else {
+            for form in forms {
+                self.lower_expr(f, form)?;
+            }
+            f.none(OpKind::SetMultipleValues {
+                values: vec![value],
+            })?;
+            Ok(value)
         }
     }
 
@@ -193,7 +253,7 @@ impl Context<'_> {
         if let Operator::Name(name) = operator
             && let Some(result) = self.lower_symbol_cell_call(f, name, &values)?
         {
-            return Ok(result);
+            return self.apply_function_hint(f, operator, result);
         }
         if let Operator::Name(name) = operator
             && ((matches!(name.name.as_str(), "+" | "*" | "-" | "<") && values.len() == 2)
@@ -204,14 +264,16 @@ impl Context<'_> {
                 || (name.name == "CONS" && values.len() == 2))
         {
             f.safepoint()?;
-            return f.one(
+            let result = f.one(
                 OpKind::Builtin {
                     name: name.name.clone(),
                     args: values,
                     specialization: None,
+                    specialization_disabled: self.specialization_disabled(),
                 },
                 Ty::Word,
-            );
+            )?;
+            return self.apply_function_hint(f, operator, result);
         }
         let (callee, closure, named_symbol) = match operator {
             Operator::Name(name) => {
@@ -239,7 +301,7 @@ impl Context<'_> {
         let mut args = vec![argc_value];
         args.extend(values);
         f.safepoint()?;
-        if closure {
+        let result = if closure {
             f.one(
                 OpKind::CallClosure {
                     closure: callee,
@@ -256,55 +318,21 @@ impl Context<'_> {
                 },
                 Ty::Word,
             )
-        }
+        }?;
+        self.apply_function_hint(f, operator, result)
     }
 
-    /// Lower a call to `symbol-value`, `set-symbol-value`, or
-    /// `fdefinition-set` into a direct symbol-cell load or store.
-    ///
-    /// Returns `Ok(None)` when `name`/`values` do not match one of those
-    /// three forms, so the caller falls through to ordinary call lowering.
-    fn lower_symbol_cell_call(
-        &mut self,
+    fn apply_function_hint(
+        &self,
         f: &mut FunctionLowerer,
-        name: &SymbolRef,
-        values: &[ValueId],
-    ) -> Result<Option<ValueId>, LowerError> {
-        let field =
-            if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE") && values.len() == 1 {
-                Some((ncl_object::symbol_offset::VALUE, false))
-            } else if name.name == "set-symbol-value" && values.len() == 2 {
-                Some((ncl_object::symbol_offset::VALUE, true))
-            } else if (name.is_named("COMMON-LISP", "NCL::FDEFINITION-SET")
-                || name.is_named("NCL", "FDEFINITION-SET")
-                || name.is_named("NCL-EXT", "FDEFINITION-SET"))
-                && values.len() == 2
-            {
-                Some((ncl_object::symbol_offset::FUNCTION, true))
-            } else {
-                None
-            };
-        let Some((field, store)) = field else {
-            return Ok(None);
+        operator: &Operator,
+        value: ValueId,
+    ) -> Result<ValueId, LowerError> {
+        let Operator::Name(name) = operator else {
+            return Ok(value);
         };
-        let field = u32::try_from(field).map_err(|_| LowerError::Ir {
-            detail: "symbol cell offset does not fit u32".to_owned(),
-        })?;
-        let object = values.first().copied().ok_or_else(|| LowerError::Ir {
-            detail: "symbol cell operation requires a symbol".to_owned(),
-        })?;
-        if store {
-            let value = values.get(1).copied().ok_or_else(|| LowerError::Ir {
-                detail: "symbol cell store requires a value".to_owned(),
-            })?;
-            f.none(OpKind::StoreField {
-                object,
-                field,
-                value,
-            })?;
-            return Ok(Some(value));
-        }
-        self.load_bound_symbol_value(f, object).map(Some)
+        self.function_hint(name)
+            .map_or(Ok(value), |ty| Self::type_hint(f, value, ty))
     }
 
     pub(super) fn argc(f: &mut FunctionLowerer, count: usize) -> Result<ValueId, LowerError> {
@@ -422,12 +450,14 @@ impl Context<'_> {
                 callee: value,
             });
         }
-        bind_required(&mut nested, &lambda.lambda_list, 1)?;
+        let inherited_facts = self.lexical_facts.clone();
         let mut child = Context::with_targets(
             self.module,
             self.targets.clone(),
             self.preserve_multiple_values,
         );
+        child.lexical_facts = inherited_facts;
+        child.bind_required(&mut nested, &lambda.lambda_list, 1)?;
         if let Some(name) = self_name {
             let callee = nested.one(OpKind::LoadFunctionObject, Ty::Word)?;
             nested.env().bind_function(FunctionEntry {
@@ -438,7 +468,9 @@ impl Context<'_> {
         child.bind_optional(&mut nested, &lambda.lambda_list, 1)?;
         child.bind_rest_and_keys(&mut nested, &lambda.lambda_list)?;
         child.bind_aux(&mut nested, &lambda.lambda_list)?;
+        child.push_declarations(&lambda.declarations);
         let value = child.lower_body(&mut nested, &lambda.body)?;
+        child.pop_declarations();
         if !nested.is_terminated() {
             nested.return_value(value)?;
         }

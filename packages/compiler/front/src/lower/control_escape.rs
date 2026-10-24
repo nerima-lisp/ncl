@@ -90,6 +90,7 @@ impl Context<'_> {
                 name: "throw".to_owned(),
                 args: vec![token, value],
                 specialization: None,
+                specialization_disabled: self.specialization_disabled(),
             },
             Ty::Word,
         )?;

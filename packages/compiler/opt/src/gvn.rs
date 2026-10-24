@@ -247,7 +247,8 @@ impl GlobalValueNumbering {
             OpKind::Move { value }
             | OpKind::Load { address: value }
             | OpKind::Convert { value, .. }
-            | OpKind::MakeValueCell { value } => v(value),
+            | OpKind::MakeValueCell { value }
+            | OpKind::TypeHint { value, .. } => v(value),
             OpKind::LoadField { object, .. } => v(object),
             OpKind::Store { address, value }
             | OpKind::StoreField {
@@ -331,6 +332,7 @@ impl GlobalValueNumbering {
             | OpKind::MakeValueCell { .. } => true,
             OpKind::Const { .. }
             | OpKind::Move { .. }
+            | OpKind::TypeHint { .. }
             | OpKind::Load { .. }
             | OpKind::LoadField { .. }
             | OpKind::Alloc { .. }

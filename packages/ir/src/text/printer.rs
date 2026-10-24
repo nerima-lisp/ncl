@@ -17,7 +17,7 @@ impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut w = Writer::default();
         encode_function(&mut w, self);
-        writeln!(f, "fn @{} ir2 {{ {} }}", esc(&self.name), w.0)
+        writeln!(f, "fn @{} ir3 {{ {} }}", esc(&self.name), w.0)
     }
 }
 
@@ -221,6 +221,7 @@ fn op(w: &mut Writer, o: &OpKind) {
     let tag = match o {
         OpKind::Const { .. } => 0,
         OpKind::Move { .. } => 1,
+        OpKind::TypeHint { .. } => 23,
         OpKind::Load { .. } => 2,
         OpKind::Store { .. } => 3,
         OpKind::LoadField { .. } => 4,
@@ -254,6 +255,16 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         | OpKind::Load { address: value }
         | OpKind::Convert { value, .. }
         | OpKind::MakeValueCell { value } => w.u(value.0.into()),
+        OpKind::TypeHint { value, ty } => {
+            w.u(value.0.into());
+            w.u(match ty {
+                crate::ScalarTypeHint::Fixnum => 0,
+                crate::ScalarTypeHint::Integer => 1,
+                crate::ScalarTypeHint::Number => 2,
+                crate::ScalarTypeHint::Boolean => 3,
+                crate::ScalarTypeHint::NonNumber => 4,
+            });
+        }
         OpKind::Store { address, value } => {
             w.u(address.0.into());
             w.u(value.0.into());
@@ -308,20 +319,8 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
             name,
             args,
             specialization,
-        } => {
-            w.s(name);
-            vec_len(w, args.len());
-            for v in args {
-                w.u(v.0.into());
-            }
-            if let Some(specialization) = specialization {
-                w.u(1);
-                w.u(specialization.operation().tag());
-                w.u(specialization.guard_mask().into());
-            } else {
-                w.u(0);
-            }
-        }
+            specialization_disabled,
+        } => builtin_payload(w, name, args, *specialization, *specialization_disabled),
         OpKind::Compare { op, left, right } => {
             w.s(&format!("{op:?}"));
             w.u(left.0.into());
@@ -348,6 +347,29 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         OpKind::EnterHandler { region } | OpKind::LeaveHandler { region } => w.u(region.0.into()),
     }
 }
+
+fn builtin_payload(
+    w: &mut Writer,
+    name: &str,
+    args: &[crate::ValueId],
+    specialization: Option<crate::FixnumSpecialization>,
+    specialization_disabled: bool,
+) {
+    w.s(name);
+    vec_len(w, args.len());
+    for value in args {
+        w.u(value.0.into());
+    }
+    if let Some(specialization) = specialization {
+        w.u(1);
+        w.u(specialization.operation().tag());
+        w.u(specialization.guard_mask().into());
+    } else {
+        w.u(0);
+    }
+    w.b(specialization_disabled);
+}
+
 fn term(w: &mut Writer, t: &Terminator) {
     match t {
         Terminator::Jump { target, args } => {

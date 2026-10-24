@@ -16,7 +16,7 @@ use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
 use super::analysis::mentions_exit;
-use super::params::{bind_captures, bind_required, lambda_params};
+use super::params::{bind_captures, lambda_params};
 
 type RecursiveCaptures = (Vec<(SymbolRef, Slot)>, Vec<SymbolRef>);
 
@@ -287,15 +287,18 @@ impl Context<'_> {
                     callee: value,
                 });
             }
-            bind_required(&mut nested, &definition.lambda.lambda_list, 1)?;
+            let inherited_facts = self.lexical_facts.clone();
             let mut child = Context::with_targets(
                 self.module,
                 self.targets.clone(),
                 self.preserve_multiple_values,
             );
+            child.lexical_facts = inherited_facts;
+            child.bind_required(&mut nested, &definition.lambda.lambda_list, 1)?;
             child.bind_optional(&mut nested, &definition.lambda.lambda_list, 1)?;
             child.bind_rest_and_keys(&mut nested, &definition.lambda.lambda_list)?;
             child.bind_aux(&mut nested, &definition.lambda.lambda_list)?;
+            child.push_declarations(&definition.lambda.declarations);
             for ((target, target_id), (target_variables, target_functions)) in definitions
                 .iter()
                 .zip(ids.iter().copied())
@@ -341,6 +344,7 @@ impl Context<'_> {
                 });
             }
             let value = child.lower_body(&mut nested, &definition.lambda.body)?;
+            child.pop_declarations();
             if !nested.is_terminated() {
                 nested.return_value(value)?;
             }

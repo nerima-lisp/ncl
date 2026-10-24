@@ -113,7 +113,9 @@ impl Sccp {
             {
                 State::Constant(*result)
             }
-            OpKind::Move { value } => states.get(value).copied().unwrap_or(State::Unknown),
+            OpKind::Move { value } | OpKind::TypeHint { value, .. } => {
+                states.get(value).copied().unwrap_or(State::Unknown)
+            }
             OpKind::Prim { op, args, .. } => match (op, args.as_slice()) {
                 (Prim::FixnumAdd, [left, right]) => {
                     Self::binary_fixnum(function, states, *left, *right, i64::checked_add)

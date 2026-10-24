@@ -12,6 +12,13 @@ use super::super::function::FunctionLowerer;
 use super::Context;
 use super::params::bind_let;
 
+struct LetScope<'a> {
+    specials: &'a [SymbolRef],
+    analysis: &'a capture::Analysis,
+    declarations: &'a [Declaration],
+    shadowed: &'a [SymbolRef],
+}
+
 /// The names a `let`/`let*`'s declarations mark special: those declared
 /// `(special name*)` locally in the body, and those the front end folded in
 /// from a prior global proclamation (`defvar`, `defparameter`, `declaim`, or
@@ -37,10 +44,20 @@ impl Context<'_> {
         body: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let specials = special_names(declarations);
+        let shadowed = bindings
+            .iter()
+            .map(|binding| binding.name.clone())
+            .collect::<Vec<_>>();
         let analysis = capture::analyze(body);
+        let scope = LetScope {
+            specials: &specials,
+            analysis: &analysis,
+            declarations,
+            shadowed: &shadowed,
+        };
         f.env().push();
         let value = if sequential {
-            self.lower_let_sequential(f, bindings, &specials, &analysis, body)?
+            self.lower_let_sequential(f, bindings, &scope, body)?
         } else {
             let mut evaluated = Vec::with_capacity(bindings.len());
             for binding in bindings {
@@ -50,7 +67,7 @@ impl Context<'_> {
                 };
                 evaluated.push(value);
             }
-            self.lower_let_parallel(f, bindings, &evaluated, &specials, &analysis, body)?
+            self.lower_let_parallel(f, bindings, &evaluated, &scope, body)?
         };
         f.env().pop();
         Ok(value)
@@ -65,25 +82,30 @@ impl Context<'_> {
         &mut self,
         f: &mut FunctionLowerer,
         bindings: &[crate::ast::LetBinding],
-        specials: &[SymbolRef],
-        analysis: &capture::Analysis,
+        scope: &LetScope<'_>,
         body: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let Some((binding, rest)) = bindings.split_first() else {
-            return self.lower_body(f, body);
+            self.push_declarations_shadowing(scope.declarations, scope.shadowed);
+            let result = self.lower_body(f, body);
+            self.pop_declarations();
+            return result;
         };
         let value = match binding.value.as_ref() {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
-        if specials.contains(&binding.name) {
+        self.push_declarations_shadowing(&[], std::slice::from_ref(&binding.name));
+        let result = if scope.specials.contains(&binding.name) {
             self.lower_dynamic_binding(f, &binding.name, value, move |ctx, f| {
-                ctx.lower_let_sequential(f, rest, specials, analysis, body)
+                ctx.lower_let_sequential(f, rest, scope, body)
             })
         } else {
-            bind_let(f, &binding.name, value, analysis)?;
-            self.lower_let_sequential(f, rest, specials, analysis, body)
-        }
+            bind_let(f, &binding.name, value, scope.analysis)
+                .and_then(|()| self.lower_let_sequential(f, rest, scope, body))
+        };
+        self.pop_declarations();
+        result
     }
 
     /// Lower a `let`'s remaining bindings and body from already-evaluated
@@ -95,22 +117,24 @@ impl Context<'_> {
         f: &mut FunctionLowerer,
         bindings: &[crate::ast::LetBinding],
         values: &[ValueId],
-        specials: &[SymbolRef],
-        analysis: &capture::Analysis,
+        scope: &LetScope<'_>,
         body: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let (Some((binding, rest_bindings)), Some((&value, rest_values))) =
             (bindings.split_first(), values.split_first())
         else {
-            return self.lower_body(f, body);
+            self.push_declarations_shadowing(scope.declarations, scope.shadowed);
+            let result = self.lower_body(f, body);
+            self.pop_declarations();
+            return result;
         };
-        if specials.contains(&binding.name) {
+        if scope.specials.contains(&binding.name) {
             self.lower_dynamic_binding(f, &binding.name, value, move |ctx, f| {
-                ctx.lower_let_parallel(f, rest_bindings, rest_values, specials, analysis, body)
+                ctx.lower_let_parallel(f, rest_bindings, rest_values, scope, body)
             })
         } else {
-            bind_let(f, &binding.name, value, analysis)?;
-            self.lower_let_parallel(f, rest_bindings, rest_values, specials, analysis, body)
+            bind_let(f, &binding.name, value, scope.analysis)?;
+            self.lower_let_parallel(f, rest_bindings, rest_values, scope, body)
         }
     }
 
@@ -138,6 +162,7 @@ impl Context<'_> {
                 name: "CONS".to_owned(),
                 args: vec![symbol, nil],
                 specialization: None,
+                specialization_disabled: self.specialization_disabled(),
             },
             Ty::Word,
         )?;
@@ -147,6 +172,7 @@ impl Context<'_> {
                 name: "CONS".to_owned(),
                 args: vec![value, nil],
                 specialization: None,
+                specialization_disabled: self.specialization_disabled(),
             },
             Ty::Word,
         )?;

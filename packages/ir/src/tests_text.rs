@@ -94,6 +94,7 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                                 name: "cons".into(),
                                 args: vec![ValueId(0), ValueId(1)],
                                 specialization: None,
+                                specialization_disabled: false,
                             },
                         ),
                         op(
@@ -268,6 +269,7 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                             name: "length".into(),
                             args: vec![ValueId(0)],
                             specialization: None,
+                            specialization_disabled: false,
                         },
                     )],
                     Terminator::Return {
@@ -511,24 +513,33 @@ fn text_round_trips_fixnum_specialization_metadata() {
                 op(&[], OpKind::Safepoint),
                 op(
                     &[(2, Ty::Word)],
+                    OpKind::TypeHint {
+                        value: ValueId(0),
+                        ty: crate::ScalarTypeHint::Fixnum,
+                    },
+                ),
+                op(
+                    &[(3, Ty::Word)],
                     OpKind::Builtin {
                         name: "+".into(),
-                        args: vec![ValueId(0), ValueId(1)],
+                        args: vec![ValueId(2), ValueId(1)],
                         specialization: Some(
-                            FixnumSpecialization::new(FixnumOp::Add, &[true, true]).unwrap(),
+                            FixnumSpecialization::new(FixnumOp::Add, &[true, true])
+                                .unwrap_or_else(|| panic!("two-operand specialization")),
                         ),
+                        specialization_disabled: true,
                     },
                 ),
             ],
             Terminator::Return {
-                values: vec![ValueId(2)],
+                values: vec![ValueId(3)],
             },
         )],
         Vec::new(),
     );
 
     let dump = function.to_string();
-    assert!(dump.starts_with("fn @checked-add ir2 { "));
+    assert!(dump.starts_with("fn @checked-add ir3 { "));
     assert_eq!(parse(&dump), Ok(function));
 }
 
@@ -556,6 +567,7 @@ fn text_parses_legacy_builtin_dump_without_specialization_metadata() {
                     name: "+".into(),
                     args: vec![ValueId(0)],
                     specialization: None,
+                    specialization_disabled: false,
                 },
             )],
             Terminator::Return {
@@ -566,4 +578,41 @@ fn text_parses_legacy_builtin_dump_without_specialization_metadata() {
     );
 
     assert_eq!(parse(legacy), Ok(expected));
+}
+
+#[test]
+fn text_parses_stage_a_v2_builtin_with_default_specialization_policy() {
+    let v2 = concat!(
+        "fn @legacy ir2 { ",
+        "1,legacy,1,x,0,1,0,0,1,0,0,1,1,1,0,ffffffffffffffff,c,_2b,1,0,0,",
+        "5,1,1,0,0,0,",
+        " }\n",
+    );
+    let expected = finish(
+        "legacy",
+        vec![Param {
+            name: "x".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(1, Ty::Word)],
+                OpKind::Builtin {
+                    name: "+".into(),
+                    args: vec![ValueId(0)],
+                    specialization: None,
+                    specialization_disabled: false,
+                },
+            )],
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    assert_eq!(parse(v2), Ok(expected));
 }

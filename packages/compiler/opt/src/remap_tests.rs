@@ -38,6 +38,7 @@ fn remap_helpers_cover_ir_shapes() {
             name: "x".into(),
             args: vec![ValueId(0)],
             specialization: None,
+            specialization_disabled: false,
         },
         OpKind::Prim {
             op: ncl_ir::Prim::Car,
@@ -136,4 +137,27 @@ fn remap_helpers_cover_ir_shapes() {
         remap_term_values(term, &values);
     }
     assert_eq!(next_value(&callee), 2);
+}
+
+#[test]
+fn remap_type_hint_rewrites_source_and_preserves_scalar_type() {
+    let kind = OpKind::TypeHint {
+        value: ValueId(0),
+        ty: ncl_ir::ScalarTypeHint::Fixnum,
+    };
+    let mapped = remap_kind(
+        &kind,
+        &HashMap::from([(ValueId(0), ValueId(9))]),
+        &mut HashMap::new(),
+        &mut Vec::new(),
+        &leaf(),
+    );
+
+    assert_eq!(
+        mapped,
+        OpKind::TypeHint {
+            value: ValueId(9),
+            ty: ncl_ir::ScalarTypeHint::Fixnum,
+        }
+    );
 }

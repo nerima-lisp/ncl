@@ -38,6 +38,10 @@ pub fn remap_kind(
             OpKind::Const { result: mapped }
         }
         OpKind::Move { value } => OpKind::Move { value: v(*value) },
+        OpKind::TypeHint { value, ty } => OpKind::TypeHint {
+            value: v(*value),
+            ty: *ty,
+        },
         OpKind::Load { address } => OpKind::Load {
             address: v(*address),
         },
@@ -62,11 +66,17 @@ pub fn remap_kind(
         OpKind::MakeValueCell { value } => OpKind::MakeValueCell { value: v(*value) },
         OpKind::LoadArg { index } => OpKind::LoadArg { index: *index },
         OpKind::LoadCapture { index } => OpKind::LoadCapture { index: *index },
-        OpKind::Builtin { name, args, .. } => OpKind::Builtin {
+        OpKind::Builtin {
+            name,
+            args,
+            specialization_disabled,
+            ..
+        } => OpKind::Builtin {
             name: name.clone(),
             args: args.iter().map(|x| v(*x)).collect(),
             // Remapped SSA operands need fresh proofs, so discard old guard metadata.
             specialization: None,
+            specialization_disabled: *specialization_disabled,
         },
         OpKind::Prim {
             op,
@@ -155,7 +165,8 @@ pub fn remap_op_values(op: &mut Op, replacements: &HashMap<ValueId, ValueId>) {
         OpKind::Move { value }
         | OpKind::Load { address: value }
         | OpKind::Convert { value, .. }
-        | OpKind::MakeValueCell { value } => v(value),
+        | OpKind::MakeValueCell { value }
+        | OpKind::TypeHint { value, .. } => v(value),
         OpKind::Store { address, value }
         | OpKind::StoreField {
             object: address,

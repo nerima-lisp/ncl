@@ -798,101 +798,133 @@ fn proven_fixnum_values_flow_through_all_fixnum_branch_inputs() {
     assert!(verify(&function).is_ok());
 }
 
-#[test]
-fn verifier_treats_catch_payload_as_an_unproven_fixnum_input() {
-    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
-    let function = finish(
-        "catch-fixnum-join",
+fn handler_fixnum_entry() -> BasicBlock {
+    block(
+        0,
+        vec![
+            op(
+                &[(0, Ty::I64)],
+                OpKind::Const {
+                    result: ConstantIndex(0),
+                },
+            ),
+            op(
+                &[(1, Ty::Word)],
+                OpKind::Convert {
+                    op: Convert::I64ToWord,
+                    value: ValueId(0),
+                },
+            ),
+            op(
+                &[(2, Ty::Bool)],
+                OpKind::Compare {
+                    op: Compare::Eq,
+                    left: ValueId(0),
+                    right: ValueId(0),
+                },
+            ),
+            op(
+                &[(3, Ty::Word)],
+                OpKind::Const {
+                    result: ConstantIndex(1),
+                },
+            ),
+            op(
+                &[],
+                OpKind::EnterHandler {
+                    region: HandlerRegionId(0),
+                },
+            ),
+        ],
+        Terminator::Jump {
+            target: BlockId(1),
+            args: Vec::new(),
+        },
+    )
+}
+
+fn handler_fixnum_condition() -> BasicBlock {
+    block(
+        1,
+        Vec::new(),
+        Terminator::Branch {
+            condition: ValueId(2),
+            then_target: BlockId(2),
+            then_args: vec![ValueId(1), ValueId(1)],
+            else_target: BlockId(3),
+            else_args: Vec::new(),
+        },
+    )
+}
+
+fn handler_fixnum_body(args: Vec<ValueId>, specialization: FixnumSpecialization) -> BasicBlock {
+    BasicBlock {
+        id: BlockId(2),
+        params: vec![
+            BlockParam {
+                value: ValueId(4),
+                ty: Ty::Word,
+            },
+            BlockParam {
+                value: ValueId(5),
+                ty: Ty::Word,
+            },
+        ],
+        ops: vec![
+            op(
+                &[],
+                OpKind::LeaveHandler {
+                    region: HandlerRegionId(0),
+                },
+            ),
+            op(&[], OpKind::Safepoint),
+            op(
+                &[(6, Ty::Word)],
+                OpKind::Builtin {
+                    name: "+".into(),
+                    args,
+                    specialization: Some(specialization),
+                    specialization_disabled: false,
+                },
+            ),
+        ],
+        terminator: Terminator::Return {
+            values: vec![ValueId(6)],
+        },
+    }
+}
+
+fn handler_fixnum_region(kind: HandlerKind) -> HandlerRegion {
+    HandlerRegion {
+        id: HandlerRegionId(0),
+        kind,
+        protected: vec![BlockId(1), BlockId(3)],
+        handler: BlockId(2),
+        cleanup: None,
+        catch_tag: (kind == HandlerKind::Catch).then_some(ValueId(3)),
+        binding_targets: vec![ValueId(1)],
+        depth: 0,
+        parent: None,
+    }
+}
+
+fn handler_fixnum_function(kind: HandlerKind, builtin_args: Vec<ValueId>) -> Function {
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false])
+        .unwrap_or_else(|| panic!("two-operand specialization"));
+    let name = match kind {
+        HandlerKind::Catch => "catch-fixnum-join",
+        HandlerKind::Progv => "progv-fixnum-join",
+        HandlerKind::UnwindProtect => "unwind-fixnum-join",
+    };
+    finish(
+        name,
         Vec::new(),
         vec![Ty::Word],
         vec![Constant::Fixnum(2), Constant::Nil],
         vec![
-            block(
-                0,
-                vec![
-                    op(
-                        &[(0, Ty::I64)],
-                        OpKind::Const {
-                            result: ConstantIndex(0),
-                        },
-                    ),
-                    op(
-                        &[(1, Ty::Word)],
-                        OpKind::Convert {
-                            op: Convert::I64ToWord,
-                            value: ValueId(0),
-                        },
-                    ),
-                    op(
-                        &[(2, Ty::Bool)],
-                        OpKind::Compare {
-                            op: Compare::Eq,
-                            left: ValueId(0),
-                            right: ValueId(0),
-                        },
-                    ),
-                    op(
-                        &[(3, Ty::Word)],
-                        OpKind::Const {
-                            result: ConstantIndex(1),
-                        },
-                    ),
-                    op(
-                        &[],
-                        OpKind::EnterHandler {
-                            region: HandlerRegionId(0),
-                        },
-                    ),
-                ],
-                Terminator::Jump {
-                    target: BlockId(1),
-                    args: Vec::new(),
-                },
-            ),
-            block(
-                1,
-                Vec::new(),
-                Terminator::Branch {
-                    condition: ValueId(2),
-                    then_target: BlockId(2),
-                    then_args: vec![ValueId(1), ValueId(1)],
-                    else_target: BlockId(3),
-                    else_args: Vec::new(),
-                },
-            ),
-            BasicBlock {
-                id: BlockId(2),
-                params: vec![
-                    BlockParam {
-                        value: ValueId(4),
-                        ty: Ty::Word,
-                    },
-                    BlockParam {
-                        value: ValueId(5),
-                        ty: Ty::Word,
-                    },
-                ],
-                ops: vec![
-                    op(
-                        &[],
-                        OpKind::LeaveHandler {
-                            region: HandlerRegionId(0),
-                        },
-                    ),
-                    op(&[], OpKind::Safepoint),
-                    op(
-                        &[(6, Ty::Word)],
-                        OpKind::Builtin {
-                            name: "+".into(),
-                            args: vec![ValueId(4), ValueId(5)],
-                            specialization: Some(specialization),
-                        },
-                    ),
-                ],
-                terminator: Terminator::Return {
-                    values: vec![ValueId(6)],
-                },
-            },
+            handler_fixnum_entry(),
+            handler_fixnum_condition(),
+            handler_fixnum_body(builtin_args, specialization),
             block(
                 3,
                 Vec::new(),
@@ -901,18 +933,13 @@ fn verifier_treats_catch_payload_as_an_unproven_fixnum_input() {
                 },
             ),
         ],
-        vec![HandlerRegion {
-            id: HandlerRegionId(0),
-            kind: HandlerKind::Catch,
-            protected: vec![BlockId(1), BlockId(3)],
-            handler: BlockId(2),
-            cleanup: None,
-            catch_tag: Some(ValueId(3)),
-            binding_targets: vec![ValueId(1)],
-            depth: 0,
-            parent: None,
-        }],
-    );
+        vec![handler_fixnum_region(kind)],
+    )
+}
+
+#[test]
+fn verifier_treats_catch_payload_as_an_unproven_fixnum_input() {
+    let function = handler_fixnum_function(HandlerKind::Catch, vec![ValueId(4), ValueId(5)]);
 
     assert!(!proven_fixnum_values(&function).contains(&ValueId(4)));
     assert!(proven_fixnum_values(&function).contains(&ValueId(5)));
@@ -931,119 +958,7 @@ fn verifier_treats_catch_payload_as_an_unproven_fixnum_input() {
 
 #[test]
 fn verifier_does_not_use_progv_bindings_as_handler_parameters() {
-    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
-    let function = finish(
-        "progv-fixnum-join",
-        Vec::new(),
-        vec![Ty::Word],
-        vec![Constant::Fixnum(2), Constant::Nil],
-        vec![
-            block(
-                0,
-                vec![
-                    op(
-                        &[(0, Ty::I64)],
-                        OpKind::Const {
-                            result: ConstantIndex(0),
-                        },
-                    ),
-                    op(
-                        &[(1, Ty::Word)],
-                        OpKind::Convert {
-                            op: Convert::I64ToWord,
-                            value: ValueId(0),
-                        },
-                    ),
-                    op(
-                        &[(2, Ty::Bool)],
-                        OpKind::Compare {
-                            op: Compare::Eq,
-                            left: ValueId(0),
-                            right: ValueId(0),
-                        },
-                    ),
-                    op(
-                        &[(3, Ty::Word)],
-                        OpKind::Const {
-                            result: ConstantIndex(1),
-                        },
-                    ),
-                    op(
-                        &[],
-                        OpKind::EnterHandler {
-                            region: HandlerRegionId(0),
-                        },
-                    ),
-                ],
-                Terminator::Jump {
-                    target: BlockId(1),
-                    args: Vec::new(),
-                },
-            ),
-            block(
-                1,
-                Vec::new(),
-                Terminator::Branch {
-                    condition: ValueId(2),
-                    then_target: BlockId(2),
-                    then_args: vec![ValueId(1), ValueId(1)],
-                    else_target: BlockId(3),
-                    else_args: Vec::new(),
-                },
-            ),
-            BasicBlock {
-                id: BlockId(2),
-                params: vec![
-                    BlockParam {
-                        value: ValueId(4),
-                        ty: Ty::Word,
-                    },
-                    BlockParam {
-                        value: ValueId(5),
-                        ty: Ty::Word,
-                    },
-                ],
-                ops: vec![
-                    op(
-                        &[],
-                        OpKind::LeaveHandler {
-                            region: HandlerRegionId(0),
-                        },
-                    ),
-                    op(&[], OpKind::Safepoint),
-                    op(
-                        &[(6, Ty::Word)],
-                        OpKind::Builtin {
-                            name: "+".into(),
-                            args: vec![ValueId(5), ValueId(1)],
-                            specialization: Some(specialization),
-                        },
-                    ),
-                ],
-                terminator: Terminator::Return {
-                    values: vec![ValueId(6)],
-                },
-            },
-            block(
-                3,
-                Vec::new(),
-                Terminator::Throw {
-                    condition: ValueId(3),
-                },
-            ),
-        ],
-        vec![HandlerRegion {
-            id: HandlerRegionId(0),
-            kind: HandlerKind::Progv,
-            protected: vec![BlockId(1), BlockId(3)],
-            handler: BlockId(2),
-            cleanup: None,
-            catch_tag: None,
-            binding_targets: vec![ValueId(1)],
-            depth: 0,
-            parent: None,
-        }],
-    );
+    let function = handler_fixnum_function(HandlerKind::Progv, vec![ValueId(5), ValueId(1)]);
 
     assert!(!proven_fixnum_values(&function).contains(&ValueId(5)));
     verify_has(
@@ -1061,7 +976,8 @@ fn verifier_does_not_use_progv_bindings_as_handler_parameters() {
 
 #[test]
 fn verifier_rejects_fixnum_specialization_without_a_tag_guard() {
-    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false]).unwrap();
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[false, false])
+        .unwrap_or_else(|| panic!("two-operand specialization"));
     let function = finish(
         "unguarded-parameter",
         vec![Param {
@@ -1093,6 +1009,7 @@ fn verifier_rejects_fixnum_specialization_without_a_tag_guard() {
                         name: "+".into(),
                         args: vec![ValueId(0), ValueId(2)],
                         specialization: Some(specialization),
+                        specialization_disabled: false,
                     },
                 ),
             ],
@@ -1112,7 +1029,8 @@ fn verifier_rejects_fixnum_specialization_without_a_tag_guard() {
 #[test]
 fn verifier_rejects_fixnum_metadata_with_the_wrong_operation() {
     assert!(FixnumSpecialization::new(FixnumOp::Add, &[true]).is_none());
-    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[true, true]).unwrap();
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[true, true])
+        .unwrap_or_else(|| panic!("two-operand specialization"));
     let function = finish(
         "mismatched-operation",
         vec![
@@ -1137,6 +1055,7 @@ fn verifier_rejects_fixnum_metadata_with_the_wrong_operation() {
                         name: "-".into(),
                         args: vec![ValueId(0), ValueId(1)],
                         specialization: Some(specialization),
+                        specialization_disabled: false,
                     },
                 ),
             ],

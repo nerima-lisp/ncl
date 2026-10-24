@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use super::*;
 use crate::FunctionPass;
 use ncl_ir::{Constant, Convert, FunctionBuilder, FunctionId, Terminator, Ty};
@@ -32,6 +34,7 @@ fn arithmetic_function() -> Function {
                 name: "+".into(),
                 args: vec![ValueId(0), tagged],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -73,6 +76,84 @@ fn pass_specializes_direct_arithmetic_and_keeps_guards_for_unknown_inputs() {
 }
 
 #[test]
+fn declared_fixnum_hints_keep_guards_and_speed_zero_disables_specialization() {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(50),
+        "declared-fixnums",
+        vec![
+            ncl_ir::Param {
+                name: "x".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "y".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let hinted = builder
+        .push_op(
+            OpKind::TypeHint {
+                value: ValueId(0),
+                ty: ncl_ir::ScalarTypeHint::Fixnum,
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    builder.push_op(OpKind::Safepoint, &[]).unwrap();
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "+".into(),
+                args: vec![hinted, ValueId(1)],
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .unwrap();
+    let mut function = builder.finish();
+
+    TypeEffect.run(&mut function, &Module::default()).unwrap();
+    let OpKind::Builtin {
+        specialization: Some(specialization),
+        ..
+    } = &function.blocks[0].ops[2].kind
+    else {
+        panic!("arithmetic was not specialized");
+    };
+    assert!(specialization.needs_tag_check(0));
+    assert!(specialization.needs_tag_check(1));
+
+    let OpKind::Builtin {
+        specialization_disabled,
+        ..
+    } = &mut function.blocks[0].ops[2].kind
+    else {
+        panic!("expected builtin");
+    };
+    *specialization_disabled = true;
+    TypeEffect.run(&mut function, &Module::default()).unwrap();
+    assert!(matches!(
+        function.blocks[0].ops[2].kind,
+        OpKind::Builtin {
+            specialization: None,
+            ..
+        }
+    ));
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeps the handler fixture and its scalar guard assertions together"
+)]
 fn pass_keeps_tag_check_for_a_catch_payload() {
     let mut builder =
         FunctionBuilder::new(FunctionId(9), "catch-payload", Vec::new(), vec![Ty::Word]);
@@ -147,6 +228,7 @@ fn pass_keeps_tag_check_for_a_catch_payload() {
                 name: "+".into(),
                 args: vec![ValueId(100), ValueId(101)],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -188,6 +270,10 @@ fn pass_keeps_tag_check_for_a_catch_payload() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeps the progv fixture and its scalar guard assertions together"
+)]
 fn pass_does_not_trust_progv_binding_targets_as_handler_inputs() {
     let mut builder =
         FunctionBuilder::new(FunctionId(10), "progv-handler", Vec::new(), vec![Ty::Word]);
@@ -262,6 +348,7 @@ fn pass_does_not_trust_progv_binding_targets_as_handler_inputs() {
                 name: "+".into(),
                 args: vec![ValueId(101), known_fixnum],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -321,6 +408,7 @@ fn unknown_builtin_results_and_effects_remain_conservative() {
                 name: "unknown-call".into(),
                 args: vec![ValueId(0)],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -345,6 +433,7 @@ fn unknown_builtin_results_and_effects_remain_conservative() {
                 name: "+".into(),
                 args: vec![unknown, tagged],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -393,6 +482,10 @@ fn object_constants_do_not_claim_a_non_numeric_type() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeps the branch graph and its joined scalar assertions together"
+)]
 fn branch_join_keeps_only_fixnum_facts_shared_by_all_inputs() {
     let mut builder = FunctionBuilder::new(
         FunctionId(4),
@@ -481,6 +574,7 @@ fn branch_join_keeps_only_fixnum_facts_shared_by_all_inputs() {
                 name: "+".into(),
                 args: vec![ValueId(5), ValueId(5)],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -578,6 +672,7 @@ fn branch_join_drops_fixnum_fact_when_one_input_is_unknown() {
                 name: "+".into(),
                 args: vec![ValueId(4), tagged],
                 specialization: None,
+                specialization_disabled: false,
             },
             &[Ty::Word],
         )
@@ -708,10 +803,7 @@ fn terminators_record_call_and_signal_effects() {
         })
         .unwrap();
     let facts = FunctionFacts::analyze(&throw.finish());
-    let throw_effect = facts
-        .effects
-        .get(&(ncl_ir::BlockId(0), 0))
-        .expect("throw effect");
+    let throw_effect = facts.effects.get(&(ncl_ir::BlockId(0), 0)).unwrap();
     assert!(throw_effect.contains(Effect::Signal));
     assert!(!throw_effect.contains(Effect::Call));
 }

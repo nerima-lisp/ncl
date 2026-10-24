@@ -1,4 +1,6 @@
 //! Text serialization parser.
+
+mod checked;
 use super::ParseError;
 use crate::{
     BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
@@ -7,13 +9,7 @@ use crate::{
     ValueId,
 };
 
-fn u32(value: u64) -> Result<u32, ParseError> {
-    u32::try_from(value).map_err(|_| ParseError("integer out of range".into()))
-}
-
-fn u8(value: u64) -> Result<u8, ParseError> {
-    u8::try_from(value).map_err(|_| ParseError("integer out of range".into()))
-}
+use checked::{u8, u32};
 
 fn unesc(s: &str) -> Result<String, ParseError> {
     let mut out = Vec::new();
@@ -47,12 +43,7 @@ pub fn parse(input: &str) -> Result<Function, ParseError> {
     let (header, payload) = header_and_payload
         .split_once(" { ")
         .ok_or_else(|| ParseError("expected fn header".into()))?;
-    let version = match header.rsplit_once(' ') {
-        Some((name, "ir2")) if !name.is_empty() => 2,
-        Some(_) => return Err(ParseError("unsupported IR text version".into())),
-        None if !header.is_empty() => 1,
-        None => return Err(ParseError("expected fn header".into())),
-    };
+    let version = checked::text_version(header)?;
     let payload = payload.strip_suffix(" }\n").unwrap_or(payload);
     let mut r = Reader::new(payload, version);
     let function = decode_function(&mut r)?;
@@ -266,23 +257,6 @@ fn vals(r: &mut Reader<'_>) -> Result<Vec<ValueId>, ParseError> {
     (0..r.u()?).map(|_| Ok(ValueId(u32(r.u()?)?))).collect()
 }
 
-fn fixnum_specialization_read(
-    r: &mut Reader<'_>,
-) -> Result<Option<crate::FixnumSpecialization>, ParseError> {
-    match r.u()? {
-        0 => Ok(None),
-        1 => {
-            let operation = crate::FixnumOp::from_tag(r.u()?)
-                .ok_or_else(|| ParseError("bad fixnum operation".into()))?;
-            let mask = u8(r.u()?)?;
-            crate::FixnumSpecialization::from_mask(operation, mask)
-                .map(Some)
-                .ok_or_else(|| ParseError("bad fixnum guard mask".into()))
-        }
-        _ => Err(ParseError("bad fixnum specialization flag".into())),
-    }
-}
-
 fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
     let tag = r.u()?;
     let v = |r: &mut Reader<'_>| Ok(ValueId(u32(r.u()?)?));
@@ -291,6 +265,10 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
             result: ConstantIndex(u32(r.u()?)?),
         },
         1 => OpKind::Move { value: v(r)? },
+        23 if r.version >= 3 => OpKind::TypeHint {
+            value: v(r)?,
+            ty: checked::scalar_type_hint_read(r)?,
+        },
         2 => OpKind::Load { address: v(r)? },
         3 => OpKind::Store {
             address: v(r)?,
@@ -336,10 +314,11 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
             name: r.s()?,
             args: vals(r)?,
             specialization: if r.version >= 2 {
-                fixnum_specialization_read(r)?
+                checked::fixnum_specialization_read(r)?
             } else {
                 None
             },
+            specialization_disabled: if r.version >= 3 { r.b()? } else { false },
         },
         13 => {
             let name = r.s()?;

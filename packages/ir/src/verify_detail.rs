@@ -84,6 +84,10 @@ pub(super) fn check_op(
             block.id,
             errors,
         ),
+        OpKind::TypeHint { value, .. } | OpKind::MakeValueCell { value } => {
+            require_type(use_one(*value, errors), Ty::Word, block.id, errors);
+            require_results(op, &[Ty::Word], block.id, errors);
+        }
         OpKind::Load { address } => {
             require_type(use_one(*address, errors), Ty::Address, block.id, errors);
             require_results(op, &[Ty::Word], block.id, errors);
@@ -130,10 +134,6 @@ pub(super) fn check_op(
             require_word_args(captures, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }
-        OpKind::MakeValueCell { value } => {
-            require_type(use_one(*value, errors), Ty::Word, block.id, errors);
-            require_results(op, &[Ty::Word], block.id, errors);
-        }
         OpKind::CallClosure {
             closure,
             args,
@@ -150,6 +150,7 @@ pub(super) fn check_op(
             name,
             args,
             specialization,
+            ..
         } => {
             require_word_args(args, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
@@ -443,5 +444,26 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         | crate::Constant::T
         | crate::Constant::Unbound
         | crate::Constant::FunctionEntry(_) => Ty::Word,
+    }
+}
+
+pub(super) fn successors(term: &Terminator) -> Vec<BlockId> {
+    match term {
+        Terminator::Jump { target, .. } => vec![*target],
+        Terminator::Branch {
+            then_target,
+            else_target,
+            ..
+        } => vec![*then_target, *else_target],
+        Terminator::Switch { cases, default, .. } => cases
+            .iter()
+            .map(|(_, target, _)| *target)
+            .chain([*default])
+            .collect(),
+        Terminator::CallReturn { .. }
+        | Terminator::TailCall { .. }
+        | Terminator::Return { .. }
+        | Terminator::Throw { .. }
+        | Terminator::Unreachable => Vec::new(),
     }
 }

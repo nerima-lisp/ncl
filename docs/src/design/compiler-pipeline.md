@@ -4,7 +4,7 @@
 
 front end は reader output を macroexpand、parse、declaration/type propagation、compiler-macro expansion、`ncl-ir` lowering の順に処理する。back end は `ncl-ir` を `ncl-codegen` の `MachineFunction`、target encoder、`CodeBlob`、`SafepointMap`、FASL sections へ lower する。front/back 境界は `ncl-ir` のみで、reader Form を越境させない。
 
-`ncl-ir` の型一覧は維持する。Function は id、name、params、return types、basic blocks、locals、handler regions、debug locations、BasicBlock は id、block parameters、Ops、Terminator を持つ。OpKind は Const、Move、Load、Store、LoadField、StoreField、Alloc、LoadArg、Call、CallIndirect、Builtin、Prim、Compare、Convert、SetMultipleValues、Safepoint、Terminator は Jump、Branch、Switch、CallReturn、TailCall、Return、Throw、Unreachable とする。
+`ncl-ir` の型一覧は維持する。Function は id、name、params、return types、basic blocks、locals、handler regions、debug locations、BasicBlock は id、block parameters、Ops、Terminator を持つ。OpKind は Const、Move、TypeHint、Load、Store、LoadField、StoreField、Alloc、LoadArg、Call、CallIndirect、Builtin、Prim、Compare、Convert、SetMultipleValues、Safepoint、Terminator は Jump、Branch、Switch、CallReturn、TailCall、Return、Throw、Unreachable とする。
 
 段階は 1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache の順である。1a は値をスタックスロットに置き、scratch 2 本を使い、プロローグ、定数、return、呼び出し、分岐、割当、safepoint map、unwind を含む動く系とする。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
 
@@ -12,10 +12,15 @@ front end は reader output を macroexpand、parse、declaration/type propagati
   LICM)と、`ncl-codegen` の SSA ベースレジスタ割当。IR 型と ABI は不変。受入は cl-bench
   幾何平均が Phase 2 着地時の同機測定以下。
 
-`ncl-opt` の既定順序は direct-call inlining、GVN、SCCP である。GVN は支配木の順に
-純粋な式だけを共通化し、SCCP は Unknown/Constant/Overdefined 格子で到達辺を絞る。
-純粋性とメモリ効果の分類は `ncl-ir::Prim` の公開属性に集約する。fixnum 演算は checked
-計算だけを畳み込み、overflow は bignum 昇格のため保持する。`eq`/`eql` は同一 SSA 値の
+`ncl-opt` の既定 pipeline は SCCP、type/effect analysis、DCE の順である。SCCP は
+Unknown/Constant/Overdefined 格子で到達辺を絞る。type/effect analysis は各値の scalar type、
+各操作の effect、VALUES arity を保守的に記録し、直接 lowering された算術 builtin に checked
+fixnum specialization metadata を付ける。型宣言由来の fact は `Declared` として保持し、宣言
+だけでは operand tag guard を省略しない。IR から fixnum と証明できた operand に限り guard を
+省略する。specialization を無効にした scope の builtin は specialization metadata を持たない。
+GVN と direct-call inlining は既定 pipeline に含まれない。GVN は支配木の順に純粋な式だけを
+共通化する。`ncl-ir::Prim` の公開属性は primitive の純粋性とメモリ効果を分類する。fixnum 演算は
+checked 計算だけを畳み込み、overflow は bignum 昇格のため保持する。`eq`/`eql` は同一 SSA 値の
 場合だけ畳み込む。GVN の car/cdr、slot、配列読み出しは store、破壊的 primitive、call、
 builtin、closure 作成の後で無効化する。各 pass は変換後に `verify()` を実行し、pass manager
 も各 invocation 後にモジュール全体を検証する。
@@ -90,7 +95,7 @@ heap object layout の boxed suffix として collector が追跡する。
 
 `ncl-ir` depends on no crate. `Function` contains id, name, parameters, return types, locals, blocks, handler regions, and debug locations. `BasicBlock` contains id, block parameters, operations, and one terminator. `Op` contains result type, source location, and `OpKind`.
 
-`OpKind` variants are `Const`, `Move`, `Load`, `Store`, `LoadField`, `StoreField`, `Alloc`, `LoadArg`, `Call`, `CallIndirect`, `Builtin`, `Prim`, `Compare`, `Convert`, `SetMultipleValues`, and `Safepoint`. Terminators are `Jump`, `Branch`, `Switch`, `CallReturn`, `TailCall`, `Return`, `Throw`, and `Unreachable`.
+`OpKind` variants are `Const`, `Move`, `TypeHint`, `Load`, `Store`, `LoadField`, `StoreField`, `Alloc`, `LoadArg`, `Call`, `CallIndirect`, `Builtin`, `Prim`, `Compare`, `Convert`, `SetMultipleValues`, and `Safepoint`. `TypeHint` carries a source declaration as metadata while preserving its `Word` value. Its categories are `Fixnum`, `Integer`, `Number`, `Boolean`, and `NonNumber`. A `Builtin` can carry checked fixnum specialization metadata and a flag that disables specialization. Terminators are `Jump`, `Branch`, `Switch`, `CallReturn`, `TailCall`, `Return`, `Throw`, and `Unreachable`.
 
 Types are `Word`, `I64`, `F64`, `Address`, `Bool`, and `Unit`. Constants are fixnum, character, single-float, double-float, string bytes, and descriptors for symbol or object references. A symbol descriptor is package name plus symbol name; an object descriptor is a constant-table index. Codegen resolves descriptors, so they are not raw Word constants in the IR. Handler regions contain protected, handler, and cleanup blocks, catch tag, and dynamic depth. Debug locations contain source file id, line, column, and form id.
 
@@ -117,6 +122,8 @@ Inline-cache keys are the triple `(call-site, generic-function identity, class-l
 
 `Ty` の variant は `Word` (処理系の汎用値)、`I64`、`F64`、`Address`、`Bool`、`Unit` である。
 
+`ScalarTypeHint` の variant は `Fixnum`、`Integer`、`Number`、`Boolean`、`NonNumber` である。
+
 `Constant` の variant は `Fixnum(i64)`、`Character(u32)`、`SingleFloat(f32)`、`DoubleFloat(f64)`、`Symbol { package: String, name: String }`、`Object(ConstantIndex)`、`StringBytes(Vec<u8>)`、`Nil`、`T`、`Unbound` である。`Symbol` と `Object` は descriptor であり、codegen/runtime が解決する。`Object` は同じ `Function` の constant table index を参照し、raw `Word` を表さない。
 
 ### OpKind と Terminator
@@ -125,6 +132,7 @@ Inline-cache keys are the triple `(call-site, generic-function identity, class-l
 
 - `Const { result }`: constant table の `ConstantIndex` を値にする。
 - `Move { value }`: SSA 値を移送する。
+- `TypeHint { value, ty }`: source type declaration を metadata として付け、同じ `Word` 値を返す。
 - `Load { address }` / `Store { address, value }`: メモリを読み書きする。
 - `LoadField { object, field }` / `StoreField { object, field, value }`: オブジェクトの数値フィールドを読み書きする。
 - `Alloc { words }`: 指定ワード数のオブジェクト領域を確保する。
@@ -156,9 +164,10 @@ Inline-cache keys are the triple `(call-site, generic-function identity, class-l
 以下は `Function` の `Display` 出力と `parse` が扱う payload の EBNF 相当表記である。空白は header の固定位置にのみ現れ、payload の atom はカンマで区切られる。`hex` は小文字 hexadecimal、`signed` は `i` に続く hexadecimal 表現、`id` は unsigned atom、`text` は escaped string atom である。`n * X` は X を n 回繰り返す。
 
 ```text
-function       = legacy-function | version-2-function ;
+function       = legacy-function | version-2-function | version-3-function ;
 legacy-function = "fn @", escaped-name, " { ", function-payload, " }", newline ;
 version-2-function = "fn @", escaped-name, " ir2 { ", function-payload, " }", newline ;
+version-3-function = "fn @", escaped-name, " ir3 { ", function-payload, " }", newline ;
 function-payload = id, text, params, types, constants, blocks, locals,
                    handlers, debug ;
 params         = count, count * (text, type) ;
@@ -186,11 +195,11 @@ string-bytes  = tag, count, count * id ;
 nil           = tag ; true = tag ; unbound = tag ;
 ```
 
-`op-kind` は variant tag に続けて、`Const` は `id`、単一値 operand の `Move`/`Load`/`Convert` は `id`、二値 operand の `Store`/`Compare` は `id, id`、field 操作は object/value と field、`Alloc` と `LoadArg` は数値を記録する。`Call`/`CallIndirect` は callee と `count, count * id`、`Prim` は primitive 名、`count, count * id`、condition block の optional id、`SetMultipleValues` は `count, count * id`、`Safepoint` は追加 atom なしである。version 1 の `Builtin` は `text, count, count * id` を記録し、version 2 はその後に specialization flag を付ける。flag が1の場合は演算タグとガードマスクも続く。
+`op-kind` は variant tag に続けて、`Const` は `id`、単一値 operand の `Move`/`Load`/`Convert` は `id`、二値 operand の `Store`/`Compare` は `id, id`、field 操作は object/value と field、`Alloc` と `LoadArg` は数値を記録する。`TypeHint` は値の `id` と scalar type hint tag を記録する。`Call`/`CallIndirect` は callee と `count, count * id`、`Prim` は primitive 名、`count, count * id`、condition block の optional id、`SetMultipleValues` は `count, count * id`、`Safepoint` は追加 atom なしである。version 1 の `Builtin` は `text, count, count * id` を記録し、version 2 はその後に specialization flag を付ける。flag が1の場合は演算タグとガードマスクも続く。version 3 はこの specialization metadata の後に specialization-disabled flag を記録する。
 
 terminator の tag と payload は `Jump` が target と values、`Branch` が condition・then successor・else successor、`Switch` が value・case 数・各 signed case と successor・default successor、`CallReturn`/`TailCall` が callee と values、`Return` が values、`Throw` が condition、`Unreachable` が追加 payload なしである。全 successor の形式は `id, count, count * id` である。
 
-文字列 atom は ASCII の英数字、`_`、`-` をそのまま使い、それ以外の byte を `_hh` として escape する。payload の各数値は hexadecimal atom である。header に version marker がない場合は version 1 として読み、`Display` は `ir2` header を出力する。parser は両形式を読み、version 1 の `Builtin` に specialization メタデータがないものとして扱う。未知の version marker、余分な atom、未知の tag、壊れた escape は拒否する。front と codegen は `Function` を直接構築するか `parse` で読み、`verify(&function)` で構造・SSA 可視性・型・戻り値契約を検査してから利用する。現実装の parser は `Prim::CharacterPredicate` と `Prim::StructureSlot` の文字列表現を読み戻さないため、これらを含む関数では無条件の往復保証を置かない。
+文字列 atom は ASCII の英数字、`_`、`-` をそのまま使い、それ以外の byte を `_hh` として escape する。payload の各数値は hexadecimal atom である。header に version marker がない場合は version 1 として読み、`Display` は `ir3` header を出力する。parser は version 1、2、3 を読み、version 1 の Builtin specialization metadata と version 1/2 の specialization-disabled flag はそれぞれ `None`、`false` として扱う。`TypeHint` は version 3 で導入された。未知の version marker、余分な atom、未知の tag、壊れた escape は拒否する。front と codegen は `Function` を直接構築するか `parse` で読み、`verify(&function)` で構造・SSA 可視性・型・戻り値契約を検査してから利用する。現実装の parser は `Prim::CharacterPredicate` と `Prim::StructureSlot` の文字列表現を読み戻さないため、これらを含む関数では無条件の往復保証を置かない。
 
 検証器は block id と SSA value id の重複、未定義値、CFG の successor 契約、各 `OpKind` と terminator の operand/result 型、関数の戻り値型を検査する。SSA の使用可能性はブロック走査順ではなく、CFG の支配関係で判定し、同一ブロックでは定義が使用より前にあることも要求する。`Call`、`CallIndirect`、`Builtin` の直前、`Alloc` の直後、後方エッジを持つブロックの terminator 直前には `Safepoint` が必要である。safepoint 不足は既存 API を変えないため `VerifyError::SafepointWarning` として同じ `Err` ベクタに返すが、意味上は warning である。
 

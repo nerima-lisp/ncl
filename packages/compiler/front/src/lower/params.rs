@@ -12,6 +12,30 @@ use super::super::function::FunctionLowerer;
 use super::Context;
 
 impl Context<'_> {
+    pub(super) fn bind_required(
+        &mut self,
+        f: &mut FunctionLowerer,
+        list: &LambdaList,
+        base: usize,
+    ) -> Result<(), LowerError> {
+        let names = list
+            .required
+            .iter()
+            .map(param_name)
+            .collect::<Result<Vec<_>, _>>()?;
+        for (offset, name) in names.iter().enumerate() {
+            let loaded = f.one(
+                OpKind::LoadArg {
+                    index: param_index(base + offset)?,
+                },
+                Ty::Word,
+            )?;
+            f.env().bind_variable(name.clone(), Slot::Value(loaded));
+        }
+        self.push_declarations_shadowing(&[], &names);
+        Ok(())
+    }
+
     pub(super) fn bind_optional(
         &mut self,
         f: &mut FunctionLowerer,
@@ -74,11 +98,14 @@ impl Context<'_> {
                 args: vec![supplied_value, present_flag],
             })?;
             f.position(merge)?;
+            let mut shadowed = vec![name.clone()];
             f.env().bind_variable(name, Slot::Value(value_slot));
             if let Some(supplied_p) = &optional.supplied_p {
-                f.env()
-                    .bind_variable(param_name(supplied_p)?, Slot::Value(flag_slot));
+                let supplied_name = param_name(supplied_p)?;
+                shadowed.push(supplied_name.clone());
+                f.env().bind_variable(supplied_name, Slot::Value(flag_slot));
             }
+            self.push_declarations_shadowing(&[], &shadowed);
         }
         Ok(())
     }
@@ -111,6 +138,7 @@ impl Context<'_> {
                         name: "CONS".to_owned(),
                         args: vec![keyword, allowed],
                         specialization: None,
+                        specialization_disabled: self.specialization_disabled(),
                     },
                     Ty::Word,
                 )?;
@@ -123,6 +151,7 @@ impl Context<'_> {
                         name: "check-keywords".to_owned(),
                         args: check_arguments,
                         specialization: None,
+                        specialization_disabled: self.specialization_disabled(),
                     },
                     Ty::Word,
                 )?;
@@ -136,6 +165,7 @@ impl Context<'_> {
                         name: "keyword-value".to_owned(),
                         args: vec![rest, keyword],
                         specialization: None,
+                        specialization_disabled: self.specialization_disabled(),
                     },
                     Ty::Word,
                 )?;
@@ -145,24 +175,30 @@ impl Context<'_> {
                         name: "keyword-supplied-p".to_owned(),
                         args: vec![rest, keyword],
                         specialization: None,
+                        specialization_disabled: self.specialization_disabled(),
                     },
                     Ty::Word,
                 )?;
                 let value = self.bind_keyword_default(f, key, value, supplied)?;
+                let mut shadowed = vec![name.clone()];
                 f.env().bind_variable(name, Slot::Value(value));
                 if let Some(supplied_p) = &key.supplied_p {
-                    f.env()
-                        .bind_variable(param_name(supplied_p)?, Slot::Value(supplied));
+                    let supplied_name = param_name(supplied_p)?;
+                    shadowed.push(supplied_name.clone());
+                    f.env().bind_variable(supplied_name, Slot::Value(supplied));
                 }
+                self.push_declarations_shadowing(&[], &shadowed);
             }
         }
         if let Some(rest_name) = &list.rest {
+            let rest_name = param_name(rest_name)?;
             f.env().bind_variable(
-                param_name(rest_name)?,
+                rest_name.clone(),
                 Slot::Value(rest.ok_or_else(|| LowerError::Ir {
                     detail: "rest parameter has no argument list".to_owned(),
                 })?),
             );
+            self.push_declarations_shadowing(&[], std::slice::from_ref(&rest_name));
         }
         Ok(())
     }
@@ -179,6 +215,8 @@ impl Context<'_> {
             };
             f.env()
                 .bind_variable(param_name(&aux.name)?, Slot::Value(value));
+            let name = param_name(&aux.name)?;
+            self.push_declarations_shadowing(&[], std::slice::from_ref(&name));
         }
         Ok(())
     }
@@ -203,6 +241,7 @@ impl Context<'_> {
                 name: "make-rest-list".to_owned(),
                 args: vec![argc, start],
                 specialization: None,
+                specialization_disabled: false,
             },
             Ty::Word,
         )
@@ -296,24 +335,6 @@ pub(super) fn bind_captures(
             Slot::Value(_) => f.env().bind_variable(name.clone(), Slot::Value(loaded)),
             Slot::Cell(_) => f.env().bind_variable(name.clone(), Slot::Cell(loaded)),
         }
-    }
-    Ok(())
-}
-
-pub(super) fn bind_required(
-    f: &mut FunctionLowerer,
-    list: &LambdaList,
-    base: usize,
-) -> Result<(), LowerError> {
-    for (offset, name) in list.required.iter().enumerate() {
-        let loaded = f.one(
-            OpKind::LoadArg {
-                index: param_index(base + offset)?,
-            },
-            Ty::Word,
-        )?;
-        f.env()
-            .bind_variable(param_name(name)?, Slot::Value(loaded));
     }
     Ok(())
 }

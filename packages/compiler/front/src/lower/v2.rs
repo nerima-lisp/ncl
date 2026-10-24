@@ -1,9 +1,13 @@
 //! Shared context for IR v2 lowering.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use ncl_ir::{BlockId, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{
+    BlockId, HandlerRegion, HandlerRegionId, OpKind, ScalarTypeHint, Terminator, Ty, ValueId,
+};
 
+use crate::declaration::{Declaration, Quality};
+use crate::literal::Literal;
 use crate::symbols::SymbolRef;
 
 use super::error::LowerError;
@@ -47,6 +51,16 @@ pub(super) struct Context<'a> {
     targets: Vec<NonLocalTarget>,
     preserve_multiple_values: bool,
     next_region: u32,
+    pub(super) lexical_facts: Vec<LexicalFacts>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct LexicalFacts {
+    variables: HashMap<SymbolRef, ScalarTypeHint>,
+    functions: HashMap<SymbolRef, ScalarTypeHint>,
+    shadowed_variables: HashSet<SymbolRef>,
+    shadowed_functions: HashSet<SymbolRef>,
+    specialization_disabled: bool,
 }
 
 impl<'a> Context<'a> {
@@ -67,7 +81,100 @@ impl<'a> Context<'a> {
             targets,
             preserve_multiple_values,
             next_region: 0,
+            lexical_facts: vec![LexicalFacts::default()],
         }
+    }
+
+    pub(super) fn push_declarations(&mut self, declarations: &[Declaration]) {
+        self.push_declarations_shadowing(declarations, &[]);
+    }
+
+    pub(super) fn push_declarations_shadowing(
+        &mut self,
+        declarations: &[Declaration],
+        shadowed: &[SymbolRef],
+    ) {
+        let mut facts = self.lexical_facts.last().cloned().unwrap_or_default();
+        for name in shadowed {
+            facts.shadowed_variables.insert(name.clone());
+        }
+        for declaration in declarations {
+            match declaration {
+                Declaration::Type {
+                    type_specifier,
+                    names,
+                } => {
+                    let hint = scalar_hint(type_specifier.form());
+                    for name in names {
+                        facts.shadowed_variables.insert(name.clone());
+                        facts.variables.remove(name);
+                        if let Some(hint) = hint {
+                            facts.shadowed_variables.remove(name);
+                            facts.variables.insert(name.clone(), hint);
+                        }
+                    }
+                }
+                Declaration::Ftype {
+                    type_specifier,
+                    name,
+                } => {
+                    facts.shadowed_functions.insert(name.clone());
+                    facts.functions.remove(name);
+                    if let Some(hint) = function_result_hint(type_specifier.form()) {
+                        facts.shadowed_functions.remove(name);
+                        facts.functions.insert(name.clone(), hint);
+                    }
+                }
+                Declaration::Optimize(qualities) => {
+                    if let Some(speed) = qualities
+                        .iter()
+                        .rev()
+                        .find(|quality| quality.quality == Quality::Speed)
+                    {
+                        facts.specialization_disabled = speed.value == 0;
+                    }
+                }
+                // check-added-lines: allow(wildcard) unrelated declarations add no scalar hints or specialization policy.
+                _ => {}
+            }
+        }
+        self.lexical_facts.push(facts);
+    }
+
+    pub(super) fn pop_declarations(&mut self) {
+        if self.lexical_facts.len() > 1 {
+            self.lexical_facts.pop();
+        }
+    }
+
+    pub(super) fn variable_hint(&self, name: &SymbolRef) -> Option<ScalarTypeHint> {
+        for facts in self.lexical_facts.iter().rev() {
+            if facts.shadowed_variables.contains(name) {
+                return None;
+            }
+            if let Some(hint) = facts.variables.get(name) {
+                return Some(*hint);
+            }
+        }
+        None
+    }
+
+    pub(super) fn function_hint(&self, name: &SymbolRef) -> Option<ScalarTypeHint> {
+        for facts in self.lexical_facts.iter().rev() {
+            if facts.shadowed_functions.contains(name) {
+                return None;
+            }
+            if let Some(hint) = facts.functions.get(name) {
+                return Some(*hint);
+            }
+        }
+        None
+    }
+
+    pub(super) fn specialization_disabled(&self) -> bool {
+        self.lexical_facts
+            .last()
+            .is_some_and(|facts| facts.specialization_disabled)
     }
 
     fn block(&mut self, f: &mut FunctionLowerer, params: Vec<(Ty, ValueId)>) -> BlockId {
@@ -192,4 +299,37 @@ impl<'a> Context<'a> {
             .find(|target| target.name == *name)
             .cloned()
     }
+}
+
+fn scalar_hint(form: &Literal) -> Option<ScalarTypeHint> {
+    let Literal::Symbol(symbol) = form else {
+        let elements = form.list_elements()?;
+        return elements.first().and_then(|name| scalar_hint(name));
+    };
+    Some(match symbol.name.to_ascii_uppercase().as_str() {
+        "FIXNUM" => ScalarTypeHint::Fixnum,
+        "INTEGER" => ScalarTypeHint::Integer,
+        "NUMBER" | "REAL" | "RATIONAL" => ScalarTypeHint::Number,
+        "BOOLEAN" => ScalarTypeHint::Boolean,
+        "NON-NUMBER" | "SYMBOL" | "STRING" | "CHARACTER" | "CONS" | "LIST" | "NULL" => {
+            ScalarTypeHint::NonNumber
+        }
+        // check-added-lines: allow(wildcard) unrecognized source types remain unclassified.
+        _ => return None,
+    })
+}
+
+fn function_result_hint(form: &Literal) -> Option<ScalarTypeHint> {
+    let elements = form.list_elements()?;
+    let [function_type, _arguments, result_type, ..] = elements.as_slice() else {
+        return None;
+    };
+    if !matches!(function_type, Literal::Symbol(name) if name.name.eq_ignore_ascii_case("FUNCTION"))
+    {
+        return None;
+    }
+    if matches!(result_type, Literal::Symbol(name) if name.name.eq_ignore_ascii_case("VALUES")) {
+        return elements.get(3).and_then(|ty| scalar_hint(ty));
+    }
+    scalar_hint(result_type)
 }

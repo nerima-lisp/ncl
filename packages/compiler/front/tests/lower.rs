@@ -463,6 +463,194 @@ fn lowers_non_common_lisp_unary_arithmetic_names_as_functions() {
 }
 
 #[test]
+fn lexical_type_and_the_forms_emit_word_type_hints() {
+    let mut fx = Fixture::new();
+    let x = fx.user("X");
+    let y = fx.user("Y");
+    let binding = fx.list(&[x, y]);
+    let bindings = fx.list(&[binding]);
+    let type_declaration = fx.cl("TYPE");
+    let type_specifier = fx.cl("FIXNUM");
+    let declaration = fx.list(&[type_declaration, type_specifier, x]);
+    let declare = fx.form("DECLARE", &[declaration]);
+    let sum = fx.form("+", &[x, x]);
+    let form = fx.form("LET", &[bindings, declare, sum]);
+    let lowered = lower_toplevel(&fx.expand(form).expect("expand")).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::TypeHint {
+            ty: ncl_ir::ScalarTypeHint::Fixnum,
+            ..
+        }
+    )));
+
+    let integer = fx.cl("INTEGER");
+    let the = fx.form("THE", &[integer, y]);
+    let lowered = lower_toplevel(&fx.expand(the).expect("expand THE")).expect("lower THE");
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::TypeHint {
+            ty: ncl_ir::ScalarTypeHint::Integer,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn inner_let_binding_shadows_outer_type_declaration() {
+    let mut fx = Fixture::new();
+    let x = fx.user("X");
+    let y = fx.user("Y");
+    let z = fx.user("Z");
+    let outer_binding = fx.list(&[x, y]);
+    let outer_bindings = fx.list(&[outer_binding]);
+    let type_declaration = fx.cl("TYPE");
+    let fixnum = fx.cl("FIXNUM");
+    let declaration = fx.list(&[type_declaration, fixnum, x]);
+    let declare = fx.form("DECLARE", &[declaration]);
+    let inner_binding = fx.list(&[x, z]);
+    let inner_bindings = fx.list(&[inner_binding]);
+    let sum = fx.form("+", &[x, x]);
+    let inner = fx.form("LET", &[inner_bindings, sum]);
+    let outer = fx.form("LET", &[outer_bindings, declare, inner]);
+    let lowered = lower_toplevel(&fx.expand(outer).expect("expand")).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert!(!any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::TypeHint { .. }
+    )));
+}
+
+#[test]
+fn let_star_binding_shadows_outer_type_during_later_initializers() {
+    let mut fx = Fixture::new();
+    let x = fx.user("X");
+    let z = fx.user("Z");
+    let outer_binding = fx.list(&[x, Word::fixnum(1)]);
+    let outer_bindings = fx.list(&[outer_binding]);
+    let type_symbol = fx.cl("TYPE");
+    let fixnum = fx.cl("FIXNUM");
+    let declaration = fx.list(&[type_symbol, fixnum, x]);
+    let declare = fx.form("DECLARE", &[declaration]);
+    let first = fx.list(&[x, Word::fixnum(2)]);
+    let second = fx.list(&[z, x]);
+    let bindings = fx.list(&[first, second]);
+    let inner = fx.form("LET*", &[bindings, z]);
+    let outer = fx.form("LET", &[outer_bindings, declare, inner]);
+    let lowered = lower_toplevel(&fx.expand(outer).expect("expand")).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert!(!any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::TypeHint { .. }
+    )));
+}
+
+#[test]
+fn lambda_parameters_shadow_outer_type_declarations() {
+    let mut fx = Fixture::new();
+    let x = fx.user("X");
+    let outer_binding = fx.list(&[x, Word::fixnum(1)]);
+    let outer_bindings = fx.list(&[outer_binding]);
+    let type_symbol = fx.cl("TYPE");
+    let fixnum = fx.cl("FIXNUM");
+    let declaration = fx.list(&[type_symbol, fixnum, x]);
+    let declare = fx.form("DECLARE", &[declaration]);
+    let lambda_symbol = fx.cl("LAMBDA");
+    let lambda_list = fx.list(&[x]);
+    let lambda = fx.list(&[lambda_symbol, lambda_list, x]);
+    let call = fx.list(&[lambda, Word::fixnum(2)]);
+    let outer = fx.form("LET", &[outer_bindings, declare, call]);
+    let lowered = lower_toplevel(&fx.expand(outer).expect("expand")).expect("lower");
+
+    assert_eq!(lowered.nested.len(), 1);
+    assert_verifies(&lowered.nested[0]);
+    assert!(!any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::TypeHint { .. }
+    )));
+}
+
+#[test]
+fn local_function_parameters_shadow_outer_type_declarations() {
+    let mut fx = Fixture::new();
+    let x = fx.user("X");
+    let f = fx.user("F");
+    let outer_binding = fx.list(&[x, Word::fixnum(1)]);
+    let outer_bindings = fx.list(&[outer_binding]);
+    let type_symbol = fx.cl("TYPE");
+    let fixnum = fx.cl("FIXNUM");
+    let declaration = fx.list(&[type_symbol, fixnum, x]);
+    let declare = fx.form("DECLARE", &[declaration]);
+    let function_lambda_list = fx.list(&[x]);
+    let definition = fx.list(&[f, function_lambda_list, x]);
+    let definitions = fx.list(&[definition]);
+    let call = fx.list(&[f, Word::fixnum(2)]);
+    let flet = fx.form("FLET", &[definitions, call]);
+    let outer = fx.form("LET", &[outer_bindings, declare, flet]);
+    let lowered = lower_toplevel(&fx.expand(outer).expect("expand")).expect("lower");
+
+    assert_eq!(lowered.nested.len(), 1);
+    assert_verifies(&lowered.nested[0]);
+    assert!(!any_op(&lowered.nested[0], |kind| matches!(
+        kind,
+        OpKind::TypeHint { .. }
+    )));
+}
+
+#[test]
+fn ftype_hints_direct_named_call_results_and_speed_zero_is_scoped() {
+    let mut fx = Fixture::new();
+    let function_type_name = fx.cl("FUNCTION");
+    let fixnum = fx.cl("FIXNUM");
+    let function_type = fx.list(&[function_type_name, Word::NIL, fixnum]);
+    let ftype_name = fx.cl("FTYPE");
+    let function_name = fx.user("F");
+    let ftype = fx.list(&[ftype_name, function_type, function_name]);
+    let declare_ftype = fx.form("DECLARE", &[ftype]);
+    let call = fx.list(&[function_name]);
+    let locally = fx.form("LOCALLY", &[declare_ftype, call]);
+    let lowered = lower_toplevel(&fx.expand(locally).expect("expand FTYPE")).expect("lower FTYPE");
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::TypeHint {
+            ty: ncl_ir::ScalarTypeHint::Fixnum,
+            ..
+        }
+    )));
+
+    let optimize = fx.cl("OPTIMIZE");
+    let speed = fx.cl("SPEED");
+    let speed_zero_quality = fx.list(&[speed, Word::fixnum(0)]);
+    let speed_zero = fx.list(&[optimize, speed_zero_quality]);
+    let declare_slow = fx.form("DECLARE", &[speed_zero]);
+    let slow_call = fx.form("+", &[Word::fixnum(1), Word::fixnum(2)]);
+    let speed_three_quality = fx.list(&[speed, Word::fixnum(3)]);
+    let speed_three = fx.list(&[optimize, speed_three_quality]);
+    let declare_fast = fx.form("DECLARE", &[speed_three]);
+    let fast_call = fx.form("+", &[Word::fixnum(3), Word::fixnum(4)]);
+    let nested = fx.form("LOCALLY", &[declare_fast, fast_call]);
+    let form = fx.form("LOCALLY", &[declare_slow, slow_call, nested]);
+    let lowered =
+        lower_toplevel(&fx.expand(form).expect("expand optimize")).expect("lower optimize");
+    let disabled = lowered.entry.blocks[0]
+        .ops
+        .iter()
+        .filter_map(|op| match &op.kind {
+            OpKind::Builtin {
+                specialization_disabled,
+                ..
+            } => Some(*specialization_disabled),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(disabled, vec![true, false]);
+}
+
+#[test]
 fn lowers_catch_throw_with_a_handler_region() {
     let mut fx = Fixture::new();
     let catch = fx.cl("CATCH");

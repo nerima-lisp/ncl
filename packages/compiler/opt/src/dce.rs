@@ -79,7 +79,8 @@ impl DeadCodeElimination {
             OpKind::Move { value }
             | OpKind::Load { address: value }
             | OpKind::Convert { value, .. }
-            | OpKind::MakeValueCell { value } => vec![*value],
+            | OpKind::MakeValueCell { value }
+            | OpKind::TypeHint { value, .. } => vec![*value],
             OpKind::Store { address, value }
             | OpKind::StoreField {
                 object: address,
@@ -156,6 +157,7 @@ impl DeadCodeElimination {
         match kind {
             OpKind::Const { .. }
             | OpKind::Move { .. }
+            | OpKind::TypeHint { .. }
             | OpKind::Load { .. }
             | OpKind::LoadField { .. }
             | OpKind::LoadArg { .. }

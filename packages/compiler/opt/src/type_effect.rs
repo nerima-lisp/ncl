@@ -137,78 +137,7 @@ impl FunctionFacts {
         );
         for block in &function.blocks {
             for (index, op) in block.ops.iter().enumerate() {
-                let effect = effect_for(&op.kind);
-                if effect != EffectSet::default() {
-                    facts.effects.insert((block.id, index), effect);
-                }
-                match &op.kind {
-                    OpKind::Const { result } => {
-                        let constant = usize::try_from(result.0)
-                            .ok()
-                            .and_then(|index| function.constants.get(index));
-                        let scalar = constant.map_or(ScalarType::Unknown, scalar_constant);
-                        if scalar != ScalarType::Unknown {
-                            for (value, _) in &op.results {
-                                facts.values.insert(*value, proven(scalar));
-                            }
-                        }
-                    }
-                    OpKind::Move { value } => {
-                        let scalar = facts
-                            .values
-                            .get(value)
-                            .copied()
-                            .unwrap_or(ScalarFact::Unknown);
-                        if scalar != ScalarFact::Unknown {
-                            for (result, _) in &op.results {
-                                facts.values.insert(*result, scalar);
-                            }
-                        }
-                    }
-                    OpKind::Convert {
-                        op: ncl_ir::Convert::I64ToWord,
-                        ..
-                    } => {
-                        for (result, _) in &op.results {
-                            if proven_fixnums.contains(result) {
-                                facts.values.insert(*result, proven(ScalarType::Fixnum));
-                            }
-                        }
-                    }
-                    OpKind::Compare { .. }
-                    | OpKind::Prim {
-                        op:
-                            Prim::FixnumLt
-                            | Prim::FixnumLe
-                            | Prim::FixnumEq
-                            | Prim::Eq
-                            | Prim::Eql
-                            | Prim::Typep
-                            | Prim::CharacterPredicate(_),
-                        ..
-                    } => {
-                        for (result, _) in &op.results {
-                            facts.values.insert(*result, proven(ScalarType::Boolean));
-                        }
-                    }
-                    _ => {}
-                }
-                match &op.kind {
-                    OpKind::SetMultipleValues { values } => {
-                        facts
-                            .values_arity
-                            .insert((block.id, index), ValuesArity::Exact(values.len()));
-                    }
-                    OpKind::Call { .. }
-                    | OpKind::CallIndirect { .. }
-                    | OpKind::CallClosure { .. }
-                    | OpKind::Builtin { .. } => {
-                        facts
-                            .values_arity
-                            .insert((block.id, index), ValuesArity::Unknown);
-                    }
-                    _ => {}
-                }
+                record_operation_facts(function, &mut facts, block.id, index, op, &proven_fixnums);
             }
             let terminator_index = block.ops.len();
             let terminator_effect = effect_for_terminator(&block.terminator);
@@ -225,10 +154,130 @@ impl FunctionFacts {
                         .values_arity
                         .insert((block.id, terminator_index), ValuesArity::Unknown);
                 }
+                // check-added-lines: allow(wildcard) other terminators do not establish a returned-values arity.
                 _ => {}
             }
         }
         facts
+    }
+}
+
+fn record_operation_facts(
+    function: &Function,
+    facts: &mut FunctionFacts,
+    block_id: BlockId,
+    index: usize,
+    op: &ncl_ir::Op,
+    proven_fixnums: &std::collections::HashSet<ValueId>,
+) {
+    let effect = effect_for(&op.kind);
+    if effect != EffectSet::default() {
+        facts.effects.insert((block_id, index), effect);
+    }
+    record_scalar_facts(function, &mut facts.values, op, proven_fixnums);
+    match &op.kind {
+        OpKind::SetMultipleValues { values } => {
+            facts
+                .values_arity
+                .insert((block_id, index), ValuesArity::Exact(values.len()));
+        }
+        OpKind::Call { .. }
+        | OpKind::CallIndirect { .. }
+        | OpKind::CallClosure { .. }
+        | OpKind::Builtin { .. } => {
+            facts
+                .values_arity
+                .insert((block_id, index), ValuesArity::Unknown);
+        }
+        // check-added-lines: allow(wildcard) only explicit values and calls establish arity facts.
+        _ => {}
+    }
+}
+
+fn record_scalar_facts(
+    function: &Function,
+    values: &mut HashMap<ValueId, ScalarFact>,
+    op: &ncl_ir::Op,
+    proven_fixnums: &std::collections::HashSet<ValueId>,
+) {
+    match &op.kind {
+        OpKind::Const { result } => {
+            let constant = usize::try_from(result.0)
+                .ok()
+                .and_then(|index| function.constants.get(index));
+            let scalar = constant.map_or(ScalarType::Unknown, scalar_constant);
+            if scalar != ScalarType::Unknown {
+                for (value, _) in &op.results {
+                    values.insert(*value, proven(scalar));
+                }
+            }
+        }
+        OpKind::Move { value } => {
+            let scalar = values.get(value).copied().unwrap_or(ScalarFact::Unknown);
+            if scalar != ScalarFact::Unknown {
+                for (result, _) in &op.results {
+                    values.insert(*result, scalar);
+                }
+            }
+        }
+        OpKind::TypeHint { value, ty } => {
+            let fact = match values.get(value).copied() {
+                Some(
+                    fact @ ScalarFact::Known {
+                        evidence: Evidence::Proven,
+                        ..
+                    },
+                ) => fact,
+                Some(
+                    ScalarFact::Known {
+                        evidence: Evidence::Declared,
+                        ..
+                    }
+                    | ScalarFact::Unknown,
+                )
+                | None => ScalarFact::Known {
+                    ty: match ty {
+                        ncl_ir::ScalarTypeHint::Fixnum => ScalarType::Fixnum,
+                        ncl_ir::ScalarTypeHint::Integer => ScalarType::Integer,
+                        ncl_ir::ScalarTypeHint::Number => ScalarType::Number,
+                        ncl_ir::ScalarTypeHint::Boolean => ScalarType::Boolean,
+                        ncl_ir::ScalarTypeHint::NonNumber => ScalarType::NonNumber,
+                    },
+                    evidence: Evidence::Declared,
+                },
+            };
+            for (result, _) in &op.results {
+                values.insert(*result, fact);
+            }
+        }
+        OpKind::Convert {
+            op: ncl_ir::Convert::I64ToWord,
+            ..
+        } => {
+            for (result, _) in &op.results {
+                if proven_fixnums.contains(result) {
+                    values.insert(*result, proven(ScalarType::Fixnum));
+                }
+            }
+        }
+        OpKind::Compare { .. }
+        | OpKind::Prim {
+            op:
+                Prim::FixnumLt
+                | Prim::FixnumLe
+                | Prim::FixnumEq
+                | Prim::Eq
+                | Prim::Eql
+                | Prim::Typep
+                | Prim::CharacterPredicate(_),
+            ..
+        } => {
+            for (result, _) in &op.results {
+                values.insert(*result, proven(ScalarType::Boolean));
+            }
+        }
+        // check-added-lines: allow(wildcard) unhandled operations establish no scalar result facts.
+        _ => {}
     }
 }
 
@@ -250,6 +299,7 @@ impl FunctionPass for TypeEffect {
                     name,
                     args,
                     specialization,
+                    specialization_disabled,
                 } = &mut op.kind
                 else {
                     continue;
@@ -257,6 +307,12 @@ impl FunctionPass for TypeEffect {
                 let Some(operation) = FixnumOp::from_builtin(name, args.len()) else {
                     continue;
                 };
+                if *specialization_disabled {
+                    if specialization.take().is_some() {
+                        changed = true;
+                    }
+                    continue;
+                }
                 let guards = args
                     .iter()
                     .map(|value| {
@@ -280,7 +336,7 @@ impl FunctionPass for TypeEffect {
     }
 }
 
-fn proven(ty: ScalarType) -> ScalarFact {
+const fn proven(ty: ScalarType) -> ScalarFact {
     ScalarFact::Known {
         ty,
         evidence: Evidence::Proven,
@@ -292,14 +348,14 @@ fn scalar_constant(constant: &Constant) -> ScalarType {
         Constant::Fixnum(value) if (i64::MIN / 2..=i64::MAX / 2).contains(value) => {
             ScalarType::Fixnum
         }
-        Constant::Bignum { .. } => ScalarType::Integer,
         Constant::SingleFloat(_)
         | Constant::DoubleFloat(_)
         | Constant::Ratio { .. }
         | Constant::Complex { .. } => ScalarType::Number,
-        Constant::Nil | Constant::T => ScalarType::NonNumber,
-        Constant::Fixnum(_) => ScalarType::Integer,
-        Constant::Character(_)
+        Constant::Bignum { .. } | Constant::Fixnum(_) => ScalarType::Integer,
+        Constant::Nil
+        | Constant::T
+        | Constant::Character(_)
         | Constant::Symbol { .. }
         | Constant::UninternedSymbol { .. }
         | Constant::StringBytes(_)
@@ -328,10 +384,11 @@ fn effect_for(kind: &OpKind) -> EffectSet {
     let mut effects = EffectSet::default();
     match kind {
         OpKind::Load { .. } | OpKind::LoadField { .. } => {
-            effects = effects.with(Effect::ReadMemory)
+            effects = effects.with(Effect::ReadMemory);
         }
-        OpKind::Store { .. } => effects = effects.with(Effect::WriteMemory),
-        OpKind::StoreField { .. } => effects = EffectSet::UNKNOWN_CALL,
+        OpKind::Store { .. } | OpKind::SetMultipleValues { .. } => {
+            effects = effects.with(Effect::WriteMemory);
+        }
         OpKind::Alloc { .. } => {
             effects = effects
                 .with(Effect::Call)
@@ -346,8 +403,8 @@ fn effect_for(kind: &OpKind) -> EffectSet {
         | OpKind::Builtin { .. }
         | OpKind::Safepoint
         | OpKind::EnterHandler { .. }
-        | OpKind::LeaveHandler { .. } => effects = EffectSet::UNKNOWN_CALL,
-        OpKind::SetMultipleValues { .. } => effects = effects.with(Effect::WriteMemory),
+        | OpKind::LeaveHandler { .. }
+        | OpKind::StoreField { .. } => effects = EffectSet::UNKNOWN_CALL,
         OpKind::Prim { op, .. } => {
             effects = match op {
                 Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => {
@@ -370,6 +427,7 @@ fn effect_for(kind: &OpKind) -> EffectSet {
         }
         OpKind::Const { .. }
         | OpKind::Move { .. }
+        | OpKind::TypeHint { .. }
         | OpKind::LoadArg { .. }
         | OpKind::LoadCapture { .. }
         | OpKind::LoadFunctionObject
@@ -380,5 +438,5 @@ fn effect_for(kind: &OpKind) -> EffectSet {
 }
 
 #[cfg(test)]
-#[path = "type_effect_tests.rs"]
+#[path = "tests_type_effect.rs"]
 mod tests;

@@ -531,4 +531,30 @@ mod tests {
             Some(message)
         );
     }
+
+    #[test]
+    fn native_load_failure_reaches_the_runtime_error_report() {
+        let path = std::env::temp_dir().join(format!(
+            "ncl-native-load-diagnostic-{}.lisp",
+            std::process::id()
+        ));
+        std::fs::write(&path, [0xff])
+            .unwrap_or_else(|error| panic!("invalid UTF-8 source creation failed: {error}"));
+        let source = format!("(load \"{}\")", path.display());
+        let mut runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+        let result = runtime.eval(&source);
+        assert!(
+            matches!(
+                &result,
+                Err(crate::RuntimeError::Native(message))
+                    if message == "source file is not valid UTF-8"
+            ),
+            "unexpected LOAD error: {result:?}"
+        );
+
+        std::fs::remove_file(path)
+            .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
+    }
 }

@@ -1,0 +1,323 @@
+//! ISA-derived instruction vectors for both supported decoders.
+
+#![allow(clippy::panic)]
+
+use ncl_disasm::{Architecture, DecodedInstruction, decode};
+
+// Encodings and instruction semantics come from Intel SDM Vol. 2A/2B and Arm DDI0602,
+// Base Instructions: https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2a-manual.pdf
+// https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf
+// https://documentation-service.arm.com/static/68da52dfbd7cab51328c0622
+const CASES: [Case; 35] = [
+    Case {
+        id: "x86-push-r8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x41, 0x50],
+        size: 2,
+        text: "push %r8",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-pop-r8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x41, 0x58],
+        size: 2,
+        text: "pop %r8",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-cqo",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x99],
+        size: 2,
+        text: "cqo",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-mov-imm64-rax",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0xb8, 0x2a, 0, 0, 0, 0, 0, 0, 0],
+        size: 10,
+        text: "mov $42, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-jne-rel8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x75, 0x02],
+        size: 2,
+        text: "jne",
+        branch_target: Some(0x1004),
+    },
+    Case {
+        id: "x86-setne-al",
+        architecture: Architecture::X86_64,
+        bytes: &[0x0f, 0x95, 0xc0],
+        size: 3,
+        text: "setne %al",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-call-rel32",
+        architecture: Architecture::X86_64,
+        bytes: &[0xe8, 0x01, 0, 0, 0],
+        size: 5,
+        text: "call",
+        branch_target: Some(0x1006),
+    },
+    Case {
+        id: "x86-nop-memory",
+        architecture: Architecture::X86_64,
+        bytes: &[0x0f, 0x1f, 0x00],
+        size: 3,
+        text: "nop (%rax)",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-jne-rel32",
+        architecture: Architecture::X86_64,
+        bytes: &[0x0f, 0x85, 0x01, 0, 0, 0],
+        size: 6,
+        text: "jne",
+        branch_target: Some(0x1007),
+    },
+    Case {
+        id: "x86-cmovne",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x0f, 0x45, 0xc3],
+        size: 4,
+        text: "cmovne %rbx, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-imul-r64-rm64",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x0f, 0xaf, 0xc3],
+        size: 4,
+        text: "imul %rbx, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-lea-sib-disp8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x8d, 0x44, 0x8b, 0x10],
+        size: 5,
+        text: "lea 16(%rbx,%rcx,4), %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-mov-load",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x8b, 0x03],
+        size: 3,
+        text: "mov (%rbx), %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-add-memory",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x03, 0x43, 0x08],
+        size: 4,
+        text: "add 8(%rbx), %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-add-imm8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x83, 0xc0, 0x7f],
+        size: 4,
+        text: "add $127, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-shl-imm8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0xc1, 0xe0, 0x03],
+        size: 4,
+        text: "shl $3, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-call-indirect-rax",
+        architecture: Architecture::X86_64,
+        bytes: &[0xff, 0xd0],
+        size: 2,
+        text: "call *%rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-addsd",
+        architecture: Architecture::X86_64,
+        bytes: &[0xf2, 0x0f, 0x58, 0xc1],
+        size: 4,
+        text: "addsd %xmm1, %xmm0",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-bt-imm8",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x0f, 0xba, 0xe0, 0x03],
+        size: 5,
+        text: "bt $3, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-brk-imm1",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x20, 0x00, 0x20, 0xd4],
+        size: 4,
+        text: "brk #1",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-blr-x10",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x40, 0x01, 0x3f, 0xd6],
+        size: 4,
+        text: "blr x10",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-b-plus8",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x02, 0x00, 0x00, 0x14],
+        size: 4,
+        text: "b #8",
+        branch_target: Some(0x1008),
+    },
+    Case {
+        id: "a64-bl-plus12",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x03, 0x00, 0x00, 0x94],
+        size: 4,
+        text: "bl #12",
+        branch_target: Some(0x100c),
+    },
+    Case {
+        id: "a64-beq-plus16",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x80, 0x00, 0x00, 0x54],
+        size: 4,
+        text: "b.eq #16",
+        branch_target: Some(0x1010),
+    },
+    Case {
+        id: "a64-cbz-x1-plus20",
+        architecture: Architecture::Aarch64,
+        bytes: &[0xa1, 0x00, 0x00, 0xb4],
+        size: 4,
+        text: "cbz x1, #20",
+        branch_target: Some(0x1014),
+    },
+    Case {
+        id: "a64-tbz-x2-bit35-plus24",
+        architecture: Architecture::Aarch64,
+        bytes: &[0xc2, 0x00, 0x18, 0xb6],
+        size: 4,
+        text: "tbz x2, #35, #24",
+        branch_target: Some(0x1018),
+    },
+    Case {
+        id: "a64-adr-x3-immlo1",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x03, 0x00, 0x00, 0x30],
+        size: 4,
+        text: "adr x3, #0x1001",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-adrp-x3-immlo1",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x03, 0x00, 0x00, 0xb0],
+        size: 4,
+        text: "adrp x3, #0x2000",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-ldr-literal-x4-plus8",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x44, 0x00, 0x00, 0x58],
+        size: 4,
+        text: "ldr x4, #0x1008",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-movz-x5-1234-lsl16",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x85, 0x46, 0xa2, 0xd2],
+        size: 4,
+        text: "movz x5, #0x1234, lsl #16",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-add-imm-x0-x1-3-lsl12",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x20, 0x0c, 0x40, 0x91],
+        size: 4,
+        text: "add x0, x1, #12288 (lsl #12)",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-add-shifted-x8-x9-x10-lsl2",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x28, 0x09, 0x0a, 0x8b],
+        size: 4,
+        text: "add x8, x9, x10, lsl #2",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-orr-imm-x11-x12-ff",
+        architecture: Architecture::Aarch64,
+        bytes: &[0x8b, 0x1d, 0x40, 0xb2],
+        size: 4,
+        text: "orr x11, x12, #0xff",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-ldr-x13-x14-offset16",
+        architecture: Architecture::Aarch64,
+        bytes: &[0xcd, 0x09, 0x40, 0xf9],
+        size: 4,
+        text: "ldr x13, [x14, #16]",
+        branch_target: None,
+    },
+    Case {
+        id: "a64-ldp-x15-x16-sp-offset16",
+        architecture: Architecture::Aarch64,
+        bytes: &[0xef, 0x43, 0x41, 0xa9],
+        size: 4,
+        text: "ldp x15, x16, [sp, #16]",
+        branch_target: None,
+    },
+];
+
+struct Case {
+    id: &'static str,
+    architecture: Architecture,
+    bytes: &'static [u8],
+    size: u8,
+    text: &'static str,
+    branch_target: Option<u64>,
+}
+
+#[test]
+fn spec_derived_cases_match_complete_decoded_instructions() {
+    for case in CASES {
+        let actual = decode(case.architecture, case.bytes, 0x1000)
+            .unwrap_or_else(|error| panic!("{}: decode failed: {error}", case.id));
+        let expected = [DecodedInstruction {
+            address: 0x1000,
+            size: case.size,
+            bytes: case.bytes.to_vec(),
+            text: case.text.to_owned(),
+            branch_target: case.branch_target,
+        }];
+
+        assert_eq!(
+            actual.as_slice(),
+            expected.as_slice(),
+            "{}: complete decode result",
+            case.id
+        );
+    }
+}

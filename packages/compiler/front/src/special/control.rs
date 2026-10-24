@@ -87,14 +87,9 @@ fn tagbody(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    let arguments = arguments
-        .into_iter()
-        .map(|argument| HeapRootedWord::new(expander.ctx(), argument))
-        .collect::<Result<Vec<_>, _>>()?;
     expander.env_mut().push_scope();
     let mut items = Vec::with_capacity(arguments.len());
-    for rooted_argument in &arguments {
-        let argument = rooted_argument.get();
+    for argument in arguments {
         if matches!(
             classify_form(expander.ctx(), argument),
             ObjectRef::Symbol(_)

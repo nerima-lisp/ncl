@@ -120,26 +120,17 @@ fn lowers_fixnum_return_to_decodable_x86() {
 
 #[test]
 fn generates_maps_for_all_safepoint_kinds() {
-    let mut allocation = FunctionBuilder::new(
-        ncl_ir::FunctionId(1),
-        "alloc",
-        Vec::new(),
-        vec![Ty::Address],
+    let mut allocation =
+        FunctionBuilder::new(ncl_ir::FunctionId(1), "alloc", Vec::new(), Vec::new());
+    assert!(
+        allocation
+            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
+            .is_ok()
     );
-    let allocation_values = allocation.push_op(OpKind::Alloc { words: 2 }, &[Ty::Address]);
-    assert!(allocation_values.is_ok());
-    let Some(allocation_value) = allocation_values
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return;
-    };
     assert!(allocation.push_op(OpKind::Safepoint, &[]).is_ok());
     assert!(
         allocation
-            .terminate(Terminator::Return {
-                values: vec![allocation_value],
-            })
+            .terminate(Terminator::Return { values: Vec::new() })
             .is_ok()
     );
     let allocation_result = compile_function(&allocation.finish(), &FixtureAbi);

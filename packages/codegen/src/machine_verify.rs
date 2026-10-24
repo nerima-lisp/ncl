@@ -148,7 +148,7 @@ pub fn verify_allocation(
     Ok(())
 }
 
-fn verify_ir(function: &Function) -> Result<(), MachineVerificationError> {
+pub fn verify_ir(function: &Function) -> Result<(), MachineVerificationError> {
     if let Err(errors) = ncl_ir::verify(function) {
         let errors = errors
             .into_iter()

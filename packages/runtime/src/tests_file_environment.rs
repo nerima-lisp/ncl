@@ -35,6 +35,36 @@ fn compile_file_expands_with_open_file_minimal_form() {
 }
 
 #[test]
+fn compile_file_expands_with_open_file_around_do() {
+    let input =
+        std::env::temp_dir().join(format!("ncl-with-open-file-do-{}.lisp", std::process::id()));
+    let source = "(defun repro-with-open-file-do (expected-failures if-does-not-exist) \
+                  (with-open-file (stream expected-failures \
+                                  :if-does-not-exist if-does-not-exist) \
+                    (do ((name nil nil)) ((eq name nil)) name)))";
+    if let Err(error) = fs::write(&input, source) {
+        panic!("WITH-OPEN-FILE/DO regression source creation failed: {error}");
+    }
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
+    let result = runtime.compile_file(&input);
+    let source_cleanup = fs::remove_file(&input);
+    let output_cleanup = fs::remove_file(input.with_extension("fasl"));
+    assert!(
+        result.is_ok(),
+        "COMPILE-FILE failed for WITH-OPEN-FILE/DO source: {result:?}"
+    );
+    if let Err(error) = source_cleanup {
+        panic!("WITH-OPEN-FILE/DO regression source cleanup failed: {error}");
+    }
+    if let Err(error) = output_cleanup {
+        panic!("WITH-OPEN-FILE/DO regression output cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn compile_file_builtin_compiles_and_loads_fasl_with_three_values() {
     let input =
         std::env::temp_dir().join(format!("ncl-compile-and-load-{}.lisp", std::process::id()));

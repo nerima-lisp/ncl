@@ -10,7 +10,7 @@ NCL targets compatibility with SBCL 2.6.0. The [wave plan](wave-plan.md) records
 | D-10 | `*features*` includes `:ncl` and never `:sbcl`. Libraries load through `#+ncl` backends. | Keeps D-5 |
 | D-11 | NCL passes every ansi-test test that SBCL 2.6.0 passes on the same machine and day. For cl-bench, NCL's geometric mean is at most SBCL's, and each of the 65 benchmarks runs within 1.5 times SBCL's time. | Adds ANSI-test and cl-bench acceptance criteria |
 | D-12 | Targets are x86-64 and AArch64 on macOS and Linux. | Confirms D-7 |
-| D-13 | A contrib is in scope exactly on platforms where SBCL 2.6.0 loads it. The extraction loaded 18 in-scope contribs on macOS arm64; `sb-simd` and `sb-perf` were out of scope there. All 20 contribs loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). The extractor's 20-entry list has no additional contribs to account for the difference from D-13's stated macOS count. | [SBCL surface inventory](../../../conformance/sbcl/symbols/README.md) |
+| D-13 | A contrib is in scope exactly on platforms where SBCL 2.6.0 loads it. The extraction loaded 18 in-scope contribs on macOS arm64; `sb-simd` and `sb-perf` were out of scope there. All 20 contribs loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). The extractor's 20-entry list has no additional contribs to account for the difference from D-13's stated macOS count. | `conformance/sbcl/symbols/README.md` |
 
 D-2's SB-* exclusion, D-3's contrib exclusion, and FR-001's SBCL-surface removal requirement were withdrawn by D-9.
 

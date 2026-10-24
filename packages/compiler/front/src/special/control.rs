@@ -2,7 +2,7 @@
 //! `catch`, `throw`, `unwind-protect`, `if`, `progn`, `locally`, `eval-when`,
 //! and `load-time-value`.
 
-use ncl_object::{ObjectRef, Word};
+use ncl_object::{HeapRootedWord, ObjectRef, Word};
 
 use crate::ast::{EvalSituation, Expr, TagbodyItem};
 use crate::error::FrontError;
@@ -176,7 +176,7 @@ fn if_form(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    let Some((test, rest)) = arguments.split_first() else {
+    let Some((_, rest)) = arguments.split_first() else {
         return Err(special::arity(kind, "a test and a then form", 0));
     };
     if rest.is_empty() || rest.len() > 2 {
@@ -186,11 +186,16 @@ fn if_form(
             arguments.len(),
         ));
     }
-    let test = expander.expand(*test)?;
-    let then = expander.expand(rest[0])?;
-    let otherwise = rest
-        .get(1)
-        .map(|value| expander.expand(*value))
+    let rooted_arguments = arguments
+        .iter()
+        .copied()
+        .map(|argument| HeapRootedWord::new(expander.ctx(), argument).map_err(Into::into))
+        .collect::<Result<Vec<_>, FrontError>>()?;
+    let test = expander.expand(rooted_arguments[0].get())?;
+    let then = expander.expand(rooted_arguments[1].get())?;
+    let otherwise = rooted_arguments
+        .get(2)
+        .map(|value| expander.expand(value.get()))
         .transpose()?
         .map(Box::new);
     Ok(Expr::If {

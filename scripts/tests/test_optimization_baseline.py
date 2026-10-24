@@ -157,6 +157,11 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertEqual(report["scores"]["common_benchmark_count"], 64)
         self.assertNotIn(baseline.DISABLED_BENCHMARK, report["scores"]["common_benchmarks"])
         self.assertNotIn(baseline.DISABLED_BENCHMARK, report["scores"]["missing_benchmarks"])
+        self.assertEqual(report["scores"]["excluded_benchmark_count"], 1)
+        self.assertEqual(report["scores"]["excluded_benchmarks"], [{
+            "name": baseline.DISABLED_BENCHMARK,
+            "reason": baseline.DISABLED_BENCHMARK_REASONS[baseline.DISABLED_BENCHMARK],
+        }])
         for runtime, expected in (("ncl_off", 4.0), ("ncl_default", 2.0), ("sbcl", 1.0)):
             self.assertAlmostEqual(
                 report["scores"]["geometric_mean_seconds"][runtime], expected
@@ -173,6 +178,21 @@ class OptimizationBaselineTests(unittest.TestCase):
             report["scores"]["disabled_benchmarks"][baseline.DISABLED_BENCHMARK]["sbcl"][0]["status"],
             "disabled",
         )
+        self.assertEqual(
+            report["scores"]["disabled_benchmarks"][baseline.DISABLED_BENCHMARK]["sbcl"][0]["reason"],
+            baseline.DISABLED_BENCHMARK_REASONS[baseline.DISABLED_BENCHMARK],
+        )
+        for mode, expected_ratio in (("off_over_sbcl", 4.0), ("default_over_sbcl", 2.0)):
+            ranking = report["scores"]["slowest_10_by_ncl_over_sbcl_ratio"][mode]
+            self.assertEqual(len(ranking), 10)
+            self.assertEqual(
+                [item["name"] for item in ranking],
+                report["scores"]["common_benchmarks"][:10],
+            )
+            self.assertTrue(all(
+                item["ncl_over_sbcl_ratio"] == expected_ratio
+                for item in ranking
+            ))
         for run in report["runs"]:
             self.assertEqual(len(run["benchmarks"]), 65)
             self.assertEqual(
@@ -180,6 +200,12 @@ class OptimizationBaselineTests(unittest.TestCase):
                 set(),
             )
             self.assertTrue(all(isinstance(record["times"], list) for record in run["benchmarks"].values()))
+            disabled_record = run["benchmarks"][baseline.DISABLED_BENCHMARK]
+            if disabled_record["status"] == "disabled":
+                self.assertEqual(
+                    disabled_record["reason"],
+                    baseline.DISABLED_BENCHMARK_REASONS[baseline.DISABLED_BENCHMARK],
+                )
             self.assertIn("status", run["process"])
             self.assertIn("stdout", run["process"])
             self.assertIn("stderr", run["process"])
@@ -205,6 +231,13 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertNotIn(str(output_path), output_json)
         self.assertEqual(report["status"], "failed")
         self.assertEqual(report["scores"]["common_benchmark_count"], 63)
+        missing_ackermann = report["scores"]["missing_benchmarks"]["ACKERMANN"]["ncl_off"]
+        self.assertEqual(missing_ackermann["reason"], "no complete positive sample set")
+        self.assertEqual(len(missing_ackermann["errors"]), 1)
+        self.assertIn("<absolute-path>", missing_ackermann["errors"][0])
+        self.assertNotIn(runner.path_text, missing_ackermann["errors"][0])
+        self.assertNotIn(runner.hostname, missing_ackermann["errors"][0])
+        self.assertNotIn(runner.username, missing_ackermann["errors"][0])
         failed_run = next(
             run for run in report["runs"]
             if run.get("mode") == "off"

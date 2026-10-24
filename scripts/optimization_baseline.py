@@ -99,6 +99,12 @@ BENCHMARKS = (
     "fill-strings/adjustable",
 )
 DISABLED_BENCHMARK = "WALK-LIST/MESS"
+DISABLED_BENCHMARK_REASONS = {
+    DISABLED_BENCHMARK: (
+        "The pinned cl-bench definition lists SBCL under disabled-for for "
+        "WALK-LIST/MESS."
+    ),
+}
 RUNNER_STATUSES = {"passed", "disabled", "failed"}
 
 
@@ -242,10 +248,10 @@ def _normalize_times(
 
 
 def _failed_benchmark(error: str) -> dict[str, Any]:
-    return {"status": "failed", "times": [], "error": error}
+    return {"status": "failed", "times": [], "error": error, "reason": None}
 
 
-def _benchmark_record(value: Any) -> dict[str, Any]:
+def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         return _failed_benchmark("benchmark record must be an object")
     if set(value) != {"status", "times", "error"}:
@@ -266,7 +272,15 @@ def _benchmark_record(value: Any) -> dict[str, Any]:
         error = error or "passed benchmark has no positive times"
     if status == "failed" and error is None:
         error = "benchmark runner reported failure"
-    return {"status": status, "times": times, "error": error}
+    reason = None
+    if status == "disabled":
+        if times:
+            status = "failed"
+            error = error or "disabled benchmark has sample times"
+        else:
+            reason = error or DISABLED_BENCHMARK_REASONS.get(name)
+            error = None
+    return {"status": status, "times": times, "error": error, "reason": reason}
 
 
 def _driver_data(process: scoreboard.ProcessResult) -> tuple[str | None, list[Any], dict[str, Any], str | None, list[str]]:
@@ -293,7 +307,7 @@ def _driver_data(process: scoreboard.ProcessResult) -> tuple[str | None, list[An
         }, error, []
 
     benchmarks = {
-        name: _benchmark_record(reported.get(name))
+        name: _benchmark_record(reported.get(name), name=name)
         if name in reported
         else _failed_benchmark("benchmark missing from driver output")
         for name in BENCHMARKS
@@ -409,7 +423,14 @@ def _score_runs(
         if name == DISABLED_BENCHMARK:
             continue
         missing[name] = {
-            runtime: "no complete positive sample set"
+            runtime: {
+                "reason": "no complete positive sample set",
+                "errors": list(dict.fromkeys(
+                    run["benchmarks"][name]["error"]
+                    for run in by_runtime[runtime]
+                    if run["benchmarks"][name]["error"] is not None
+                )),
+            }
             for runtime in medians
             if medians[runtime][name] is None
         }
@@ -439,6 +460,16 @@ def _score_runs(
             for name in common
         },
     }
+    slowest_ten = {
+        mode: [
+            {"name": name, "ncl_over_sbcl_ratio": ratio}
+            for name, ratio in sorted(
+                mode_ratios.items(),
+                key=lambda item: (-item[1], BENCHMARKS.index(item[0])),
+            )[:10]
+        ]
+        for mode, mode_ratios in benchmark_ratios.items()
+    }
     disabled = {
         name: {
             runtime: [
@@ -449,9 +480,18 @@ def _score_runs(
         }
         for name in (DISABLED_BENCHMARK,)
     }
+    excluded = [
+        {
+            "name": name,
+            "reason": DISABLED_BENCHMARK_REASONS[name],
+        }
+        for name in (DISABLED_BENCHMARK,)
+    ]
     return {
         "common_benchmarks": common,
         "common_benchmark_count": len(common),
+        "excluded_benchmark_count": len(excluded),
+        "excluded_benchmarks": excluded,
         "missing_benchmarks": missing,
         "benchmark_medians_seconds": {
             runtime: {name: medians[runtime][name] for name in common}
@@ -460,6 +500,7 @@ def _score_runs(
         "geometric_mean_seconds": geometric_means,
         "ncl_over_sbcl_ratio": ratios,
         "benchmark_ncl_over_sbcl_ratio": benchmark_ratios,
+        "slowest_10_by_ncl_over_sbcl_ratio": slowest_ten,
         "disabled_benchmarks": disabled,
     }
 
@@ -491,6 +532,7 @@ def _report_status(
     ]
     if not sbcl_runs or any(
         run["benchmarks"][DISABLED_BENCHMARK]["status"] != "disabled"
+        or not run["benchmarks"][DISABLED_BENCHMARK]["reason"]
         for run in sbcl_runs
     ):
         return "failed"

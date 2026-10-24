@@ -28,6 +28,7 @@ pub mod place;
 mod primitives;
 mod readtable;
 mod registry_extensions;
+mod rooted_words;
 mod roots;
 mod runtime;
 pub mod scope;
@@ -83,6 +84,7 @@ pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
 };
+pub use rooted_words::HeapRootedWords;
 pub(crate) use roots::finish_root;
 pub use roots::{
     HeapRootedWord, pop_heap_root, pop_root, push_heap_root, push_root, try_pop_root,

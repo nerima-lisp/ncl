@@ -4,6 +4,23 @@ use ncl_sys::{Heap, RootSlot, RootToken, Word};
 use std::rc::Rc;
 use std::sync::Arc;
 
+fn gc_word_diagnostics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED
+        .get_or_init(|| std::env::var("NCL_GC_WORD_DIAGNOSTICS").is_ok_and(|value| value == "1"))
+}
+
+#[track_caller]
+fn log_forwarded_input(value: Word, target: Word) {
+    eprintln!(
+        "NCL_GC_WORD_INPUT_DIAG operation=form_expansion_input value={value:?} address={:#x} forwarding_state=forwarded target={target:?} target_address={:#x} caller={}\n{}",
+        value.address(),
+        target.address(),
+        std::panic::Location::caller(),
+        std::backtrace::Backtrace::force_capture()
+    );
+}
+
 /// Push a precise root.
 pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
     ncl_sys::push_root(&mut ctx.thread, value)
@@ -12,6 +29,18 @@ pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
 /// Pop a precise root.
 pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
+}
+
+/// Log when diagnostics are enabled and `value` is already forwarded.
+#[doc(hidden)]
+#[track_caller]
+pub fn diagnose_forwarded_word(ctx: &ThreadContext, value: Word) {
+    if gc_word_diagnostics_enabled()
+        && let Some(target) = ctx.heap().and_then(|heap| heap.forwarded_word(value))
+        && target.address() != value.address()
+    {
+        log_forwarded_input(value, target);
+    }
 }
 
 /// Push a precise root owned by the runtime's heap-level registry, independent

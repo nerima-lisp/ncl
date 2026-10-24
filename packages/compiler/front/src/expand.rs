@@ -120,7 +120,9 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns a [`FrontError`] when the form is malformed, when a macro cannot
     /// be called, or when expansion exceeds `MACROEXPANSION_LIMIT`.
+    #[track_caller]
     pub fn expand(&mut self, form: Word) -> Result<Expr, FrontError> {
+        ncl_object::diagnose_forwarded_word(self.ctx, form);
         let mut current = form;
         let token = ncl_object::push_root(self.ctx, &mut current);
         let mut remaining = MACROEXPANSION_LIMIT;

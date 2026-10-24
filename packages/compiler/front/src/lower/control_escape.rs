@@ -70,9 +70,8 @@ impl Context<'_> {
                     .live
                     .iter()
                     .filter_map(|name| match f.env().lookup_variable(name) {
-                        Some(Slot::Value(value)) => Some(value),
-                        // check-added-lines: allow(wildcard) only value slots are jump arguments.
-                        _ => None,
+                        Some(Slot::Value(value) | Slot::Cell(value)) => Some(value),
+                        None => None,
                     })
                     .collect();
                 Self::terminate_jump(f, entry.target, args)?;

@@ -2,12 +2,138 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    Runtime, ThreadContext, Word, cdr, make_string, string_ref, symbol_name, symbol_package,
+    BuiltinPackage, Runtime, ThreadContext, Word, cdr, make_string, string_length, string_ref,
+    symbol_name, symbol_package,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
         .unwrap_or_else(|error| panic!("string allocation: {error:?}"))
+}
+
+fn string_text(ctx: &ThreadContext, value: Word) -> String {
+    let length =
+        string_length(ctx, value).unwrap_or_else(|error| panic!("string length: {error:?}"));
+    (0..length)
+        .map(|index| {
+            string_ref(ctx, value, index).unwrap_or_else(|error| panic!("string ref: {error:?}"))
+        })
+        .collect()
+}
+
+const SB_PACKAGES: [(BuiltinPackage, &str); 16] = [
+    (BuiltinPackage::SbExt, "SB-EXT"),
+    (BuiltinPackage::SbThread, "SB-THREAD"),
+    (BuiltinPackage::SbAlien, "SB-ALIEN"),
+    (BuiltinPackage::SbSys, "SB-SYS"),
+    (BuiltinPackage::SbMop, "SB-MOP"),
+    (BuiltinPackage::SbGray, "SB-GRAY"),
+    (BuiltinPackage::SbUnicode, "SB-UNICODE"),
+    (BuiltinPackage::SbDebug, "SB-DEBUG"),
+    (BuiltinPackage::SbAlienInternals, "SB-ALIEN-INTERNALS"),
+    (BuiltinPackage::SbC, "SB-C"),
+    (BuiltinPackage::SbImpl, "SB-IMPL"),
+    (BuiltinPackage::SbInt, "SB-INT"),
+    (BuiltinPackage::SbKernel, "SB-KERNEL"),
+    (BuiltinPackage::SbPcl, "SB-PCL"),
+    (BuiltinPackage::SbUnix, "SB-UNIX"),
+    (BuiltinPackage::SbVm, "SB-VM"),
+];
+
+const OBJECT_OWNERSHIP: &str = include_str!("../ownership.tsv");
+const SB_EXT_SURFACE: &str = include_str!("../../../conformance/sbcl/symbols/sb-ext.tsv");
+
+#[test]
+fn runtime_registers_distinct_sb_packages() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    for (builtin, name) in SB_PACKAGES {
+        assert_eq!(builtin.as_str(), name);
+        let package = runtime
+            .find_package(&ctx, name)
+            .unwrap_or_else(|| panic!("{name} package missing"));
+        let actual_name = Package::from_word(package)
+            .name(&ctx)
+            .unwrap_or_else(|error| panic!("{name} package name: {error:?}"));
+        assert_eq!(string_text(&ctx, actual_name), name);
+    }
+}
+
+#[test]
+fn object_owned_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ncl_object::register(&mut ctx, &runtime)
+        .unwrap_or_else(|error| panic!("NCL-GC register: {error:?}"));
+
+    let ownership = ncl_ownership::rows_for_crate_from_str(OBJECT_OWNERSHIP, "ncl-object", 1)
+        .unwrap_or_else(|error| panic!("ownership rows: {error:?}"));
+    let sb_ext_rows: Vec<_> = ownership
+        .iter()
+        .filter(|row| row.package == "SB-EXT")
+        .collect();
+    assert_eq!(sb_ext_rows.len(), 14);
+
+    for row in sb_ext_rows {
+        let source_rows: Vec<_> = ownership
+            .iter()
+            .filter(|source| source.package.starts_with("NCL-") && source.symbol == row.symbol)
+            .collect();
+        assert_eq!(source_rows.len(), 1, "{} ownership source", row.symbol);
+        let source_package_name = &source_rows[0].package;
+        let mut source_package = runtime
+            .find_package(&ctx, source_package_name)
+            .unwrap_or_else(|| panic!("{source_package_name} package missing"));
+        let source_package_token = ncl_object::push_root(&mut ctx, &mut source_package);
+        let mut sb_package = runtime
+            .find_package(&ctx, "SB-EXT")
+            .unwrap_or_else(|| panic!("SB-EXT package missing"));
+        let sb_package_token = ncl_object::push_root(&mut ctx, &mut sb_package);
+        let mut name = string(&mut ctx, &runtime, &row.symbol);
+        let name_token = ncl_object::push_root(&mut ctx, &mut name);
+
+        let (source_symbol, _) = Package::from_word(source_package)
+            .find_symbol(&mut ctx, name)
+            .unwrap_or_else(|error| panic!("{} source lookup: {error:?}", row.symbol))
+            .unwrap_or_else(|| panic!("{} source symbol missing", row.symbol));
+        let mut source_symbol = source_symbol;
+        let source_symbol_token = ncl_object::push_root(&mut ctx, &mut source_symbol);
+        let home_before = symbol_package(&ctx, source_symbol)
+            .unwrap_or_else(|error| panic!("{} home before import: {error:?}", row.symbol));
+        assert_eq!(home_before, source_package, "{} source home", row.symbol);
+
+        let (sb_symbol, sb_status) = Package::from_word(sb_package)
+            .find_symbol(&mut ctx, name)
+            .unwrap_or_else(|error| panic!("{} SB lookup: {error:?}", row.symbol))
+            .unwrap_or_else(|| panic!("{} SB symbol missing", row.symbol));
+        assert_eq!(sb_symbol, source_symbol, "{} symbol identity", row.symbol);
+        let surface_row = SB_EXT_SURFACE
+            .lines()
+            .skip(1)
+            .map(|line| line.split('\t').collect::<Vec<_>>())
+            .find(|fields| fields.len() >= 4 && fields[0] == "SB-EXT" && fields[1] == row.symbol)
+            .unwrap_or_else(|| panic!("{} SBCL surface row missing", row.symbol));
+        assert_eq!(surface_row[2], "yes", "{} SBCL presence", row.symbol);
+        let expected_status = match surface_row[3] {
+            "yes" => FindStatus::External,
+            "no" => FindStatus::Internal,
+            external => panic!("{} invalid SBCL external flag {external}", row.symbol),
+        };
+        assert_eq!(sb_status, expected_status, "{} external status", row.symbol);
+        let home_after = symbol_package(&ctx, sb_symbol)
+            .unwrap_or_else(|error| panic!("{} home after import: {error:?}", row.symbol));
+        assert_eq!(home_after, home_before, "{} home package", row.symbol);
+
+        assert!(ncl_object::pop_root(&mut ctx, source_symbol_token));
+        assert!(ncl_object::pop_root(&mut ctx, name_token));
+        assert!(ncl_object::pop_root(&mut ctx, sb_package_token));
+        assert!(ncl_object::pop_root(&mut ctx, source_package_token));
+    }
 }
 
 #[test]

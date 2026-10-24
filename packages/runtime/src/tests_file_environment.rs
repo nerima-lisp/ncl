@@ -65,6 +65,33 @@ fn compile_file_expands_with_open_file_around_do() {
 }
 
 #[test]
+fn compile_file_compiles_handler_case_with_multiple_clauses() {
+    let input = std::env::temp_dir().join(format!("ncl-handler-case-{}.lisp", std::process::id()));
+    let source =
+        "(defun repro-handler-case (input) (handler-case input (warning () nil) (error () nil)))";
+    if let Err(error) = fs::write(&input, source) {
+        panic!("HANDLER-CASE regression source creation failed: {error}");
+    }
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
+    let result = runtime.compile_file(&input);
+    let source_cleanup = fs::remove_file(&input);
+    let output_cleanup = fs::remove_file(input.with_extension("fasl"));
+    assert!(
+        result.is_ok(),
+        "COMPILE-FILE failed for a minimal HANDLER-CASE function: {result:?}"
+    );
+    if let Err(error) = source_cleanup {
+        panic!("HANDLER-CASE regression source cleanup failed: {error}");
+    }
+    if let Err(error) = output_cleanup {
+        panic!("HANDLER-CASE regression output cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn compile_file_builtin_compiles_and_loads_fasl_with_three_values() {
     let input =
         std::env::temp_dir().join(format!("ncl-compile-and-load-{}.lisp", std::process::id()));

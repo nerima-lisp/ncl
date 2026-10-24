@@ -43,6 +43,10 @@ impl Context<'_> {
         declarations: &[Declaration],
         body: &[Expr],
     ) -> Result<ValueId, LowerError> {
+        if f.is_terminated() {
+            // No value exists on this path; the caller must keep the terminated state.
+            return Ok(f.fresh_value());
+        }
         let specials = special_names(declarations);
         let shadowed = bindings
             .iter()
@@ -60,14 +64,28 @@ impl Context<'_> {
             self.lower_let_sequential(f, bindings, &scope, body)?
         } else {
             let mut evaluated = Vec::with_capacity(bindings.len());
+            let mut terminated_value = None;
             for binding in bindings {
+                if f.is_terminated() {
+                    break;
+                }
                 let value = match binding.value.as_ref() {
                     Some(form) => self.lower_expr(f, form)?,
                     None => f.nil()?,
                 };
                 evaluated.push(value);
+                if f.is_terminated() {
+                    terminated_value = Some(value);
+                    break;
+                }
             }
-            self.lower_let_parallel(f, bindings, &evaluated, &scope, body)?
+            if let Some(value) = terminated_value {
+                value
+            } else if f.is_terminated() {
+                f.fresh_value()
+            } else {
+                self.lower_let_parallel(f, bindings, &evaluated, &scope, body)?
+            }
         };
         f.env().pop();
         Ok(value)
@@ -95,6 +113,9 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
+        if f.is_terminated() {
+            return Ok(value);
+        }
         self.push_declarations_shadowing(&[], std::slice::from_ref(&binding.name));
         let result = if scope.specials.contains(&binding.name) {
             self.lower_dynamic_binding(f, &binding.name, value, move |ctx, f| {

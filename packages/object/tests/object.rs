@@ -76,7 +76,6 @@ fn gc_extensions_register_the_owned_symbols() {
     for name in [
         "CANCEL-FINALIZATION",
         "FINALIZE",
-        "GC",
         "GENERATION-BYTES-ALLOCATED",
         "HASH-TABLE-WEAKNESS",
         "MAKE-WEAK-POINTER",
@@ -90,6 +89,10 @@ fn gc_extensions_register_the_owned_symbols() {
             Some(Word::UNBOUND)
         );
     }
+    assert_ne!(
+        runtime.function(&mut ctx, "NCL-GC", "GC"),
+        Some(Word::UNBOUND)
+    );
     assert_eq!(runtime.class(&mut ctx, "WEAK-POINTER"), Some(Word::UNBOUND));
 }
 

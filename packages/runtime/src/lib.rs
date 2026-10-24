@@ -81,6 +81,7 @@ impl Runtime {
         let (builtin_trampoline, undefined_function_stub) =
             builtin_trampoline::install(&object, &mut context)?;
         let undefined_function_stub_address = undefined_function_stub.address();
+        ncl_object::register(&mut context, &object)?;
         ncl_stdlib::register_all(&mut context, &object)?;
         file_environment::register(&mut context, &object)?;
         time::register_builtins(&mut context, &object)?;
@@ -124,7 +125,6 @@ impl Runtime {
         result
     }
     /// Compile and execute a source string through the native pipeline.
-    ///
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.

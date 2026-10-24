@@ -2,7 +2,9 @@
 
 use crate::hash_table::{INDEX, KV, MARKER, REHASH_SIZE, REHASH_THRESHOLD};
 use crate::{
-    ObjectError, Package, Runtime, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Package, Parameter,
+    Runtime, ThreadContext, Word,
     layout::{
         code_offset, function_offset, instance_offset, number_offset, readtable_offset,
         reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
@@ -22,6 +24,18 @@ fn package_layout() -> ncl_sys::ReferenceLayout {
         reference_words: reference_words(&crate::package::reference_words()),
         boxed_from: Some(crate::package::NAME + 1),
     }
+}
+
+const NO_PARAMETERS: &[Parameter] = &[];
+
+fn gc_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    ctx.collect(true)?;
+    Ok(Word::NIL)
 }
 
 /// Register every header-object reference layout owned by ncl-object.
@@ -135,7 +149,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
 ///
 /// # Errors
 /// Returns an allocation, layout, or storage error from function registration.
-pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, "NCL-GC")?;
     let package = Package::from_word(package);
     for name in ["*AFTER-GC-HOOKS*", "*GC-REAL-TIME*", "*GC-RUN-TIME*"] {
@@ -160,6 +174,15 @@ pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(),
     let (weak_pointer, _) = package.intern(ctx, runtime, "WEAK-POINTER")?;
     runtime.define_class(ctx, "WEAK-POINTER", Word::UNBOUND)?;
     let _ = weak_pointer;
+    let descriptor = Builtin {
+        lambda_list: LambdaList::fixed(NO_PARAMETERS),
+        convention: BuiltinConvention::Direct(Arity::exact(0)),
+    };
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclGc, BuiltinName::new("GC")),
+        BuiltinImplementation::direct(descriptor, gc_builtin),
+    )?;
     Ok(())
 }
 
@@ -185,5 +208,29 @@ mod tests {
         );
         assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
         assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
+    }
+
+    #[test]
+    fn gc_builtin_runs_a_full_collection() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = crate::ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        register(&mut ctx, &runtime).unwrap_or_else(|error| panic!("NCL-GC register: {error:?}"));
+        let gc = runtime
+            .function(&mut ctx, "NCL-GC", "GC")
+            .and_then(|function| crate::FunctionObject::try_from(function).ok())
+            .unwrap_or_else(|| panic!("NCL-GC:GC builtin was not registered"));
+        let before = ncl_sys::heap_epoch(&ctx.thread);
+
+        runtime
+            .call_builtin(&mut ctx, gc, &[])
+            .unwrap_or_else(|error| panic!("NCL-GC:GC failed: {error:?}"));
+
+        let after = ncl_sys::heap_epoch(&ctx.thread);
+        assert!(
+            after > before,
+            "NCL-GC:GC did not advance the collection epoch"
+        );
     }
 }

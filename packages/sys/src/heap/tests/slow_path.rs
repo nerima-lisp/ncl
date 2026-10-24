@@ -29,7 +29,69 @@ fn slow_path_budget_collects_minor_once_and_resets_other_mutator_debt() {
 }
 
 #[test]
-fn slow_path_cons_forwards_rooted_inputs_before_writing_the_new_cell() {
+fn slow_path_cons_resolves_rooted_inputs_before_writing_the_new_cell() {
+    let heap = Arc::new(Heap::new(HeapConfig {
+        dynamic_space_size: 256,
+        bytes_considered_between_gcs: 4096,
+    }));
+    let roots = setup_forwarding_roots(Arc::clone(&heap));
+    let collection_heap = Arc::clone(&heap);
+    let collection = thread::spawn(move || {
+        let ForwardingRoots { values, addresses } = roots;
+        assert_eq!(values.len(), 2);
+        assert_eq!(addresses.len(), 2);
+
+        let mut mutator = Thread::new();
+        assert_eq!(collection_heap.register_thread(&mut mutator), Ok(()));
+        mutator.bytes_cons = 4097;
+        let epoch = collection_heap.gc_epoch();
+        let allocation_result = collection_heap.alloc_cons(
+            &mut mutator,
+            values.first().copied().unwrap_or(Word::NIL),
+            values.get(1).copied().unwrap_or(Word::NIL),
+        );
+        assert!(
+            allocation_result.is_ok(),
+            "slow-path cons allocation should succeed"
+        );
+        let cell = allocation_result.unwrap_or(Word::NIL);
+
+        assert_eq!(collection_heap.gc_epoch(), epoch + 1);
+        let forwarded_first = collection_heap.read_word(cell, 0).unwrap_or(Word::NIL);
+        let forwarded_second = collection_heap.read_word(cell, 1).unwrap_or(Word::NIL);
+        let old_first = values.first().copied().unwrap_or(Word::NIL);
+        let old_second = values.get(1).copied().unwrap_or(Word::NIL);
+        let old_first_address = addresses.first().copied().unwrap_or(0);
+        let old_second_address = addresses.get(1).copied().unwrap_or(0);
+        assert_ne!(forwarded_first.address(), old_first_address);
+        assert_ne!(forwarded_second.address(), old_second_address);
+        assert_eq!(
+            collection_heap.forwarded_word(old_first),
+            Some(forwarded_first)
+        );
+        assert_eq!(
+            collection_heap.forwarded_word(old_second),
+            Some(forwarded_second)
+        );
+        assert_eq!(
+            collection_heap.read_word(forwarded_first, 0),
+            Some(Word::fixnum(1))
+        );
+        assert_eq!(
+            collection_heap.read_word(forwarded_second, 0),
+            Some(Word::fixnum(2))
+        );
+
+        assert_eq!(collection_heap.read_word(cell, 0), Some(forwarded_first));
+        assert_eq!(collection_heap.read_word(cell, 1), Some(forwarded_second));
+        collection_heap.unregister_thread(&mutator);
+    });
+    let result = collection.join();
+    assert!(result.is_ok(), "collection worker should complete");
+}
+
+#[test]
+fn slow_path_cons_preserves_explicitly_pinned_inputs() {
     let heap = Arc::new(Heap::new(HeapConfig {
         dynamic_space_size: 256,
         bytes_considered_between_gcs: 4096,
@@ -45,6 +107,8 @@ fn slow_path_cons_forwards_rooted_inputs_before_writing_the_new_cell() {
 
         let mut mutator = Thread::new();
         assert_eq!(collection_heap.register_thread(&mut mutator), Ok(()));
+        crate::publish_conservative_root(&mut mutator, first);
+        crate::publish_conservative_root(&mut mutator, second);
         mutator.bytes_cons = 4097;
         let epoch = collection_heap.gc_epoch();
         let allocation_result = collection_heap.alloc_cons(&mut mutator, first, second);
@@ -55,23 +119,23 @@ fn slow_path_cons_forwards_rooted_inputs_before_writing_the_new_cell() {
         let cell = allocation_result.unwrap_or(Word::NIL);
 
         assert_eq!(collection_heap.gc_epoch(), epoch + 1);
-        let forwarded_first = collection_heap.read_word(cell, 0).unwrap_or(Word::NIL);
-        let forwarded_second = collection_heap.read_word(cell, 1).unwrap_or(Word::NIL);
-        let old_first_address = addresses.first().copied().unwrap_or(0);
-        let old_second_address = addresses.get(1).copied().unwrap_or(0);
-        assert_ne!(forwarded_first.address(), old_first_address);
-        assert_ne!(forwarded_second.address(), old_second_address);
-        assert_eq!(
-            collection_heap.read_word(forwarded_first, 0),
-            Some(Word::fixnum(1))
-        );
-        assert_eq!(
-            collection_heap.read_word(forwarded_second, 0),
-            Some(Word::fixnum(2))
-        );
+        let first_address = addresses.first().copied().unwrap_or(0);
+        let second_address = addresses.get(1).copied().unwrap_or(0);
+        assert_eq!(first.address(), first_address);
+        assert_eq!(second.address(), second_address);
+        assert_eq!(collection_heap.forwarded_word(first), Some(first));
+        assert_eq!(collection_heap.forwarded_word(second), Some(second));
+        let state = collection_heap.lock_state();
+        let first_index = Heap::find(&state, first).expect("first pinned input remains live");
+        let second_index = Heap::find(&state, second).expect("second pinned input remains live");
+        assert!(state.objects[first_index].pinned);
+        assert!(state.objects[second_index].pinned);
+        drop(state);
 
-        assert_eq!(collection_heap.read_word(cell, 0), Some(forwarded_first));
-        assert_eq!(collection_heap.read_word(cell, 1), Some(forwarded_second));
+        assert_eq!(collection_heap.read_word(first, 0), Some(Word::fixnum(1)));
+        assert_eq!(collection_heap.read_word(second, 0), Some(Word::fixnum(2)));
+        assert_eq!(collection_heap.read_word(cell, 0), Some(first));
+        assert_eq!(collection_heap.read_word(cell, 1), Some(second));
         collection_heap.unregister_thread(&mutator);
     });
     let result = collection.join();

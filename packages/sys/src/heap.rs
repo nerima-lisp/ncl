@@ -25,7 +25,7 @@ const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
 static NEXT_HEAP_ID: AtomicU64 = AtomicU64::new(1);
-use diagnostics::log_word_rejection;
+use diagnostics::{WordRejection, log_word_rejection};
 
 /// Heap objects must not occupy the address range used by immediate values.
 pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
@@ -355,16 +355,16 @@ impl Heap {
             forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
         let gc_epoch = state.gc_epoch;
         drop(state);
-        log_word_rejection(
+        log_word_rejection(WordRejection {
             operation,
             reason,
             object,
             slot,
-            Some(value),
+            value: Some(value),
             forwarding_target,
-            raw_index.is_some(),
+            object_found: raw_index.is_some(),
             gc_epoch,
-        );
+        });
         false
     }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {

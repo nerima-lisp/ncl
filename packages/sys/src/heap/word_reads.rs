@@ -1,4 +1,7 @@
-use super::{Heap, diagnostics::log_word_rejection};
+use super::{
+    Heap,
+    diagnostics::{WordRejection, log_word_rejection},
+};
 use crate::Word;
 use std::sync::atomic::Ordering;
 
@@ -37,16 +40,16 @@ impl Heap {
                 forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
             let gc_epoch = state.gc_epoch;
             drop(state);
-            log_word_rejection(
+            log_word_rejection(WordRejection {
                 operation,
                 reason,
                 object,
                 slot,
-                None,
+                value: None,
                 forwarding_target,
-                raw_index.is_some(),
+                object_found: raw_index.is_some(),
                 gc_epoch,
-            );
+            });
             return None;
         };
         let Some(value) = state.objects[index].words.get(slot) else {
@@ -54,16 +57,16 @@ impl Heap {
                 forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
             let gc_epoch = state.gc_epoch;
             drop(state);
-            log_word_rejection(
+            log_word_rejection(WordRejection {
                 operation,
-                "slot_out_of_bounds",
+                reason: "slot_out_of_bounds",
                 object,
                 slot,
-                None,
+                value: None,
                 forwarding_target,
-                raw_index.is_some(),
+                object_found: raw_index.is_some(),
                 gc_epoch,
-            );
+            });
             return None;
         };
         Some(Word::from_bits(*value))

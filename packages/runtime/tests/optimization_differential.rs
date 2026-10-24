@@ -38,6 +38,20 @@ fn run_form(mode: OptimizationMode, entry: EntryPoint, source: &str, stress: boo
     format_outcome(&mut runtime, result)
 }
 
+fn run_scalar_inlining_gvn(mode: OptimizationMode) -> Outcome {
+    let mut runtime = runtime(mode, false);
+    runtime.set_strict_forwarding(true);
+    if let Err(error) = runtime.compile(
+        "(progn (defun ncl-opt-diff-scalar-leaf (x) x) (defun ncl-opt-diff-scalar-use () (+ (ncl-opt-diff-scalar-leaf 18) (ncl-opt-diff-scalar-leaf 18))))",
+    ) {
+        return Err(error.to_string());
+    }
+    runtime.set_gc_stress(true);
+    let result =
+        runtime.compile("(let ((keep (cons 29 30))) (+ (ncl-opt-diff-scalar-use) (car keep)))");
+    format_outcome(&mut runtime, result)
+}
+
 fn run_file(mode: OptimizationMode, path: &Path, operation: FileOperation) -> Outcome {
     let mut runtime = runtime(mode, false);
     let result = match operation {
@@ -136,5 +150,13 @@ fn optimization_differential_gc_stress_strict_forwarding() {
     let optimized = run_form(OptimizationMode::Default, EntryPoint::Compile, source, true);
     let unoptimized = run_form(OptimizationMode::Off, EntryPoint::Compile, source, true);
     assert_eq!(optimized, Ok("29".to_owned()));
+    assert_eq!(optimized, unoptimized);
+}
+
+#[test]
+fn scalar_inlining_gvn_matches_under_gc_stress_and_strict_forwarding() {
+    let optimized = run_scalar_inlining_gvn(OptimizationMode::Default);
+    let unoptimized = run_scalar_inlining_gvn(OptimizationMode::Off);
+    assert_eq!(optimized, Ok("65".to_owned()));
     assert_eq!(optimized, unoptimized);
 }

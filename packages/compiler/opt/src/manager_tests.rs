@@ -117,6 +117,145 @@ fn manager_rejects_an_invalid_function_after_a_pass() {
     );
 }
 
+#[derive(Debug)]
+struct ProvenanceInvalidatingPass {
+    fail_after_invalidation: bool,
+}
+
+impl FunctionPass for ProvenanceInvalidatingPass {
+    fn name(&self) -> &'static str {
+        "provenance-invalidating"
+    }
+
+    fn run(&mut self, function: &mut Function, _module: &Module) -> PassResult {
+        function.blocks[0].ops.insert(
+            0,
+            Op {
+                results: Vec::new(),
+                kind: OpKind::Safepoint,
+                loc: None,
+            },
+        );
+        if self.fail_after_invalidation {
+            Err(PassError::new("inner", "rejected address liveness"))
+        } else {
+            Ok(true)
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ProvenanceInvalidatingModulePass;
+
+impl ModulePass for ProvenanceInvalidatingModulePass {
+    fn name(&self) -> &'static str {
+        "provenance-invalidating-module"
+    }
+
+    fn run(&mut self, module: &mut Module) -> PassResult {
+        module.functions[0].blocks[0].ops.insert(
+            0,
+            Op {
+                results: Vec::new(),
+                kind: OpKind::Safepoint,
+                loc: None,
+            },
+        );
+        Ok(true)
+    }
+}
+
+fn address_leaf() -> Function {
+    let mut function = leaf();
+    function.name = "address-leaf".into();
+    function.params[0].ty = Ty::Address;
+    function.blocks[0].ops[0].kind = OpKind::Convert {
+        op: ncl_ir::Convert::AddressToWord,
+        value: ValueId(0),
+    };
+    function
+}
+
+#[test]
+fn manager_rolls_back_and_skips_provenance_invalidating_pass() {
+    for fail_after_invalidation in [false, true] {
+        let original = address_leaf();
+        assert!(ncl_ir::verify(&original).is_ok());
+
+        let options = PassManagerOptions {
+            max_iterations: 2,
+            verify_after_each_pass: false,
+        };
+        let mut manager = PassManager::with_options(options);
+        manager.add_function_pass(TogglePass { changed: true });
+        manager.add_function_pass(ProvenanceInvalidatingPass {
+            fail_after_invalidation,
+        });
+        let mut module = Module {
+            functions: vec![original.clone()],
+        };
+        let mut events = Vec::new();
+        let report = manager
+            .run_with_observer(&mut module, |event| events.push(event.clone()))
+            .fixture();
+
+        assert_eq!(report.iterations, 2);
+        assert_eq!(module.functions, vec![original]);
+        let rollback_events = events
+            .iter()
+            .filter(|event| event.pass == "provenance-invalidating")
+            .collect::<Vec<_>>();
+        assert_eq!(rollback_events.len(), 1);
+        assert_eq!(rollback_events[0].changed, Some(false));
+        assert!(matches!(
+            &rollback_events[0].verification,
+            crate::PassVerification::RolledBack(message)
+                if message.contains("AddressLiveAcross")
+        ));
+        assert!(
+            rollback_events[0]
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("AddressLiveAcross"))
+        );
+    }
+}
+
+#[test]
+fn manager_rolls_back_and_skips_provenance_invalidating_module_pass() {
+    let original = address_leaf();
+    assert!(ncl_ir::verify(&original).is_ok());
+
+    let mut manager = PassManager::with_options(PassManagerOptions {
+        max_iterations: 2,
+        verify_after_each_pass: false,
+    });
+    manager.add_function_pass(TogglePass { changed: true });
+    manager.add_module_pass(ProvenanceInvalidatingModulePass);
+    let mut module = Module {
+        functions: vec![original.clone()],
+    };
+    let mut events = Vec::new();
+    let report = manager
+        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .fixture();
+
+    assert_eq!(report.iterations, 2);
+    assert_eq!(module.functions, vec![original]);
+    let rollback_events = events
+        .iter()
+        .filter(|event| event.pass == "provenance-invalidating-module")
+        .collect::<Vec<_>>();
+    assert_eq!(rollback_events.len(), 1);
+    assert_eq!(rollback_events[0].function, None);
+    assert_eq!(rollback_events[0].changed, Some(false));
+    assert!(matches!(
+        &rollback_events[0].verification,
+        crate::PassVerification::RolledBack(message)
+            if message.contains("AddressLiveAcross")
+    ));
+}
+
 #[test]
 fn default_pipeline_registers_gc_safe_passes_in_order() {
     let mut manager = PassManager::new();
@@ -131,7 +270,16 @@ fn default_pipeline_registers_gc_safe_passes_in_order() {
         .iter()
         .map(|stat| stat.pass.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(names, vec!["sccp", "type-effect", "dead-code-elimination"]);
+    assert_eq!(
+        names,
+        vec![
+            "sccp",
+            "type-effect",
+            "inline-direct-calls",
+            "global-value-numbering",
+            "dead-code-elimination"
+        ]
+    );
 }
 
 #[test]

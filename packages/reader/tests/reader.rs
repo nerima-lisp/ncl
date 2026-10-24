@@ -97,6 +97,19 @@ fn reads_ratios_and_floats() {
 }
 
 #[test]
+fn exponent_marker_names_are_symbols_without_a_mantissa() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    for token in ["e1", "s1", "f1", "d1", "l1"] {
+        assert_eq!(read_name(&runtime, &mut ctx, token), token.to_uppercase());
+    }
+    let opts = standard(&runtime, &mut ctx);
+    let error = read_from_string(&mut ctx, &runtime, "+e1", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::InvalidNumber(_)));
+}
+
+#[test]
 fn readtable_case_upcases_symbols_by_default() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

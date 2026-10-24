@@ -39,8 +39,9 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
     }
     let mut index = 0;
     let n = token.len();
+    let has_sign = matches!(token.first(), Some('+' | '-'));
 
-    if matches!(token.get(index), Some('+' | '-')) {
+    if has_sign {
         index += 1;
     }
 
@@ -94,6 +95,7 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
 
     let mut has_exponent = false;
     if base == 10
+        && (digits_before > 0 || has_dot || has_sign)
         && let Some(marker) = token.get(index).copied()
         && matches!(
             marker,

@@ -1,7 +1,7 @@
 use ncl_object::{
     ObjectError, Readtable as ObjectReadtable, Runtime, ThreadContext, Word, make_readtable,
     make_simple_vector, readtable_case as object_readtable_case, readtable_dispatch,
-    readtable_offset, readtable_syntax, simple_vector_ref, with_rooted_slice,
+    readtable_offset, readtable_syntax, simple_vector_ref, with_roots,
 };
 
 use crate::{ReadError, Readtable};
@@ -32,37 +32,41 @@ pub fn copy_readtable_to(
 ) -> Result<Readtable, ObjectError> {
     let destination_word = destination.map_or(Word::NIL, |table| table.object().as_word());
     let has_destination = destination.is_some();
-    with_rooted_slice(
+    with_roots(
         ctx,
         &[source.object().as_word(), destination_word],
         |ctx, tables| {
-            let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
+            let source_word = tables.first().copied().ok_or(ObjectError::Layout)?.get();
             let source = ObjectReadtable::from_word(source_word);
             let case = object_readtable_case(ctx, source)?;
-            with_rooted_slice(ctx, &[case], |ctx, cases| {
-                let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
+            with_roots(ctx, &[case], |ctx, cases| {
+                let source_word = tables.first().copied().ok_or(ObjectError::Layout)?.get();
                 let source = ObjectReadtable::from_word(source_word);
                 let syntax = readtable_syntax(ctx, source)?;
                 let syntax_copy = copy_vector(ctx, runtime, syntax)?;
-                with_rooted_slice(ctx, &[syntax_copy], |ctx, syntax_copies| {
-                    let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
+                with_roots(ctx, &[syntax_copy], |ctx, syntax_copies| {
+                    let source_word = tables.first().copied().ok_or(ObjectError::Layout)?.get();
                     let source = ObjectReadtable::from_word(source_word);
                     let dispatch = readtable_dispatch(ctx, source)?;
                     let dispatch_copy = copy_vector(ctx, runtime, dispatch)?;
-                    with_rooted_slice(
+                    with_roots(
                         ctx,
                         &[
-                            syntax_copies.first().copied().ok_or(ObjectError::Layout)?,
+                            syntax_copies
+                                .first()
+                                .copied()
+                                .ok_or(ObjectError::Layout)?
+                                .get(),
                             dispatch_copy,
-                            cases.first().copied().ok_or(ObjectError::Layout)?,
+                            cases.first().copied().ok_or(ObjectError::Layout)?.get(),
                         ],
                         |ctx, copies| {
-                            let syntax = copies.first().copied().ok_or(ObjectError::Layout)?;
-                            let dispatch = copies.get(1).copied().ok_or(ObjectError::Layout)?;
-                            let case = copies.get(2).copied().ok_or(ObjectError::Layout)?;
+                            let syntax = copies.first().copied().ok_or(ObjectError::Layout)?.get();
+                            let dispatch = copies.get(1).copied().ok_or(ObjectError::Layout)?.get();
+                            let case = copies.get(2).copied().ok_or(ObjectError::Layout)?.get();
                             if has_destination {
                                 let destination =
-                                    tables.get(1).copied().ok_or(ObjectError::Layout)?;
+                                    tables.get(1).copied().ok_or(ObjectError::Layout)?.get();
                                 ctx.write_object_slot(
                                     destination,
                                     readtable_offset::SYNTAX,
@@ -98,9 +102,7 @@ fn copy_vector(
     for (index, slot) in entries.iter_mut().enumerate() {
         *slot = simple_vector_ref(ctx, source, index)?;
     }
-    with_rooted_slice(ctx, &entries, |ctx, entries| {
-        make_simple_vector(ctx, runtime, entries)
-    })
+    make_simple_vector(ctx, runtime, &entries)
 }
 
 #[cfg(test)]
@@ -113,7 +115,7 @@ mod tests {
     use ncl_object::{
         ObjectError, Readtable as ObjectReadtable, Runtime, ThreadContext, Word,
         readtable_dispatch, readtable_offset, readtable_syntax, simple_vector_ref,
-        simple_vector_set, with_rooted_slice,
+        simple_vector_set, with_heap_rooted_slice,
     };
 
     use super::copy_readtable_to;
@@ -128,17 +130,21 @@ mod tests {
         ctx.set_gc_stress(true);
         ctx.set_strict_forwarding(true);
 
-        let result = with_rooted_slice(&mut ctx, &[Word::NIL; 3], |ctx, tables| {
+        let result = with_heap_rooted_slice(&mut ctx, &[Word::NIL; 3], |ctx, tables| {
             let source =
                 standard_readtable(ctx, &runtime).map_err(|error| read_error_to_object(&error))?;
-            let source_slot = tables.first_mut().ok_or(ObjectError::Layout)?;
-            *source_slot = source.object().as_word();
+            tables
+                .first()
+                .ok_or(ObjectError::Layout)?
+                .set(source.object().as_word());
             let destination =
                 standard_readtable(ctx, &runtime).map_err(|error| read_error_to_object(&error))?;
-            let destination_slot = tables.get_mut(1).ok_or(ObjectError::Layout)?;
-            *destination_slot = destination.object().as_word();
+            tables
+                .get(1)
+                .ok_or(ObjectError::Layout)?
+                .set(destination.object().as_word());
 
-            let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
+            let source_word = tables.first().ok_or(ObjectError::Layout)?.get();
             let source = Readtable::from_object(ObjectReadtable::from_word(source_word));
             let source_syntax = source
                 .syntax_table(ctx)
@@ -150,14 +156,14 @@ mod tests {
             simple_vector_set(ctx, source_dispatch, usize::from(b'~'), Word::fixnum(19))?;
             ctx.write_object_slot(source_word, readtable_offset::CASE, Word::fixnum(1))?;
 
-            let destination_word = tables.get(1).copied().ok_or(ObjectError::Layout)?;
+            let destination_word = tables.get(1).ok_or(ObjectError::Layout)?.get();
             let destination = Readtable::from_object(ObjectReadtable::from_word(destination_word));
             let copied = copy_readtable_to(ctx, &runtime, source, Some(destination))?;
-            let current_destination = tables.get(1).copied().ok_or(ObjectError::Layout)?;
+            let current_destination = tables.get(1).ok_or(ObjectError::Layout)?.get();
             let returned_destination = copied.object().as_word() == current_destination;
 
-            let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
-            let destination_word = tables.get(1).copied().ok_or(ObjectError::Layout)?;
+            let source_word = tables.first().ok_or(ObjectError::Layout)?.get();
+            let destination_word = tables.get(1).ok_or(ObjectError::Layout)?.get();
             let source = Readtable::from_object(ObjectReadtable::from_word(source_word));
             let destination = Readtable::from_object(ObjectReadtable::from_word(destination_word));
             let source_syntax = readtable_syntax(ctx, source.object())?;
@@ -176,10 +182,12 @@ mod tests {
 
             let source = Readtable::from_object(ObjectReadtable::from_word(source_word));
             let fresh = copy_readtable_to(ctx, &runtime, source, None)?;
-            let fresh_slot = tables.get_mut(2).ok_or(ObjectError::Layout)?;
-            *fresh_slot = fresh.object().as_word();
-            let source_word = tables.first().copied().ok_or(ObjectError::Layout)?;
-            let fresh_word = tables.get(2).copied().ok_or(ObjectError::Layout)?;
+            tables
+                .get(2)
+                .ok_or(ObjectError::Layout)?
+                .set(fresh.object().as_word());
+            let source_word = tables.first().ok_or(ObjectError::Layout)?.get();
+            let fresh_word = tables.get(2).ok_or(ObjectError::Layout)?.get();
             let source = Readtable::from_object(ObjectReadtable::from_word(source_word));
             let fresh = Readtable::from_object(ObjectReadtable::from_word(fresh_word));
             let fresh_syntax = readtable_syntax(ctx, fresh.object())?;

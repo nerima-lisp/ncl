@@ -2,7 +2,9 @@
 
 use std::cell::Cell;
 
-use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root};
+use ncl_object::{
+    HeapRootedWord, Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root,
+};
 
 use crate::error::ReadError;
 use crate::input::{CharSource, StringSource};
@@ -402,9 +404,12 @@ fn read_quoted(
     let Some(form) = form else {
         return Err(ReadError::UnexpectedEof);
     };
+    let form = HeapRootedWord::new(ctx, form)?;
     let symbol = intern_common_lisp(ctx, runtime, name)?;
-    let cell = make_cons(ctx, runtime, form, Word::NIL)?;
-    Ok(make_cons(ctx, runtime, symbol, cell)?)
+    let symbol = HeapRootedWord::new(ctx, symbol)?;
+    let cell = make_cons(ctx, runtime, form.get(), Word::NIL)?;
+    let cell = HeapRootedWord::new(ctx, cell)?;
+    Ok(make_cons(ctx, runtime, symbol.get(), cell.get())?)
 }
 
 /// Read a `"..."` string literal.

@@ -26,11 +26,11 @@ The root binary handles `--eval`, `--load`, `--script`, and `--compile-file`. Ru
 | D-10 | `*features*` includes `:ncl` and never includes `:sbcl`. Libraries use `#+ncl` backends. | Preserves D-5 |
 | D-11 | NCL passes every ansi-test test passed by SBCL 2.6.0 on the same day and machine. For cl-bench, NCL's geometric mean is at most SBCL's, and each of the 65 benchmarks runs within 1.5 times SBCL's time. | Adds ANSI-test and cl-bench acceptance criteria |
 | D-12 | Target x86-64 and AArch64 on macOS and Linux. | Confirms D-7 |
-| D-13 | A contrib is in scope on exactly the platforms where SBCL 2.6.0 loads it. The extraction loaded 18 in-scope contribs on macOS arm64; `sb-simd` and `sb-perf` were out of scope there. All 20 contribs loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). The extractor's 20-entry list has no additional contribs to account for the difference from D-13's stated macOS count. | [SBCL surface inventory](../../../conformance/sbcl/symbols/README.md) |
+| D-13 | A contrib is in scope on exactly the platforms where SBCL 2.6.0 loads it. The extraction loaded 18 in-scope contribs on macOS arm64; `sb-simd` and `sb-perf` were out of scope there. All 20 contribs loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). The extractor's 20-entry list has no additional contribs to account for the difference from D-13's stated macOS count. | `conformance/sbcl/symbols/README.md` |
 
 D-9 withdraws D-2's SB-* exclusion, D-3's contrib exclusion, and FR-001's SBCL-surface removal requirement.
 
-The eight public SB package tables contain 698 symbols on macOS arm64 and 731 on x86-64 Linux. Linux adds 32 rows in SB-EXT and one in SB-DEBUG; the other six counts match. At revision `57cc06ab`, the package counts in this plan's linked [SBCL surface inventory](../../../conformance/sbcl/symbols/README.md) summed to 690, one below the corresponding TSV row count in each package. The current macOS TSVs and the TSVs under `conformance/sbcl/symbols/` at that revision have identical symbol-name sets; the repository contains no 690-symbol membership list. The COMMON-LISP table's 978 symbols and 58 library-referenced internal symbols are separate counts.
+The eight public SB package tables contain 698 symbols on macOS arm64 and 731 on x86-64 Linux. Linux adds 32 rows in SB-EXT and one in SB-DEBUG; the other six counts match. At revision `57cc06ab`, the package counts described in `conformance/sbcl/symbols/README.md` summed to 690, one below the corresponding TSV row count in each package. The current macOS TSVs and the TSVs under `conformance/sbcl/symbols/` at that revision have identical symbol-name sets; the repository contains no 690-symbol membership list. The COMMON-LISP table's 978 symbols and 58 library-referenced internal symbols are separate counts.
 
 ## Project acceptance criteria
 
@@ -41,7 +41,7 @@ The eight public SB package tables contain 698 symbols on macOS arm64 and 731 on
 | Startup time | Median at most 17.331 ms. | Measure startup with empty input. |
 | Executable size | At most 82,501,760 bytes. | Measure the release executable. |
 
-The recorded SBCL baseline has positive timings for 64 of the 65 named benchmarks. SBCL disables `WALK-LIST/MESS`, so it has no baseline runtime. The 1.5x comparison is undefined for that benchmark; decide whether to exclude it or revise the 65-benchmark target before marking this gate complete. See the [recorded baseline](../../../conformance/baselines/cl-bench-sbcl-2.6.0.md).
+The recorded SBCL baseline has positive timings for 64 of the 65 named benchmarks. SBCL disables `WALK-LIST/MESS`, so it has no baseline runtime. The 1.5x comparison is undefined for that benchmark; decide whether to exclude it or revise the 65-benchmark target before marking this gate complete. See `conformance/baselines/cl-bench-sbcl-2.6.0.md` for the recorded baseline.
 
 ## Functional requirements
 

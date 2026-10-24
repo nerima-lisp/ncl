@@ -1,0 +1,3 @@
+package	symbol	present	external	kind	lambda-list
+SB-PERF	WRITE-JITDUMP	yes	yes	function	()
+SB-PERF	WRITE-PERFMAP	yes	yes	function	()

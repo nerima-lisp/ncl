@@ -26,11 +26,11 @@ The root binary handles `--eval`, `--load`, `--script`, and `--compile-file`. Ru
 | D-10 | `*features*` includes `:ncl` and never includes `:sbcl`. Libraries use `#+ncl` backends. | Preserves D-5 |
 | D-11 | NCL passes every ansi-test test passed by SBCL 2.6.0 on the same day and machine. For cl-bench, NCL's geometric mean is at most SBCL's, and each of the 65 benchmarks runs within 1.5 times SBCL's time. | Adds ANSI-test and cl-bench acceptance criteria |
 | D-12 | Target x86-64 and AArch64 on macOS and Linux. | Confirms D-7 |
-| D-13 | A contrib is in scope on exactly the platforms where SBCL 2.6.0 loads it. The decision states 20 contribs on macOS arm64, while the extraction reports 18 loaded and excludes sb-simd/sb-perf; the gap and expected names remain unresolved. Add sb-simd and sb-perf on x86-64 Linux and schedule them last; Linux table statuses are unverified. | O-1 run ruling (not defined here) |
+| D-13 | A contrib is in scope on exactly the platforms where SBCL 2.6.0 loads it. The extraction loaded 18 in-scope contribs on macOS arm64; `sb-simd` and `sb-perf` were out of scope there. All 20 contribs loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). The extractor's 20-entry list has no additional contribs to account for the difference from D-13's stated macOS count. | [SBCL surface inventory](../../../conformance/sbcl/symbols/README.md) |
 
 D-9 withdraws D-2's SB-* exclusion, D-3's contrib exclusion, and FR-001's SBCL-surface removal requirement.
 
-The specification's baseline for the eight SBCL public packages is 690 symbols, while the extracted package tables total 698 (237+83+62+111+102+32+47+24). This discrepancy remains unresolved; neither count should be treated as an acceptance figure until reconciled. The COMMON-LISP table's 978 symbols and the 58 library-referenced internal symbols are separate counts.
+The eight public SB package tables contain 698 symbols on macOS arm64 and 731 on x86-64 Linux. Linux adds 32 rows in SB-EXT and one in SB-DEBUG; the other six counts match. At revision `57cc06ab`, the package counts in this plan's linked [SBCL surface inventory](../../../conformance/sbcl/symbols/README.md) summed to 690, one below the corresponding TSV row count in each package. The current macOS TSVs and the TSVs under `conformance/sbcl/symbols/` at that revision have identical symbol-name sets; the repository contains no 690-symbol membership list. The COMMON-LISP table's 978 symbols and 58 library-referenced internal symbols are separate counts.
 
 ## Project acceptance criteria
 
@@ -41,9 +41,7 @@ The specification's baseline for the eight SBCL public packages is 690 symbols, 
 | Startup time | Median at most 17.331 ms. | Measure startup with empty input. |
 | Executable size | At most 82,501,760 bytes. | Measure the release executable. |
 
-The recorded SBCL baseline has positive timings for 64 benchmarks; SBCL
-disables `WALK-LIST/MESS`. Its 1.5x comparison remains unresolved until a
-baseline policy is chosen.
+The recorded SBCL baseline has positive timings for 64 of the 65 named benchmarks. SBCL disables `WALK-LIST/MESS`, so it has no baseline runtime. The 1.5x comparison is undefined for that benchmark; decide whether to exclude it or revise the 65-benchmark target before marking this gate complete. See the [recorded baseline](../../../conformance/baselines/cl-bench-sbcl-2.6.0.md).
 
 ## Functional requirements
 
@@ -69,7 +67,7 @@ Register all 978 external symbols in the COMMON-LISP package in the ownership ta
 | Unicode | ncl-lib-strings |
 | POSIX, processes, sockets | ncl-os |
 
-NCL's public APIs use NCL-THREADS, NCL-FFI, NCL-MOP, NCL-GRAY, NCL-GC, NCL-IMAGE, NCL-UNICODE, NCL-OS, NCL-EXT, and NCL-SYS. When an NCL name and a public SBCL name describe the same behavior, they share the same symbol object. A name used only by SBCL is owned by the domain crate that implements its behavior. Do not create SB-* nickname or alias packages, or compatibility crates that duplicate behavior.
+NCL's public APIs use NCL-THREADS, NCL-FFI, NCL-MOP, NCL-GRAY, NCL-GC, NCL-IMAGE, NCL-UNICODE, NCL-OS, NCL-EXT, and NCL-SYS. When NCL and SBCL packages expose the same named API for the same behavior, import and export one shared symbol object instead of interning a duplicate. A name used only by SBCL is owned by the domain crate that implements its behavior. Do not create SB-* nickname or alias packages, or compatibility crates that duplicate behavior.
 
 ### FR-004 Development tools and contribs
 
@@ -80,7 +78,7 @@ NCL's public APIs use NCL-THREADS, NCL-FFI, NCL-MOP, NCL-GRAY, NCL-GC, NCL-IMAGE
 | Debugger and introspection | ncl-debug |
 | x86-64 and AArch64 disassembler | ncl-disasm |
 
-Load libcapstone at runtime through ncl-ffi. Contrib ownership follows the table below; assign remaining contribs along DDD boundaries.
+Load libcapstone at runtime through ncl-ffi. Contrib ownership follows the table below; assign each unlisted contrib to the crate responsible for its primary functionality.
 
 | Contrib | Owning crate |
 |---|---|
@@ -92,7 +90,7 @@ Load libcapstone at runtime through ncl-ffi. Contrib ownership follows the table
 | sb-executable | ncl-image |
 | sb-simple-streams | ncl-lib-streams |
 
-The current extraction reports 18 contribs loaded by SBCL 2.6.0 on macOS arm64, with sb-simd and sb-perf out of scope there. D-13 states 20 for macOS arm64, so the decision count and extraction result conflict and remain unresolved. D-13 also calls for sb-simd and sb-perf on x86-64 Linux, scheduled last; confirm their Linux table statuses before marking them verified.
+D-13 states 20 contribs for macOS arm64. The extraction loaded 18 in-scope contribs there; `sb-simd` and `sb-perf` were out of scope. All 20 entries in the extractor's `*sbcl-contribs*` list loaded on x86-64 Linux, including `sb-simd` (312 external symbols) and `sb-perf` (2). ASDF and UIOP are recorded separately.
 
 ### FR-005 ASDF/UIOP
 
@@ -131,19 +129,17 @@ Update the README and design documents to reflect current decisions. Do not add 
 
 ### FR-011 Parallel execution
 
-Use one worktree and one branch per lane. Split ownership tables by crate under `packages/<crate>/ownership.tsv`. Each lane freezes its crate's table and public API in its first commit. Only contract lanes may change the root Cargo.toml, Cargo.lock, and frozen contract documents.
+Use one worktree and one branch per lane. Split ownership tables by crate under `packages/<crate>/ownership.tsv`. Each lane freezes its crate's table and public API in its first commit. Only N01 (extension API and ownership) and N02 (IR contract v2) may change the root Cargo.toml, Cargo.lock, and frozen contract documents.
 
 ## Technical specification
 
 ### P0: surface tables and coverage check
 
-Extract the SBCL 2.6.0 surface into tables under `conformance/sbcl/symbols/`. Use `conformance/sbcl/extract-surface.lisp` as the extraction script. Record the SBCL version, extraction command, and platform-specific contrib scope in `conformance/sbcl/README.md`.
+Extract the SBCL 2.6.0 surface into tables under `conformance/sbcl/symbols/`. Use `conformance/sbcl/extract-surface.lisp` as the extraction script. The flat tables preserve the macOS arm64 baseline; Linux x86-64 differences and Linux-only tables go under `conformance/sbcl/symbols/linux-x86_64/`. The `contribs.tsv` matrix records each platform's status, external count, and reason. The ownership checker validates the resolved platform table and its count.
 
 The SBCL surface tables record each symbol's presence, external status, kind,
 and function or macro lambda list for comparison against SBCL 2.6.0. Kinds
-include special operator, macro, function, variable, constant, class, and
-type. D-13 calls for sb-simd and sb-perf on x86-64 Linux; confirm their table
-statuses during extraction.
+include special operator, macro, function, variable, constant, class, and type.
 
 `conformance/ownership/check.py` reads every crate's `packages/<crate>/ownership.tsv` and preserves the existing seven-column format. Fail when an SB-* row's package, symbol name, or kind does not match the surface table, and list each failure as `package::symbol (kind): reason`. For symbols in the surface table but absent from ownership tables, list names and counts by package and exit 0. Support filtering by package. Preserve the 978-symbol COMMON-LISP coverage requirement and reject duplicate ownership rows.
 

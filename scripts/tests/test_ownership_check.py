@@ -125,6 +125,26 @@ def write_legacy_contrib_metadata(root: Path) -> None:
             }
             for row in rows
         )
+    shutil.rmtree(path.parent / checker.LINUX_PLATFORM, ignore_errors=True)
+
+
+def read_surface_table(path: Path) -> tuple[tuple[str, ...], list[dict[str, str]]]:
+    with path.open(newline="") as stream:
+        reader = csv.DictReader(stream, delimiter="\t")
+        return tuple(reader.fieldnames or ()), list(reader)
+
+
+def write_surface_table(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=("package", "symbol", "present", "external", "kind", "lambda-list"),
+            delimiter="\t",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def sb_ext_surface_row() -> tuple[tuple[str, str], dict[str, str]]:
@@ -272,7 +292,7 @@ class OwnershipCheckTests(unittest.TestCase):
 
         self.assertEqual(status, 1)
         self.assertIn(
-            f"{package}::{symbol} ({wrong_kind}): SBCL surface kind is {surface_row['kind']}",
+            f"{package}::{symbol} ({wrong_kind}): SBCL surface kinds are {surface_row['kind']}",
             stderr.getvalue(),
         )
 
@@ -438,79 +458,174 @@ class OwnershipCheckTests(unittest.TestCase):
     def test_complete_matrix_rejects_a_blank_platform_triplet(self):
         with tempfile.TemporaryDirectory() as directory:
             root = copy_gate_inputs(Path(directory))
+            update_contrib_metadata(
+                root,
+                "sb-posix",
+                platform="linux-x86_64",
+                status="",
+                **{"external-count": "", "reason": ""},
+            )
             with patch.object(checker, "ROOT", root):
                 _, errors = checker.contrib_metadata(require_complete_matrix=True)
 
-        self.assertEqual(len(errors), len(checker.EXPECTED_CONTRIBS))
         self.assertTrue(
             any("missing linux-x86_64 metadata for contrib sb-posix" in error for error in errors),
             errors,
         )
 
-    def test_linux_count_is_checked_against_the_shared_contrib_table(self):
+    def test_linux_uses_shared_table_when_no_override_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             root = copy_gate_inputs(Path(directory))
+            symbols_directory = root / "conformance" / "sbcl" / "symbols"
+            table_name = "contrib-sb-posix.tsv"
+            override = symbols_directory / checker.LINUX_PLATFORM / table_name
+            override.unlink(missing_ok=True)
+            _, baseline_rows = read_surface_table(symbols_directory / table_name)
             update_contrib_metadata(
                 root,
                 "sb-posix",
                 platform="linux-x86_64",
                 status="loaded",
-                **{"external-count": "547", "reason": "-"},
+                **{"external-count": str(len(baseline_rows)), "reason": "-"},
+            )
+            with patch.object(checker, "ROOT", root):
+                _, errors = checker.contrib_metadata()
+                resolved = checker.platform_table_path(
+                    symbols_directory, table_name, checker.LINUX_PLATFORM
+                )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(resolved, symbols_directory / table_name)
+
+    def test_same_count_linux_override_tracks_added_and_removed_symbols(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            symbols_directory = root / "conformance" / "sbcl" / "symbols"
+            table_name = "contrib-sb-posix.tsv"
+            baseline_path = symbols_directory / table_name
+            _, baseline_rows = read_surface_table(baseline_path)
+            removed_symbol = baseline_rows[0]["symbol"]
+            added_symbol = "__NCL_LINUX_ONLY_POSIX_TEST__"
+            linux_rows = [dict(row) for row in baseline_rows]
+            linux_rows[0]["symbol"] = added_symbol
+            override = symbols_directory / checker.LINUX_PLATFORM / table_name
+            write_surface_table(override, linux_rows)
+            update_contrib_metadata(
+                root,
+                "sb-posix",
+                platform="linux-x86_64",
+                status="loaded",
+                **{"external-count": str(len(linux_rows)), "reason": "-"},
+            )
+            with patch.object(checker, "ROOT", root):
+                rows, errors = checker.surface_rows()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(linux_rows), len(baseline_rows))
+        self.assertEqual(rows[("SB-POSIX", added_symbol)]["_platforms"], {checker.LINUX_PLATFORM})
+        self.assertEqual(rows[("SB-POSIX", removed_symbol)]["_platforms"], {"macos-arm64"})
+
+    def test_linux_only_contrib_uses_an_override_with_macos_out_of_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            symbols_directory = root / "conformance" / "sbcl" / "symbols"
+            table_name = "contrib-sb-simd.tsv"
+            (symbols_directory / table_name).unlink(missing_ok=True)
+            override = symbols_directory / checker.LINUX_PLATFORM / table_name
+            row = {
+                "package": "SB-SIMD",
+                "symbol": "SIMD-TEST",
+                "present": "yes",
+                "external": "yes",
+                "kind": "function",
+                "lambda-list": "()",
+            }
+            write_surface_table(override, [row])
+            update_contrib_metadata(
+                root,
+                "sb-simd",
+                status="out-of-scope",
+                **{"external-count": "0", "reason": "platform-not-in-scope"},
+            )
+            update_contrib_metadata(
+                root,
+                "sb-simd",
+                platform=checker.LINUX_PLATFORM,
+                status="loaded",
+                **{"external-count": "1", "reason": "-"},
+            )
+            with patch.object(checker, "ROOT", root):
+                rows, errors = checker.surface_rows()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(rows[("SB-SIMD", "SIMD-TEST")]["_platforms"], {checker.LINUX_PLATFORM})
+
+    def test_linux_contrib_count_mismatch_is_reported_by_platform(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = copy_gate_inputs(Path(directory))
+            symbols_directory = root / "conformance" / "sbcl" / "symbols"
+            table_path = checker.platform_table_path(
+                symbols_directory, "contrib-sb-posix.tsv", checker.LINUX_PLATFORM
+            )
+            _, table_rows = read_surface_table(table_path)
+            wrong_count = len(table_rows) + 1
+            update_contrib_metadata(
+                root,
+                "sb-posix",
+                platform="linux-x86_64",
+                status="loaded",
+                **{"external-count": str(wrong_count), "reason": "-"},
             )
             with patch.object(checker, "ROOT", root):
                 _, errors = checker.contrib_metadata()
 
-        self.assertEqual(errors, [])
+        self.assertTrue(
+            any(
+                f"contrib sb-posix linux-x86_64 declares {wrong_count} external rows, "
+                f"table has {len(table_rows)}" in error
+                for error in errors
+            ),
+            errors,
+        )
 
-    def test_linux_simd_table_can_coexist_with_macos_out_of_scope_status(self):
+    def test_linux_posix_count_mismatch_uses_the_platform_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = copy_gate_inputs(Path(directory))
-            update_contrib_metadata(
-                root,
-                "sb-simd",
-                platform="linux-x86_64",
-                status="loaded",
-                **{"external-count": "1", "reason": "-"},
-            )
-            table = root / "conformance" / "sbcl" / "symbols" / "contrib-sb-simd.tsv"
-            with table.open("w", newline="") as stream:
-                writer = csv.DictWriter(
-                    stream,
-                    fieldnames=("package", "symbol", "present", "external", "kind", "lambda-list"),
-                    delimiter="\t",
-                    lineterminator="\n",
-                )
-                writer.writeheader()
-                writer.writerow(
+            symbols_directory = root / "conformance" / "sbcl" / "symbols"
+            baseline_path = symbols_directory / "contrib-sb-posix.tsv"
+            _, baseline_rows = read_surface_table(baseline_path)
+            linux_rows = [dict(row) for row in baseline_rows]
+            for symbol in ("GETRESGID", "GETRESUID"):
+                linux_rows.append(
                     {
-                        "package": "SB-SIMD",
-                        "symbol": "SIMD-TEST",
+                        "package": "SB-POSIX",
+                        "symbol": symbol,
                         "present": "yes",
                         "external": "yes",
                         "kind": "function",
                         "lambda-list": "()",
                     }
                 )
-            with patch.object(checker, "ROOT", root):
-                _, errors = checker.surface_rows()
-
-        self.assertEqual(errors, [])
-
-    def test_linux_contrib_count_mismatch_is_reported_by_platform(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = copy_gate_inputs(Path(directory))
+            write_surface_table(
+                symbols_directory / checker.LINUX_PLATFORM / "contrib-sb-posix.tsv",
+                linux_rows,
+            )
             update_contrib_metadata(
                 root,
                 "sb-posix",
-                platform="linux-x86_64",
+                platform=checker.LINUX_PLATFORM,
                 status="loaded",
-                **{"external-count": "548", "reason": "-"},
+                **{"external-count": str(len(linux_rows) - 1), "reason": "-"},
             )
             with patch.object(checker, "ROOT", root):
                 _, errors = checker.contrib_metadata()
 
         self.assertTrue(
-            any("contrib sb-posix linux-x86_64 declares 548 external rows, table has 547" in error for error in errors),
+            any(
+                f"contrib sb-posix linux-x86_64 declares {len(linux_rows) - 1} external rows, "
+                f"table has {len(linux_rows)}" in error
+                for error in errors
+            ),
             errors,
         )
 

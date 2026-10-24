@@ -47,6 +47,8 @@ jobs:
         if: always()
         with:
           name: sbcl-linux-surface
-          path: conformance/sbcl/symbols/*.tsv
+          path: |
+            conformance/sbcl/symbols/*.tsv
+            conformance/sbcl/symbols/linux-x86_64/*.tsv
           if-no-files-found: error
           retention-days: 7

@@ -254,54 +254,105 @@
 
 (defun table-path (filename)
   (merge-pathnames filename *symbols-directory*))
+(defun write-platform-table (filename writer)
+  (let* ((linux-p (x86-64-linux-p))
+         (base-path (table-path filename))
+         (target-path
+           (if linux-p
+               (merge-pathnames
+                filename
+                (merge-pathnames "linux-x86_64/" *symbols-directory*))
+               base-path))
+         (temporary-path nil)
+         (stream nil)
+         (published-p nil))
+    (labels ((open-temporary ()
+               (loop for suffix from 0
+                     for pathname =
+                       (make-pathname
+                        :name (format nil ".~A.~D.tmp" (pathname-name target-path) suffix)
+                        :type nil
+                        :defaults target-path)
+                     for candidate =
+                       (open pathname
+                             :direction :output
+                             :if-exists nil
+                             :if-does-not-exist :create
+                             :external-format :utf-8)
+                     when candidate
+                       do (setf temporary-path pathname
+                                stream candidate)
+                          (return)))
+             (files-identical-p (left right)
+               (with-open-file (left-stream left
+                                            :direction :input
+                                            :element-type '(unsigned-byte 8))
+                 (with-open-file (right-stream right
+                                              :direction :input
+                                              :element-type '(unsigned-byte 8))
+                   (loop for left-byte = (read-byte left-stream nil nil)
+                         for right-byte = (read-byte right-stream nil nil)
+                         while (and left-byte right-byte (= left-byte right-byte))
+                         finally (return (and (null left-byte)
+                                              (null right-byte)))))))
+      (ensure-directories-exist target-path)
+      (open-temporary)
+      (unwind-protect
+           (let ((result (funcall writer stream)))
+             (finish-output stream)
+             (close stream)
+             (setf stream nil)
+             (require "asdf")
+             (funcall
+              (symbol-function
+               (find-symbol "RENAME-FILE-OVERWRITING-TARGET" "UIOP"))
+              temporary-path target-path)
+             (setf published-p t)
+             (when (and linux-p
+                        (probe-file base-path)
+                        (files-identical-p base-path target-path))
+               (delete-file target-path))
+             result)
+        (progn
+          (when stream
+            (close stream :abort t))
+          (when (and temporary-path
+                     (not published-p)
+                     (probe-file temporary-path))
+            (delete-file temporary-path))))))))
 
 (defun write-symbol-table (package-name)
   (let* ((package
-          (or (find-package package-name) (error "Required package is missing")))
-         (symbols (external-symbols package))
-         (path
-          (table-path (format nil "~A.tsv" (string-downcase package-name)))))
-    (with-open-file
-        (stream path
-                :direction
-                :output
-                :if-exists
-                :supersede
-                :if-does-not-exist
-                :create
-                :external-format
-                :utf-8)
-      (write-row stream *header*)
-      (dolist (symbol symbols)
-        (multiple-value-bind (found status)
-            (find-symbol (symbol-name symbol) package)
-          (unless (eq status :external)
-            (error "External symbol disappeared during extraction"))
-          (write-row stream (present-surface-fields package-name found status)))))
+           (or (find-package package-name)
+               (error "Required package is missing")))
+         (symbols (external-symbols package)))
+    (write-platform-table
+     (format nil "~A.tsv" (string-downcase package-name))
+     (lambda (stream)
+       (write-row stream *header*)
+       (dolist (symbol symbols)
+         (multiple-value-bind (found status)
+             (find-symbol (symbol-name symbol) package)
+           (unless (eq status :external)
+             (error "External symbol disappeared during extraction"))
+           (write-row stream (present-surface-fields package-name found status))))))
     (length symbols)))
 
 (defun write-internal-references (references)
-  (with-open-file
-      (stream (table-path "internal-referenced.tsv")
-              :direction
-              :output
-              :if-exists
-              :supersede
-              :if-does-not-exist
-              :create
-              :external-format
-              :utf-8)
-    (write-row stream
-               (append *header*
-                       '("libraries" "example-file" "exported-in-sbcl-2.6.0")))
-    (dolist (fields references)
-      (destructuring-bind (package-name symbol-name
-                                        libraries
-                                        example-file
-                                        exported) fields
-        (write-row stream
-                   (append (lookup-surface-fields package-name symbol-name)
-                           (list libraries example-file exported)))))))
+  (write-platform-table
+   "internal-referenced.tsv"
+   (lambda (stream)
+     (write-row stream
+                (append *header*
+                        '("libraries" "example-file" "exported-in-sbcl-2.6.0")))
+     (dolist (fields references)
+       (destructuring-bind (package-name symbol-name
+                                         libraries
+                                         example-file
+                                         exported) fields
+         (write-row stream
+                    (append (lookup-surface-fields package-name symbol-name)
+                            (list libraries example-file exported))))))))
 
 (defun x86-64-linux-p ()
   (and (member :x86-64 *features*) (member :linux *features*)))
@@ -318,50 +369,47 @@
       nil)))
 
 (defun remove-stale-contrib-table (name)
-  (let ((path (table-path (format nil "contrib-~A.tsv" name))))
+  (let* ((filename (format nil "contrib-~A.tsv" name))
+         (path
+           (if (x86-64-linux-p)
+               (merge-pathnames
+                filename
+                (merge-pathnames "linux-x86_64/" *symbols-directory*))
+               (table-path filename))))
     (when (probe-file path)
       (delete-file path))))
 
 (defun write-contrib-table (name package-name package)
-  (let ((symbols (external-symbols package))
-        (path (table-path (format nil "contrib-~A.tsv" name))))
-    (with-open-file
-        (stream path
-                :direction
-                :output
-                :if-exists
-                :supersede
-                :if-does-not-exist
-                :create
-                :external-format
-                :utf-8)
-      (write-row stream *header*)
-      (dolist (symbol symbols)
-        (multiple-value-bind (found status)
-            (find-symbol (symbol-name symbol) package)
-          (unless (eq status :external)
-            (error "External symbol disappeared during extraction"))
-          (write-row stream (present-surface-fields package-name found status))))
-      (length symbols))))
+  (let ((symbols (external-symbols package)))
+    (write-platform-table
+     (format nil "contrib-~A.tsv" name)
+     (lambda (stream)
+       (write-row stream *header*)
+       (dolist (symbol symbols)
+         (multiple-value-bind (found status)
+             (find-symbol (symbol-name symbol) package)
+           (unless (eq status :external)
+             (error "External symbol disappeared during extraction"))
+           (write-row stream (present-surface-fields package-name found status))))))
+    (length symbols)))
 
 (defun write-contribs ()
   (let* ((entries (append *sbcl-contribs* *additional-systems*))
          (matrix-header
-          '("name" "package"
-            "macos-arm64-status" "macos-arm64-external-count" "macos-arm64-reason"
-            "linux-x86_64-status" "linux-x86_64-external-count" "linux-x86_64-reason"))
+           '("name" "package"
+             "macos-arm64-status" "macos-arm64-external-count" "macos-arm64-reason"
+             "linux-x86_64-status" "linux-x86_64-external-count" "linux-x86_64-reason"))
          (legacy-header '("name" "package" "status" "external-count" "reason"))
          (platform
-          (cond
-            ((x86-64-linux-p) "linux-x86_64")
-            ((and (member :darwin *features*)
-                  (or (member :arm64 *features*)
-                      (member :aarch64 *features*)))
-             "macos-arm64")
-            (t
-             (error "Unsupported extraction platform"))))
-         (base (if (string= platform "macos-arm64") 2 5))
-         (other-base (if (= base 2) 5 2)))
+           (cond
+             ((x86-64-linux-p) "linux-x86_64")
+             ((and (member :darwin *features*)
+                   (or (member :arm64 *features*)
+                       (member :aarch64 *features*)))
+              "macos-arm64")
+             (t
+              (error "Unsupported extraction platform"))))
+         (base (if (string= platform "macos-arm64") 2 5)))
     (labels ((read-existing ()
                (let ((path (table-path "contribs.tsv"))
                      (rows (make-hash-table :test #'equal)))
@@ -420,8 +468,8 @@
                      (nth (1+ base) row) count
                      (nth (+ base 2) row) reason))
              (remove-table-if-unused (name row)
-               (unless (string= (nth other-base row) "loaded")
-                 (remove-stale-contrib-table name))))
+               (declare (ignore row))
+               (remove-stale-contrib-table name)))
       (let ((rows (read-existing))
             (failures nil))
         (dolist (entry entries)

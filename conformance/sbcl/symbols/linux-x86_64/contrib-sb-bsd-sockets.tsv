@@ -1,0 +1,80 @@
+package	symbol	present	external	kind	lambda-list
+SB-BSD-SOCKETS	ADDRESS-FAMILY-NOT-SUPPORTED	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	ADDRESS-IN-USE-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	BAD-FILE-DESCRIPTOR-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	CONNECTION-REFUSED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	GET-HOST-BY-ADDRESS	yes	yes	function	(sb-bsd-sockets::address)
+SB-BSD-SOCKETS	GET-HOST-BY-NAME	yes	yes	function	(sb-bsd-sockets::host-name)
+SB-BSD-SOCKETS	GET-PROTOCOL-BY-NAME	yes	yes	function	(sb-bsd-sockets::name)
+SB-BSD-SOCKETS	HOST-ENT	yes	yes	class+type	-
+SB-BSD-SOCKETS	HOST-ENT-ADDRESS	yes	yes	function	(sb-bsd-sockets:host-ent)
+SB-BSD-SOCKETS	HOST-ENT-ADDRESS-TYPE	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	HOST-ENT-ADDRESSES	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	HOST-ENT-ALIASES	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	HOST-ENT-NAME	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	HOST-NOT-FOUND-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	INET-SOCKET	yes	yes	class+type	-
+SB-BSD-SOCKETS	INET6-SOCKET	yes	yes	class+type	-
+SB-BSD-SOCKETS	INTERRUPTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	INVALID-ARGUMENT-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	LOCAL-ABSTRACT-SOCKET	yes	yes	class+type	-
+SB-BSD-SOCKETS	LOCAL-SOCKET	yes	yes	class+type	-
+SB-BSD-SOCKETS	MAKE-INET-ADDRESS	yes	yes	function	(sb-bsd-sockets::dotted-quads)
+SB-BSD-SOCKETS	MAKE-INET-SOCKET	yes	yes	function	(type sb-bsd-sockets::protocol)
+SB-BSD-SOCKETS	MAKE-INET6-ADDRESS	yes	yes	function	(sb-bsd-sockets::colon-separated-integers)
+SB-BSD-SOCKETS	NAME-SERVICE-ERROR	yes	yes	function+class+condition+type	(sb-bsd-sockets::where sb-bsd-sockets::errno)
+SB-BSD-SOCKETS	NETDB-INTERNAL-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	NETDB-SUCCESS-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	NETWORK-UNREACHABLE-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	NO-BUFFERS-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	NO-RECOVERY-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	NON-BLOCKING-MODE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	NOT-CONNECTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	OPERATION-IN-PROGRESS	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	OPERATION-NOT-PERMITTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	OPERATION-NOT-SUPPORTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	OPERATION-TIMEOUT-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	OUT-OF-MEMORY-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	PROTOCOL-NOT-SUPPORTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	SOCKET	yes	yes	class+type	-
+SB-BSD-SOCKETS	SOCKET-ACCEPT	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKET-BIND	yes	yes	function	(sb-bsd-sockets:socket &rest sb-bsd-sockets::address)
+SB-BSD-SOCKETS	SOCKET-CLOSE	yes	yes	function	(sb-bsd-sockets:socket &key abort)
+SB-BSD-SOCKETS	SOCKET-CONNECT	yes	yes	function	(sb-bsd-sockets:socket &rest sb-bsd-sockets::address)
+SB-BSD-SOCKETS	SOCKET-ERROR	yes	yes	function+class+condition+type	(sb-bsd-sockets::where &optional (sb-bsd-sockets::errno (sb-bsd-sockets::socket-errno)))
+SB-BSD-SOCKETS	SOCKET-FAMILY	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	SOCKET-FILE-DESCRIPTOR	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	SOCKET-LISTEN	yes	yes	function	(sb-bsd-sockets:socket sb-bsd-sockets::backlog)
+SB-BSD-SOCKETS	SOCKET-MAKE-STREAM	yes	yes	function	(sb-bsd-sockets:socket &key sb-bsd-sockets::input sb-bsd-sockets::output sb-bsd-sockets::element-type sb-bsd-sockets::external-format sb-bsd-sockets::buffering sb-bsd-sockets::timeout sb-bsd-sockets::auto-close sb-bsd-sockets::serve-events)
+SB-BSD-SOCKETS	SOCKET-NAME	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKET-OPEN-P	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKET-PEERNAME	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKET-PROTOCOL	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	SOCKET-RECEIVE	yes	yes	function	(sb-bsd-sockets:socket sb-bsd-sockets::buffer length &key sb-bsd-sockets::oob sb-bsd-sockets::peek sb-bsd-sockets::waitall sb-bsd-sockets::dontwait sb-bsd-sockets::element-type)
+SB-BSD-SOCKETS	SOCKET-SEND	yes	yes	function	(sb-bsd-sockets:socket sb-bsd-sockets::buffer length &key sb-bsd-sockets::address sb-bsd-sockets::external-format sb-bsd-sockets::oob sb-bsd-sockets::eor sb-bsd-sockets::dontroute sb-bsd-sockets::dontwait sb-bsd-sockets::nosignal sb-bsd-sockets::confirm sb-bsd-sockets::more)
+SB-BSD-SOCKETS	SOCKET-SHUTDOWN	yes	yes	function	(sb-bsd-sockets:socket &key sb-bsd-sockets::direction)
+SB-BSD-SOCKETS	SOCKET-TYPE	yes	yes	function	(sb-pcl::object)
+SB-BSD-SOCKETS	SOCKET-TYPE-NOT-SUPPORTED-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	SOCKOPT-BIND-TO-DEVICE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-BROADCAST	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-BSD-COMPATIBLE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-DEBUG	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-DONT-ROUTE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-ERROR	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-KEEP-ALIVE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-OOB-INLINE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-PASS-CREDENTIALS	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-PRIORITY	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-RECEIVE-BUFFER	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-RECEIVE-LOW-WATER	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-REUSE-ADDRESS	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-SEND-BUFFER	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-SEND-LOW-WATER	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TCP-KEEPCNT	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TCP-KEEPIDLE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TCP-KEEPINTVL	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TCP-NODELAY	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TCP-USER-TIMEOUT	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	SOCKOPT-TYPE	yes	yes	function	(sb-bsd-sockets:socket)
+SB-BSD-SOCKETS	TRY-AGAIN-ERROR	yes	yes	class+condition+type	-
+SB-BSD-SOCKETS	UNKNOWN-PROTOCOL	yes	yes	class+condition+type	-

@@ -1,0 +1,26 @@
+package	symbol	present	external	kind	lambda-list
+SB-DEBUG	*BACKTRACE-FRAME-COUNT*	yes	yes	variable	-
+SB-DEBUG	*DEBUG-BEGINNER-HELP-P*	yes	yes	variable	-
+SB-DEBUG	*DEBUG-CONDITION*	yes	yes	other	-
+SB-DEBUG	*DEBUG-HELP-STRING*	yes	yes	variable	-
+SB-DEBUG	*DEBUG-PRINT-VARIABLE-ALIST*	yes	yes	variable	-
+SB-DEBUG	*DEBUG-READTABLE*	yes	yes	variable	-
+SB-DEBUG	*FLUSH-DEBUG-ERRORS*	yes	yes	variable	-
+SB-DEBUG	*IN-THE-DEBUGGER*	yes	yes	variable	-
+SB-DEBUG	*MAX-TRACE-INDENTATION*	yes	yes	variable	-
+SB-DEBUG	*METHOD-FRAME-STYLE*	yes	yes	variable	-
+SB-DEBUG	*STACK-TOP-HINT*	yes	yes	variable	-
+SB-DEBUG	*TRACE-ENCAPSULATE-DEFAULT*	yes	yes	variable	-
+SB-DEBUG	*TRACE-INDENTATION-STEP*	yes	yes	variable	-
+SB-DEBUG	*TRACE-REPORT-DEFAULT*	yes	yes	variable	-
+SB-DEBUG	ARG	yes	yes	function	(sb-debug::n)
+SB-DEBUG	BACKTRACE	yes	yes	function	(&optional (count *backtrace-frame-count*) (stream *debug-io*))
+SB-DEBUG	BACKTRACE-ALL-THREADS	yes	yes	function	()
+SB-DEBUG	BACKTRACE-AS-LIST	yes	yes	function	(&optional (count *backtrace-frame-count*))
+SB-DEBUG	FRAME-HAS-DEBUG-TAG-P	yes	yes	function	(sb-debug::frame)
+SB-DEBUG	INTERNAL-DEBUG	yes	yes	function	()
+SB-DEBUG	LIST-BACKTRACE	yes	yes	function	(&key (count *backtrace-frame-count*) (sb-debug::argument-limit sb-debug::*default-argument-limit*) (sb-debug::start 0) (sb-debug::from :debugger-frame) (sb-debug::method-frame-style *method-frame-style*))
+SB-DEBUG	MAP-BACKTRACE	yes	yes	function	(function &key (sb-debug::start 0) (sb-debug::from :debugger-frame) (count *backtrace-frame-count*))
+SB-DEBUG	PRINT-BACKTRACE	yes	yes	function	(&key (stream *debug-io*) (sb-debug::start 0) (sb-debug::from :debugger-frame) (count *backtrace-frame-count*) (sb-debug::print-thread t) (sb-debug::print-pc sb-debug::*backtrace-print-pc*) (sb-debug::argument-limit sb-debug::*default-argument-limit*) (sb-debug::print-frame-source nil) (sb-debug::method-frame-style *method-frame-style*) (sb-debug::emergency-best-effort (> sb-debug::*debug-command-level* 1)))
+SB-DEBUG	UNWIND-TO-FRAME-AND-CALL	yes	yes	function	(sb-debug::frame sb-debug::thunk)
+SB-DEBUG	VAR	yes	yes	function	(sb-debug::name &optional (sb-debug::id 0 sb-debug::id-supplied))

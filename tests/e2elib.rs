@@ -158,8 +158,16 @@ fn find_package_accepts_package_objects_and_string_designators() {
 }
 
 #[test]
-fn find_package_rejects_values_outside_package_and_string_designators() {
-    for source in ["(find-package 1)", "(find-package #\\a)"] {
+fn find_package_accepts_character_designators() {
+    let source = r#"(let ((package (make-package "z" :use nil))) (eq (find-package #\z) package))"#;
+    let (success, actual) = eval(source);
+    assert!(success, "{source} failed: {actual}");
+    assert_eq!(actual, "T", "{source}");
+}
+
+#[test]
+fn find_package_rejects_non_designator_values() {
+    for source in ["(find-package 1)", "(find-package '(foo))"] {
         let (success, actual) = eval(source);
         assert!(
             !success && actual.contains("TypeError"),

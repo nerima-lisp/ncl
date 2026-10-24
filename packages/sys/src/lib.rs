@@ -47,9 +47,8 @@ pub use thread::{
 
 pub(crate) fn gc_word_diagnostics_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("NCL_GC_WORD_DIAGNOSTICS").is_ok_and(|value| value == "1")
-    })
+    *ENABLED
+        .get_or_init(|| std::env::var("NCL_GC_WORD_DIAGNOSTICS").is_ok_and(|value| value == "1"))
 }
 
 #[track_caller]

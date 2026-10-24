@@ -3,7 +3,7 @@
 //!
 //! Every clause's handler performs the transfer itself (`return-from` to the
 //! enclosing block), exactly like a hand-written
-//! `(block b (handler-bind ((type (lambda (c) (return-from b ...)))) form))`,
+//! `(block b (handler-bind ((type (function (lambda (c) (return-from b ...))))) form))`,
 //! so `HANDLER-BIND`'s existing first-match semantics are exactly what is
 //! needed; no new runtime machinery is required.
 
@@ -131,7 +131,8 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
         let returned = form(&mut scope, runtime, "RETURN-FROM", &[block_tag, inner_body])?;
         let lambda_list = cons_list(&mut scope, runtime, &[condition_variable])?;
         let handler_lambda = form(&mut scope, runtime, "LAMBDA", &[lambda_list, returned])?;
-        let clause_form = cons_list(&mut scope, runtime, &[clause.condition, handler_lambda])?;
+        let handler_function = form(&mut scope, runtime, "FUNCTION", &[handler_lambda])?;
+        let clause_form = cons_list(&mut scope, runtime, &[clause.condition, handler_function])?;
         handler_clause_handles.push(clause_form);
     }
     let clauses_list = cons_list(&mut scope, runtime, &handler_clause_handles)?;

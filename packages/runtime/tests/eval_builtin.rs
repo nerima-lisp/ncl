@@ -122,3 +122,23 @@ fn eval_undefined_function_is_caught_by_handler_case() {
         .unwrap_or_else(|error| panic!("HANDLER-CASE did not catch EVAL's condition: {error}"));
     assert_eq!(runtime.format_result(value), "17");
 }
+
+#[test]
+fn handler_bind_evaluates_a_function_form_once() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval(
+            "(let ((evaluations 0) \
+                   (handled nil)) \
+               (handler-bind ((warning (progn \
+                                         (setq evaluations (+ evaluations 1)) \
+                                         #'(lambda (condition) \
+                                             (setq handled t))))) \
+                 (signal 'warning)) \
+               (list evaluations handled))",
+        )
+        .unwrap_or_else(|error| {
+            panic!("HANDLER-BIND failed to evaluate its handler form: {error}")
+        });
+    assert_eq!(runtime.format_result(value), "(1 T)");
+}

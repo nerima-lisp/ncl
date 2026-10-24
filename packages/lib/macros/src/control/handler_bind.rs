@@ -114,8 +114,12 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
                 let condition = parts.first().ok_or(ObjectError::TypeError)?;
                 let handler = parts.get(1).ok_or(ObjectError::TypeError)?;
                 let condition = form(ctx, runtime, "QUOTE", &[**condition])?;
-                let handler = form(ctx, runtime, "FUNCTION", &[**handler])?;
-                let push = form(ctx, runtime, "NCL-EXT::PUSH-HANDLER", &[condition, handler])?;
+                let push = form(
+                    ctx,
+                    runtime,
+                    "NCL-EXT::PUSH-HANDLER",
+                    &[condition, **handler],
+                )?;
                 let token = fresh_symbol(ctx, runtime)?;
                 let bindings = bindings(ctx, runtime, &[(token, push)])?;
                 let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;

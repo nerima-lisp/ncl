@@ -11,7 +11,7 @@
 
 use super::handler_bind::symbol_named;
 use super::handler_case::{cons_list, form, intern, word_handle};
-use ncl_object::{Handle, Local, ObjectError, Runtime, Scope, ThreadContext, Word};
+use ncl_object::{Handle, HeapRootedWord, Local, ObjectError, Runtime, Scope, ThreadContext, Word};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
@@ -81,24 +81,32 @@ fn string_of(ctx: &ThreadContext, word: Word) -> std::result::Result<String, Obj
 }
 
 /// Expand `(define-condition name (parent*) (slot-spec*) option*)`.
-pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+pub(super) fn expand(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[HeapRootedWord],
+) -> Result {
     let mut scope = Scope::new(ctx);
-    let name = word_handle(&mut scope, *values.first().ok_or(ObjectError::TypeError)?);
-    let parents_word = *values.get(1).ok_or(ObjectError::TypeError)?;
-    let slot_specs_word = *values.get(2).ok_or(ObjectError::TypeError)?;
+    let name = word_handle(
+        &mut scope,
+        values.first().ok_or(ObjectError::TypeError)?.get(),
+    );
     let option_words: Vec<Local<'_>> = values
         .get(3..)
         .unwrap_or(&[])
         .iter()
-        .copied()
-        .map(Local::from_word)
+        .map(|value| Local::from_word(value.get()))
         .collect();
     let option_handles = scope.root_many(&option_words);
 
     let quoted_name = form(&mut scope, runtime, "QUOTE", &[name])?;
-    let parents = word_handle(&mut scope, parents_word);
+    let parents = word_handle(
+        &mut scope,
+        values.get(1).ok_or(ObjectError::TypeError)?.get(),
+    );
     let quoted_parents = form(&mut scope, runtime, "QUOTE", &[parents])?;
 
+    let slot_specs_word = values.get(2).ok_or(ObjectError::TypeError)?.get();
     let slot_words = scope.list_to_handle_vec(Local::from_word(slot_specs_word))?;
     let mut slots = Vec::with_capacity(slot_words.len());
     for index in 0..slot_words.len() {

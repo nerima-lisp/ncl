@@ -1,8 +1,9 @@
 //! `case`/`ecase`/`ccase` (CLHS 7.6, "Data and Control Flow").
 
-use super::{bindings, form, is_otherwise, or, progn};
+use super::logical::or;
+use super::{bindings, form, is_otherwise, progn};
 use crate::{elements, fresh_symbol, list, symbol};
-use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{HeapRootedWords, ObjectError, Runtime, ThreadContext, Word};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
@@ -96,7 +97,8 @@ pub(super) fn case(
                                 ncl_object::with_roots(ctx, &tests, |ctx, tests| {
                                     let test_values =
                                         tests.iter().map(|test| **test).collect::<Vec<_>>();
-                                    let mut test = or(ctx, runtime, &test_values)?;
+                                    let test_values = HeapRootedWords::new(ctx, &test_values)?;
+                                    let mut test = or(ctx, runtime, test_values.as_slice())?;
                                     ncl_object::with_root(ctx, &mut test, |ctx, test| {
                                         branches = ncl_object::with_root(
                                             ctx,

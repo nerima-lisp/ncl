@@ -1,8 +1,8 @@
 use super::{form, progn};
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object, string_length,
-    string_ref, symbol_name,
+    HeapRootedWord, HeapRootedWords, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, string_length, string_ref, symbol_name,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
@@ -41,23 +41,28 @@ fn resolve_type_specifiers(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     spec: Word,
-) -> Result<Vec<Word>> {
+) -> Result<HeapRootedWords> {
     if spec.is_cons() {
         let parts = elements(ctx, spec)?;
-        let head = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        if symbol_named(ctx, head, "OR") {
-            let mut resolved = Vec::new();
-            for sub in parts.get(1..).ok_or(ObjectError::TypeError)? {
-                resolved.extend(resolve_type_specifiers(ctx, runtime, *sub)?);
+        let parts = HeapRootedWords::new(ctx, &parts)?;
+        let head = parts.first().ok_or(ObjectError::TypeError)?;
+        if symbol_named(ctx, head.get(), "OR") {
+            let mut resolved = HeapRootedWords::default();
+            for sub in parts.as_slice().get(1..).ok_or(ObjectError::TypeError)? {
+                let nested = resolve_type_specifiers(ctx, runtime, sub.get())?;
+                for resolved_type in nested.iter() {
+                    resolved.push(ctx, resolved_type.get())?;
+                }
             }
             return Ok(resolved);
         }
-        return Ok(vec![spec]);
+        return HeapRootedWords::new(ctx, &[spec]);
     }
     if symbol_named(ctx, spec, "T") {
-        return Ok(vec![symbol(ctx, runtime, "CONDITION")?]);
+        let condition = symbol(ctx, runtime, "CONDITION")?;
+        return HeapRootedWords::new(ctx, &[condition]);
     }
-    Ok(vec![spec])
+    HeapRootedWords::new(ctx, &[spec])
 }
 
 pub(crate) fn binding(
@@ -79,70 +84,80 @@ pub(crate) fn bindings(
         .flat_map(|&(name, value)| std::iter::once(name).chain(std::iter::once(value)))
         .collect::<Vec<_>>();
     ncl_object::with_roots(ctx, &values, |ctx, roots| {
-        let mut result = Vec::with_capacity(pairs.len());
+        let mut result = HeapRootedWords::default();
         for index in 0..pairs.len() {
-            let value = ncl_object::with_roots(ctx, &result, |ctx, _result_roots| {
+            let value = {
                 let name = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
                 let value = **roots.get(index * 2 + 1).ok_or(ObjectError::TypeError)?;
                 binding(ctx, runtime, name, value)
-            })?;
-            result.push(value);
+            }?;
+            result.push(ctx, value)?;
         }
-        list(ctx, runtime, &result)
+        let values = result.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+        list(ctx, runtime, &values)
     })
 }
 
-pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let clauses = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
-    let mut flattened: Vec<(Word, Word)> = Vec::new();
-    for clause in clauses {
-        let parts = elements(ctx, clause)?;
+pub(super) fn expand(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[HeapRootedWord],
+) -> Result {
+    let clauses = elements(ctx, values.first().ok_or(ObjectError::TypeError)?.get())?;
+    let clauses = HeapRootedWords::new(ctx, &clauses)?;
+    let mut flattened = HeapRootedWords::default();
+    for clause in clauses.iter() {
+        let parts = elements(ctx, clause.get())?;
+        let parts = HeapRootedWords::new(ctx, &parts)?;
         if parts.len() != 2 {
             return Err(ObjectError::TypeError);
         }
-        let condition_spec = *parts.first().ok_or(ObjectError::TypeError)?;
-        let handler = *parts.get(1).ok_or(ObjectError::TypeError)?;
-        for resolved in resolve_type_specifiers(ctx, runtime, condition_spec)? {
-            flattened.push((resolved, handler));
+        let condition_spec = parts.first().ok_or(ObjectError::TypeError)?;
+        let handler = parts.get(1).ok_or(ObjectError::TypeError)?;
+        let resolved = resolve_type_specifiers(ctx, runtime, condition_spec.get())?;
+        for resolved_type in resolved.iter() {
+            flattened.push(ctx, resolved_type.get())?;
+            flattened.push(ctx, handler.get())?;
         }
     }
-    let mut result = progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
-    for (condition, handler) in flattened.into_iter().rev() {
-        let pair: [Word; 2] = (condition, handler).into();
-        result = ncl_object::with_root(ctx, &mut result, |ctx, result| {
-            ncl_object::with_roots(ctx, &pair, |ctx, parts| {
-                let condition = parts.first().ok_or(ObjectError::TypeError)?;
-                let handler = parts.get(1).ok_or(ObjectError::TypeError)?;
-                let condition = form(ctx, runtime, "QUOTE", &[**condition])?;
-                let push = form(
-                    ctx,
-                    runtime,
-                    "NCL-EXT::PUSH-HANDLER",
-                    &[condition, **handler],
-                )?;
-                let token = fresh_symbol(ctx, runtime)?;
-                let bindings = bindings(ctx, runtime, &[(token, push)])?;
-                let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token])?;
-                // `unwind-protect` would be the ANSI-correct wrapper here (a
-                // non-local exit out of `result` should still pop this
-                // handler), but pairing `unwind-protect` with a `lambda`
-                // that performs `return-from` to an enclosing block
-                // currently trips a front-end/codegen defect (observed:
-                // `EscapingControl`/`inline-direct-calls` failures, outside
-                // this lane's conditions/macros scope, not chased further
-                // here). `prog1`, not `progn`: the handler-bind form's value
-                // is `result`'s (primary) value, not `pop`'s; the handler is
-                // popped on normal exit either way, and stays installed
-                // (harmlessly stale, per the pre-existing contract) if
-                // `result` transfers control past this form.
-                let body = form(ctx, runtime, "PROG1", &[*result, pop])?;
-                ncl_object::with_roots(ctx, &[bindings, body], |ctx, roots| {
-                    let bindings = roots.first().ok_or(ObjectError::Layout)?;
-                    let body = roots.get(1).ok_or(ObjectError::Layout)?;
-                    form(ctx, runtime, "LET", &[**bindings, **body])
-                })
-            })
-        })?;
+    let body_values = values
+        .get(1..)
+        .ok_or(ObjectError::TypeError)?
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
+    let result_value = progn(ctx, runtime, &body_values)?;
+    let result = HeapRootedWord::new(ctx, result_value)?;
+    for offset in (0..flattened.len()).step_by(2).rev() {
+        let condition = flattened.get(offset).ok_or(ObjectError::Layout)?;
+        let handler = flattened.get(offset + 1).ok_or(ObjectError::Layout)?;
+        let quoted_condition = form(ctx, runtime, "QUOTE", &[condition.get()])?;
+        let quoted_condition = HeapRootedWord::new(ctx, quoted_condition)?;
+        let push = form(
+            ctx,
+            runtime,
+            "NCL-EXT::PUSH-HANDLER",
+            &[quoted_condition.get(), handler.get()],
+        )?;
+        let push = HeapRootedWord::new(ctx, push)?;
+        let token_word = fresh_symbol(ctx, runtime)?;
+        let token = HeapRootedWord::new(ctx, token_word)?;
+        let bindings_word = bindings(ctx, runtime, &[(token.get(), push.get())])?;
+        let bindings = HeapRootedWord::new(ctx, bindings_word)?;
+        let pop = form(ctx, runtime, "NCL-EXT::POP-HANDLER", &[token.get()])?;
+        // `unwind-protect` would be the ANSI-correct wrapper here (a
+        // non-local exit out of `result` should still pop this handler), but
+        // pairing `unwind-protect` with a `lambda` that performs `return-from`
+        // to an enclosing block currently trips a front-end/codegen defect
+        // (observed: `EscapingControl`/`inline-direct-calls` failures, outside
+        // this lane's conditions/macros scope, not chased further here).
+        // `prog1`, not `progn`: the handler-bind form's value is `result`'s
+        // (primary) value, not `pop`'s; the handler is popped on normal exit
+        // either way, and stays installed (harmlessly stale, per the
+        // pre-existing contract) if `result` transfers control past this
+        // form.
+        let body = form(ctx, runtime, "PROG1", &[result.get(), pop])?;
+        result.set(form(ctx, runtime, "LET", &[bindings.get(), body])?);
     }
-    Ok(result)
+    Ok(result.get())
 }

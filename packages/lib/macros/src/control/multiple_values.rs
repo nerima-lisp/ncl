@@ -1,5 +1,7 @@
 use super::{args, form, symbol};
-use ncl_object::{BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{
+    BuiltinArgs, HeapRootedWord, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
+};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
@@ -13,22 +15,18 @@ pub(crate) fn expand_multiple_value_list_adapter(
         .filter_map(|index| input.get(index))
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
-    ncl_object::with_roots(ctx, &arguments, |ctx, roots| {
-        // check-added-lines: allow(index) exact-shape destructuring
-        let value = roots.first().ok_or(ObjectError::TypeError)?;
-        let mut list_symbol = symbol(ctx, runtime, "LIST")?;
-        ncl_object::with_root(ctx, &mut list_symbol, |ctx, list_symbol| {
-            let mut list_function = form(ctx, runtime, "FUNCTION", &[*list_symbol])?;
-            ncl_object::with_root(ctx, &mut list_function, |ctx, list_function| {
-                form(
-                    ctx,
-                    runtime,
-                    "MULTIPLE-VALUE-CALL",
-                    &[*list_function, **value],
-                )
-            })
-        })
-    })
+    // check-added-lines: allow(index) exact-shape destructuring
+    let value = arguments.first().ok_or(ObjectError::TypeError)?;
+    let list_symbol = symbol(ctx, runtime, "LIST")?;
+    let list_symbol = HeapRootedWord::new(ctx, list_symbol)?;
+    let list_function = form(ctx, runtime, "FUNCTION", &[list_symbol.get()])?;
+    let list_function = HeapRootedWord::new(ctx, list_function)?;
+    form(
+        ctx,
+        runtime,
+        "MULTIPLE-VALUE-CALL",
+        &[list_function.get(), value.get()],
+    )
 }
 
 pub(crate) fn expand_multiple_value_bind_adapter(
@@ -41,5 +39,5 @@ pub(crate) fn expand_multiple_value_bind_adapter(
         .filter_map(|index| input.get(index))
         .collect::<Vec<_>>();
     let arguments = args(ctx, words.first().copied().ok_or(ObjectError::TypeError)?)?;
-    super::multiple_value_bind::expand(ctx, runtime, &arguments)
+    super::multiple_value_bind::expand(ctx, runtime, arguments.as_slice())
 }

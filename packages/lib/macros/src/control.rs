@@ -3,14 +3,16 @@
 
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    BuiltinArgs, Handle, Local, MultipleValues, ObjectError, ObjectRef, Runtime, Scope,
-    ThreadContext, Word, classify_object, string_length, string_ref, symbol_name,
+    BuiltinArgs, Handle, HeapRootedWord, HeapRootedWords, Local, MultipleValues, ObjectError,
+    ObjectRef, Runtime, Scope, ThreadContext, Word, classify_object, string_length, string_ref,
+    symbol_name,
 };
 
 mod case;
 mod define_condition;
 mod handler_bind;
 mod handler_case;
+mod logical;
 mod restart_case;
 mod typecase;
 
@@ -56,106 +58,77 @@ pub(crate) fn form(
     })
 }
 
-pub(crate) fn args(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>> {
+pub(crate) fn args(ctx: &mut ThreadContext, form: Word) -> Result<HeapRootedWords> {
     let mut values = elements(ctx, form)?;
     if values.is_empty() {
         return Err(ObjectError::TypeError);
     }
     values.remove(0);
-    Ok(values)
+    HeapRootedWords::new(ctx, &values)
 }
 
 pub(crate) fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -> Result {
     form(ctx, runtime, "PROGN", body)
 }
 
-fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
-        match values.as_slice() {
-            [] => Ok(Word::TRUE),
-            [value] => Ok(*value),
-            [value, rest @ ..] => {
-                let next = and(ctx, runtime, rest)?;
-                form(ctx, runtime, "IF", &[*value, next, Word::NIL])
-            }
-        }
-    })
-}
-
-fn or(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
-        match values.as_slice() {
-            [] => Ok(Word::NIL),
-            [value] => Ok(*value),
-            [value, rest @ ..] => {
-                let mut temporary = fresh_symbol(ctx, runtime)?;
-                ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-                    let let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
-                    let next = or(ctx, runtime, rest)?;
-                    let test = form(ctx, runtime, "IF", &[*temporary, *temporary, next])?;
-                    form(ctx, runtime, "LET", &[let_bindings, test])
-                })
-            }
-        }
-    })
-}
-
-fn cond(ctx: &mut ThreadContext, runtime: &Runtime, clauses: &[Word]) -> Result {
-    let Some(clause) = clauses.first().copied() else {
+fn cond(ctx: &mut ThreadContext, runtime: &Runtime, clauses: &[HeapRootedWord]) -> Result {
+    let Some(clause) = clauses.first() else {
         return Ok(Word::NIL);
     };
-    let values = elements(ctx, clause)?;
-    let test = values.first().copied().ok_or(ObjectError::TypeError)?;
+    let values = elements(ctx, clause.get())?;
+    let values = HeapRootedWords::new(ctx, &values)?;
+    let test = values.first().ok_or(ObjectError::TypeError)?;
     let yes = if values.len() == 1 {
-        test
+        test.get()
     } else {
-        progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?
+        let body = values
+            .as_slice()
+            .get(1..)
+            .ok_or(ObjectError::TypeError)?
+            .iter()
+            .map(HeapRootedWord::get)
+            .collect::<Vec<_>>();
+        progn(ctx, runtime, &body)?
     };
+    let yes = HeapRootedWord::new(ctx, yes)?;
     let no = cond(
         ctx,
         runtime,
         clauses.get(1..).ok_or(ObjectError::TypeError)?,
     )?;
-    form(ctx, runtime, "IF", &[test, yes, no])
+    form(ctx, runtime, "IF", &[test.get(), yes.get(), no])
 }
 
-fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let first = roots.first().copied().ok_or(ObjectError::TypeError)?;
-        let mut temporary = fresh_symbol(ctx, runtime)?;
-        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
-            let mut let_bindings = bindings(ctx, runtime, &[(*temporary, *first)])?;
-            ncl_object::with_root(ctx, &mut let_bindings, |ctx, let_bindings| {
-                let mut body = roots
-                    .get(1..)
-                    .ok_or(ObjectError::TypeError)?
-                    .iter()
-                    .map(|value| **value)
-                    .collect::<Vec<_>>();
-                body.push(*temporary);
-                let mut body = progn(ctx, runtime, &body)?;
-                ncl_object::with_root(ctx, &mut body, |ctx, body| {
-                    form(ctx, runtime, "LET", &[*let_bindings, *body])
-                })
-            })
-        })
-    })
+fn prog1(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWord]) -> Result {
+    let first = values.first().ok_or(ObjectError::TypeError)?;
+    let temporary_word = fresh_symbol(ctx, runtime)?;
+    let temporary = HeapRootedWord::new(ctx, temporary_word)?;
+    let let_bindings = bindings(ctx, runtime, &[(temporary.get(), first.get())])?;
+    let let_bindings = HeapRootedWord::new(ctx, let_bindings)?;
+    let mut body = values
+        .get(1..)
+        .ok_or(ObjectError::TypeError)?
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
+    body.push(temporary.get());
+    let body = progn(ctx, runtime, &body)?;
+    form(ctx, runtime, "LET", &[let_bindings.get(), body])
 }
 
-fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWord]) -> Result {
     let index = usize::try_from(
         values
             .first()
-            .and_then(|value| value.as_fixnum())
+            .and_then(|value| value.get().as_fixnum())
             .filter(|index| *index >= 0)
             .ok_or(ObjectError::TypeError)?,
     )
     .map_err(|_| ObjectError::TypeError)?;
-    let form_value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
     let mut scope = Scope::new(ctx);
-    let form_value: Handle<'_, Word> = scope.root(Local::from_word(form_value));
+    let form_value: Handle<'_, Word> = scope.root(Local::from_word(
+        values.get(1).ok_or(ObjectError::TypeError)?.get(),
+    ));
     let optional = symbol(scope.context_mut(), runtime, "&OPTIONAL")?;
     let optional: Handle<'_, Word> = scope.root(Local::from_word(optional));
     let rest = symbol(scope.context_mut(), runtime, "&REST")?;
@@ -217,61 +190,86 @@ fn nth_value(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Res
 fn do_macro(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &[Word],
+    values: &[HeapRootedWord],
     sequential: bool,
 ) -> Result {
-    let variable_specs = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
-    let end_clause = elements(ctx, values.get(1).copied().ok_or(ObjectError::TypeError)?)?;
-    let end_test = end_clause.first().copied().ok_or(ObjectError::TypeError)?;
-    let mut initial = Vec::with_capacity(variable_specs.len());
-    let mut updates = Vec::with_capacity(variable_specs.len() * 2);
-    for spec in variable_specs {
-        let parts = if spec.is_cons() {
-            elements(ctx, spec)?
+    let variable_specs = elements(ctx, values.first().ok_or(ObjectError::TypeError)?.get())?;
+    let variable_specs = HeapRootedWords::new(ctx, &variable_specs)?;
+    let end_clause = elements(ctx, values.get(1).ok_or(ObjectError::TypeError)?.get())?;
+    let end_clause = HeapRootedWords::new(ctx, &end_clause)?;
+    let end_test = end_clause.first().ok_or(ObjectError::TypeError)?;
+    let mut initial = HeapRootedWords::default();
+    let mut updates = HeapRootedWords::default();
+    for spec in variable_specs.iter() {
+        let parts = if spec.get().is_cons() {
+            elements(ctx, spec.get())?
         } else {
-            vec![spec]
+            vec![spec.get()]
         };
-        let variable = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        symbol_name(ctx, variable)?;
+        let parts = HeapRootedWords::new(ctx, &parts)?;
+        let variable = parts.first().ok_or(ObjectError::TypeError)?;
+        symbol_name(ctx, variable.get())?;
         if parts.len() > 3 {
             return Err(ObjectError::TypeError);
         }
-        let init = parts.get(1).copied().unwrap_or(Word::NIL);
-        initial.push((variable, init));
-        if let Some(step) = parts.get(2).copied() {
-            updates.push(variable);
-            updates.push(step);
+        let init = parts.get(1).map_or(Word::NIL, HeapRootedWord::get);
+        initial.push(ctx, variable.get())?;
+        initial.push(ctx, init)?;
+        if let Some(step) = parts.get(2) {
+            updates.push(ctx, variable.get())?;
+            updates.push(ctx, step.get())?;
         }
     }
-    let loop_tag = fresh_symbol(ctx, runtime)?;
-    let end_tag = fresh_symbol(ctx, runtime)?;
-    let go_end = form(ctx, runtime, "GO", &[end_tag])?;
-    let exit = form(ctx, runtime, "IF", &[end_test, go_end])?;
-    let mut tagbody = vec![loop_tag, exit];
-    tagbody.extend_from_slice(values.get(2..).ok_or(ObjectError::TypeError)?);
+    let loop_tag_word = fresh_symbol(ctx, runtime)?;
+    let loop_tag = HeapRootedWord::new(ctx, loop_tag_word)?;
+    let end_tag_word = fresh_symbol(ctx, runtime)?;
+    let end_tag = HeapRootedWord::new(ctx, end_tag_word)?;
+    let go_end = form(ctx, runtime, "GO", &[end_tag.get()])?;
+    let exit = form(ctx, runtime, "IF", &[end_test.get(), go_end])?;
+    let mut tagbody = HeapRootedWords::new(ctx, &[loop_tag.get(), exit])?;
+    for value in values.get(2..).ok_or(ObjectError::TypeError)? {
+        tagbody.push(ctx, value.get())?;
+    }
     if !updates.is_empty() {
-        tagbody.push(form(
+        let updates = updates.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+        let update_form = form(
             ctx,
             runtime,
             if sequential { "SETQ" } else { "PSETQ" },
             &updates,
-        )?);
+        )?;
+        tagbody.push(ctx, update_form)?;
     }
-    tagbody.push(form(ctx, runtime, "GO", &[loop_tag])?);
-    tagbody.push(end_tag);
-    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
-    let results = progn(
-        ctx,
-        runtime,
-        end_clause.get(1..).ok_or(ObjectError::TypeError)?,
-    )?;
-    let initial_bindings = bindings(ctx, runtime, &initial)?;
+    let repeat = form(ctx, runtime, "GO", &[loop_tag.get()])?;
+    tagbody.push(ctx, repeat)?;
+    tagbody.push(ctx, end_tag.get())?;
+    let tagbody_values = tagbody.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody_values)?;
+    let tagbody = HeapRootedWord::new(ctx, tagbody)?;
+    let result_values = end_clause
+        .as_slice()
+        .get(1..)
+        .ok_or(ObjectError::TypeError)?
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
+    let results_word = progn(ctx, runtime, &result_values)?;
+    let results = HeapRootedWord::new(ctx, results_word)?;
+    let (initial_pairs, remainder) = initial.as_slice().as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err(ObjectError::Layout);
+    }
+    let initial_pairs = initial_pairs
+        .iter()
+        .map(|[variable, value]| (variable.get(), value.get()))
+        .collect::<Vec<_>>();
+    let initial_bindings = bindings(ctx, runtime, &initial_pairs)?;
     let binding_operator = if sequential { "LET*" } else { "LET" };
     let body = form(
         ctx,
         runtime,
         binding_operator,
-        &[initial_bindings, tagbody, results],
+        &[initial_bindings, tagbody.get(), results.get()],
     )?;
     form(ctx, runtime, "BLOCK", &[Word::NIL, body])
 }
@@ -279,77 +277,133 @@ fn do_macro(
 fn prog_macro(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &[Word],
+    values: &[HeapRootedWord],
     sequential: bool,
 ) -> Result {
-    let variables = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
-    let mut bindings = Vec::with_capacity(variables.len());
-    for variable in variables {
-        let parts = if variable.is_cons() {
-            elements(ctx, variable)?
+    let variables = elements(ctx, values.first().ok_or(ObjectError::TypeError)?.get())?;
+    let variables = HeapRootedWords::new(ctx, &variables)?;
+    let mut bindings = HeapRootedWords::default();
+    for variable in variables.iter() {
+        let parts = if variable.get().is_cons() {
+            elements(ctx, variable.get())?
         } else {
-            vec![variable]
+            vec![variable.get()]
         };
-        let name = parts.first().copied().ok_or(ObjectError::TypeError)?;
-        symbol_name(ctx, name)?;
+        let parts = HeapRootedWords::new(ctx, &parts)?;
+        let name = parts.first().ok_or(ObjectError::TypeError)?;
+        symbol_name(ctx, name.get())?;
         if parts.len() > 2 {
             return Err(ObjectError::TypeError);
         }
-        let initial = parts.get(1).copied().unwrap_or(Word::NIL);
-        bindings.push(binding(ctx, runtime, name, initial)?);
+        let initial = parts.get(1).map_or(Word::NIL, HeapRootedWord::get);
+        let binding = binding(ctx, runtime, name.get(), initial)?;
+        bindings.push(ctx, binding)?;
     }
-    let tagbody = form(
-        ctx,
-        runtime,
-        "TAGBODY",
-        values.get(1..).ok_or(ObjectError::TypeError)?,
-    )?;
+    let body_values = values
+        .get(1..)
+        .ok_or(ObjectError::TypeError)?
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
+    let tagbody = form(ctx, runtime, "TAGBODY", &body_values)?;
+    let tagbody = HeapRootedWord::new(ctx, tagbody)?;
     let binding_form = if sequential { "LET*" } else { "LET" };
-    let binding_list = list(ctx, runtime, &bindings)?;
-    let body = form(ctx, runtime, binding_form, &[binding_list, tagbody])?;
+    let binding_values = bindings.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+    let binding_list = list(ctx, runtime, &binding_values)?;
+    let body = form(ctx, runtime, binding_form, &[binding_list, tagbody.get()])?;
     form(ctx, runtime, "BLOCK", &[Word::NIL, body])
 }
 
-fn named(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word], kind: Kind) -> Result {
+fn named(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[HeapRootedWord],
+    kind: Kind,
+) -> Result {
     match kind {
         Kind::When => {
-            let test = values.first().copied().ok_or(ObjectError::TypeError)?;
-            let body = progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
-            form(ctx, runtime, "IF", &[test, body, Word::NIL])
+            let test = values.first().ok_or(ObjectError::TypeError)?;
+            let body_values = values
+                .get(1..)
+                .ok_or(ObjectError::TypeError)?
+                .iter()
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
+            let body = progn(ctx, runtime, &body_values)?;
+            form(ctx, runtime, "IF", &[test.get(), body, Word::NIL])
         }
         Kind::Unless => {
-            let test = values.first().copied().ok_or(ObjectError::TypeError)?;
-            let body = progn(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
-            form(ctx, runtime, "IF", &[test, Word::NIL, body])
+            let test = values.first().ok_or(ObjectError::TypeError)?;
+            let body_values = values
+                .get(1..)
+                .ok_or(ObjectError::TypeError)?
+                .iter()
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
+            let body = progn(ctx, runtime, &body_values)?;
+            form(ctx, runtime, "IF", &[test.get(), Word::NIL, body])
         }
-        Kind::And => and(ctx, runtime, values),
-        Kind::Or => or(ctx, runtime, values),
+        Kind::And => logical::and(ctx, runtime, values),
+        Kind::Or => logical::or(ctx, runtime, values),
         Kind::Cond => cond(ctx, runtime, values),
-        Kind::Case => case::case(ctx, runtime, values, false),
-        Kind::Ecase => case::case(ctx, runtime, values, true),
+        Kind::Case => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            case::case(ctx, runtime, &words, false)
+        }
+        Kind::Ecase => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            case::case(ctx, runtime, &words, true)
+        }
         Kind::Prog1 => prog1(ctx, runtime, values),
         Kind::Prog2 => {
-            let first = values.first().copied().ok_or(ObjectError::TypeError)?;
+            let first = values.first().ok_or(ObjectError::TypeError)?;
             let rest = prog1(ctx, runtime, values.get(1..).ok_or(ObjectError::TypeError)?)?;
-            form(ctx, runtime, "PROGN", &[first, rest])
+            form(ctx, runtime, "PROGN", &[first.get(), rest])
         }
         Kind::Return => {
-            let value = values.first().copied().unwrap_or(Word::NIL);
+            let value = values.first().map_or(Word::NIL, HeapRootedWord::get);
             form(ctx, runtime, "RETURN-FROM", &[Word::NIL, value])
         }
-        Kind::Typecase => typecase::expand(ctx, runtime, values, false),
-        Kind::Etypecase => typecase::expand(ctx, runtime, values, true),
+        Kind::Typecase => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            typecase::expand(ctx, runtime, &words, false)
+        }
+        Kind::Etypecase => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            typecase::expand(ctx, runtime, &words, true)
+        }
         Kind::NthValue => nth_value(ctx, runtime, values),
         Kind::Do => do_macro(ctx, runtime, values, false),
         Kind::DoStar => do_macro(ctx, runtime, values, true),
         Kind::HandlerBind => handler_bind::expand(ctx, runtime, values),
-        Kind::HandlerCase => handler_case::expand(ctx, runtime, values),
-        Kind::IgnoreErrors => handler_case::expand_ignore_errors(ctx, runtime, values),
-        Kind::RestartBind => restart_case::expand_restart_bind(ctx, runtime, values),
-        Kind::RestartCase => restart_case::expand_restart_case(ctx, runtime, values),
-        Kind::WithSimpleRestart => restart_case::expand_with_simple_restart(ctx, runtime, values),
-        Kind::CheckType => restart_case::expand_check_type(ctx, runtime, values),
-        Kind::Assert => restart_case::expand_assert(ctx, runtime, values),
+        Kind::HandlerCase => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            handler_case::expand(ctx, runtime, &words)
+        }
+        Kind::IgnoreErrors => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            handler_case::expand_ignore_errors(ctx, runtime, &words)
+        }
+        Kind::RestartBind => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            restart_case::expand_restart_bind(ctx, runtime, &words)
+        }
+        Kind::RestartCase => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            restart_case::expand_restart_case(ctx, runtime, &words)
+        }
+        Kind::WithSimpleRestart => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            restart_case::expand_with_simple_restart(ctx, runtime, &words)
+        }
+        Kind::CheckType => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            restart_case::expand_check_type(ctx, runtime, &words)
+        }
+        Kind::Assert => {
+            let words = values.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+            restart_case::expand_assert(ctx, runtime, &words)
+        }
         Kind::DefineCondition => define_condition::expand(ctx, runtime, values),
         Kind::Prog => prog_macro(ctx, runtime, values, false),
         Kind::ProgStar => prog_macro(ctx, runtime, values, true),
@@ -390,11 +444,12 @@ macro_rules! callbacks {
     ($($legacy:ident, $adapter:ident, $kind:expr);+ $(;)?) => { $(
         fn $legacy(runtime: &Runtime, ctx: &mut ThreadContext, input: &[Word], _: &mut MultipleValues) -> Result {
             let values = args(ctx, input.first().copied().ok_or(ObjectError::TypeError)?)?;
-            named(ctx, runtime, &values, $kind)
+            named(ctx, runtime, values.as_slice(), $kind)
         }
         pub fn $adapter(ctx: &mut ThreadContext, runtime: &Runtime, input: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result {
-            let words = (0..input.len()).filter_map(|index| input.get(index)).collect::<Vec<_>>();
-            $legacy(runtime, ctx, &words, values)
+            let form = input.get(0).ok_or(ObjectError::TypeError)?;
+            let form = HeapRootedWord::new(ctx, form)?;
+            $legacy(runtime, ctx, &[form.get()], values)
         }
     )+ }
 }

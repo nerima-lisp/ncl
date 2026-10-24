@@ -1,20 +1,26 @@
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
-    Local, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word, classify_object,
+    HeapRootedWords, Local, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word,
+    classify_object,
 };
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
-pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+pub(super) fn expand(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[ncl_object::HeapRootedWord],
+) -> Result {
     // check-added-lines: allow(index) intentional
     let [variables, value, body @ ..] = values else {
         return Err(ObjectError::TypeError);
     };
     let mut scope = Scope::new(ctx);
-    let variables = elements(scope.context_mut(), *variables)?;
-    for variable in &variables {
+    let variable_words = elements(scope.context_mut(), variables.get())?;
+    let variables = HeapRootedWords::new(scope.context_mut(), &variable_words)?;
+    for variable in variables.iter() {
         if !matches!(
-            classify_object(scope.context_mut(), *variable),
+            classify_object(scope.context_mut(), variable.get()),
             ObjectRef::Symbol(_)
         ) {
             return Err(ObjectError::TypeError);
@@ -23,16 +29,14 @@ pub(super) fn expand(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]
     let variable_handles = scope.root_many(
         &variables
             .iter()
-            .copied()
-            .map(Local::<Word>::from_word)
+            .map(|variable| Local::<Word>::from_word(variable.get()))
             .collect::<Vec<_>>(),
     );
-    let value_handle = scope.root(Local::<Word>::from_word(*value));
+    let value_handle = scope.root(Local::<Word>::from_word(value.get()));
     let body_handles = scope.root_many(
         &body
             .iter()
-            .copied()
-            .map(Local::<Word>::from_word)
+            .map(|form| Local::<Word>::from_word(form.get()))
             .collect::<Vec<_>>(),
     );
     let rest = fresh_symbol(scope.context_mut(), runtime)?;

@@ -18,33 +18,34 @@ pub fn expand(
     if !values.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
-    ncl_object::with_roots(ctx, &values, |ctx, roots| {
-        let temporaries = vec![Word::NIL; values.len() / 2];
-        ncl_object::with_rooted_slice(ctx, &temporaries, |ctx, temporaries| {
-            for temporary in temporaries.iter_mut() {
-                *temporary = crate::fresh_symbol(ctx, runtime)?;
-            }
-            let mut binding_pairs = Vec::with_capacity(values.len() / 2);
-            for (index, temporary) in temporaries.iter_mut().enumerate() {
-                // check-added-lines: allow(index) index is bounded by the rooted value pairs.
-                let variable = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
-                symbol_name(ctx, variable)?;
-                // check-added-lines: allow(index) index is bounded by the rooted value pairs.
-                let value = **roots.get(index * 2 + 1).ok_or(ObjectError::TypeError)?;
-                binding_pairs.push((*temporary, value));
-            }
-            let binding_list = bindings(ctx, runtime, &binding_pairs)?;
-            let mut assignments = Vec::with_capacity(values.len());
-            for (index, temporary) in temporaries.iter().enumerate() {
-                // check-added-lines: allow(index) index is bounded by the rooted value pairs.
-                let variable = **roots.get(index * 2).ok_or(ObjectError::TypeError)?;
-                assignments.extend([variable, *temporary]);
-            }
-            ncl_object::with_roots(ctx, &[binding_list], |ctx, roots| {
-                let binding_list = **roots.first().ok_or(ObjectError::TypeError)?;
-                let assignment = form(ctx, runtime, "SETQ", &assignments)?;
-                form(ctx, runtime, "LET", &[binding_list, assignment])
-            })
+    let temporaries = vec![Word::NIL; values.len() / 2];
+    ncl_object::with_rooted_slice(ctx, &temporaries, |ctx, temporaries| {
+        for temporary in temporaries.iter_mut() {
+            *temporary = crate::fresh_symbol(ctx, runtime)?;
+        }
+        let mut binding_pairs = Vec::with_capacity(values.len() / 2);
+        for (index, temporary) in temporaries.iter_mut().enumerate() {
+            // check-added-lines: allow(index) index is bounded by the rooted value pairs.
+            let variable = values.get(index * 2).ok_or(ObjectError::TypeError)?.get();
+            symbol_name(ctx, variable)?;
+            // check-added-lines: allow(index) index is bounded by the rooted value pairs.
+            let value = values
+                .get(index * 2 + 1)
+                .ok_or(ObjectError::TypeError)?
+                .get();
+            binding_pairs.push((*temporary, value));
+        }
+        let binding_list = bindings(ctx, runtime, &binding_pairs)?;
+        let mut assignments = Vec::with_capacity(values.len());
+        for (index, temporary) in temporaries.iter().enumerate() {
+            // check-added-lines: allow(index) index is bounded by the rooted value pairs.
+            let variable = values.get(index * 2).ok_or(ObjectError::TypeError)?.get();
+            assignments.extend([variable, *temporary]);
+        }
+        ncl_object::with_roots(ctx, &[binding_list], |ctx, roots| {
+            let binding_list = **roots.first().ok_or(ObjectError::TypeError)?;
+            let assignment = form(ctx, runtime, "SETQ", &assignments)?;
+            form(ctx, runtime, "LET", &[binding_list, assignment])
         })
     })
 }
@@ -61,7 +62,7 @@ pub fn expand_multiple_value_setq(
     let [variable_list, value_form] = arguments.as_slice() else {
         return Err(ObjectError::TypeError);
     };
-    let variables = elements(ctx, *variable_list)?;
+    let variables = elements(ctx, variable_list.get())?;
     let mut scope = Scope::new(ctx);
     let variable_handles = scope.root_many(
         &variables
@@ -70,7 +71,7 @@ pub fn expand_multiple_value_setq(
             .map(Local::<Word>::from_word)
             .collect::<Vec<_>>(),
     );
-    let value_form = scope.root(Local::<Word>::from_word(*value_form));
+    let value_form = scope.root(Local::<Word>::from_word(value_form.get()));
     for variable in variable_handles.iter() {
         let variable = scope.get(*variable).as_word();
         symbol_name(scope.context_mut(), variable)?;

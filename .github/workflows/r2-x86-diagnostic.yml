@@ -1,0 +1,27 @@
+name: R2 x86 diagnostic
+
+on:
+  push:
+    branches:
+      - codex/r2-x86-diag-20261024
+      - codex/r2-x86-read-diag-20261024
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: x86-64 Linux LOOP diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record candidate revision
+        run: echo "checkout_sha=${{ github.sha }}"
+      - name: Focused release all-features e2enum test
+        run: nix develop -c cargo test --locked -j 4 -p ncl --all-features --release --test e2enum bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding -- --exact --nocapture

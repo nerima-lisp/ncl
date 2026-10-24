@@ -17,10 +17,9 @@ fn build_progv_handler_function(id: u32) -> ncl_ir::Function {
     let after = builtin(&mut builder, "checked-handler-observer", vec![before]);
     return_values(&mut builder, vec![after]);
 
-    let symbol_param = builder.fresh_value();
-    let value_param = builder.fresh_value();
-    let handler = builder.create_block(vec![(Ty::Word, symbol_param), (Ty::Word, value_param)]);
-    return_values(&mut builder, vec![symbol_param]);
+    let handler = builder.create_block(Vec::new());
+    let handler_value = const_nil(&mut builder);
+    return_values(&mut builder, vec![handler_value]);
     builder.add_handler_region(ncl_ir::HandlerRegion {
         id: region,
         kind: ncl_ir::HandlerKind::Progv,

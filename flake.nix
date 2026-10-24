@@ -60,6 +60,9 @@
                 "--all-features"
                 "--all-targets"
               ];
+              preCheck = pkgs.lib.optionalString (pkgs.stdenv.hostPlatform.system == "x86_64-linux") ''
+                export NCL_GC_WORD_DIAGNOSTICS=1
+              '';
               doCheck = true;
               meta.description = "A Rust-native Common Lisp runtime";
               meta.mainProgram = "ncl";

@@ -1,0 +1,30 @@
+name: R2 x86 sandbox diagnostics
+
+on:
+  push:
+    branches:
+      - codex/r2-x86-sandbox-diag-20261024
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: x86 Nix check attempt ${{ matrix.attempt }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build full x86 default check
+        run: |
+          echo "attempt=${{ matrix.attempt }}"
+          echo "revision=${{ github.sha }}"
+          nix build -L --rebuild .#checks.x86_64-linux.default

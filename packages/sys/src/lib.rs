@@ -45,6 +45,30 @@ pub use thread::{
     ThreadLayout, thread_layout,
 };
 
+pub(crate) fn gc_word_diagnostics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("NCL_GC_WORD_DIAGNOSTICS").is_ok_and(|value| value == "1")
+    })
+}
+
+#[track_caller]
+fn log_unregistered_cons_word_rejection(
+    operation: &str,
+    object: Word,
+    slot: usize,
+    value: Option<Word>,
+) {
+    if !gc_word_diagnostics_enabled() {
+        return;
+    }
+    eprintln!(
+        "NCL_GC_WORD_DIAG operation={operation} reason=thread_has_no_heap object={object:?} slot={slot} value={value:?} forwarding_state=unknown caller={}\n{}",
+        std::panic::Location::caller(),
+        std::backtrace::Backtrace::force_capture()
+    );
+}
+
 impl Thread {
     /// Push a precise root slot backed by interior-mutable storage.
     pub fn push_root_cell(&mut self, cell: &core::cell::Cell<Word>) -> RootToken {
@@ -234,9 +258,13 @@ pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
 
 /// Read a cons payload word through a registered thread.
 #[must_use]
+#[track_caller]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
-    let heap = thread.heap()?;
-    heap.read_word(object, slot)
+    let Some(heap) = thread.heap() else {
+        log_unregistered_cons_word_rejection("read_cons_word", object, slot, None);
+        return None;
+    };
+    heap.read_cons_word(object, slot)
 }
 
 /// Read a header-object payload word through a registered thread.
@@ -255,11 +283,13 @@ pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: 
 }
 
 /// Write a cons payload word through a registered thread.
+#[track_caller]
 pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
     let Some(heap) = thread.heap() else {
+        log_unregistered_cons_word_rejection("write_cons_word", object, slot, Some(value));
         return false;
     };
-    heap.write_word_at(object, slot, value)
+    heap.write_cons_word(object, slot, value)
 }
 
 /// Register a mutator with a heap.

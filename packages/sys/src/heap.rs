@@ -21,6 +21,34 @@ const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
 static NEXT_HEAP_ID: AtomicU64 = AtomicU64::new(1);
+
+#[track_caller]
+fn log_word_rejection(
+    operation: &'static str,
+    reason: &'static str,
+    object: Word,
+    slot: usize,
+    value: Option<Word>,
+    forwarding_target: Option<usize>,
+    object_found: bool,
+    gc_epoch: u64,
+) {
+    if !crate::gc_word_diagnostics_enabled() {
+        return;
+    }
+    let forwarding_state = match (object_found, forwarding_target) {
+        (_, Some(target)) => format!("forwarded target_address={target:#x}"),
+        (true, None) => "not_forwarded".to_owned(),
+        (false, None) => "unknown".to_owned(),
+    };
+    eprintln!(
+        "NCL_GC_WORD_DIAG operation={operation} reason={reason} object={object:?} address={:#x} slot={slot} value={value:?} forwarding_state={forwarding_state} gc_epoch={gc_epoch} caller={}\n{}",
+        object.address(),
+        std::panic::Location::caller(),
+        std::backtrace::Backtrace::force_capture()
+    );
+}
+
 /// Heap objects must not occupy the address range used by immediate values.
 pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
 
@@ -306,22 +334,123 @@ impl Heap {
         };
         (kind_matches && value.address() == object.words.as_ptr().addr()).then_some(index)
     }
+    #[track_caller]
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
+        self.read_word_with_operation("read_word", object, slot)
+    }
+    #[track_caller]
+    pub(crate) fn read_cons_word(&self, object: Word, slot: usize) -> Option<Word> {
+        self.read_word_with_operation("read_cons_word", object, slot)
+    }
+    #[track_caller]
+    fn read_word_with_operation(
+        &self,
+        operation: &'static str,
+        object: Word,
+        slot: usize,
+    ) -> Option<Word> {
         let state = self.lock_state();
-        state.objects[self.find_for_mutator(&state, object)?]
-            .words
-            .get(slot)
-            .map(|value| Word::from_bits(*value))
+        let raw_index = Self::find_raw(&state, object);
+        let forwarded_index = raw_index.and_then(|index| state.objects[index].forwarded_to);
+        let strict_forwarding = self.strict_forwarding.load(Ordering::Relaxed);
+        let index = self.find_for_mutator(&state, object);
+        let Some(index) = index else {
+            let reason = if strict_forwarding && forwarded_index.is_some() {
+                "strict_forwarding_rejected_forwarded_object"
+            } else if raw_index.is_none() {
+                "object_not_found"
+            } else {
+                "object_unavailable"
+            };
+            let forwarding_target =
+                forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
+            let gc_epoch = state.gc_epoch;
+            drop(state);
+            log_word_rejection(
+                operation,
+                reason,
+                object,
+                slot,
+                None,
+                forwarding_target,
+                raw_index.is_some(),
+                gc_epoch,
+            );
+            return None;
+        };
+        let Some(value) = state.objects[index].words.get(slot) else {
+            let forwarding_target =
+                forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
+            let gc_epoch = state.gc_epoch;
+            drop(state);
+            log_word_rejection(
+                operation,
+                "slot_out_of_bounds",
+                object,
+                slot,
+                None,
+                forwarding_target,
+                raw_index.is_some(),
+                gc_epoch,
+            );
+            return None;
+        };
+        Some(Word::from_bits(*value))
     }
     pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
         self.write_word_at(object, slot + 1, value)
     }
+    #[track_caller]
     pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at_with_operation("write_word_at", object, slot, value)
+    }
+    #[track_caller]
+    pub(crate) fn write_cons_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at_with_operation("write_cons_word", object, slot, value)
+    }
+    #[track_caller]
+    fn write_word_at_with_operation(
+        &self,
+        operation: &'static str,
+        object: Word,
+        slot: usize,
+        value: Word,
+    ) -> bool {
         let mut state = self.lock_state();
-        self.find_for_mutator(&state, object)
-            .and_then(|index| state.objects[index].words.get_mut(slot))
-            .map(|target| *target = value.bits())
-            .is_some()
+        let raw_index = Self::find_raw(&state, object);
+        let forwarded_index = raw_index.and_then(|index| state.objects[index].forwarded_to);
+        let strict_forwarding = self.strict_forwarding.load(Ordering::Relaxed);
+        let index = self.find_for_mutator(&state, object);
+        if let Some(index) = index
+            && let Some(target) = state.objects[index].words.get_mut(slot)
+        {
+            *target = value.bits();
+            return true;
+        }
+        let reason = if strict_forwarding && forwarded_index.is_some() {
+            "strict_forwarding_rejected_forwarded_object"
+        } else if raw_index.is_none() {
+            "object_not_found"
+        } else if index.is_none() {
+            "object_unavailable"
+        } else {
+            "slot_out_of_bounds"
+        };
+        let forwarding_target =
+            forwarded_index.map(|index| state.objects[index].words.as_ptr().addr());
+        let gc_epoch = state.gc_epoch;
+        drop(state);
+        log_word_rejection(
+            operation,
+            reason,
+            object,
+            slot,
+            Some(value),
+            forwarding_target,
+            raw_index.is_some(),
+            gc_epoch,
+        );
+        false
     }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();

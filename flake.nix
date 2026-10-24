@@ -188,9 +188,12 @@
               export NCL_GC_WORD_DIAGNOSTICS=1
             '';
             checkPhase = ''
+              originalCheckFlags=''${checkFlags-}
               attempt=1
               while [ "$attempt" -le 10 ]; do
                 echo "e2enum release attempt $attempt/10"
+                # cargoCheckHook prepends its test-binary separator to checkFlags.
+                checkFlags=$originalCheckFlags
                 cargoCheckHook
                 attempt=$((attempt + 1))
               done

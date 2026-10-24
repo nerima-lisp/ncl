@@ -3,7 +3,7 @@
 //! `expand` dispatches here after macroexpansion. Each submodule turns one
 //! group of operators into [`Expr`] nodes.
 
-use ncl_object::Word;
+use ncl_object::{HeapRootedWords, Word};
 
 use crate::ast::Expr;
 use crate::error::FrontError;
@@ -228,7 +228,7 @@ pub(crate) fn arguments(
     expander: &mut FormExpander<'_>,
     kind: SpecialForm,
     form: Word,
-) -> Result<Vec<Word>, FrontError> {
+) -> Result<HeapRootedWords, FrontError> {
     let elements = expander.elements(form)?;
     let Some((_, rest)) = elements.split_first() else {
         return Err(FrontError::MalformedForm {
@@ -236,7 +236,11 @@ pub(crate) fn arguments(
             detail: "empty special form".to_owned(),
         });
     };
-    Ok(rest.to_vec())
+    let mut arguments = HeapRootedWords::default();
+    for argument in rest {
+        arguments.push(expander.ctx(), argument.get())?;
+    }
+    Ok(arguments)
 }
 
 /// Build a wrong-argument-count failure for a special form.

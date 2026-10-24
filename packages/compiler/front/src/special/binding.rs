@@ -1,7 +1,7 @@
 //! Binding special operators: `let`, `let*`, `progv`, `flet`, `labels`,
 //! `macrolet`, and `symbol-macrolet`.
 
-use ncl_object::{Word, symbol_is_special};
+use ncl_object::{HeapRootedWord, Word, symbol_is_special};
 
 use crate::ast::{Expr, LetBinding, LocalFunction, LocalMacro, SymbolMacro};
 use crate::declaration::Declaration;
@@ -41,7 +41,7 @@ fn let_form(
     let Some((bindings_word, body_forms)) = arguments.split_first() else {
         return Err(special::arity(kind, "a binding list", 0));
     };
-    let specifications = expander.elements(*bindings_word)?;
+    let specifications = expander.elements(bindings_word.get())?;
     expander.env_mut().push_scope();
     let mut bindings = Vec::with_capacity(specifications.len());
     // Bindings whose symbol is already proclaimed special (by `defvar`,
@@ -53,13 +53,11 @@ fn let_form(
     // `Declaration::Special` is how that fact crosses the boundary.
     let mut global_specials = Vec::new();
     if sequential {
-        for specification in &specifications {
-            let (name, name_word, value) = binding(expander, kind, *specification)?;
-            // Check specialness from the raw (unrooted) `name_word` before
-            // expanding the init form: expansion can allocate and, under GC
-            // stress, move the symbol out from under a stale `Word`.
-            let is_special = symbol_is_special(expander.ctx(), name_word).unwrap_or(false);
-            let value = value.map(|value| expander.expand(value)).transpose()?;
+        for specification in specifications.iter() {
+            let (name, is_special, value) = binding(expander, kind, specification.get())?;
+            let value = value
+                .map(|value| expander.expand(value.get()))
+                .transpose()?;
             if is_special {
                 global_specials.push(name.clone());
                 expander.env_mut().bind_special(name.clone());
@@ -69,11 +67,11 @@ fn let_form(
             bindings.push(LetBinding { name, value });
         }
     } else {
-        for specification in &specifications {
-            let (name, name_word, value) = binding(expander, kind, *specification)?;
-            // See the matching comment in the `sequential` branch above.
-            let is_special = symbol_is_special(expander.ctx(), name_word).unwrap_or(false);
-            let value = value.map(|value| expander.expand(value)).transpose()?;
+        for specification in specifications.iter() {
+            let (name, is_special, value) = binding(expander, kind, specification.get())?;
+            let value = value
+                .map(|value| expander.expand(value.get()))
+                .transpose()?;
             if is_special {
                 global_specials.push(name.clone());
             }
@@ -87,7 +85,7 @@ fn let_form(
             }
         }
     }
-    let body = expander.expand_declared_body(body_forms)?;
+    let body = expander.expand_rooted_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
     let mut declarations = body.declarations;
@@ -104,16 +102,17 @@ fn let_form(
 
 /// One `let` binding: a symbol, or a `(symbol [init])` list.
 ///
-/// Returns the binding's name, the raw symbol word (so the caller can check
-/// the live symbol table for a global `special` proclamation), and the init
-/// form, if any.
+/// Returns the binding's name, whether it is globally proclaimed special, and
+/// its rooted init form, if any.
 fn binding(
     expander: &mut FormExpander<'_>,
     kind: SpecialForm,
     specification: Word,
-) -> Result<(SymbolRef, Word, Option<Word>), FrontError> {
+) -> Result<(SymbolRef, bool, Option<HeapRootedWord>), FrontError> {
     if !specification.is_cons() {
-        return Ok((expander.symbol(specification)?, specification, None));
+        let is_special = symbol_is_special(expander.ctx(), specification).unwrap_or(false);
+        let name = expander.symbol(specification)?;
+        return Ok((name, is_special, None));
     }
     let elements = expander.elements(specification)?;
     let Some((name, rest)) = elements.split_first() else {
@@ -128,12 +127,13 @@ fn binding(
             detail: "a binding takes a name and at most one init form".to_owned(),
         });
     }
-    let name_word = *name;
-    Ok((
-        expander.symbol(name_word)?,
-        name_word,
-        rest.first().copied(),
-    ))
+    let is_special = symbol_is_special(expander.ctx(), name.get()).unwrap_or(false);
+    let name = expander.symbol(name.get())?;
+    let init_form = rest
+        .first()
+        .map(|init| HeapRootedWord::new(expander.ctx(), init.get()))
+        .transpose()?;
+    Ok((name, is_special, init_form))
 }
 
 /// `(progv symbols values form*)`.
@@ -143,12 +143,12 @@ fn progv(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    if arguments.len() < 2 {
+    let [symbols, values, body_forms @ ..] = arguments.as_slice() else {
         return Err(special::arity(kind, "symbols and values", arguments.len()));
-    }
-    let symbols = expander.expand(arguments[0])?;
-    let values = expander.expand(arguments[1])?;
-    let body = expander.expand_all(&arguments[2..])?;
+    };
+    let symbols = expander.expand(symbols.get())?;
+    let values = expander.expand(values.get())?;
+    let body = expander.expand_rooted_all(body_forms)?;
     Ok(Expr::Progv {
         symbols: Box::new(symbols),
         values: Box::new(values),
@@ -167,23 +167,23 @@ fn local_functions(
     let Some((definitions_word, body_forms)) = arguments.split_first() else {
         return Err(special::arity(kind, "a definition list", 0));
     };
-    let definition_forms = expander.elements(*definitions_word)?;
+    let definition_forms = expander.elements(definitions_word.get())?;
     expander.env_mut().push_scope();
     if recursive {
-        for definition in &definition_forms {
-            let name = definition_name(expander, kind, *definition)?;
+        for definition in definition_forms.iter() {
+            let name = definition_name(expander, kind, definition.get())?;
             expander.env_mut().bind_function(name);
         }
     }
     let mut definitions = Vec::with_capacity(definition_forms.len());
-    for definition in &definition_forms {
-        let (name, lambda) = local_function(expander, kind, *definition)?;
+    for definition in definition_forms.iter() {
+        let (name, lambda) = local_function(expander, kind, definition.get())?;
         if !recursive {
             expander.env_mut().bind_function(name.clone());
         }
         definitions.push(LocalFunction { name, lambda });
     }
-    let body = expander.expand_declared_body(body_forms)?;
+    let body = expander.expand_rooted_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
     let declarations = body.declarations;
@@ -213,23 +213,23 @@ fn macrolet(
     let Some((definitions_word, body_forms)) = arguments.split_first() else {
         return Err(special::arity(kind, "a definition list", 0));
     };
-    let definition_forms = expander.elements(*definitions_word)?;
+    let definition_forms = expander.elements(definitions_word.get())?;
     expander.env_mut().push_scope();
     let mut definitions = Vec::with_capacity(definition_forms.len());
-    for definition in &definition_forms {
-        let elements = expander.elements(*definition)?;
+    for definition in definition_forms.iter() {
+        let elements = expander.elements(definition.get())?;
         let Some((name, rest)) = elements.split_first() else {
             return Err(FrontError::MalformedForm {
                 operator: kind.symbol(),
                 detail: "empty macrolet definition".to_owned(),
             });
         };
-        let name = expander.symbol(*name)?;
+        let name = expander.symbol(name.get())?;
         let Some((lambda_list_form, expander_forms)) = rest.split_first() else {
             return Err(special::arity(kind, "a macro lambda list", 0));
         };
-        let lambda = expander.expand_lambda_body(
-            *lambda_list_form,
+        let lambda = expander.expand_rooted_lambda_body(
+            lambda_list_form,
             expander_forms,
             LambdaListKind::Macro,
         )?;
@@ -243,7 +243,7 @@ fn macrolet(
         expander.env_mut().bind_macro(local.clone());
         definitions.push(local);
     }
-    let body = expander.expand_declared_body(body_forms)?;
+    let body = expander.expand_rooted_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
     Ok(Expr::Macrolet {
@@ -263,25 +263,25 @@ fn symbol_macrolet(
     let Some((definitions_word, body_forms)) = arguments.split_first() else {
         return Err(special::arity(kind, "a definition list", 0));
     };
-    let definition_forms = expander.elements(*definitions_word)?;
+    let definition_forms = expander.elements(definitions_word.get())?;
     let mut definitions = Vec::with_capacity(definition_forms.len());
-    for definition in &definition_forms {
-        let elements = expander.elements(*definition)?;
+    for definition in definition_forms.iter() {
+        let elements = expander.elements(definition.get())?;
         let [name, expansion] = elements.as_slice() else {
             return Err(FrontError::MalformedForm {
                 operator: kind.symbol(),
                 detail: "a symbol macro takes a name and one expansion".to_owned(),
             });
         };
-        let name = expander.symbol(*name)?;
-        let expansion = expander.expand(*expansion)?;
+        let name = expander.symbol(name.get())?;
+        let expansion = expander.expand(expansion.get())?;
         definitions.push(SymbolMacro { name, expansion });
     }
     expander.env_mut().push_scope();
     for definition in &definitions {
         expander.env_mut().bind_symbol_macro(definition.clone());
     }
-    let body = expander.expand_declared_body(body_forms)?;
+    let body = expander.expand_rooted_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
     Ok(Expr::SymbolMacrolet {
@@ -305,7 +305,7 @@ fn definition_name(
         });
     };
     if !matches!(
-        crate::form::classify_form(expander.ctx(), *name),
+        crate::form::classify_form(expander.ctx(), name.get()),
         ncl_object::ObjectRef::Symbol(_)
     ) {
         return Err(FrontError::MalformedForm {
@@ -313,7 +313,7 @@ fn definition_name(
             detail: "a local function name must be a symbol".to_owned(),
         });
     }
-    expander.symbol(*name)
+    expander.symbol(name.get())
 }
 
 /// One local function definition: a name and a lambda body.
@@ -329,11 +329,14 @@ fn local_function(
             detail: "empty local function definition".to_owned(),
         });
     };
-    let name = expander.symbol(*name)?;
+    let name = expander.symbol(name.get())?;
     let Some((lambda_list_form, body_forms)) = rest.split_first() else {
         return Err(special::arity(kind, "a lambda list", 0));
     };
-    let lambda =
-        expander.expand_lambda_body(*lambda_list_form, body_forms, LambdaListKind::Ordinary)?;
+    let lambda = expander.expand_rooted_lambda_body(
+        lambda_list_form,
+        body_forms,
+        LambdaListKind::Ordinary,
+    )?;
     Ok((name, lambda))
 }

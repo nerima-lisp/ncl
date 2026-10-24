@@ -4,7 +4,7 @@
 //! AST. Macroexpansion goes through [`MacroCaller`]; the expander never
 //! reverse-depends on the runtime.
 
-use ncl_object::{HeapRootedWord, ObjectRef, Runtime, ThreadContext, Word, car};
+use ncl_object::{HeapRootedWord, HeapRootedWords, ObjectRef, Runtime, ThreadContext, Word, car};
 
 use crate::ast::{Expr, LambdaExpr};
 use crate::compiler_macro::MacroRegistry;
@@ -121,45 +121,27 @@ impl<'a> FormExpander<'a> {
     /// Returns a [`FrontError`] when the form is malformed, when a macro cannot
     /// be called, or when expansion exceeds `MACROEXPANSION_LIMIT`.
     pub fn expand(&mut self, form: Word) -> Result<Expr, FrontError> {
-        let mut current = form;
-        let token = ncl_object::push_root(self.ctx, &mut current);
+        let current = HeapRootedWord::new(self.ctx, form)?;
         let mut remaining = MACROEXPANSION_LIMIT;
-        loop {
-            let step = self.expand_step(current);
+        let result = loop {
+            let step = self.expand_step(current.get());
             match step {
-                Ok(Step::Done(expr)) => {
-                    if !ncl_object::pop_root(self.ctx, token) {
-                        return Err(FrontError::Object(
-                            ncl_object::ObjectError::RootStackCorrupted,
-                        ));
-                    }
-                    return Ok(expr);
-                }
+                Ok(Step::Done(expr)) => break Ok(expr),
                 Ok(Step::Retry { name, form }) => {
                     if remaining == 0 {
-                        if !ncl_object::pop_root(self.ctx, token) {
-                            return Err(FrontError::Object(
-                                ncl_object::ObjectError::RootStackCorrupted,
-                            ));
-                        }
-                        return Err(FrontError::MacroExpansion {
+                        break Err(FrontError::MacroExpansion {
                             name,
                             detail: "expansion limit exceeded".to_owned(),
                         });
                     }
                     remaining -= 1;
-                    current = form;
+                    current.set(form);
                 }
-                Err(error) => {
-                    if !ncl_object::pop_root(self.ctx, token) {
-                        return Err(FrontError::Object(
-                            ncl_object::ObjectError::RootStackCorrupted,
-                        ));
-                    }
-                    return Err(error);
-                }
+                Err(error) => break Err(error),
             }
-        }
+        };
+        current.release()?;
+        result
     }
 
     /// Expand every form of a sequence.
@@ -168,19 +150,14 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns the first [`FrontError`] raised by any form.
     pub fn expand_all(&mut self, forms: &[Word]) -> Result<Vec<Expr>, FrontError> {
-        let rooted = self.root_forms(forms)?;
-        self.expand_rooted(&rooted)
+        let rooted = HeapRootedWords::new(self.ctx, forms)?;
+        self.expand_rooted_all(rooted.as_slice())
     }
 
-    fn root_forms(&self, forms: &[Word]) -> Result<Vec<HeapRootedWord>, FrontError> {
-        forms
-            .iter()
-            .copied()
-            .map(|form| HeapRootedWord::new(self.ctx, form).map_err(Into::into))
-            .collect()
-    }
-
-    fn expand_rooted(&mut self, forms: &[HeapRootedWord]) -> Result<Vec<Expr>, FrontError> {
+    pub(crate) fn expand_rooted_all(
+        &mut self,
+        forms: &[HeapRootedWord],
+    ) -> Result<Vec<Expr>, FrontError> {
         forms.iter().map(|form| self.expand(form.get())).collect()
     }
 
@@ -196,13 +173,25 @@ impl<'a> FormExpander<'a> {
         &mut self,
         forms: &[Word],
     ) -> Result<(Vec<Declaration>, usize), FrontError> {
-        let mut index = 0;
+        let rooted = HeapRootedWords::new(self.ctx, forms)?;
+        let (declarations, remaining) = self.split_rooted_declarations(rooted.as_slice())?;
+        Ok((declarations, forms.len() - remaining.len()))
+    }
+
+    fn split_rooted_declarations<'forms>(
+        &mut self,
+        forms: &'forms [HeapRootedWord],
+    ) -> Result<(Vec<Declaration>, &'forms [HeapRootedWord]), FrontError> {
+        let mut remaining = forms;
         let mut declarations = Vec::new();
-        while index < forms.len() && self.is_declare_form(forms[index])? {
-            declarations.extend(self.declarations(forms[index])?);
-            index += 1;
+        while let Some((form, rest)) = remaining.split_first() {
+            if !self.is_declare_form(form.get())? {
+                break;
+            }
+            declarations.extend(self.declarations(form.get())?);
+            remaining = rest;
         }
-        Ok((declarations, index))
+        Ok((declarations, remaining))
     }
 
     /// Expand a body: leading declarations, an optional docstring, then forms.
@@ -211,15 +200,22 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns a [`FrontError`] when a declaration or a form is malformed.
     pub fn expand_body(&mut self, forms: &[Word]) -> Result<Body, FrontError> {
-        let (declarations, mut index) = self.split_declarations(forms)?;
-        let mut docstring = None;
-        if let Some(word) = forms.get(index)
-            && let Some(text) = self.docstring(*word)?
-        {
-            docstring = Some(text);
-            index += 1;
-        }
-        let expanded = self.expand_all(&forms[index..])?;
+        let rooted = HeapRootedWords::new(self.ctx, forms)?;
+        self.expand_rooted_body(rooted.as_slice())
+    }
+
+    pub(crate) fn expand_rooted_body(
+        &mut self,
+        forms: &[HeapRootedWord],
+    ) -> Result<Body, FrontError> {
+        let (declarations, remaining) = self.split_rooted_declarations(forms)?;
+        let (forms, docstring) = match remaining.split_first() {
+            Some((word, rest)) => self
+                .docstring(word.get())?
+                .map_or((remaining, None), |text| (rest, Some(text))),
+            None => (remaining, None),
+        };
+        let expanded = self.expand_rooted_all(forms)?;
         Ok(Body {
             declarations,
             docstring,
@@ -233,8 +229,16 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns a [`FrontError`] when a declaration or a form is malformed.
     pub fn expand_declared_body(&mut self, forms: &[Word]) -> Result<Body, FrontError> {
-        let (declarations, index) = self.split_declarations(forms)?;
-        let expanded = self.expand_all(&forms[index..])?;
+        let rooted = HeapRootedWords::new(self.ctx, forms)?;
+        self.expand_rooted_declared_body(rooted.as_slice())
+    }
+
+    pub(crate) fn expand_rooted_declared_body(
+        &mut self,
+        forms: &[HeapRootedWord],
+    ) -> Result<Body, FrontError> {
+        let (declarations, forms) = self.split_rooted_declarations(forms)?;
+        let expanded = self.expand_rooted_all(forms)?;
         Ok(Body {
             declarations,
             docstring: None,
@@ -281,30 +285,19 @@ impl<'a> FormExpander<'a> {
                 detail: "empty lambda expression".to_owned(),
             });
         };
-        if !self.is_named(*head, "LAMBDA")? {
+        if !self.is_named(head.get(), "LAMBDA")? {
             return Err(FrontError::InvalidOperator {
                 detail: "lambda expression does not start with lambda".to_owned(),
             });
         }
         let Some((lambda_list_form, body_forms)) = rest.split_first() else {
             return Err(FrontError::WrongNumberOfForms {
-                operator: self.symbol(*head)?,
+                operator: self.symbol(head.get())?,
                 expected: "a lambda list",
                 found: 0,
             });
         };
-        let lambda_list = self.expand_lambda_list(*lambda_list_form, LambdaListKind::Ordinary)?;
-        self.env.push_scope();
-        self.bind_parameters(&lambda_list);
-        let body = self.expand_body(body_forms)?;
-        self.apply_declarations(&body.declarations);
-        self.env.pop_scope();
-        Ok(LambdaExpr {
-            lambda_list,
-            declarations: body.declarations,
-            docstring: body.docstring,
-            body: body.forms,
-        })
+        self.expand_rooted_lambda_body(lambda_list_form, body_forms, LambdaListKind::Ordinary)
     }
 
     /// Expand a lambda list and body into a lambda expression.
@@ -322,10 +315,21 @@ impl<'a> FormExpander<'a> {
         body_forms: &[Word],
         kind: LambdaListKind,
     ) -> Result<LambdaExpr, FrontError> {
-        let lambda_list = self.expand_lambda_list(lambda_list_form, kind)?;
+        let lambda_list = HeapRootedWord::new(self.ctx, lambda_list_form)?;
+        let body_forms = HeapRootedWords::new(self.ctx, body_forms)?;
+        self.expand_rooted_lambda_body(&lambda_list, body_forms.as_slice(), kind)
+    }
+
+    pub(crate) fn expand_rooted_lambda_body(
+        &mut self,
+        lambda_list_form: &HeapRootedWord,
+        body_forms: &[HeapRootedWord],
+        kind: LambdaListKind,
+    ) -> Result<LambdaExpr, FrontError> {
+        let lambda_list = self.expand_lambda_list(lambda_list_form.get(), kind)?;
         self.env.push_scope();
         self.bind_parameters(&lambda_list);
-        let body = self.expand_body(body_forms)?;
+        let body = self.expand_rooted_body(body_forms)?;
         self.apply_declarations(&body.declarations);
         self.env.pop_scope();
         Ok(LambdaExpr {
@@ -359,8 +363,9 @@ impl<'a> FormExpander<'a> {
     /// # Errors
     ///
     /// Returns a [`FrontError`] when the list is improper.
-    pub fn elements(&mut self, word: Word) -> Result<Vec<Word>, FrontError> {
-        form::list(self.ctx, word)
+    pub fn elements(&mut self, word: Word) -> Result<HeapRootedWords, FrontError> {
+        let elements = form::list(self.ctx, word)?;
+        Ok(HeapRootedWords::new(self.ctx, &elements)?)
     }
 
     /// Parse a `(declare ...)` form.

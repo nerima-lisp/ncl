@@ -2,7 +2,7 @@
 //! `multiple-value-call`, `multiple-value-prog1`, `setq`, and the SBCL
 //! extensions `%primitive`, `nlx-protect`, and `truly-the`.
 
-use ncl_object::{Word, car};
+use ncl_object::{HeapRootedWord, Word, car};
 
 use crate::ast::{Expr, FunctionDesignator};
 use crate::error::FrontError;
@@ -47,10 +47,11 @@ fn function_form(
             arguments.len(),
         ));
     };
-    if argument.is_cons() {
-        let head = car(expander.ctx(), *argument)?;
-        if expander.is_named(head, "LAMBDA")? {
-            let lambda = expander.expand_lambda(*argument)?;
+    if argument.get().is_cons() {
+        let head = car(expander.ctx(), argument.get())?;
+        let head = HeapRootedWord::new(expander.ctx(), head)?;
+        if expander.is_named(head.get(), "LAMBDA")? {
+            let lambda = expander.expand_lambda(argument.get())?;
             return Ok(Expr::Function(FunctionDesignator::Lambda(Box::new(lambda))));
         }
         return Err(FrontError::MalformedForm {
@@ -58,7 +59,7 @@ fn function_form(
             detail: "a compound function name has no AST representation".to_owned(),
         });
     }
-    let name = expander.symbol(*argument)?;
+    let name = expander.symbol(argument.get())?;
     Ok(Expr::Function(FunctionDesignator::Name(name)))
 }
 
@@ -72,7 +73,7 @@ fn quote(
     let [argument] = arguments.as_slice() else {
         return Err(special::arity(kind, "one datum", arguments.len()));
     };
-    Ok(Expr::Constant(expander.datum(*argument)?))
+    Ok(Expr::Constant(expander.datum(argument.get())?))
 }
 
 /// `(the type form)`, and `(sb-ext:truly-the type form)`.
@@ -81,13 +82,13 @@ fn the(expander: &mut FormExpander<'_>, kind: SpecialForm, form: Word) -> Result
     let [type_form, value] = arguments.as_slice() else {
         return Err(special::arity(kind, "a type and a form", arguments.len()));
     };
-    let type_form = if *type_form == Word::TRUE {
+    let type_form = if type_form.get() == Word::TRUE {
         Literal::T
     } else {
-        expander.datum(*type_form)?
+        expander.datum(type_form.get())?
     };
     let type_specifier = TypeSpecifier::new(type_form);
-    let value = expander.expand(*value)?;
+    let value = expander.expand(value.get())?;
     Ok(Expr::The {
         type_specifier,
         value: Box::new(value),
@@ -104,8 +105,8 @@ fn multiple_value_call(
     let Some((function, rest)) = arguments.split_first() else {
         return Err(special::arity(kind, "a function form", 0));
     };
-    let function = expander.expand(*function)?;
-    let arguments = expander.expand_all(rest)?;
+    let function = expander.expand(function.get())?;
+    let arguments = expander.expand_rooted_all(rest)?;
     Ok(Expr::MultipleValueCall {
         function: Box::new(function),
         arguments,
@@ -122,8 +123,8 @@ fn multiple_value_prog1(
     let Some((first, rest)) = arguments.split_first() else {
         return Err(special::arity(kind, "a first form", 0));
     };
-    let first = expander.expand(*first)?;
-    let forms = expander.expand_all(rest)?;
+    let first = expander.expand(first.get())?;
+    let forms = expander.expand_rooted_all(rest)?;
     Ok(Expr::MultipleValueProg1 {
         first: Box::new(first),
         forms,
@@ -145,18 +146,18 @@ fn setq(
         ));
     }
     let mut pairs = Vec::with_capacity(arguments.len() / 2);
-    for pair in arguments.chunks(2) {
+    for pair in arguments.as_slice().chunks(2) {
         let [place, value] = pair else {
             return Err(special::arity(kind, "an even number of forms", pair.len()));
         };
-        let name = expander.symbol(*place)?;
+        let name = expander.symbol(place.get())?;
         if expander.env().lookup_symbol_macro(&name).is_some() {
             return Err(FrontError::MalformedForm {
                 operator: kind.symbol(),
                 detail: format!("{name} is a symbol macro and cannot be assigned"),
             });
         }
-        let value = expander.expand(*value)?;
+        let value = expander.expand(value.get())?;
         pairs.push((name, value));
     }
     Ok(Expr::Setq(pairs))
@@ -176,8 +177,8 @@ fn nlx_protect(
     let Some((protected, cleanup)) = arguments.split_first() else {
         return Err(special::arity(kind, "a protected form", 0));
     };
-    let protected = expander.expand(*protected)?;
-    let cleanup = expander.expand_all(cleanup)?;
+    let protected = expander.expand(protected.get())?;
+    let cleanup = expander.expand_rooted_all(cleanup)?;
     Ok(Expr::UnwindProtect {
         protected: Box::new(protected),
         cleanup,

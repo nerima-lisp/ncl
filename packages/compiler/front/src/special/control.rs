@@ -2,7 +2,7 @@
 //! `catch`, `throw`, `unwind-protect`, `if`, `progn`, `locally`, `eval-when`,
 //! and `load-time-value`.
 
-use ncl_object::{HeapRootedWord, ObjectRef, Word};
+use ncl_object::{HeapRootedWords, ObjectRef, Word};
 
 use crate::ast::{EvalSituation, Expr, TagbodyItem};
 use crate::error::FrontError;
@@ -46,10 +46,10 @@ fn block(
     let Some((name, body)) = arguments.split_first() else {
         return Err(special::arity(kind, "a block name", 0));
     };
-    let name = expander.symbol(*name)?;
+    let name = expander.symbol(name.get())?;
     expander.env_mut().push_scope();
     expander.env_mut().bind_block(name.clone());
-    let body = expander.expand_all(body)?;
+    let body = expander.expand_rooted_all(body)?;
     expander.env_mut().pop_scope();
     Ok(Expr::Block { name, body })
 }
@@ -71,10 +71,10 @@ fn return_from(
             rest.len() + 1,
         ));
     }
-    let name = expander.symbol(*name)?;
+    let name = expander.symbol(name.get())?;
     let value = rest
         .first()
-        .map(|value| expander.expand(*value))
+        .map(|value| expander.expand(value.get()))
         .transpose()?
         .map(Box::new);
     Ok(Expr::ReturnFrom { name, value })
@@ -89,16 +89,16 @@ fn tagbody(
     let arguments = special::arguments(expander, kind, form)?;
     expander.env_mut().push_scope();
     let mut items = Vec::with_capacity(arguments.len());
-    for argument in arguments {
+    for argument in arguments.iter() {
         if matches!(
-            classify_form(expander.ctx(), argument),
+            classify_form(expander.ctx(), argument.get()),
             ObjectRef::Symbol(_)
         ) {
-            let tag = expander.symbol(argument)?;
+            let tag = expander.symbol(argument.get())?;
             expander.env_mut().bind_tag(tag.clone());
             items.push(TagbodyItem::Tag(tag));
         } else {
-            items.push(TagbodyItem::Form(expander.expand(argument)?));
+            items.push(TagbodyItem::Form(expander.expand(argument.get())?));
         }
     }
     expander.env_mut().pop_scope();
@@ -111,7 +111,7 @@ fn go(expander: &mut FormExpander<'_>, kind: SpecialForm, form: Word) -> Result<
     let [tag] = arguments.as_slice() else {
         return Err(special::arity(kind, "one tag", arguments.len()));
     };
-    let tag = expander.symbol(*tag)?;
+    let tag = expander.symbol(tag.get())?;
     Ok(Expr::Go { tag })
 }
 
@@ -125,8 +125,8 @@ fn catch(
     let Some((tag, body)) = arguments.split_first() else {
         return Err(special::arity(kind, "a tag and forms", 0));
     };
-    let tag = expander.expand(*tag)?;
-    let body = expander.expand_all(body)?;
+    let tag = expander.expand(tag.get())?;
+    let body = expander.expand_rooted_all(body)?;
     Ok(Expr::Catch {
         tag: Box::new(tag),
         body,
@@ -143,8 +143,8 @@ fn throw(
     let [tag, value] = arguments.as_slice() else {
         return Err(special::arity(kind, "a tag and a value", arguments.len()));
     };
-    let tag = expander.expand(*tag)?;
-    let value = expander.expand(*value)?;
+    let tag = expander.expand(tag.get())?;
+    let value = expander.expand(value.get())?;
     Ok(Expr::Throw {
         tag: Box::new(tag),
         value: Box::new(value),
@@ -161,8 +161,8 @@ fn unwind_protect(
     let Some((protected, cleanup)) = arguments.split_first() else {
         return Err(special::arity(kind, "a protected form", 0));
     };
-    let protected = expander.expand(*protected)?;
-    let cleanup = expander.expand_all(cleanup)?;
+    let protected = expander.expand(protected.get())?;
+    let cleanup = expander.expand_rooted_all(cleanup)?;
     Ok(Expr::UnwindProtect {
         protected: Box::new(protected),
         cleanup,
@@ -176,35 +176,34 @@ fn if_form(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    let Some((_, rest)) = arguments.split_first() else {
-        return Err(special::arity(kind, "a test and a then form", 0));
-    };
-    if rest.is_empty() || rest.len() > 2 {
+    let Some((test_form, remaining)) = arguments.split_first() else {
         return Err(special::arity(
             kind,
             "a test and a then form",
             arguments.len(),
         ));
-    }
-    let rooted_arguments = arguments
-        .iter()
-        .copied()
-        .map(|argument| HeapRootedWord::new(expander.ctx(), argument).map_err(Into::into))
-        .collect::<Result<Vec<_>, FrontError>>()?;
-    let Some(test_form) = rooted_arguments.first() else {
-        return Err(special::arity(kind, "a test and a then form", 0));
     };
-    let Some(then_form) = rooted_arguments.get(1) else {
+    let Some((then_form, remaining)) = remaining.split_first() else {
         return Err(special::arity(
             kind,
             "a test and a then form",
             arguments.len(),
         ));
+    };
+    let otherwise_form = match remaining {
+        [] => None,
+        [otherwise] => Some(otherwise),
+        [_, _, ..] => {
+            return Err(special::arity(
+                kind,
+                "a test and a then form",
+                arguments.len(),
+            ));
+        }
     };
     let test = expander.expand(test_form.get())?;
     let then = expander.expand(then_form.get())?;
-    let otherwise = rooted_arguments
-        .get(2)
+    let otherwise = otherwise_form
         .map(|value| expander.expand(value.get()))
         .transpose()?
         .map(Box::new);
@@ -222,7 +221,9 @@ fn progn(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    Ok(Expr::Progn(expander.expand_all(&arguments)?))
+    Ok(Expr::Progn(
+        expander.expand_rooted_all(arguments.as_slice())?,
+    ))
 }
 
 /// `(locally declaration* form*)`.
@@ -233,7 +234,7 @@ fn locally(
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
     expander.env_mut().push_scope();
-    let body = expander.expand_declared_body(&arguments)?;
+    let body = expander.expand_rooted_declared_body(arguments.as_slice())?;
     expander.apply_declarations(&body.declarations);
     expander.env_mut().pop_scope();
     Ok(Expr::Locally {
@@ -249,42 +250,39 @@ fn eval_when(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    let Some(first) = arguments.first() else {
+    let Some((first, body_arguments)) = arguments.split_first() else {
         return Err(special::arity(
             kind,
             "a situation list and zero or more forms",
-            0,
+            arguments.len(),
         ));
     };
     let mut situations = Vec::new();
-    let situation_words = if *first == Word::NIL {
-        Vec::new()
-    } else if matches!(classify_form(expander.ctx(), *first), ObjectRef::Cons(_)) {
-        expander.elements(*first)?
+    let situation_words = if first.get() == Word::NIL {
+        HeapRootedWords::default()
+    } else if matches!(
+        classify_form(expander.ctx(), first.get()),
+        ObjectRef::Cons(_)
+    ) {
+        expander.elements(first.get())?
     } else {
-        vec![*first]
+        HeapRootedWords::new(expander.ctx(), &[first.get()])?
     };
-    for situation_word in situation_words {
-        if !is_keyword(expander, situation_word)? {
+    for situation_word in situation_words.iter() {
+        if !is_keyword(expander, situation_word.get())? {
             return Err(FrontError::MalformedForm {
                 operator: kind.symbol(),
                 detail: "eval-when situations must be keyword symbols".to_owned(),
             });
         }
-        let name = expander.symbol(situation_word)?;
+        let name = expander.symbol(situation_word.get())?;
         let situation = eval_situation(&name.name).ok_or_else(|| FrontError::MalformedForm {
             operator: kind.symbol(),
             detail: format!("unknown eval-when situation {name}"),
         })?;
         situations.push(situation);
     }
-    let body = expander.expand_all(arguments.get(1..).ok_or_else(|| {
-        special::arity(
-            kind,
-            "a situation list and zero or more forms",
-            arguments.len(),
-        )
-    })?)?;
+    let body = expander.expand_rooted_all(body_arguments)?;
     Ok(Expr::EvalWhen { situations, body })
 }
 
@@ -295,11 +293,17 @@ fn load_time_value(
     form: Word,
 ) -> Result<Expr, FrontError> {
     let arguments = special::arguments(expander, kind, form)?;
-    if arguments.is_empty() || arguments.len() > 2 {
+    let Some((value, remaining)) = arguments.split_first() else {
         return Err(special::arity(kind, "one or two forms", arguments.len()));
-    }
-    let value = expander.expand(arguments[0])?;
-    let read_only = arguments.get(1).is_some_and(|flag| *flag != Word::NIL);
+    };
+    let read_only = match remaining {
+        [] => false,
+        [flag] => flag.get() != Word::NIL,
+        [_, _, ..] => {
+            return Err(special::arity(kind, "one or two forms", arguments.len()));
+        }
+    };
+    let value = expander.expand(value.get())?;
     Ok(Expr::LoadTimeValue {
         form: Box::new(value),
         read_only,

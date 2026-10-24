@@ -88,12 +88,11 @@ impl<'a> FormExpander<'a> {
     fn expand_cons(&mut self, form: Word) -> Result<Step, FrontError> {
         let form = HeapRootedWord::new(self.ctx, form)?;
         let elements = self.elements(form.get())?;
-        let rooted_elements = self.root_forms(&elements)?;
-        let Some((head, arguments)) = rooted_elements.split_first() else {
+        let Some((head, arguments)) = elements.split_first() else {
             return Ok(Step::Done(Expr::Constant(Literal::Nil)));
         };
         if head.get().is_cons() {
-            return self.expand_lambda_call(&rooted_elements);
+            return self.expand_lambda_call(elements.as_slice());
         }
         if !matches!(classify_form(self.ctx, head.get()), ObjectRef::Symbol(_)) {
             return Err(FrontError::InvalidOperator {
@@ -166,7 +165,7 @@ impl<'a> FormExpander<'a> {
                 form: replacement,
             });
         }
-        let arguments = self.expand_rooted(arguments)?;
+        let arguments = self.expand_rooted_all(arguments)?;
         Ok(Step::Done(Expr::Call {
             operator: Operator::Name(name),
             arguments,
@@ -179,13 +178,14 @@ impl<'a> FormExpander<'a> {
             return Ok(Step::Done(Expr::Constant(Literal::Nil)));
         };
         let head_symbol = car(self.ctx, head.get())?;
-        if !self.is_named(head_symbol, "LAMBDA")? {
+        let head_symbol = HeapRootedWord::new(self.ctx, head_symbol)?;
+        if !self.is_named(head_symbol.get(), "LAMBDA")? {
             return Err(FrontError::InvalidOperator {
                 detail: "operator is neither a symbol nor a lambda expression".to_owned(),
             });
         }
         let lambda = self.expand_lambda(head.get())?;
-        let arguments = self.expand_rooted(arguments)?;
+        let arguments = self.expand_rooted_all(arguments)?;
         Ok(Step::Done(Expr::Call {
             operator: Operator::Lambda(Box::new(lambda)),
             arguments,

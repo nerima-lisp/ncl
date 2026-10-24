@@ -4,7 +4,7 @@
 //! `&environment`, required, `&optional`, `&rest` or `&body`, `&key`,
 //! `&allow-other-keys`, `&aux`) and rejects a repeated keyword or name.
 
-use ncl_object::{ObjectRef, Word};
+use ncl_object::{HeapRootedWord, HeapRootedWords, ObjectRef, Word};
 
 use crate::error::FrontError;
 use crate::expand::{FormExpander, LambdaListKind};
@@ -88,10 +88,9 @@ impl FormExpander<'_> {
         let mut seen: Vec<String> = Vec::new();
         let mut names: Vec<SymbolRef> = Vec::new();
         let mut index = 0;
-        while index < elements.len() {
-            let element = elements[index];
+        while let Some(element) = elements.get(index) {
             index += 1;
-            let Some(keyword) = self.lambda_list_keyword(element)? else {
+            let Some(keyword) = self.lambda_list_keyword(element.get())? else {
                 self.push_parameter(&mut list, kind, section, element, &mut names)?;
                 continue;
             };
@@ -137,7 +136,7 @@ impl FormExpander<'_> {
                     });
                 };
                 index += 1;
-                let name = self.symbol(*argument)?;
+                let name = self.symbol(argument.get())?;
                 if keyword == "&WHOLE" {
                     list.whole = Some(name);
                 } else {
@@ -154,33 +153,33 @@ impl FormExpander<'_> {
         list: &mut LambdaList,
         kind: LambdaListKind,
         section: Section,
-        element: Word,
+        element: &HeapRootedWord,
         names: &mut Vec<SymbolRef>,
     ) -> Result<(), FrontError> {
         match section {
             Section::Whole | Section::Environment | Section::Required => {
-                let name = self.parameter_name(kind, element)?;
+                let name = self.parameter_name(kind, element.get())?;
                 record_names(&name, names)?;
                 list.required.push(name);
             }
             Section::Optional => {
-                let parameter = self.optional_parameter(kind, element)?;
+                let parameter = self.optional_parameter(kind, element.get())?;
                 record_names(&parameter.name, names)?;
                 record_supplied(parameter.supplied_p.as_ref(), names)?;
                 list.optional.push(parameter);
             }
             Section::Rest => {
-                let name = self.parameter_name(kind, element)?;
+                let name = self.parameter_name(kind, element.get())?;
                 record_names(&name, names)?;
                 list.rest = Some(name);
             }
             Section::Body => {
-                let name = self.parameter_name(kind, element)?;
+                let name = self.parameter_name(kind, element.get())?;
                 record_names(&name, names)?;
                 list.body = Some(name);
             }
             Section::Key => {
-                let parameter = self.key_parameter(kind, element)?;
+                let parameter = self.key_parameter(kind, element.get())?;
                 record_names(&parameter.name, names)?;
                 record_supplied(parameter.supplied_p.as_ref(), names)?;
                 list.keys.push(parameter);
@@ -191,7 +190,7 @@ impl FormExpander<'_> {
                 });
             }
             Section::Aux => {
-                let parameter = self.aux_parameter(kind, element)?;
+                let parameter = self.aux_parameter(kind, element.get())?;
                 record_names(&parameter.name, names)?;
                 list.aux.push(parameter);
             }
@@ -233,11 +232,22 @@ impl FormExpander<'_> {
         word: Word,
     ) -> Result<OptionalParam, FrontError> {
         let parts = self.parameter_parts(word)?;
-        let name = self.parameter_name(kind, parts[0])?;
-        let default = parts.get(1).map(|form| self.expand(*form)).transpose()?;
+        let name = self.parameter_name(
+            kind,
+            parts
+                .first()
+                .ok_or_else(|| FrontError::MalformedDeclaration {
+                    detail: "empty optional parameter specifier".to_owned(),
+                })?
+                .get(),
+        )?;
+        let default = parts
+            .get(1)
+            .map(|form| self.expand(form.get()))
+            .transpose()?;
         let supplied_p = parts
             .get(2)
-            .map(|form| self.parameter_name(kind, *form))
+            .map(|form| self.parameter_name(kind, form.get()))
             .transpose()?;
         Ok(OptionalParam {
             name,
@@ -249,19 +259,41 @@ impl FormExpander<'_> {
     /// Parse an `&aux` parameter.
     fn aux_parameter(&mut self, kind: LambdaListKind, word: Word) -> Result<AuxParam, FrontError> {
         let parts = self.parameter_parts(word)?;
-        let name = self.parameter_name(kind, parts[0])?;
-        let default = parts.get(1).map(|form| self.expand(*form)).transpose()?;
+        let name = self.parameter_name(
+            kind,
+            parts
+                .first()
+                .ok_or_else(|| FrontError::MalformedDeclaration {
+                    detail: "empty aux parameter specifier".to_owned(),
+                })?
+                .get(),
+        )?;
+        let default = parts
+            .get(1)
+            .map(|form| self.expand(form.get()))
+            .transpose()?;
         Ok(AuxParam { name, default })
     }
 
     /// Parse a `&key` parameter.
     fn key_parameter(&mut self, kind: LambdaListKind, word: Word) -> Result<KeyParam, FrontError> {
         let parts = self.parameter_parts(word)?;
-        let (keyword, name) = self.key_names(kind, parts[0])?;
-        let default = parts.get(1).map(|form| self.expand(*form)).transpose()?;
+        let (keyword, name) = self.key_names(
+            kind,
+            parts
+                .first()
+                .ok_or_else(|| FrontError::MalformedDeclaration {
+                    detail: "empty key parameter specifier".to_owned(),
+                })?
+                .get(),
+        )?;
+        let default = parts
+            .get(1)
+            .map(|form| self.expand(form.get()))
+            .transpose()?;
         let supplied_p = parts
             .get(2)
-            .map(|form| self.parameter_name(kind, *form))
+            .map(|form| self.parameter_name(kind, form.get()))
             .transpose()?;
         Ok(KeyParam {
             keyword,
@@ -290,21 +322,21 @@ impl FormExpander<'_> {
                 detail: "empty &key keyword specifier".to_owned(),
             });
         };
-        let keyword = self.symbol(*keyword)?;
+        let keyword = self.symbol(keyword.get())?;
         let Some(name) = rest.first() else {
             return Err(FrontError::MalformedDeclaration {
                 detail: "&key keyword specifier has no variable".to_owned(),
             });
         };
-        Ok((keyword, self.parameter_name(kind, *name)?))
+        Ok((keyword, self.parameter_name(kind, name.get())?))
     }
 
     /// Split a parameter into its name and optional initializer parts.
-    fn parameter_parts(&mut self, word: Word) -> Result<Vec<Word>, FrontError> {
+    fn parameter_parts(&mut self, word: Word) -> Result<HeapRootedWords, FrontError> {
         if word.is_cons() {
             return self.elements(word);
         }
-        Ok(vec![word])
+        Ok(HeapRootedWords::new(self.ctx(), &[word])?)
     }
 }
 

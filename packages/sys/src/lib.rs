@@ -3,6 +3,7 @@
 
 mod code;
 mod codegen;
+mod collection;
 pub mod foreign;
 mod function_address;
 mod heap;
@@ -27,6 +28,7 @@ pub use code::{
     scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers, write_code,
 };
 pub use codegen::{set_tlab, tlab_bump};
+pub use collection::collect;
 pub use function_address::{FunctionAddressError, function_address};
 pub use heap::{
     Finalizer, Heap, HeapConfig, HeapOptions, HeapRootError, LayoutError, PageKind,
@@ -443,15 +445,6 @@ pub fn register_layout(
 /// cannot reserve storage for the callback.
 pub fn register_after_gc_hook(heap: &Heap, hook: fn()) -> Result<(), StorageCondition> {
     heap.register_after_gc_hook(hook)
-}
-
-/// Start a collection and update registered precise roots.
-///
-/// # Errors
-/// Returns a collection error from the thread's heap, or
-/// [`StorageCondition::ThreadNotRegistered`] when the thread has no heap.
-pub fn collect(thread: &mut Thread, full: bool) -> Result<(), StorageCondition> {
-    thread.heap_collect(full)
 }
 
 /// Return the collection epoch of the thread's heap.

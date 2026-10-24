@@ -116,7 +116,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
         );
         ctx.clear_safepoint_request();
         ctx.enter_native();
-        ncl_sys::collect(ctx, true);
+        assert_eq!(ncl_sys::collect(ctx, true), Ok(()));
         ctx.leave_native();
         ctx.clear_safepoint_request();
         let after = ctx

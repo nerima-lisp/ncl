@@ -271,6 +271,9 @@ impl Thread {
         self.frame_address.is_some()
     }
     pub(crate) fn heap_collect(&mut self, full: bool) -> Result<(), crate::StorageCondition> {
+        if self.native_state() != NativeState::Native && !self.has_native_frame_snapshot() {
+            self.publish_snapshot();
+        }
         let result = self
             .heap
             .map_or(Err(crate::StorageCondition::ThreadNotRegistered), |heap| {

@@ -282,11 +282,9 @@ impl<T> MetadataVec<T> {
                     // SAFETY: the current value is initialized and the target
                     // lies in the already processed deleted range.
                     unsafe {
-                        core::ptr::copy(
-                            pointer.add(index),
-                            pointer.add(index - guard.deleted_count),
-                            1,
-                        );
+                        pointer
+                            .add(index - guard.deleted_count)
+                            .write(pointer.add(index).read());
                     }
                 }
                 guard.processed_len = index + 1;

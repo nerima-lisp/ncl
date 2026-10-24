@@ -23,8 +23,8 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build full x86 default check
+      - name: Build all e2enum cases in x86 release sandbox
         run: |
           echo "attempt=${{ matrix.attempt }}"
           echo "revision=${{ github.sha }}"
-          nix build -L .#checks.x86_64-linux.default
+          nix build -L --rebuild .#checks.x86_64-linux.e2enum-diagnostic

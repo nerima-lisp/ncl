@@ -134,35 +134,64 @@
       );
       checks = forAllSystems (
         { pkgs, rust }:
+        let
+          system = pkgs.stdenv.hostPlatform.system;
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = rust;
+            rustc = rust;
+          };
+        in
         {
-          default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-          cargo-test =
-            let
-              rustPlatform = pkgs.makeRustPlatform {
-                cargo = rust;
-                rustc = rust;
-              };
-            in
-            rustPlatform.buildRustPackage {
-              pname = "ncl-cargo-test";
-              version = "0.1.0";
-              src = builtins.path {
-                path = ./.;
-                name = "ncl-cargo-test-source";
-                filter = path: type: !pkgs.lib.hasInfix "/target/" (toString path);
-              };
-              cargoLock.lockFile = ./Cargo.lock;
-              buildType = "debug";
-              cargoBuildFlags = [ "--workspace" ];
-              cargoTestFlags = [
-                "--workspace"
-                "--locked"
-              ];
-              doCheck = true;
-              installPhase = ''
-                mkdir -p "$out"
-              '';
+          default = self.packages.${system}.default;
+          cargo-test = rustPlatform.buildRustPackage {
+            pname = "ncl-cargo-test";
+            version = "0.1.0";
+            src = builtins.path {
+              path = ./.;
+              name = "ncl-cargo-test-source";
+              filter = path: type: !pkgs.lib.hasInfix "/target/" (toString path);
             };
+            cargoLock.lockFile = ./Cargo.lock;
+            buildType = "debug";
+            cargoBuildFlags = [ "--workspace" ];
+            cargoTestFlags = [
+              "--workspace"
+              "--locked"
+            ];
+            doCheck = true;
+            installPhase = ''
+              mkdir -p "$out"
+            '';
+          };
+        }
+        // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          e2enum-diagnostic = rustPlatform.buildRustPackage {
+            pname = "ncl-e2enum-diagnostic";
+            version = "0.1.0";
+            src = builtins.path {
+              path = ./.;
+              name = "ncl-e2enum-diagnostic-source";
+              filter = path: type: !pkgs.lib.hasInfix "/target/" (toString path);
+            };
+            cargoLock.lockFile = ./Cargo.lock;
+            buildType = "release";
+            cargoBuildFlags = [ "--workspace" ];
+            cargoTestFlags = [
+              "--package"
+              "ncl"
+              "--test"
+              "e2enum"
+              "--all-features"
+              "--locked"
+            ];
+            preCheck = ''
+              export NCL_GC_WORD_DIAGNOSTICS=1
+            '';
+            doCheck = true;
+            installPhase = ''
+              mkdir -p "$out"
+            '';
+          };
         }
       );
     };

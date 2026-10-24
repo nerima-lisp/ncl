@@ -135,7 +135,16 @@ impl super::Heap {
                 if let Some(error) = error {
                     return Err(error);
                 }
-                Self::enqueue_conservative_snapshot(state, scratch, &*thread)?;
+                // Native stack words are roots; Lisp frames use precise roots and use ambiguous
+                // words only to pin objects already reached through those roots.
+                let native_roots_are_strong =
+                    (*thread).native_state() == crate::NativeState::Native;
+                Self::enqueue_conservative_snapshot(
+                    state,
+                    scratch,
+                    &*thread,
+                    native_roots_are_strong,
+                )?;
             }
         }
         Ok(())
@@ -208,12 +217,13 @@ impl super::Heap {
         state: &mut super::State,
         scratch: &mut CollectionScratch,
         thread: &Thread,
+        native_roots_are_strong: bool,
     ) -> Result<(), super::StorageCondition> {
         for value in thread.conservative_roots.iter().copied() {
-            Self::pin_conservative_value(state, scratch, value)?;
+            Self::pin_conservative_value(state, scratch, value, true)?;
         }
         for value in thread.callee_saved.iter().copied().map(Word::from_bits) {
-            Self::pin_conservative_value(state, scratch, value)?;
+            Self::pin_conservative_value(state, scratch, value, native_roots_are_strong)?;
         }
         if let Some((start, end)) = thread.stack_bounds {
             let Some(mut address) = start.checked_add(7).map(|value| value & !7) else {
@@ -224,7 +234,7 @@ impl super::Heap {
                 let value = unsafe {
                     Word::from_bits(std::ptr::with_exposed_provenance::<u64>(address).read())
                 };
-                Self::pin_conservative_value(state, scratch, value)?;
+                Self::pin_conservative_value(state, scratch, value, native_roots_are_strong)?;
                 address += 8;
             }
         }
@@ -235,14 +245,19 @@ impl super::Heap {
         state: &mut super::State,
         scratch: &mut CollectionScratch,
         value: Word,
+        strong_root: bool,
     ) -> Result<(), super::StorageCondition> {
-        if let Some(index) = Self::find_conservative(state, value) {
+        if let Some(index) = Self::find_conservative(state, value)
+            && (strong_root || scratch.live.contains(&index))
+        {
             let object = state
                 .objects
                 .get_mut(index)
                 .ok_or(super::StorageCondition::CollectionInProgress)?;
             object.pinned = true;
-            Self::enqueue_index(&mut scratch.live, &mut scratch.stack, index)?;
+            if strong_root {
+                Self::enqueue_index(&mut scratch.live, &mut scratch.stack, index)?;
+            }
         }
         Ok(())
     }

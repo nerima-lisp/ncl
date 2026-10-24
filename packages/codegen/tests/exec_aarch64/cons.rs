@@ -86,7 +86,7 @@ extern "C" fn collect_precise_frame(ctx: &mut Thread, frame_fp: usize, return_pc
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
-        ncl_sys::collect(ctx, true);
+        assert_eq!(ncl_sys::collect(ctx, true), Ok(()));
         FRAME_WORD_AFTER.store(
             ctx.last_written_frame_word(2)
                 .expect("written-back frame function object")

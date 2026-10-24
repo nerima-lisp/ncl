@@ -99,6 +99,15 @@ fn native_cons_and_car_survive_gc_stress_with_strict_forwarding() {
 }
 
 #[test]
+fn collect_reports_an_unregistered_thread() {
+    let mut thread = Thread::new();
+    assert_eq!(
+        collect(&mut thread, false),
+        Err(ncl_sys::StorageCondition::ThreadNotRegistered)
+    );
+}
+
+#[test]
 fn word_boundaries_and_root_slot_are_observable() {
     let values = [i64::MIN / 2, -1, 0, 1, i64::MAX / 2];
     for value in values {
@@ -220,7 +229,6 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     let heap = Heap::new(HeapConfig {
         dynamic_space_size: 16384,
         bytes_considered_between_gcs: 128,
-        ..HeapConfig::default()
     });
     assert_eq!(heap.dynamic_space_size(), 16384);
     assert_eq!(heap.bytes_considered_between_gcs(), 128);

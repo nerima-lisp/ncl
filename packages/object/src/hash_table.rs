@@ -62,8 +62,8 @@ impl HashTable {
         test: HashTest,
         weakness: Weakness,
         capacity: usize,
-        rehash_size: Word,
-        rehash_threshold: Word,
+        rehash_size: crate::RootSlot<'_>,
+        rehash_threshold: crate::RootSlot<'_>,
     ) -> Result<Self, ObjectError> {
         let mut marker = make_simple_vector(ctx, runtime, &[])?;
         let marker_token = crate::push_root(ctx, &mut marker);
@@ -93,8 +93,8 @@ impl HashTable {
                         (FREE_HEAD, Word::fixnum(EMPTY)),
                         (HIGH_WATER, Word::fixnum(0)),
                         (OCCUPIED, Word::fixnum(0)),
-                        (REHASH_SIZE, rehash_size),
-                        (REHASH_THRESHOLD, rehash_threshold),
+                        (REHASH_SIZE, rehash_size.get()),
+                        (REHASH_THRESHOLD, rehash_threshold.get()),
                         (MARKER, marker),
                         (KV, kv),
                         (INDEX, index),

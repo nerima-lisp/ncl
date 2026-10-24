@@ -92,15 +92,20 @@ impl HashTable {
             None => make_double(ctx, runtime, DEFAULT_REHASH_THRESHOLD)?.as_word(),
         };
         let rehash_threshold_token = crate::push_root(ctx, &mut rehash_threshold);
-        let result = Self::allocate(
-            ctx,
-            runtime,
-            test,
-            weakness,
-            capacity,
-            rehash_size,
-            rehash_threshold,
-        );
+        let result = crate::with_roots(ctx, &[rehash_size, rehash_threshold], |ctx, values| {
+            let [rehash_size, rehash_threshold] = values else {
+                return Err(ObjectError::RootStackCorrupted);
+            };
+            Self::allocate(
+                ctx,
+                runtime,
+                test,
+                weakness,
+                capacity,
+                *rehash_size,
+                *rehash_threshold,
+            )
+        });
         let result = finish_root(ctx, rehash_threshold_token, result);
         let result = finish_root(ctx, rehash_size_token, result);
         finish_root(ctx, size_token, result)

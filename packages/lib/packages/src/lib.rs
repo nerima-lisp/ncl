@@ -35,28 +35,6 @@ struct NicknameDesignator(Word);
 #[derive(Clone, Copy)]
 struct PackageDesignatorArg(Word);
 
-fn with_rooted_words<T>(
-    ctx: &mut ThreadContext,
-    words: &mut [Word],
-    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, LispError>,
-) -> Result<T, LispError> {
-    let tokens = words
-        .iter_mut()
-        .map(|word| ncl_object::push_root(ctx, word))
-        .collect::<Vec<_>>();
-    let result = f(ctx, words);
-    let mut cleanup_error = None;
-    for token in tokens.into_iter().rev() {
-        if !ncl_object::pop_root(ctx, token) {
-            cleanup_error = Some(LispError::Object(ObjectError::Layout));
-        }
-    }
-    match (result, cleanup_error) {
-        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
-        (Ok(value), None) => Ok(value),
-    }
-}
-
 impl FromLispArg for NicknameDesignator {
     fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
         if matches!(
@@ -185,31 +163,61 @@ fn add_package_local_nickname_impl(
     target: PackageDesignatorArg,
     package: PackageDesignatorArg,
 ) -> Result<Word, LispError> {
-    let nickname = designator_string(ctx, runtime, nickname)?;
-    let package = package_designator(ctx, runtime, package)?;
-    let target = package_designator(ctx, runtime, target)?;
-    let mut roots = [nickname.as_word(), target.as_word(), package.as_word()];
-    with_rooted_words(ctx, &mut roots, |ctx, roots| {
-        let nickname = StringObject::from_word(roots[0]);
-        let package = Package::from_word(roots[2]);
-        ensure_unlocked(ctx, package)?;
-        if package.resolve_local_nickname(ctx, nickname)?.is_some() {
-            return Err(LispError::PackageError(PackageError::Conflict));
-        }
-        let mut entry = ncl_object::make_cons(ctx, runtime, roots[0], roots[1])?;
-        with_rooted_words(ctx, std::slice::from_mut(&mut entry), |ctx, entry| {
-            let package_word = roots.get(2).copied().ok_or(ObjectError::Layout)?;
-            let mut previous = Package::from_word(package_word).local_nicknames(ctx)?;
-            with_rooted_words(ctx, std::slice::from_mut(&mut previous), |ctx, previous| {
-                let entry_word = entry.first().copied().ok_or(ObjectError::Layout)?;
-                let previous_word = previous.first().copied().ok_or(ObjectError::Layout)?;
-                let entries = ncl_object::make_cons(ctx, runtime, entry_word, previous_word)?;
-                let package_word = roots.get(2).copied().ok_or(ObjectError::Layout)?;
-                Package::from_word(package_word).set_local_nicknames(ctx, entries)?;
-                Ok(roots[0])
-            })
-        })
-    })
+    let mut roots = ncl_object::HeapRootedWords::new(ctx, &[nickname.0, target.0, package.0])?;
+    let nickname = designator_string(
+        ctx,
+        runtime,
+        NicknameDesignator(roots.get(0).ok_or(ObjectError::Layout)?.get()),
+    )?;
+    roots
+        .get(0)
+        .ok_or(ObjectError::Layout)?
+        .set(nickname.as_word());
+
+    let package = package_designator(
+        ctx,
+        runtime,
+        PackageDesignatorArg(roots.get(2).ok_or(ObjectError::Layout)?.get()),
+    )?;
+    roots
+        .get(2)
+        .ok_or(ObjectError::Layout)?
+        .set(package.as_word());
+    let target = package_designator(
+        ctx,
+        runtime,
+        PackageDesignatorArg(roots.get(1).ok_or(ObjectError::Layout)?.get()),
+    )?;
+    roots
+        .get(1)
+        .ok_or(ObjectError::Layout)?
+        .set(target.as_word());
+
+    let nickname = StringObject::from_word(roots.get(0).ok_or(ObjectError::Layout)?.get());
+    let package = Package::from_word(roots.get(2).ok_or(ObjectError::Layout)?.get());
+    ensure_unlocked(ctx, package)?;
+    if package.resolve_local_nickname(ctx, nickname)?.is_some() {
+        return Err(LispError::PackageError(PackageError::Conflict));
+    }
+    let entry = ncl_object::make_cons(
+        ctx,
+        runtime,
+        roots.get(0).ok_or(ObjectError::Layout)?.get(),
+        roots.get(1).ok_or(ObjectError::Layout)?.get(),
+    )?;
+    roots.push(ctx, entry)?;
+    let previous =
+        Package::from_word(roots.get(2).ok_or(ObjectError::Layout)?.get()).local_nicknames(ctx)?;
+    roots.push(ctx, previous)?;
+    let entries = ncl_object::make_cons(
+        ctx,
+        runtime,
+        roots.get(3).ok_or(ObjectError::Layout)?.get(),
+        roots.get(4).ok_or(ObjectError::Layout)?.get(),
+    )?;
+    Package::from_word(roots.get(2).ok_or(ObjectError::Layout)?.get())
+        .set_local_nicknames(ctx, entries)?;
+    Ok(roots.get(0).ok_or(ObjectError::Layout)?.get())
 }
 
 fn remove_package_local_nickname_impl(

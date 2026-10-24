@@ -17,7 +17,8 @@
 //! `TYPEP`), so there is no cross-crate format to keep in sync.
 
 use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, make_cons, simple_vector_set,
+    HeapRootedWord, HeapRootedWords, ObjectError, Package, Runtime, ThreadContext, Word, car, cdr,
+    make_cons, simple_vector_set,
 };
 
 use crate::class::NAME_SLOT;
@@ -53,12 +54,25 @@ pub fn set_slot_specs(
     class: Word,
     specs: &[SlotSpec],
 ) -> Result<(), ObjectError> {
-    let mut list = Word::NIL;
-    for spec in specs.iter().rev() {
-        let pair = make_cons(ctx, runtime, spec.initarg, spec.initform)?;
-        list = make_cons(ctx, runtime, pair, list)?;
+    let mut words = Vec::new();
+    for spec in specs {
+        words.push(spec.initarg);
+        words.push(spec.initform);
     }
-    simple_vector_set(ctx, class, SLOTS_SLOT, list)
+    let words = HeapRootedWords::new(ctx, &words)?;
+    let class = HeapRootedWord::new(ctx, class)?;
+    let list = HeapRootedWord::new(ctx, Word::NIL)?;
+    let pair = HeapRootedWord::new(ctx, Word::NIL)?;
+    for index in (0..specs.len()).rev() {
+        pair.set(make_cons(
+            ctx,
+            runtime,
+            words.get(index * 2).ok_or(ObjectError::Layout)?.get(),
+            words.get(index * 2 + 1).ok_or(ObjectError::Layout)?.get(),
+        )?);
+        list.set(make_cons(ctx, runtime, pair.get(), list.get())?);
+    }
+    simple_vector_set(ctx, class.get(), SLOTS_SLOT, list.get())
 }
 
 /// Read a class's slot specification list, in positional order.
@@ -66,16 +80,14 @@ pub fn set_slot_specs(
 /// # Errors
 /// Returns an object-layer error when the class descriptor or the stored
 /// list is malformed.
-pub fn slot_specs(ctx: &ThreadContext, class: Word) -> Result<Vec<SlotSpec>, ObjectError> {
-    let mut list = ncl_object::simple_vector_ref(ctx, class, SLOTS_SLOT)?;
-    let mut specs = Vec::new();
-    while list != Word::NIL {
-        let pair = car(ctx, list)?;
-        specs.push(SlotSpec {
-            initarg: car(ctx, pair)?,
-            initform: cdr(ctx, pair)?,
-        });
-        list = cdr(ctx, list)?;
+pub fn slot_specs(ctx: &ThreadContext, class: Word) -> Result<HeapRootedWords, ObjectError> {
+    let list = HeapRootedWord::new(ctx, ncl_object::simple_vector_ref(ctx, class, SLOTS_SLOT)?)?;
+    let mut specs = HeapRootedWords::default();
+    while list.get() != Word::NIL {
+        let pair = car(ctx, list.get())?;
+        specs.push(ctx, car(ctx, pair)?)?;
+        specs.push(ctx, cdr(ctx, pair)?)?;
+        list.set(cdr(ctx, list.get())?);
     }
     Ok(specs)
 }
@@ -112,36 +124,45 @@ pub fn instantiate(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     class: Word,
-    initargs: &[Word],
+    initargs: &HeapRootedWords,
 ) -> Result<Word, ObjectError> {
-    let specs = slot_specs(ctx, class)?;
-    let mut plist = Word::NIL;
-    for pair in initargs.chunks(2).rev() {
-        let key = pair.first().copied().unwrap_or(Word::NIL);
-        let value = pair.get(1).copied().unwrap_or(Word::NIL);
-        let tail = make_cons(ctx, runtime, value, plist)?;
-        plist = make_cons(ctx, runtime, key, tail)?;
+    let class = HeapRootedWord::new(ctx, class)?;
+    let specs = slot_specs(ctx, class.get())?;
+    let plist = HeapRootedWord::new(ctx, Word::NIL)?;
+    let tail = HeapRootedWord::new(ctx, Word::NIL)?;
+    for pair in initargs.as_slice().chunks(2).rev() {
+        let key = pair.first().ok_or(ObjectError::Layout)?.get();
+        let value = pair.get(1).map_or(Word::NIL, HeapRootedWord::get);
+        tail.set(make_cons(ctx, runtime, value, plist.get())?);
+        plist.set(make_cons(ctx, runtime, key, tail.get())?);
     }
-    let mut values = Vec::with_capacity(specs.len());
-    for spec in specs {
-        let supplied = if spec.initarg == Word::NIL {
+    let mut values = HeapRootedWords::default();
+    for index in (0..specs.len()).step_by(2) {
+        let initarg = specs.get(index).ok_or(ObjectError::Layout)?;
+        let initform = specs.get(index + 1).ok_or(ObjectError::Layout)?;
+        let supplied = if initarg.get() == Word::NIL {
             None
         } else {
-            plist_get(ctx, plist, spec.initarg)?
+            plist_get(ctx, plist.get(), initarg.get())?
         };
         let value = match supplied {
             Some(value) => value,
-            None if spec.initform != Word::NIL => {
-                ctx.invoke_condition_handler(spec.initform, &[])?
+            None if initform.get() != Word::NIL => {
+                ctx.invoke_condition_handler(initform.get(), &[])?
             }
             None => Word::NIL,
         };
-        values.push(value);
+        values.push(ctx, value)?;
     }
+    let values = values
+        .as_slice()
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
     crate::make_condition(
         ctx,
         runtime,
-        crate::ConditionClass::from_word(class),
+        crate::ConditionClass::from_word(class.get()),
         &values,
     )
     .map_err(|error| match error {

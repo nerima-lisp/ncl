@@ -6,9 +6,9 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
-    Package, Parameter, ParameterType, Runtime, ThreadContext, Word, classify_object, make_string,
-    slot_ref,
+    BuiltinName, BuiltinPackage, HeapRootedWord, HeapRootedWords, Instance, LambdaList,
+    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
+    ThreadContext, Word, classify_object, make_string, slot_ref,
 };
 
 use crate::ConditionError;
@@ -50,10 +50,15 @@ fn symbol_text(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError>
     Ok(text)
 }
 
-fn rest_arguments(args: &BuiltinArgs<'_>, start: usize) -> Result<Vec<Word>, ObjectError> {
-    (start..args.len())
+fn rest_arguments(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+    start: usize,
+) -> Result<HeapRootedWords, ObjectError> {
+    let values = (start..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::Layout))
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    HeapRootedWords::new(ctx, &values)
 }
 
 fn restart_name_word(
@@ -85,9 +90,9 @@ fn make_condition_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let designator = args.required(0)?;
-    let initargs = rest_arguments(args, 1)?;
-    let name = symbol_text(ctx, designator)?;
+    let designator = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let initargs = rest_arguments(ctx, args, 1)?;
+    let name = symbol_text(ctx, designator.get())?;
     let class = crate::condition_class(ctx, runtime, &name).ok_or(ObjectError::TypeError)?;
     crate::slots::instantiate(ctx, runtime, class.as_word(), &initargs)
 }
@@ -99,14 +104,23 @@ fn invoke_restart_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let designator = args.required(0)?;
-    let arguments = rest_arguments(args, 1)?;
-    if is_symbol(ctx, designator) {
-        let text = symbol_text(ctx, designator)?;
-        let name = restart_name_word(ctx, runtime, &text)?;
-        crate::invoke_restart_by_name(ctx, name, &arguments).map_err(condition_object_error)
+    let designator = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let arguments = rest_arguments(ctx, args, 1)?;
+    let argument_words = || {
+        arguments
+            .iter()
+            .map(HeapRootedWord::get)
+            .collect::<Vec<_>>()
+    };
+    if is_symbol(ctx, designator.get()) {
+        let text = symbol_text(ctx, designator.get())?;
+        let name_word = restart_name_word(ctx, runtime, &text)?;
+        let name = HeapRootedWord::new(ctx, name_word)?;
+        crate::invoke_restart_by_name(ctx, name.get(), &argument_words())
+            .map_err(condition_object_error)
     } else {
-        crate::invoke_restart(ctx, designator, &arguments).map_err(condition_object_error)
+        crate::invoke_restart(ctx, designator.get(), &argument_words())
+            .map_err(condition_object_error)
     }
 }
 
@@ -119,13 +133,14 @@ fn find_restart_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let designator = args.required(0)?;
-    if !is_symbol(ctx, designator) {
-        return Ok(designator);
+    let designator = HeapRootedWord::new(ctx, args.required(0)?)?;
+    if !is_symbol(ctx, designator.get()) {
+        return Ok(designator.get());
     }
-    let text = symbol_text(ctx, designator)?;
-    let name = restart_name_word(ctx, runtime, &text)?;
-    crate::find_restart(ctx, name)
+    let text = symbol_text(ctx, designator.get())?;
+    let name_word = restart_name_word(ctx, runtime, &text)?;
+    let name = HeapRootedWord::new(ctx, name_word)?;
+    crate::find_restart(ctx, name.get())
         .map(|found| found.unwrap_or(Word::NIL))
         .map_err(condition_object_error)
 }
@@ -147,15 +162,16 @@ fn restart_name_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let restart = args.required(0)?;
-    let name = crate::restart_name(ctx, restart).map_err(condition_object_error)?;
-    if name == Word::NIL {
+    let restart = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let name_word = crate::restart_name(ctx, restart.get()).map_err(condition_object_error)?;
+    let name = HeapRootedWord::new(ctx, name_word)?;
+    if name.get() == Word::NIL {
         return Ok(Word::NIL);
     }
-    let length = ncl_object::string_length(ctx, name)?;
+    let length = ncl_object::string_length(ctx, name.get())?;
     let mut text = String::with_capacity(length);
     for index in 0..length {
-        text.push(ncl_object::string_ref(ctx, name, index)?);
+        text.push(ncl_object::string_ref(ctx, name.get(), index)?);
     }
     let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
     Package::from_word(package)
@@ -169,10 +185,15 @@ fn invoke_named_restart(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     name: &str,
-    arguments: &[Word],
+    arguments: &HeapRootedWords,
 ) -> Result<Word, ObjectError> {
-    let name_word = restart_name_word(ctx, runtime, name)?;
-    match crate::invoke_restart_by_name(ctx, name_word, arguments) {
+    let name_value = restart_name_word(ctx, runtime, name)?;
+    let name_word = HeapRootedWord::new(ctx, name_value)?;
+    let arguments = arguments
+        .iter()
+        .map(HeapRootedWord::get)
+        .collect::<Vec<_>>();
+    match crate::invoke_restart_by_name(ctx, name_word.get(), &arguments) {
         Ok(value) => Ok(value),
         Err(ConditionError::RestartNotFound) => Ok(Word::NIL),
         Err(error) => Err(condition_object_error(error)),
@@ -187,8 +208,8 @@ macro_rules! named_restart_shorthand {
             args: &BuiltinArgs<'_>,
             _values: &mut MultipleValues,
         ) -> Result<Word, ObjectError> {
-            let value = args.required(0)?;
-            invoke_named_restart(ctx, runtime, $restart_name, &[value])
+            let arguments = HeapRootedWords::new(ctx, &[args.required(0)?])?;
+            invoke_named_restart(ctx, runtime, $restart_name, &arguments)
         }
     };
     ($fn_name:ident, $restart_name:literal) => {
@@ -198,7 +219,7 @@ macro_rules! named_restart_shorthand {
             _args: &BuiltinArgs<'_>,
             _values: &mut MultipleValues,
         ) -> Result<Word, ObjectError> {
-            invoke_named_restart(ctx, runtime, $restart_name, &[])
+            invoke_named_restart(ctx, runtime, $restart_name, &HeapRootedWords::default())
         }
     };
 }

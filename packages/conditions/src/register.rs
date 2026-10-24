@@ -2,9 +2,9 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, Package,
-    Parameter, ParameterType, Runtime, ThreadContext, Word, make_cons, set_symbol_special,
-    slot_ref, string_length, string_ref, symbol_name, with_roots,
+    BuiltinName, BuiltinPackage, HeapRootedWord, HeapRootedWords, Instance, LambdaList,
+    MultipleValues, ObjectError, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
+    make_cons, set_symbol_special, slot_ref, string_length, string_ref, symbol_name,
 };
 
 use crate::class::{HIERARCHY, install_class, wire_superclasses};
@@ -158,37 +158,26 @@ fn condition_argument(
     runtime: &Runtime,
     value: Word,
     default_class: &str,
-    format_arguments: &[Word],
+    format_arguments: &HeapRootedWords,
 ) -> Result<Word, ObjectError> {
-    if crate::condition_class_of(ctx, value).is_ok() {
-        return Ok(value);
+    let value = HeapRootedWord::new(ctx, value)?;
+    if crate::condition_class_of(ctx, value.get()).is_ok() {
+        return Ok(value.get());
     }
-    if string_text(ctx, value).is_some() {
+    if string_text(ctx, value.get()).is_some() {
         let class =
             crate::condition_class(ctx, runtime, default_class).ok_or(ObjectError::Layout)?;
-        let mut class = class.as_word();
-        let class_token = ncl_object::push_root(ctx, &mut class);
-        let mut value = value;
-        let value_token = ncl_object::push_root(ctx, &mut value);
-        let result = with_roots(ctx, format_arguments, |ctx, roots| {
-            let format_arguments = roots.iter().map(|root| **root).collect::<Vec<_>>();
-            let arguments = argument_list(ctx, runtime, &format_arguments)?;
-            with_roots(ctx, &[arguments], |ctx, roots| {
-                let arguments = **roots.first().ok_or(ObjectError::Layout)?;
-                crate::make_condition(
-                    ctx,
-                    runtime,
-                    crate::ConditionClass::from_word(class),
-                    &[value, arguments],
-                )
-                .map_err(condition_object_error)
-            })
-        });
-        ncl_object::pop_root(ctx, value_token);
-        ncl_object::pop_root(ctx, class_token);
-        return result;
+        let class = HeapRootedWord::new(ctx, class.as_word())?;
+        let arguments = argument_list(ctx, runtime, format_arguments)?;
+        return crate::make_condition(
+            ctx,
+            runtime,
+            crate::ConditionClass::from_word(class.get()),
+            &[value.get(), arguments],
+        )
+        .map_err(condition_object_error);
     }
-    let class_name = symbol_text(ctx, value)?;
+    let class_name = symbol_text(ctx, value.get())?;
     let class = crate::condition_class(ctx, runtime, &class_name).ok_or(ObjectError::TypeError)?;
     crate::slots::instantiate(ctx, runtime, class.as_word(), format_arguments)
 }
@@ -196,26 +185,24 @@ fn condition_argument(
 fn argument_list(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    values: &[Word],
+    values: &HeapRootedWords,
 ) -> Result<Word, ObjectError> {
-    with_roots(ctx, values, |ctx, roots| {
-        let mut list = Word::NIL;
-        let token = ncl_object::push_root(ctx, &mut list);
-        let result = (|| {
-            for value in roots.iter().rev() {
-                list = make_cons(ctx, runtime, **value, list)?;
-            }
-            Ok(list)
-        })();
-        ncl_object::pop_root(ctx, token);
-        result
-    })
+    let list = HeapRootedWord::new(ctx, Word::NIL)?;
+    for value in values.as_slice().iter().rev() {
+        list.set(make_cons(ctx, runtime, value.get(), list.get())?);
+    }
+    Ok(list.get())
 }
 
-fn rest_arguments(args: &BuiltinArgs<'_>, start: usize) -> Result<Vec<Word>, ObjectError> {
-    (start..args.len())
+fn rest_arguments(
+    ctx: &ThreadContext,
+    args: &BuiltinArgs<'_>,
+    start: usize,
+) -> Result<HeapRootedWords, ObjectError> {
+    let values = (start..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::Layout))
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    HeapRootedWords::new(ctx, &values)
 }
 
 fn signal_builtin(
@@ -224,17 +211,20 @@ fn signal_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let value = args.required(0)?;
-    let format_arguments = rest_arguments(args, 1)?;
-    let condition = condition_argument(ctx, runtime, value, "SIMPLE-CONDITION", &format_arguments)?;
-    let result: Result<(), ObjectError> = with_roots(ctx, &[condition], |ctx, roots| {
-        let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        match crate::signal(ctx, condition) {
-            Ok(()) | Err(crate::ConditionError::Unhandled) => Ok(()),
-            Err(error) => Err(condition_object_error(error)),
-        }
-    });
-    result.map(|()| Word::NIL)
+    let value = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let format_arguments = rest_arguments(ctx, args, 1)?;
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        value.get(),
+        "SIMPLE-CONDITION",
+        &format_arguments,
+    )?;
+    let condition = HeapRootedWord::new(ctx, condition)?;
+    match crate::signal(ctx, condition.get()) {
+        Ok(()) | Err(crate::ConditionError::Unhandled) => Ok(Word::NIL),
+        Err(error) => Err(condition_object_error(error)),
+    }
 }
 
 fn error_builtin(
@@ -243,22 +233,21 @@ fn error_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let value = args.required(0)?;
-    let format_arguments = rest_arguments(args, 1)?;
-    let condition = condition_argument(ctx, runtime, value, "SIMPLE-ERROR", &format_arguments)?;
-    let report = condition_report(ctx, condition);
-    let result = with_roots(ctx, &[condition], |ctx, roots| {
-        let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        crate::error(ctx, condition).map_err(|error| match error {
-            crate::ConditionError::Unhandled => {
-                // check-added-lines: allow(unsupported) preserve unhandled condition propagation
-                ObjectError::Unsupported
-            }
-            error @ (crate::ConditionError::NotACondition
-            | crate::ConditionError::RestartNotFound
-            | crate::ConditionError::ChainCorrupt
-            | crate::ConditionError::Object(_)) => condition_object_error(error),
-        })
+    let value = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let format_arguments = rest_arguments(ctx, args, 1)?;
+    let condition =
+        condition_argument(ctx, runtime, value.get(), "SIMPLE-ERROR", &format_arguments)?;
+    let condition = HeapRootedWord::new(ctx, condition)?;
+    let report = condition_report(ctx, condition.get());
+    let result = crate::error(ctx, condition.get()).map_err(|error| match error {
+        crate::ConditionError::Unhandled => {
+            // check-added-lines: allow(unsupported) preserve unhandled condition propagation
+            ObjectError::Unsupported
+        }
+        error @ (crate::ConditionError::NotACondition
+        | crate::ConditionError::RestartNotFound
+        | crate::ConditionError::ChainCorrupt
+        | crate::ConditionError::Object(_)) => condition_object_error(error),
     });
     match result {
         Ok(()) => Ok(Word::NIL),
@@ -266,7 +255,7 @@ fn error_builtin(
         Err(ObjectError::Unsupported) => {
             // check-added-lines: allow(unsupported) report unhandled condition
             // check-added-lines: allow(unsupported) report unhandled condition
-            if let Some(message) = report.or_else(|| string_text(ctx, value)) {
+            if let Some(message) = report.or_else(|| string_text(ctx, value.get())) {
                 eprintln!("{message}");
             }
             // check-added-lines: allow(unsupported) unhandled condition propagation
@@ -282,18 +271,22 @@ fn warn_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let value = args.required(0)?;
-    let format_arguments = rest_arguments(args, 1)?;
-    let condition = condition_argument(ctx, runtime, value, "SIMPLE-WARNING", &format_arguments)?;
-    let report = condition_report(ctx, condition);
-    let matched: Result<bool, ObjectError> = with_roots(ctx, &[condition], |ctx, roots| {
-        let condition = **roots.first().ok_or(ObjectError::Layout)?;
-        crate::signal_matched(ctx, condition).map_err(condition_object_error)
-    });
+    let value = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let format_arguments = rest_arguments(ctx, args, 1)?;
+    let condition = condition_argument(
+        ctx,
+        runtime,
+        value.get(),
+        "SIMPLE-WARNING",
+        &format_arguments,
+    )?;
+    let condition = HeapRootedWord::new(ctx, condition)?;
+    let report = condition_report(ctx, condition.get());
+    let matched = crate::signal_matched(ctx, condition.get()).map_err(condition_object_error);
     match matched {
         Ok(true) => Ok(Word::NIL),
         Ok(false) => {
-            let message = report.or_else(|| string_text(ctx, value));
+            let message = report.or_else(|| string_text(ctx, value.get()));
             match message {
                 Some(message) => eprintln!("WARNING: {message}"),
                 None => eprintln!("WARNING:"),
@@ -310,54 +303,31 @@ fn cerror_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let continue_control = args.required(0)?;
-    let datum = args.required(1)?;
-    let format_arguments = rest_arguments(args, 2)?;
-    // `Ok(Some(message))` carries an unhandled condition's report out of the
-    // nested root scopes so it can be printed once, after every temporary
-    // root has been released; `cerror` still continues (returns `NIL`)
-    // rather than aborting, matching its "resumable error" contract.
-    let result: Result<Option<String>, ObjectError> =
-        with_roots(ctx, &[continue_control, datum], |outer_ctx, outer| {
-            with_roots(outer_ctx, &format_arguments, |ctx, format_roots| {
-                let format_values = format_roots.iter().map(|root| **root).collect::<Vec<_>>();
-                let datum = **outer.get(1).ok_or(ObjectError::Layout)?;
-                let condition =
-                    condition_argument(ctx, runtime, datum, "SIMPLE-ERROR", &format_values)?;
-                with_roots(ctx, &[condition, datum], |ctx, condition_roots| {
-                    let condition = **condition_roots.first().ok_or(ObjectError::Layout)?;
-                    let datum = **condition_roots.get(1).ok_or(ObjectError::Layout)?;
-                    let refreshed_format_values =
-                        format_roots.iter().map(|root| **root).collect::<Vec<_>>();
-                    let continue_args = argument_list(ctx, runtime, &refreshed_format_values)?;
-                    with_roots(ctx, &[continue_args], |ctx, continue_roots| {
-                        let continue_control = **outer.first().ok_or(ObjectError::Layout)?;
-                        let continue_args = **continue_roots.first().ok_or(ObjectError::Layout)?;
-                        match crate::cerror(
-                            ctx,
-                            runtime,
-                            continue_control,
-                            continue_args,
-                            condition,
-                        ) {
-                            Ok(()) => Ok(None),
-                            Err(crate::ConditionError::Unhandled) => {
-                                Ok(condition_report(ctx, condition)
-                                    .or_else(|| string_text(ctx, datum)))
-                            }
-                            Err(error) => Err(condition_object_error(error)),
-                        }
-                    })
-                })
-            })
-        });
-    match result {
-        Ok(Some(message)) => {
-            eprintln!("{message}");
+    let initial = HeapRootedWords::new(ctx, &[args.required(0)?, args.required(1)?])?;
+    let format_arguments = rest_arguments(ctx, args, 2)?;
+    let datum = initial.get(1).ok_or(ObjectError::Layout)?;
+    let condition =
+        condition_argument(ctx, runtime, datum.get(), "SIMPLE-ERROR", &format_arguments)?;
+    let condition = HeapRootedWord::new(ctx, condition)?;
+    let continue_args = argument_list(ctx, runtime, &format_arguments)?;
+    let continue_args = HeapRootedWord::new(ctx, continue_args)?;
+    match crate::cerror(
+        ctx,
+        runtime,
+        initial.get(0).ok_or(ObjectError::Layout)?.get(),
+        continue_args.get(),
+        condition.get(),
+    ) {
+        Ok(()) => Ok(Word::NIL),
+        Err(crate::ConditionError::Unhandled) => {
+            let message =
+                condition_report(ctx, condition.get()).or_else(|| string_text(ctx, datum.get()));
+            if let Some(message) = message {
+                eprintln!("{message}");
+            }
             Ok(Word::NIL)
         }
-        Ok(None) => Ok(Word::NIL),
-        Err(error) => Err(error),
+        Err(error) => Err(condition_object_error(error)),
     }
 }
 

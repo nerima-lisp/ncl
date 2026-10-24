@@ -85,8 +85,8 @@ pub use readtable::{
 };
 pub(crate) use roots::finish_root;
 pub use roots::{
-    HeapRootedWord, pop_heap_root, pop_root, push_heap_root, push_root, try_pop_root,
-    try_push_root, unregister_heap_root,
+    HeapRootedWord, diagnose_forwarded_word, pop_heap_root, pop_root, push_heap_root, push_root,
+    try_pop_root, try_push_root, unregister_heap_root,
 };
 pub use roots::{with_heap_rooted_slice, with_root, with_rooted_slice, with_roots};
 pub use runtime::Runtime;

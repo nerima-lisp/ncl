@@ -184,6 +184,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut input_stream_spec);
     let mut output_stream_spec = list(&mut ctx, &runtime, &[x])?;
     root!(&mut output_stream_spec);
+    let mut open_file_spec = list(&mut ctx, &runtime, &[x, x])?;
+    root!(&mut open_file_spec);
     // A `(name (var) body)`-shaped clause, the common shape for both
     // `HANDLER-CASE` and `RESTART-CASE` clauses.
     let mut binding_clause = list(&mut ctx, &runtime, &[x, destructuring_lambda_list, x])?;
@@ -311,6 +313,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         "WITH-INPUT-FROM-STRING",
         [input_stream_spec, x]
     );
+    case!("WITH-OPEN-FILE", "WITH-OPEN-FILE", [open_file_spec, x]);
     case!(
         "WITH-OUTPUT-TO-STRING",
         "WITH-OUTPUT-TO-STRING",

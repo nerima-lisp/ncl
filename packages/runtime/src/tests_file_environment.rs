@@ -9,6 +9,32 @@ fn lisp_string(value: &Path) -> String {
 }
 
 #[test]
+fn compile_file_expands_with_open_file_minimal_form() {
+    let input = std::env::temp_dir().join(format!(
+        "ncl-with-open-file-compile-{}.lisp",
+        std::process::id()
+    ));
+    let source =
+        "(defun repro-with-open-file () (with-open-file (stream \"unused-input.txt\") nil))";
+    if let Err(error) = fs::write(&input, source) {
+        panic!("WITH-OPEN-FILE regression source creation failed: {error}");
+    }
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
+    if let Err(error) = runtime.compile_file(&input) {
+        panic!("COMPILE-FILE failed to expand WITH-OPEN-FILE: {error}");
+    }
+    if let Err(error) = fs::remove_file(&input) {
+        panic!("WITH-OPEN-FILE regression source cleanup failed: {error}");
+    }
+    if let Err(error) = fs::remove_file(input.with_extension("fasl")) {
+        panic!("WITH-OPEN-FILE regression output cleanup failed: {error}");
+    }
+}
+
+#[test]
 fn compile_file_builtin_compiles_and_loads_fasl_with_three_values() {
     let input =
         std::env::temp_dir().join(format!("ncl-compile-and-load-{}.lisp", std::process::id()));

@@ -163,7 +163,7 @@ impl Context<'_> {
         let live = capture::analyze(&forms)
             .assigned_names()
             .into_iter()
-            .filter(|name| matches!(f.env().lookup_variable(name), Some(Slot::Value(_))))
+            .filter_map(|name| f.env().lookup_variable(&name).map(|slot| (name, slot)))
             .collect::<Vec<_>>();
         let exit_values = live.iter().map(|_| f.fresh_value()).collect::<Vec<_>>();
         let exit = self.block(
@@ -198,7 +198,7 @@ impl Context<'_> {
                 name: name.clone(),
                 target: *target,
                 active_depth: tag_depth,
-                live: live.clone(),
+                live: live.iter().map(|(name, _)| name.clone()).collect(),
             });
         }
         let mark = self.targets.len();
@@ -222,17 +222,20 @@ impl Context<'_> {
                     if !f.is_terminated() {
                         let args = live
                             .iter()
-                            .filter_map(|name| match f.env().lookup_variable(name) {
-                                Some(Slot::Value(value)) => Some(value),
-                                // check-added-lines: allow(wildcard) only value slots are live here.
-                                _ => None,
+                            .filter_map(|(name, _)| match f.env().lookup_variable(name) {
+                                Some(Slot::Value(value) | Slot::Cell(value)) => Some(value),
+                                None => None,
                             })
                             .collect();
                         Self::terminate_jump(f, target, args)?;
                     }
                     f.position(target)?;
-                    for (name, value) in live.iter().zip(params) {
-                        f.env().rebind_variable(name, Slot::Value(*value));
+                    for ((name, previous_slot), value) in live.iter().zip(params) {
+                        let slot = match previous_slot {
+                            Slot::Value(_) => Slot::Value(*value),
+                            Slot::Cell(_) => Slot::Cell(*value),
+                        };
+                        f.env().rebind_variable(name, slot);
                     }
                 }
                 TagbodyItem::Form(form) => {
@@ -247,10 +250,9 @@ impl Context<'_> {
         if normal_path {
             let args = live
                 .iter()
-                .filter_map(|name| match f.env().lookup_variable(name) {
-                    Some(Slot::Value(value)) => Some(value),
-                    // check-added-lines: allow(wildcard) only value slots are live here.
-                    _ => None,
+                .filter_map(|(name, _)| match f.env().lookup_variable(name) {
+                    Some(Slot::Value(value) | Slot::Cell(value)) => Some(value),
+                    None => None,
                 })
                 .collect();
             Self::terminate_jump(f, exit, args)?;
@@ -260,8 +262,12 @@ impl Context<'_> {
         if !normal_path {
             f.terminate(Terminator::Throw { condition: value })?;
         }
-        for (name, value) in live.iter().zip(exit_values) {
-            f.env().rebind_variable(name, Slot::Value(value));
+        for ((name, previous_slot), value) in live.iter().zip(exit_values) {
+            let slot = match previous_slot {
+                Slot::Value(_) => Slot::Value(value),
+                Slot::Cell(_) => Slot::Cell(value),
+            };
+            f.env().rebind_variable(name, slot);
         }
         f.env().pop();
         Ok(value)

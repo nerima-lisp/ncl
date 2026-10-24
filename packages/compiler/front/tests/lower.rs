@@ -187,6 +187,122 @@ fn let_initializer_return_from_escaping_block_verifies() {
     }
 }
 
+// TAGBODY loop entries and GO must carry captured cells rebound by escaping control.
+#[test]
+fn tagbody_loop_go_preserves_captured_cell() {
+    let mut fx = Fixture::new();
+    let exit_p = fx.user("EXIT-P");
+    let failure = fx.user("FAILURE");
+    let condition = fx.user("CONDITION");
+    let condition_parameter = fx.user("CONDITION-PARAMETER");
+    let handler_tag = fx.user("HANDLER-TAG");
+    let token = fx.user("HANDLER-TOKEN");
+    let result = fx.user("HANDLER-RESULT");
+    let loop_tag = fx.user("LOOP");
+    let end_tag = fx.user("END");
+    let push_handler = fx.intern("NCL-EXT", "PUSH-HANDLER");
+    let pop_handler = fx.intern("NCL-EXT", "POP-HANDLER");
+
+    let condition_list = fx.list(&[condition_parameter]);
+    let condition_value = fx.form("PRINC-TO-STRING", &[condition]);
+    let assign_failure = fx.form("SETQ", &[failure, condition_value]);
+    let condition_binding = fx.list(&[condition, condition_parameter]);
+    let condition_bindings = fx.list(&[condition_binding]);
+    let handler_body = fx.form("LET", &[condition_bindings, assign_failure]);
+    let handler_return = fx.form("RETURN-FROM", &[handler_tag, handler_body]);
+    let handler_lambda = fx.form("LAMBDA", &[condition_list, handler_return]);
+    let handler_function = fx.form("FUNCTION", &[handler_lambda]);
+    let error_type = fx.cl("ERROR");
+    let quoted_error = fx.form("QUOTE", &[error_type]);
+    let push = fx.list(&[push_handler, quoted_error, handler_function]);
+    let token_binding = fx.list(&[token, push]);
+    let token_bindings = fx.list(&[token_binding]);
+
+    let protected_return = fx.form("RETURN-FROM", &[handler_tag, Word::NIL]);
+    let result_binding = fx.list(&[result, protected_return]);
+    let result_bindings = fx.list(&[result_binding]);
+    let pop = fx.list(&[pop_handler, token]);
+    let handler_bind_body = fx.form("PROGN", &[pop, result]);
+    let prog1_expansion = fx.form("LET", &[result_bindings, handler_bind_body]);
+    let handler_bind = fx.form("LET", &[token_bindings, prog1_expansion]);
+    let handler_case = fx.form("BLOCK", &[handler_tag, handler_bind]);
+
+    let go_end = fx.form("GO", &[end_tag]);
+    let exit_test = fx.form("IF", &[exit_p, go_end]);
+    let go_loop = fx.form("GO", &[loop_tag]);
+    let tagbody = fx.form(
+        "TAGBODY",
+        &[loop_tag, exit_test, handler_case, go_loop, end_tag],
+    );
+
+    let failure_binding = fx.list(&[failure, Word::NIL]);
+    let failure_bindings = fx.list(&[failure_binding]);
+    let body = fx.form("LET*", &[failure_bindings, tagbody, failure]);
+    let lambda_list = fx.list(&[exit_p]);
+    let lambda = fx.form("LAMBDA", &[lambda_list, body]);
+
+    let expr = fx.expand(lambda).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+}
+
+// Post-macro shape of `UNLESS` around a captured assignment in `HANDLER-CASE`.
+#[test]
+fn if_merges_captured_cell_from_escaping_block() {
+    let mut fx = Fixture::new();
+    let failure = fx.user("FAILURE");
+    let condition = fx.user("CONDITION");
+    let condition_parameter = fx.user("CONDITION-PARAMETER");
+    let handler_tag = fx.user("HANDLER-TAG");
+    let token = fx.user("HANDLER-TOKEN");
+    let result = fx.user("HANDLER-RESULT");
+    let push_handler = fx.intern("NCL-EXT", "PUSH-HANDLER");
+    let pop_handler = fx.intern("NCL-EXT", "POP-HANDLER");
+
+    let condition_list = fx.list(&[condition_parameter]);
+    let condition_value = fx.form("PRINC-TO-STRING", &[condition]);
+    let assign_failure = fx.form("SETQ", &[failure, condition_value]);
+    let condition_binding = fx.list(&[condition, condition_parameter]);
+    let condition_bindings = fx.list(&[condition_binding]);
+    let handler_body = fx.form("LET", &[condition_bindings, assign_failure]);
+    let handler_return = fx.form("RETURN-FROM", &[handler_tag, handler_body]);
+    let handler_lambda = fx.form("LAMBDA", &[condition_list, handler_return]);
+    let handler_function = fx.form("FUNCTION", &[handler_lambda]);
+    let error_type = fx.cl("ERROR");
+    let quoted_error = fx.form("QUOTE", &[error_type]);
+    let push = fx.list(&[push_handler, quoted_error, handler_function]);
+    let token_binding = fx.list(&[token, push]);
+    let token_bindings = fx.list(&[token_binding]);
+
+    let protected_return = fx.form("RETURN-FROM", &[handler_tag, Word::NIL]);
+    let result_binding = fx.list(&[result, protected_return]);
+    let result_bindings = fx.list(&[result_binding]);
+    let pop = fx.list(&[pop_handler, token]);
+    let handler_bind_body = fx.form("PROGN", &[pop, result]);
+    let prog1_expansion = fx.form("LET", &[result_bindings, handler_bind_body]);
+    let handler_bind = fx.form("LET", &[token_bindings, prog1_expansion]);
+    let handler_case = fx.form("BLOCK", &[handler_tag, handler_bind]);
+    let not_failure = fx.form("NOT", &[failure]);
+    let guarded_handler = fx.form("IF", &[not_failure, handler_case]);
+
+    let failure_binding = fx.list(&[failure, Word::NIL]);
+    let failure_bindings = fx.list(&[failure_binding]);
+    let body = fx.form("LET*", &[failure_bindings, guarded_handler, failure]);
+    let lambda = fx.form("LAMBDA", &[Word::NIL, body]);
+
+    let expr = fx.expand(lambda).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+}
+
 /// Rule: multiple-value forms use the existing indirect-call path and
 /// `SetMultipleValues`; lowering must not emit an unimplemented adapter.
 #[test]

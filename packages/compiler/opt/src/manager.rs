@@ -1,7 +1,10 @@
 use super::{
-    DeadCodeElimination, FunctionPass, Module, ModulePass, PassError, PassEvent, PassManager,
-    PassManagerOptions, PassReport, PassStat, PassVerification, Sccp, TypeEffect,
+    DeadCodeElimination, FunctionPass, GlobalValueNumbering, InlineDirectCalls, Module, ModulePass,
+    PassError, PassEvent, PassManager, PassManagerOptions, PassReport, PassStat, PassVerification,
+    Sccp, TypeEffect,
 };
+use ncl_ir::{Function, VerifyError};
+use std::collections::HashSet;
 use std::time::Instant;
 
 impl PassManager {
@@ -31,13 +34,12 @@ impl PassManager {
         self.module_passes.push(Box::new(pass));
     }
 
-    /// Adds the GC-safe default subset of optimization passes.
-    ///
-    /// The runtime's default pipeline omits direct-call inlining, which can copy raw
-    /// stores, and GVN, which can reuse address values across safepoints.
+    /// Adds SCCP, type/effect analysis, scalar inlining, scalar GVN, and DCE in order.
     pub fn add_default_optimization_pipeline(&mut self) {
         self.add_function_pass(Sccp);
         self.add_function_pass(TypeEffect);
+        self.add_function_pass(InlineDirectCalls::default());
+        self.add_function_pass(GlobalValueNumbering);
         self.add_function_pass(DeadCodeElimination);
     }
 
@@ -50,10 +52,7 @@ impl PassManager {
         self.run_with_observer(module, |_| {})
     }
 
-    /// Runs all passes and reports every invocation to `observer`.
-    ///
-    /// The observer is called after verification for successful invocations and on the
-    /// failure path for pass and verification errors.
+    /// Runs passes to a fixed point and reports each invocation to `observer`.
     ///
     /// # Errors
     ///
@@ -65,11 +64,27 @@ impl PassManager {
     ) -> Result<PassReport, PassError> {
         let mut report = PassReport::default();
         let verify = self.options.verify_after_each_pass;
+        let mut skipped_functions = HashSet::new();
+        let mut skipped_module_passes = HashSet::new();
         for iteration in 0..self.options.max_iterations {
             let mut changed = false;
-            for pass in &mut self.function_passes {
+            for (pass_index, pass) in self.function_passes.iter_mut().enumerate() {
                 for index in 0..module.functions.len() {
-                    changed |= run_function_pass(
+                    let Some(function_name) = module
+                        .functions
+                        .get(index)
+                        .map(|function| function.name.clone())
+                    else {
+                        return Err(PassError::new(
+                            "pass manager",
+                            "function index out of bounds",
+                        ));
+                    };
+                    let skip_key = (pass_index, index, function_name);
+                    if skipped_functions.contains(&skip_key) {
+                        continue;
+                    }
+                    let (pass_changed, skip) = run_function_pass(
                         pass.as_mut(),
                         module,
                         index,
@@ -78,10 +93,17 @@ impl PassManager {
                         &mut report,
                         &mut observer,
                     )?;
+                    changed |= pass_changed;
+                    if skip {
+                        skipped_functions.insert(skip_key);
+                    }
                 }
             }
-            for pass in &mut self.module_passes {
-                changed |= run_module_pass(
+            for (pass_index, pass) in self.module_passes.iter_mut().enumerate() {
+                if skipped_module_passes.contains(&pass_index) {
+                    continue;
+                }
+                let (pass_changed, skip) = run_module_pass(
                     pass.as_mut(),
                     module,
                     iteration + 1,
@@ -89,6 +111,10 @@ impl PassManager {
                     &mut report,
                     &mut observer,
                 )?;
+                changed |= pass_changed;
+                if skip {
+                    skipped_module_passes.insert(pass_index);
+                }
             }
             report.iterations = iteration + 1;
             if !changed {
@@ -100,6 +126,45 @@ impl PassManager {
     }
 }
 
+fn address_liveness_errors(function: &Function) -> Vec<VerifyError> {
+    ncl_ir::verify(function)
+        .err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|error| matches!(error, VerifyError::AddressLiveAcross { .. }))
+        .collect()
+}
+
+fn added_provenance_errors(previous: &[VerifyError], function: &Function) -> Vec<VerifyError> {
+    let mut unmatched = previous.to_vec();
+    let mut added = Vec::new();
+    for error in address_liveness_errors(function) {
+        if let Some(index) = unmatched.iter().position(|existing| existing == &error) {
+            unmatched.remove(index);
+        } else {
+            added.push(error);
+        }
+    }
+    added
+}
+
+fn new_module_provenance_errors(before: &Module, after: &Module) -> Vec<(String, VerifyError)> {
+    let mut added = Vec::new();
+    for function in &after.functions {
+        let previous = before
+            .functions
+            .iter()
+            .find(|candidate| candidate.id == function.id)
+            .map_or_else(Vec::new, address_liveness_errors);
+        added.extend(
+            added_provenance_errors(&previous, function)
+                .into_iter()
+                .map(|error| (function.name.clone(), error)),
+        );
+    }
+    added
+}
+
 fn run_function_pass(
     pass: &mut dyn FunctionPass,
     module: &mut Module,
@@ -108,7 +173,7 @@ fn run_function_pass(
     verify: bool,
     report: &mut PassReport,
     observer: &mut impl FnMut(&PassEvent),
-) -> Result<bool, PassError> {
+) -> Result<(bool, bool), PassError> {
     let pass_name = pass.name().to_owned();
     let Some(function_name) = module
         .functions
@@ -118,15 +183,40 @@ fn run_function_pass(
         return Err(PassError::new(&pass_name, "function index out of bounds"));
     };
     let snapshot = module.clone();
+    let Some(snapshot_function) = snapshot.functions.get(index).cloned() else {
+        return Err(PassError::new(&pass_name, "function index out of bounds"));
+    };
     let started = Instant::now();
     let Some(function) = module.functions.get_mut(index) else {
         return Err(PassError::new(&pass_name, "function index out of bounds"));
     };
     let result = pass.run(function, &snapshot);
     let elapsed = started.elapsed();
+    let Some(updated_function) = module.functions.get(index) else {
+        return Err(PassError::new(&pass_name, "function index out of bounds"));
+    };
+    let original_address_errors = address_liveness_errors(&snapshot_function);
+    let new_errors = added_provenance_errors(&original_address_errors, updated_function);
     let did_change = match result {
         Ok(changed) => changed,
         Err(error) => {
+            if !new_errors.is_empty() {
+                return rollback_function_pass(
+                    module,
+                    index,
+                    snapshot_function,
+                    PassInvocation {
+                        iteration,
+                        function: Some(function_name),
+                        pass: pass_name,
+                        changed: false,
+                        elapsed,
+                    },
+                    report,
+                    observer,
+                    &format!("{new_errors:?}; pass error: {}", error.message),
+                );
+            }
             let error = PassError::new(&pass_name, error.message);
             observer(&PassEvent {
                 iteration,
@@ -140,12 +230,29 @@ fn run_function_pass(
             return Err(error);
         }
     };
+    if !new_errors.is_empty() {
+        return rollback_function_pass(
+            module,
+            index,
+            snapshot_function,
+            PassInvocation {
+                iteration,
+                function: Some(function_name),
+                pass: pass_name,
+                changed: false,
+                elapsed,
+            },
+            report,
+            observer,
+            &format!("{new_errors:?}"),
+        );
+    }
     report.stats.push(PassStat {
         pass: pass_name.clone(),
         changed: did_change,
         elapsed,
     });
-    verify_and_notify(
+    let changed = verify_and_notify(
         module,
         verify,
         PassInvocation {
@@ -156,7 +263,45 @@ fn run_function_pass(
             elapsed,
         },
         observer,
-    )
+    )?;
+    Ok((changed, false))
+}
+
+fn rollback_function_pass(
+    module: &mut Module,
+    index: usize,
+    snapshot_function: Function,
+    invocation: PassInvocation,
+    report: &mut PassReport,
+    observer: &mut impl FnMut(&PassEvent),
+    detail: &str,
+) -> Result<(bool, bool), PassError> {
+    let Some(function) = module.functions.get_mut(index) else {
+        return Err(PassError::new(
+            &invocation.pass,
+            "function index out of bounds",
+        ));
+    };
+    *function = snapshot_function;
+    let message = format!(
+        "provenance verification rolled back {}: {detail}",
+        invocation.pass
+    );
+    report.stats.push(PassStat {
+        pass: invocation.pass.clone(),
+        changed: false,
+        elapsed: invocation.elapsed,
+    });
+    observer(&PassEvent {
+        iteration: invocation.iteration,
+        function: invocation.function,
+        pass: invocation.pass,
+        changed: Some(invocation.changed),
+        verification: PassVerification::RolledBack(message.clone()),
+        elapsed: invocation.elapsed,
+        error: Some(message),
+    });
+    Ok((false, true))
 }
 
 fn run_module_pass(
@@ -166,14 +311,38 @@ fn run_module_pass(
     verify: bool,
     report: &mut PassReport,
     observer: &mut impl FnMut(&PassEvent),
-) -> Result<bool, PassError> {
+) -> Result<(bool, bool), PassError> {
     let pass_name = pass.name().to_owned();
+    let snapshot = module.clone();
     let started = Instant::now();
     let result = pass.run(module);
     let elapsed = started.elapsed();
     let did_change = match result {
         Ok(changed) => changed,
         Err(error) => {
+            let new_errors = new_module_provenance_errors(&snapshot, module);
+            if !new_errors.is_empty() {
+                *module = snapshot;
+                let message = format!(
+                    "provenance verification rolled back {pass_name}: {new_errors:?}; pass error: {}",
+                    error.message
+                );
+                report.stats.push(PassStat {
+                    pass: pass_name.clone(),
+                    changed: false,
+                    elapsed,
+                });
+                observer(&PassEvent {
+                    iteration,
+                    function: None,
+                    pass: pass_name,
+                    changed: Some(false),
+                    verification: PassVerification::RolledBack(message.clone()),
+                    elapsed,
+                    error: Some(message),
+                });
+                return Ok((false, true));
+            }
             let error = PassError::new(&pass_name, error.message);
             observer(&PassEvent {
                 iteration,
@@ -187,12 +356,32 @@ fn run_module_pass(
             return Err(error);
         }
     };
+    let new_errors = new_module_provenance_errors(&snapshot, module);
+    if !new_errors.is_empty() {
+        *module = snapshot;
+        let message = format!("provenance verification rolled back {pass_name}: {new_errors:?}");
+        report.stats.push(PassStat {
+            pass: pass_name.clone(),
+            changed: false,
+            elapsed,
+        });
+        observer(&PassEvent {
+            iteration,
+            function: None,
+            pass: pass_name,
+            changed: Some(false),
+            verification: PassVerification::RolledBack(message.clone()),
+            elapsed,
+            error: Some(message),
+        });
+        return Ok((false, true));
+    }
     report.stats.push(PassStat {
         pass: pass_name.clone(),
         changed: did_change,
         elapsed,
     });
-    verify_and_notify(
+    let changed = verify_and_notify(
         module,
         verify,
         PassInvocation {
@@ -203,7 +392,8 @@ fn run_module_pass(
             elapsed,
         },
         observer,
-    )
+    )?;
+    Ok((changed, false))
 }
 
 struct PassInvocation {

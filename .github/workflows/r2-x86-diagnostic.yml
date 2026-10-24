@@ -1,0 +1,42 @@
+name: R2 x86 diagnostic
+
+on:
+  push:
+    branches:
+      - codex/r2-x86-diag-20261024
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: x86-64 Linux LOOP diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record candidate revision
+        run: echo "checkout_sha=${{ github.sha }}"
+      - name: Documentation flake check
+        continue-on-error: true
+        run: nix flake check --all-systems
+      - name: Build x86 default and cargo-test checks
+        continue-on-error: true
+        run: nix build -L --keep-going .#checks.x86_64-linux.default .#checks.x86_64-linux.cargo-test
+      - name: Focused test debug default features
+        continue-on-error: true
+        run: nix develop -c cargo test --locked -j 4 -p ncl --test e2enum bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding -- --exact --nocapture
+      - name: Focused test debug all features
+        continue-on-error: true
+        run: nix develop -c cargo test --locked -j 4 -p ncl --all-features --test e2enum bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding -- --exact --nocapture
+      - name: Focused test release default features
+        continue-on-error: true
+        run: nix develop -c cargo test --locked -j 4 -p ncl --release --test e2enum bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding -- --exact --nocapture
+      - name: Focused test release all features
+        continue-on-error: true
+        run: nix develop -c cargo test --locked -j 4 -p ncl --all-features --release --test e2enum bignum_producing_arithmetic_survives_gc_stress_and_strict_forwarding -- --exact --nocapture

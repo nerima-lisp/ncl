@@ -318,6 +318,19 @@ impl Heap {
     }
     pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
         let mut state = self.lock_state();
+        if self.strict_forwarding.load(Ordering::Relaxed)
+            && let Some(index) = Self::find_raw(&state, object)
+            && let Some(forwarded_to) = state.objects[index].forwarded_to
+        {
+            let target_address = state.objects[forwarded_to].words.as_ptr().addr();
+            let gc_epoch = state.gc_epoch;
+            drop(state);
+            eprintln!(
+                "R2_DIAG strict_forwarding rejected forwarded object: object={object:?} address={:#x} target_address={target_address:#x} slot={slot} value={value:?} gc_epoch={gc_epoch}",
+                object.address()
+            );
+            return false;
+        }
         self.find_for_mutator(&state, object)
             .and_then(|index| state.objects[index].words.get_mut(slot))
             .map(|target| *target = value.bits())

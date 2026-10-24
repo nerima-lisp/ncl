@@ -125,7 +125,7 @@
   (write-json-result *results* *standard-output*)
   *results*)
 
-(defun load-benchmark-file (file)
+(defun load-benchmark-file (file &optional (base-directory *misc-dir*))
   (let ((start (get-internal-real-time)))
     (block load-file
       (handler-bind ((error
@@ -134,7 +134,7 @@
                          (push (list file :failed (princ-to-string condition))
                                *load-results*)
                          (return-from load-file :failed))))
-        (load (merge-pathnames file *misc-dir*)))
+        (load (merge-pathnames file base-directory)))
       (push (list file :loaded
                   (elapsed-seconds start (get-internal-real-time)))
             *load-results*)
@@ -157,7 +157,7 @@
 
 ;; tests.lisp supplies only benchmark metadata and function designators.  It
 ;; is safe to load after the replacement DEFBENCH has been installed.
-(load-benchmark-file "tests.lisp")
+(load-benchmark-file "tests.lisp" #p"./")
 (progn
   (dolist (result (nreverse *load-results*))
     (when (eq (second result) :failed)

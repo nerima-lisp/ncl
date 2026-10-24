@@ -2,6 +2,7 @@ use crate::{DecodeError, DecodedInstruction};
 
 #[derive(Clone, Copy)]
 struct Rex {
+    present: bool,
     w: bool,
     r: u8,
     x: u8,
@@ -34,6 +35,7 @@ impl<'a> Reader<'a> {
             pos: 0,
             address,
             rex: Rex {
+                present: false,
                 w: false,
                 r: 0,
                 x: 0,
@@ -77,8 +79,12 @@ impl<'a> Reader<'a> {
         let v = self.byte()?;
         Ok((v >> 6, (v >> 3) & 7, v & 7))
     }
-    fn operand(&mut self, reg_field: u8, memory_only: bool) -> Result<(u8, Operand), DecodeError> {
-        let (mode, _r, rm) = self.modrm()?;
+    fn operand(
+        &mut self,
+        reg_field: u8,
+        memory_only: bool,
+    ) -> Result<(u8, Operand, u8), DecodeError> {
+        let (mode, modrm_reg, rm) = self.modrm()?;
         let reg = self.reg(reg_field, self.rex.r);
         if mode == 3 {
             if memory_only {
@@ -87,7 +93,7 @@ impl<'a> Reader<'a> {
                     reason: "register used where memory was required".into(),
                 });
             }
-            return Ok((reg, Operand::Reg(self.reg(rm, self.rex.b))));
+            return Ok((reg, Operand::Reg(self.reg(rm, self.rex.b)), modrm_reg));
         }
         let (base, index, scale, rip, disp) = if rm == 4 {
             let sib = self.byte()?;
@@ -138,6 +144,7 @@ impl<'a> Reader<'a> {
                 disp,
                 rip,
             },
+            modrm_reg,
         ))
     }
 }
@@ -156,6 +163,17 @@ fn reg_name(r: u8) -> String {
         _ => unreachable!(),
     }
     .into()
+}
+fn byte_reg_name(r: u8, rex_present: bool) -> String {
+    if r >= 8 {
+        return format!("r{r}b");
+    }
+    let names = if rex_present {
+        ["al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil"]
+    } else {
+        ["al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"]
+    };
+    names[usize::from(r)].into()
 }
 fn xmm_name(r: u8) -> String {
     format!("xmm{r}")
@@ -229,6 +247,7 @@ fn decode_one(bytes: &[u8], address: u64) -> Result<(u8, String, Option<i64>), D
             Some(b @ 0x40..=0x4f) => {
                 r.pos += 1;
                 r.rex = Rex {
+                    present: true,
                     w: b & 8 != 0,
                     r: (b >> 2) & 1,
                     x: (b >> 1) & 1,
@@ -268,9 +287,10 @@ fn decode_one(bytes: &[u8], address: u64) -> Result<(u8, String, Option<i64>), D
     }
     if prefix == 0 && (0xb8..=0xbf).contains(&op) && r.rex.w {
         let rr = (op & 7) | (r.rex.b << 3);
+        let value = r.imm_i64()?;
         return Ok((
             r.pos as u8,
-            format!("mov ${}, %{}", r.imm_i64()?, reg_name(rr)),
+            format!("mov ${value}, %{}", reg_name(rr)),
             None,
         ));
     }
@@ -293,7 +313,7 @@ fn decode_0f(
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
     if op == 0x1f {
-        let (_, o) = r.operand(0, true)?;
+        let (_, o, _) = r.operand(0, true)?;
         return Ok((r.pos as u8, format!("nop {}", operand_name(o)), None));
     }
     if (0x80..=0x8f).contains(&op) {
@@ -308,7 +328,7 @@ fn decode_0f_modrm(
     op: u8,
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
-    let (reg, o) = r.operand(0, false)?;
+    let (reg, o, modrm_reg) = r.operand(0, false)?;
     let name = operand_name(o);
     let text = match op {
         0x10 if r.rex.w => format!("movsd {name}, %{}", xmm_name(reg)),
@@ -318,10 +338,15 @@ fn decode_0f_modrm(
         0x40..=0x4f => format!("cmov{} {name}, %{}", cond_name(op & 15), reg_name(reg)),
         0x69 => format!("imul %{}, {name}", reg_name(reg)),
         0x90..=0x9f => {
-            if matches!(o, Operand::Reg(_)) {
-                format!("set{} {}", cond_name(op & 15), name.replace("%r", "%"))
-            } else {
-                return Err(invalid(address, "setcc destination is not a register"));
+            match o {
+                Operand::Reg(rm) => format!(
+                    "set{} %{}",
+                    cond_name(op & 15),
+                    byte_reg_name(rm, r.rex.present)
+                ),
+                Operand::Mem { .. } => {
+                    return Err(invalid(address, "setcc destination is not a register"));
+                }
             }
         }
         0xaf => format!("imul {name}, %{}", reg_name(reg)),
@@ -335,7 +360,7 @@ fn decode_0f_modrm(
             if op == 0xbe { "b" } else { "w" },
             reg_name(reg)
         ),
-        0xba if (reg & 7) == 4 => format!("bt ${}, {name}", r.byte()?),
+        0xba if modrm_reg == 4 => format!("bt ${}, {name}", r.byte()?),
         _ => return Err(unsupported(address, r)),
     };
     Ok((r.pos as u8, text, None))
@@ -367,7 +392,7 @@ fn decode_primary(
         || op == 0x85
         || op == 0x87
     {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o, _) = r.operand(0, false)?;
         let n = operand_name(o);
         let rr = format!("%{}", reg_name(reg));
         let text = match op {
@@ -383,7 +408,7 @@ fn decode_primary(
         return Ok((r.pos as u8, text, None));
     }
     if let Some(name) = bin_name(op) {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o, _) = r.operand(0, false)?;
         let n = operand_name(o);
         let rr = format!("%{}", reg_name(reg));
         let text = if op & 2 != 0 {
@@ -394,7 +419,7 @@ fn decode_primary(
         return Ok((r.pos as u8, text, None));
     }
     if matches!(op, 0x81 | 0x83) {
-        let (ext, o) = r.operand(0, false)?;
+        let (ext, o, _) = r.operand(0, false)?;
         let amount = if op == 0x83 {
             r.imm_i8()? as i32
         } else {
@@ -419,16 +444,16 @@ fn decode_primary(
         return decode_group(r, op, address);
     }
     if op == 0xff {
-        let (reg, o) = r.operand(0, false)?;
+        let (_, o, modrm_reg) = r.operand(0, false)?;
         let n = operand_name(o);
-        return match reg & 7 {
+        return match modrm_reg {
             2 => Ok((r.pos as u8, format!("call *{n}"), None)),
             4 => Ok((r.pos as u8, format!("jmp *{n}"), None)),
             _ => Err(unsupported(address, r)),
         };
     }
     if op == 0x69 {
-        let (reg, o) = r.operand(0, false)?;
+        let (reg, o, _) = r.operand(0, false)?;
         return Ok((
             r.pos as u8 + 4,
             format!(
@@ -441,7 +466,7 @@ fn decode_primary(
         ));
     }
     if op == 0xc7 {
-        let (_, o) = r.operand(0, false)?;
+        let (_, o, _) = r.operand(0, false)?;
         let value = r.imm_i32()?;
         return Ok((
             r.pos as u8,
@@ -518,7 +543,7 @@ fn decode_sse(
     op: u8,
     address: u64,
 ) -> Result<(u8, String, Option<i64>), DecodeError> {
-    let (reg, o) = r.operand(0, false)?;
+    let (reg, o, _) = r.operand(0, false)?;
     let n = operand_name(o);
     let x = format!("%{}", xmm_name(reg));
     let n = match o {

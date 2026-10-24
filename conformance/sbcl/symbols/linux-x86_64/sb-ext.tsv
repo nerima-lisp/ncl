@@ -1,0 +1,270 @@
+package	symbol	present	external	kind	lambda-list
+SB-EXT	%MAKE-SIMD-PACK-256-DOUBLE	yes	yes	function	(sb-impl::a sb-impl::b sb-impl::c sb-impl::d)
+SB-EXT	%MAKE-SIMD-PACK-256-SINGLE	yes	yes	function	(sb-impl::a sb-impl::b sb-impl::c sb-impl::d sb-impl::e sb-impl::f sb-impl::g sb-impl::h)
+SB-EXT	%MAKE-SIMD-PACK-256-UB32	yes	yes	function	(sb-vm::p0 sb-vm::p1 sb-vm::p2 sb-vm::p3 sb-vm::p4 sb-vm::p5 sb-vm::p6 sb-vm::p7)
+SB-EXT	%MAKE-SIMD-PACK-256-UB64	yes	yes	function	(sb-impl::a sb-impl::b sb-impl::c sb-impl::d)
+SB-EXT	%MAKE-SIMD-PACK-DOUBLE	yes	yes	function	(sb-impl::low sb-impl::high)
+SB-EXT	%MAKE-SIMD-PACK-SINGLE	yes	yes	function	(sb-impl::x sb-impl::y sb-impl::z sb-impl::w)
+SB-EXT	%MAKE-SIMD-PACK-UB32	yes	yes	function	(sb-vm::w sb-vm::x sb-vm::y sb-vm::z)
+SB-EXT	%MAKE-SIMD-PACK-UB64	yes	yes	function	(sb-impl::low sb-impl::high)
+SB-EXT	%SIMD-PACK-256-DOUBLES	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-SB16S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-SB32S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-SB64S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-SB8S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-SINGLES	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-UB16S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-UB32S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-UB64S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-256-UB8S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-DOUBLES	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-SB16S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-SB32S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-SB64S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-SB8S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-SINGLES	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-UB16S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-UB32S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-UB64S	yes	yes	function	(sb-vm::pack)
+SB-EXT	%SIMD-PACK-UB8S	yes	yes	function	(sb-vm::pack)
+SB-EXT	*AFTER-GC-HOOKS*	yes	yes	variable	-
+SB-EXT	*BLOCK-COMPILE-DEFAULT*	yes	yes	variable	-
+SB-EXT	*COMPILE-PROGRESS*	yes	yes	variable	-
+SB-EXT	*COMPILER-PRINT-VARIABLE-ALIST*	yes	yes	variable	-
+SB-EXT	*CORE-PATHNAME*	yes	yes	variable	-
+SB-EXT	*DEBUG-PRINT-VARIABLE-ALIST*	yes	yes	variable	-
+SB-EXT	*DEFAULT-C-STRING-EXTERNAL-FORMAT*	yes	yes	variable	-
+SB-EXT	*DEFAULT-EXTERNAL-FORMAT*	yes	yes	variable	-
+SB-EXT	*DEFAULT-SOURCE-EXTERNAL-FORMAT*	yes	yes	variable	-
+SB-EXT	*DERIVE-FUNCTION-TYPES*	yes	yes	variable	-
+SB-EXT	*DISASSEMBLE-ANNOTATE*	yes	yes	variable	-
+SB-EXT	*ED-FUNCTIONS*	yes	yes	variable	-
+SB-EXT	*EFFICIENCY-NOTE-COST-THRESHOLD*	yes	yes	variable	-
+SB-EXT	*EFFICIENCY-NOTE-LIMIT*	yes	yes	variable	-
+SB-EXT	*ENCLOSING-SOURCE-CUTOFF*	yes	yes	variable	-
+SB-EXT	*EVALUATOR-MODE*	yes	yes	variable	-
+SB-EXT	*EXIT-HOOKS*	yes	yes	variable	-
+SB-EXT	*EXIT-TIMEOUT*	yes	yes	variable	-
+SB-EXT	*FORCIBLY-TERMINATE-THREADS-ON-EXIT*	yes	yes	variable	-
+SB-EXT	*GC-REAL-TIME*	yes	yes	variable	-
+SB-EXT	*GC-RUN-TIME*	yes	yes	variable	-
+SB-EXT	*INIT-HOOKS*	yes	yes	variable	-
+SB-EXT	*INLINE-EXPANSION-LIMIT*	yes	yes	variable	-
+SB-EXT	*INSPECTED*	yes	yes	other	-
+SB-EXT	*INVOKE-DEBUGGER-HOOK*	yes	yes	variable	-
+SB-EXT	*MODULE-PROVIDER-FUNCTIONS*	yes	yes	variable	-
+SB-EXT	*MUFFLED-WARNINGS*	yes	yes	variable	-
+SB-EXT	*ON-PACKAGE-VARIANCE*	yes	yes	variable	-
+SB-EXT	*POSIX-ARGV*	yes	yes	variable	-
+SB-EXT	*PRINT-CIRCLE-NOT-SHARED*	yes	yes	variable	-
+SB-EXT	*PRINT-VECTOR-LENGTH*	yes	yes	variable	-
+SB-EXT	*RUNTIME-PATHNAME*	yes	yes	variable	-
+SB-EXT	*SAVE-HOOKS*	yes	yes	variable	-
+SB-EXT	*STACK-ALLOCATE-DYNAMIC-EXTENT*	yes	yes	variable	-
+SB-EXT	*STEPPER-HOOK*	yes	yes	variable	-
+SB-EXT	*SUPPRESS-PRINT-ERRORS*	yes	yes	variable	-
+SB-EXT	*SYSINIT-PATHNAME-FUNCTION*	yes	yes	variable	-
+SB-EXT	*UNDEFINED-WARNING-LIMIT*	yes	yes	variable	-
+SB-EXT	*USERINIT-PATHNAME-FUNCTION*	yes	yes	variable	-
+SB-EXT	ADD-IMPLEMENTATION-PACKAGE	yes	yes	function	(sb-impl::packages-to-add &optional (package *package*))
+SB-EXT	ADD-PACKAGE-LOCAL-NICKNAME	yes	yes	function	(sb-impl::local-nickname sb-impl::actual-package &optional (sb-kernel:package-designator (sb-int:sane-package)))
+SB-EXT	ALWAYS-BOUND	yes	yes	other	-
+SB-EXT	ARRAY-STORAGE-VECTOR	yes	yes	function	(array)
+SB-EXT	ASSERT-VERSION->=	yes	yes	function	(&rest sb-c::subversions)
+SB-EXT	ATOMIC-DECF	yes	yes	macro	(sb-impl::place &optional (sb-impl::diff 1))
+SB-EXT	ATOMIC-INCF	yes	yes	macro	(sb-impl::place &optional (sb-impl::diff 1))
+SB-EXT	ATOMIC-POP	yes	yes	macro	(sb-impl::place)
+SB-EXT	ATOMIC-PUSH	yes	yes	macro	(sb-impl::obj sb-impl::place)
+SB-EXT	ATOMIC-UPDATE	yes	yes	macro	(sb-impl::place sb-impl::update-fn &rest sb-impl::arguments)
+SB-EXT	BYTES-CONSED-BETWEEN-GCS	yes	yes	function	()
+SB-EXT	CALL-WITH-TIMING	yes	yes	function	(timer function &rest sb-impl::arguments)
+SB-EXT	CANCEL-FINALIZATION	yes	yes	function	(sb-impl::object)
+SB-EXT	CAS	yes	yes	macro	(sb-impl::place sb-impl::old sb-impl::new)
+SB-EXT	CODE-DELETION-NOTE	yes	yes	class+condition+type	-
+SB-EXT	COMPARE-AND-SWAP	yes	yes	macro	(sb-impl::place sb-impl::old sb-impl::new)
+SB-EXT	COMPILE-FILE-LINE	yes	yes	macro	()
+SB-EXT	COMPILE-FILE-POSITION	yes	yes	macro	()
+SB-EXT	COMPILER-NOTE	yes	yes	class+condition+type	-
+SB-EXT	CREATE	yes	yes	other	-
+SB-EXT	DECIMAL-WITH-GROUPED-DIGITS-WIDTH	yes	yes	function	(sb-vm::value &key (sb-vm::comma-interval 3))
+SB-EXT	DEFCONSTANT-UNEQL	yes	yes	class+condition+type	-
+SB-EXT	DEFCONSTANT-UNEQL-NAME	yes	yes	function	(condition)
+SB-EXT	DEFCONSTANT-UNEQL-NEW-VALUE	yes	yes	function	(condition)
+SB-EXT	DEFCONSTANT-UNEQL-OLD-VALUE	yes	yes	function	(condition)
+SB-EXT	DEFGLOBAL	yes	yes	macro	(sb-impl::name sb-impl::value &optional (sb-impl::doc nil))
+SB-EXT	DEFINE-HASH-TABLE-TEST	yes	yes	macro	(sb-impl::name sb-impl::hash-function)
+SB-EXT	DEFINE-LOAD-TIME-GLOBAL	yes	yes	macro	(sb-impl::name sb-impl::value &optional (sb-impl::doc nil))
+SB-EXT	DEFINE-SOURCE-CONTEXT	yes	yes	macro	(sb-c::name sb-c::lambda-list &body sb-c::body)
+SB-EXT	DEFINED-TYPE-NAME-P	yes	yes	function	(sb-kernel::name &optional sb-kernel::env)
+SB-EXT	DELETE-DIRECTORY	yes	yes	function	(sb-impl::pathspec &key sb-impl::recursive)
+SB-EXT	DELETE-FILE-ERROR	yes	yes	class+condition+type	-
+SB-EXT	DEPRECATED	yes	yes	other	-
+SB-EXT	DEPRECATION-CONDITION	yes	yes	class+condition+type	-
+SB-EXT	DEPRECATION-CONDITION-NAME	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-CONDITION-NAMESPACE	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-CONDITION-REPLACEMENTS	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-CONDITION-RUNTIME-ERROR	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-CONDITION-SOFTWARE	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-CONDITION-VERSION	yes	yes	function	(condition)
+SB-EXT	DEPRECATION-ERROR	yes	yes	function+class+condition+type	(sb-impl::software sb-impl::version sb-impl::namespace sb-impl::name sb-impl::replacements)
+SB-EXT	DESCRIBE-COMPILER-POLICY	yes	yes	function	(&optional sb-c::spec)
+SB-EXT	DISABLE-DEBUGGER	yes	yes	function	()
+SB-EXT	DISABLE-PACKAGE-LOCKS	yes	yes	other	-
+SB-EXT	DOUBLE-FLOAT-NEGATIVE-INFINITY	yes	yes	constant	-
+SB-EXT	DOUBLE-FLOAT-POSITIVE-INFINITY	yes	yes	constant	-
+SB-EXT	DYNAMIC-SPACE-SIZE	yes	yes	function	()
+SB-EXT	EARLY-DEPRECATION-WARNING	yes	yes	class+condition+type	-
+SB-EXT	ENABLE-DEBUGGER	yes	yes	function	()
+SB-EXT	ENABLE-PACKAGE-LOCKS	yes	yes	other	-
+SB-EXT	END-BLOCK	yes	yes	other	-
+SB-EXT	EVAL-TLF	yes	yes	function	(sb-impl::original-exp sb-impl::tlf-index &optional sb-kernel:lexenv)
+SB-EXT	EXIT	yes	yes	function+class+type	(&key sb-impl::code abort (timeout *exit-timeout*))
+SB-EXT	FILE-DOES-NOT-EXIST	yes	yes	class+condition+type	-
+SB-EXT	FILE-EXISTS	yes	yes	class+condition+type	-
+SB-EXT	FINAL-DEPRECATION-WARNING	yes	yes	class+condition+type	-
+SB-EXT	FINALIZE	yes	yes	function	(sb-impl::object function &key sb-impl::dont-save)
+SB-EXT	FLOAT-DENORMALIZED-P	yes	yes	function	(sb-kernel::x)
+SB-EXT	FLOAT-INFINITY-P	yes	yes	function	(sb-kernel::x)
+SB-EXT	FLOAT-NAN-P	yes	yes	function	(sb-kernel::x)
+SB-EXT	FLOAT-TRAPPING-NAN-P	yes	yes	function	(sb-kernel::x)
+SB-EXT	FOLD-IDENTICAL-CODE	yes	yes	function	(&key sb-vm::aggressive sb-vm::preserve-docstrings (print nil))
+SB-EXT	FREEZE-TYPE	yes	yes	other	-
+SB-EXT	GC	yes	yes	function	(&key (sb-kernel::full nil) (sb-kernel::gen 0) &allow-other-keys)
+SB-EXT	GC-LOGFILE	yes	yes	function	()
+SB-EXT	GENERATION-AVERAGE-AGE	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GENERATION-BYTES-ALLOCATED	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GENERATION-BYTES-CONSED-BETWEEN-GCS	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GENERATION-MINIMUM-AGE-BEFORE-GC	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GENERATION-NUMBER-OF-GCS	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GENERATION-NUMBER-OF-GCS-BEFORE-PROMOTION	yes	yes	function	(sb-kernel::generation)
+SB-EXT	GET-BYTES-CONSED	yes	yes	function	()
+SB-EXT	GET-CAS-EXPANSION	yes	yes	function	(sb-impl::place &optional sb-impl::environment)
+SB-EXT	GET-TIME-OF-DAY	yes	yes	function	()
+SB-EXT	GLOBAL	yes	yes	other	-
+SB-EXT	HASH-TABLE-SYNCHRONIZED-P	yes	yes	function	(sb-impl::ht)
+SB-EXT	HASH-TABLE-WEAKNESS	yes	yes	function	(sb-impl::ht)
+SB-EXT	HEAP-ALLOCATED-P	yes	yes	function	(sb-kernel::x)
+SB-EXT	IMPLICIT-GENERIC-FUNCTION-NAME	yes	yes	function	(condition)
+SB-EXT	IMPLICIT-GENERIC-FUNCTION-WARNING	yes	yes	class+condition+type	-
+SB-EXT	INHIBIT-WARNINGS	yes	yes	other	-
+SB-EXT	INTERACTIVE-EVAL	yes	yes	function	(sb-kernel:form &key (eval (function eval)))
+SB-EXT	INVALID-FASL	yes	yes	class+condition+type	-
+SB-EXT	LATE-DEPRECATION-WARNING	yes	yes	class+condition+type	-
+SB-EXT	LIST-ALL-TIMERS	yes	yes	function	()
+SB-EXT	LOCK-PACKAGE	yes	yes	function	(package)
+SB-EXT	LONG-FLOAT-NEGATIVE-INFINITY	yes	yes	constant	-
+SB-EXT	LONG-FLOAT-POSITIVE-INFINITY	yes	yes	constant	-
+SB-EXT	MAKE-TIMER	yes	yes	function	(function &key sb-impl::name (sb-impl::thread sb-thread:*current-thread*))
+SB-EXT	MAKE-WEAK-POINTER	yes	yes	function	(sb-impl::object)
+SB-EXT	MAKE-WEAK-VECTOR	yes	yes	function	(length &key (sb-impl::initial-contents nil sb-impl::contents-p) (sb-impl::initial-element nil sb-impl::element-p))
+SB-EXT	MAP-DIRECTORY	yes	yes	function	(function directory &key (sb-impl::files . #1=(t)) (sb-impl::directories . #1#) (sb-impl::classify-symlinks . #1#) (sb-impl::errorp . #1#))
+SB-EXT	MAYBE-INLINE	yes	yes	other	-
+SB-EXT	MOST-POSITIVE-WORD	yes	yes	constant	-
+SB-EXT	MUFFLE-CONDITIONS	yes	yes	other	-
+SB-EXT	NAME-CONFLICT	yes	yes	function+class+condition+type	(package function sb-impl::datum &rest sb-impl::symbols)
+SB-EXT	NAME-CONFLICT-DATUM	yes	yes	function	(condition)
+SB-EXT	NAME-CONFLICT-FUNCTION	yes	yes	function	(condition)
+SB-EXT	NAME-CONFLICT-SYMBOLS	yes	yes	function	(condition)
+SB-EXT	NATIVE-NAMESTRING	yes	yes	function	(pathname &key sb-impl::as-file)
+SB-EXT	NATIVE-PATHNAME	yes	yes	function	(sb-impl::pathspec)
+SB-EXT	OCTETS-TO-STRING	yes	yes	function	(vector &key (sb-impl::external-format :default) (sb-impl::start 0) sb-impl::end)
+SB-EXT	OVERWRITE	yes	yes	other	-
+SB-EXT	PACKAGE-DOES-NOT-EXIST	yes	yes	class+condition+type	-
+SB-EXT	PACKAGE-IMPLEMENTED-BY-LIST	yes	yes	function	(package)
+SB-EXT	PACKAGE-IMPLEMENTS-LIST	yes	yes	function	(package)
+SB-EXT	PACKAGE-LOCAL-NICKNAMES	yes	yes	function	(sb-kernel:package-designator)
+SB-EXT	PACKAGE-LOCALLY-NICKNAMED-BY-LIST	yes	yes	function	(sb-kernel:package-designator)
+SB-EXT	PACKAGE-LOCK-VIOLATION	yes	yes	function+class+condition+type	(package &key (symbol nil sb-impl::symbol-p) sb-kernel:format-control sb-impl::format-arguments)
+SB-EXT	PACKAGE-LOCKED-ERROR	yes	yes	class+condition+type	-
+SB-EXT	PACKAGE-LOCKED-ERROR-SYMBOL	yes	yes	function	(condition)
+SB-EXT	PACKAGE-LOCKED-P	yes	yes	function	(package)
+SB-EXT	PARSE-NATIVE-NAMESTRING	yes	yes	function	(sb-impl::thing &optional sb-kernel:host (sb-impl::defaults *default-pathname-defaults*) &key (sb-impl::start 0) sb-impl::end sb-impl::junk-allowed sb-impl::as-directory)
+SB-EXT	POSIX-ENVIRON	yes	yes	function	()
+SB-EXT	POSIX-GETENV	yes	yes	function	(sb-unix::name)
+SB-EXT	PRIMITIVE-OBJECT-SIZE	yes	yes	function	(sb-kernel::object)
+SB-EXT	PRINT-SYMBOL-WITH-PREFIX	yes	yes	function	(stream symbol &optional sb-impl::colon sb-impl::at)
+SB-EXT	PRINT-UNREADABLY	yes	yes	function	(&optional condition)
+SB-EXT	PROCESS-ALIVE-P	yes	yes	function	(sb-impl::process)
+SB-EXT	PROCESS-CLOSE	yes	yes	function	(sb-impl::process)
+SB-EXT	PROCESS-CORE-DUMPED	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-ERROR	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-EXIT-CODE	yes	yes	function	(sb-impl::process)
+SB-EXT	PROCESS-INPUT	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-KILL	yes	yes	function	(sb-impl::process signal &optional (sb-impl::whom :pid))
+SB-EXT	PROCESS-OUTPUT	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-P	yes	yes	function	(sb-kernel::object)
+SB-EXT	PROCESS-PID	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-PLIST	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-PTY	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-STATUS	yes	yes	function+type	(sb-impl::process)
+SB-EXT	PROCESS-STATUS-HOOK	yes	yes	function	(sb-kernel:instance)
+SB-EXT	PROCESS-WAIT	yes	yes	function	(sb-impl::process &optional sb-impl::check-for-stopped)
+SB-EXT	PURIFY	yes	yes	other	-
+SB-EXT	QUIT	yes	yes	function	(&key sb-impl::recklessly-p (sb-impl::unix-status 0))
+SB-EXT	READER-PACKAGE-DOES-NOT-EXIST	yes	yes	class+condition+type	-
+SB-EXT	READTABLE-BASE-CHAR-PREFERENCE	yes	yes	function	(readtable)
+SB-EXT	READTABLE-NORMALIZATION	yes	yes	function	(readtable)
+SB-EXT	REMOVE-IMPLEMENTATION-PACKAGE	yes	yes	function	(sb-impl::packages-to-remove &optional (package *package*))
+SB-EXT	REMOVE-PACKAGE-LOCAL-NICKNAME	yes	yes	function	(sb-impl::old-nickname &optional (sb-kernel:package-designator (sb-int:sane-package)))
+SB-EXT	RENAME	yes	yes	other	-
+SB-EXT	RESOLVE-CONFLICT	yes	yes	other	-
+SB-EXT	RESTRICT-COMPILER-POLICY	yes	yes	function	(&optional sb-c::quality (min 0) (max 3))
+SB-EXT	RETRY	yes	yes	other	-
+SB-EXT	RUN-PROGRAM	yes	yes	function	(sb-impl::program sb-impl::args &key (sb-impl::env nil sb-impl::env-p) (sb-impl::environment (when sb-impl::env-p (sb-impl::unix-environment-sbcl-from-cmucl sb-impl::env)) sb-impl::environment-p) (sb-impl::wait t) search sb-impl::pty sb-impl::input sb-impl::if-input-does-not-exist sb-impl::output (sb-impl::if-output-exists . #1=(:error)) (error :output) (sb-impl::if-error-exists . #1#) sb-impl::status-hook (sb-impl::external-format :default) directory sb-impl::preserve-fds sb-impl::use-posix-spawn)
+SB-EXT	SAVE-LISP-AND-DIE	yes	yes	function	(sb-impl::core-file-name &key (sb-impl::toplevel (function sb-impl::toplevel-init) sb-impl::toplevel-supplied) (sb-impl::executable . #1=(nil)) (sb-impl::save-runtime-options . #1#) (sb-impl::callable-exports . #1#) (purify t) (sb-impl::root-structures . #1#) (sb-impl::environment-name #A((9) base-char . "auxiliary")) (sb-impl::compression . #1#))
+SB-EXT	SCHEDULE-TIMER	yes	yes	function	(timer time &key sb-impl::repeat-interval sb-impl::absolute-p (sb-impl::catch-up nil sb-impl::catch-up-p))
+SB-EXT	SEARCH-ROOTS	yes	yes	function	(sb-impl::weak-pointers &key (sb-impl::criterion :oldest) (ignore (quote (* ** *** / // ///))) (print t))
+SB-EXT	SEED-RANDOM-STATE	yes	yes	function	(&optional sb-kernel::state)
+SB-EXT	SET-MACRO-POLICY	yes	yes	function	(list)
+SB-EXT	SET-SBCL-SOURCE-LOCATION	yes	yes	function	(pathname)
+SB-EXT	SHORT-FLOAT-NEGATIVE-INFINITY	yes	yes	constant	-
+SB-EXT	SHORT-FLOAT-POSITIVE-INFINITY	yes	yes	constant	-
+SB-EXT	SIMD-PACK	yes	yes	class+type	-
+SB-EXT	SIMD-PACK-256	yes	yes	class+type	-
+SB-EXT	SIMD-PACK-256-P	yes	yes	function	(sb-impl::object)
+SB-EXT	SIMD-PACK-P	yes	yes	function	(sb-impl::object)
+SB-EXT	SINGLE-FLOAT-NEGATIVE-INFINITY	yes	yes	constant	-
+SB-EXT	SINGLE-FLOAT-POSITIVE-INFINITY	yes	yes	constant	-
+SB-EXT	SPIN-LOOP-HINT	yes	yes	function	()
+SB-EXT	STACK-ALLOCATED-P	yes	yes	function	(sb-debug::x &optional sb-debug::all-threads)
+SB-EXT	START-BLOCK	yes	yes	other	-
+SB-EXT	STEP-CONDITION	yes	yes	class+condition+type	-
+SB-EXT	STEP-CONDITION-ARGS	yes	yes	function	(condition)
+SB-EXT	STEP-CONDITION-FORM	yes	yes	function	(condition)
+SB-EXT	STEP-CONDITION-RESULT	yes	yes	function	(condition)
+SB-EXT	STEP-CONTINUE	yes	yes	function	(condition)
+SB-EXT	STEP-FINISHED-CONDITION	yes	yes	class+condition+type	-
+SB-EXT	STEP-FORM-CONDITION	yes	yes	class+condition+type	-
+SB-EXT	STEP-INTO	yes	yes	function	(condition)
+SB-EXT	STEP-NEXT	yes	yes	function	(condition)
+SB-EXT	STEP-OUT	yes	yes	other	-
+SB-EXT	STEP-VALUES-CONDITION	yes	yes	class+condition+type	-
+SB-EXT	STRING-TO-OCTETS	yes	yes	function	(string &key (sb-impl::external-format :default) (sb-impl::start 0) sb-impl::end sb-impl::null-terminate)
+SB-EXT	SUPERSEDE	yes	yes	other	-
+SB-EXT	SYMBOL-GLOBAL-VALUE	yes	yes	function	(symbol)
+SB-EXT	SYMBOL-PACKAGE-LOCKED-ERROR	yes	yes	class+condition+type	-
+SB-EXT	TIMEOUT	yes	yes	class+condition+type	-
+SB-EXT	TIMER	yes	yes	class+type	-
+SB-EXT	TIMER-NAME	yes	yes	function	(timer)
+SB-EXT	TIMER-SCHEDULED-P	yes	yes	function	(timer &key (sb-impl::delta 0))
+SB-EXT	TRULY-THE	yes	yes	special-operator+macro	(sb-c::whole sb-c::env)
+SB-EXT	TYPEXPAND	yes	yes	function	(sb-kernel:type-specifier &optional sb-kernel::env)
+SB-EXT	TYPEXPAND-1	yes	yes	function	(sb-kernel:type-specifier &optional sb-kernel::env)
+SB-EXT	TYPEXPAND-ALL	yes	yes	function	(sb-kernel:type-specifier &optional sb-kernel::env)
+SB-EXT	UNKNOWN-KEYWORD-ARGUMENT	yes	yes	class+condition+type	-
+SB-EXT	UNKNOWN-KEYWORD-ARGUMENT-NAME	yes	yes	function	(condition)
+SB-EXT	UNLOCK-PACKAGE	yes	yes	function	(package)
+SB-EXT	UNMUFFLE-CONDITIONS	yes	yes	other	-
+SB-EXT	UNSCHEDULE-TIMER	yes	yes	function	(timer)
+SB-EXT	VALID-TYPE-SPECIFIER-P	yes	yes	function	(sb-kernel:type-specifier &optional sb-kernel::env)
+SB-EXT	WAIT-FOR	yes	yes	macro	(sb-thread::test-form &key sb-thread::timeout)
+SB-EXT	WEAK-POINTER	yes	yes	class+type	-
+SB-EXT	WEAK-POINTER-P	yes	yes	function	(sb-impl::object)
+SB-EXT	WEAK-POINTER-VALUE	yes	yes	function	(weak-pointer)
+SB-EXT	WEAK-VECTOR-P	yes	yes	function	(sb-impl::x)
+SB-EXT	WITH-CURRENT-SOURCE-FORM	yes	yes	macro	((&rest sb-impl::forms) &body sb-impl::body)
+SB-EXT	WITH-LOCKED-HASH-TABLE	yes	yes	macro	((hash-table) &body sb-impl::body)
+SB-EXT	WITH-TIMEOUT	yes	yes	macro	(sb-impl::expires &body sb-impl::body)
+SB-EXT	WITH-UNLOCKED-PACKAGES	yes	yes	macro	((&rest sb-impl::packages) &body sb-impl::forms)
+SB-EXT	WITHOUT-PACKAGE-LOCKS	yes	yes	macro	(&body sb-impl::body)
+SB-EXT	WORD	yes	yes	type	-

@@ -1,23 +1,23 @@
-name	package	status	external-count	reason
-sb-posix	SB-POSIX	loaded	547	-
-sb-bsd-sockets	SB-BSD-SOCKETS	loaded	79	-
-sb-concurrency	SB-CONCURRENCY	loaded	37	-
-sb-queue	SB-QUEUE	loaded	9	-
-sb-md5	SB-MD5	loaded	16	-
-sb-rotate-byte	SB-ROTATE-BYTE	loaded	1	-
-sb-cltl2	SB-CLTL2	loaded	9	-
-sb-gmp	SB-GMP	loaded	39	-
-sb-mpfr	SB-MPFR	loaded	130	-
-sb-simd	SB-SIMD	out-of-scope	0	platform-not-in-scope
-sb-capstone	SB-CAPSTONE	loaded	121	-
-sb-aclrepl	SB-ACLREPL	loaded	7	-
-sb-executable	SB-EXECUTABLE	loaded	2	-
-sb-rt	SB-RT	loaded	10	-
-sb-grovel	SB-GROVEL	loaded	1	-
-sb-perf	SB-PERF	out-of-scope	0	platform-not-in-scope
-sb-sprof	SB-SPROF	loaded	16	-
-sb-cover	SB-COVER	loaded	13	-
-sb-introspect	SB-INTROSPECT	loaded	26	-
-sb-simple-streams	SB-SIMPLE-STREAMS	loaded	106	-
-asdf	ASDF	loaded	230	-
-uiop	UIOP	loaded	427	-
+name	package	macos-arm64-status	macos-arm64-external-count	macos-arm64-reason	linux-x86_64-status	linux-x86_64-external-count	linux-x86_64-reason
+sb-posix	SB-POSIX	loaded	547	-	loaded	549	-
+sb-bsd-sockets	SB-BSD-SOCKETS	loaded	79	-	loaded	79	-
+sb-concurrency	SB-CONCURRENCY	loaded	37	-	loaded	37	-
+sb-queue	SB-QUEUE	loaded	9	-	loaded	9	-
+sb-md5	SB-MD5	loaded	16	-	loaded	16	-
+sb-rotate-byte	SB-ROTATE-BYTE	loaded	1	-	loaded	1	-
+sb-cltl2	SB-CLTL2	loaded	9	-	loaded	9	-
+sb-gmp	SB-GMP	loaded	39	-	loaded	39	-
+sb-mpfr	SB-MPFR	loaded	130	-	loaded	130	-
+sb-simd	SB-SIMD	out-of-scope	0	platform-not-in-scope	loaded	312	-
+sb-capstone	SB-CAPSTONE	loaded	121	-	loaded	121	-
+sb-aclrepl	SB-ACLREPL	loaded	7	-	loaded	7	-
+sb-executable	SB-EXECUTABLE	loaded	2	-	loaded	2	-
+sb-rt	SB-RT	loaded	10	-	loaded	10	-
+sb-grovel	SB-GROVEL	loaded	1	-	loaded	1	-
+sb-perf	SB-PERF	out-of-scope	0	platform-not-in-scope	loaded	2	-
+sb-sprof	SB-SPROF	loaded	16	-	loaded	16	-
+sb-cover	SB-COVER	loaded	13	-	loaded	13	-
+sb-introspect	SB-INTROSPECT	loaded	26	-	loaded	26	-
+sb-simple-streams	SB-SIMPLE-STREAMS	loaded	106	-	loaded	106	-
+asdf	ASDF	loaded	230	-	loaded	230	-
+uiop	UIOP	loaded	427	-	loaded	427	-

@@ -7,6 +7,7 @@
 
 mod adapter;
 pub mod builtins;
+mod deftype;
 mod domain;
 pub mod error;
 pub mod parse;
@@ -16,6 +17,7 @@ pub(crate) mod text;
 pub mod type_specifier;
 pub mod typep;
 
+pub use deftype::{DeftypeExpanderCaller, expand_deftype_specifier, expand_deftype_specifier_with};
 pub use error::TypeError;
 pub use parse::{parse_type_specifier, parse_type_specifier_with_runtime};
 pub use register::register;

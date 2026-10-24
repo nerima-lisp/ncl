@@ -1,3 +1,5 @@
+use ncl_object::HeapRootedWord;
+
 fn class_is_subclass(
     ctx: &ThreadContext,
     actual: Word,
@@ -21,10 +23,13 @@ fn typep_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let object = args.required(0)?;
-    let type_specifier = args.required(1)?;
+    let object = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let type_specifier = HeapRootedWord::new(ctx, args.required(1)?)?;
+    let expanded = ncl_types::expand_deftype_specifier(ctx, runtime, type_specifier.get())
+        .map_err(|_| ObjectError::TypeError)?;
+    let expanded = HeapRootedWord::new(ctx, expanded)?;
     Ok(
-        if typep_with_class_designators(ctx, runtime, object, type_specifier)? {
+        if typep_with_class_designators(ctx, runtime, object.get(), expanded.get())? {
             Word::TRUE
         } else {
             Word::NIL

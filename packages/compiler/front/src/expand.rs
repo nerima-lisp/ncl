@@ -8,7 +8,7 @@ use ncl_object::{HeapRootedWord, HeapRootedWords, ObjectRef, Runtime, ThreadCont
 
 use crate::ast::{Expr, LambdaExpr};
 use crate::compiler_macro::MacroRegistry;
-use crate::declaration::{Declaration, parse_declare_form};
+use crate::declaration::Declaration;
 use crate::env::LexicalEnv;
 use crate::error::FrontError;
 use crate::form::{self, UninternedTable, classify_form};
@@ -18,6 +18,7 @@ use crate::macro_caller::MacroCaller;
 use crate::symbols::SymbolRef;
 
 mod call;
+mod declared_types;
 mod parameters;
 
 use call::Step;
@@ -366,16 +367,6 @@ impl<'a> FormExpander<'a> {
     pub fn elements(&mut self, word: Word) -> Result<HeapRootedWords, FrontError> {
         let elements = form::list(self.ctx, word)?;
         Ok(HeapRootedWords::new(self.ctx, &elements)?)
-    }
-
-    /// Parse a `(declare ...)` form.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`FrontError`] when the form is not a well-formed declaration.
-    pub fn declarations(&mut self, form: Word) -> Result<Vec<Declaration>, FrontError> {
-        let datum = self.datum(form)?;
-        parse_declare_form(&datum)
     }
 
     /// Whether `word` is the symbol `name`.

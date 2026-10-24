@@ -312,6 +312,7 @@ dependencies = [
  "ncl-stdlib",
  "ncl-sys",
  "ncl-threads",
+ "ncl-types",
 ]
 
 [[package]]

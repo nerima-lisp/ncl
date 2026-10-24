@@ -32,6 +32,96 @@ fn evaluates_a_literal_through_native_code() {
 }
 
 #[test]
+fn deftype_expands_through_type_queries_and_declarations() {
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    runtime
+        .eval("(deftype r6-b1-range () '(integer 0 10))")
+        .unwrap_or_else(|error| panic!("DEFTYPE definition failed: {error}"));
+
+    let in_range = runtime
+        .eval("(typep 5 'r6-b1-range)")
+        .unwrap_or_else(|error| panic!("TYPEP with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(in_range), "T");
+    let outside_range = runtime
+        .eval("(typep 11 '(or r6-b1-range string))")
+        .unwrap_or_else(|error| panic!("nested TYPEP with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(outside_range), "NIL");
+
+    let subtype = runtime
+        .eval("(subtypep 'r6-b1-range 'integer)")
+        .unwrap_or_else(|error| panic!("SUBTYPEP with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(subtype), "T");
+
+    let checked = runtime
+        .eval("(let ((r6-b1-value 5)) (check-type r6-b1-value r6-b1-range) r6-b1-value)")
+        .unwrap_or_else(|error| panic!("CHECK-TYPE with DEFTYPE failed: {error}"));
+    assert_eq!(runtime.format_result(checked), "5");
+
+    runtime
+        .eval("(defun r6-b1-declared (value) (declare (type r6-b1-range value)) value)")
+        .unwrap_or_else(|error| panic!("DECLARE with DEFTYPE failed: {error}"));
+    let declared = runtime
+        .eval("(r6-b1-declared 5)")
+        .unwrap_or_else(|error| panic!("declared function call failed: {error}"));
+    assert_eq!(runtime.format_result(declared), "5");
+
+    runtime
+        .eval("(defparameter *r6-b1-deftype-expanded-in-declare* nil)")
+        .unwrap_or_else(|error| panic!("DEFTYPE declaration marker setup failed: {error}"));
+    runtime
+        .eval("(deftype r6-b1-declared-type () (setq *r6-b1-deftype-expanded-in-declare* t) 'integer)")
+        .unwrap_or_else(|error| panic!("DEFTYPE declaration marker definition failed: {error}"));
+    runtime
+        .eval("(defun r6-b1-declared-expansion (value) (declare (type r6-b1-declared-type value)) value)")
+        .unwrap_or_else(|error| panic!("DECLARE did not expand the DEFTYPE: {error}"));
+    let declaration_expanded = runtime
+        .eval("*r6-b1-deftype-expanded-in-declare*")
+        .unwrap_or_else(|error| panic!("DEFTYPE declaration marker read failed: {error}"));
+    assert_eq!(runtime.format_result(declaration_expanded), "T");
+
+    runtime
+        .eval("(deftype r6-b1-optional (&optional lower) `(integer ,lower *))")
+        .unwrap_or_else(|error| panic!("optional DEFTYPE definition failed: {error}"));
+    let defaulted = runtime
+        .eval("(typep -1 'r6-b1-optional)")
+        .unwrap_or_else(|error| panic!("DEFTYPE default argument failed: {error}"));
+    assert_eq!(runtime.format_result(defaulted), "T");
+    let supplied = runtime
+        .eval("(typep -1 '(r6-b1-optional 0))")
+        .unwrap_or_else(|error| panic!("DEFTYPE supplied argument failed: {error}"));
+    assert_eq!(runtime.format_result(supplied), "NIL");
+
+    runtime
+        .eval("(deftype r6-b1-optional-init (&optional (lower 0)) `(integer ,lower *))")
+        .unwrap_or_else(|error| panic!("optional-init DEFTYPE definition failed: {error}"));
+    let optional_init = runtime
+        .eval("(typep -1 'r6-b1-optional-init)")
+        .unwrap_or_else(|error| panic!("DEFTYPE optional init form failed: {error}"));
+    assert_eq!(runtime.format_result(optional_init), "NIL");
+
+    runtime
+        .eval("(deftype r6-b1-key (&key (lower 0)) `(integer ,lower *))")
+        .unwrap_or_else(|error| panic!("key DEFTYPE definition failed: {error}"));
+    let key_default = runtime
+        .eval("(typep 5 'r6-b1-key)")
+        .unwrap_or_else(|error| panic!("DEFTYPE key default failed: {error}"));
+    assert_eq!(runtime.format_result(key_default), "T");
+    let key_supplied = runtime
+        .eval("(typep 1 '(r6-b1-key :lower 2))")
+        .unwrap_or_else(|error| panic!("DEFTYPE key argument failed: {error}"));
+    assert_eq!(runtime.format_result(key_supplied), "NIL");
+
+    runtime
+        .eval("(deftype r6-b1-rest (&rest bounds) `(integer ,(first bounds) ,(second bounds)))")
+        .unwrap_or_else(|error| panic!("rest DEFTYPE definition failed: {error}"));
+    let rest_arguments = runtime
+        .eval("(typep 5 '(r6-b1-rest 0 10))")
+        .unwrap_or_else(|error| panic!("DEFTYPE rest arguments failed: {error}"));
+    assert_eq!(runtime.format_result(rest_arguments), "T");
+}
+
+#[test]
 fn internal_time_functions_and_constant_are_registered() {
     let mut runtime = match Runtime::new() {
         Ok(runtime) => runtime,

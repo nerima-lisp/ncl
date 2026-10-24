@@ -29,6 +29,25 @@ pub trait MacroCaller {
         form: Word,
     ) -> Result<Word, FrontError>;
 
+    /// Expand a type specifier in a declaration when the runtime supports
+    /// definition-time type expanders.
+    ///
+    /// The default preserves the type form for front ends without a runtime
+    /// type registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FrontError`] when the runtime type expander cannot be called.
+    fn expand_type_specifier(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        specifier: Word,
+    ) -> Result<Word, FrontError> {
+        let _ = (ctx, runtime);
+        Ok(specifier)
+    }
+
     /// Expand a call of a `macrolet` definition.
     ///
     /// A local macro body is a Lisp form that must be evaluated at expansion

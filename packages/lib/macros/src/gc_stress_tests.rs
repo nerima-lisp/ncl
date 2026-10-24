@@ -226,6 +226,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DEFMACRO", "DEFMACRO", [x, nil, t]);
     case!("DEFPACKAGE", "DEFPACKAGE", [x]);
     case!("DEFUN", "DEFUN", [x, nil, t]);
+    case!("DEFTYPE", "DEFTYPE", [x, nil, t]);
     case!("DEFPARAMETER", "DEFPARAMETER", [x, one]);
     case!("DEFSETF", "DEFSETF", [x, y]);
     case!("DEFVAR", "DEFVAR", [x, one]);
@@ -245,11 +246,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("HANDLER-BIND", "HANDLER-BIND", [handler_clauses, x]);
     case!("HANDLER-CASE", "HANDLER-CASE", [x, binding_clause]);
     case!("IGNORE-ERRORS", "IGNORE-ERRORS", [x]);
-    case!(
-        "RESTART-BIND",
-        "RESTART-BIND",
-        [restart_bind_clauses, x]
-    );
+    case!("RESTART-BIND", "RESTART-BIND", [restart_bind_clauses, x]);
     case!("RESTART-CASE", "RESTART-CASE", [x, binding_clause]);
     case!(
         "WITH-SIMPLE-RESTART",

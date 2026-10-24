@@ -259,6 +259,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "DEFMACRO" => Some(defining::defmacro_adapter),
         "DEFVAR" => Some(defining::defvar_adapter),
         "DEFPARAMETER" => Some(defining::defparameter_adapter),
+        "DEFTYPE" => Some(defining::deftype_adapter),
         "DEFCONSTANT" => Some(defining::defconstant_adapter),
         "DEFINE-SYMBOL-MACRO" => Some(defining::define_symbol_macro_adapter),
         "DEFINE-COMPILER-MACRO" => Some(defining::define_compiler_macro_adapter),

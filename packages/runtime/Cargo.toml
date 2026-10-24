@@ -17,6 +17,7 @@ ncl-objfile = { path = "../objfile" }
 ncl-threads = { path = "../threads" }
 ncl-ffi = { path = "../ffi" }
 ncl-object = { path = "../object" }
+ncl-types = { path = "../types" }
 ncl-lib-pathnames = { path = "../lib/pathnames" }
 ncl-printer = { path = "../printer" }
 ncl-reader = { path = "../reader" }

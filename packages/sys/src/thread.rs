@@ -271,7 +271,6 @@ impl Thread {
         self.frame_address.is_some()
     }
     pub(crate) fn heap_collect(&mut self, full: bool) -> Result<(), crate::StorageCondition> {
-        #[cfg(target_arch = "x86_64")]
         if self.native_state() != NativeState::Native && !self.has_native_frame_snapshot() {
             self.publish_snapshot();
         }

@@ -60,14 +60,22 @@ impl Context<'_> {
             self.lower_let_sequential(f, bindings, &scope, body)?
         } else {
             let mut evaluated = Vec::with_capacity(bindings.len());
+            let mut terminated_value = None;
             for binding in bindings {
                 let value = match binding.value.as_ref() {
                     Some(form) => self.lower_expr(f, form)?,
                     None => f.nil()?,
                 };
                 evaluated.push(value);
+                if f.is_terminated() {
+                    terminated_value = Some(value);
+                    break;
+                }
             }
-            self.lower_let_parallel(f, bindings, &evaluated, &scope, body)?
+            match terminated_value {
+                Some(value) => value,
+                None => self.lower_let_parallel(f, bindings, &evaluated, &scope, body)?,
+            }
         };
         f.env().pop();
         Ok(value)
@@ -95,6 +103,9 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
+        if f.is_terminated() {
+            return Ok(value);
+        }
         self.push_declarations_shadowing(&[], std::slice::from_ref(&binding.name));
         let result = if scope.specials.contains(&binding.name) {
             self.lower_dynamic_binding(f, &binding.name, value, move |ctx, f| {

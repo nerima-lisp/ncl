@@ -470,12 +470,17 @@ fn defstruct_macro_builtin(
         let store_args = scope.root_many(&[ncl_object::Local::from_word(store_word)]);
         let store_lambda = scope.make_list(runtime, &store_args)?;
         let structure_set = scope.intern(runtime, COMMON_LISP, "%STRUCTURE-SET")?;
+        let quasiquote = scope.intern(runtime, COMMON_LISP, "QUASIQUOTE")?;
+        let unquote = scope.intern(runtime, COMMON_LISP, "UNQUOTE")?;
         let set_index = scope.root(ncl_object::Local::from_word(Word::fixnum(index_value)));
-        let set_body = make_form(
+        let object_form = make_form(&mut scope, runtime, &[unquote, object])?;
+        let store_form = make_form(&mut scope, runtime, &[unquote, store])?;
+        let set_datum = make_form(
             &mut scope,
             runtime,
-            &[structure_set, object, set_index, store],
+            &[structure_set, object_form, set_index, store_form],
         )?;
+        let set_body = make_form(&mut scope, runtime, &[quasiquote, set_datum])?;
         let set_definition = make_form(
             &mut scope,
             runtime,

@@ -142,3 +142,16 @@ fn handler_bind_evaluates_a_function_form_once() {
         });
     assert_eq!(runtime.format_result(value), "(1 T)");
 }
+
+#[test]
+fn defstruct_accessor_is_a_setf_place() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval(
+            "(defstruct repro (slot nil)) \
+             (let ((value (make-repro))) \
+               (list (setf (repro-slot value) 42) (repro-slot value)))",
+        )
+        .unwrap_or_else(|error| panic!("DEFSTRUCT accessor SETF failed: {error}"));
+    assert_eq!(runtime.format_result(value), "(42 42)");
+}

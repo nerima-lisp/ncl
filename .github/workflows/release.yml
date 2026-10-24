@@ -16,7 +16,7 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
     strategy:
@@ -25,6 +25,10 @@ jobs:
         include:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
           - runner: macos-14
             target: aarch64-apple-darwin
     steps:
@@ -137,12 +141,26 @@ jobs:
         run: |
           set -euo pipefail
           files=(dist/*)
-          if [[ ${#files[@]} -ne 4 ]]; then
-            echo "::error::expected two archives and two checksum files, found ${#files[@]} files"
+          if [[ ${#files[@]} -ne 8 ]]; then
+            echo "::error::expected four archives and four checksum files, found ${#files[@]} files"
             exit 1
           fi
-          (cd dist && shasum -a 256 -c ./*.sha256)
           version="${GITHUB_REF_NAME#v}"
+          expected_targets=(
+            x86_64-unknown-linux-gnu
+            aarch64-unknown-linux-gnu
+            x86_64-apple-darwin
+            aarch64-apple-darwin
+          )
+          for target in "${expected_targets[@]}"; do
+            archive="dist/ncl-v${version}-${target}.tar.gz"
+            checksum="$archive.sha256"
+            if [[ ! -s "$archive" || ! -s "$checksum" ]]; then
+              echo "::error::missing release archive or checksum for $target"
+              exit 1
+            fi
+          done
+          (cd dist && shasum -a 256 -c ./*.sha256)
           notes_file="$RUNNER_TEMP/release-notes.md"
           awk -v version="$version" '
             !found && ($0 == "## [" version "]" || index($0, "## [" version "] - ") == 1) { found = 1; next }

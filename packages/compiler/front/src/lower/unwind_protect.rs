@@ -2,6 +2,8 @@ use ncl_ir::{HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty
 
 use crate::ast::Expr;
 
+use super::super::capture;
+use super::super::env::Slot;
 use super::super::error::LowerError;
 use super::super::function::FunctionLowerer;
 use super::Context;
@@ -13,6 +15,20 @@ impl Context<'_> {
         protected_form: &Expr,
         cleanup: &[Expr],
     ) -> Result<ValueId, LowerError> {
+        // Cleanup runs from both normal and handler paths, so it cannot read a
+        // value assigned only on the normal path through an SSA value.
+        let assigned = capture::analyze(std::slice::from_ref(protected_form)).assigned_names();
+        let cleanup_variables = capture::free_names_in_forms(cleanup).variables;
+        for name in assigned {
+            if !cleanup_variables.contains(&name) {
+                continue;
+            }
+            if let Some(Slot::Value(value)) = f.env().lookup_variable(&name) {
+                let cell = f.one(OpKind::MakeValueCell { value }, Ty::Word)?;
+                f.env().rebind_variable(&name, Slot::Cell(cell));
+            }
+        }
+
         let result = f.fresh_value();
         let region_id = HandlerRegionId(self.next_region);
         self.next_region += 1;

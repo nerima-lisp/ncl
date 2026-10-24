@@ -95,6 +95,16 @@ pub(super) fn free_names(lambda: &LambdaExpr) -> FreeNames {
     free
 }
 
+pub(super) fn free_names_in_forms(forms: &[Expr]) -> FreeNames {
+    let mut bound_variables = Vec::new();
+    let bound_functions = Vec::new();
+    let mut free = FreeNames::default();
+    for form in forms {
+        collect_free(form, &mut bound_variables, &bound_functions, &mut free);
+    }
+    free
+}
+
 fn collect_lambda_free(
     lambda: &LambdaExpr,
     bound_variables: &[SymbolRef],

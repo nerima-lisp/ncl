@@ -158,7 +158,7 @@ def _timed_command(
 
 def _revision_record() -> dict[str, Any]:
     result, wall_seconds = _timed_command(
-        ["jj", "log", "--ignore-working-copy", "-r", "@-", "-T", "commit_id"],
+        ["jj", "log", "--ignore-working-copy", "--no-graph", "-r", "@-", "-T", "commit_id"],
         cwd=REPO_ROOT,
         timeout=INFO_TIMEOUT,
     )

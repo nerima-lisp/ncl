@@ -120,7 +120,7 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertEqual(len(baseline.BENCHMARKS), 65)
         self.assertEqual(report["status"], "passed")
         self.assertEqual(runner.revision_commands, [[
-            "jj", "log", "--ignore-working-copy", "-r", "@-", "-T", "commit_id",
+            "jj", "log", "--ignore-working-copy", "--no-graph", "-r", "@-", "-T", "commit_id",
         ]])
         self.assertEqual(report["build_revision"]["commit"], "a" * 40)
         self.assertEqual(report["build_revision"]["source"], "committed source at @-")
@@ -259,7 +259,7 @@ class OptimizationBaselineTests(unittest.TestCase):
                         baseline._revision_record()
 
                 timed_command.assert_called_once_with(
-                    ["jj", "log", "--ignore-working-copy", "-r", "@-", "-T", "commit_id"],
+                    ["jj", "log", "--ignore-working-copy", "--no-graph", "-r", "@-", "-T", "commit_id"],
                     cwd=baseline.REPO_ROOT,
                     timeout=baseline.INFO_TIMEOUT,
                 )

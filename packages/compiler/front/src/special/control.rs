@@ -188,7 +188,14 @@ fn if_form(
     let Some((test, rest)) = arguments.split_first() else {
         return Err(special::arity(kind, "a test and a then form", 0));
     };
-    if rest.is_empty() || rest.len() > 2 {
+    let Some(then) = rest.first() else {
+        return Err(special::arity(
+            kind,
+            "a test and a then form",
+            arguments.len(),
+        ));
+    };
+    if rest.len() > 2 {
         return Err(special::arity(
             kind,
             "a test and a then form",
@@ -196,7 +203,7 @@ fn if_form(
         ));
     }
     let test = expander.expand(test.get())?;
-    let then = expander.expand(rest[0].get())?;
+    let then = expander.expand(then.get())?;
     let otherwise = rest
         .get(1)
         .map(|value| expander.expand(value.get()))

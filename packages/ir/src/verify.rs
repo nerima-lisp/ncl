@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use verify_detail::successors;
+use verify_safety::{check_address_liveness, check_safepoints};
 
 /// A precise reason why an IR function is invalid.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,6 +37,20 @@ pub enum VerifyError {
     HandlerUnbalanced(BlockId),
     /// A warning represented in the existing error channel for API compatibility.
     SafepointWarning(BlockId),
+    AddressLiveAcross {
+        block: BlockId,
+        value: ValueId,
+        boundary: AddressLivenessBoundary,
+    },
+}
+
+/// A boundary that an address-derived SSA value cannot remain live across.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AddressLivenessBoundary {
+    Safepoint,
+    Alloc,
+    Call,
+    LoopBackedge { target: BlockId },
 }
 impl Display for VerifyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -211,6 +226,7 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
         }
     }
     verify_handler_flow(function, &blocks, &regions, &mut errors);
+    check_address_liveness(function, &blocks, &mut errors);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -451,35 +467,5 @@ fn require_word_args(
 #[path = "verify_detail.rs"]
 mod verify_detail;
 
-fn check_safepoints(
-    block: &BasicBlock,
-    dominators: &HashMap<BlockId, HashSet<BlockId>>,
-    errors: &mut Vec<VerifyError>,
-) {
-    for (index, op) in block.ops.iter().enumerate() {
-        if matches!(
-            op.kind,
-            OpKind::Call { .. }
-                | OpKind::CallIndirect { .. }
-                | OpKind::CallClosure { .. }
-                | OpKind::Builtin { .. }
-        ) && (index == 0 || !matches!(block.ops[index - 1].kind, OpKind::Safepoint))
-        {
-            errors.push(VerifyError::SafepointWarning(block.id));
-        }
-        if matches!(op.kind, OpKind::Alloc { .. })
-            && (index + 1 == block.ops.len()
-                || !matches!(block.ops[index + 1].kind, OpKind::Safepoint))
-        {
-            errors.push(VerifyError::SafepointWarning(block.id));
-        }
-    }
-    if successors(&block.terminator).into_iter().any(|target| {
-        dominators
-            .get(&block.id)
-            .is_some_and(|set| set.contains(&target))
-    }) && !matches!(block.ops.last().map(|op| &op.kind), Some(OpKind::Safepoint))
-    {
-        errors.push(VerifyError::SafepointWarning(block.id));
-    }
-}
+#[path = "verify_safety.rs"]
+mod verify_safety;

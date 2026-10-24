@@ -67,8 +67,75 @@ fn build_cons_function() -> ncl_ir::Function {
             &[Ty::Word],
         )
         .expect("object word")[0];
-    let car = fixnum_word(&mut builder, 10);
-    let cdr = fixnum_word(&mut builder, 20);
+    let first_loaded = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Car,
+                args: vec![object],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("load car")[0];
+    let second_loaded = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Cdr,
+                args: vec![object],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("load cdr")[0];
+    let first_loaded = word_to_i64(&mut builder, first_loaded);
+    let second_loaded = word_to_i64(&mut builder, second_loaded);
+    let sum = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![first_loaded, second_loaded],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .expect("sum")[0];
+    let sum = i64_to_word(&mut builder, sum);
+    builder
+        .terminate(Terminator::Return { values: vec![sum] })
+        .expect("return");
+
+    builder.finish()
+}
+
+fn build_cons_store_function() -> ncl_ir::Function {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(40),
+        "cons-store",
+        vec![
+            Param {
+                name: "object".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "car".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "cdr".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let object = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("load object")[0];
+    let car = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("load car argument")[0];
+    let cdr = builder
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
+        .expect("load cdr argument")[0];
     builder
         .push_op(
             OpKind::Prim {
@@ -125,7 +192,6 @@ fn build_cons_function() -> ncl_ir::Function {
     builder
         .terminate(Terminator::Return { values: vec![sum] })
         .expect("return");
-
     builder.finish()
 }
 
@@ -148,7 +214,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
         [0; 4],
         0,
     );
-    assert_eq!(value, Word::fixnum(30).bits());
+    assert_eq!(value, Word::fixnum(0).bits());
     assert_eq!(count, 1);
     assert_eq!(tlab_bump(&thread), bump + 16);
     let Some(map) = compiled.safepoint_maps.first() else {
@@ -157,6 +223,34 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
     let end = usize::try_from(map.pc_offset).expect("map offset");
     // The allocation slow path registers its map at the address after its call.
     assert_eq!(compiled.code[end - 3..end], [0x41, 0xFF, 0xD3]);
+}
+
+#[test]
+fn executes_cons_stores_and_loads_for_word_argument() {
+    let abi = BuiltinAbi;
+    let compiled = compile_function_x86_64(&build_cons_store_function(), &abi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut storage = Box::new([0_u64; 2]);
+    let object = Word::pointer(storage.as_mut_ptr() as usize, ncl_sys::LowTag::List);
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        3,
+        [
+            object.bits(),
+            Word::fixnum(10).bits(),
+            Word::fixnum(20).bits(),
+            0,
+        ],
+        0,
+    );
+    assert_eq!(value, Word::fixnum(30).bits());
+    assert_eq!(count, 1);
+    assert_eq!(*storage, [Word::fixnum(10).bits(), Word::fixnum(20).bits()]);
 }
 
 #[test]

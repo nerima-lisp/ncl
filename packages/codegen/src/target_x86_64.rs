@@ -127,6 +127,7 @@ fn compile_function_x86_64_with_multiple_values(
     let Some(_entry) = function.blocks.first() else {
         return Err(CodegenError::EmptyFunction);
     };
+    crate::machine_verify::verify_ir(function)?;
     let argument_words =
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
     let generated_lambda = function

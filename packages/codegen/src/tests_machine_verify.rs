@@ -475,3 +475,65 @@ fn verifies_target_map_spill_incoming_and_outgoing_roots() {
         Err(MachineVerificationError::SafepointMismatch)
     );
 }
+
+fn address_live_across_safepoint() -> Function {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(1),
+        "address-live-across-safepoint",
+        vec![ncl_ir::Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        vec![Ty::Word],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).unwrap();
+    let loaded = builder
+        .push_op(
+            OpKind::Load {
+                address: ValueId(0),
+            },
+            &[Ty::Word],
+        )
+        .unwrap()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![loaded],
+        })
+        .unwrap();
+    builder.finish()
+}
+
+fn reports_address_live_across_safepoint(errors: &[ncl_ir::VerifyError]) -> bool {
+    errors.iter().any(|error| {
+        matches!(
+            error,
+            ncl_ir::VerifyError::AddressLiveAcross {
+                block: ncl_ir::BlockId(0),
+                value: ValueId(0),
+                boundary: ncl_ir::AddressLivenessBoundary::Safepoint,
+            }
+        )
+    })
+}
+
+#[test]
+fn both_target_codegen_entries_reject_address_live_across_safepoint() {
+    let function = address_live_across_safepoint();
+    assert!(matches!(
+        ncl_ir::verify(&function),
+        Err(errors) if reports_address_live_across_safepoint(&errors)
+    ));
+
+    assert!(matches!(
+        crate::compile_function_x86_64(&function, &EmptyAbi),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::InvalidIr(errors)
+        )) if reports_address_live_across_safepoint(&errors)
+    ));
+    assert!(matches!(
+        crate::compile_function_aarch64(&function, &EmptyAbi),
+        Err(CodegenError::MachineVerification(
+            MachineVerificationError::InvalidIr(errors)
+        )) if reports_address_live_across_safepoint(&errors)
+    ));
+}

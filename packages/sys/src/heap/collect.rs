@@ -135,10 +135,10 @@ impl super::Heap {
                 if let Some(error) = error {
                     return Err(error);
                 }
-                // Native stack words are roots; Lisp frames use precise roots and use ambiguous
-                // words only to pin objects already reached through those roots.
-                let native_roots_are_strong =
-                    (*thread).native_state() == crate::NativeState::Native;
+                // Generated code has no registered frame snapshot while its native callback is active.
+                let native_roots_are_strong = (*thread).native_state()
+                    == crate::NativeState::Native
+                    || (*thread).has_native_context();
                 Self::enqueue_conservative_snapshot(
                     state,
                     scratch,

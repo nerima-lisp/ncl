@@ -10,7 +10,7 @@ fn defmethod_macro_builtin(
 ) -> Result<Word, ObjectError> {
     let mut scope = ncl_object::Scope::new(ctx);
     let form = scope.root(ncl_object::Local::from_word(args.required(0)?));
-    let expansion = defmethod_macro_expansion(&mut scope, runtime, form, None, false)?;
+    let expansion = defmethod_macro_expansion(&mut scope, runtime, form, false)?;
     Ok(scope.get(expansion).as_word())
 }
 
@@ -19,7 +19,6 @@ fn defmethod_macro_expansion<'ctx>(
     scope: &mut ncl_object::Scope<'ctx>,
     runtime: &Runtime,
     form: ncl_object::Handle<'ctx>,
-    force_wrapper: Option<bool>,
     is_defgeneric_method: bool,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let parts = macro_list_to_handles(scope, form)?;
@@ -158,7 +157,9 @@ fn defmethod_macro_expansion<'ctx>(
     )?;
     let initialization_base = initialization_base(scope, runtime, name, quoted_name)?;
     let progn = scope.intern(runtime, COMMON_LISP, "PROGN")?;
-    let generic_initialization = if force_wrapper.is_none() {
+    let generic_initialization = if is_defgeneric_method {
+        None
+    } else {
         let generic_lambda_list = scope.make_list(runtime, &user_lambda)?;
         let (_, _, ensure_generic) = defgeneric_setup(scope, runtime, name, generic_lambda_list)?;
         let registered =
@@ -171,21 +172,17 @@ fn defmethod_macro_expansion<'ctx>(
             runtime,
             &[if_symbol, is_registered, nil, ensure_generic],
         )?)
-    } else {
-        None
     };
-    let wrapper_form = match force_wrapper {
-        Some(true) => Some(wrapper),
-        Some(false) => None,
-        None => {
-            let registered =
-                scope.intern(runtime, COMMON_LISP, "%CLOS-GENERIC-FUNCTION-REGISTERED-P")?;
-            let if_symbol = scope.intern(runtime, COMMON_LISP, "IF")?;
-            let is_registered = make_form(scope, runtime, &[registered, quoted_name])?;
-            let nil = scope.root(ncl_object::Local::from_word(Word::NIL));
-            let condition = make_form(scope, runtime, &[if_symbol, is_registered, nil, wrapper])?;
-            Some(condition)
-        }
+    let wrapper_form = if is_defgeneric_method {
+        None
+    } else {
+        let registered =
+            scope.intern(runtime, COMMON_LISP, "%CLOS-GENERIC-FUNCTION-REGISTERED-P")?;
+        let if_symbol = scope.intern(runtime, COMMON_LISP, "IF")?;
+        let is_registered = make_form(scope, runtime, &[registered, quoted_name])?;
+        let nil = scope.root(ncl_object::Local::from_word(Word::NIL));
+        let condition = make_form(scope, runtime, &[if_symbol, is_registered, nil, wrapper])?;
+        Some(condition)
     };
     let mut result = scope.root_many(&[]);
     macro_push_handle(scope, &mut result, progn);

@@ -152,6 +152,13 @@ fn defmethod_implicitly_creates_generic_with_method_lambda_list() {
                (if fallback fallback 47))",
         )
         .unwrap_or_else(|error| panic!("implicit DEFMETHOD generic creation failed: {error}"));
+    runtime
+        .eval(
+            "(defmethod ncl-defmethod-implicit-property-test \
+               ((value integer) &optional fallback) \
+               (if fallback fallback :integer))",
+        )
+        .unwrap_or_else(|error| panic!("second implicit DEFMETHOD failed: {error}"));
     let defaulted_call = runtime
         .eval(
             "(= (ncl-defmethod-implicit-property-test \
@@ -170,6 +177,17 @@ fn defmethod_implicitly_creates_generic_with_method_lambda_list() {
             panic!("implicit generic optional-argument dispatch failed: {error}")
         });
     assert_eq!(optional_call, Word::TRUE);
+    let second_method_call = runtime
+        .eval("(eq (ncl-defmethod-implicit-property-test 83) :integer)")
+        .unwrap_or_else(|error| panic!("existing generic dispatch failed: {error}"));
+    assert_eq!(second_method_call, Word::TRUE);
+    let first_method_retained = runtime
+        .eval(
+            "(= (ncl-defmethod-implicit-property-test \
+                  (make-condition 'ncl-defmethod-implicit-test-condition)) 47)",
+        )
+        .unwrap_or_else(|error| panic!("first implicit method was lost: {error}"));
+    assert_eq!(first_method_retained, Word::TRUE);
     let expander_property = runtime
         .eval("(not (null (get 'ncl-defmethod-implicit-property-test 'ncl::deftype-expander)))")
         .unwrap_or_else(|error| panic!("DEFTYPE expander property was lost: {error}"));

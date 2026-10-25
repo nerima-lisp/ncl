@@ -46,3 +46,11 @@ include!("lib_structures.rs");
 include!("lib_core.rs");
 include!("lib_core_typep.rs");
 include!("lib_registration.rs");
+
+#[cfg(test)]
+#[path = "defmethod_macro_tests.rs"]
+mod defmethod_macro_tests;
+
+#[cfg(test)]
+#[path = "symbol_plist_tests.rs"]
+mod symbol_plist_tests;

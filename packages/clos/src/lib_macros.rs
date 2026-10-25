@@ -181,8 +181,7 @@ fn defgeneric_macro_builtin(
             let Ok(method_form) = scope.make_list(runtime, &method_form_values) else {
                 return defgeneric_error_expansion(&mut scope, runtime, name);
             };
-            let Ok(expansion) =
-                defmethod_macro_expansion(&mut scope, runtime, method_form, Some(false), true)
+            let Ok(expansion) = defmethod_macro_expansion(&mut scope, runtime, method_form, true)
             else {
                 return defgeneric_error_expansion(&mut scope, runtime, name);
             };

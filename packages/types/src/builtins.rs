@@ -6,9 +6,9 @@
 
 use ncl_object::{
     Arity, Bignum, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
-    BuiltinImplementation, BuiltinName, BuiltinPackage, DoubleFloat, Local, MultipleValues,
-    ObjectError, ObjectRef, Package, Parameter, ParameterType, Ratio, Runtime, Scope,
-    ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object, double_value,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, DoubleFloat, HeapRootedWord, Local,
+    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Ratio, Runtime,
+    Scope, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object, double_value,
     make_double, make_simple_vector, make_string, ratio_denominator, ratio_numerator,
     simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_function,
     symbol_name,
@@ -166,10 +166,20 @@ fn subtypep_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let type1 = args.required(0)?;
-    let type2 = args.required(1)?;
-    let spec1 = crate::parse_type_specifier_with_runtime(ctx, runtime, type1);
-    let spec2 = crate::parse_type_specifier_with_runtime(ctx, runtime, type2);
+    let type1 = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let type2 = HeapRootedWord::new(ctx, args.required(1)?)?;
+    let expanded1 = crate::expand_deftype_specifier(ctx, runtime, type1.get())
+        .and_then(|word| HeapRootedWord::new(ctx, word).map_err(crate::TypeError::from));
+    let expanded2 = crate::expand_deftype_specifier(ctx, runtime, type2.get())
+        .and_then(|word| HeapRootedWord::new(ctx, word).map_err(crate::TypeError::from));
+    let spec1 = match &expanded1 {
+        Ok(word) => crate::parse_type_specifier_with_runtime(ctx, runtime, word.get()),
+        Err(error) => Err(error.clone()),
+    };
+    let spec2 = match &expanded2 {
+        Ok(word) => crate::parse_type_specifier_with_runtime(ctx, runtime, word.get()),
+        Err(error) => Err(error.clone()),
+    };
     // Every failure mode (an unresolved `TypeError` from `subtypep`, or a
     // specifier that fails to parse at all) is treated as "cannot determine"
     // rather than a hard error, matching CLHS's permission for SUBTYPEP to

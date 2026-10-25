@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ptr::NonNull;
 
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
-use ncl_compiler_front::MacroCaller;
+use ncl_compiler_front::{FrontError, MacroCaller, SymbolRef};
 use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
@@ -174,6 +174,19 @@ pub struct RuntimeMacroCaller<'a> {
     pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) entries are rooted code objects
 }
 
+impl ncl_types::DeftypeExpanderCaller for RuntimeMacroCaller<'_> {
+    fn call_expander(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        function: Word,
+        whole_form: Word,
+    ) -> Result<Word, ObjectError> {
+        let function = FunctionObject::try_from(function)?;
+        call_macro_function(ctx, runtime, function, &[whole_form], self.entry_codes)
+    }
+}
+
 impl MacroCaller for RuntimeMacroCaller<'_> {
     fn call_macro(
         &mut self,
@@ -236,6 +249,20 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         // non-deterministically under GC pressure.
         let result = call_macro_function(ctx, runtime, function, &[form], self.entry_codes);
         result.map_err(|error| expansion(name, &error.to_string()))
+    }
+
+    fn expand_type_specifier(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        specifier: Word,
+    ) -> Result<Word, FrontError> {
+        ncl_types::expand_deftype_specifier_with(ctx, runtime, specifier, self).map_err(|error| {
+            FrontError::MacroExpansion {
+                name: SymbolRef::interned("COMMON-LISP", "DEFTYPE"),
+                detail: error.to_string(),
+            }
+        })
     }
 
     fn call_local_macro(

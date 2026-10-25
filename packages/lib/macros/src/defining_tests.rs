@@ -116,6 +116,7 @@ fn callback_registry_covers_requested_definers() {
         "DEFMACRO",
         "DEFVAR",
         "DEFPARAMETER",
+        "DEFTYPE",
         "DEFCONSTANT",
         "DEFINE-SYMBOL-MACRO",
         "DEFINE-COMPILER-MACRO",

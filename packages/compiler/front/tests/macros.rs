@@ -10,7 +10,9 @@ mod forms;
 
 use forms::{Fixture, intern, list};
 
-use ncl_compiler_front::{Expr, FrontError, Literal, MacroCaller, SymbolRef};
+use ncl_compiler_front::{
+    Declaration, Expr, FrontError, Literal, MacroCaller, SymbolRef, TypeSpecifier,
+};
 use ncl_object::{Runtime, ThreadContext, Word, set_symbol_macro};
 
 /// A macro caller that returns `:GLOBAL` from a global macro and `:LOCAL` from
@@ -45,6 +47,15 @@ impl MacroCaller for Marker {
     ) -> Result<Word, FrontError> {
         Ok(Self::marker(ctx, runtime, "LOCAL"))
     }
+
+    fn expand_type_specifier(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        _specifier: Word,
+    ) -> Result<Word, FrontError> {
+        Ok(intern(ctx, runtime, "COMMON-LISP", "INTEGER"))
+    }
 }
 
 /// Assert that an expression is the constant keyword `name`.
@@ -68,6 +79,31 @@ fn a_global_macro_is_expanded_through_the_caller() {
     let mut caller = Marker;
     let expanded = f.expand_with(form, &mut caller).unwrap();
     assert_marker(expanded, "GLOBAL");
+}
+
+#[test]
+fn declared_type_specifiers_are_expanded_through_the_caller() {
+    let mut f = Fixture::new();
+    let type_specifier = f.user("TYPE-ALIAS");
+    let variable = f.user("DECLARED-VARIABLE");
+    let type_declaration = f.form("TYPE", &[type_specifier, variable]);
+    let declare = f.form("DECLARE", &[type_declaration]);
+    let mut caller = Marker;
+    let registry = ncl_compiler_front::MacroRegistry::new();
+    let mut expander = ncl_compiler_front::FormExpander::new(&mut f.ctx, &f.runtime, &registry);
+    expander.set_caller(&mut caller);
+
+    let declarations = expander.declarations(declare).unwrap();
+    assert_eq!(
+        declarations,
+        vec![Declaration::Type {
+            type_specifier: TypeSpecifier::new(Literal::Symbol(SymbolRef::interned(
+                "COMMON-LISP",
+                "INTEGER",
+            ))),
+            names: vec![SymbolRef::interned("COMMON-LISP-USER", "DECLARED-VARIABLE",)],
+        }]
+    );
 }
 
 #[test]

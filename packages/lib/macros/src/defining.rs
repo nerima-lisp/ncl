@@ -11,10 +11,14 @@ use ncl_object::{
 
 use crate::form::{elements, list, symbol};
 
+mod deftype;
+mod deftype_lambda_list;
 mod macro_definition;
+use deftype::deftype;
 use macro_definition::{finish_function_definition, macro_function_definition};
 
 const DEFINITION_PROPERTY: &str = "NCL::DEFINITION";
+const DEFTYPE_PROPERTY: &str = "NCL::DEFTYPE-EXPANDER";
 #[cfg(test)]
 type DefinitionCallback = fn(
     &Runtime,
@@ -30,6 +34,7 @@ fn callback_for(name: &str) -> Option<DefinitionCallback> {
         "DEFMACRO" => defmacro,
         "DEFVAR" => defvar,
         "DEFPARAMETER" => defparameter,
+        "DEFTYPE" => deftype,
         "DEFCONSTANT" => defconstant,
         "DEFINE-SYMBOL-MACRO" => define_symbol_macro,
         "DEFINE-COMPILER-MACRO" => define_compiler_macro,
@@ -419,6 +424,7 @@ adapters! {
     defmacro_adapter => defmacro,
     defvar_adapter => defvar,
     defparameter_adapter => defparameter,
+    deftype_adapter => deftype,
     defconstant_adapter => defconstant,
     define_symbol_macro_adapter => define_symbol_macro,
     define_compiler_macro_adapter => define_compiler_macro,

@@ -99,10 +99,21 @@ pub(super) fn macro_function_definition(
     lambda_list: Word,
     body: &[Word],
 ) -> Result {
+    let lambda = macro_function_lambda(ctx, runtime, name, lambda_list, body)?;
+    finish_function_definition(ctx, runtime, name, accessor, lambda)
+}
+
+/// Build the lambda used by a macro function without choosing its storage place.
+pub(super) fn macro_function_lambda(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+    lambda_list: Word,
+    body: &[Word],
+) -> Result {
     let (whole_variable, pattern) = strip_leading_whole(ctx, runtime, lambda_list)?;
     let mut held = vec![name, pattern, whole_variable.unwrap_or(Word::NIL)];
     held.extend_from_slice(body);
-    let name_index = 0;
     let pattern_index = 1;
     let whole_variable_index = 2;
     let body_start = 3;
@@ -131,7 +142,5 @@ pub(super) fn macro_function_definition(
     };
     let params = held_raw_list(ctx, runtime, &mut held, &[whole_form])?;
     let lambda = held_call(ctx, runtime, &mut held, "LAMBDA", &[params, inner_body])?;
-    let name_word = held_get(&held, name_index)?;
-    let lambda_word = held_get(&held, lambda)?;
-    finish_function_definition(ctx, runtime, name_word, accessor, lambda_word)
+    held_get(&held, lambda)
 }

@@ -4,6 +4,7 @@ pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
 pub use ncl_sys::Word;
 pub mod array;
 mod builtin;
+mod builtin_package;
 mod classify;
 mod code;
 pub mod cons;
@@ -31,6 +32,7 @@ mod registry_extensions;
 mod rooted_words;
 mod roots;
 mod runtime;
+mod runtime_sb_symbols;
 pub mod scope;
 mod specialized_array;
 mod stream;
@@ -45,9 +47,10 @@ pub use array::{
 };
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, LispErrorConverter,
-    MultipleValues, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
+    BuiltinName, FunctionObject, KeywordAdapter, LambdaList, LispErrorConverter, MultipleValues,
+    NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
+pub use builtin_package::BuiltinPackage;
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
 pub use code::{

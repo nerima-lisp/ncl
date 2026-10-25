@@ -27,6 +27,22 @@ fn package_layout() -> ncl_sys::ReferenceLayout {
 }
 
 const NO_PARAMETERS: &[Parameter] = &[];
+const SB_EXT_SYMBOLS: &[&str] = &[
+    "*AFTER-GC-HOOKS*",
+    "*GC-REAL-TIME*",
+    "*GC-RUN-TIME*",
+    "CANCEL-FINALIZATION",
+    "FINALIZE",
+    "GC",
+    "GENERATION-BYTES-ALLOCATED",
+    "HASH-TABLE-WEAKNESS",
+    "MAKE-WEAK-POINTER",
+    "MAKE-WEAK-VECTOR",
+    "WEAK-POINTER",
+    "WEAK-POINTER-P",
+    "WEAK-POINTER-VALUE",
+    "WEAK-VECTOR-P",
+];
 
 fn gc_builtin(
     ctx: &mut ThreadContext,
@@ -134,8 +150,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                     widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
-                    widetag::HASH_TABLE => Some(MARKER + 1),
-                    widetag::PACKAGE => Some(crate::package::NAME + 1),
                     _ => None,
                 },
             },
@@ -183,6 +197,15 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         BuiltinIdentifier::new(BuiltinPackage::NclGc, BuiltinName::new("GC")),
         BuiltinImplementation::direct(descriptor, gc_builtin),
     )?;
+    for name in SB_EXT_SYMBOLS {
+        runtime.register_sb_symbol(
+            ctx,
+            BuiltinPackage::NclGc,
+            BuiltinPackage::SbExt,
+            BuiltinName::new(name),
+            true,
+        )?;
+    }
     Ok(())
 }
 

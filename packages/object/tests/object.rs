@@ -181,9 +181,11 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
 fn make_weak_cons(ctx: &mut ThreadContext, runtime: &Runtime) -> Word {
     let mut weak = ncl_object::allocate(ctx, runtime, 99, 1).unwrap_or(Word::NIL);
+    let weak_token = ncl_object::push_root(ctx, &mut weak);
     let referent = make_cons(ctx, runtime, Word::fixnum(7), Word::NIL).unwrap_or(Word::NIL);
     assert!(ctx.write_object_slot(weak, 0, referent).is_ok());
     weak = ctx.make_weak(weak, ncl_sys::Weakness::Value);
+    assert!(ncl_object::pop_root(ctx, weak_token));
     weak
 }
 

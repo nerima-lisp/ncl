@@ -15,7 +15,6 @@ use std::fmt::{self, Display, Formatter};
 use verify_detail::successors;
 use verify_safety::{check_address_liveness, check_safepoints};
 
-/// A precise reason why an IR function is invalid.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VerifyError {
     DuplicateBlock(BlockId),
@@ -41,6 +40,10 @@ pub enum VerifyError {
         block: BlockId,
         value: ValueId,
         boundary: AddressLivenessBoundary,
+    },
+    UnprovenAddressProvenance {
+        block: BlockId,
+        value: ValueId,
     },
 }
 

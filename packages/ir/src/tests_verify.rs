@@ -147,11 +147,11 @@ fn verifier_rejects_address_provenance_stored_across_safepoint() {
         vec![
             Param {
                 name: "owner".into(),
-                ty: Ty::Word,
+                ty: Ty::Address,
             },
             Param {
                 name: "slot".into(),
-                ty: Ty::Word,
+                ty: Ty::Address,
             },
         ],
         vec![Ty::Word],
@@ -160,63 +160,29 @@ fn verifier_rejects_address_provenance_stored_across_safepoint() {
             0,
             vec![
                 op(
-                    &[(2, Ty::Address)],
-                    OpKind::Convert {
-                        op: Convert::WordToAddress,
-                        value: ValueId(0),
-                    },
-                ),
-                op(
-                    &[(3, Ty::Word)],
+                    &[(2, Ty::Word)],
                     OpKind::Convert {
                         op: Convert::AddressToWord,
-                        value: ValueId(2),
-                    },
-                ),
-                op(
-                    &[(4, Ty::Address)],
-                    OpKind::Convert {
-                        op: Convert::WordToAddress,
-                        value: ValueId(1),
+                        value: ValueId(0),
                     },
                 ),
                 op(
                     &[],
                     OpKind::Store {
-                        address: ValueId(4),
-                        value: ValueId(3),
+                        address: ValueId(1),
+                        value: ValueId(2),
                     },
                 ),
                 op(&[], OpKind::Safepoint),
                 op(
-                    &[(5, Ty::Address)],
-                    OpKind::Convert {
-                        op: Convert::WordToAddress,
-                        value: ValueId(1),
-                    },
-                ),
-                op(
-                    &[(6, Ty::Word)],
+                    &[(3, Ty::Word)],
                     OpKind::Load {
-                        address: ValueId(5),
-                    },
-                ),
-                op(
-                    &[(7, Ty::Address)],
-                    OpKind::Convert {
-                        op: Convert::WordToAddress,
-                        value: ValueId(6),
-                    },
-                ),
-                op(
-                    &[(8, Ty::Word)],
-                    OpKind::Load {
-                        address: ValueId(7),
+                        address: ValueId(1),
                     },
                 ),
             ],
             Terminator::Return {
-                values: vec![ValueId(8)],
+                values: vec![ValueId(3)],
             },
         )],
         Vec::new(),
@@ -226,9 +192,299 @@ fn verifier_rejects_address_provenance_stored_across_safepoint() {
         &function,
         &VerifyError::AddressLiveAcross {
             block: BlockId(0),
-            value: ValueId(3),
+            value: ValueId(2),
             boundary: AddressLivenessBoundary::Safepoint,
         },
+    );
+}
+
+#[test]
+fn verifier_rejects_call_results_spilled_across_safepoint() {
+    let make_function = |name: &str, call: OpKind| {
+        finish(
+            name,
+            vec![
+                Param {
+                    name: "callee".into(),
+                    ty: Ty::Word,
+                },
+                Param {
+                    name: "slot".into(),
+                    ty: Ty::Address,
+                },
+            ],
+            vec![Ty::Word],
+            Vec::new(),
+            vec![block(
+                0,
+                vec![
+                    op(&[], OpKind::Safepoint),
+                    op(&[(2, Ty::Word)], call),
+                    op(&[(3, Ty::Address)], OpKind::LoadArg { index: 1 }),
+                    op(
+                        &[],
+                        OpKind::Store {
+                            address: ValueId(3),
+                            value: ValueId(2),
+                        },
+                    ),
+                    op(&[], OpKind::Safepoint),
+                    op(&[(4, Ty::Address)], OpKind::LoadArg { index: 1 }),
+                    op(
+                        &[(5, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(4),
+                        },
+                    ),
+                    op(
+                        &[(6, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(5),
+                        },
+                    ),
+                    op(
+                        &[(7, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(6),
+                        },
+                    ),
+                ],
+                Terminator::Return {
+                    values: vec![ValueId(7)],
+                },
+            )],
+            Vec::new(),
+        )
+    };
+    let direct_call = make_function(
+        "direct-call-result-spilled-across-safepoint",
+        OpKind::Call {
+            function: ValueId(0),
+            args: Vec::new(),
+        },
+    );
+    let indirect_call = make_function(
+        "indirect-call-result-spilled-across-safepoint",
+        OpKind::CallIndirect {
+            callee: ValueId(0),
+            args: Vec::new(),
+        },
+    );
+    let expected = VerifyError::UnprovenAddressProvenance {
+        block: BlockId(0),
+        value: ValueId(5),
+    };
+    let direct_errors = verify(&direct_call).err().unwrap_or_default();
+    let indirect_errors = verify(&indirect_call).err().unwrap_or_default();
+    assert!(
+        direct_errors.contains(&expected) && indirect_errors.contains(&expected),
+        "expected rejection for both call result spills, got direct={direct_errors:?}, indirect={indirect_errors:?}"
+    );
+}
+
+#[test]
+fn verifier_rejects_unproven_call_result_word_to_address() {
+    for call in [
+        OpKind::Call {
+            function: ValueId(0),
+            args: Vec::new(),
+        },
+        OpKind::CallIndirect {
+            callee: ValueId(0),
+            args: Vec::new(),
+        },
+    ] {
+        let function = finish(
+            "unproven-call-result-word-to-address",
+            vec![Param {
+                name: "callee".into(),
+                ty: Ty::Word,
+            }],
+            vec![Ty::Word],
+            Vec::new(),
+            vec![block(
+                0,
+                vec![
+                    op(&[], OpKind::Safepoint),
+                    op(&[(1, Ty::Word)], call),
+                    op(&[(2, Ty::Word)], OpKind::Move { value: ValueId(1) }),
+                    op(
+                        &[(3, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(2),
+                        },
+                    ),
+                    op(
+                        &[(4, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(3),
+                        },
+                    ),
+                ],
+                Terminator::Return {
+                    values: vec![ValueId(4)],
+                },
+            )],
+            Vec::new(),
+        );
+
+        let errors = verify(&function).err().unwrap_or_default();
+        assert!(
+            errors.contains(&VerifyError::UnprovenAddressProvenance {
+                block: BlockId(0),
+                value: ValueId(2),
+            }),
+            "call result must not prove WordToAddress provenance, got {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn verifier_rejects_word_to_address_after_mixed_block_parameter() {
+    let function = finish(
+        "mixed-address-provenance-block-parameter",
+        vec![
+            Param {
+                name: "condition".into(),
+                ty: Ty::Bool,
+            },
+            Param {
+                name: "callee".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "address".into(),
+                ty: Ty::Address,
+            },
+        ],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![
+            BasicBlock {
+                id: BlockId(0),
+                params: Vec::new(),
+                ops: vec![op(
+                    &[(3, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(2),
+                    },
+                )],
+                terminator: Terminator::Branch {
+                    condition: ValueId(0),
+                    then_target: BlockId(1),
+                    then_args: Vec::new(),
+                    else_target: BlockId(2),
+                    else_args: Vec::new(),
+                },
+            },
+            block(
+                1,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: vec![ValueId(3)],
+                },
+            ),
+            block(
+                2,
+                vec![
+                    op(&[], OpKind::Safepoint),
+                    op(
+                        &[(4, Ty::Word)],
+                        OpKind::Call {
+                            function: ValueId(1),
+                            args: Vec::new(),
+                        },
+                    ),
+                ],
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: vec![ValueId(4)],
+                },
+            ),
+            BasicBlock {
+                id: BlockId(3),
+                params: vec![BlockParam {
+                    value: ValueId(5),
+                    ty: Ty::Word,
+                }],
+                ops: vec![
+                    op(
+                        &[(6, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(5),
+                        },
+                    ),
+                    op(
+                        &[(7, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(6),
+                        },
+                    ),
+                ],
+                terminator: Terminator::Return {
+                    values: vec![ValueId(7)],
+                },
+            },
+        ],
+        Vec::new(),
+    );
+
+    let errors = verify(&function).err().unwrap_or_default();
+    assert!(
+        errors.contains(&VerifyError::UnprovenAddressProvenance {
+            block: BlockId(3),
+            value: ValueId(5),
+        }),
+        "mixed proven and unknown inputs must not prove provenance, got {errors:?}"
+    );
+}
+
+#[test]
+fn verifier_rejects_address_saved_in_multiple_values_across_safepoint() {
+    let function = finish(
+        "address-saved-in-multiple-values-across-safepoint",
+        vec![Param {
+            name: "address".into(),
+            ty: Ty::Address,
+        }],
+        Vec::new(),
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[],
+                    OpKind::SetMultipleValues {
+                        values: vec![ValueId(1)],
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+            ],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+
+    let errors = verify(&function).err().unwrap_or_default();
+    assert!(
+        errors.contains(&VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(1),
+            boundary: AddressLivenessBoundary::Safepoint,
+        }),
+        "expected rejection for the address saved in multiple values, got {errors:?}"
     );
 }
 

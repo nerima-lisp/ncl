@@ -40,6 +40,21 @@ fn body_allocates(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Thre
     Ok(())
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "thread bodies return a fallible result"
+)]
+fn body_waiting_for_termination(
+    _runtime: &Runtime,
+    _ctx: &mut ThreadContext,
+) -> Result<(), ThreadError> {
+    let id = ncl_threads::current_id();
+    while !ncl_threads::should_terminate(id) {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    Ok(())
+}
+
 fn runtime() -> Arc<Runtime> {
     Arc::new(Runtime::new().unwrap())
 }
@@ -99,7 +114,7 @@ fn joining_the_main_thread_is_a_deadlock() {
 fn interrupts_stay_pending_until_taken() {
     let _guard = registry_guard();
     let runtime = runtime();
-    let id = ncl_threads::spawn(&runtime, "parked", ncl_threads::idle_body).unwrap();
+    let id = ncl_threads::spawn(&runtime, "parked", body_waiting_for_termination).unwrap();
     ncl_threads::interrupt(id).unwrap();
     assert!(ncl_threads::take_interrupt(id));
     assert!(!ncl_threads::take_interrupt(id));

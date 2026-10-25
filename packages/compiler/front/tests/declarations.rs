@@ -128,6 +128,22 @@ fn optimize_parses_qualities() {
 }
 
 #[test]
+fn optimize_bare_quality_defaults_to_three() {
+    let mut f = Fixture::new();
+    let optimize = f.cl("OPTIMIZE");
+    let safety = f.cl("SAFETY");
+    let specifier = f.list(&[optimize, safety]);
+    match parse_one(&mut f, specifier) {
+        Declaration::Optimize(qualities) => {
+            assert_eq!(qualities.len(), 1);
+            assert_eq!(qualities[0].quality, Quality::Safety);
+            assert_eq!(qualities[0].value, 3);
+        }
+        other => panic!("expected Optimize, got {other:?}"),
+    }
+}
+
+#[test]
 fn an_unknown_specifier_is_retained() {
     let mut f = Fixture::new();
     let unknown = f.intern("NCL-EXT", "SOME-DECLARATION");

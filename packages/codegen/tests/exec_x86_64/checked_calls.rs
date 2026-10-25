@@ -291,7 +291,7 @@ fn build_checked_call_caller(id: u32, indirect: bool) -> ncl_ir::Function {
         vec![
             Param {
                 name: "callee".into(),
-                ty: Ty::Address,
+                ty: Ty::Word,
             },
             Param {
                 name: "value".into(),
@@ -300,15 +300,7 @@ fn build_checked_call_caller(id: u32, indirect: bool) -> ncl_ir::Function {
         ],
         vec![Ty::Word],
     );
-    let callee_address = load_arg(&mut builder, 0, Ty::Address);
-    let callee = push_value(
-        &mut builder,
-        OpKind::Convert {
-            op: ncl_ir::Convert::AddressToWord,
-            value: callee_address,
-        },
-        Ty::Word,
-    );
+    let callee = load_arg(&mut builder, 0, Ty::Word);
     let value = load_arg(&mut builder, 1, Ty::Word);
     let argc = const_fixnum(&mut builder, 1);
     push_effect(&mut builder, OpKind::Safepoint);

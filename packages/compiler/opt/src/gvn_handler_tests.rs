@@ -112,6 +112,125 @@ fn handler_join_with_duplicate_expression() -> ncl_ir::Function {
     builder.finish()
 }
 
+fn cleanup_exceptional_predecessor_with_duplicate_expression() -> ncl_ir::Function {
+    let mut builder = FunctionBuilder::new(
+        FunctionId(5),
+        "cleanup-exceptional-predecessor",
+        vec![
+            Param {
+                name: "x".into(),
+                ty: Ty::I64,
+            },
+            Param {
+                name: "y".into(),
+                ty: Ty::I64,
+            },
+        ],
+        vec![Ty::I64],
+    );
+    builder
+        .push_op(
+            OpKind::EnterHandler {
+                region: HandlerRegionId(0),
+            },
+            &[],
+        )
+        .fixture();
+    builder
+        .terminate(Terminator::Jump {
+            target: BlockId(1),
+            args: Vec::new(),
+        })
+        .fixture();
+
+    let protected = builder.create_block(Vec::new());
+    builder
+        .terminate(Terminator::Jump {
+            target: BlockId(2),
+            args: Vec::new(),
+        })
+        .fixture();
+
+    let _normal_exit = builder.create_block(Vec::new());
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![ValueId(0), ValueId(1)],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .fixture();
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![ValueId(0), ValueId(1)],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .fixture();
+    builder
+        .terminate(Terminator::Jump {
+            target: BlockId(3),
+            args: Vec::new(),
+        })
+        .fixture();
+
+    let cleanup = builder.create_block(Vec::new());
+    let cleanup_value = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![ValueId(0), ValueId(1)],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0];
+    builder
+        .push_op(
+            OpKind::LeaveHandler {
+                region: HandlerRegionId(0),
+            },
+            &[],
+        )
+        .fixture();
+    builder
+        .terminate(Terminator::Return {
+            values: vec![cleanup_value],
+        })
+        .fixture();
+    let handler = builder.create_block(Vec::new());
+    builder
+        .push_op(
+            OpKind::LeaveHandler {
+                region: HandlerRegionId(0),
+            },
+            &[],
+        )
+        .fixture();
+    builder
+        .terminate(Terminator::Return {
+            values: vec![ValueId(0)],
+        })
+        .fixture();
+    builder.add_handler_region(HandlerRegion {
+        id: HandlerRegionId(0),
+        kind: HandlerKind::UnwindProtect,
+        protected: vec![protected],
+        handler,
+        cleanup: Some(cleanup),
+        catch_tag: None,
+        binding_targets: Vec::new(),
+        depth: 0,
+        parent: None,
+    });
+    builder.finish()
+}
+
 #[test]
 fn gvn_includes_handler_edges_when_reusing_values() {
     let mut function = handler_join_with_duplicate_expression();
@@ -123,6 +242,35 @@ fn gvn_includes_handler_edges_when_reusing_values() {
         "GVN must preserve valid handler-region IR"
     );
     assert!(ncl_ir::verify(&function).is_ok());
+    assert!(matches!(
+        function.blocks[3].ops.first().map(|op| &op.kind),
+        Some(OpKind::Prim {
+            op: Prim::FixnumAdd,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn gvn_includes_cleanup_exceptional_predecessor_in_dominator_tree() {
+    let mut function = cleanup_exceptional_predecessor_with_duplicate_expression();
+    assert!(ncl_ir::verify(&function).is_ok());
+
+    let mut pass = GlobalValueNumbering;
+    assert!(
+        pass.run(&mut function, &Module::default())
+            .is_ok_and(|changed| changed),
+        "GVN should remove the local duplicate while preserving valid cleanup-region IR"
+    );
+    assert!(ncl_ir::verify(&function).is_ok());
+    assert_eq!(function.blocks[2].ops.len(), 1);
+    assert!(matches!(
+        function.blocks[2].ops.first().map(|op| &op.kind),
+        Some(OpKind::Prim {
+            op: Prim::FixnumAdd,
+            ..
+        })
+    ));
     assert!(matches!(
         function.blocks[3].ops.first().map(|op| &op.kind),
         Some(OpKind::Prim {

@@ -139,7 +139,13 @@ fn address_liveness_errors(function: &Function) -> Vec<VerifyError> {
         .err()
         .unwrap_or_default()
         .into_iter()
-        .filter(|error| matches!(error, VerifyError::AddressLiveAcross { .. }))
+        .filter(|error| {
+            matches!(
+                error,
+                VerifyError::AddressLiveAcross { .. }
+                    | VerifyError::UnprovenAddressProvenance { .. }
+            )
+        })
         .collect()
 }
 

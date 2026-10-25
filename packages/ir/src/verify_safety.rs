@@ -50,6 +50,8 @@ pub(super) fn check_address_liveness(
     errors: &mut Vec<VerifyError>,
 ) {
     let address_values = memory::address_provenance(function, blocks);
+    let known_address_values = memory::known_address_provenance(function, blocks);
+    check_unproven_word_to_address(function, &known_address_values, errors);
     if address_values.is_empty() {
         return;
     }
@@ -178,6 +180,45 @@ pub(super) fn check_address_liveness(
                 }
             }
             live = live_before;
+        }
+    }
+}
+
+fn check_unproven_word_to_address(
+    function: &Function,
+    known_address_values: &HashSet<ValueId>,
+    errors: &mut Vec<VerifyError>,
+) {
+    let used_values = function
+        .blocks
+        .iter()
+        .flat_map(|block| {
+            block
+                .ops
+                .iter()
+                .flat_map(verify_detail::op_uses)
+                .chain(verify_detail::terminator_uses(&block.terminator))
+        })
+        .collect::<HashSet<_>>();
+
+    for block in &function.blocks {
+        for op in &block.ops {
+            let OpKind::Convert {
+                op: crate::Convert::WordToAddress,
+                value,
+            } = &op.kind
+            else {
+                continue;
+            };
+            let Some((result, _)) = op.results.first() else {
+                continue;
+            };
+            if used_values.contains(result) && !known_address_values.contains(value) {
+                errors.push(VerifyError::UnprovenAddressProvenance {
+                    block: block.id,
+                    value: *value,
+                });
+            }
         }
     }
 }

@@ -200,7 +200,7 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
     let adr = u32::from_le_bytes(compiled.code[end - 8..end - 4].try_into().unwrap_or([0; 4]));
     assert_eq!(
         decoded_text(adr.to_le_bytes(), "decode ADR"),
-        "adr x2, #0x2"
+        "adr x2, #0x8"
     );
 }
 

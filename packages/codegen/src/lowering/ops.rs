@@ -47,6 +47,40 @@ fn lower_write_barrier(
     emit(assembler, &Inst::CallReg(Reg::R11))
 }
 
+fn lower_builtin_call(
+    assembler: &mut Assembler,
+    name: &str,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<SafepointSite, CodegenError> {
+    if args.len() > 4 {
+        // check-added-lines: allow(unsupported) preserve the x86-64 builtin arity diagnostic.
+        return Err(CodegenError::Unsupported(
+            "x86-64 builtins support at most four arguments".into(),
+        ));
+    }
+    if name == "make-rest-list" {
+        // check-added-lines: allow(unsupported) the fixed-template backend lacks rest-list ABI setup.
+        return Err(CodegenError::Unsupported(
+            "make-rest-list requires target-specific ABI lowering".into(),
+        ));
+    }
+    let registers = [Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8];
+    let address = abi
+        .builtin_address(crate::common_lisp_builtin(name))
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) preserve runtime ABI lookup failures.
+    emit(assembler, &Inst::MovRR(Reg::Rdi, THREAD_CONTEXT))?;
+    for (argument, register) in args.iter().zip(registers) {
+        load(assembler, slots, *argument, register)?;
+    }
+    emit(
+        assembler,
+        &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
+    )?;
+    emit_safepoint_call(assembler)
+}
+
 pub(super) fn constant_value(
     constant: &Constant,
     abi: &dyn RuntimeAbi,
@@ -207,15 +241,8 @@ pub(super) fn lower_op(
             add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
             safepoints.sites.push(site);
         }
-        OpKind::Builtin { name, .. } => {
-            let address = abi
-                .builtin_address(crate::common_lisp_builtin(name))
-                .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
-            emit(
-                assembler,
-                &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
-            )?;
-            let site = emit_safepoint_call(assembler)?;
+        OpKind::Builtin { name, args, .. } => {
+            let site = lower_builtin_call(assembler, name, args, slots, abi)?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::Rax)?;
             }

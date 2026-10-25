@@ -5,11 +5,13 @@ mod fixture;
 use fixture::X86_64FixtureAbi;
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
 use ncl_codegen::{
-    AbiError, Allocation, AllocationTarget, ContextField, Location, RuntimeAbi, RuntimeFunction,
-    allocate, compile_function_x86_64, compile_function_x86_64_preserving_multiple_values,
+    AbiError, Allocation, AllocationTarget, CodegenError, ContextField, FLAG_ALLOCATION_SLOW,
+    FLAG_CALL, Location, RuntimeAbi, RuntimeFunction, X86_64Abi, allocate, compile_function,
+    compile_function_x86_64, compile_function_x86_64_preserving_multiple_values,
 };
 use ncl_ir::{
-    Constant, Convert, Function, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty, ValueId,
+    Constant, Convert, FixnumOp, FixnumSpecialization, Function, FunctionBuilder, OpKind, Param,
+    Prim, Terminator, Ty, ValueId,
 };
 
 fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
@@ -28,6 +30,60 @@ fn assert_contains(code: &[u8], expected: &[u8], behavior: &str) {
             .any(|window| window == expected),
         "{behavior}: expected {expected:02x?} in {code:02x?}"
     );
+}
+
+fn assert_call_safepoint(
+    compiled: &ncl_codegen::CompiledFunction,
+    address: u64,
+    expected_flags: u32,
+) {
+    let address_instruction = encode([Inst::MovRI(
+        Reg::R11,
+        Imm::I32(i32::try_from(address).expect("fixture address fits an immediate")),
+    )]);
+    let address_offset = compiled
+        .code
+        .windows(address_instruction.len())
+        .position(|window| window == address_instruction.as_slice())
+        .expect("runtime address instruction is present");
+    let call_instruction = encode([Inst::CallReg(Reg::R11)]);
+    let call_offset = compiled.code[address_offset + address_instruction.len()..]
+        .windows(call_instruction.len())
+        .position(|window| window == call_instruction.as_slice())
+        .map(|offset| address_offset + address_instruction.len() + offset)
+        .expect("runtime address is followed by its indirect call");
+    let call_end = u32::try_from(call_offset + call_instruction.len())
+        .expect("call offset fits safepoint metadata");
+    assert!(
+        compiled
+            .safepoint_maps
+            .iter()
+            .any(|map| map.pc_offset == call_end && map.map_flags == expected_flags),
+        "call ending at {call_end} must have a safepoint map with flags {expected_flags:#x}: {:?}",
+        compiled.safepoint_maps
+    );
+}
+
+struct LoweringCoverageAbi;
+
+impl RuntimeAbi for LoweringCoverageAbi {
+    fn builtin_address(&self, _identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        Ok(0x1000)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        X86_64Abi.field_offset(field)
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        match function {
+            RuntimeFunction::AllocateSlow => Ok(0x2000),
+            RuntimeFunction::SafepointSlow => Ok(0x3000),
+            RuntimeFunction::WriteBarrier => Ok(0x4000),
+            RuntimeFunction::MakeValueCell => Ok(0x5000),
+            _ => Err(AbiError::UnsupportedRuntimeFunction(function)),
+        }
+    }
 }
 
 struct WriteBarrierFixtureAbi;
@@ -561,4 +617,630 @@ fn x86_64_load_capture_and_named_closure_emit_indexed_and_unbound_paths() {
         closure,
         argument_count,
     );
+}
+
+#[test]
+fn fixed_template_builtin_marshals_four_words_and_records_the_call_pc() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(230),
+        "fixed-template-builtin-four-arguments",
+        ["first", "second", "third", "fourth"]
+            .into_iter()
+            .map(|name| Param {
+                name: name.into(),
+                ty: Ty::Word,
+            })
+            .collect(),
+        vec![Ty::Word],
+    );
+    let args = (0..4)
+        .map(|index| {
+            builder
+                .push_op(
+                    OpKind::LoadArg {
+                        index: u8::try_from(index).expect("argument index fits"),
+                    },
+                    &[Ty::Word],
+                )
+                .expect("incoming builtin argument")[0]
+        })
+        .collect::<Vec<_>>();
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "coverage-probe".into(),
+                args,
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("builtin return");
+
+    let compiled = compile_function(&builder.finish(), &LoweringCoverageAbi)
+        .expect("fixed-template builtin lowers");
+    let expected = encode([
+        Inst::MovRR(Reg::Rdi, Reg::R15),
+        Inst::MovRM(Reg::Rsi, Mem::base(Reg::Rbp, -40)),
+        Inst::MovRM(Reg::Rdx, Mem::base(Reg::Rbp, -48)),
+        Inst::MovRM(Reg::Rcx, Mem::base(Reg::Rbp, -56)),
+        Inst::MovRM(Reg::R8, Mem::base(Reg::Rbp, -64)),
+        Inst::MovRI(Reg::R11, Imm::I64(0x1000)),
+        Inst::CallReg(Reg::R11),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &expected,
+        "fixed-template builtins must pass four SSA words in RSI, RDX, RCX, and R8",
+    );
+    assert_eq!(compiled.safepoint_maps.len(), 1);
+    assert_eq!(compiled.safepoint_maps[0].map_flags, FLAG_CALL);
+    assert_eq!(
+        usize::try_from(compiled.safepoint_maps[0].pc_offset).expect("call PC fits usize"),
+        compiled
+            .code
+            .windows(3)
+            .position(|window| window == [0x41, 0xff, 0xd3].as_slice())
+            .expect("builtin emits call r11")
+            + 3,
+        "fixed-template call map must point immediately after call r11"
+    );
+}
+
+#[test]
+fn five_argument_builtin_returns_the_exact_arity_error_from_both_lowerers() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(239),
+        "builtin-five-argument-error",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let args = [1, 2, 3, 4, 5]
+        .into_iter()
+        .map(|value| add_fixnum_word(&mut builder, value))
+        .collect::<Vec<_>>();
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "coverage-probe".into(),
+                args,
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("builtin return");
+    let function = builder.finish();
+    let expected_error =
+        CodegenError::Unsupported("x86-64 builtins support at most four arguments".into());
+
+    let Err(fixed_template_error) = compile_function(&function, &LoweringCoverageAbi) else {
+        panic!("fixed-template builtin accepted five arguments");
+    };
+    assert_eq!(fixed_template_error, expected_error);
+
+    let Err(target_error) = compile_function_x86_64(&function, &LoweringCoverageAbi) else {
+        panic!("target builtin accepted five arguments");
+    };
+    assert_eq!(target_error, expected_error);
+}
+
+#[test]
+fn fixed_template_rejects_make_rest_list_without_its_special_abi_setup() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(240),
+        "fixed-template-make-rest-list-unsupported",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let argc = add_fixnum_word(&mut builder, 6);
+    let start = add_fixnum_word(&mut builder, 2);
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "make-rest-list".into(),
+                args: vec![argc, start],
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("builtin return");
+
+    let Err(error) = compile_function(&builder.finish(), &LoweringCoverageAbi) else {
+        panic!("fixed-template lowering accepted make-rest-list's different ABI");
+    };
+    assert_eq!(
+        error,
+        CodegenError::Unsupported("make-rest-list requires target-specific ABI lowering".into())
+    );
+}
+
+#[test]
+fn fixed_template_load_arg_copies_the_selected_entry_register() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(231),
+        "fixed-template-load-second-argument",
+        vec![
+            Param {
+                name: "first".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "second".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let loaded = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("second argument load")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![loaded],
+        })
+        .expect("argument return");
+
+    let compiled = compile_function(&builder.finish(), &LoweringCoverageAbi)
+        .expect("fixed-template argument load lowers");
+    let expected = encode([
+        Inst::MovRR(Reg::R10, Reg::Rdx),
+        Inst::MovMR(Mem::base(Reg::Rbp, -40), Reg::R10),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &expected,
+        "LoadArg index 1 must copy RDX into its allocated frame slot",
+    );
+}
+
+#[test]
+fn fixed_template_store_field_uses_the_word_offset_and_barrier_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(232),
+        "fixed-template-store-field-barrier",
+        vec![ncl_ir::Param {
+            name: "owner".into(),
+            ty: Ty::Word,
+        }],
+        Vec::new(),
+    );
+    let owner = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("word owner argument")[0];
+    let value = add_fixnum_word(&mut builder, 13);
+    builder
+        .push_op(
+            OpKind::StoreField {
+                object: owner,
+                field: 2,
+                value,
+            },
+            &[],
+        )
+        .expect("field store");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("void return");
+
+    let compiled = compile_function(&builder.finish(), &LoweringCoverageAbi)
+        .expect("fixed-template field store lowers");
+    let field_store = encode([
+        Inst::MovRM(Reg::R10, Mem::base(Reg::Rbp, -40)),
+        Inst::MovRM(Reg::R11, Mem::base(Reg::Rbp, -56)),
+        Inst::MovMR(Mem::base(Reg::R10, 16), Reg::R11),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &field_store,
+        "field 2 must store at byte offset 16 using the allocated owner and value",
+    );
+    let barrier_call = encode([
+        Inst::MovRR(Reg::Rdi, Reg::R15),
+        Inst::MovRI(Reg::Rsi, Imm::I64(2)),
+        Inst::MovRM(Reg::Rdx, Mem::base(Reg::Rbp, -40)),
+        Inst::MovRI(Reg::R11, Imm::I64(0x4000)),
+        Inst::CallReg(Reg::R11),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &barrier_call,
+        "write barrier must receive context, field index, and the stored object's owner",
+    );
+}
+
+#[test]
+fn x86_64_load_arg_and_field_load_use_the_selected_argument_and_header_offset() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(233),
+        "load-argument-and-field",
+        vec![Param {
+            name: "object".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+    );
+    let object = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("object argument load")[0];
+    let field = builder
+        .push_op(OpKind::LoadField { object, field: 3 }, &[Ty::Word])
+        .expect("field load")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![field],
+        })
+        .expect("field return");
+
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled = compile_function_x86_64(&function, &LoweringCoverageAbi)
+        .expect("argument and field loads lower");
+    let argument_load = encode([
+        load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
+        store_register_into_value(&function, &allocation, object, Reg::R10),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &argument_load,
+        "LoadArg index 0 must copy the first incoming value to its SSA result",
+    );
+    let untag_mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
+        .expect("lowtag mask fits an x86 immediate");
+    let field_load = encode([
+        load_value_into_register(&function, &allocation, object, Reg::R10),
+        Inst::BinRI(BinOp::And, Reg::R10, untag_mask),
+        Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 32)),
+        store_register_into_value(&function, &allocation, field, Reg::R10),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &field_load,
+        "field 3 must untag its object and load after the one-word object header",
+    );
+}
+
+#[test]
+fn x86_64_builtin_marshals_four_arguments_and_maps_its_call() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(234),
+        "builtin-four-arguments",
+        ["first", "second", "third", "fourth"]
+            .into_iter()
+            .map(|name| Param {
+                name: name.into(),
+                ty: Ty::Word,
+            })
+            .collect(),
+        vec![Ty::Word],
+    );
+    let args = [ValueId(0), ValueId(1), ValueId(2), ValueId(3)];
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "coverage-probe".into(),
+                args: args.to_vec(),
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("builtin return");
+
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled =
+        compile_function_x86_64(&function, &LoweringCoverageAbi).expect("builtin call lowers");
+    let expected = encode([
+        Inst::MovRR(Reg::Rdi, Reg::R15),
+        Inst::MovRI(Reg::R11, Imm::I32(0x1000)),
+        load_value_into_register(&function, &allocation, args[0], Reg::Rsi),
+        load_value_into_register(&function, &allocation, args[1], Reg::Rdx),
+        load_value_into_register(&function, &allocation, args[2], Reg::Rcx),
+        load_value_into_register(&function, &allocation, args[3], Reg::R8),
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
+        Inst::CallReg(Reg::R11),
+        Inst::BinRI(BinOp::Add, Reg::Rsp, 16),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &expected,
+        "target builtins must pass all four values in the runtime argument registers",
+    );
+    assert_call_safepoint(&compiled, 0x1000, FLAG_CALL);
+}
+
+#[test]
+fn x86_64_fixnum_specialization_checks_tags_and_keeps_overflow_fallback() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(235),
+        "specialized-fixnum-add",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let args = [ValueId(0), ValueId(1)];
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[true, true])
+        .expect("two-operand fixnum specialization");
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "+".into(),
+                args: args.to_vec(),
+                specialization: Some(specialization),
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("specialized result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("specialized return");
+
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled = compile_function_x86_64(&function, &LoweringCoverageAbi)
+        .expect("fixnum specialization lowers");
+    let tag_mask = i32::try_from((1_u64 << ncl_sys::FIXNUM_TAG_BITS) - 1)
+        .expect("fixnum tag mask fits an immediate");
+    let fixnum_tag = i32::try_from(ncl_sys::FIXNUM_TAG).expect("fixnum tag fits an immediate");
+    for argument in args {
+        let tag_test = encode([
+            load_value_into_register(&function, &allocation, argument, Reg::R10),
+            Inst::BinRI(BinOp::And, Reg::R10, tag_mask),
+            Inst::CmpRI(Reg::R10, fixnum_tag),
+        ]);
+        assert_contains(
+            &compiled.code,
+            &tag_test,
+            "each guarded operand must be checked for the fixnum tag",
+        );
+    }
+    assert_eq!(
+        compiled
+            .code
+            .windows(2)
+            .filter(|window| window[0] == 0x0f && window[1] == 0x85)
+            .count(),
+        2,
+        "both failed tag checks must branch to the generic builtin path"
+    );
+    let fast_add = encode([
+        load_value_into_register(&function, &allocation, args[0], Reg::R10),
+        load_value_into_register(&function, &allocation, args[1], Reg::R11),
+        Inst::BinRR(BinOp::Add, Reg::R10, Reg::R11),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &fast_add,
+        "the fast path must add the two tagged fixnum operands and branch on overflow",
+    );
+    let fallback_setup = encode([
+        Inst::MovRR(Reg::Rdi, Reg::R15),
+        Inst::MovRI(Reg::R11, Imm::I32(0x1000)),
+        load_value_into_register(&function, &allocation, args[0], Reg::Rsi),
+        load_value_into_register(&function, &allocation, args[1], Reg::Rdx),
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
+        Inst::CallReg(Reg::R11),
+        Inst::BinRI(BinOp::Add, Reg::Rsp, 16),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &fallback_setup,
+        "the slow path must call the generic builtin with both original operands",
+    );
+    assert_call_safepoint(&compiled, 0x1000, FLAG_CALL);
+}
+
+#[test]
+fn x86_64_make_rest_list_places_explicit_words_in_the_callee_header() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(236),
+        "make-rest-list-call",
+        vec![
+            Param {
+                name: "argument-count".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "start-index".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let args = [ValueId(0), ValueId(1)];
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "make-rest-list".into(),
+                args: args.to_vec(),
+                specialization: None,
+                specialization_disabled: false,
+            },
+            &[Ty::Word],
+        )
+        .expect("rest-list result")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("rest-list return");
+
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled =
+        compile_function_x86_64(&function, &LoweringCoverageAbi).expect("rest-list builtin lowers");
+    let header_arguments = encode([
+        load_value_into_register(&function, &allocation, args[0], Reg::R10),
+        load_value_into_register(&function, &allocation, args[1], Reg::Rax),
+        Inst::MovMR(Mem::base(Reg::Rsp, -16), Reg::R10),
+        Inst::MovMR(Mem::base(Reg::Rsp, -8), Reg::Rax),
+        Inst::MovRI(Reg::R11, Imm::I32(0x1000)),
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
+        Inst::CallReg(Reg::R11),
+        Inst::BinRI(BinOp::Add, Reg::Rsp, 16),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &header_arguments,
+        "make-rest-list must pass argc and start index in the callee frame header",
+    );
+    assert_call_safepoint(&compiled, 0x1000, FLAG_CALL);
+}
+
+#[test]
+fn x86_64_make_value_cell_passes_its_value_to_the_runtime_helper() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(237),
+        "make-value-cell-call",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let value = add_fixnum_word(&mut builder, 17);
+    let cell = builder
+        .push_op(OpKind::MakeValueCell { value }, &[Ty::Word])
+        .expect("value cell result")[0];
+    builder
+        .terminate(Terminator::Return { values: vec![cell] })
+        .expect("value-cell return");
+
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let compiled =
+        compile_function_x86_64(&function, &LoweringCoverageAbi).expect("value-cell helper lowers");
+    let setup = encode([
+        Inst::MovRR(Reg::Rdi, Reg::R15),
+        Inst::MovRI(Reg::R11, Imm::I32(0x5000)),
+        load_value_into_register(&function, &allocation, value, Reg::Rsi),
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, 16),
+        Inst::CallReg(Reg::R11),
+        Inst::BinRI(BinOp::Add, Reg::Rsp, 16),
+    ]);
+    assert_contains(
+        &compiled.code,
+        &setup,
+        "MakeValueCell must pass its input in RSI after setting the thread context",
+    );
+    assert_call_safepoint(&compiled, 0x5000, FLAG_CALL);
+}
+
+#[test]
+fn x86_64_alloc_and_safepoint_emit_fast_and_slow_paths() {
+    let mut allocation_builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(238),
+        "allocation-fast-and-slow-paths",
+        Vec::new(),
+        vec![Ty::Address],
+    );
+    let allocation = allocation_builder
+        .push_op(OpKind::Alloc { words: 3 }, &[Ty::Address])
+        .expect("allocation result")[0];
+    allocation_builder
+        .terminate(Terminator::Return {
+            values: vec![allocation],
+        })
+        .expect("allocation return");
+    let allocation_compiled =
+        compile_function_x86_64(&allocation_builder.finish(), &LoweringCoverageAbi)
+            .expect("allocation lowers");
+
+    let mut safepoint_builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(239),
+        "explicit-safepoint-slow-path",
+        Vec::new(),
+        Vec::new(),
+    );
+    safepoint_builder
+        .push_op(OpKind::Safepoint, &[])
+        .expect("explicit safepoint");
+    safepoint_builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("allocation return");
+    let safepoint_compiled =
+        compile_function_x86_64(&safepoint_builder.finish(), &LoweringCoverageAbi)
+            .expect("explicit safepoint lowers");
+    let layout = ncl_sys::thread_layout();
+    let tlab_bump = i32::try_from(layout.tlab_bump).expect("TLAB bump offset fits");
+    let tlab_limit = i32::try_from(layout.tlab_limit).expect("TLAB limit offset fits");
+    let allocation_fast_path = encode([
+        Inst::MovRM(Reg::R10, Mem::base(Reg::R15, tlab_bump)),
+        Inst::MovRM(Reg::R11, Mem::base(Reg::R15, tlab_limit)),
+        Inst::Lea(Reg::Rax, Mem::base(Reg::R10, 24)),
+        Inst::CmpRR(Reg::Rax, Reg::R11),
+    ]);
+    assert_contains(
+        &allocation_compiled.code,
+        &allocation_fast_path,
+        "three-word allocation must compute its end and compare it with the TLAB limit",
+    );
+    assert_contains(
+        &allocation_compiled.code,
+        &encode([Inst::MovMR(Mem::base(Reg::R15, tlab_bump), Reg::Rax)]),
+        "the successful allocation path must publish the advanced TLAB bump pointer",
+    );
+    assert_contains(
+        &allocation_compiled.code,
+        &encode([
+            Inst::MovRR(Reg::Rdi, Reg::R15),
+            Inst::MovRI(Reg::Rsi, Imm::I32(3)),
+            Inst::MovRI(Reg::R11, Imm::I32(0x2000)),
+            Inst::CallReg(Reg::R11),
+        ]),
+        "the allocation slow path must pass its word count to AllocateSlow",
+    );
+    let safepoint_request =
+        i32::try_from(layout.safepoint_request).expect("safepoint request offset fits");
+    assert_contains(
+        &safepoint_compiled.code,
+        &encode([
+            Inst::MovRM(Reg::R10, Mem::base(Reg::R15, safepoint_request)),
+            Inst::CmpRI(Reg::R10, 0),
+        ]),
+        "an explicit safepoint must test the thread request field before calling the slow path",
+    );
+    assert_contains(
+        &safepoint_compiled.code,
+        &encode([
+            Inst::MovRR(Reg::Rdi, Reg::R15),
+            Inst::MovRR(Reg::Rsi, Reg::Rbp),
+            Inst::MovRI(Reg::R11, Imm::I32(0x3000)),
+            Inst::Lea(Reg::Rdx, Mem::rip(3)),
+            Inst::CallReg(Reg::R11),
+        ]),
+        "the safepoint slow path must pass context, frame pointer, and its continuation PC",
+    );
+    assert_call_safepoint(&allocation_compiled, 0x2000, FLAG_ALLOCATION_SLOW);
+    assert_call_safepoint(&safepoint_compiled, 0x3000, FLAG_CALL);
 }

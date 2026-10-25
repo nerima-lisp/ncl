@@ -7,7 +7,141 @@
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
 use crate::{AllocationTarget, Location, allocate, compile_function_x86_64};
-use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Terminator, Ty};
+use ncl_asm_x86_64::{Assembler, BinOp, Inst, Mem, Reg, Scale, Shift};
+use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
+
+#[test]
+fn x86_64_array_primitives_use_indexed_simple_vector_slots() {
+    for (id, prim) in [(93, Prim::Aref), (94, Prim::Svref)] {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(id),
+            "x86-64-array-reference",
+            vec![
+                Param {
+                    name: "vector".into(),
+                    ty: Ty::Word,
+                },
+                Param {
+                    name: "index".into(),
+                    ty: Ty::Word,
+                },
+            ],
+            vec![Ty::Word],
+        );
+        let vector = builder
+            .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+            .expect("vector argument")[0];
+        let index = builder
+            .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+            .expect("array index argument")[0];
+        let value = builder
+            .push_op(
+                OpKind::Prim {
+                    op: prim,
+                    args: vec![vector, index],
+                    condition: None,
+                },
+                &[Ty::Word],
+            )
+            .expect("array reference")[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![value],
+            })
+            .expect("return");
+        let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+            .expect("x86-64 array reference compiles");
+        let expected = encode_x86_64([
+            Inst::BinRI(BinOp::And, Reg::R10, -8),
+            Inst::MovRM(Reg::R10, Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16)),
+        ]);
+        assert_code_contains_x86_64(
+            &compiled.code,
+            &expected,
+            "array reference uses the tagged index and simple-vector payload offset",
+        );
+    }
+
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(95),
+        "x86-64-array-set",
+        vec![
+            Param {
+                name: "vector".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "index".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    let vector = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("vector argument")[0];
+    let index = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("array index argument")[0];
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
+        .expect("array value argument")[0];
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Aset,
+                args: vec![vector, index, value],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .expect("array set");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let compiled = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi)
+        .expect("x86-64 array set compiles");
+    let store = encode_x86_64([Inst::MovMR(
+        Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16),
+        Reg::Rax,
+    )]);
+    assert_code_contains_x86_64(
+        &compiled.code,
+        &store,
+        "aset stores its value in the indexed simple-vector payload slot",
+    );
+    let barrier_slot = encode_x86_64([
+        Inst::ShiftImm(Shift::Sar, Reg::Rax, 1),
+        Inst::BinRI(BinOp::Add, Reg::Rax, 1),
+    ]);
+    assert_code_contains_x86_64(
+        &compiled.code,
+        &barrier_slot,
+        "aset passes the untagged element index plus data slot to the write barrier",
+    );
+}
+
+fn encode_x86_64(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+    let mut assembler = Assembler::new();
+    for instruction in instructions {
+        assembler
+            .emit(&instruction)
+            .expect("expected x86-64 instruction encoding");
+    }
+    assembler.bytes().to_vec()
+}
+
+fn assert_code_contains_x86_64(code: &[u8], expected: &[u8], behavior: &str) {
+    assert!(
+        code.windows(expected.len())
+            .any(|window| window == expected),
+        "{behavior}: expected {expected:02x?} in {code:02x?}"
+    );
+}
 
 #[test]
 #[cfg(test)]

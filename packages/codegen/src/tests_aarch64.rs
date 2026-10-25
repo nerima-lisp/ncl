@@ -3,7 +3,7 @@
 use crate::{
     AllocationTarget, ContextField, RuntimeAbi, RuntimeFunction, allocate, compile_function_aarch64,
 };
-use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Terminator, Ty};
+use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 
 #[path = "tests_aarch64_call.rs"]
 mod call_with_rest;
@@ -24,7 +24,10 @@ fn decoded_text(bytes: [u8; 4], label: &str) -> String {
     instruction.text.clone()
 }
 
-struct Aarch64FixtureAbi;
+#[derive(Default)]
+struct Aarch64FixtureAbi {
+    missing_write_barrier: bool,
+}
 
 impl RuntimeAbi for Aarch64FixtureAbi {
     fn builtin_address(
@@ -52,12 +55,16 @@ impl RuntimeAbi for Aarch64FixtureAbi {
     }
 
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+        if function == RuntimeFunction::WriteBarrier && self.missing_write_barrier {
+            return Err(crate::AbiError::UnsupportedRuntimeFunction(function));
+        }
         match function {
             RuntimeFunction::SafepointSlow
             | RuntimeFunction::MakeClosure
             | RuntimeFunction::EnterCatch
             | RuntimeFunction::EnterUnwindProtect
             | RuntimeFunction::EnterProgv
+            | RuntimeFunction::WriteBarrier
             | RuntimeFunction::LeaveCatch
             | RuntimeFunction::LeaveUnwindProtect
             | RuntimeFunction::LeaveProgv => Ok(0x1000),
@@ -68,6 +75,215 @@ impl RuntimeAbi for Aarch64FixtureAbi {
     fn constant_word(&self, name: &str) -> Option<i64> {
         (name == "function-entry:7").then_some(0x2000)
     }
+}
+
+#[test]
+fn aarch64_array_primitives_use_indexed_simple_vector_slots() {
+    for (id, prim) in [(90, Prim::Aref), (91, Prim::Svref)] {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(id),
+            "aarch64-array-reference",
+            vec![
+                Param {
+                    name: "vector".into(),
+                    ty: Ty::Word,
+                },
+                Param {
+                    name: "index".into(),
+                    ty: Ty::Word,
+                },
+            ],
+            vec![Ty::Word],
+        );
+        let vector = builder
+            .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+            .unwrap()[0];
+        let index = builder
+            .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+            .unwrap()[0];
+        let value = builder
+            .push_op(
+                OpKind::Prim {
+                    op: prim,
+                    args: vec![vector, index],
+                    condition: None,
+                },
+                &[Ty::Word],
+            )
+            .unwrap()[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![value],
+            })
+            .unwrap();
+        let compiled =
+            compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default()).unwrap();
+        let expected = encode_aarch64([
+            ncl_asm_aarch64::Inst::AndImm {
+                rd: ncl_asm_aarch64::Reg(1),
+                rn: ncl_asm_aarch64::Reg(1),
+                imm: !ncl_sys::LOWTAG_MASK,
+            },
+            ncl_asm_aarch64::Inst::Add {
+                rd: ncl_asm_aarch64::Reg(1).into(),
+                rn: ncl_asm_aarch64::Reg(1).into(),
+                rm: ncl_asm_aarch64::Reg(2),
+                shift: ncl_asm_aarch64::Shift::Lsl(2),
+            },
+            ncl_asm_aarch64::Inst::Ldr {
+                rt: ncl_asm_aarch64::Reg(16),
+                mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                    base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(1)),
+                    offset: 16,
+                },
+            },
+        ]);
+        assert_code_contains_aarch64(
+            &compiled.code,
+            &expected,
+            "array reference uses the tagged index and simple-vector payload offset",
+        );
+    }
+
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(92),
+        "aarch64-array-set",
+        vec![
+            Param {
+                name: "vector".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "index".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    let vector = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .unwrap()[0];
+    let index = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .unwrap()[0];
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
+        .unwrap()[0];
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Aset,
+                args: vec![vector, index, value],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .unwrap();
+    let compiled =
+        compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default()).unwrap();
+    let store = encode_aarch64([ncl_asm_aarch64::Inst::Str {
+        rt: ncl_asm_aarch64::Reg(0),
+        mem: ncl_asm_aarch64::MemOperand::Unscaled {
+            base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(1)),
+            offset: 16,
+        },
+    }]);
+    assert_code_contains_aarch64(
+        &compiled.code,
+        &store,
+        "aset stores its value in the indexed simple-vector payload slot",
+    );
+    let barrier_slot = encode_aarch64([
+        ncl_asm_aarch64::Inst::AsrImm {
+            rd: ncl_asm_aarch64::Reg(1),
+            rn: ncl_asm_aarch64::Reg(1),
+            amount: 1,
+        },
+        ncl_asm_aarch64::Inst::AddImm {
+            rd: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(1)),
+            rn: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(1)),
+            imm: 1,
+            shift: false,
+        },
+    ]);
+    assert_code_contains_aarch64(
+        &compiled.code,
+        &barrier_slot,
+        "aset passes the untagged element index plus data slot to the write barrier",
+    );
+}
+
+#[test]
+fn aarch64_array_set_reports_a_missing_write_barrier() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(96),
+        "aarch64-array-set-missing-write-barrier",
+        vec![
+            Param {
+                name: "vector".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "index".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Aset,
+                args: vec![ncl_ir::ValueId(0), ncl_ir::ValueId(1), ncl_ir::ValueId(2)],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .unwrap();
+
+    let result = compile_function_aarch64(
+        &builder.finish(),
+        &Aarch64FixtureAbi {
+            missing_write_barrier: true,
+        },
+    );
+    let error = result.expect_err("AArch64 Aset must fail without a write barrier");
+    assert_eq!(
+        error,
+        crate::CodegenError::Unsupported(
+            crate::AbiError::UnsupportedRuntimeFunction(RuntimeFunction::WriteBarrier).to_string()
+        )
+    );
+}
+
+fn encode_aarch64(instructions: impl IntoIterator<Item = ncl_asm_aarch64::Inst>) -> Vec<u8> {
+    let mut assembler = ncl_asm_aarch64::Assembler::new();
+    for instruction in instructions {
+        assembler.emit(&instruction).unwrap();
+    }
+    assembler.finish().unwrap().bytes
+}
+
+fn assert_code_contains_aarch64(code: &[u8], expected: &[u8], behavior: &str) {
+    assert!(
+        code.windows(expected.len())
+            .any(|window| window == expected),
+        "{behavior}: expected {expected:02x?} in {code:02x?}"
+    );
 }
 
 #[test]
@@ -154,7 +370,8 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
             })
             .is_ok()
     );
-    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+    {
         Ok(compiled) => compiled,
         Err(error) => {
             unreachable!("{error:?}");
@@ -185,7 +402,7 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
             .terminate(Terminator::Return { values: Vec::new() })
             .is_ok()
     );
-    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi);
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default());
     assert!(compiled.is_ok(), "AArch64 fixture failed: {compiled:?}");
     let Some(compiled) = compiled.ok() else {
         return;
@@ -228,7 +445,8 @@ fn golden_aarch64_prologue_spills_register_arguments() {
             .terminate(ncl_ir::Terminator::Return { values: Vec::new() })
             .is_ok()
     );
-    let compiled_result = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi);
+    let compiled_result =
+        compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default());
     assert!(compiled_result.is_ok());
     let Some(compiled) = compiled_result.ok() else {
         return;
@@ -298,7 +516,8 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> 
             .is_ok()
     );
 
-    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+    {
         Ok(compiled) => compiled,
         Err(error) => return Err(format!("AArch64 tail-call lowering: {error:?}")),
     };
@@ -377,7 +596,7 @@ fn golden_aarch64_parallel_copy_swaps_register_arguments() {
         "self must be copied to next's destination"
     );
 
-    let compiled_result = compile_function_aarch64(&function, &Aarch64FixtureAbi);
+    let compiled_result = compile_function_aarch64(&function, &Aarch64FixtureAbi::default());
     assert!(
         compiled_result.is_ok(),
         "AArch64 parallel copy lowering: {compiled_result:?}"
@@ -424,7 +643,8 @@ fn golden_aarch64_generated_lambda_saves_argc_from_x0() {
             .is_ok()
     );
 
-    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+    {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("AArch64 generated-lambda lowering: {error:?}"),
     };
@@ -472,7 +692,8 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
         "return"
     );
 
-    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+    {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("{error:?}"),
     };

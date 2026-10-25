@@ -78,13 +78,20 @@ pub fn pending_object_error(
     if matches!(error, ObjectError::TypeError)
         && let Some(condition) = context.take_pending_condition()
     {
-        let condition = HeapRootedWord::new(context, condition)?;
+        let condition = match HeapRootedWord::new(context, condition) {
+            Ok(condition) => condition,
+            Err(error) => {
+                context.set_pending_condition(condition);
+                return Err(error);
+            }
+        };
         let simple_error = ncl_conditions::ConditionIdentifier::SimpleError.class(context, object);
         if ncl_conditions::condition_class_of(context, condition.get()).ok() == simple_error
             && let Some(report) = ncl_conditions::condition_report(context, condition.get())
         {
             return Ok(RuntimeError::Native(report));
         }
+        context.set_pending_condition(condition.get());
     }
     Ok(error.into())
 }
@@ -225,6 +232,31 @@ mod tests {
         )?;
 
         assert!(matches!(error, RuntimeError::Object(ObjectError::Layout)));
+        assert_eq!(runtime.context.take_pending_condition(), Some(condition));
+        Ok(())
+    }
+
+    #[test]
+    fn non_simple_type_conditions_remain_pending() -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtime = Runtime::new()?;
+        let condition = ncl_conditions::condition_from_lisp_error(
+            &mut runtime.context,
+            &runtime.object,
+            LispError::ProgramError(ncl_object::ProgramError::UnknownKeyword),
+        )?;
+        runtime.context.set_pending_condition(condition);
+
+        let error = pending_object_error(
+            &mut runtime.context,
+            &runtime.object,
+            ObjectError::TypeError,
+            &mut runtime.pending_undefined_function_condition,
+        )?;
+
+        assert!(matches!(
+            error,
+            RuntimeError::Object(ObjectError::TypeError)
+        ));
         assert_eq!(runtime.context.take_pending_condition(), Some(condition));
         Ok(())
     }

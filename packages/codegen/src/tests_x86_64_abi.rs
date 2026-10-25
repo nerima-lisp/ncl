@@ -116,20 +116,29 @@ fn caller_function(function_id: u32, tail: bool) -> Result<ncl_ir::Function, Str
                 .ok_or_else(|| "converted transfer argument value missing".to_owned())?,
         );
     }
-    let terminator = if tail {
-        Terminator::TailCall {
-            function: callee,
-            args,
-        }
+    if tail {
+        builder
+            .terminate(Terminator::TailCall {
+                function: callee,
+                args,
+            })
+            .map_err(|error| format!("terminate transfer caller: {error:?}"))?;
     } else {
-        Terminator::CallReturn {
-            function: callee,
-            args,
-        }
-    };
-    builder
-        .terminate(terminator)
-        .map_err(|error| format!("terminate transfer caller: {error:?}"))?;
+        builder
+            .push_op(OpKind::Safepoint, &[])
+            .map_err(|error| format!("push transfer safepoint: {error:?}"))?;
+        let call_result = builder
+            .push_op(OpKind::CallIndirect { callee, args }, &[Ty::Word])
+            .map_err(|error| format!("push indirect transfer call: {error:?}"))?
+            .first()
+            .copied()
+            .ok_or_else(|| "indirect transfer call produced no result".to_owned())?;
+        builder
+            .terminate(Terminator::Return {
+                values: vec![call_result; 3],
+            })
+            .map_err(|error| format!("return from transfer caller: {error:?}"))?;
+    }
     let function = builder.finish();
     ncl_ir::verify(&function).map_err(|errors| format!("verify transfer caller: {errors:?}"))?;
     Ok(function)
@@ -210,22 +219,24 @@ fn generated_code_preserves_sysv_callee_saved_registers() -> Result<(), String> 
     for (function_id, tail) in [(91, false), (92, true)] {
         let caller = caller_function(function_id, tail)?;
         let allocation = allocate(&caller, AllocationTarget::X86_64);
-        let entry_value = caller
-            .blocks
-            .iter()
-            .flat_map(|block| &block.ops)
-            .find(|op| matches!(&op.kind, OpKind::LoadArg { index: 0 }))
-            .and_then(|op| op.results.first())
-            .map(|(value, _)| *value)
-            .ok_or_else(|| "transfer callee allocation missing".to_owned())?;
-        assert!(
-            matches!(
-                allocation.location(entry_value),
-                Some(Location::Register(register))
-                    if (u16::from(Reg::R12.id())..=u16::from(Reg::R14.id())).contains(&register)
-            ),
-            "transfer caller must exercise a callee-saved register"
-        );
+        if !tail {
+            let call_result = caller
+                .blocks
+                .iter()
+                .flat_map(|block| &block.ops)
+                .find(|op| matches!(&op.kind, OpKind::CallIndirect { .. }))
+                .and_then(|op| op.results.first())
+                .map(|(value, _)| *value)
+                .ok_or_else(|| "transfer call result allocation missing".to_owned())?;
+            assert!(
+                matches!(
+                    allocation.location(call_result),
+                    Some(Location::Register(register))
+                        if (u16::from(Reg::R12.id())..=u16::from(Reg::R14.id())).contains(&register)
+                ),
+                "transfer call result must exercise a callee-saved register"
+            );
+        }
         let compiled_caller = compile_function_x86_64(&caller, &X86_64FixtureAbi)
             .map_err(|error| format!("compile transfer caller: {error:?}"))?;
         let mut caller_code = alloc_code(compiled_caller.code.len())

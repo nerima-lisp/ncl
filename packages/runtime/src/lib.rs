@@ -118,10 +118,10 @@ impl Runtime {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
-        self.context.set_evaluator_runtime(evaluator);
+        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
         let result = load::source_forms(self, source);
         self.clear_pending_undefined_function_condition();
-        self.context.clear_evaluator_runtime();
+        self.context.restore_evaluator_runtime(previous_evaluator);
         result
     }
     /// Compile and execute a source string through the native pipeline.
@@ -132,10 +132,10 @@ impl Runtime {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
-        self.context.set_evaluator_runtime(evaluator);
+        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
         let result = compile::source(self, source);
         self.clear_pending_undefined_function_condition();
-        self.context.clear_evaluator_runtime();
+        self.context.restore_evaluator_runtime(previous_evaluator);
         result
     }
     /// Compile and execute all forms in a source file.
@@ -155,7 +155,7 @@ impl Runtime {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
-        self.context.set_evaluator_runtime(evaluator);
+        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
         let result = (|| {
             file_environment::enter_compile_file(self, &pathname, &truename)?;
             let compiled = compile::file(self, &pathname);
@@ -166,7 +166,7 @@ impl Runtime {
             }
         })();
         self.clear_pending_undefined_function_condition();
-        self.context.clear_evaluator_runtime();
+        self.context.restore_evaluator_runtime(previous_evaluator);
         result
     }
     /// Load and execute all forms in a source string.
@@ -184,10 +184,10 @@ impl Runtime {
         self.context
             .set_condition_handler_invoker(function_call::invoke_condition_handler);
         let evaluator = std::ptr::from_mut(self).cast();
-        self.context.set_evaluator_runtime(evaluator);
+        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
         let result = load::file(self, path.as_ref());
         self.clear_pending_undefined_function_condition();
-        self.context.clear_evaluator_runtime();
+        self.context.restore_evaluator_runtime(previous_evaluator);
         result
     }
     pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {

@@ -143,6 +143,53 @@ fn compile_file_builtin_compiles_and_loads_fasl_with_three_values() {
 }
 
 #[test]
+fn nested_fasl_load_restores_evaluator_for_following_empty_source_load() {
+    let directory =
+        std::env::temp_dir().join(format!("ncl-nested-fasl-load-{}", std::process::id()));
+    if let Err(error) = fs::create_dir_all(&directory) {
+        panic!("nested LOAD regression directory creation failed: {error}");
+    }
+    let source = directory.join("compiled.lisp");
+    let fasl = source.with_extension("fasl");
+    let empty = directory.join("empty.lisp");
+    let result = (|| {
+        fs::write(&source, "(setq *nested-fasl-load-observed* t)")
+            .map_err(|error| format!("COMPILE-FILE source creation failed: {error}"))?;
+        fs::write(&empty, "")
+            .map_err(|error| format!("empty LOAD source creation failed: {error}"))?;
+        let mut runtime =
+            Runtime::new().map_err(|error| format!("runtime initialization failed: {error}"))?;
+        runtime
+            .eval("(defparameter *nested-fasl-load-observed* nil)")
+            .map_err(|error| format!("LOAD regression setup failed: {error}"))?;
+        runtime
+            .compile_file(&source)
+            .map_err(|error| format!("COMPILE-FILE failed: {error}"))?;
+        let forms = format!(
+            "(load {}) (load {})",
+            lisp_string(&fasl),
+            lisp_string(&empty)
+        );
+        let loaded = runtime
+            .eval(&forms)
+            .map_err(|error| format!("FASL and empty-source LOAD sequence failed: {error}"))?;
+        let observed = runtime
+            .eval("(eq *nested-fasl-load-observed* t)")
+            .map_err(|error| format!("FASL result check failed: {error}"))?;
+        Ok::<_, String>((
+            runtime.format_result(loaded),
+            runtime.format_result(observed),
+        ))
+    })();
+    if let Err(error) = fs::remove_dir_all(&directory) {
+        panic!("nested LOAD regression cleanup failed: {error}");
+    }
+    let (loaded, observed) = result.unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(loaded, "NIL");
+    assert_eq!(observed, "T");
+}
+
+#[test]
 fn compile_file_binds_pathname_and_truename() {
     let filename = format!("ncl-compile-file-truename-{}.lisp", std::process::id());
     let base = std::env::temp_dir();

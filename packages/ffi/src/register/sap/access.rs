@@ -15,7 +15,7 @@ const VALUE: Parameter = Parameter {
 };
 
 macro_rules! sap_accessors {
-    ($(($read:ident, $write:ident, $accessor:literal, $setter:literal, $ty:expr)),* $(,)?) => {
+    ($(($read:ident, $write:ident, $place:ident, $accessor:literal, $setter:literal, $ty:expr)),* $(,)?) => {
         $(
             fn $read(
                 ctx: &mut ThreadContext,
@@ -34,35 +34,43 @@ macro_rules! sap_accessors {
             ) -> Result<Word, ObjectError> {
                 write(ctx, runtime, args, $ty)
             }
+
+            fn $place(
+                ctx: &mut ThreadContext,
+                runtime: &Runtime,
+                args: &[Word],
+            ) -> Result<SetfExpansion, ObjectError> {
+                place_expander(ctx, runtime, args, $accessor, $setter)
+            }
         )*
-        const ACCESSORS: &[(&str, &str, ncl_object::RustBuiltin, ncl_object::RustBuiltin)] =
-            &[$(($accessor, $setter, $read, $write)),*];
+        const ACCESSORS: &[(&str, &str, ncl_object::RustBuiltin, ncl_object::RustBuiltin, ncl_object::PlaceExpander)] =
+            &[$(($accessor, $setter, $read, $write, $place)),*];
     };
 }
 
 sap_accessors! {
-        (read_u8, write_u8, "SAP-REF-8", "%SAP-SET-U8", SapAccessType::Unsigned8),
-        (read_i8, write_i8, "SIGNED-SAP-REF-8", "%SAP-SET-I8", SapAccessType::Signed8),
-        (read_u16, write_u16, "SAP-REF-16", "%SAP-SET-U16", SapAccessType::Unsigned16),
-        (read_i16, write_i16, "SIGNED-SAP-REF-16", "%SAP-SET-I16", SapAccessType::Signed16),
-        (read_u32, write_u32, "SAP-REF-32", "%SAP-SET-U32", SapAccessType::Unsigned32),
-        (read_i32, write_i32, "SIGNED-SAP-REF-32", "%SAP-SET-I32", SapAccessType::Signed32),
-        (read_u64, write_u64, "SAP-REF-64", "%SAP-SET-U64", SapAccessType::Unsigned64),
-        (read_i64, write_i64, "SIGNED-SAP-REF-64", "%SAP-SET-I64", SapAccessType::Signed64),
-        (read_word, write_word, "SAP-REF-WORD", "%SAP-SET-U64", SapAccessType::Unsigned64),
-        (read_signed_word, write_signed_word, "SIGNED-SAP-REF-WORD", "%SAP-SET-I64", SapAccessType::Signed64),
-        (read_sap, write_sap, "SAP-REF-SAP", "%SAP-SET-SAP", SapAccessType::Pointer),
-        (read_single, write_single, "SAP-REF-SINGLE", "%SAP-SET-SINGLE", SapAccessType::SingleFloat),
-        (read_double, write_double, "SAP-REF-DOUBLE", "%SAP-SET-DOUBLE", SapAccessType::DoubleFloat),
+        (read_u8, write_u8, expand_place_u8, "SAP-REF-8", "%SAP-SET-U8", SapAccessType::Unsigned8),
+        (read_i8, write_i8, expand_place_i8, "SIGNED-SAP-REF-8", "%SAP-SET-I8", SapAccessType::Signed8),
+        (read_u16, write_u16, expand_place_u16, "SAP-REF-16", "%SAP-SET-U16", SapAccessType::Unsigned16),
+        (read_i16, write_i16, expand_place_i16, "SIGNED-SAP-REF-16", "%SAP-SET-I16", SapAccessType::Signed16),
+        (read_u32, write_u32, expand_place_u32, "SAP-REF-32", "%SAP-SET-U32", SapAccessType::Unsigned32),
+        (read_i32, write_i32, expand_place_i32, "SIGNED-SAP-REF-32", "%SAP-SET-I32", SapAccessType::Signed32),
+        (read_u64, write_u64, expand_place_u64, "SAP-REF-64", "%SAP-SET-U64", SapAccessType::Unsigned64),
+        (read_i64, write_i64, expand_place_i64, "SIGNED-SAP-REF-64", "%SAP-SET-I64", SapAccessType::Signed64),
+        (read_word, write_word, expand_place_word, "SAP-REF-WORD", "%SAP-SET-U64", SapAccessType::Unsigned64),
+        (read_signed_word, write_signed_word, expand_place_signed_word, "SIGNED-SAP-REF-WORD", "%SAP-SET-I64", SapAccessType::Signed64),
+        (read_sap, write_sap, expand_place_sap, "SAP-REF-SAP", "%SAP-SET-SAP", SapAccessType::Pointer),
+        (read_single, write_single, expand_place_single, "SAP-REF-SINGLE", "%SAP-SET-SINGLE", SapAccessType::SingleFloat),
+        (read_double, write_double, expand_place_double, "SAP-REF-DOUBLE", "%SAP-SET-DOUBLE", SapAccessType::DoubleFloat),
 }
 
 pub(super) fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
-    for (name, setter, getter, write) in ACCESSORS {
+    for (name, setter, getter, write, place_expander) in ACCESSORS {
         register(runtime, ctx, name, 2, &[SAP, OFFSET], *getter)?;
         register(runtime, ctx, setter, 3, &[SAP, OFFSET, VALUE], *write)?;
         let mut symbol = intern(ctx, runtime, "NCL-FFI", name)?;
         ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
-            runtime.register_place_expander(ctx, *symbol, place_expander)
+            runtime.register_place_expander(ctx, *symbol, *place_expander)
         })?;
     }
     Ok(())
@@ -127,6 +135,8 @@ fn place_expander(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
+    accessor_name: &'static str,
+    setter_name: &'static str,
 ) -> Result<SetfExpansion, ObjectError> {
     if args.len() != 2 {
         return Err(ObjectError::TypeError);
@@ -142,30 +152,32 @@ fn place_expander(
                 let base_variable = *variables.first().ok_or(ObjectError::TypeError)?;
                 let offset_variable = *variables.get(1).ok_or(ObjectError::TypeError)?;
                 let value_variable = *variables.get(2).ok_or(ObjectError::TypeError)?;
-                let name = symbol_name(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
-                let setter = ACCESSORS
-                    .iter()
-                    .find_map(|(accessor, setter, _, _)| (*accessor == name).then_some(*setter))
-                    .ok_or(ObjectError::TypeError)?;
-                let setter = intern(ctx, runtime, "NCL-FFI", setter)?;
-                let mut store_form = make_list(
-                    ctx,
-                    runtime,
-                    &[setter, base_variable, offset_variable, value_variable],
-                )?;
-                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let accessor = **roots.first().ok_or(ObjectError::TypeError)?;
-                    let access_form =
-                        make_list(ctx, runtime, &[accessor, base_variable, offset_variable])?;
-                    Ok(SetfExpansion {
-                        temporary_variables: variables
-                            .get(..2)
-                            .ok_or(ObjectError::TypeError)?
-                            .to_vec(),
-                        value_forms: roots.iter().map(|value| **value).collect(),
-                        store_variables: vec![value_variable],
-                        store_form: *store_form,
-                        access_form,
+                let mut accessor = intern(ctx, runtime, "NCL-FFI", accessor_name)?;
+                ncl_object::with_root(ctx, &mut accessor, |ctx, accessor| {
+                    let mut setter = intern(ctx, runtime, "NCL-FFI", setter_name)?;
+                    ncl_object::with_root(ctx, &mut setter, |ctx, setter| {
+                        let mut store_form = make_list(
+                            ctx,
+                            runtime,
+                            &[*setter, base_variable, offset_variable, value_variable],
+                        )?;
+                        ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                            let access_form = make_list(
+                                ctx,
+                                runtime,
+                                &[*accessor, base_variable, offset_variable],
+                            )?;
+                            Ok(SetfExpansion {
+                                temporary_variables: variables
+                                    .get(..2)
+                                    .ok_or(ObjectError::TypeError)?
+                                    .to_vec(),
+                                value_forms: roots.iter().map(|value| **value).collect(),
+                                store_variables: vec![value_variable],
+                                store_form: *store_form,
+                                access_form,
+                            })
+                        })
                     })
                 })
             })
@@ -197,11 +209,4 @@ fn make_list(
         }
         Ok(list)
     })
-}
-
-fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<String, ObjectError> {
-    let name = ncl_object::symbol_name(ctx, symbol)?;
-    (0..ncl_object::string_length(ctx, name)?)
-        .map(|index| ncl_object::string_ref(ctx, name, index))
-        .collect()
 }

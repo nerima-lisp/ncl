@@ -10,7 +10,10 @@ use ncl_ffi::{
     AlienRoutine, AlienType, FfiError, align_of, marshal_argument, offset_of, parse_type_name,
     parse_type_specifier, record_size, size_of, union_size, unmarshal_result,
 };
-use ncl_object::{DoubleFloat, Runtime, ThreadContext, Word, double_value, make_double};
+use ncl_object::{
+    Bignum, DoubleFloat, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, double_value,
+    make_bignum_from_i128, make_double,
+};
 
 /// Declare a runtime and a registered context as test locals, in that order so
 /// the context drops before the runtime that owns its heap.
@@ -206,29 +209,28 @@ fn out_of_range_integer_is_rejected() {
 }
 
 #[test]
-fn boolean_and_character_marshal() {
+fn boolean_marshal() {
     fixture!(runtime, ctx);
     assert_eq!(
-        marshal_argument(&ctx, &AlienType::Boolean, Word::NIL).unwrap(),
-        vec![0]
+        marshal_argument(&ctx, &AlienType::Boolean, Word::NIL),
+        Ok(vec![0])
     );
     assert_eq!(
-        marshal_argument(&ctx, &AlienType::Boolean, Word::TRUE).unwrap(),
-        vec![1]
+        marshal_argument(&ctx, &AlienType::Boolean, Word::TRUE),
+        Ok(vec![1])
     );
-    assert_eq!(
-        marshal_argument(&ctx, &AlienType::Char, Word::character(65)).unwrap(),
-        vec![65]
-    );
-    let error = marshal_argument(&ctx, &AlienType::Char, Word::character(0x1_0000)).unwrap_err();
-    assert_eq!(error, FfiError::ValueOutOfRange { type_name: "char" });
 }
 
 #[test]
-fn a_fixnum_is_not_a_character() {
+fn character_is_not_a_c_integer() {
     fixture!(runtime, ctx);
-    let error = marshal_argument(&ctx, &AlienType::Char, Word::fixnum(65)).unwrap_err();
-    assert_eq!(error, FfiError::TypeMismatch { type_name: "char" });
+    let error = marshal_argument(&ctx, &AlienType::Char, Word::character(65)).unwrap_err();
+    assert_eq!(
+        error,
+        FfiError::TypeMismatch {
+            type_name: "integer"
+        }
+    );
 }
 
 #[test]
@@ -304,4 +306,326 @@ fn routine_declaration_carries_its_signature() {
     let routine = AlienRoutine::new("strlen", vec![AlienType::CString], AlienType::SizeT, false);
     assert_eq!(routine.arguments().len(), 1);
     assert_eq!(routine.result(), &AlienType::SizeT);
+}
+
+#[test]
+fn char_marshal_uses_signed_8_bit_integer_bounds() {
+    fixture!(runtime, ctx);
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::Char, Word::fixnum(-128)),
+        Ok(vec![0x80])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::Char, Word::fixnum(127)),
+        Ok(vec![0x7f])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::Char, Word::fixnum(-129)),
+        Err(FfiError::ValueOutOfRange { type_name: "char" })
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::Char, Word::fixnum(128)),
+        Err(FfiError::ValueOutOfRange { type_name: "char" })
+    );
+}
+
+#[test]
+fn unsigned_char_marshal_uses_unsigned_8_bit_integer_bounds() {
+    fixture!(runtime, ctx);
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedChar, Word::fixnum(0)),
+        Ok(vec![0])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedChar, Word::fixnum(255)),
+        Ok(vec![0xff])
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedChar, Word::fixnum(-1)),
+        Err(FfiError::ValueOutOfRange {
+            type_name: "integer"
+        })
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedChar, Word::fixnum(256)),
+        Err(FfiError::ValueOutOfRange {
+            type_name: "unsigned-char"
+        })
+    );
+}
+
+#[test]
+fn c_char_results_unmarshal_with_c_signedness() {
+    fixture!(runtime, ctx);
+    assert_eq!(
+        unmarshal_result(&mut ctx, &runtime, &AlienType::Char, &[0x80]).unwrap(),
+        Word::fixnum(-128)
+    );
+    assert_eq!(
+        unmarshal_result(&mut ctx, &runtime, &AlienType::Char, &[0xff]).unwrap(),
+        Word::fixnum(-1)
+    );
+    assert_eq!(
+        unmarshal_result(&mut ctx, &runtime, &AlienType::UnsignedChar, &[0xff]).unwrap(),
+        Word::fixnum(255)
+    );
+}
+
+fn bignum_word(ctx: &mut ThreadContext, runtime: &Runtime, value: i128) -> Word {
+    make_bignum_from_i128(ctx, runtime, value)
+        .unwrap()
+        .as_word()
+}
+
+fn assert_bignum_parts(ctx: &ThreadContext, value: Word, negative: bool, limbs: &[u32]) {
+    let bignum = Bignum::from_word(value);
+    assert_eq!(bignum_sign(ctx, bignum), Ok(negative));
+    assert_eq!(bignum_limbs(ctx, bignum), Ok(limbs.to_vec()));
+}
+
+#[test]
+fn signed_integer_width_boundaries_marshal_exact_little_endian_bytes() {
+    fixture!(runtime, ctx);
+    let cases = [
+        (
+            AlienType::Short,
+            Word::fixnum(-32_768),
+            vec![0, 0x80],
+            Word::fixnum(32_767),
+            vec![0xff, 0x7f],
+        ),
+        (
+            AlienType::Int,
+            Word::fixnum(-2_147_483_648),
+            vec![0, 0, 0, 0x80],
+            Word::fixnum(2_147_483_647),
+            vec![0xff, 0xff, 0xff, 0x7f],
+        ),
+        (
+            AlienType::Long,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MIN)),
+            vec![0, 0, 0, 0, 0, 0, 0, 0x80],
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+        ),
+        (
+            AlienType::LongLong,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MIN)),
+            vec![0, 0, 0, 0, 0, 0, 0, 0x80],
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+        ),
+        (
+            AlienType::SSizeT,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MIN)),
+            vec![0, 0, 0, 0, 0, 0, 0, 0x80],
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+        ),
+    ];
+
+    for (ty, minimum, minimum_bytes, maximum, maximum_bytes) in cases {
+        assert_eq!(marshal_argument(&ctx, &ty, minimum), Ok(minimum_bytes));
+        assert_eq!(marshal_argument(&ctx, &ty, maximum), Ok(maximum_bytes));
+    }
+}
+
+#[test]
+fn unsigned_integer_width_boundaries_marshal_exact_little_endian_bytes() {
+    fixture!(runtime, ctx);
+    let cases = [
+        (
+            AlienType::UnsignedShort,
+            Word::fixnum(0),
+            vec![0, 0],
+            Word::fixnum(65_535),
+            vec![0xff, 0xff],
+        ),
+        (
+            AlienType::UnsignedInt,
+            Word::fixnum(0),
+            vec![0, 0, 0, 0],
+            Word::fixnum(4_294_967_295),
+            vec![0xff, 0xff, 0xff, 0xff],
+        ),
+        (
+            AlienType::UnsignedLong,
+            Word::fixnum(0),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ),
+        (
+            AlienType::UnsignedLongLong,
+            Word::fixnum(0),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ),
+        (
+            AlienType::SizeT,
+            Word::fixnum(0),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX)),
+            vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ),
+    ];
+
+    for (ty, minimum, minimum_bytes, maximum, maximum_bytes) in cases {
+        assert_eq!(marshal_argument(&ctx, &ty, minimum), Ok(minimum_bytes));
+        assert_eq!(marshal_argument(&ctx, &ty, maximum), Ok(maximum_bytes));
+    }
+}
+
+#[test]
+fn integers_just_outside_signed_widths_are_rejected() {
+    fixture!(runtime, ctx);
+    let cases = [
+        (AlienType::Short, Word::fixnum(-32_769), "short"),
+        (AlienType::Short, Word::fixnum(32_768), "short"),
+        (AlienType::Int, Word::fixnum(-2_147_483_649), "int"),
+        (AlienType::Int, Word::fixnum(2_147_483_648), "int"),
+        (
+            AlienType::Long,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MIN) - 1),
+            "long",
+        ),
+        (
+            AlienType::Long,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX) + 1),
+            "long",
+        ),
+        (
+            AlienType::LongLong,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX) + 1),
+            "long-long",
+        ),
+        (
+            AlienType::SSizeT,
+            bignum_word(&mut ctx, &runtime, i128::from(i64::MAX) + 1),
+            "ssize-t",
+        ),
+    ];
+
+    for (ty, value, type_name) in cases {
+        assert_eq!(
+            marshal_argument(&ctx, &ty, value),
+            Err(FfiError::ValueOutOfRange { type_name })
+        );
+    }
+}
+
+#[test]
+fn integers_just_outside_unsigned_widths_are_rejected() {
+    fixture!(runtime, ctx);
+    let cases = [
+        (
+            AlienType::UnsignedShort,
+            Word::fixnum(65_536),
+            "unsigned-short",
+        ),
+        (
+            AlienType::UnsignedInt,
+            Word::fixnum(4_294_967_296),
+            "unsigned-int",
+        ),
+        (
+            AlienType::UnsignedLong,
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX) + 1),
+            "unsigned-long",
+        ),
+        (
+            AlienType::UnsignedLongLong,
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX) + 1),
+            "unsigned-long-long",
+        ),
+        (
+            AlienType::SizeT,
+            bignum_word(&mut ctx, &runtime, i128::from(u64::MAX) + 1),
+            "size-t",
+        ),
+    ];
+
+    for (ty, value, type_name) in cases {
+        assert_eq!(
+            marshal_argument(&ctx, &ty, value),
+            Err(FfiError::ValueOutOfRange { type_name })
+        );
+    }
+
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedInt, Word::fixnum(-1)),
+        Err(FfiError::ValueOutOfRange {
+            type_name: "integer"
+        })
+    );
+}
+
+#[test]
+fn non_integer_alien_arguments_report_integer_type_mismatch() {
+    fixture!(runtime, ctx);
+    let float = make_double(&mut ctx, &runtime, 1.5).unwrap().as_word();
+
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::Int, Word::character(65)),
+        Err(FfiError::TypeMismatch {
+            type_name: "integer"
+        })
+    );
+    assert_eq!(
+        marshal_argument(&ctx, &AlienType::UnsignedInt, float),
+        Err(FfiError::TypeMismatch {
+            type_name: "integer"
+        })
+    );
+}
+
+#[test]
+fn bignum_results_preserve_64_bit_signed_and_unsigned_boundaries() {
+    fixture!(runtime, ctx);
+    let signed_min = unmarshal_result(
+        &mut ctx,
+        &runtime,
+        &AlienType::Long,
+        &[0, 0, 0, 0, 0, 0, 0, 0x80],
+    )
+    .unwrap();
+    assert_bignum_parts(&ctx, signed_min, true, &[0, 0x8000_0000]);
+
+    let signed_max = unmarshal_result(
+        &mut ctx,
+        &runtime,
+        &AlienType::LongLong,
+        &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+    )
+    .unwrap();
+    assert_bignum_parts(&ctx, signed_max, false, &[u32::MAX, 0x7fff_ffff]);
+
+    for ty in [
+        AlienType::UnsignedLong,
+        AlienType::UnsignedLongLong,
+        AlienType::SizeT,
+    ] {
+        let unsigned_max = unmarshal_result(
+            &mut ctx,
+            &runtime,
+            &ty,
+            &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        )
+        .unwrap();
+        assert_bignum_parts(&ctx, unsigned_max, false, &[u32::MAX, u32::MAX]);
+    }
+}
+
+#[test]
+fn result_width_must_match_64_bit_integer_type() {
+    fixture!(runtime, ctx);
+    assert_eq!(
+        unmarshal_result(&mut ctx, &runtime, &AlienType::Long, &[0; 7]),
+        Err(FfiError::ValueOutOfRange { type_name: "long" })
+    );
+    assert_eq!(
+        unmarshal_result(&mut ctx, &runtime, &AlienType::Long, &[0; 9]),
+        Err(FfiError::ValueOutOfRange { type_name: "long" })
+    );
 }

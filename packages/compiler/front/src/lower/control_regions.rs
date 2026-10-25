@@ -81,6 +81,11 @@ impl Context<'_> {
                 .collect(),
         );
         self.leave(f, region_id)?;
+        let handler_value = if self.preserve_multiple_values {
+            Self::restore_multiple_values(f, handler_value)?
+        } else {
+            handler_value
+        };
         f.terminate(Terminator::Jump {
             target: exit,
             args: std::iter::once(handler_value)

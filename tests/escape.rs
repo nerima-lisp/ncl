@@ -337,3 +337,27 @@ fn if_else_return_from_restores_active_regions_for_following_exit() {
         "(:INNER :ROOT)"
     );
 }
+
+#[test]
+fn multiple_value_bind_return_from_nil_preserves_multiple_values() {
+    let source = "(multiple-value-list (block nil (multiple-value-bind (symbol status) (values 'ncl-b3-symbol :internal) (return (values symbol status)))))";
+    let output = run_ncl(source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stderr.is_empty(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(COMMON-LISP-USER:NCL-B3-SYMBOL :INTERNAL)"
+    );
+}
+
+#[test]
+fn multiple_value_bind_return_from_nil_through_lambda_preserves_multiple_values() {
+    let source = "(multiple-value-list (block nil (funcall (lambda () (multiple-value-bind (symbol status) (values 'ncl-b3-symbol :internal) (return (values symbol status)))))))";
+    let output = run_ncl(source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stderr.is_empty(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end(),
+        "(COMMON-LISP-USER:NCL-B3-SYMBOL :INTERNAL)"
+    );
+}

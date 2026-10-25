@@ -64,6 +64,14 @@ pub(super) fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
             let in_lambda = matches!(operator, Operator::Lambda(lambda) if lambda.body.iter().any(|form| contains_return(form, name)));
             in_lambda || arguments.iter().any(|form| contains_return(form, name))
         }
+        Expr::MultipleValueCall {
+            function,
+            arguments,
+        } => {
+            nested_return(function, name)
+                || contains_return(function, name)
+                || arguments.iter().any(|form| contains_return(form, name))
+        }
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Lambda(_)
@@ -71,7 +79,6 @@ pub(super) fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
         | Expr::Go { .. }
         | Expr::Throw { .. }
         | Expr::Setq(_)
-        | Expr::MultipleValueCall { .. }
         | Expr::MultipleValueProg1 { .. }
         | Expr::The { .. }
         | Expr::EvalWhen { .. }
@@ -149,13 +156,18 @@ pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
                     .any(|form| contains_return(form, name) || nested_return(form, name))
             }) || body.iter().any(|form| nested_return(form, name))
         }
+        Expr::MultipleValueCall {
+            function,
+            arguments,
+        } => {
+            nested_return(function, name) || arguments.iter().any(|form| nested_return(form, name))
+        }
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Function(_)
         | Expr::ReturnFrom { .. }
         | Expr::Go { .. }
         | Expr::Throw { .. }
-        | Expr::MultipleValueCall { .. }
         | Expr::MultipleValueProg1 { .. }
         | Expr::The { .. }
         | Expr::EvalWhen { .. }
@@ -163,5 +175,66 @@ pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
         Expr::UnwindProtect { protected, cleanup } => {
             nested_return(protected, name) || cleanup.iter().any(|form| nested_return(form, name))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{contains_return, nested_return};
+    use crate::ast::{Expr, LambdaExpr, Operator};
+    use crate::lambda_list::LambdaList;
+    use crate::symbols::SymbolRef;
+
+    fn return_from(name: &SymbolRef) -> Expr {
+        Expr::ReturnFrom {
+            name: name.clone(),
+            value: None,
+        }
+    }
+
+    fn lambda_returning(name: &SymbolRef) -> Expr {
+        Expr::Lambda(Box::new(LambdaExpr {
+            lambda_list: LambdaList::new(),
+            declarations: Vec::new(),
+            docstring: None,
+            body: vec![return_from(name)],
+        }))
+    }
+
+    #[test]
+    fn multiple_value_call_return_analysis_scans_function_and_arguments() {
+        let target = SymbolRef::interned("COMMON-LISP", "NIL");
+        let function_return = Expr::MultipleValueCall {
+            function: Box::new(lambda_returning(&target)),
+            arguments: Vec::new(),
+        };
+        assert!(nested_return(&function_return, &target));
+
+        let argument_return = Expr::MultipleValueCall {
+            function: Box::new(Expr::Variable(SymbolRef::interned(
+                "COMMON-LISP-USER",
+                "FUNCTION",
+            ))),
+            arguments: vec![lambda_returning(&target)],
+        };
+        assert!(nested_return(&argument_return, &target));
+
+        let direct_return_in_function = Expr::MultipleValueCall {
+            function: Box::new(Expr::Call {
+                operator: Operator::Name(SymbolRef::interned("COMMON-LISP-USER", "FUNCTION")),
+                arguments: vec![return_from(&target)],
+            }),
+            arguments: Vec::new(),
+        };
+        assert!(contains_return(&direct_return_in_function, &target));
+
+        let direct_return_in_argument = Expr::MultipleValueCall {
+            function: Box::new(Expr::Variable(SymbolRef::interned(
+                "COMMON-LISP-USER",
+                "FUNCTION",
+            ))),
+            arguments: vec![return_from(&target)],
+        };
+        assert!(contains_return(&direct_return_in_argument, &target));
     }
 }

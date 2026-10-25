@@ -113,12 +113,17 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
+        let thrown_value = if self.preserve_multiple_values {
+            Self::capture_multiple_values(f, value)?
+        } else {
+            value
+        };
         let token = Self::target_value(f, &target, name)?;
         f.safepoint()?;
         let thrown = f.one(
             OpKind::Builtin {
                 name: "throw".to_owned(),
-                args: vec![token, value],
+                args: vec![token, thrown_value],
                 specialization: None,
                 specialization_disabled: self.specialization_disabled(),
             },

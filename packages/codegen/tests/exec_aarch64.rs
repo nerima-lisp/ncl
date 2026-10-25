@@ -481,5 +481,8 @@ mod rest_key;
 #[path = "exec_aarch64/basic.rs"]
 mod basic;
 
+#[path = "exec_aarch64/arrays.rs"]
+mod arrays;
+
 #[path = "exec_aarch64/tail.rs"]
 mod tail;

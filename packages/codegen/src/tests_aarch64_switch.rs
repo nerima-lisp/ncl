@@ -70,7 +70,7 @@ fn aarch64_switch_compares_cases_and_moves_block_arguments() {
         }
         crate::Location::Spill(_) => "str x17, [x16, #0]".to_owned(),
     };
-    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi);
+    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi::default());
     assert!(compiled.is_ok(), "switch failed to compile: {compiled:?}");
     let Some(compiled) = compiled.ok() else {
         return;

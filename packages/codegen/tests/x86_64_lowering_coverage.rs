@@ -3,7 +3,7 @@
 #[path = "x86_64_lowering_coverage/fixture.rs"]
 mod fixture;
 use fixture::X86_64FixtureAbi;
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Scale, Shift};
 use ncl_codegen::{
     AbiError, Allocation, AllocationTarget, CodegenError, ContextField, FLAG_ALLOCATION_SLOW,
     FLAG_CALL, Location, RuntimeAbi, RuntimeFunction, X86_64Abi, allocate, compile_function,
@@ -61,6 +61,148 @@ fn assert_call_safepoint(
             .any(|map| map.pc_offset == call_end && map.map_flags == expected_flags),
         "call ending at {call_end} must have a safepoint map with flags {expected_flags:#x}: {:?}",
         compiled.safepoint_maps
+    );
+}
+
+#[test]
+fn fixed_templates_use_simple_vector_indices_and_aset_values() {
+    for (index, prim) in [Prim::Aref, Prim::Svref].into_iter().enumerate() {
+        let mut builder = FunctionBuilder::new(
+            ncl_ir::FunctionId(850 + u32::try_from(index).expect("primitive index fits")),
+            "fixed-template-array-reference",
+            vec![
+                Param {
+                    name: "vector".into(),
+                    ty: Ty::Word,
+                },
+                Param {
+                    name: "index".into(),
+                    ty: Ty::Word,
+                },
+            ],
+            vec![Ty::Word],
+        );
+        let vector = builder
+            .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+            .expect("vector argument")[0];
+        let array_index = builder
+            .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+            .expect("array index argument")[0];
+        let value = builder
+            .push_op(
+                OpKind::Prim {
+                    op: prim,
+                    args: vec![vector, array_index],
+                    condition: None,
+                },
+                &[Ty::Word],
+            )
+            .expect("array reference")[0];
+        builder
+            .terminate(Terminator::Return {
+                values: vec![value],
+            })
+            .expect("return");
+        let function = builder.finish();
+        let compiled = compile_function(&function, &LoweringCoverageAbi)
+            .expect("fixed-template array reference compiles");
+        assert_contains(
+            &compiled.code,
+            &encode([
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
+                Inst::MovRM(Reg::R10, Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16)),
+            ]),
+            "simple-vector reference uses its nonzero fixnum index and payload offset",
+        );
+        let target_compiled = compile_function_x86_64(&function, &LoweringCoverageAbi)
+            .expect("x86-64 array reference compiles");
+        assert_contains(
+            &target_compiled.code,
+            &encode([
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
+                Inst::MovRM(Reg::R10, Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16)),
+            ]),
+            "x86-64 simple-vector reference uses its index and payload offset",
+        );
+    }
+
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(852),
+        "fixed-template-array-set",
+        vec![
+            Param {
+                name: "vector".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "index".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "value".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    let vector = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("vector argument")[0];
+    let array_index = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("array index argument")[0];
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 2 }, &[Ty::Word])
+        .expect("array value argument")[0];
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::Aset,
+                args: vec![vector, array_index, value],
+                condition: None,
+            },
+            &[Ty::Unit],
+        )
+        .expect("array set");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let function = builder.finish();
+    let compiled = compile_function(&function, &LoweringCoverageAbi)
+        .expect("fixed-template array set compiles");
+    assert_contains(
+        &compiled.code,
+        &encode([Inst::MovMR(
+            Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16),
+            Reg::Rax,
+        )]),
+        "aset stores its value at the indexed simple-vector payload slot",
+    );
+    assert_contains(
+        &compiled.code,
+        &encode([
+            Inst::ShiftImm(Shift::Sar, Reg::Rax, 1),
+            Inst::BinRI(BinOp::Add, Reg::Rax, 1),
+        ]),
+        "aset barrier slot is the untagged index plus the vector data slot",
+    );
+    let target_compiled = compile_function_x86_64(&function, &LoweringCoverageAbi)
+        .expect("x86-64 array set compiles");
+    assert_contains(
+        &target_compiled.code,
+        &encode([Inst::MovMR(
+            Mem::indexed(Reg::R10, Reg::R11, Scale::Four, 16),
+            Reg::Rax,
+        )]),
+        "x86-64 aset stores its value at the indexed simple-vector payload slot",
+    );
+    assert_contains(
+        &target_compiled.code,
+        &encode([
+            Inst::ShiftImm(Shift::Sar, Reg::Rax, 1),
+            Inst::BinRI(BinOp::Add, Reg::Rax, 1),
+        ]),
+        "x86-64 aset barrier slot uses the untagged index plus vector data slot",
     );
 }
 

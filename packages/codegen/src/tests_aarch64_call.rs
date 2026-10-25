@@ -85,7 +85,8 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
         return Err("return terminator did not lower".into());
     }
 
-    let Ok(compiled) = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) else {
+    let Ok(compiled) = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+    else {
         return Err("five-argument call did not compile".into());
     };
     if compiled.frame_size < 48 {

@@ -1,12 +1,12 @@
 use super::{
-    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, VALUE_COUNT, ValueSlots, emit, emit_call,
-    load_heap_constant, load_immediate, load_slot, lower_alloc, lower_load_capture,
-    lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
+    ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT,
+    ValueSlots, emit, emit_call, load_heap_constant, load_immediate, load_slot, lower_alloc,
+    lower_load_capture, lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::isa_x86_64::THREAD_CONTEXT;
 use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem, Scale, Shift};
 use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 use std::collections::HashMap;
 
@@ -66,6 +66,9 @@ fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> 
     emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
 }
 
+const SIMPLE_VECTOR_DATA_OFFSET: i32 =
+    ((ncl_object::simple_vector_offset::DATA + 1) * std::mem::size_of::<ncl_sys::Word>()) as i32;
+
 pub(super) fn lower_write_barrier(
     assembler: &mut Assembler,
     owner: ValueId,
@@ -82,6 +85,50 @@ pub(super) fn lower_write_barrier(
         abi,
     )?;
     emit_call(assembler).map(|_| ())
+}
+
+fn emit_sequence(
+    assembler: &mut Assembler,
+    instructions: impl IntoIterator<Item = Inst>,
+) -> Result<(), CodegenError> {
+    instructions
+        .into_iter()
+        .try_for_each(|instruction| emit(assembler, instruction))
+}
+
+fn lower_indexed_write_barrier(
+    assembler: &mut Assembler,
+    owner: ValueId,
+    index: ValueId,
+    slots: &ValueSlots,
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    load_slot(assembler, slots, index, RETURN_VALUE)
+        .and_then(|()| {
+            emit_sequence(
+                assembler,
+                [
+                    Inst::ShiftImm(Shift::Sar, RETURN_VALUE, ncl_sys::FIXNUM_TAG_BITS as u8),
+                    Inst::BinRI(
+                        BinOp::Add,
+                        RETURN_VALUE,
+                        ncl_object::simple_vector_offset::DATA as i32,
+                    ),
+                ],
+            )
+        })
+        .and_then(|()| {
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::WriteBarrier,
+                &[0],
+                &[owner],
+                slots,
+                abi,
+            )
+        })
+        .and_then(|()| emit(assembler, Inst::MovRR(ARGUMENT_REGISTERS[0], RETURN_VALUE)))
+        .and_then(|()| emit_call(assembler).map(|_| ()))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -119,7 +166,7 @@ fn lower_prim(
             emit(assembler, Inst::CmpRR(FUNCTION_OBJECT, ENTRY))?;
             materialise_boolean(assembler, Cond::Le)?;
         }
-        Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => {
+        Prim::Car | Prim::Cdr => {
             untag_function_object(assembler)?;
             let offset = if matches!(prim, Prim::Cdr) { 8 } else { 0 };
             emit(
@@ -127,7 +174,29 @@ fn lower_prim(
                 Inst::MovRM(FUNCTION_OBJECT, Mem::base(FUNCTION_OBJECT, offset)),
             )?;
         }
-        Prim::Rplaca | Prim::Rplacd | Prim::Aset => {
+        Prim::Svref | Prim::Aref => {
+            return emit_sequence(
+                assembler,
+                [
+                    Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8),
+                    Inst::MovRM(
+                        FUNCTION_OBJECT,
+                        Mem::indexed(
+                            FUNCTION_OBJECT,
+                            ENTRY,
+                            Scale::Four,
+                            SIMPLE_VECTOR_DATA_OFFSET,
+                        ),
+                    ),
+                ],
+            )
+            .and_then(|()| {
+                result.map_or(Ok(()), |result| {
+                    store_slot(assembler, slots, result, FUNCTION_OBJECT)
+                })
+            });
+        }
+        Prim::Rplaca | Prim::Rplacd => {
             untag_function_object(assembler)?;
             let offset = if matches!(prim, Prim::Rplacd) { 8 } else { 0 };
             emit(
@@ -141,6 +210,32 @@ fn lower_prim(
                 slots,
                 abi,
             )?;
+        }
+        Prim::Aset => {
+            return load_slot(assembler, slots, args[2], RETURN_VALUE)
+                .and_then(|()| {
+                    emit_sequence(
+                        assembler,
+                        [
+                            Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8),
+                            Inst::MovMR(
+                                Mem::indexed(
+                                    FUNCTION_OBJECT,
+                                    ENTRY,
+                                    Scale::Four,
+                                    SIMPLE_VECTOR_DATA_OFFSET,
+                                ),
+                                RETURN_VALUE,
+                            ),
+                        ],
+                    )
+                })
+                .and_then(|()| lower_indexed_write_barrier(assembler, *first, args[1], slots, abi))
+                .and_then(|()| {
+                    result.map_or(Ok(()), |result| {
+                        store_slot(assembler, slots, result, FUNCTION_OBJECT)
+                    })
+                });
         }
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
             // check-added-lines: allow(unsupported) existing codegen error variant

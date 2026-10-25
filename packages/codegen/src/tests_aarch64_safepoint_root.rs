@@ -50,7 +50,7 @@ fn safepoint_map_keeps_root_passed_as_later_block_parameter() {
         Some(crate::Location::Spill(spill)) => spill,
         location => panic!("expected block parameter spill across safepoint, got {location:?}"),
     };
-    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi).unwrap();
+    let compiled = compile_function_aarch64(&function, &Aarch64FixtureAbi::default()).unwrap();
     let map = compiled.safepoint_maps.first().unwrap();
     let root_slot = usize::try_from(crate::FRAME_HEADER_WORDS + spill).unwrap();
     let byte = map.bitmap.get(root_slot / 8).copied().unwrap_or_default();

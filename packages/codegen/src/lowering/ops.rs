@@ -51,12 +51,9 @@ fn lower_builtin_call(
     assembler: &mut Assembler,
     name: &str,
     args: &[ValueId],
-    result: Option<ValueId>,
     slots: &[(ValueId, u32)],
     abi: &dyn RuntimeAbi,
-    frame: FrameLayout,
-    safepoints: &mut SafepointOutput,
-) -> Result<(), CodegenError> {
+) -> Result<SafepointSite, CodegenError> {
     if args.len() > 4 {
         // check-added-lines: allow(unsupported) preserve the x86-64 builtin arity diagnostic.
         return Err(CodegenError::Unsupported(
@@ -81,13 +78,7 @@ fn lower_builtin_call(
         assembler,
         &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
     )?;
-    let site = emit_safepoint_call(assembler)?;
-    if let Some(result) = result {
-        store(assembler, slots, result, Reg::Rax)?;
-    }
-    add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
-    safepoints.sites.push(site);
-    Ok(())
+    emit_safepoint_call(assembler)
 }
 
 pub(super) fn constant_value(
@@ -251,7 +242,12 @@ pub(super) fn lower_op(
             safepoints.sites.push(site);
         }
         OpKind::Builtin { name, args, .. } => {
-            lower_builtin_call(assembler, name, args, result, slots, abi, frame, safepoints)?
+            let site = lower_builtin_call(assembler, name, args, slots, abi)?;
+            if let Some(result) = result {
+                store(assembler, slots, result, Reg::Rax)?;
+            }
+            add_map(frame, slots, &mut safepoints.maps, site, FLAG_CALL)?;
+            safepoints.sites.push(site);
         }
         OpKind::Prim { op: prim, args, .. } => {
             lower_prim(assembler, prim, args, result, slots, abi)?;

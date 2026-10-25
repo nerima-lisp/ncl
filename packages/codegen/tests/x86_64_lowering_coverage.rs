@@ -649,7 +649,7 @@ fn fixed_template_builtin_marshals_four_words_and_records_the_call_pc() {
         .push_op(
             OpKind::Builtin {
                 name: "coverage-probe".into(),
-                args: args.to_vec(),
+                args,
                 specialization: None,
                 specialization_disabled: false,
             },
@@ -724,15 +724,13 @@ fn five_argument_builtin_returns_the_exact_arity_error_from_both_lowerers() {
     let expected_error =
         CodegenError::Unsupported("x86-64 builtins support at most four arguments".into());
 
-    let fixed_template_error = match compile_function(&function, &LoweringCoverageAbi) {
-        Ok(_) => panic!("fixed-template builtin accepted five arguments"),
-        Err(error) => error,
+    let Err(fixed_template_error) = compile_function(&function, &LoweringCoverageAbi) else {
+        panic!("fixed-template builtin accepted five arguments");
     };
     assert_eq!(fixed_template_error, expected_error);
 
-    let target_error = match compile_function_x86_64(&function, &LoweringCoverageAbi) {
-        Ok(_) => panic!("target builtin accepted five arguments"),
-        Err(error) => error,
+    let Err(target_error) = compile_function_x86_64(&function, &LoweringCoverageAbi) else {
+        panic!("target builtin accepted five arguments");
     };
     assert_eq!(target_error, expected_error);
 }
@@ -764,9 +762,8 @@ fn fixed_template_rejects_make_rest_list_without_its_special_abi_setup() {
         })
         .expect("builtin return");
 
-    let error = match compile_function(&builder.finish(), &LoweringCoverageAbi) {
-        Ok(_) => panic!("fixed-template lowering accepted make-rest-list's different ABI"),
-        Err(error) => error,
+    let Err(error) = compile_function(&builder.finish(), &LoweringCoverageAbi) else {
+        panic!("fixed-template lowering accepted make-rest-list's different ABI");
     };
     assert_eq!(
         error,

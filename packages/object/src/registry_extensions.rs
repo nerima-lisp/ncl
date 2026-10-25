@@ -4,6 +4,16 @@ use crate::package::{NAME, NICKNAMES};
 use crate::{ObjectError, Package, Runtime, ThreadContext, make_string, string_length, string_ref};
 use ncl_sys::{HeapConfig, Word};
 
+fn standard_package_name(name: &str) -> (&str, Option<&'static str>) {
+    if name == "CL" || name == "COMMON-LISP" {
+        ("COMMON-LISP", Some("CL"))
+    } else if name == "CL-USER" || name == "COMMON-LISP-USER" {
+        ("COMMON-LISP-USER", Some("CL-USER"))
+    } else {
+        (name, None)
+    }
+}
+
 impl Runtime {
     /// Return all packages currently registered in the runtime.
     ///
@@ -21,40 +31,43 @@ impl Runtime {
     /// # Errors
     /// Returns an allocation or layout error.
     pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
-        if name == "CL"
+        let (canonical_name, nickname) = standard_package_name(name);
+        if canonical_name != name
             && let Some(package) = self.resolve_package(ctx, name)?
         {
             return Ok(package);
         }
-        let canonical_name = if name == "CL" { "COMMON-LISP" } else { name };
-        let existing = if canonical_name == "COMMON-LISP" {
+        let existing = if nickname.is_some() {
             self.resolve_package_name(ctx, canonical_name)?
         } else {
             self.resolve_package(ctx, canonical_name)?
         };
         if let Some(mut package) = existing {
-            if canonical_name == "COMMON-LISP" && self.resolve_package(ctx, "CL")?.is_none() {
-                self.register_common_lisp_nickname(ctx, &mut package)?;
+            if let Some(nickname) = nickname
+                && self.resolve_package(ctx, nickname)?.is_none()
+            {
+                self.register_standard_nickname(ctx, &mut package, nickname)?;
             }
             return Ok(package);
         }
-        if canonical_name == "COMMON-LISP" {
-            let mut nickname = make_string(ctx, self, &['C', 'L'])?;
-            crate::with_root(ctx, &mut nickname, |ctx, nickname| {
-                self.check_package_name(ctx, Word::NIL, *nickname)
+        if let Some(nickname) = nickname {
+            let mut nickname_word = make_string(ctx, self, &nickname.chars().collect::<Vec<_>>())?;
+            crate::with_root(ctx, &mut nickname_word, |ctx, nickname_word| {
+                self.check_package_name(ctx, Word::NIL, *nickname_word)
             })?;
         }
         let mut name_word = make_string(ctx, self, &canonical_name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
-            let existing = if canonical_name == "COMMON-LISP" {
+            let existing = if nickname.is_some() {
                 self.resolve_package_name(context, canonical_name)?
             } else {
                 self.resolve_package(context, canonical_name)?
             };
             if let Some(mut package) = existing {
-                if canonical_name == "COMMON-LISP" && self.resolve_package(context, "CL")?.is_none()
+                if let Some(nickname) = nickname
+                    && self.resolve_package(context, nickname)?.is_none()
                 {
-                    self.register_common_lisp_nickname(context, &mut package)?;
+                    self.register_standard_nickname(context, &mut package, nickname)?;
                 }
                 return Ok(package);
             }
@@ -62,20 +75,21 @@ impl Runtime {
             crate::with_root(context, &mut package, |context, package| {
                 self.register_package_name(context, *package, *name_word, false)
             })?;
-            if canonical_name == "COMMON-LISP" {
-                self.register_common_lisp_nickname(context, &mut package)?;
+            if let Some(nickname) = nickname {
+                self.register_standard_nickname(context, &mut package, nickname)?;
             }
             Ok(package)
         })
     }
 
-    fn register_common_lisp_nickname(
+    fn register_standard_nickname(
         &self,
         ctx: &mut ThreadContext,
         package: &mut Word,
+        nickname: &str,
     ) -> Result<(), ObjectError> {
         crate::with_root(ctx, package, |ctx, package| {
-            let mut nickname = make_string(ctx, self, &['C', 'L'])?;
+            let mut nickname = make_string(ctx, self, &nickname.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut nickname, |ctx, nickname| {
                 self.register_package_name(ctx, *package, *nickname, true)
             })
@@ -418,6 +432,22 @@ mod registry_behavior_tests {
         assert_eq!(runtime.find_package(&ctx, "RL"), None);
         assert!(!runtime.all_packages(&ctx)?.contains(&package));
         assert!(!runtime.delete_package(&mut ctx, Package::from_word(package))?);
+        Ok(())
+    }
+
+    #[test]
+    fn common_lisp_user_has_standard_cl_user_nickname() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let common_lisp_user = runtime
+            .find_package(&ctx, "COMMON-LISP-USER")
+            .ok_or(ObjectError::Layout)?;
+
+        assert_eq!(
+            runtime.find_package(&ctx, "CL-USER"),
+            Some(common_lisp_user)
+        );
         Ok(())
     }
 }

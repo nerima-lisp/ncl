@@ -445,6 +445,55 @@ fn verifier_rejects_word_to_address_after_mixed_block_parameter() {
 }
 
 #[test]
+fn verifier_rejects_word_to_address_from_unrooted_cfg_cycle() {
+    let function = finish(
+        "unrooted-word-cycle",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(0, Vec::new(), Terminator::Return { values: Vec::new() }),
+            BasicBlock {
+                id: BlockId(1),
+                params: vec![BlockParam {
+                    value: ValueId(0),
+                    ty: Ty::Word,
+                }],
+                ops: vec![
+                    op(
+                        &[(1, Ty::Address)],
+                        OpKind::Convert {
+                            op: Convert::WordToAddress,
+                            value: ValueId(0),
+                        },
+                    ),
+                    op(
+                        &[(2, Ty::Word)],
+                        OpKind::Load {
+                            address: ValueId(1),
+                        },
+                    ),
+                    op(&[], OpKind::Safepoint),
+                ],
+                terminator: Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(0)],
+                },
+            },
+        ],
+        Vec::new(),
+    );
+
+    assert_eq!(
+        verify(&function),
+        Err(vec![VerifyError::UnprovenAddressProvenance {
+            block: BlockId(1),
+            value: ValueId(0),
+        }]),
+    );
+}
+
+#[test]
 fn verifier_rejects_address_saved_in_multiple_values_across_safepoint() {
     let function = finish(
         "address-saved-in-multiple-values-across-safepoint",

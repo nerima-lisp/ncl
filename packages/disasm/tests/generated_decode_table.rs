@@ -8,7 +8,7 @@ use ncl_disasm::{Architecture, DecodedInstruction, decode};
 // Base Instructions: https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2a-manual.pdf
 // https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf
 // https://documentation-service.arm.com/static/68da52dfbd7cab51328c0622
-const CASES: [Case; 35] = [
+const CASES: [Case; 36] = [
     Case {
         id: "x86-push-r8",
         architecture: Architecture::X86_64,
@@ -95,6 +95,14 @@ const CASES: [Case; 35] = [
         bytes: &[0x48, 0x0f, 0xaf, 0xc3],
         size: 4,
         text: "imul %rbx, %rax",
+        branch_target: None,
+    },
+    Case {
+        id: "x86-imul-r64-rm64-nonzero-reg",
+        architecture: Architecture::X86_64,
+        bytes: &[0x48, 0x0f, 0xaf, 0xcb],
+        size: 4,
+        text: "imul %rbx, %rcx",
         branch_target: None,
     },
     Case {

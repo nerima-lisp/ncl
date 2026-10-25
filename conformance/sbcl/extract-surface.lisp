@@ -294,7 +294,7 @@
                          for right-byte = (read-byte right-stream nil nil)
                          while (and left-byte right-byte (= left-byte right-byte))
                          finally (return (and (null left-byte)
-                                              (null right-byte)))))))
+                                              (null right-byte))))))))
       (ensure-directories-exist target-path)
       (open-temporary)
       (unwind-protect
@@ -319,7 +319,7 @@
           (when (and temporary-path
                      (not published-p)
                      (probe-file temporary-path))
-            (delete-file temporary-path))))))))
+            (delete-file temporary-path)))))))
 
 (defun write-symbol-table (package-name)
   (let* ((package

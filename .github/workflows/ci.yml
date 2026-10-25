@@ -191,6 +191,20 @@ jobs:
           name: coverage-lcov
           path: lcov.info
           if-no-files-found: error
+      - name: Report region coverage totals
+        run: |
+          cargo llvm-cov report --locked --workspace --json --summary-only > coverage-summary.json
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("coverage-summary.json", encoding="utf-8") as report:
+              regions = json.load(report)["data"][0]["totals"]["regions"]
+          result = f"Region coverage: {regions['covered']}/{regions['count']} ({regions['percent']:.2f}%)"
+          print(result)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(f"{result}\n")
+          PY
       - run: cargo llvm-cov report --locked --workspace --json --summary-only --fail-under-regions 95.0
 
   security:

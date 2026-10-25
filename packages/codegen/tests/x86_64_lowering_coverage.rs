@@ -179,6 +179,7 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
         let expected = if is_load {
             encode([
                 load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
                 Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
                 store_register_into_value(&function, &allocation, result, Reg::R10),
             ])
@@ -186,6 +187,7 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
             encode([
                 load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
                 load_value_into_register(&function, &allocation, ValueId(1), Reg::R11),
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
                 Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
             ])
         };

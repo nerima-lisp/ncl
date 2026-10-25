@@ -37,13 +37,8 @@ pub fn marshal_argument(
     match ty {
         AlienType::Void => Err(FfiError::UnsupportedType("void")),
         AlienType::Boolean => Ok(vec![u8::from(boolean_value(value)?)]),
-        AlienType::Char | AlienType::UnsignedChar => {
-            let scalar = character_value(value)?;
-            let byte = u8::try_from(scalar).map_err(|_| FfiError::ValueOutOfRange {
-                type_name: ty.label(),
-            })?;
-            Ok(vec![byte])
-        }
+        AlienType::Char => signed_bytes(word_to_i128(ctx, value)?, 1, ty.label()),
+        AlienType::UnsignedChar => unsigned_bytes(word_to_u128(ctx, value)?, 1, ty.label()),
         AlienType::Short => signed_bytes(word_to_i128(ctx, value)?, 2, ty.label()),
         AlienType::UnsignedShort => unsigned_bytes(word_to_u128(ctx, value)?, 2, ty.label()),
         AlienType::Int | AlienType::Enumeration(_) => {
@@ -98,16 +93,15 @@ pub fn unmarshal_result(
         } else {
             Word::TRUE
         }),
-        AlienType::Char | AlienType::UnsignedChar => {
-            Ok(Word::character(u32::from(read_byte(bytes)?)))
-        }
-        AlienType::Short
+        AlienType::Char
+        | AlienType::Short
         | AlienType::Int
         | AlienType::Long
         | AlienType::LongLong
         | AlienType::SSizeT
         | AlienType::Enumeration(_) => i128_to_word(ctx, runtime, read_signed(bytes)?),
-        AlienType::UnsignedShort
+        AlienType::UnsignedChar
+        | AlienType::UnsignedShort
         | AlienType::UnsignedInt
         | AlienType::UnsignedLong
         | AlienType::UnsignedLongLong
@@ -226,16 +220,6 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
             type_name: "boolean",
         }),
     }
-}
-
-/// Decode a Lisp character into its Unicode scalar value.
-///
-/// The sys word API owns character classification. The encoded address stores
-/// `code + 1`, so decoding removes the tag offset after the character shift.
-fn character_value(value: Word) -> Result<u32, FfiError> {
-    value
-        .as_character()
-        .ok_or(FfiError::TypeMismatch { type_name: "char" })
 }
 
 /// Decode a Lisp value into an `f32`, accepting a single- or double-float.

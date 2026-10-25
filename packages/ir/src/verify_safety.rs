@@ -50,6 +50,7 @@ pub(super) fn check_address_liveness(
     if address_values.is_empty() {
         return;
     }
+    check_stored_address_boundaries(function, blocks, &address_values, errors);
 
     let mut cfg_predecessors = blocks
         .keys()
@@ -229,8 +230,138 @@ fn address_provenance(
                 }
             }
         }
+
+        let (_, loaded_addresses) = memory_address_provenance(function, blocks, &address_values);
+        for value in loaded_addresses {
+            changed |= address_values.insert(value);
+        }
         if !changed {
             return address_values;
+        }
+    }
+}
+
+fn memory_address_provenance(
+    function: &Function,
+    blocks: &HashMap<BlockId, &BasicBlock>,
+    address_values: &HashSet<ValueId>,
+) -> (HashMap<BlockId, HashSet<ValueId>>, HashSet<ValueId>) {
+    let mut predecessors = blocks
+        .keys()
+        .map(|id| (*id, Vec::new()))
+        .collect::<HashMap<_, _>>();
+    for block in &function.blocks {
+        for target in successors(&block.terminator)
+            .into_iter()
+            .chain(block.ops.iter().flat_map(verify_detail::op_successors))
+        {
+            if let Some(predecessors) = predecessors.get_mut(&target) {
+                predecessors.push(block.id);
+            }
+        }
+    }
+    for region in &function.handler_regions {
+        for protected in &region.protected {
+            if let Some(predecessors) = predecessors.get_mut(&region.handler) {
+                predecessors.push(*protected);
+            }
+            if let Some(cleanup) = region.cleanup {
+                if let Some(predecessors) = predecessors.get_mut(&cleanup) {
+                    predecessors.push(*protected);
+                }
+            }
+        }
+    }
+
+    let mut incoming = blocks
+        .keys()
+        .map(|id| (*id, HashSet::new()))
+        .collect::<HashMap<_, _>>();
+    let mut outgoing = incoming.clone();
+    let mut loaded_addresses = HashSet::new();
+    loop {
+        let mut changed = false;
+        for block in &function.blocks {
+            let mut stored_addresses = HashSet::new();
+            if let Some(block_predecessors) = predecessors.get(&block.id) {
+                for predecessor in block_predecessors {
+                    stored_addresses
+                        .extend(outgoing.get(predecessor).into_iter().flatten().copied());
+                }
+            }
+            if incoming.get(&block.id) != Some(&stored_addresses) {
+                incoming.insert(block.id, stored_addresses.clone());
+                changed = true;
+            }
+
+            // Raw stores have no GC-root metadata, so any later load may alias an escaped address.
+            for op in &block.ops {
+                match &op.kind {
+                    OpKind::Load { .. } if !stored_addresses.is_empty() => {
+                        for (value, ty) in &op.results {
+                            if *ty != Ty::Bool && *ty != Ty::Unit {
+                                changed |= loaded_addresses.insert(*value);
+                            }
+                        }
+                    }
+                    OpKind::Store { value, .. }
+                        if address_values.contains(value) || loaded_addresses.contains(value) =>
+                    {
+                        stored_addresses.insert(*value);
+                    }
+                    _ => {}
+                }
+            }
+            if outgoing.get(&block.id) != Some(&stored_addresses) {
+                outgoing.insert(block.id, stored_addresses);
+                changed = true;
+            }
+        }
+        if !changed {
+            return (incoming, loaded_addresses);
+        }
+    }
+}
+
+fn check_stored_address_boundaries(
+    function: &Function,
+    blocks: &HashMap<BlockId, &BasicBlock>,
+    address_values: &HashSet<ValueId>,
+    errors: &mut Vec<VerifyError>,
+) {
+    let (memory_in, _) = memory_address_provenance(function, blocks, address_values);
+    for block in &function.blocks {
+        let mut stored_addresses = memory_in.get(&block.id).cloned().unwrap_or_default();
+        for op in &block.ops {
+            if let Some(boundary) = op_boundary(&op.kind) {
+                for value in &stored_addresses {
+                    let error = VerifyError::AddressLiveAcross {
+                        block: block.id,
+                        value: *value,
+                        boundary,
+                    };
+                    if !errors.contains(&error) {
+                        errors.push(error);
+                    }
+                }
+            }
+            if let OpKind::Store { value, .. } = &op.kind {
+                if address_values.contains(value) {
+                    stored_addresses.insert(*value);
+                }
+            }
+        }
+        if is_call_terminator(&block.terminator) {
+            for value in &stored_addresses {
+                let error = VerifyError::AddressLiveAcross {
+                    block: block.id,
+                    value: *value,
+                    boundary: AddressLivenessBoundary::Call,
+                };
+                if !errors.contains(&error) {
+                    errors.push(error);
+                }
+            }
         }
     }
 }

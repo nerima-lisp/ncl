@@ -120,6 +120,7 @@ fn lower_prim(
             materialise_boolean(assembler, Cond::Le)?;
         }
         Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => {
+            untag_function_object(assembler)?;
             let offset = if matches!(prim, Prim::Cdr) { 8 } else { 0 };
             emit(
                 assembler,
@@ -127,6 +128,7 @@ fn lower_prim(
             )?;
         }
         Prim::Rplaca | Prim::Rplacd | Prim::Aset => {
+            untag_function_object(assembler)?;
             let offset = if matches!(prim, Prim::Rplacd) { 8 } else { 0 };
             emit(
                 assembler,

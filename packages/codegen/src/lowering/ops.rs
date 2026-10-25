@@ -72,7 +72,7 @@ fn lower_builtin_call(
     let registers = [Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8];
     let address = abi
         .builtin_address(crate::common_lisp_builtin(name))
-        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?; // check-added-lines: allow(unsupported) preserve runtime ABI lookup failures.
     emit(assembler, &Inst::MovRR(Reg::Rdi, THREAD_CONTEXT))?;
     for (argument, register) in args.iter().zip(registers) {
         load(assembler, slots, *argument, register)?;

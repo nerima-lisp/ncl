@@ -8,9 +8,9 @@
 //! minimal shape that L18 (`ncl-clos`) can later formalize into a real class.
 use crate::error::ConditionError;
 use ncl_object::{
-    HeapRootedWord, HeapRootedWords, Instance, ObjectError, Runtime, ThreadContext, Word, car, cdr,
-    instance_class, make_cons, make_instance, make_simple_vector, make_string,
-    simple_vector_length, simple_vector_ref, simple_vector_set, string_length, string_ref,
+    Instance, Local, ObjectError, Runtime, Scope, ThreadContext, Word, car, cdr, instance_class,
+    make_cons, make_instance, make_simple_vector, make_string, simple_vector_length,
+    simple_vector_ref, simple_vector_set, string_length, string_ref,
 };
 /// Index of the class name string in a class descriptor.
 pub const NAME_SLOT: usize = 0;
@@ -350,26 +350,38 @@ pub fn wire_superclasses(
     name: &str,
     superclasses: &[&str],
 ) -> Result<(), ObjectError> {
-    let child_word = runtime.class(ctx, name).ok_or(ObjectError::Layout)?;
-    let child = HeapRootedWord::new(ctx, child_word)?;
-    let mut parents = HeapRootedWords::default();
+    let mut scope = Scope::new(ctx);
+    let child_word = runtime
+        .class(scope.context_mut(), name)
+        .ok_or(ObjectError::Layout)?;
+    let child = scope.root(Local::<Word>::from_word(child_word));
+    let mut parents = Vec::with_capacity(superclasses.len());
     for superclass in superclasses {
-        let parent = runtime.class(ctx, superclass).ok_or(ObjectError::Layout)?;
-        parents.push(ctx, parent)?;
+        let parent = runtime
+            .class(scope.context_mut(), superclass)
+            .ok_or(ObjectError::Layout)?;
+        parents.push(scope.root(Local::<Word>::from_word(parent)));
     }
 
-    let value = HeapRootedWord::new(ctx, Word::NIL)?;
-    match parents.len() {
-        0 => {}
-        1 => value.set(parents.first().ok_or(ObjectError::Layout)?.get()),
-        _ => {
-            for index in (0..parents.len()).rev() {
-                let parent = parents.get(index).ok_or(ObjectError::Layout)?.get();
-                value.set(make_cons(ctx, runtime, parent, value.get())?);
+    let value = scope.root(Local::<Word>::from_word(Word::NIL));
+    match parents.as_slice() {
+        [] => {}
+        [parent] => {
+            let parent_word = scope.get(*parent).as_word();
+            scope.set(value, Local::<Word>::from_word(parent_word));
+        }
+        parents => {
+            for parent in parents.iter().rev() {
+                let parent_word = scope.get(*parent).as_word();
+                let tail_word = scope.get(value).as_word();
+                let parent_list = make_cons(scope.context_mut(), runtime, parent_word, tail_word)?;
+                scope.set(value, Local::from_word(parent_list));
             }
         }
     }
-    simple_vector_set(ctx, child.get(), SUPERCLASS_SLOT, value.get())
+    let child_word = scope.get(child).as_word();
+    let value_word = scope.get(value).as_word();
+    simple_vector_set(scope.context_mut(), child_word, SUPERCLASS_SLOT, value_word)
 }
 
 /// Link the registered condition hierarchy to the runtime's `T` class.
@@ -392,6 +404,10 @@ pub fn wire_condition_root_to_t(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "class/tests.rs"]
+mod tests;
 
 /// Read the raw direct-superclass slot of a class: `NIL` at the root, a
 /// single class descriptor word, or a list of descriptors for a class with

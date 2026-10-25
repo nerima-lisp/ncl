@@ -191,7 +191,21 @@ jobs:
           name: coverage-lcov
           path: lcov.info
           if-no-files-found: error
-      - run: cargo llvm-cov report --locked --workspace --json --summary-only --fail-under-regions 95.0
+      - run: cargo llvm-cov report --locked --workspace --json --summary-only --output-path coverage-summary.json --fail-under-regions 95.0
+      - name: Summarize region coverage
+        if: always()
+        run: |
+          if [ -s coverage-summary.json ]; then
+            jq -r '"Regions: \(.data[0].totals.regions.covered)/\(.data[0].totals.regions.count) (\(.data[0].totals.regions.percent)%)"' coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Regions: summary unavailable" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-summary
+          path: coverage-summary.json
+          if-no-files-found: warn
 
   security:
     # cargo audit scans every dependency reachable via Cargo.lock, which includes

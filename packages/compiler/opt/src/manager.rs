@@ -62,32 +62,52 @@ impl PassManager {
         module: &mut Module,
         mut observer: impl FnMut(&PassEvent),
     ) -> Result<PassReport, PassError> {
-        let mut report = PassReport::default();
-        let verify = self.options.verify_after_each_pass;
-        let mut skipped_functions = HashSet::new();
-        let mut skipped_module_passes = HashSet::new();
-        for iteration in 0..self.options.max_iterations {
-            let mut changed = false;
-            for (pass_index, pass) in self.function_passes.iter_mut().enumerate() {
-                for index in 0..module.functions.len() {
-                    let Some(function_name) = module
-                        .functions
-                        .get(index)
-                        .map(|function| function.name.clone())
-                    else {
-                        return Err(PassError::new(
-                            "pass manager",
-                            "function index out of bounds",
-                        ));
-                    };
-                    let skip_key = (pass_index, index, function_name);
-                    if skipped_functions.contains(&skip_key) {
+        let snapshot = module.clone();
+        let result = (|| {
+            let mut report = PassReport::default();
+            let verify = self.options.verify_after_each_pass;
+            let mut skipped_functions = HashSet::new();
+            let mut skipped_module_passes = HashSet::new();
+            for iteration in 0..self.options.max_iterations {
+                let mut changed = false;
+                for (pass_index, pass) in self.function_passes.iter_mut().enumerate() {
+                    for index in 0..module.functions.len() {
+                        let Some(function_name) = module
+                            .functions
+                            .get(index)
+                            .map(|function| function.name.clone())
+                        else {
+                            return Err(PassError::new(
+                                "pass manager",
+                                "function index out of bounds",
+                            ));
+                        };
+                        let skip_key = (pass_index, index, function_name);
+                        if skipped_functions.contains(&skip_key) {
+                            continue;
+                        }
+                        let (pass_changed, skip) = run_function_pass(
+                            pass.as_mut(),
+                            module,
+                            index,
+                            iteration + 1,
+                            verify,
+                            &mut report,
+                            &mut observer,
+                        )?;
+                        changed |= pass_changed;
+                        if skip {
+                            skipped_functions.insert(skip_key);
+                        }
+                    }
+                }
+                for (pass_index, pass) in self.module_passes.iter_mut().enumerate() {
+                    if skipped_module_passes.contains(&pass_index) {
                         continue;
                     }
-                    let (pass_changed, skip) = run_function_pass(
+                    let (pass_changed, skip) = run_module_pass(
                         pass.as_mut(),
                         module,
-                        index,
                         iteration + 1,
                         verify,
                         &mut report,
@@ -95,34 +115,22 @@ impl PassManager {
                     )?;
                     changed |= pass_changed;
                     if skip {
-                        skipped_functions.insert(skip_key);
+                        skipped_module_passes.insert(pass_index);
                     }
                 }
-            }
-            for (pass_index, pass) in self.module_passes.iter_mut().enumerate() {
-                if skipped_module_passes.contains(&pass_index) {
-                    continue;
-                }
-                let (pass_changed, skip) = run_module_pass(
-                    pass.as_mut(),
-                    module,
-                    iteration + 1,
-                    verify,
-                    &mut report,
-                    &mut observer,
-                )?;
-                changed |= pass_changed;
-                if skip {
-                    skipped_module_passes.insert(pass_index);
+                report.iterations = iteration + 1;
+                if !changed {
+                    return Ok(report);
                 }
             }
-            report.iterations = iteration + 1;
-            if !changed {
-                return Ok(report);
-            }
+            report.hit_iteration_limit = self.options.max_iterations != 0;
+            Ok(report)
+        })();
+
+        if result.is_err() {
+            *module = snapshot;
         }
-        report.hit_iteration_limit = self.options.max_iterations != 0;
-        Ok(report)
+        result
     }
 }
 

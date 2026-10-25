@@ -1046,6 +1046,11 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
             "bad escape",
         ),
         (
+            "truncated parameter text escape",
+            "0,bad,1,_,0,0,0,1,0,0,0,5,0,0,0,0,",
+            "bad escape",
+        ),
+        (
             "function name UTF-8 bytes",
             "0,_ff,0,0,0,1,0,0,0,5,0,0,0,0,",
             "invalid utf8",
@@ -1091,6 +1096,11 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
             "bad signed integer",
         ),
         (
+            "switch signed-value digits",
+            "0,bad,0,0,0,1,0,0,0,2,0,1,iGG,",
+            "bad integer",
+        ),
+        (
             "terminator tag",
             "0,bad,0,0,0,1,0,0,0,ff,",
             "bad terminator",
@@ -1128,6 +1138,10 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
     assert_eq!(
         parse("fn @bad ir4 { }\n"),
         Err(ParseError("unsupported IR text version".into()))
+    );
+    assert_eq!(
+        parse("fn @bad ir3"),
+        Err(ParseError("expected fn header".into()))
     );
 }
 

@@ -279,15 +279,7 @@ fn defstruct_macro_builtin(
     runtime.define_class(scope.context_mut(), qualified_class_name, class_word)?;
     if let Some(print_function) = print_function {
         let key = scope.intern(runtime, "NCL", "%STRUCTURE-PRINT-FUNCTION")?;
-        let old_plist = scope.root(ncl_object::Local::from_word(ncl_object::symbol_plist(
-            scope.context(),
-            scope.get(name).as_word(),
-        )?));
-        let property = scope.make_cons(runtime, key, print_function)?;
-        let plist = scope.make_cons(runtime, property, old_plist)?;
-        let plist_word = scope.get(plist).as_word();
-        let name_word = scope.get(name).as_word();
-        ncl_object::set_symbol_plist(scope.context_mut(), name_word, plist_word)?;
+        set_symbol_plist_property(&mut scope, runtime, name, key, print_function)?;
     }
     let effective: ncl_object::Handle<'_, Word> =
         scope.root(ncl_object::Local::from_word(ncl_object::simple_vector_ref(

@@ -29,10 +29,10 @@ pub(super) fn invoke_structure_print_function(
                         let mut plist_word = plist.get();
                         while plist_word != Word::NIL {
                             let (found, next) = with_root(ctx, &mut plist_word, |ctx, plist| {
-                                let mut property = car(ctx, plist.get())?;
-                                let found = with_root(ctx, &mut property, |ctx, property| {
-                                    if car(ctx, property.get())? == key.get() {
-                                        let mut function = cdr(ctx, property.get())?;
+                                let mut value_cell = cdr(ctx, plist.get())?;
+                                with_root(ctx, &mut value_cell, |ctx, value_cell| {
+                                    let found = if car(ctx, plist.get())? == key.get() {
+                                        let mut function = car(ctx, value_cell.get())?;
                                         with_root(ctx, &mut function, |ctx, function| {
                                             let mut function_word = function.get();
                                             if function.get().is_cons() {
@@ -76,9 +76,9 @@ pub(super) fn invoke_structure_print_function(
                                         })
                                     } else {
                                         Ok(false)
-                                    }
-                                })?;
-                                Ok((found, cdr(ctx, plist.get())?))
+                                    }?;
+                                    Ok((found, cdr(ctx, value_cell.get())?))
+                                })
                             })?;
                             if found {
                                 return Ok(true);

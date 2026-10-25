@@ -263,10 +263,13 @@ fn structure_print_function_reads_rooted_values_after_package_allocations()
     runtime.define_class(&mut ctx, class_name, class)?;
     runtime.register_structure_class_with_parent(&ctx, layout, None, name)?;
 
-    let mut property = make_cons(&mut ctx, &runtime, key, print_function_word)?;
+    let mut property = make_cons(&mut ctx, &runtime, print_function_word, Word::NIL)?;
     let property_token = ncl_object::push_root(&mut ctx, &mut property);
-    let mut plist = make_cons(&mut ctx, &runtime, property, Word::NIL)?;
+    let mut plist = make_cons(&mut ctx, &runtime, key, property)?;
     let plist_token = ncl_object::push_root(&mut ctx, &mut plist);
+    let mut unrelated_value = make_cons(&mut ctx, &runtime, Word::NIL, plist)?;
+    let unrelated_value_token = ncl_object::push_root(&mut ctx, &mut unrelated_value);
+    plist = make_cons(&mut ctx, &runtime, name, unrelated_value)?;
     ncl_object::set_symbol_plist(&mut ctx, name, plist)?;
 
     let mut structure = ncl_object::make_structure(&mut ctx, &runtime, layout, &[])?;
@@ -301,6 +304,7 @@ fn structure_print_function_reads_rooted_values_after_package_allocations()
 
     assert!(ncl_object::pop_root(&mut ctx, stream_token));
     assert!(ncl_object::pop_root(&mut ctx, structure_token));
+    assert!(ncl_object::pop_root(&mut ctx, unrelated_value_token));
     assert!(ncl_object::pop_root(&mut ctx, plist_token));
     assert!(ncl_object::pop_root(&mut ctx, property_token));
     assert!(ncl_object::pop_root(&mut ctx, class_token));

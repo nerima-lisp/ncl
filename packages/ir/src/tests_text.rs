@@ -491,18 +491,8 @@ fn text_round_trips_requested_forms() {
     }
 }
 
-#[test]
-fn text_round_trips_documented_op_payloads_and_types() {
-    let types = [Ty::Word, Ty::I64, Ty::F64, Ty::Address, Ty::Bool, Ty::Unit];
-    let params = types
-        .iter()
-        .enumerate()
-        .map(|(index, ty)| Param {
-            name: format!("arg{index}"),
-            ty: *ty,
-        })
-        .collect();
-    let mut ops = vec![
+fn documented_value_ops() -> Vec<Op> {
+    vec![
         op(&[(10, Ty::Word)], OpKind::Move { value: ValueId(0) }),
         op(
             &[(11, Ty::Word)],
@@ -564,8 +554,11 @@ fn text_round_trips_documented_op_payloads_and_types() {
             },
         ),
         op(&[], OpKind::Safepoint),
-    ];
-    let primitive_ops = [
+    ]
+}
+
+fn documented_primitive_ops() -> Vec<Op> {
+    [
         Prim::Car,
         Prim::Cdr,
         Prim::Rplaca,
@@ -583,8 +576,9 @@ fn text_round_trips_documented_op_payloads_and_types() {
         Prim::Eq,
         Prim::Eql,
         Prim::Typep,
-    ];
-    ops.extend(primitive_ops.into_iter().map(|primitive| {
+    ]
+    .into_iter()
+    .map(|primitive| {
         op(
             &[],
             OpKind::Prim {
@@ -593,16 +587,21 @@ fn text_round_trips_documented_op_payloads_and_types() {
                 condition: Some(BlockId(7)),
             },
         )
-    }));
-    let comparisons = [
+    })
+    .collect()
+}
+
+fn documented_comparison_and_hint_ops() -> Vec<Op> {
+    let mut ops: Vec<_> = [
         Compare::Eq,
         Compare::Ne,
         Compare::Lt,
         Compare::Le,
         Compare::Gt,
         Compare::Ge,
-    ];
-    ops.extend(comparisons.into_iter().map(|comparison| {
+    ]
+    .into_iter()
+    .map(|comparison| {
         op(
             &[(18, Ty::Bool)],
             OpKind::Compare {
@@ -611,24 +610,45 @@ fn text_round_trips_documented_op_payloads_and_types() {
                 right: ValueId(2),
             },
         )
-    }));
-    let scalar_hints = [
-        crate::ScalarTypeHint::Fixnum,
-        crate::ScalarTypeHint::Integer,
-        crate::ScalarTypeHint::Number,
-        crate::ScalarTypeHint::Boolean,
-        crate::ScalarTypeHint::NonNumber,
-    ];
-    ops.extend(scalar_hints.into_iter().enumerate().map(|(index, hint)| {
-        op(
-            &[(20 + index as u32, Ty::Word)],
-            OpKind::TypeHint {
-                value: ValueId(1),
-                ty: hint,
-            },
-        )
-    }));
+    })
+    .collect();
 
+    ops.extend(
+        [
+            (20, crate::ScalarTypeHint::Fixnum),
+            (21, crate::ScalarTypeHint::Integer),
+            (22, crate::ScalarTypeHint::Number),
+            (23, crate::ScalarTypeHint::Boolean),
+            (24, crate::ScalarTypeHint::NonNumber),
+        ]
+        .into_iter()
+        .map(|(value_id, hint)| {
+            op(
+                &[(value_id, Ty::Word)],
+                OpKind::TypeHint {
+                    value: ValueId(1),
+                    ty: hint,
+                },
+            )
+        }),
+    );
+    ops
+}
+
+#[test]
+fn text_round_trips_documented_op_payloads_and_types() {
+    let types = [Ty::Word, Ty::I64, Ty::F64, Ty::Address, Ty::Bool, Ty::Unit];
+    let params = types
+        .iter()
+        .enumerate()
+        .map(|(index, ty)| Param {
+            name: format!("arg{index}"),
+            ty: *ty,
+        })
+        .collect();
+    let mut ops = documented_value_ops();
+    ops.extend(documented_primitive_ops());
+    ops.extend(documented_comparison_and_hint_ops());
     let function = finish(
         "operations",
         params,
@@ -781,88 +801,79 @@ fn text_round_trips_documented_conversions() {
             Vec::new(),
         );
         let dump = function.to_string();
-        assert_eq!(
-            parse(&dump).unwrap(),
-            function,
-            "{conversion:?} in {dump:?}"
-        );
+        assert_eq!(parse(&dump), Ok(function), "{conversion:?} in {dump:?}");
     }
 }
 
 #[test]
-fn text_round_trips_documented_terminators_and_handler_metadata() {
+fn text_round_trips_documented_terminators() {
     let block_param = BlockParam {
         value: ValueId(8),
         ty: Ty::Word,
     };
     let cases = [
-        (
-            "branch with successor arguments",
-            finish(
-                "branch",
-                vec![Param {
-                    name: "condition".into(),
-                    ty: Ty::Bool,
-                }],
-                Vec::new(),
-                Vec::new(),
-                vec![
-                    block(
-                        0,
-                        Vec::new(),
-                        Terminator::Branch {
-                            condition: ValueId(0),
-                            then_target: BlockId(1),
-                            then_args: vec![ValueId(0)],
-                            else_target: BlockId(2),
-                            else_args: vec![ValueId(1)],
-                        },
-                    ),
-                    BasicBlock {
-                        id: BlockId(1),
-                        params: vec![block_param.clone()],
-                        ops: Vec::new(),
-                        terminator: Terminator::Return { values: Vec::new() },
-                    },
-                    block(2, Vec::new(), Terminator::Return { values: Vec::new() }),
-                ],
-                Vec::new(),
-            ),
-        ),
-        (
-            "call-return",
-            finish(
-                "call-return",
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                vec![block(
+        finish(
+            "branch",
+            vec![Param {
+                name: "condition".into(),
+                ty: Ty::Bool,
+            }],
+            Vec::new(),
+            Vec::new(),
+            vec![
+                block(
                     0,
                     Vec::new(),
-                    Terminator::CallReturn {
-                        function: ValueId(1),
-                        args: vec![ValueId(2), ValueId(3)],
+                    Terminator::Branch {
+                        condition: ValueId(0),
+                        then_target: BlockId(1),
+                        then_args: vec![ValueId(0)],
+                        else_target: BlockId(2),
+                        else_args: vec![ValueId(1)],
                     },
-                )],
-                Vec::new(),
-            ),
+                ),
+                BasicBlock {
+                    id: BlockId(1),
+                    params: vec![block_param],
+                    ops: Vec::new(),
+                    terminator: Terminator::Return { values: Vec::new() },
+                },
+                block(2, Vec::new(), Terminator::Return { values: Vec::new() }),
+            ],
+            Vec::new(),
         ),
-        (
-            "unreachable terminator",
-            finish(
-                "unreachable",
+        finish(
+            "call-return",
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![block(
+                0,
                 Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                vec![block(0, Vec::new(), Terminator::Unreachable)],
-                Vec::new(),
-            ),
+                Terminator::CallReturn {
+                    function: ValueId(1),
+                    args: vec![ValueId(2), ValueId(3)],
+                },
+            )],
+            Vec::new(),
+        ),
+        finish(
+            "unreachable",
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![block(0, Vec::new(), Terminator::Unreachable)],
+            Vec::new(),
         ),
     ];
-    for (name, function) in cases {
-        assert_eq!(parse(&function.to_string()), Ok(function), "{name}");
-    }
 
+    for function in cases {
+        assert_eq!(parse(&function.to_string()), Ok(function));
+    }
+}
+
+#[test]
+fn text_round_trips_documented_handler_metadata() {
     let mut function = finish(
         "handler-metadata",
         Vec::new(),
@@ -870,7 +881,10 @@ fn text_round_trips_documented_terminators_and_handler_metadata() {
         Vec::new(),
         vec![BasicBlock {
             id: BlockId(0),
-            params: vec![block_param],
+            params: vec![BlockParam {
+                value: ValueId(8),
+                ty: Ty::Word,
+            }],
             ops: Vec::new(),
             terminator: Terminator::Return { values: Vec::new() },
         }],
@@ -921,6 +935,7 @@ fn text_round_trips_documented_terminators_and_handler_metadata() {
         column: 4,
         form: FormId(7),
     }];
+
     assert_eq!(parse(&function.to_string()), Ok(function));
 }
 
@@ -1022,9 +1037,19 @@ fn input_with_payload(payload: &str) -> String {
     format!("fn @bad ir3 {{ {payload} }}\n")
 }
 
+fn assert_payload_errors(cases: &[(&str, &str, &str)]) {
+    for (field, payload, expected) in cases {
+        assert_eq!(
+            parse(&input_with_payload(payload)),
+            Err(ParseError((*expected).into())),
+            "incorrect ParseError for {field}"
+        );
+    }
+}
+
 #[test]
-fn text_rejects_malformed_fields_with_exact_parse_errors() {
-    let cases = [
+fn text_rejects_malformed_identity_and_constant_fields() {
+    assert_payload_errors(&[
         (
             "function id is not hexadecimal",
             "q,bad,0,0,0,1,0,0,0,5,0,0,0,0,",
@@ -1065,6 +1090,12 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
             "0,bad,0,0,1,b,2,0,1,0,0,0,5,0,0,0,0,",
             "bad structure kind",
         ),
+    ]);
+}
+
+#[test]
+fn text_rejects_malformed_operation_fields() {
+    assert_payload_errors(&[
         (
             "operation tag",
             "0,bad,0,0,0,1,0,0,1,0,ffffffffffffffff,ff,",
@@ -1110,6 +1141,12 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
             "0,bad,0,0,0,1,0,0,0,5,0,0,1,0,ff,",
             "bad handler kind",
         ),
+    ]);
+}
+
+#[test]
+fn text_rejects_missing_trailing_and_malformed_header_fields() {
+    assert_payload_errors(&[
         (
             "required payload field is absent",
             "0,bad,",
@@ -1120,17 +1157,7 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
             "0,bad,0,0,0,1,0,0,0,5,0,0,0,0,extra,",
             "trailing input",
         ),
-    ];
-    for (field, payload, expected) in cases {
-        assert_eq!(
-            parse(&input_with_payload(payload))
-                .expect_err(field)
-                .to_string(),
-            expected,
-            "incorrect ParseError for {field}"
-        );
-    }
-
+    ]);
     assert_eq!(
         parse("not an IR function"),
         Err(ParseError("expected fn header".into()))
@@ -1147,6 +1174,8 @@ fn text_rejects_malformed_fields_with_exact_parse_errors() {
 
 #[test]
 fn text_round_trips_fixnum_specialization_metadata() {
+    let specialization = FixnumSpecialization::new(FixnumOp::Add, &[true, true]);
+    assert!(specialization.is_some());
     let function = finish(
         "checked-add",
         vec![
@@ -1177,10 +1206,7 @@ fn text_round_trips_fixnum_specialization_metadata() {
                     OpKind::Builtin {
                         name: "+".into(),
                         args: vec![ValueId(2), ValueId(1)],
-                        specialization: Some(
-                            FixnumSpecialization::new(FixnumOp::Add, &[true, true])
-                                .expect("two-operand specialization"),
-                        ),
+                        specialization,
                         specialization_disabled: true,
                     },
                 ),

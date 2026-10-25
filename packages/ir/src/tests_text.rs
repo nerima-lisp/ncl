@@ -682,6 +682,76 @@ fn text_round_trips_extended_constant_descriptors() {
 }
 
 #[test]
+fn text_round_trips_remaining_documented_values() {
+    let constants = vec![
+        Constant::Character('λ' as u32),
+        Constant::SingleFloat(1.5),
+        Constant::DoubleFloat(-2.25),
+        Constant::Symbol {
+            package: "PKG".into(),
+            name: "symbol".into(),
+        },
+        Constant::UninternedSymbol {
+            identity: 23,
+            name: "gensym".into(),
+        },
+        Constant::Object(ConstantIndex(0)),
+        Constant::StringBytes(vec![0x00, 0x2c, 0xff]),
+        Constant::Nil,
+        Constant::T,
+        Constant::Unbound,
+        Constant::FunctionEntry(FunctionId(9)),
+        Constant::Bignum {
+            negative: false,
+            limbs: vec![3],
+        },
+    ];
+    let ops = vec![
+        op(&[(1, Ty::Word)], OpKind::LoadCapture { index: 6 }),
+        op(&[(2, Ty::Word)], OpKind::LoadFunctionObject),
+        op(
+            &[(3, Ty::Word)],
+            OpKind::MakeClosure {
+                entry: ValueId(1),
+                captures: vec![ValueId(2), ValueId(4)],
+            },
+        ),
+        op(
+            &[(4, Ty::Word)],
+            OpKind::MakeValueCell { value: ValueId(3) },
+        ),
+        op(
+            &[(5, Ty::Word)],
+            OpKind::CallClosure {
+                closure: ValueId(4),
+                args: vec![ValueId(3)],
+                named_symbol: Some(ValueId(6)),
+            },
+        ),
+    ];
+    let function = finish(
+        "remaining-values",
+        Vec::new(),
+        Vec::new(),
+        constants,
+        vec![
+            block(
+                0,
+                ops,
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: vec![ValueId(5)],
+                },
+            ),
+            block(1, Vec::new(), Terminator::Return { values: Vec::new() }),
+        ],
+        Vec::new(),
+    );
+
+    assert_eq!(parse(&function.to_string()), Ok(function));
+}
+
+#[test]
 fn text_round_trips_documented_conversions() {
     let conversions = [
         Convert::WordToI64,

@@ -488,6 +488,9 @@ mod fib;
 #[path = "exec_x86_64/basic.rs"]
 mod basic;
 
+#[path = "exec_x86_64/arrays.rs"]
+mod arrays;
+
 #[path = "exec_x86_64/calls.rs"]
 mod calls;
 

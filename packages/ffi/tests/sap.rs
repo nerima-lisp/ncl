@@ -7,9 +7,11 @@ use ncl_ffi::{
     sap_set,
 };
 use ncl_object::{
-    Bignum, FunctionObject, ObjectError, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
-    make_bignum_from_i128, make_bignum_from_limbs, with_rooted_slice,
+    Bignum, DoubleFloat, FunctionObject, ObjectError, Runtime, ThreadContext, Word, bignum_limbs,
+    bignum_sign, double_value, make_bignum_from_i128, make_bignum_from_limbs, make_double,
+    with_rooted_slice,
 };
+use ncl_sys::foreign::ForeignError;
 
 fn fixture() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -193,6 +195,314 @@ fn registered_sap_builtins_convert_and_access_tracked_memory() {
 }
 
 #[test]
+fn registered_sap_integer_accessors_cover_boundaries_and_word_aliases() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+    let address = ncl_ffi::allocate_system_memory(56).unwrap();
+    let mut address_word = address.to_word(&mut ctx, &runtime).unwrap();
+
+    ncl_object::with_root(&mut ctx, &mut address_word, |ctx, address_word| {
+        let base = *address_word;
+        let cases = [
+            (0, "%SAP-SET-U8", "SAP-REF-8", 0),
+            (1, "%SAP-SET-U8", "SAP-REF-8", i64::from(u8::MAX)),
+            (2, "%SAP-SET-I8", "SIGNED-SAP-REF-8", i64::from(i8::MIN)),
+            (3, "%SAP-SET-I8", "SIGNED-SAP-REF-8", i64::from(i8::MAX)),
+            (4, "%SAP-SET-U16", "SAP-REF-16", 0),
+            (6, "%SAP-SET-U16", "SAP-REF-16", i64::from(u16::MAX)),
+            (8, "%SAP-SET-I16", "SIGNED-SAP-REF-16", i64::from(i16::MIN)),
+            (10, "%SAP-SET-I16", "SIGNED-SAP-REF-16", i64::from(i16::MAX)),
+            (12, "%SAP-SET-U32", "SAP-REF-32", 0),
+            (16, "%SAP-SET-U32", "SAP-REF-32", i64::from(u32::MAX)),
+            (20, "%SAP-SET-I32", "SIGNED-SAP-REF-32", i64::from(i32::MIN)),
+            (24, "%SAP-SET-I32", "SIGNED-SAP-REF-32", i64::from(i32::MAX)),
+        ];
+
+        for (offset, setter, accessor, integer) in cases {
+            let offset = Word::fixnum(offset);
+            let value = Word::fixnum(integer);
+            assert_eq!(
+                call_builtin(ctx, &runtime, setter, &[base, offset, value]),
+                Ok(value)
+            );
+            assert_eq!(
+                call_builtin(ctx, &runtime, accessor, &[base, offset]),
+                Ok(value)
+            );
+        }
+
+        let unsigned_max = make_bignum_from_limbs(ctx, &runtime, false, &[u32::MAX, u32::MAX])
+            .unwrap()
+            .as_word();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-U64",
+            &[base, Word::fixnum(32), unsigned_max],
+        )
+        .unwrap();
+        let unsigned_64 =
+            call_builtin(ctx, &runtime, "SAP-REF-64", &[base, Word::fixnum(32)]).unwrap();
+        assert_bignum(ctx, unsigned_64, false, &[u32::MAX, u32::MAX]);
+        let unsigned_word =
+            call_builtin(ctx, &runtime, "SAP-REF-WORD", &[base, Word::fixnum(32)]).unwrap();
+        assert_bignum(ctx, unsigned_word, false, &[u32::MAX, u32::MAX]);
+
+        let signed_min = make_bignum_from_i128(ctx, &runtime, i128::from(i64::MIN))
+            .unwrap()
+            .as_word();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-I64",
+            &[base, Word::fixnum(40), signed_min],
+        )
+        .unwrap();
+        let signed_64 = call_builtin(
+            ctx,
+            &runtime,
+            "SIGNED-SAP-REF-64",
+            &[base, Word::fixnum(40)],
+        )
+        .unwrap();
+        assert_bignum(ctx, signed_64, true, &[0, 0x8000_0000]);
+        let signed_word = call_builtin(
+            ctx,
+            &runtime,
+            "SIGNED-SAP-REF-WORD",
+            &[base, Word::fixnum(40)],
+        )
+        .unwrap();
+        assert_bignum(ctx, signed_word, true, &[0, 0x8000_0000]);
+
+        let signed_max = make_bignum_from_i128(ctx, &runtime, i128::from(i64::MAX))
+            .unwrap()
+            .as_word();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-I64",
+            &[base, Word::fixnum(48), signed_max],
+        )
+        .unwrap();
+        let signed_max_read = call_builtin(
+            ctx,
+            &runtime,
+            "SIGNED-SAP-REF-WORD",
+            &[base, Word::fixnum(48)],
+        )
+        .unwrap();
+        assert_bignum(ctx, signed_max_read, false, &[u32::MAX, 0x7fff_ffff]);
+        Ok(())
+    })
+    .unwrap();
+
+    ncl_ffi::deallocate_system_memory(address, 56).unwrap();
+}
+
+#[test]
+fn registered_sap_float_accessors_round_trip_single_and_double_values() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+    let address = ncl_ffi::allocate_system_memory(16).unwrap();
+    let mut address_word = address.to_word(&mut ctx, &runtime).unwrap();
+
+    ncl_object::with_root(&mut ctx, &mut address_word, |ctx, address_word| {
+        let base = *address_word;
+        let single_source = make_double(ctx, &runtime, 1.5).unwrap().as_word();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-SINGLE",
+            &[base, Word::fixnum(0), single_source],
+        )
+        .unwrap();
+        let single =
+            call_builtin(ctx, &runtime, "SAP-REF-SINGLE", &[base, Word::fixnum(0)]).unwrap();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-DOUBLE",
+            &[base, Word::fixnum(8), single],
+        )
+        .unwrap();
+        let widened_single =
+            call_builtin(ctx, &runtime, "SAP-REF-DOUBLE", &[base, Word::fixnum(8)]).unwrap();
+        assert_eq!(
+            double_value(ctx, DoubleFloat::from_word(widened_single)),
+            Ok(1.5)
+        );
+
+        let double_source = make_double(ctx, &runtime, -13.25).unwrap().as_word();
+        call_builtin(
+            ctx,
+            &runtime,
+            "%SAP-SET-DOUBLE",
+            &[base, Word::fixnum(8), double_source],
+        )
+        .unwrap();
+        let double =
+            call_builtin(ctx, &runtime, "SAP-REF-DOUBLE", &[base, Word::fixnum(8)]).unwrap();
+        assert_eq!(
+            double_value(ctx, DoubleFloat::from_word(double)),
+            Ok(-13.25)
+        );
+        Ok(())
+    })
+    .unwrap();
+
+    ncl_ffi::deallocate_system_memory(address, 16).unwrap();
+}
+
+#[test]
+fn sap_accessors_report_alignment_and_bounds_without_partial_writes() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+    let address = ncl_ffi::allocate_system_memory(6).unwrap();
+    let address_word = address.to_word(&mut ctx, &runtime).unwrap();
+
+    for (offset, value) in [(0, 0x1122), (2, 0x3344), (4, 0xbeef)] {
+        assert_eq!(
+            sap_set(
+                &ctx,
+                &runtime,
+                &AlienType::UnsignedShort,
+                address,
+                offset,
+                Word::fixnum(value),
+            ),
+            Ok(())
+        );
+    }
+
+    let out_of_bounds = FfiError::ForeignMemory(ForeignError::OutOfBounds);
+    assert_eq!(
+        sap_ref(&mut ctx, &runtime, &AlienType::UnsignedInt, address, 4,),
+        Err(out_of_bounds.clone())
+    );
+    assert_eq!(
+        sap_set(
+            &ctx,
+            &runtime,
+            &AlienType::UnsignedInt,
+            address,
+            4,
+            Word::fixnum(0xdead_beef),
+        ),
+        Err(out_of_bounds)
+    );
+
+    let misaligned = FfiError::ForeignMemory(ForeignError::Misaligned);
+    assert_eq!(
+        sap_ref(&mut ctx, &runtime, &AlienType::UnsignedShort, address, 1,),
+        Err(misaligned.clone())
+    );
+    assert_eq!(
+        sap_set(
+            &ctx,
+            &runtime,
+            &AlienType::UnsignedShort,
+            address,
+            1,
+            Word::fixnum(0xa5a5),
+        ),
+        Err(misaligned)
+    );
+
+    assert_eq!(
+        call_builtin(
+            &mut ctx,
+            &runtime,
+            "SAP-REF-32",
+            &[address_word, Word::fixnum(4)],
+        ),
+        Err(ObjectError::Unsupported)
+    );
+    assert_eq!(
+        call_builtin(
+            &mut ctx,
+            &runtime,
+            "%SAP-SET-U32",
+            &[address_word, Word::fixnum(4), Word::fixnum(0xdead_beef),],
+        ),
+        Err(ObjectError::Unsupported)
+    );
+
+    for (offset, value) in [(0, 0x1122), (2, 0x3344), (4, 0xbeef)] {
+        assert_eq!(
+            sap_ref(
+                &mut ctx,
+                &runtime,
+                &AlienType::UnsignedShort,
+                address,
+                offset,
+            ),
+            Ok(Word::fixnum(value))
+        );
+    }
+
+    ncl_ffi::deallocate_system_memory(address, 6).unwrap();
+}
+
+#[test]
+fn registered_sap_place_expanders_preserve_operands_and_accessor_forms() {
+    let (runtime, mut ctx) = fixture();
+    ncl_ffi::register(&runtime).unwrap();
+    let ffi_package = runtime.ensure_package(&mut ctx, "NCL-FFI").unwrap();
+    let ffi_package = ncl_object::Package::from_word(ffi_package);
+    let base_form = Word::fixnum(0x1234);
+    let offset_form = Word::fixnum(6);
+
+    let accessors = [
+        ("SAP-REF-8", "%SAP-SET-U8"),
+        ("SIGNED-SAP-REF-8", "%SAP-SET-I8"),
+        ("SAP-REF-16", "%SAP-SET-U16"),
+        ("SIGNED-SAP-REF-16", "%SAP-SET-I16"),
+        ("SAP-REF-32", "%SAP-SET-U32"),
+        ("SIGNED-SAP-REF-32", "%SAP-SET-I32"),
+        ("SAP-REF-64", "%SAP-SET-U64"),
+        ("SIGNED-SAP-REF-64", "%SAP-SET-I64"),
+        ("SAP-REF-WORD", "%SAP-SET-U64"),
+        ("SIGNED-SAP-REF-WORD", "%SAP-SET-I64"),
+        ("SAP-REF-SAP", "%SAP-SET-SAP"),
+        ("SAP-REF-SINGLE", "%SAP-SET-SINGLE"),
+        ("SAP-REF-DOUBLE", "%SAP-SET-DOUBLE"),
+    ];
+
+    for (accessor_name, setter_name) in accessors {
+        let (accessor, _) = ffi_package
+            .intern(&mut ctx, &runtime, accessor_name)
+            .unwrap();
+        let (setter, _) = ffi_package.intern(&mut ctx, &runtime, setter_name).unwrap();
+        let expander = runtime.place_expander(&ctx, accessor).unwrap().unwrap();
+
+        assert_eq!(
+            expander(&mut ctx, &runtime, &[base_form]),
+            Err(ObjectError::TypeError)
+        );
+        let expansion = expander(&mut ctx, &runtime, &[base_form, offset_form]).unwrap();
+
+        assert_eq!(expansion.temporary_variables.len(), 2);
+        assert_eq!(expansion.value_forms, vec![base_form, offset_form]);
+        assert_eq!(expansion.store_variables.len(), 1);
+        let base_temporary = expansion.temporary_variables.first().copied().unwrap();
+        let offset_temporary = expansion.temporary_variables.get(1).copied().unwrap();
+        let store_variable = expansion.store_variables.first().copied().unwrap();
+        assert_ne!(base_temporary, offset_temporary);
+        assert_ne!(store_variable, base_temporary);
+        assert_ne!(store_variable, offset_temporary);
+        assert_eq!(
+            list_elements(&ctx, expansion.access_form),
+            vec![accessor, base_temporary, offset_temporary]
+        );
+        assert_eq!(
+            list_elements(&ctx, expansion.store_form),
+            vec![setter, base_temporary, offset_temporary, store_variable]
+        );
+    }
+}
+
+#[test]
 fn tracked_sap_memory_round_trips_and_rejects_expired_addresses() {
     let (runtime, mut ctx) = fixture();
     let address = ncl_ffi::allocate_system_memory(16).unwrap();
@@ -320,4 +630,13 @@ fn call_builtin(
         let function = FunctionObject::try_from(function).map_err(|_| ObjectError::TypeError)?;
         runtime.call_builtin(ctx, function, args)
     })
+}
+
+fn list_elements(ctx: &ThreadContext, mut list: Word) -> Vec<Word> {
+    let mut elements = Vec::new();
+    while list != Word::NIL {
+        elements.push(ncl_object::car(ctx, list).unwrap());
+        list = ncl_object::cdr(ctx, list).unwrap();
+    }
+    elements
 }

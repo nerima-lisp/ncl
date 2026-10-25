@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter, Write};
 
 fn esc(s: &str) -> String {
     s.bytes().fold(String::new(), |mut out, byte| {
-        if byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-' {
+        if byte.is_ascii_alphanumeric() || byte == b'-' {
             out.push(byte as char);
         } else {
             let _ = write!(out, "_{byte:02x}");
@@ -28,7 +28,8 @@ impl Writer {
         let _ = write!(self.0, "{n:x},");
     }
     fn i(&mut self, n: i64) {
-        let _ = write!(self.0, "i{n:x},");
+        let sign = if n < 0 { "-" } else { "" };
+        let _ = write!(self.0, "i{sign}{:x},", n.unsigned_abs());
     }
     fn s(&mut self, s: &str) {
         self.0.push_str(&esc(s));
@@ -253,8 +254,11 @@ fn op_payload(w: &mut Writer, o: &OpKind) {
         OpKind::Const { result } => w.u(result.0.into()),
         OpKind::Move { value }
         | OpKind::Load { address: value }
-        | OpKind::Convert { value, .. }
         | OpKind::MakeValueCell { value } => w.u(value.0.into()),
+        OpKind::Convert { op, value } => {
+            w.s(&format!("{op:?}"));
+            w.u(value.0.into());
+        }
         OpKind::TypeHint { value, ty } => {
             w.u(value.0.into());
             w.u(match ty {

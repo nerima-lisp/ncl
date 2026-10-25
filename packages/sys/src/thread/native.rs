@@ -1,6 +1,12 @@
 use super::{NativeState, SafepointState, Thread};
 use core::ops::{Deref, DerefMut};
 
+#[cfg(test)]
+std::thread_local! {
+    static TEST_NATIVE_WAIT_SIGNAL: std::cell::RefCell<Option<std::sync::mpsc::Sender<()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 pub struct LispStateGuard<'a> {
     thread: &'a mut Thread,
     restore_native: bool,
@@ -93,6 +99,12 @@ impl Thread {
                 if !self.transition_to_lisp_if_idle(&stop_world) {
                     // Native code may have changed callee-saved roots since entering Native.
                     self.publish_snapshot();
+                    #[cfg(test)]
+                    TEST_NATIVE_WAIT_SIGNAL.with(|signal| {
+                        if let Some(signal) = signal.borrow().as_ref() {
+                            let _ = signal.send(());
+                        }
+                    });
                     heap.stop_world_ready.notify_all();
                     loop {
                         stop_world = heap
@@ -122,7 +134,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, mpsc};
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     #[test]
     fn native_transition_refuses_an_active_collection() {
@@ -162,20 +174,20 @@ mod tests {
     fn native_root_set_mutation_waits_until_collection_request_ends() {
         let heap = Arc::new(crate::Heap::new(crate::HeapConfig::default()));
         let (ready_sender, ready_receiver) = mpsc::channel();
-        let (pointer_sender, pointer_receiver) = mpsc::channel();
         let (mutate_sender, mutate_receiver) = mpsc::channel();
+        let (waiting_sender, waiting_receiver) = mpsc::channel();
         let (result_sender, result_receiver) = mpsc::channel();
         let worker_heap = Arc::clone(&heap);
         let worker = thread::spawn(move || {
             let mut thread = Thread::new();
             assert_eq!(worker_heap.register_thread(&mut thread), Ok(()));
             thread.enter_native();
-            pointer_sender
-                .send(std::ptr::from_mut(&mut thread).expose_provenance())
-                .ok();
             ready_sender.send(()).ok();
             assert!(mutate_receiver.recv().is_ok());
 
+            TEST_NATIVE_WAIT_SIGNAL.with(|signal| {
+                *signal.borrow_mut() = Some(waiting_sender);
+            });
             let mut value = crate::Word::fixnum(17);
             let _token = crate::ThreadAccess::new(&mut thread)
                 .register_root_set(std::slice::from_mut(&mut value));
@@ -186,55 +198,27 @@ mod tests {
         });
 
         assert!(ready_receiver.recv().is_ok());
-        let pointer = pointer_receiver
-            .recv()
-            .unwrap_or_else(|_| panic!("Native worker should publish its thread pointer"));
-        let thread_pointer = std::ptr::with_exposed_provenance_mut::<Thread>(pointer);
-        {
-            let mut stop_world = heap
-                .stop_world
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            stop_world.requested = true;
-            stop_world.epoch = stop_world.epoch.wrapping_add(1).max(1);
-            // The worker waits for this lock before attempting the transition.
-            // SAFETY: the registered worker is waiting on mutate_receiver.
-            unsafe { (*thread_pointer).stack_bounds = None };
-            drop(stop_world);
-        }
-        heap.stop_world_ready.notify_all();
-        assert!(mutate_sender.send(()).is_ok());
-
-        let deadline = Instant::now() + Duration::from_secs(5);
         let mut stop_world = heap
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        loop {
-            // SAFETY: while this lock is held, the registered worker is waiting in leave_native.
-            let stack_published = unsafe { (*thread_pointer).stack_bounds.is_some() };
-            if stack_published {
-                // SAFETY: the worker cannot mutate roots until the request ends.
-                let roots_len = unsafe { (*thread_pointer).roots.len() };
-                assert_eq!(roots_len, 0, "root mutation must wait for the request");
-                break;
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            assert!(!remaining.is_zero(), "native root mutation did not wait");
-            let (next, wait) = heap
-                .stop_world_ready
-                .wait_timeout(stop_world, remaining)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            stop_world = next;
-            assert!(!wait.timed_out() || stop_world.requested);
-            match result_receiver.try_recv() {
-                Ok(_) => panic!("native root mutation completed during the request"),
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    panic!("native root mutation worker exited before publishing its stack")
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-            }
-        }
+        stop_world.requested = true;
+        stop_world.epoch = stop_world.epoch.wrapping_add(1).max(1);
+        drop(stop_world);
+        assert!(mutate_sender.send(()).is_ok());
+
+        waiting_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| panic!("native root mutation should wait at the safepoint"));
+        let mut stop_world = heap
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(stop_world.requested);
+        assert!(matches!(
+            result_receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
         stop_world.requested = false;
         drop(stop_world);
         heap.stop_world_ready.notify_all();

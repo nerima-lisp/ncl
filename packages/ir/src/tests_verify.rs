@@ -141,6 +141,98 @@ fn verifier_rejects_address_provenance_through_conversions_at_safepoint() {
 }
 
 #[test]
+fn verifier_rejects_address_provenance_stored_across_safepoint() {
+    let function = finish(
+        "address-through-raw-storage",
+        vec![
+            Param {
+                name: "owner".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "slot".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(2, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(0),
+                    },
+                ),
+                op(
+                    &[(3, Ty::Word)],
+                    OpKind::Convert {
+                        op: Convert::AddressToWord,
+                        value: ValueId(2),
+                    },
+                ),
+                op(
+                    &[(4, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(1),
+                    },
+                ),
+                op(
+                    &[],
+                    OpKind::Store {
+                        address: ValueId(4),
+                        value: ValueId(3),
+                    },
+                ),
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(5, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(1),
+                    },
+                ),
+                op(
+                    &[(6, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(5),
+                    },
+                ),
+                op(
+                    &[(7, Ty::Address)],
+                    OpKind::Convert {
+                        op: Convert::WordToAddress,
+                        value: ValueId(6),
+                    },
+                ),
+                op(
+                    &[(8, Ty::Word)],
+                    OpKind::Load {
+                        address: ValueId(7),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(8)],
+            },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(
+        &function,
+        &VerifyError::AddressLiveAcross {
+            block: BlockId(0),
+            value: ValueId(3),
+            boundary: AddressLivenessBoundary::Safepoint,
+        },
+    );
+}
+
+#[test]
 fn verifier_rejects_address_provenance_through_arithmetic_at_call() {
     let function = finish(
         "address-arithmetic-chain",

@@ -236,3 +236,7 @@ callbacks! {
     expand_dolist, expand_dolist_adapter, dolist;
     expand_dotimes, expand_dotimes_adapter, dotimes
 }
+
+#[cfg(test)]
+#[path = "tests/iteration_error_tests.rs"]
+mod iteration_error_tests;

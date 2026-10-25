@@ -112,6 +112,19 @@ fn handler_join_with_duplicate_expression() -> ncl_ir::Function {
     builder.finish()
 }
 
+fn push_fixnum_add(builder: &mut FunctionBuilder) -> ValueId {
+    builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![ValueId(0), ValueId(1)],
+                condition: None,
+            },
+            &[Ty::I64],
+        )
+        .fixture()[0]
+}
+
 fn cleanup_exceptional_predecessor_with_duplicate_expression() -> ncl_ir::Function {
     let mut builder = FunctionBuilder::new(
         FunctionId(5),
@@ -152,26 +165,8 @@ fn cleanup_exceptional_predecessor_with_duplicate_expression() -> ncl_ir::Functi
         .fixture();
 
     let _normal_exit = builder.create_block(Vec::new());
-    builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumAdd,
-                args: vec![ValueId(0), ValueId(1)],
-                condition: None,
-            },
-            &[Ty::I64],
-        )
-        .fixture();
-    builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumAdd,
-                args: vec![ValueId(0), ValueId(1)],
-                condition: None,
-            },
-            &[Ty::I64],
-        )
-        .fixture();
+    push_fixnum_add(&mut builder);
+    push_fixnum_add(&mut builder);
     builder
         .terminate(Terminator::Jump {
             target: BlockId(3),
@@ -180,16 +175,7 @@ fn cleanup_exceptional_predecessor_with_duplicate_expression() -> ncl_ir::Functi
         .fixture();
 
     let cleanup = builder.create_block(Vec::new());
-    let cleanup_value = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumAdd,
-                args: vec![ValueId(0), ValueId(1)],
-                condition: None,
-            },
-            &[Ty::I64],
-        )
-        .fixture()[0];
+    let cleanup_value = push_fixnum_add(&mut builder);
     builder
         .push_op(
             OpKind::LeaveHandler {

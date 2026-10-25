@@ -59,3 +59,7 @@ impl Runtime {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests_runtime_sb_symbols.rs"]
+mod tests;

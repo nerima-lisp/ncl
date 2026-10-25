@@ -40,6 +40,23 @@ const SB_PACKAGES: [(BuiltinPackage, &str); 16] = [
     (BuiltinPackage::SbVm, "SB-VM"),
 ];
 
+const NCL_PACKAGES: [(BuiltinPackage, &str); 14] = [
+    (BuiltinPackage::CommonLisp, "COMMON-LISP"),
+    (BuiltinPackage::AsdfInterface, "ASDF/INTERFACE"),
+    (BuiltinPackage::UiopDriver, "UIOP/DRIVER"),
+    (BuiltinPackage::NclThreads, "NCL-THREADS"),
+    (BuiltinPackage::NclFfi, "NCL-FFI"),
+    (BuiltinPackage::NclMop, "NCL-MOP"),
+    (BuiltinPackage::NclGray, "NCL-GRAY"),
+    (BuiltinPackage::NclGc, "NCL-GC"),
+    (BuiltinPackage::NclImage, "NCL-IMAGE"),
+    (BuiltinPackage::NclUnicode, "NCL-UNICODE"),
+    (BuiltinPackage::NclOs, "NCL-OS"),
+    (BuiltinPackage::NclExt, "NCL-EXT"),
+    (BuiltinPackage::NclSys, "NCL-SYS"),
+    (BuiltinPackage::NclTest, "NCL-TEST"),
+];
+
 const OBJECT_OWNERSHIP: &str = include_str!("../ownership.tsv");
 const SB_EXT_SURFACE: &str = include_str!("../../../conformance/sbcl/symbols/sb-ext.tsv");
 
@@ -59,6 +76,13 @@ fn runtime_registers_distinct_sb_packages() {
             .name(&ctx)
             .unwrap_or_else(|error| panic!("{name} package name: {error:?}"));
         assert_eq!(string_text(&ctx, actual_name), name);
+    }
+}
+
+#[test]
+fn builtin_package_names_match_existing_ncl_packages() {
+    for (builtin, name) in NCL_PACKAGES {
+        assert_eq!(std::hint::black_box(builtin).as_str(), name);
     }
 }
 
@@ -206,6 +230,93 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
     assert!(pop_root(&mut ctx, symbol_token));
     assert!(pop_root(&mut ctx, name_token));
     assert!(pop_root(&mut ctx, source_token));
+}
+
+#[test]
+fn register_sb_symbol_rejects_distinct_target_symbol() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let source = runtime
+        .ensure_package(&mut ctx, BuiltinPackage::NclTest.as_str())
+        .unwrap_or_else(|error| panic!("NCL-TEST package: {error:?}"));
+    let target = runtime
+        .ensure_package(&mut ctx, BuiltinPackage::SbDebug.as_str())
+        .unwrap_or_else(|error| panic!("SB-DEBUG package: {error:?}"));
+    Package::from_word(source)
+        .intern(&mut ctx, &runtime, "R6-CONFLICTING-SYMBOL")
+        .unwrap_or_else(|error| panic!("NCL-TEST intern: {error:?}"));
+    Package::from_word(target)
+        .intern(&mut ctx, &runtime, "R6-CONFLICTING-SYMBOL")
+        .unwrap_or_else(|error| panic!("SB-DEBUG intern: {error:?}"));
+
+    assert_eq!(
+        runtime.register_sb_symbol(
+            &mut ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new("R6-CONFLICTING-SYMBOL"),
+            false,
+        ),
+        Err(ObjectError::PackageConflict)
+    );
+}
+
+#[test]
+fn register_sb_symbol_propagates_unregistered_context_error() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+
+    assert_eq!(
+        runtime.register_sb_symbol(
+            &mut ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new("R6-UNREGISTERED-CONTEXT"),
+            false,
+        ),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn register_sb_symbol_propagates_oversized_name_error() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let name = Box::leak("A".repeat(8_500_000).into_boxed_str());
+
+    assert!(matches!(
+        runtime.register_sb_symbol(
+            &mut ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new(name),
+            false,
+        ),
+        Err(ObjectError::Storage(_))
+    ));
+}
+
+#[test]
+fn gc_registration_rejects_conflicting_sb_ext_symbol() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let sb_ext = runtime
+        .find_package(&ctx, BuiltinPackage::SbExt.as_str())
+        .unwrap_or_else(|| panic!("SB-EXT package missing"));
+    Package::from_word(sb_ext)
+        .intern(&mut ctx, &runtime, "*AFTER-GC-HOOKS*")
+        .unwrap_or_else(|error| panic!("SB-EXT intern: {error:?}"));
+
+    assert_eq!(
+        ncl_object::register(&mut ctx, &runtime),
+        Err(ObjectError::PackageConflict)
+    );
 }
 
 #[test]

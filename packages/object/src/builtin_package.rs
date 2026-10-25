@@ -109,3 +109,46 @@ impl BuiltinPackage {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BuiltinPackage;
+
+    #[test]
+    fn builtin_package_names_cover_all_packages() {
+        for (package, expected) in [
+            (BuiltinPackage::CommonLisp, "COMMON-LISP"),
+            (BuiltinPackage::AsdfInterface, "ASDF/INTERFACE"),
+            (BuiltinPackage::UiopDriver, "UIOP/DRIVER"),
+            (BuiltinPackage::NclThreads, "NCL-THREADS"),
+            (BuiltinPackage::NclFfi, "NCL-FFI"),
+            (BuiltinPackage::NclMop, "NCL-MOP"),
+            (BuiltinPackage::NclGray, "NCL-GRAY"),
+            (BuiltinPackage::NclGc, "NCL-GC"),
+            (BuiltinPackage::NclImage, "NCL-IMAGE"),
+            (BuiltinPackage::NclUnicode, "NCL-UNICODE"),
+            (BuiltinPackage::NclOs, "NCL-OS"),
+            (BuiltinPackage::NclExt, "NCL-EXT"),
+            (BuiltinPackage::NclSys, "NCL-SYS"),
+            (BuiltinPackage::NclTest, "NCL-TEST"),
+            (BuiltinPackage::SbExt, "SB-EXT"),
+            (BuiltinPackage::SbThread, "SB-THREAD"),
+            (BuiltinPackage::SbAlien, "SB-ALIEN"),
+            (BuiltinPackage::SbSys, "SB-SYS"),
+            (BuiltinPackage::SbMop, "SB-MOP"),
+            (BuiltinPackage::SbGray, "SB-GRAY"),
+            (BuiltinPackage::SbUnicode, "SB-UNICODE"),
+            (BuiltinPackage::SbDebug, "SB-DEBUG"),
+            (BuiltinPackage::SbAlienInternals, "SB-ALIEN-INTERNALS"),
+            (BuiltinPackage::SbC, "SB-C"),
+            (BuiltinPackage::SbImpl, "SB-IMPL"),
+            (BuiltinPackage::SbInt, "SB-INT"),
+            (BuiltinPackage::SbKernel, "SB-KERNEL"),
+            (BuiltinPackage::SbPcl, "SB-PCL"),
+            (BuiltinPackage::SbUnix, "SB-UNIX"),
+            (BuiltinPackage::SbVm, "SB-VM"),
+        ] {
+            assert_eq!(std::hint::black_box(package).as_str(), expected);
+        }
+    }
+}

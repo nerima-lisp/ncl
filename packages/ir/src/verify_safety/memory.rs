@@ -214,12 +214,33 @@ pub(super) fn known_address_provenance(
                 OpKind::LoadArg { .. } if op.results.iter().all(|(_, ty)| *ty == Ty::Address) => {
                     (true, Vec::new())
                 }
-                OpKind::Move { value } | OpKind::TypeHint { value, .. } => (false, vec![*value]),
-                OpKind::Convert {
+                OpKind::Move { value }
+                | OpKind::TypeHint { value, .. }
+                | OpKind::Convert {
                     op: crate::Convert::AddressToWord | crate::Convert::WordToAddress,
                     value,
                 } => (false, vec![*value]),
-                _ => (false, Vec::new()),
+                OpKind::Const { .. }
+                | OpKind::Load { .. }
+                | OpKind::Store { .. }
+                | OpKind::LoadField { .. }
+                | OpKind::StoreField { .. }
+                | OpKind::LoadCapture { .. }
+                | OpKind::LoadFunctionObject
+                | OpKind::LoadArg { .. }
+                | OpKind::Call { .. }
+                | OpKind::CallIndirect { .. }
+                | OpKind::MakeClosure { .. }
+                | OpKind::MakeValueCell { .. }
+                | OpKind::CallClosure { .. }
+                | OpKind::Builtin { .. }
+                | OpKind::Prim { .. }
+                | OpKind::Compare { .. }
+                | OpKind::Convert { .. }
+                | OpKind::SetMultipleValues { .. }
+                | OpKind::Safepoint
+                | OpKind::EnterHandler { .. }
+                | OpKind::LeaveHandler { .. } => (false, Vec::new()),
             };
             for (value, _) in &op.results {
                 if is_root {
@@ -391,7 +412,29 @@ pub(super) fn check_stored_address_boundaries(
                         .copied()
                         .collect();
                 }
-                _ => {}
+                OpKind::Const { .. }
+                | OpKind::Move { .. }
+                | OpKind::TypeHint { .. }
+                | OpKind::Load { .. }
+                | OpKind::Store { .. }
+                | OpKind::LoadField { .. }
+                | OpKind::StoreField { .. }
+                | OpKind::Alloc { .. }
+                | OpKind::LoadArg { .. }
+                | OpKind::LoadCapture { .. }
+                | OpKind::LoadFunctionObject
+                | OpKind::Call { .. }
+                | OpKind::CallIndirect { .. }
+                | OpKind::MakeClosure { .. }
+                | OpKind::MakeValueCell { .. }
+                | OpKind::CallClosure { .. }
+                | OpKind::Builtin { .. }
+                | OpKind::Prim { .. }
+                | OpKind::Compare { .. }
+                | OpKind::Convert { .. }
+                | OpKind::Safepoint
+                | OpKind::EnterHandler { .. }
+                | OpKind::LeaveHandler { .. } => {}
             }
         }
         if is_call_terminator(&block.terminator) {

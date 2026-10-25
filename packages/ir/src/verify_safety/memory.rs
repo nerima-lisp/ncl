@@ -5,6 +5,9 @@ use super::{
 use crate::{BasicBlock, BlockId, Function, OpKind, Ty, ValueId};
 use std::collections::{HashMap, HashSet};
 
+#[path = "memory/multiple_values.rs"]
+mod multiple_values;
+
 pub(super) fn address_provenance(
     function: &Function,
     blocks: &HashMap<BlockId, &BasicBlock>,
@@ -381,7 +384,8 @@ pub(super) fn check_stored_address_boundaries(
     errors: &mut Vec<VerifyError>,
 ) {
     let (memory_in, _) = memory_address_provenance(function, blocks, address_values);
-    let multiple_values_in = multiple_value_address_provenance(function, blocks, address_values);
+    let multiple_values_in =
+        multiple_values::multiple_value_address_provenance(function, blocks, address_values);
     for block in &function.blocks {
         let mut stored_addresses = memory_in.get(&block.id).cloned().unwrap_or_default();
         let mut multiple_values = multiple_values_in
@@ -448,76 +452,6 @@ pub(super) fn check_stored_address_boundaries(
                     errors.push(error);
                 }
             }
-        }
-    }
-}
-
-fn multiple_value_address_provenance(
-    function: &Function,
-    blocks: &HashMap<BlockId, &BasicBlock>,
-    address_values: &HashSet<ValueId>,
-) -> HashMap<BlockId, HashSet<ValueId>> {
-    let mut predecessors = blocks
-        .keys()
-        .map(|id| (*id, Vec::new()))
-        .collect::<HashMap<_, _>>();
-    for block in &function.blocks {
-        for target in super::successors(&block.terminator)
-            .into_iter()
-            .chain(block.ops.iter().flat_map(verify_detail::op_successors))
-        {
-            if let Some(predecessors) = predecessors.get_mut(&target) {
-                predecessors.push(block.id);
-            }
-        }
-    }
-    for region in &function.handler_regions {
-        for protected in &region.protected {
-            if let Some(predecessors) = predecessors.get_mut(&region.handler) {
-                predecessors.push(*protected);
-            }
-            if let Some(cleanup) = region.cleanup {
-                if let Some(predecessors) = predecessors.get_mut(&cleanup) {
-                    predecessors.push(*protected);
-                }
-            }
-        }
-    }
-
-    let mut incoming = blocks
-        .keys()
-        .map(|id| (*id, HashSet::new()))
-        .collect::<HashMap<_, _>>();
-    let mut outgoing = incoming.clone();
-    loop {
-        let mut changed = false;
-        for block in &function.blocks {
-            let mut values = HashSet::new();
-            if let Some(block_predecessors) = predecessors.get(&block.id) {
-                for predecessor in block_predecessors {
-                    values.extend(outgoing.get(predecessor).into_iter().flatten().copied());
-                }
-            }
-            if incoming.get(&block.id) != Some(&values) {
-                incoming.insert(block.id, values.clone());
-                changed = true;
-            }
-            for op in &block.ops {
-                if let OpKind::SetMultipleValues { values: new_values } = &op.kind {
-                    values = new_values
-                        .iter()
-                        .filter(|value| address_values.contains(value))
-                        .copied()
-                        .collect();
-                }
-            }
-            if outgoing.get(&block.id) != Some(&values) {
-                outgoing.insert(block.id, values);
-                changed = true;
-            }
-        }
-        if !changed {
-            return incoming;
         }
     }
 }

@@ -82,28 +82,16 @@ fn caller_function(function_id: u32, tail: bool) -> Result<ncl_ir::Function, Str
         "callee-saved-transfer",
         vec![Param {
             name: "callee".into(),
-            ty: Ty::Address,
+            ty: Ty::Word,
         }],
         vec![Ty::Word; 3],
     );
     let callee = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
         .map_err(|error| format!("load transfer callee: {error:?}"))?
         .first()
         .copied()
         .ok_or_else(|| "transfer callee value missing".to_owned())?;
-    let callee = builder
-        .push_op(
-            OpKind::Convert {
-                op: Convert::AddressToWord,
-                value: callee,
-            },
-            &[Ty::Word],
-        )
-        .map_err(|error| format!("convert transfer callee: {error:?}"))?
-        .first()
-        .copied()
-        .ok_or_else(|| "converted transfer callee value missing".to_owned())?;
     let mut args = Vec::new();
     for value in [3_i64, 11, 22, 33] {
         let constant = builder.add_constant(Constant::Fixnum(value));

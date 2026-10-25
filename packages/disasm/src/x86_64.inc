@@ -349,7 +349,7 @@ fn decode_0f_modrm(
                 }
             }
         }
-        0xaf => format!("imul {name}, %{}", reg_name(reg)),
+        0xaf => format!("imul {name}, %{}", reg_name(r.reg(modrm_reg, r.rex.r))),
         0xb6 | 0xb7 => format!(
             "movz{} {name}, %{}",
             if op == 0xb6 { "b" } else { "w" },

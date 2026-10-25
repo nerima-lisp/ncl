@@ -57,12 +57,10 @@ impl GlobalValueNumbering {
         }
     }
 
-    fn dominator_tree(function: &Function) -> HashMap<BlockId, Vec<BlockId>> {
-        let blocks = function
-            .blocks
-            .iter()
-            .map(|block| block.id)
-            .collect::<HashSet<_>>();
+    fn predecessors(
+        function: &Function,
+        blocks: &HashSet<BlockId>,
+    ) -> HashMap<BlockId, Vec<BlockId>> {
         let mut predecessors = blocks
             .iter()
             .map(|id| (*id, Vec::new()))
@@ -74,6 +72,31 @@ impl GlobalValueNumbering {
                 }
             }
         }
+        for region in &function.handler_regions {
+            for protected in &region.protected {
+                if !blocks.contains(protected) {
+                    continue;
+                }
+                if let Some(preds) = predecessors.get_mut(&region.handler) {
+                    preds.push(*protected);
+                }
+                if let Some(cleanup) = region.cleanup
+                    && let Some(preds) = predecessors.get_mut(&cleanup)
+                {
+                    preds.push(*protected);
+                }
+            }
+        }
+        predecessors
+    }
+
+    fn dominator_tree(function: &Function) -> HashMap<BlockId, Vec<BlockId>> {
+        let blocks = function
+            .blocks
+            .iter()
+            .map(|block| block.id)
+            .collect::<HashSet<_>>();
+        let predecessors = Self::predecessors(function, &blocks);
         let Some(entry) = function.blocks.first().map(|block| block.id) else {
             return HashMap::new();
         };
@@ -116,6 +139,7 @@ impl GlobalValueNumbering {
                 break;
             }
         }
+
         let mut tree = blocks
             .iter()
             .map(|id| (*id, Vec::new()))

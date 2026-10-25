@@ -87,30 +87,49 @@ fn manager_reports_module_passes_limits_and_errors() {
     assert!(error.to_string().contains("failing"));
 }
 
+#[derive(Debug)]
+struct RenamingPass;
+
+impl FunctionPass for RenamingPass {
+    fn name(&self) -> &'static str {
+        "rename"
+    }
+
+    fn run(&mut self, function: &mut ncl_ir::Function, _module: &Module) -> PassResult {
+        function.name.push_str("-renamed");
+        Ok(true)
+    }
+}
+
 #[test]
-fn manager_rejects_an_invalid_function_after_a_pass() {
+fn manager_rolls_back_whole_pipeline_after_verifier_error() {
+    let original = Module {
+        functions: vec![leaf()],
+    };
+    let mut module = original.clone();
     let mut manager = PassManager::new();
+    manager.add_function_pass(RenamingPass);
     manager.add_function_pass(InvalidatingPass);
     let mut events = Vec::new();
-    let result = manager.run_with_observer(
-        &mut Module {
-            functions: vec![leaf()],
-        },
-        |event| events.push(event.clone()),
-    );
+    let result = manager.run_with_observer(&mut module, |event| events.push(event.clone()));
     let Err(error) = result else {
         std::process::exit(1)
     };
+
     assert_eq!(error.pass, "invalidating");
     assert!(error.message.contains("DuplicateValue"));
-    assert_eq!(events.len(), 1);
+    assert_eq!(module.functions, original.functions);
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].pass, "rename");
     assert_eq!(events[0].changed, Some(true));
+    assert_eq!(events[1].pass, "invalidating");
+    assert_eq!(events[1].changed, Some(true));
     assert!(matches!(
-        events[0].verification,
+        events[1].verification,
         crate::PassVerification::Failed(_)
     ));
     assert!(
-        events[0]
+        events[1]
             .error
             .as_deref()
             .is_some_and(|message| message.contains("DuplicateValue"))

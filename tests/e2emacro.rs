@@ -365,6 +365,31 @@ const PROBES: &[Probe] = &[
         source: "(loop for x in '(1 nil 2 nil 3) when x collect it)",
         expected: "(1 2 3)",
     },
+    // CLHS permits declaration* at the beginning of DOLIST's body; the
+    // declaration applies to the macro-introduced iteration variable.
+    Probe {
+        name: "dolist-leading-type-declaration",
+        source: "(dolist (item '(1 2 3) :done) (declare (type (or fixnum null) item)))",
+        expected: ":DONE",
+    },
+    // This is the bench-run-1 regression: DOTIMES declaration* applies to
+    // the macro-introduced run variable (CLHS 6.1.2.1).
+    Probe {
+        name: "dotimes-leading-ignore-run-declaration",
+        source: "(dotimes (run 3 :done) (declare (ignore run)))",
+        expected: ":DONE",
+    },
+    // CLHS permits declaration* immediately after the DO/DO* end clause.
+    Probe {
+        name: "do-leading-fixnum-declaration",
+        source: "(do ((i 0 (1+ i))) ((= i 3) i) (declare (type fixnum i)))",
+        expected: "3",
+    },
+    Probe {
+        name: "do-star-leading-fixnum-declaration",
+        source: "(do* ((i 0 (1+ i))) ((= i 3) i) (declare (fixnum i)))",
+        expected: "3",
+    },
 ];
 
 const XFAILS: &[XFail] = &[XFail {

@@ -195,6 +195,12 @@ fn do_macro(
     values: &[HeapRootedWord],
     sequential: bool,
 ) -> Result {
+    let body_forms = values.get(2..).ok_or(ObjectError::TypeError)?;
+    let declaration_count = crate::iteration::leading_declaration_count(
+        ctx,
+        runtime,
+        body_forms.iter().map(HeapRootedWord::get),
+    )?;
     let variable_specs = elements(ctx, values.first().ok_or(ObjectError::TypeError)?.get())?;
     let variable_specs = HeapRootedWords::new(ctx, &variable_specs)?;
     let end_clause = elements(ctx, values.get(1).ok_or(ObjectError::TypeError)?.get())?;
@@ -229,7 +235,7 @@ fn do_macro(
     let go_end = form(ctx, runtime, "GO", &[end_tag.get()])?;
     let exit = form(ctx, runtime, "IF", &[end_test.get(), go_end])?;
     let mut tagbody = HeapRootedWords::new(ctx, &[loop_tag.get(), exit])?;
-    for value in values.get(2..).ok_or(ObjectError::TypeError)? {
+    for value in body_forms.iter().skip(declaration_count) {
         tagbody.push(ctx, value.get())?;
     }
     if !updates.is_empty() {
@@ -267,12 +273,15 @@ fn do_macro(
         .collect::<Vec<_>>();
     let initial_bindings = bindings(ctx, runtime, &initial_pairs)?;
     let binding_operator = if sequential { "LET*" } else { "LET" };
-    let body = form(
-        ctx,
-        runtime,
-        binding_operator,
-        &[initial_bindings, tagbody.get(), results.get()],
-    )?;
+    let mut binding_body = vec![initial_bindings];
+    binding_body.extend(
+        body_forms
+            .iter()
+            .take(declaration_count)
+            .map(HeapRootedWord::get),
+    );
+    binding_body.extend([tagbody.get(), results.get()]);
+    let body = form(ctx, runtime, binding_operator, &binding_body)?;
     form(ctx, runtime, "BLOCK", &[Word::NIL, body])
 }
 

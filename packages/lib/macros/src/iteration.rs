@@ -88,6 +88,22 @@ fn held_fresh_symbol(
     Ok(held.len() - 1)
 }
 
+pub(crate) fn leading_declaration_count(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    forms: impl IntoIterator<Item = Word>,
+) -> std::result::Result<usize, ObjectError> {
+    let declaration = symbol(ctx, runtime, "DECLARE")?;
+    let mut count = 0;
+    for form in forms {
+        if !form.is_cons() || ncl_object::car(ctx, form)? != declaration {
+            break;
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
 fn destructuring_bind_call(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     let pattern = values.first().copied().ok_or(ObjectError::TypeError)?;
     let value_form = values.get(1).copied().ok_or(ObjectError::TypeError)?;
@@ -97,6 +113,8 @@ fn destructuring_bind_call(ctx: &mut ThreadContext, runtime: &Runtime, values: &
 
 fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let declaration_count =
+            leading_declaration_count(ctx, runtime, roots.iter().skip(1).map(|root| **root))?;
         let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
         if !(2..=3).contains(&spec.len()) {
             return Err(ObjectError::TypeError);
@@ -121,7 +139,8 @@ fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result
         let advance = held_form(ctx, runtime, &mut held, "SETQ", &[cursor, cdr])?;
         let jump = held_form(ctx, runtime, &mut held, "GO", &[loop_tag])?;
         let mut tagbody = vec![loop_tag, test, set_variable];
-        tagbody.extend(1..values.len());
+        let body_start = 1 + declaration_count;
+        tagbody.extend(body_start..values.len());
         tagbody.extend([advance, jump, end_tag]);
         let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
         let nil = held.len();
@@ -131,7 +150,10 @@ fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result
         let variable_binding = held_list(ctx, runtime, &mut held, &[variable, result])?;
         let cursor_binding = held_list(ctx, runtime, &mut held, &[cursor, list_form])?;
         let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, cursor_binding])?;
-        let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
+        let mut let_body = vec![bindings];
+        let_body.extend(1..body_start);
+        let_body.extend([tagbody, result]);
+        let body = held_form(ctx, runtime, &mut held, "LET", &let_body)?;
         let block_name = held.len();
         held.push(Word::NIL);
         let block = held_form(ctx, runtime, &mut held, "BLOCK", &[block_name, body])?;
@@ -141,6 +163,8 @@ fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result
 
 fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let declaration_count =
+            leading_declaration_count(ctx, runtime, roots.iter().skip(1).map(|root| **root))?;
         let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
         if !(2..=3).contains(&spec.len()) {
             return Err(ObjectError::TypeError);
@@ -165,7 +189,8 @@ fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Resul
         let increment = held_form(ctx, runtime, &mut held, "SETQ", &[variable, next])?;
         let jump = held_form(ctx, runtime, &mut held, "GO", &[loop_tag])?;
         let mut tagbody = vec![loop_tag, test];
-        tagbody.extend(1..values.len());
+        let body_start = 1 + declaration_count;
+        tagbody.extend(body_start..values.len());
         tagbody.extend([increment, jump, end_tag]);
         let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
         let zero = held.len();
@@ -173,7 +198,10 @@ fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Resul
         let variable_binding = held_list(ctx, runtime, &mut held, &[variable, zero])?;
         let limit_binding = held_list(ctx, runtime, &mut held, &[limit, limit_form])?;
         let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, limit_binding])?;
-        let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
+        let mut let_body = vec![bindings];
+        let_body.extend(1..body_start);
+        let_body.extend([tagbody, result]);
+        let body = held_form(ctx, runtime, &mut held, "LET", &let_body)?;
         let block_name = held.len();
         held.push(Word::NIL);
         let block = held_form(ctx, runtime, &mut held, "BLOCK", &[block_name, body])?;

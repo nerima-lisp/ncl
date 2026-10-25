@@ -64,3 +64,96 @@ fn iteration_macros_validate_specs_and_build_blocks() -> Result<(), ObjectError>
     assert_eq!(parts[0], symbol(&mut ctx, &runtime, "BLOCK")?);
     Ok(())
 }
+
+fn assert_declaration_placement(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    macro_name: &str,
+    binding_operator: &str,
+) -> Result<(), ObjectError> {
+    let operator = symbol(ctx, runtime, macro_name)?;
+    let block_operator = symbol(ctx, runtime, "BLOCK")?;
+    let let_operator = symbol(ctx, runtime, binding_operator)?;
+    let progn_operator = symbol(ctx, runtime, "PROGN")?;
+    let tagbody_operator = symbol(ctx, runtime, "TAGBODY")?;
+    let variable = symbol(ctx, runtime, "X")?;
+    let misplaced_variable = symbol(ctx, runtime, "Y")?;
+    let declare = symbol(ctx, runtime, "DECLARE")?;
+    let ignore = symbol(ctx, runtime, "IGNORE")?;
+    let declaration_spec = list(ctx, runtime, &[ignore, variable])?;
+    let leading_declaration = list(ctx, runtime, &[declare, declaration_spec])?;
+    let leading_declaration = ncl_object::HeapRootedWord::new(ctx, leading_declaration)?;
+    let misplaced_spec = list(ctx, runtime, &[ignore, misplaced_variable])?;
+    let misplaced_declaration = list(ctx, runtime, &[declare, misplaced_spec])?;
+    let misplaced_declaration = ncl_object::HeapRootedWord::new(ctx, misplaced_declaration)?;
+    let before = symbol(ctx, runtime, "BEFORE")?;
+    let after = symbol(ctx, runtime, "AFTER")?;
+    let mut prefix = ncl_object::HeapRootedWords::default();
+    match macro_name {
+        "DOLIST" => {
+            let spec = list(ctx, runtime, &[variable, Word::NIL])?;
+            prefix.push(ctx, spec)?;
+        }
+        "DOTIMES" => {
+            let spec = list(ctx, runtime, &[variable, Word::fixnum(1)])?;
+            prefix.push(ctx, spec)?;
+        }
+        "DO" | "DO*" => {
+            let variable_spec = list(ctx, runtime, &[variable, Word::fixnum(0)])?;
+            let variable_spec = ncl_object::HeapRootedWord::new(ctx, variable_spec)?;
+            let variable_specs = list(ctx, runtime, &[variable_spec.get()])?;
+            prefix.push(ctx, variable_specs)?;
+            let end_clause = list(ctx, runtime, &[Word::NIL])?;
+            prefix.push(ctx, end_clause)?;
+        }
+        _ => return Err(ObjectError::TypeError),
+    }
+    let mut input_values = vec![operator];
+    input_values.extend(prefix.iter().map(ncl_object::HeapRootedWord::get));
+    input_values.extend([
+        leading_declaration.get(),
+        before,
+        misplaced_declaration.get(),
+        after,
+    ]);
+    let input = list(ctx, runtime, &input_values)?;
+    let expansion_word = expand(ctx, runtime, macro_name, input)?;
+    let expansion = ncl_object::HeapRootedWord::new(ctx, expansion_word)?;
+    let block_parts = elements(ctx, expansion.get())?;
+    assert_eq!(block_parts[0], block_operator);
+    let let_form = ncl_object::HeapRootedWord::new(ctx, block_parts[2])?;
+    let let_parts = elements(ctx, let_form.get())?;
+    assert_eq!(let_parts[0], let_operator);
+    assert_eq!(let_parts[2], leading_declaration.get());
+    let let_body = ncl_object::HeapRootedWord::new(ctx, let_parts[3])?;
+    let tagbody = if macro_name == "DOLIST" {
+        let progn_parts = elements(ctx, let_body.get())?;
+        assert_eq!(progn_parts[0], progn_operator);
+        ncl_object::HeapRootedWord::new(ctx, progn_parts[1])?
+    } else {
+        let_body
+    };
+    let tagbody_parts = elements(ctx, tagbody.get())?;
+    assert_eq!(tagbody_parts[0], tagbody_operator);
+    let before_index = tagbody_parts
+        .iter()
+        .position(|form| *form == before)
+        .ok_or(ObjectError::TypeError)?;
+    assert_eq!(tagbody_parts[before_index + 1], misplaced_declaration.get());
+    assert_eq!(tagbody_parts[before_index + 2], after);
+    Ok(())
+}
+
+#[test]
+fn iteration_macros_move_only_leading_declarations_before_tagbody() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    assert_declaration_placement(&mut ctx, &runtime, "DOLIST", "LET")?;
+    assert_declaration_placement(&mut ctx, &runtime, "DOTIMES", "LET")?;
+    assert_declaration_placement(&mut ctx, &runtime, "DO", "LET")?;
+    assert_declaration_placement(&mut ctx, &runtime, "DO*", "LET*")?;
+    Ok(())
+}

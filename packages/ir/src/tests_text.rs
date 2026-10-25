@@ -691,40 +691,32 @@ fn text_round_trips_documented_conversions() {
         Convert::AddressToWord,
         Convert::WordToAddress,
     ];
-    let failures = conversions
-        .into_iter()
-        .map(|conversion| {
-            let function = finish(
-                "conversion",
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                vec![block(
-                    0,
-                    vec![op(
-                        &[(1, Ty::Word)],
-                        OpKind::Convert {
-                            op: conversion,
-                            value: ValueId(0),
-                        },
-                    )],
-                    Terminator::Return { values: Vec::new() },
+    for conversion in conversions {
+        let function = finish(
+            "conversion",
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![block(
+                0,
+                vec![op(
+                    &[(1, Ty::Word)],
+                    OpKind::Convert {
+                        op: conversion,
+                        value: ValueId(0),
+                    },
                 )],
-                Vec::new(),
-            );
-            let dump = function.to_string();
-            match parse(&dump) {
-                Ok(parsed) if parsed == function => None,
-                actual => Some(format!("{conversion:?} in {dump:?} yielded {actual:?}")),
-            }
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-
-    assert!(
-        failures.is_empty(),
-        "conversion round trips failed: {failures:?}"
-    );
+                Terminator::Return { values: Vec::new() },
+            )],
+            Vec::new(),
+        );
+        let dump = function.to_string();
+        assert_eq!(
+            parse(&dump).unwrap(),
+            function,
+            "{conversion:?} in {dump:?}"
+        );
+    }
 }
 
 #[test]
@@ -1103,7 +1095,7 @@ fn text_round_trips_fixnum_specialization_metadata() {
                         args: vec![ValueId(2), ValueId(1)],
                         specialization: Some(
                             FixnumSpecialization::new(FixnumOp::Add, &[true, true])
-                                .unwrap_or_else(|| panic!("two-operand specialization")),
+                                .expect("two-operand specialization"),
                         ),
                         specialization_disabled: true,
                     },

@@ -21,18 +21,8 @@ fn generic_function_mapping<'ctx>(
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let symbol = scope.intern(runtime, "NCL", GENERIC_FUNCTION_MAP_SYMBOL)?;
     let key = scope.intern(runtime, "NCL", GENERIC_FUNCTION_MAP_KEY)?;
-    let symbol_word = scope.get(symbol).as_word();
-    let key_word = scope.get(key).as_word();
-    let mut plist = ncl_object::symbol_plist(scope.context(), symbol_word)?;
-    while plist != Word::NIL {
-        let property = ncl_object::car(scope.context(), plist)?;
-        if ncl_object::car(scope.context(), property)? == key_word {
-            return Ok(scope.root(Local::from_word(ncl_object::cdr(
-                scope.context(),
-                property,
-            )?)));
-        }
-        plist = ncl_object::cdr(scope.context(), plist)?;
+    if let Some(mapping) = symbol_plist_property(scope, symbol, key)? {
+        return Ok(mapping);
     }
     Ok(scope.root(Local::from_word(Word::NIL)))
 }
@@ -72,15 +62,7 @@ fn set_generic_function_mapping<'ctx>(
 
     let symbol = scope.intern(runtime, "NCL", GENERIC_FUNCTION_MAP_SYMBOL)?;
     let key = scope.intern(runtime, "NCL", GENERIC_FUNCTION_MAP_KEY)?;
-    let old_plist = scope.root(Local::from_word(ncl_object::symbol_plist(
-        scope.context(),
-        scope.get(symbol).as_word(),
-    )?));
-    let property = scope.make_cons(runtime, key, registry)?;
-    let plist = scope.make_cons(runtime, property, old_plist)?;
-    let symbol_word = scope.get(symbol).as_word();
-    let plist_word = scope.get(plist).as_word();
-    ncl_object::set_symbol_plist(scope.context_mut(), symbol_word, plist_word)
+    set_symbol_plist_property(scope, runtime, symbol, key, registry)
 }
 
 fn generic_function_name<'ctx>(
@@ -141,21 +123,13 @@ fn generic_required_arity<'ctx>(
     name: ncl_object::Handle<'ctx>,
 ) -> Result<Option<usize>, ObjectError> {
     let key = scope.intern(runtime, "NCL", GENERIC_REQUIRED_ARITY_KEY_NAME)?;
-    let name_word = scope.get(name).as_word();
-    let key_word = scope.get(key).as_word();
-    let mut plist = ncl_object::symbol_plist(scope.context(), name_word)?;
-    while plist != Word::NIL {
-        let property = ncl_object::car(scope.context(), plist)?;
-        if ncl_object::car(scope.context(), property)? == key_word {
-            let value = ncl_object::cdr(scope.context(), property)?;
-            let fixnum = Fixnum::try_from_word(value).map_err(|_| ObjectError::Layout)?;
-            return usize::try_from(fixnum.value())
-                .map(Some)
-                .map_err(|_| ObjectError::Layout);
-        }
-        plist = ncl_object::cdr(scope.context(), plist)?;
-    }
-    Ok(None)
+    let Some(value) = symbol_plist_property(scope, name, key)? else {
+        return Ok(None);
+    };
+    let fixnum = Fixnum::try_from_word(scope.get(value).as_word()).map_err(|_| ObjectError::Layout)?;
+    usize::try_from(fixnum.value())
+        .map(Some)
+        .map_err(|_| ObjectError::Layout)
 }
 
 fn set_generic_required_arity<'ctx>(
@@ -166,16 +140,8 @@ fn set_generic_required_arity<'ctx>(
 ) -> Result<(), ObjectError> {
     let key = scope.intern(runtime, "NCL", GENERIC_REQUIRED_ARITY_KEY_NAME)?;
     let arity = i64::try_from(arity).map_err(|_| ObjectError::Layout)?;
-    let old_plist = scope.root(Local::from_word(ncl_object::symbol_plist(
-        scope.context(),
-        scope.get(name).as_word(),
-    )?));
     let arity = scope.root(Local::from_word(Word::fixnum(arity)));
-    let property = scope.make_cons(runtime, key, arity)?;
-    let plist = scope.make_cons(runtime, property, old_plist)?;
-    let name_word = scope.get(name).as_word();
-    let plist_word = scope.get(plist).as_word();
-    ncl_object::set_symbol_plist(scope.context_mut(), name_word, plist_word)
+    set_symbol_plist_property(scope, runtime, name, key, arity)
 }
 
 fn clos_define_generic_builtin(

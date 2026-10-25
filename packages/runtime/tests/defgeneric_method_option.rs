@@ -135,3 +135,76 @@ fn defgeneric_accepts_standard_options_and_preserves_standalone_methods() {
         .unwrap_or_else(|error| panic!("method dispatch after redefinition failed: {error}"));
     assert_eq!(result, Word::TRUE);
 }
+
+#[test]
+fn defmethod_implicitly_creates_generic_with_method_lambda_list() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    runtime
+        .eval("(deftype ncl-defmethod-implicit-property-test () integer)")
+        .unwrap_or_else(|error| panic!("DEFTYPE setup failed: {error}"));
+    runtime
+        .eval("(define-condition ncl-defmethod-implicit-test-condition (condition) ())")
+        .unwrap_or_else(|error| panic!("condition setup failed: {error}"));
+    runtime
+        .eval(
+            "(defmethod ncl-defmethod-implicit-property-test \
+               ((value ncl-defmethod-implicit-test-condition) &optional fallback) \
+               (if fallback fallback 47))",
+        )
+        .unwrap_or_else(|error| panic!("implicit DEFMETHOD generic creation failed: {error}"));
+    let defaulted_call = runtime
+        .eval(
+            "(= (ncl-defmethod-implicit-property-test \
+                  (make-condition 'ncl-defmethod-implicit-test-condition)) 47)",
+        )
+        .unwrap_or_else(|error| {
+            panic!("implicit generic default-argument dispatch failed: {error}")
+        });
+    assert_eq!(defaulted_call, Word::TRUE);
+    let optional_call = runtime
+        .eval(
+            "(= (ncl-defmethod-implicit-property-test \
+                  (make-condition 'ncl-defmethod-implicit-test-condition) 83) 83)",
+        )
+        .unwrap_or_else(|error| {
+            panic!("implicit generic optional-argument dispatch failed: {error}")
+        });
+    assert_eq!(optional_call, Word::TRUE);
+    let expander_property = runtime
+        .eval("(not (null (get 'ncl-defmethod-implicit-property-test 'ncl::deftype-expander)))")
+        .unwrap_or_else(|error| panic!("DEFTYPE expander property was lost: {error}"));
+    assert_eq!(expander_property, Word::TRUE);
+}
+
+#[test]
+fn defmethod_rejects_function_and_macro_name_collisions() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let function_collision = runtime
+        .eval(
+            "(progn \
+               (defun ncl-defmethod-function-collision-test (value) value) \
+               (handler-case \
+                 (progn \
+                   (defmethod ncl-defmethod-function-collision-test ((value integer)) value) \
+                   nil) \
+                 (program-error () (= (ncl-defmethod-function-collision-test 31) 31))))",
+        )
+        .unwrap_or_else(|error| panic!("function collision handler failed: {error}"));
+    assert_eq!(function_collision, Word::TRUE);
+
+    runtime
+        .eval("(defmacro ncl-defmethod-macro-collision-test (value) value)")
+        .unwrap_or_else(|error| panic!("DEFMACRO setup failed: {error}"));
+    let macro_collision = runtime
+        .eval(
+            "(and \
+               (handler-case \
+                 (progn \
+                   (defmethod ncl-defmethod-macro-collision-test ((value integer)) value) \
+                   nil) \
+                 (program-error () t)) \
+               (not (null (macro-function 'ncl-defmethod-macro-collision-test))))",
+        )
+        .unwrap_or_else(|error| panic!("macro collision handler failed: {error}"));
+    assert_eq!(macro_collision, Word::TRUE);
+}

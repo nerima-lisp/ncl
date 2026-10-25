@@ -100,22 +100,70 @@ fn method_registry_entry<'ctx>(
     scope.make_list(runtime, &values)
 }
 
+fn symbol_plist_property<'ctx>(
+    scope: &mut Scope<'ctx>,
+    name: ncl_object::Handle<'ctx>,
+    key: ncl_object::Handle<'ctx>,
+) -> Result<Option<ncl_object::Handle<'ctx>>, ObjectError> {
+    let name_word = scope.get(name).as_word();
+    let key_word = scope.get(key).as_word();
+    let mut plist = ncl_object::symbol_plist(scope.context(), name_word)?;
+    while plist != Word::NIL {
+        let indicator = ncl_object::car(scope.context(), plist)?;
+        let value_cell = ncl_object::cdr(scope.context(), plist)?;
+        if !value_cell.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        if indicator == key_word {
+            let value = ncl_object::car(scope.context(), value_cell)?;
+            return Ok(Some(scope.root(Local::from_word(value))));
+        }
+        plist = ncl_object::cdr(scope.context(), value_cell)?;
+    }
+    Ok(None)
+}
+
+fn set_symbol_plist_property<'ctx>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    name: ncl_object::Handle<'ctx>,
+    key: ncl_object::Handle<'ctx>,
+    value: ncl_object::Handle<'ctx>,
+) -> Result<(), ObjectError> {
+    let name_word = scope.get(name).as_word();
+    let key_word = scope.get(key).as_word();
+    let value_word = scope.get(value).as_word();
+    let old_plist = scope.root(Local::from_word(ncl_object::symbol_plist(
+        scope.context(),
+        name_word,
+    )?));
+    let mut plist = scope.get(old_plist).as_word();
+    while plist != Word::NIL {
+        let indicator = ncl_object::car(scope.context(), plist)?;
+        let value_cell = ncl_object::cdr(scope.context(), plist)?;
+        if !value_cell.is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        if indicator == key_word {
+            return ncl_object::rplaca(scope.context_mut(), value_cell, value_word).map(|_| ());
+        }
+        plist = ncl_object::cdr(scope.context(), value_cell)?;
+    }
+    let value_cell = scope.make_cons(runtime, value, old_plist)?;
+    let new_plist = scope.make_cons(runtime, key, value_cell)?;
+    let name_word = scope.get(name).as_word();
+    let plist_word = scope.get(new_plist).as_word();
+    ncl_object::set_symbol_plist(scope.context_mut(), name_word, plist_word)
+}
+
 fn method_registry<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
     name: ncl_object::Handle<'ctx>,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let key = method_registry_key(scope, runtime)?;
-    let mut plist = ncl_object::symbol_plist(scope.context(), scope.get(name).as_word())?;
-    while plist != Word::NIL {
-        let property = ncl_object::car(scope.context(), plist)?;
-        if ncl_object::car(scope.context(), property)? == scope.get(key).as_word() {
-            return Ok(scope.root(Local::from_word(ncl_object::cdr(
-                scope.context(),
-                property,
-            )?)));
-        }
-        plist = ncl_object::cdr(scope.context(), plist)?;
+    if let Some(registry) = symbol_plist_property(scope, name, key)? {
+        return Ok(registry);
     }
     Ok(scope.root(Local::from_word(Word::NIL)))
 }
@@ -126,15 +174,7 @@ fn has_method_registry<'ctx>(
     name: ncl_object::Handle<'ctx>,
 ) -> Result<bool, ObjectError> {
     let key = method_registry_key(scope, runtime)?;
-    let mut plist = ncl_object::symbol_plist(scope.context(), scope.get(name).as_word())?;
-    while plist != Word::NIL {
-        let property = ncl_object::car(scope.context(), plist)?;
-        if ncl_object::car(scope.context(), property)? == scope.get(key).as_word() {
-            return Ok(true);
-        }
-        plist = ncl_object::cdr(scope.context(), plist)?;
-    }
-    Ok(false)
+    Ok(symbol_plist_property(scope, name, key)?.is_some())
 }
 
 fn set_method_registry<'ctx>(
@@ -144,15 +184,7 @@ fn set_method_registry<'ctx>(
     registry: ncl_object::Handle<'ctx>,
 ) -> Result<(), ObjectError> {
     let key = method_registry_key(scope, runtime)?;
-    let old_plist = scope.root(Local::from_word(ncl_object::symbol_plist(
-        scope.context(),
-        scope.get(name).as_word(),
-    )?));
-    let property = scope.make_cons(runtime, key, registry)?;
-    let plist = scope.make_cons(runtime, property, old_plist)?;
-    let name_word = scope.get(name).as_word();
-    let plist_word = scope.get(plist).as_word();
-    ncl_object::set_symbol_plist(scope.context_mut(), name_word, plist_word)
+    set_symbol_plist_property(scope, runtime, name, key, registry)
 }
 
 fn method_registry_key<'ctx>(

@@ -158,6 +158,22 @@ fn defmethod_macro_expansion<'ctx>(
     )?;
     let initialization_base = initialization_base(scope, runtime, name, quoted_name)?;
     let progn = scope.intern(runtime, COMMON_LISP, "PROGN")?;
+    let generic_initialization = if force_wrapper.is_none() {
+        let generic_lambda_list = scope.make_list(runtime, &user_lambda)?;
+        let (_, _, ensure_generic) = defgeneric_setup(scope, runtime, name, generic_lambda_list)?;
+        let registered =
+            scope.intern(runtime, COMMON_LISP, "%CLOS-GENERIC-FUNCTION-REGISTERED-P")?;
+        let if_symbol = scope.intern(runtime, COMMON_LISP, "IF")?;
+        let is_registered = make_form(scope, runtime, &[registered, quoted_name])?;
+        let nil = scope.root(ncl_object::Local::from_word(Word::NIL));
+        Some(make_form(
+            scope,
+            runtime,
+            &[if_symbol, is_registered, nil, ensure_generic],
+        )?)
+    } else {
+        None
+    };
     let wrapper_form = match force_wrapper {
         Some(true) => Some(wrapper),
         Some(false) => None,
@@ -173,6 +189,9 @@ fn defmethod_macro_expansion<'ctx>(
     };
     let mut result = scope.root_many(&[]);
     macro_push_handle(scope, &mut result, progn);
+    if let Some(generic_initialization) = generic_initialization {
+        macro_push_handle(scope, &mut result, generic_initialization);
+    }
     if let Some(base) = initialization_base {
         // check-added-lines: allow(index)
         macro_push_handle(scope, &mut result, base);

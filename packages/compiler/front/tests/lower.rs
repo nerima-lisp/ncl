@@ -965,3 +965,151 @@ fn lowers_multiple_value_call_return_with_value_restoration() {
         "the catch handler restores the multiple-value list"
     );
 }
+
+#[test]
+fn escaping_block_return_preserves_multiple_values_and_live_cells() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let let_name = fx.cl("LET");
+    let multiple_value_call = fx.cl("MULTIPLE-VALUE-CALL");
+    let function = fx.cl("FUNCTION");
+    let lambda = fx.cl("LAMBDA");
+    let progn = fx.cl("PROGN");
+    let setq = fx.cl("SETQ");
+    let if_name = fx.cl("IF");
+    let values = fx.cl("VALUES");
+    let return_from = fx.cl("RETURN-FROM");
+    let list = fx.cl("LIST");
+    let cell = fx.user("CELL");
+    let local = fx.user("LOCAL");
+    let first = fx.user("FIRST");
+    let second = fx.user("SECOND");
+
+    let lambda_list = fx.list(&[first, second]);
+    let assign_parameter = fx.list(&[setq, first, first]);
+    let assign_cell = fx.list(&[setq, cell, first]);
+    let returned_values = fx.list(&[values, first, second]);
+    let return_form = fx.list(&[return_from, Word::NIL, returned_values]);
+    let lambda_body = fx.list(&[progn, assign_parameter, assign_cell, return_form]);
+    let lambda_form = fx.list(&[lambda, lambda_list, lambda_body]);
+    let function_designator = fx.list(&[function, lambda_form]);
+    let initial_values = fx.list(&[values, Word::fixnum(11), Word::fixnum(22)]);
+    let multiple_value_call_form =
+        fx.list(&[multiple_value_call, function_designator, initial_values]);
+    let assign_local = fx.list(&[setq, local, Word::fixnum(1)]);
+    let assign_cell_else = fx.list(&[setq, cell, Word::fixnum(2)]);
+    let if_form = fx.list(&[
+        if_name,
+        Word::fixnum(1),
+        multiple_value_call_form,
+        assign_cell_else,
+    ]);
+    let block_form = fx.list(&[block, Word::NIL, assign_local, if_form]);
+
+    let cell_binding = fx.list(&[cell, Word::fixnum(0)]);
+    let local_binding = fx.list(&[local, Word::fixnum(0)]);
+    let bindings = fx.list(&[cell_binding, local_binding]);
+    let body = fx.list(&[let_name, bindings, block_form]);
+    let list_designator = fx.list(&[function, list]);
+    let form = fx.list(&[multiple_value_call, list_designator, body]);
+
+    let expr = fx
+        .expand(form)
+        .expect("expand escaping block multiple values");
+    let lowered = lower_toplevel_for_eval(&expr).expect("lower escaping block multiple values");
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+
+    let handler_region = lowered
+        .entry
+        .handler_regions
+        .iter()
+        .find(|region| region.kind == HandlerKind::Catch)
+        .expect("escaping block catch region");
+    assert_eq!(
+        handler_region.binding_targets.len(),
+        2,
+        "assigned bindings are live across the escaping closure"
+    );
+    let handler = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == handler_region.handler)
+        .expect("escaping block handler");
+    assert_eq!(
+        handler.params.len(),
+        3,
+        "handler receives value and live bindings"
+    );
+    assert!(
+        handler.ops.iter().any(|op| matches!(
+            &op.kind,
+            OpKind::CallClosure { args, .. } if args.len() == 2
+        )),
+        "the catch handler restores the multiple-value list"
+    );
+    let Terminator::Jump { target, args } = &handler.terminator else {
+        panic!("escaping block handler jumps to its exit");
+    };
+    assert_eq!(args.len(), 3, "handler forwards value and live bindings");
+    let exit = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == *target)
+        .expect("escaping block exit");
+    assert_eq!(exit.params.len(), 3, "exit merges value and live bindings");
+}
+
+#[test]
+fn escaping_block_excludes_value_slots_from_handler_bindings() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let let_name = fx.cl("LET");
+    let setq = fx.cl("SETQ");
+    let unwind_protect = fx.cl("UNWIND-PROTECT");
+    let return_from = fx.cl("RETURN-FROM");
+    let value = fx.user("VALUE");
+
+    let binding = fx.list(&[value, Word::fixnum(0)]);
+    let bindings = fx.list(&[binding]);
+    let assign_value = fx.list(&[setq, value, Word::fixnum(1)]);
+    let return_form = fx.list(&[return_from, Word::NIL, value]);
+    let unwind_form = fx.list(&[unwind_protect, return_form, Word::NIL]);
+    let block_form = fx.list(&[block, Word::NIL, assign_value, unwind_form]);
+    let form = fx.list(&[let_name, bindings, block_form]);
+
+    let expr = fx
+        .expand(form)
+        .expect("expand escaping block with unwind-protect");
+    let lowered = lower_toplevel(&expr).expect("lower escaping block with unwind-protect");
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+
+    let handler_region = lowered
+        .entry
+        .handler_regions
+        .iter()
+        .find(|region| region.kind == HandlerKind::Catch)
+        .expect("escaping block catch region");
+    assert!(
+        handler_region.binding_targets.is_empty(),
+        "an uncaptured value slot is not restored through the handler"
+    );
+    let handler = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == handler_region.handler)
+        .expect("escaping block handler");
+    assert_eq!(
+        handler.params.len(),
+        1,
+        "handler receives only return value"
+    );
+}

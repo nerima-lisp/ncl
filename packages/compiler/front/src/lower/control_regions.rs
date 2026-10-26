@@ -61,7 +61,7 @@ impl Context<'_> {
         let live = assigned
             .iter()
             .filter_map(|name| match f.env().lookup_variable(name) {
-                Some(slot @ Slot::Cell(_)) => Some((name, slot)),
+                Some(Slot::Cell(value)) => Some((name, value)),
                 Some(Slot::Value(_)) | None => None,
             })
             .collect::<Vec<_>>();
@@ -86,9 +86,7 @@ impl Context<'_> {
             f.terminate(Terminator::Jump {
                 target: exit,
                 args: std::iter::once(value)
-                    .chain(live.iter().map(|(_, slot)| match slot {
-                        Slot::Cell(value) | Slot::Value(value) => *value,
-                    }))
+                    .chain(live.iter().map(|(_, value)| *value))
                     .collect(),
             })?;
         }
@@ -111,24 +109,13 @@ impl Context<'_> {
             handler,
             cleanup: None,
             catch_tag: Some(token),
-            binding_targets: live
-                .iter()
-                .map(|(_, slot)| match slot {
-                    Slot::Cell(value) | Slot::Value(value) => *value,
-                })
-                .collect(),
+            binding_targets: live.iter().map(|(_, value)| *value).collect(),
             depth: 0,
             parent: None,
         });
         f.position(exit)?;
-        for ((name, slot), (_, value)) in live.into_iter().zip(exit_values) {
-            f.env().rebind_variable(
-                name,
-                match slot {
-                    Slot::Cell(_) => Slot::Cell(value),
-                    Slot::Value(_) => Slot::Value(value),
-                },
-            );
+        for ((name, _), (_, value)) in live.into_iter().zip(exit_values) {
+            f.env().rebind_variable(name, Slot::Cell(value));
         }
         Ok(result)
     }

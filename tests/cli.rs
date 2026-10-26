@@ -121,11 +121,11 @@ fn common_lisp_load_is_a_callable_builtin() {
 
     let top_level = output(ncl().args(["--eval", &format!("(load \"{path}\")")]));
     assert!(top_level.status.success(), "{top_level:?}");
-    assert_eq!(String::from_utf8_lossy(&top_level.stdout).trim(), "41");
+    assert_eq!(String::from_utf8_lossy(&top_level.stdout).trim(), "T");
 
     let funcall = output(ncl().args(["--eval", &format!("(funcall #'load \"{path}\")")]));
     assert!(funcall.status.success(), "{funcall:?}");
-    assert_eq!(String::from_utf8_lossy(&funcall.stdout).trim(), "41");
+    assert_eq!(String::from_utf8_lossy(&funcall.stdout).trim(), "T");
 
     let builtin_funcall = output(ncl().args(["--eval", "(funcall #'car '(1))"]));
     assert!(builtin_funcall.status.success(), "{builtin_funcall:?}");
@@ -136,7 +136,7 @@ fn common_lisp_load_is_a_callable_builtin() {
         &format!("(progn (defun read-file (p) (load p)) (read-file \"{path}\"))"),
     ]));
     assert!(local.status.success(), "{local:?}");
-    assert_eq!(String::from_utf8_lossy(&local.stdout).trim(), "41");
+    assert_eq!(String::from_utf8_lossy(&local.stdout).trim(), "T");
 
     let missing = output(ncl().args([
         "--eval",

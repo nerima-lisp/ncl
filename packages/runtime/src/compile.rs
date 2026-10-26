@@ -8,8 +8,7 @@ use std::path::Path;
 use crate::{Runtime, RuntimeError};
 use ncl_compiler_front::{Declaration, Expr, FunctionDesignator, LambdaExpr, Operator, Quality};
 use ncl_object::Word;
-use ncl_object::{Runtime as ObjectRuntime, ThreadContext};
-use ncl_reader::{ReadOptions, StringSource, read};
+use ncl_reader::{StringSource, read};
 
 const FASL_FEATURES: u64 = 0;
 const PAYLOAD_MAGIC: &[u8] = b"NCLRTFASL";
@@ -405,15 +404,11 @@ const fn host_architecture() -> ncl_objfile::Architecture {
     }
 }
 
-pub fn read_forms(
-    context: &mut ThreadContext,
-    object: &ObjectRuntime,
-    source: &str,
-) -> Result<Vec<Word>, RuntimeError> {
-    let options = ReadOptions::standard(context, object)?;
+pub fn read_forms(runtime: &mut Runtime, source: &str) -> Result<Vec<Word>, RuntimeError> {
+    let options = crate::load::current_read_options(runtime, None)?;
     let mut input = StringSource::new(source);
     let mut forms = Vec::new();
-    while let Some(form) = read(context, object, &mut input, &options)? {
+    while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
         forms.push(form);
     }
     Ok(forms)

@@ -1,43 +1,134 @@
 use std::path::Path;
 
-use crate::evalwhen::{TopLevelMode, eval_when_start};
+use crate::evalwhen::TopLevelMode;
 use crate::{Runtime, RuntimeError, compile, file_environment};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FileError, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError,
-    ObjectRef, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, car, cdr, classify_object, make_cons, symbol_name, symbol_package,
+    BuiltinPackage, FileError, FunctionObject, HeapRootedWord, LambdaList, LispError,
+    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
+    Readtable as ObjectReadtable, Runtime as ObjectRuntime, ThreadContext, Word, car, cdr,
+    classify_object, make_string, symbol_name, symbol_package, symbol_value, with_root,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
+mod top_level;
+
+use top_level::eval_top_level;
+
 pub fn file(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
+    file_with_options(runtime, path, FileLoadOptions::default()).map_err(|error| match error {
+        FileLoadError::Runtime(error) => error,
+        FileLoadError::UnsupportedExternalFormat => {
+            RuntimeError::Native("unsupported source external format".to_owned())
+        }
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FileLoadOptions {
+    print_results: bool,
+    verbose: bool,
+    external_format_supported: bool,
+}
+
+impl Default for FileLoadOptions {
+    fn default() -> Self {
+        Self {
+            print_results: false,
+            verbose: false,
+            external_format_supported: true,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum FileLoadError {
+    Runtime(RuntimeError),
+    UnsupportedExternalFormat,
+}
+
+impl From<RuntimeError> for FileLoadError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
+impl From<ncl_objfile::ObjectError> for FileLoadError {
+    fn from(error: ncl_objfile::ObjectError) -> Self {
+        Self::Runtime(RuntimeError::from(error))
+    }
+}
+
+fn file_with_options(
+    runtime: &mut Runtime,
+    path: &Path,
+    options: FileLoadOptions,
+) -> Result<Word, FileLoadError> {
     let pathname = file_environment::absolute_path(path)?;
     let truename = std::fs::canonicalize(&pathname).map_err(|error| RuntimeError::Io {
         path: pathname.display().to_string(),
         error,
     })?;
     file_environment::enter_load(runtime, &pathname, &truename)?;
-    let result = file_contents(runtime, &pathname);
+    let result = (|| -> Result<Word, FileLoadError> {
+        if options.verbose {
+            write_standard_output(
+                runtime,
+                &format!("; Loading contents of file {}\n", pathname.display()),
+            )?;
+        }
+        let value = file_contents(runtime, &pathname, options)?;
+        if options.verbose {
+            write_standard_output(
+                runtime,
+                &format!("; Finished loading {}\n", pathname.display()),
+            )?;
+        }
+        Ok(value)
+    })();
     let restored = runtime.context.leave_progv().map_err(RuntimeError::from);
     match (result, restored) {
-        (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error.into()),
         (Ok(value), Ok(())) => Ok(value),
     }
 }
 
-fn file_contents(runtime: &mut Runtime, path: &Path) -> Result<Word, RuntimeError> {
+fn file_contents(
+    runtime: &mut Runtime,
+    path: &Path,
+    options: FileLoadOptions,
+) -> Result<Word, FileLoadError> {
     let bytes = std::fs::read(path).map_err(|error| RuntimeError::Io {
         path: path.display().to_string(),
         error,
     })?;
     if compile::is_fasl(&bytes) {
         let fasl = ncl_objfile::FaslReader::read(&bytes, host_architecture(), 0)?;
-        return runtime.load(&compile::decode_payload(&fasl.sections.debug)?);
+        let source = compile::decode_payload(&fasl.sections.debug)?;
+        return source_forms_with_print(
+            runtime,
+            &source,
+            TopLevelMode::Execute,
+            options.print_results,
+            true,
+        )
+        .map_err(FileLoadError::from);
+    }
+    if !options.external_format_supported {
+        return Err(FileLoadError::UnsupportedExternalFormat);
     }
     let source = String::from_utf8(bytes)
         .map_err(|_| RuntimeError::Native("source file is not valid UTF-8".to_owned()))?;
-    source_forms(runtime, &source)
+    source_forms_with_print(
+        runtime,
+        &source,
+        TopLevelMode::Execute,
+        options.print_results,
+        true,
+    )
+    .map_err(FileLoadError::from)
 }
 
 #[derive(Debug)]
@@ -71,6 +162,9 @@ fn load_with_runtime(
 ) -> Result<Word, ObjectError> {
     let path = ncl_lib_pathnames::resolve_pathname(ctx, object, args.required(0)?)?;
     let mut if_missing = true;
+    let mut print = None;
+    let mut verbose = None;
+    let mut external_format_supported = true;
     for index in (1..args.len()).step_by(2) {
         let keyword = args.get(index).ok_or(ObjectError::Layout)?;
         let value = args.get(index + 1).ok_or(ObjectError::Layout)?;
@@ -81,12 +175,12 @@ fn load_with_runtime(
             return Err(ObjectError::TypeError);
         };
         match name.as_str() {
-            "VERBOSE" | "PRINT" => {}
+            "VERBOSE" => verbose = Some(value != Word::NIL),
+            "PRINT" => print = Some(value != Word::NIL),
             "IF-DOES-NOT-EXIST" => if_missing = value != Word::NIL,
             "EXTERNAL-FORMAT" => {
-                if keyword_name(ctx, object, value)?.as_deref() != Some("DEFAULT") {
-                    return Err(ObjectError::TypeError);
-                }
+                external_format_supported =
+                    keyword_name(ctx, object, value)?.as_deref() == Some("DEFAULT");
             }
             _unknown_keyword => {
                 ctx.set_pending_lisp_error(LispError::ProgramError(
@@ -96,26 +190,41 @@ fn load_with_runtime(
             }
         }
     }
-    match file(runtime, &path) {
-        Ok(value) => {
-            values.set(&[value]);
-            Ok(value)
+    let print_results =
+        print.unwrap_or(common_lisp_variable_value(ctx, object, "*LOAD-PRINT*")? != Word::NIL);
+    let verbose =
+        verbose.unwrap_or(common_lisp_variable_value(ctx, object, "*LOAD-VERBOSE*")? != Word::NIL);
+    match file_with_options(
+        runtime,
+        &path,
+        FileLoadOptions {
+            print_results,
+            verbose,
+            external_format_supported,
+        },
+    ) {
+        Ok(_) => {
+            values.set(&[Word::TRUE]);
+            Ok(Word::TRUE)
         }
-        Err(RuntimeError::Io { error, .. })
+        Err(FileLoadError::UnsupportedExternalFormat) => Err(ObjectError::TypeError),
+        Err(FileLoadError::Runtime(RuntimeError::Io { error, .. }))
             if error.kind() == std::io::ErrorKind::NotFound && !if_missing =>
         {
             values.set(&[Word::NIL]);
             Ok(Word::NIL)
         }
-        Err(RuntimeError::Io { error, .. }) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(FileLoadError::Runtime(RuntimeError::Io { error, .. }))
+            if error.kind() == std::io::ErrorKind::NotFound =>
+        {
             ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
             Err(ObjectError::TypeError)
         }
-        Err(RuntimeError::Native(message)) => {
+        Err(FileLoadError::Runtime(RuntimeError::Native(message))) => {
             crate::native_error::signal_native_load_error(ctx, object, &message)?;
             Err(ObjectError::TypeError)
         }
-        Err(
+        Err(FileLoadError::Runtime(
             RuntimeError::Io { .. }
             | RuntimeError::Object(_)
             | RuntimeError::Read(_)
@@ -123,7 +232,7 @@ fn load_with_runtime(
             | RuntimeError::Lower(_)
             | RuntimeError::UndefinedFunction { .. }
             | RuntimeError::NativeFailure { .. },
-        ) => {
+        )) => {
             ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
             Err(ObjectError::TypeError)
         }
@@ -195,7 +304,7 @@ fn validate_load_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectEr
 }
 
 pub fn source_forms(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
-    source_forms_with_mode(runtime, source, TopLevelMode::Execute)
+    source_forms_with_print(runtime, source, TopLevelMode::Execute, false, false)
 }
 
 pub fn source_forms_with_mode(
@@ -203,8 +312,18 @@ pub fn source_forms_with_mode(
     source: &str,
     mode: TopLevelMode,
 ) -> Result<Word, RuntimeError> {
+    source_forms_with_print(runtime, source, mode, false, true)
+}
+
+fn source_forms_with_print(
+    runtime: &mut Runtime,
+    source: &str,
+    mode: TopLevelMode,
+    print_results: bool,
+    use_dynamic_reader: bool,
+) -> Result<Word, RuntimeError> {
     let mut input = StringSource::new(source);
-    let mut options = ReadOptions::standard(&mut runtime.context, &runtime.object)?;
+    let mut options = None;
     let result_root = HeapRootedWord::new(&runtime.context, Word::NIL)?;
 
     // Read one form, evaluate it, then read the next: package markers such as
@@ -212,12 +331,37 @@ pub fn source_forms_with_mode(
     // this same file has run, so the two steps must interleave rather than
     // reading every form up front.
     let loaded = (|| {
-        while let Some(form) = read(&mut runtime.context, &runtime.object, &mut input, &options)? {
-            let package = in_package_name(&runtime.context, form)?;
-            result_root.set(eval_top_level(runtime, &mut options, form, mode)?);
+        loop {
+            let mut current_options = if use_dynamic_reader {
+                current_read_options(runtime, options.take())?
+            } else {
+                match options.take() {
+                    Some(options) => options,
+                    None => ReadOptions::standard(&mut runtime.context, &runtime.object)?,
+                }
+            };
+            let Some(form) = read(
+                &mut runtime.context,
+                &runtime.object,
+                &mut input,
+                &current_options,
+            )?
+            else {
+                break;
+            };
+            let package = if use_dynamic_reader {
+                None
+            } else {
+                in_package_name(&runtime.context, form)?
+            };
+            result_root.set(eval_top_level(runtime, &mut current_options, form, mode)?);
             if let Some(package) = package {
-                options.set_current_package(package)?;
+                current_options.set_current_package(package)?;
             }
+            if print_results {
+                print_loaded_value(runtime, result_root.get())?;
+            }
+            options = Some(current_options);
         }
         Ok(result_root.get())
     })();
@@ -227,229 +371,88 @@ pub fn source_forms_with_mode(
     loaded
 }
 
-fn eval_top_level(
+pub fn current_read_options(
     runtime: &mut Runtime,
-    options: &mut ReadOptions,
-    form: Word,
-    mode: TopLevelMode,
-) -> Result<Word, RuntimeError> {
-    let rooted_form = HeapRootedWord::new(&runtime.context, form)?;
-    let result = eval_top_level_inner(runtime, options, rooted_form.get(), mode);
-    rooted_form.release().map_err(|_| {
-        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
-    })?;
-    result
-}
-
-fn eval_top_level_inner(
-    runtime: &mut Runtime,
-    options: &mut ReadOptions,
-    form: Word,
-    mode: TopLevelMode,
-) -> Result<Word, RuntimeError> {
-    if !matches!(classify_object(&runtime.context, form), ObjectRef::Cons(_)) {
-        return eval_rooted(runtime, options, form);
-    }
-    let elements = ncl_compiler_front::form::list(&mut runtime.context, form)?;
-    let Some((head, arguments)) = elements.split_first() else {
-        return eval_rooted(runtime, options, form);
+    previous: Option<ReadOptions>,
+) -> Result<ReadOptions, RuntimeError> {
+    let mut options = match previous {
+        Some(options) => options,
+        None => ReadOptions::standard(&mut runtime.context, &runtime.object)?,
     };
-    let Some(name) = top_level_name(&runtime.context, &runtime.object, *head)? else {
-        return eval_rooted(runtime, options, form);
+    let package_word =
+        common_lisp_variable_value(&mut runtime.context, &runtime.object, "*PACKAGE*")?;
+    let ObjectRef::Package(package) = classify_object(&runtime.context, package_word) else {
+        return Err(RuntimeError::Object(ObjectError::TypeError));
     };
-    let (body_start, eval_when_active) = if name == "PROGN" {
-        (0, true)
-    } else if name == "LOCALLY" {
-        (
-            leading_declarations(&mut runtime.context, &runtime.object, arguments),
-            true,
-        )
-    } else if name == "EVAL-WHEN" {
-        let (body_start, active) = eval_when_start(runtime, arguments, mode)?;
-        (body_start, active)
-    } else if name == "MACROLET" || name == "SYMBOL-MACROLET" {
-        let Some(rest) = arguments.get(1..) else {
-            return eval_rooted(runtime, options, form);
-        };
-        (
-            1 + leading_declarations(&mut runtime.context, &runtime.object, rest),
-            true,
-        )
-    } else {
-        return eval_rooted(runtime, options, form);
-    };
-    if name == "EVAL-WHEN" && !eval_when_active {
-        return Ok(Word::NIL);
+    let package_name = word_string(
+        &runtime.context,
+        Package::from_word(package).name(&runtime.context)?,
+    )?;
+    let readtable_word =
+        common_lisp_variable_value(&mut runtime.context, &runtime.object, "*READTABLE*")?;
+    if !matches!(
+        classify_object(&runtime.context, readtable_word),
+        ObjectRef::Readtable(_)
+    ) {
+        return Err(RuntimeError::Object(ObjectError::TypeError));
     }
-    if body_start >= arguments.len() {
-        return eval_rooted(runtime, options, form);
-    }
-    let rooted_elements = elements
-        .iter()
-        .copied()
-        .map(|element| HeapRootedWord::new(&runtime.context, element))
-        .collect::<Result<Vec<_>, _>>()?;
-    let result_root = HeapRootedWord::new(&runtime.context, Word::NIL)?;
-    let evaluated = (|| {
-        for body_index in 1 + body_start..rooted_elements.len() {
-            let body = rooted_elements
-                .get(body_index)
-                .map(HeapRootedWord::get)
-                .ok_or_else(|| {
-                    RuntimeError::Native("load: top-level body is missing".to_owned())
-                })?;
-            let body_form = if name == "PROGN" || name == "EVAL-WHEN" {
-                body
-            } else {
-                let prefix = rooted_elements
-                    .get(..=body_start)
-                    .ok_or_else(|| {
-                        RuntimeError::Native("load: top-level prefix is missing".to_owned())
-                    })?
-                    .iter()
-                    .map(HeapRootedWord::get)
-                    .collect::<Vec<_>>();
-                wrap_top_level_form(runtime, &prefix, body)?
-            };
-            let result = if name == "PROGN" || name == "EVAL-WHEN" {
-                eval_top_level(runtime, options, body_form, mode)?
-            } else {
-                eval_rooted(runtime, options, body_form)?
-            };
-            result_root.set(result);
-        }
-        Ok(result_root.get())
-    })();
-    for root in rooted_elements.into_iter().rev() {
-        root.release().map_err(|_| {
-            RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
-        })?;
-    }
-    result_root.release().map_err(|_| {
-        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
-    })?;
-    evaluated
-}
-
-fn top_level_name(
-    ctx: &ncl_object::ThreadContext,
-    runtime: &ObjectRuntime,
-    word: Word,
-) -> Result<Option<String>, RuntimeError> {
-    if !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
-        return Ok(None);
-    }
-    let Some(common_lisp) = runtime.find_package(ctx, "COMMON-LISP") else {
-        return Ok(None);
-    };
-    if symbol_package(ctx, word)? != common_lisp {
-        return Ok(None);
-    }
-    Ok(Some(word_string(ctx, symbol_name(ctx, word)?)?))
-}
-
-fn leading_declarations(
-    ctx: &mut ncl_object::ThreadContext,
-    runtime: &ObjectRuntime,
-    forms: &[Word],
-) -> usize {
-    forms
-        .iter()
-        .take_while(|form| {
-            let Ok(elements) = ncl_compiler_front::form::list(ctx, **form) else {
-                return false;
-            };
-            elements
-                .first()
-                .and_then(|head| top_level_name(ctx, runtime, *head).ok().flatten())
-                .is_some_and(|name| name == "DECLARE")
-        })
-        .count()
-}
-
-fn wrap_top_level_form(
-    runtime: &mut Runtime,
-    elements: &[Word],
-    body: Word,
-) -> Result<Word, RuntimeError> {
-    let words = elements
-        .iter()
-        .copied()
-        .chain(std::iter::once(body))
-        .map(|word| HeapRootedWord::new(&runtime.context, word))
-        .collect::<Result<Vec<_>, _>>()?;
-    let wrapped = HeapRootedWord::new(&runtime.context, Word::NIL)?;
-    for word in words.iter().rev() {
-        wrapped.set(make_cons(
-            &mut runtime.context,
-            &runtime.object,
-            word.get(),
-            wrapped.get(),
-        )?);
-    }
-    let result = wrapped.get();
-    for word in words.into_iter().rev() {
-        word.release().map_err(|_| {
-            RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
-        })?;
-    }
-    wrapped.release().map_err(|_| {
-        RuntimeError::Native("load: top-level form root stack corrupted".to_owned())
-    })?;
-    Ok(result)
-}
-
-/// Evaluate `form`, keeping both it and the reader's readtable rooted across
-/// the call.
-///
-/// `Runtime::eval_form` compiles `form` before running it, and a successful
-/// compilation *permanently* grows the per-thread root stack: each freshly
-/// compiled function's code object and constants table are pushed via
-/// [`ncl_object::push_root`] and intentionally never popped, so the compiled
-/// code stays reachable for the runtime's lifetime (see
-/// `Runtime::make_function_object`/`root_entry_code`). A caller cannot
-/// therefore bracket this call with an ordinary `push_root`/`pop_root` pair
-/// on that same stack: by the time `eval_form` returns, the stack is taller
-/// than the caller's token expects, `pop_root` no longer sees its own push at
-/// the top, and it reports corruption instead of silently misbehaving (this
-/// is the "form root stack corrupted" failure the previous rooting attempt
-/// hit). [`ncl_object::Scope`] cannot help either: its root slots are tied to
-/// an exclusive borrow of one `ThreadContext`, and `eval_form` needs the
-/// whole `Runtime` (which owns that context as a field) back before it can
-/// run.
-///
-/// [`push_heap_root`]/[`unregister_heap_root`] register roots in the runtime's
-/// heap-level registry instead, a separate stack that ordinary compilation
-/// does not touch, so bracketing `eval_form` with that pair stays balanced
-/// regardless of how much the per-thread stack grows underneath it.
-///
-/// Both roots are read back from their (possibly forwarded) post-call value
-/// before being released, and the readtable stored in `options` is refreshed
-/// from that value: `eval_form` can allocate and collect, which would
-/// otherwise leave the previously-cached readtable word pointing at a stale
-/// address on the next `read` call.
-fn eval_rooted(
-    runtime: &mut Runtime,
-    options: &mut ReadOptions,
-    form: Word,
-) -> Result<Word, RuntimeError> {
-    let form_root = HeapRootedWord::new(&runtime.context, form)?;
-    let readtable_root =
-        HeapRootedWord::new(&runtime.context, options.readtable().object().as_word())?;
-
-    let evaluated = runtime.eval_form(form_root.get());
-
-    let readtable = readtable_root.get();
-    readtable_root
-        .release()
-        .map_err(|_| RuntimeError::Native("load: form root stack corrupted".to_owned()))?;
-    form_root
-        .release()
-        .map_err(|_| RuntimeError::Native("load: form root stack corrupted".to_owned()))?;
+    options.set_current_package(package_name)?;
     options.set_readtable(Readtable::from_object(ObjectReadtable::from_word(
-        readtable,
+        readtable_word,
     )));
-    evaluated
+    Ok(options)
+}
+
+fn common_lisp_variable_value(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    name: &str,
+) -> Result<Word, ObjectError> {
+    let mut common_lisp = object
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::Layout)?;
+    with_root(ctx, &mut common_lisp, |ctx, common_lisp| {
+        let (mut symbol, _) = Package::from_word(*common_lisp).intern(ctx, object, name)?;
+        with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
+    })
+}
+
+fn print_loaded_value(runtime: &mut Runtime, value: Word) -> Result<(), RuntimeError> {
+    let object = &runtime.object;
+    let context = &mut runtime.context;
+    let value = HeapRootedWord::new(context, value)?;
+    let printed = call_output_builtin(context, object, "PRIN1", &[value.get()])
+        .and_then(|_| call_output_builtin(context, object, "TERPRI", &[]));
+    let released = value
+        .release()
+        .map_err(|_| RuntimeError::Native("load: printed value root stack corrupted".to_owned()));
+    match (printed, released) {
+        (Err(error), _) => Err(RuntimeError::from(error)),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(_), Ok(())) => Ok(()),
+    }
+}
+
+fn write_standard_output(runtime: &mut Runtime, text: &str) -> Result<(), RuntimeError> {
+    let object = &runtime.object;
+    let context = &mut runtime.context;
+    let mut text = make_string(context, object, &text.chars().collect::<Vec<_>>())?;
+    with_root(context, &mut text, |context, text| {
+        call_output_builtin(context, object, "WRITE-STRING", &[*text]).map(|_| ())
+    })?;
+    Ok(())
+}
+
+fn call_output_builtin(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    name: &str,
+    arguments: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = object
+        .function(ctx, "COMMON-LISP", name)
+        .ok_or(ObjectError::UndefinedFunction)?;
+    object.call_builtin(ctx, FunctionObject::try_from(function)?, arguments)
 }
 
 fn in_package_name(

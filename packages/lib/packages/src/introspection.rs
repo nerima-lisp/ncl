@@ -12,10 +12,9 @@ mod intern_symbol;
 use intern_symbol::{intern, status_word};
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FindStatus, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
-    Package, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object,
-    slot_ref, symbol_name,
+    BuiltinArgs, BuiltinName, Instance, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
+    ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object, slot_ref,
+    symbol_name,
 };
 use std::collections::HashSet;
 
@@ -66,15 +65,6 @@ const ONE_OBJECT: &[Parameter] = &[OBJECT];
 const ONE_NAME: &[Parameter] = &[NAME];
 const ONE_FIND_PACKAGE_NAME: &[Parameter] = &[FIND_PACKAGE_NAME];
 const ONE_SYMBOLS: &[Parameter] = &[SYMBOLS];
-const ITERATION_MODE: Parameter = Parameter {
-    name: BuiltinName::new("MODE"),
-    ty: ParameterType::Any,
-};
-const ITERATION_PACKAGE: Parameter = Parameter {
-    name: BuiltinName::new("PACKAGE"),
-    ty: ParameterType::Any,
-};
-pub(super) const PACKAGE_ITERATION_PARAMETERS: &[Parameter] = &[ITERATION_MODE, ITERATION_PACKAGE];
 pub fn package_arg(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -236,129 +226,6 @@ fn find_all_symbols(
             Ok(list[0])
         })
     })
-}
-
-fn string_word_equals(
-    ctx: &ThreadContext,
-    word: Word,
-    expected: &str,
-) -> Result<bool, ObjectError> {
-    let characters = expected.chars().collect::<Vec<_>>();
-    if ncl_object::string_length(ctx, word)? != characters.len() {
-        return Ok(false);
-    }
-    for (index, character) in characters.into_iter().enumerate() {
-        if ncl_object::string_ref(ctx, word, index)? != character {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn symbol_list(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    symbols: &mut [Word],
-) -> Result<Word, ObjectError> {
-    with_rooted_words(ctx, symbols, |ctx, symbols| {
-        let mut list = [Word::NIL];
-        with_rooted_words(ctx, &mut list, |ctx, list| {
-            for symbol in symbols.iter().rev().copied() {
-                list[0] = ncl_object::make_cons(ctx, runtime, symbol, list[0])?;
-            }
-            Ok(list[0])
-        })
-    })
-}
-
-fn all_package_iteration_symbols(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-) -> Result<Word, ObjectError> {
-    let mut symbols = Vec::new();
-    for package in runtime.all_packages(ctx)? {
-        Package::from_word(package).for_each_symbol(ctx, |symbol| symbols.push(symbol))?;
-    }
-    symbol_list(ctx, runtime, &mut symbols)
-}
-
-fn package_iteration_symbols_for(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    package: Package,
-    external_only: bool,
-) -> Result<Word, ObjectError> {
-    let mut package_root = [package.as_word()];
-    with_rooted_words(ctx, &mut package_root, |ctx, package_root| {
-        let package = Package::from_word(package_root[0]);
-        let mut local = Vec::new();
-        package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
-
-        if external_only {
-            let mut external = Vec::new();
-            with_rooted_words(ctx, &mut local, |ctx, local| {
-                for symbol in local.iter().copied() {
-                    let name = symbol_name(ctx, symbol)?;
-                    if let Some((found, FindStatus::External)) = package.find_symbol(ctx, name)? {
-                        if found == symbol {
-                            external.push(symbol);
-                        }
-                    }
-                }
-                Ok(())
-            })?;
-            return symbol_list(ctx, runtime, &mut external);
-        }
-
-        let mut inherited = Vec::new();
-        for used in list_items(ctx, package.use_list(ctx)?)? {
-            let used = Package::from_word(used);
-            let mut candidates = Vec::new();
-            used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
-            with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
-                for candidate in candidates.iter().copied() {
-                    let name = symbol_name(ctx, candidate)?;
-                    let Some((source, FindStatus::External)) = used.find_symbol(ctx, name)? else {
-                        continue;
-                    };
-                    if source != candidate {
-                        continue;
-                    }
-                    let Some((visible, FindStatus::Inherited)) = package.find_symbol(ctx, name)?
-                    else {
-                        continue;
-                    };
-                    if visible == candidate {
-                        inherited.push(candidate);
-                    }
-                }
-                Ok(())
-            })?;
-        }
-        local.extend(inherited);
-        symbol_list(ctx, runtime, &mut local)
-    })
-}
-
-fn package_iteration_symbols(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let mode = symbol_name(ctx, args.required(0)?)?;
-    if string_word_equals(ctx, mode, "ALL")? {
-        return all_package_iteration_symbols(ctx, runtime);
-    }
-    let external_only = if string_word_equals(ctx, mode, "EXTERNAL")? {
-        true
-    } else if string_word_equals(ctx, mode, "SYMBOLS")? {
-        false
-    } else {
-        return Err(ObjectError::TypeError);
-    };
-    let package = package_arg(ctx, runtime, args, 1)?;
-    package_iteration_symbols_for(ctx, runtime, package, external_only)
 }
 
 fn package_error_package(

@@ -1,11 +1,11 @@
 use super::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, NAME, ONE_FIND_PACKAGE_NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE,
-    ONE_SYMBOLS, ObjectError, Parameter, Runtime, ThreadContext, export, find_all_symbols,
-    find_package, find_symbol, import, intern, list_all_packages, package_error_package,
-    package_management, package_name, package_nicknames, package_shadowing_symbols,
-    package_use_list, package_used_by_list, packagep, shadow, unexport, unintern, unuse_package,
-    use_package,
+    ONE_SYMBOLS, ObjectError, PACKAGE_ITERATION_PARAMETERS, Parameter, Runtime, ThreadContext,
+    export, find_all_symbols, find_package, find_symbol, import, intern, list_all_packages,
+    package_error_package, package_iteration_symbols, package_management, package_name,
+    package_nicknames, package_shadowing_symbols, package_use_list, package_used_by_list, packagep,
+    shadow, unexport, unintern, unuse_package, use_package,
 };
 
 const NO_PARAMETERS: &[Parameter] = &[];
@@ -107,6 +107,20 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinImplementation::direct(descriptor(required, optional), function),
         )?;
     }
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclExt,
+            BuiltinName::new("%PACKAGE-ITERATION-SYMBOLS"),
+        ),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(PACKAGE_ITERATION_PARAMETERS),
+                convention: BuiltinConvention::Adapted,
+            },
+            package_iteration_symbols,
+        ),
+    )?;
     runtime.register_builtin(
         &mut ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-PACKAGE")),

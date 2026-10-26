@@ -446,23 +446,57 @@ fn read_base_is_honoured() {
 }
 
 #[test]
-fn single_float_marker_is_rejected() {
+fn reads_all_float_exponent_markers() -> Result<(), String> {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
-    let opts = standard(&runtime, &mut ctx);
-    let error = read_from_string(&mut ctx, &runtime, "1.5f0", &opts).unwrap_err();
-    assert!(matches!(
-        error,
-        ncl_reader::ReadError::FloatFormatUnavailable(_)
-    ));
-    let word = read_from_string(&mut ctx, &runtime, "1.5d0", &opts)
+
+    for token in [
+        "1.31273e3",
+        "1.31273s3",
+        "1.31273f3",
+        "1.31273d3",
+        "1.31273l3",
+    ] {
+        let word = read_one(&runtime, &mut ctx, token);
+        let ObjectRef::DoubleFloat(raw) = classify_object(&ctx, word) else {
+            return Err(format!("expected a DoubleFloat object for {token}"));
+        };
+        let value =
+            ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(raw)).unwrap();
+        assert_eq!(value.to_bits(), 1312.73_f64.to_bits(), "{token}");
+    }
+
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_default_float_format(ncl_reader::FloatFormat::SingleFloat);
+    let word = read_from_string(&mut ctx, &runtime, "1.5e0", &opts)
         .unwrap()
         .unwrap();
-    assert!(matches!(
-        classify_object(&ctx, word),
-        ObjectRef::DoubleFloat(_)
-    ));
+    let ObjectRef::DoubleFloat(raw) = classify_object(&ctx, word) else {
+        return Err("expected a DoubleFloat object with the single-float default".into());
+    };
+    let value = ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(raw)).unwrap();
+    assert_eq!(value.to_bits(), 1.5_f64.to_bits());
+    Ok(())
+}
+
+#[test]
+fn signed_float_exponent_and_missing_digits_are_handled() -> Result<(), String> {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+
+    let word = read_one(&runtime, &mut ctx, "1.0s-2");
+    let ObjectRef::DoubleFloat(raw) = classify_object(&ctx, word) else {
+        return Err("expected a DoubleFloat object for a signed exponent".into());
+    };
+    let value = ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(raw)).unwrap();
+    assert_eq!(value.to_bits(), 0.01_f64.to_bits());
+
+    let opts = standard(&runtime, &mut ctx);
+    let error = read_from_string(&mut ctx, &runtime, "1.0s", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::InvalidNumber(_)));
+    Ok(())
 }
 
 #[test]

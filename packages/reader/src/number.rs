@@ -116,7 +116,10 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
             exp_digits += 1;
             index += 1;
         }
-        if exp_digits == 0 || index != n {
+        if exp_digits == 0 {
+            return (index == n && (digits_before > 0 || has_dot)).then_some(NumberShape::Float);
+        }
+        if index != n {
             return None;
         }
     }
@@ -234,7 +237,6 @@ pub fn parse_integer_chars(
     }
 }
 
-/// Parse a base-10 float token into a double-float object.
 fn parse_float(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -256,18 +258,21 @@ fn parse_float(
             _ => normalized.push(ch),
         }
     }
-    let target = match marker {
-        Some('s' | 'S' | 'f' | 'F') => FloatFormat::SingleFloat,
-        Some('d' | 'D' | 'l' | 'L') => FloatFormat::DoubleFloat,
+    let target = match marker.map(|marker| marker.to_ascii_lowercase()) {
+        Some('s' | 'f') => FloatFormat::SingleFloat,
+        Some('d' | 'l') => FloatFormat::DoubleFloat,
         _ => float_format,
     };
-    if target == FloatFormat::SingleFloat {
-        return Err(ReadError::FloatFormatUnavailable(marker.unwrap_or('s')));
-    }
     let value: f64 = normalized
         .parse()
         .map_err(|_| ReadError::InvalidNumber(normalized))?;
-    Ok(make_double(ctx, runtime, value)?.into())
+
+    // NCL stores every selected float format in its single DoubleFloat object representation.
+    match target {
+        FloatFormat::SingleFloat | FloatFormat::DoubleFloat => {
+            Ok(make_double(ctx, runtime, value)?.into())
+        }
+    }
 }
 
 fn collect(token: &[char]) -> String {

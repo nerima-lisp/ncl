@@ -1,9 +1,11 @@
 //! The `typep` predicate.
 
+use std::cmp::Ordering;
+
 use ncl_object::{
-    ArrayElementType, ObjectRef, Package, ThreadContext, Word, array_dimensions, car, cdr,
-    classify_object, simple_vector_length, specialized_array_element_type, string_length,
-    symbol_package,
+    ArrayElementType, Bignum, ObjectRef, Package, ThreadContext, Word, array_dimensions,
+    bignum_limbs, bignum_sign, car, cdr, classify_object, simple_vector_length,
+    specialized_array_element_type, string_length, symbol_package,
 };
 
 use crate::adapter::from_word;
@@ -26,7 +28,7 @@ pub fn typep(
 ) -> Result<bool, TypeError> {
     match spec {
         TypeSpecifier::Named(named) => typep_named(ctx, object, *named),
-        TypeSpecifier::IntegerRange { low, high } => Ok(typep_integer_range(object, *low, *high)),
+        TypeSpecifier::IntegerRange { low, high } => typep_integer_range(ctx, object, *low, *high),
         TypeSpecifier::Or(specs) => any_match(ctx, object, specs),
         TypeSpecifier::And(specs) => all_match(ctx, object, specs),
         TypeSpecifier::Not(inner) => Ok(!typep(ctx, object, inner)?),
@@ -136,12 +138,23 @@ fn typep_named(ctx: &ThreadContext, object: Word, named: NamedType) -> Result<bo
     }
 }
 
-const fn typep_integer_range(object: Word, low: IntegerBound, high: IntegerBound) -> bool {
-    let Some(value) = object.as_fixnum() else {
-        // Bignum objects are outside fixnum range and are not compared here.
-        return false;
+fn typep_integer_range(
+    ctx: &ThreadContext,
+    object: Word,
+    low: IntegerBound,
+    high: IntegerBound,
+) -> Result<bool, TypeError> {
+    if let Some(value) = object.as_fixnum() {
+        return Ok(bound_contains(low, value, true) && bound_contains(high, value, false));
+    }
+    let ObjectRef::Bignum(word) = classify_object(ctx, object) else {
+        return Ok(false);
     };
-    bound_contains(low, value, true) && bound_contains(high, value, false)
+    let bignum = Bignum::from_word(word);
+    let negative = bignum_sign(ctx, bignum)?;
+    let limbs = bignum_limbs(ctx, bignum)?;
+    Ok(bound_contains_bignum(low, negative, &limbs, true)
+        && bound_contains_bignum(high, negative, &limbs, false))
 }
 
 const fn bound_contains(bound: IntegerBound, value: i64, lower: bool) -> bool {
@@ -161,6 +174,79 @@ const fn bound_contains(bound: IntegerBound, value: i64, lower: bool) -> bool {
                 value < bound
             }
         }
+    }
+}
+
+fn bound_contains_bignum(bound: IntegerBound, negative: bool, limbs: &[u32], lower: bool) -> bool {
+    match bound {
+        IntegerBound::Unbounded => true,
+        IntegerBound::Inclusive(bound) => {
+            let ordering = compare_bignum_to_i64(negative, limbs, bound);
+            if lower {
+                ordering != Ordering::Less
+            } else {
+                ordering != Ordering::Greater
+            }
+        }
+        IntegerBound::Exclusive(bound) => {
+            let ordering = compare_bignum_to_i64(negative, limbs, bound);
+            if lower {
+                ordering == Ordering::Greater
+            } else {
+                ordering == Ordering::Less
+            }
+        }
+    }
+}
+
+fn compare_bignum_to_i64(negative: bool, limbs: &[u32], bound: i64) -> Ordering {
+    let length = limbs
+        .iter()
+        .rposition(|limb| *limb != 0)
+        .map_or(0, |index| index + 1);
+    if length == 0 {
+        return 0_i64.cmp(&bound);
+    }
+
+    if negative != bound.is_negative() {
+        return if negative {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
+    }
+
+    let bytes = bound.unsigned_abs().to_le_bytes();
+    let bound_limbs = [
+        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+    ];
+    let bound_length = if bound_limbs[1] == 0 {
+        usize::from(bound_limbs[0] != 0)
+    } else {
+        2
+    };
+    let magnitude_ordering = match length.cmp(&bound_length) {
+        Ordering::Less => Ordering::Less,
+        Ordering::Greater => Ordering::Greater,
+        Ordering::Equal => {
+            for index in (0..length).rev() {
+                let ordering = limbs[index].cmp(&bound_limbs[index]);
+                if ordering != Ordering::Equal {
+                    return if negative {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    };
+                }
+            }
+            Ordering::Equal
+        }
+    };
+    if negative {
+        magnitude_ordering.reverse()
+    } else {
+        magnitude_ordering
     }
 }
 

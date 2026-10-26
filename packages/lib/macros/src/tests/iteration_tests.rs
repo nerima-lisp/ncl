@@ -187,9 +187,9 @@ fn dotimes_keeps_declarations_after_a_leading_string_in_tagbody() -> Result<(), 
     )?;
     let expansion = expand(&mut ctx, &runtime, "DOTIMES", input)?;
     let block_parts = elements(&mut ctx, expansion)?;
-    let let_form = ncl_object::HeapRootedWord::new(&mut ctx, block_parts[2])?;
+    let let_form = ncl_object::HeapRootedWord::new(&ctx, block_parts[2])?;
     let let_parts = elements(&mut ctx, let_form.get())?;
-    let tagbody = ncl_object::HeapRootedWord::new(&mut ctx, let_parts[2])?;
+    let tagbody = ncl_object::HeapRootedWord::new(&ctx, let_parts[2])?;
     let tagbody_parts = elements(&mut ctx, tagbody.get())?;
 
     assert_eq!(tagbody_parts[0], symbol(&mut ctx, &runtime, "TAGBODY")?);

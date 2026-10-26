@@ -5,8 +5,8 @@
 use std::error::Error;
 
 use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, Word, make_bignum_from_i128, make_cons,
-    make_double, make_string, set_symbol_plist,
+    ObjectError, Package, Runtime, ThreadContext, Word, make_bignum_from_i128,
+    make_bignum_from_limbs, make_cons, make_double, make_string, set_symbol_plist,
 };
 use ncl_types::{
     DeftypeExpanderCaller, IntegerBound, NamedType, TypeError, TypeSpecifier, Value,
@@ -141,11 +141,58 @@ fn parsed_integer_zero_to_unbounded_includes_bignums() {
     let large_negative = make_bignum_from_i128(&mut ctx, &runtime, -(1_i128 << 70))
         .unwrap()
         .into();
+    let zero_bignum = make_bignum_from_i128(&mut ctx, &runtime, 0).unwrap().into();
+    let small_bignum = make_bignum_from_limbs(&mut ctx, &runtime, false, &[5])
+        .unwrap()
+        .into();
+    let positive_boundary = make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 62)
+        .unwrap()
+        .into();
+    let negative_boundary = make_bignum_from_i128(&mut ctx, &runtime, -(1_i128 << 62))
+        .unwrap()
+        .into();
+    let bounded = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Inclusive(0),
+        high: IntegerBound::Inclusive(i64::MAX),
+    };
+    let negative_only = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Unbounded,
+        high: IntegerBound::Inclusive(-1),
+    };
+    let exact_positive = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Inclusive(1_i64 << 62),
+        high: IntegerBound::Inclusive(1_i64 << 62),
+    };
+    let exact_negative = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Inclusive(-(1_i64 << 62)),
+        high: IntegerBound::Inclusive(-(1_i64 << 62)),
+    };
+    let exclusive_lower = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Exclusive(1_i64 << 62),
+        high: IntegerBound::Unbounded,
+    };
+    let exclusive_upper = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Unbounded,
+        high: IntegerBound::Exclusive(1_i64 << 62),
+    };
+    let negative_upper = TypeSpecifier::IntegerRange {
+        low: IntegerBound::Unbounded,
+        high: IntegerBound::Inclusive(-(1_i64 << 62)),
+    };
 
     assert!(typep(&mut ctx, Word::fixnum(0), &specifier).unwrap());
     assert!(typep(&mut ctx, large_positive, &specifier).unwrap());
     assert!(!typep(&mut ctx, Word::fixnum(-1), &specifier).unwrap());
     assert!(!typep(&mut ctx, large_negative, &specifier).unwrap());
+    assert!(typep(&mut ctx, zero_bignum, &specifier).unwrap());
+    assert!(typep(&mut ctx, small_bignum, &bounded).unwrap());
+    assert!(!typep(&mut ctx, large_positive, &bounded).unwrap());
+    assert!(!typep(&mut ctx, large_positive, &negative_only).unwrap());
+    assert!(typep(&mut ctx, positive_boundary, &exact_positive).unwrap());
+    assert!(typep(&mut ctx, negative_boundary, &exact_negative).unwrap());
+    assert!(!typep(&mut ctx, positive_boundary, &exclusive_lower).unwrap());
+    assert!(!typep(&mut ctx, positive_boundary, &exclusive_upper).unwrap());
+    assert!(typep(&mut ctx, large_negative, &negative_upper).unwrap());
 }
 
 #[test]

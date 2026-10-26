@@ -12,6 +12,20 @@ fn expand(
     callback(ctx, runtime, &args, &mut ncl_object::MultipleValues::new())
 }
 
+fn expand_without_arguments(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+) -> Result<Word, ObjectError> {
+    let callback = callback_for(name).ok_or(ObjectError::UndefinedFunction)?;
+    callback(
+        ctx,
+        runtime,
+        &ncl_object::BuiltinArgs::new(&[]),
+        &mut ncl_object::MultipleValues::new(),
+    )
+}
+
 /// `destructuring-bind` expands to a `let*` of `consp`/`car`/`cdr` accesses
 /// (see `crate::destructuring`), not a `funcall` of an ordinary lambda: an
 /// ordinary lambda list cannot express nested patterns, `&whole`, or a
@@ -66,6 +80,90 @@ fn iteration_macros_validate_specs_and_build_blocks() -> Result<(), ObjectError>
 }
 
 #[test]
+fn iteration_macro_input_errors_and_optional_results_are_covered() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+
+    for name in ["DOLIST", "DOTIMES"] {
+        let operator = symbol(&mut ctx, &runtime, name)?;
+        let no_arguments = list(&mut ctx, &runtime, &[operator])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, no_arguments),
+            Err(ObjectError::TypeError)
+        );
+
+        let non_list_spec = list(&mut ctx, &runtime, &[operator, Word::fixnum(1)])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, non_list_spec),
+            Err(ObjectError::TypeError)
+        );
+
+        for spec in [
+            list(&mut ctx, &runtime, &[])?,
+            list(&mut ctx, &runtime, &[x])?,
+            list(&mut ctx, &runtime, &[x, Word::NIL, Word::NIL, Word::NIL])?,
+            list(&mut ctx, &runtime, &[Word::fixnum(1), Word::NIL])?,
+        ] {
+            let input = list(&mut ctx, &runtime, &[operator, spec])?;
+            assert_eq!(
+                expand(&mut ctx, &runtime, name, input),
+                Err(ObjectError::TypeError)
+            );
+        }
+
+        let spec = list(&mut ctx, &runtime, &[x, Word::NIL, x])?;
+        let input = list(&mut ctx, &runtime, &[operator, spec])?;
+        let expansion = expand(&mut ctx, &runtime, name, input)?;
+        assert_eq!(
+            elements(&mut ctx, expansion)?[0],
+            symbol(&mut ctx, &runtime, "BLOCK")?
+        );
+    }
+
+    let operator = symbol(&mut ctx, &runtime, "DESTRUCTURING-BIND")?;
+    let no_arguments = list(&mut ctx, &runtime, &[operator])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "DESTRUCTURING-BIND", no_arguments),
+        Err(ObjectError::TypeError)
+    );
+    let missing_value = list(&mut ctx, &runtime, &[operator, x])?;
+    assert_eq!(
+        expand(&mut ctx, &runtime, "DESTRUCTURING-BIND", missing_value),
+        Err(ObjectError::TypeError)
+    );
+    let no_body = list(&mut ctx, &runtime, &[operator, x, x])?;
+    assert!(expand(&mut ctx, &runtime, "DESTRUCTURING-BIND", no_body).is_ok());
+
+    assert_eq!(
+        expand(&mut ctx, &runtime, "DOLIST", Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+    for name in [
+        "DESTRUCTURING-BIND",
+        "DOLIST",
+        "DOTIMES",
+        "DO-SYMBOLS",
+        "DO-EXTERNAL-SYMBOLS",
+        "DO-ALL-SYMBOLS",
+    ] {
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, Word::NIL),
+            Err(ObjectError::TypeError),
+            "{name} malformed form"
+        );
+        assert_eq!(
+            expand_without_arguments(&mut ctx, &runtime, name),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn do_symbols_macros_expand_with_declarations_and_blocks() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     register(&runtime)?;
@@ -101,6 +199,13 @@ fn do_symbols_macros_expand_with_declarations_and_blocks() -> Result<(), ObjectE
         let malformed_input = list(&mut ctx, &runtime, &[operator, Word::fixnum(1)])?;
         assert_eq!(
             expand(&mut ctx, &runtime, name, malformed_input),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+
+        let dotted_input = ncl_object::make_cons(&mut ctx, &runtime, operator, Word::fixnum(1))?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, dotted_input),
             Err(ObjectError::TypeError),
             "{name}"
         );

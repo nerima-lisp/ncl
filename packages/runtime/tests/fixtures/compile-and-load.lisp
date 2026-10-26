@@ -20,4 +20,4 @@
           (equal *compile-file-pathname-observed* INPUT-NAMESTRING-HERE)
           (equal *compile-file-truename-observed*
                  INPUT-TRUENAME-NAMESTRING-HERE)
-          (equal *compile-file-loaded-result* "MINIMAL-LOAD-OK"))))
+          (eq *compile-file-loaded-result* t))))

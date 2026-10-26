@@ -456,6 +456,92 @@ fn standard_macro_probes_assert_compiled_results() {
 }
 
 #[test]
+fn do_symbols_probes_assert_clhs_results() {
+    let probes = [
+        Probe {
+            name: "do-symbols-includes-inherited-and-declares",
+            source: r#"(let* ((pkg (make-package "NCL-B4-DS-STRING" :use nil))
+                            (local (intern "LOCAL" pkg))
+                            (used (make-package "NCL-B4-DS-USED" :use nil))
+                            (inherited (intern "INHERITED" used)))
+                       (export (list inherited) used)
+                       (use-package used pkg)
+                       (let ((local-seen nil) (inherited-seen nil) (count 0))
+                         (do-symbols (symbol "NCL-B4-DS-STRING"
+                                             (list local-seen inherited-seen (= count 2) (null symbol)))
+                           (declare (special symbol))
+                           (setq count (1+ count))
+                           (when (eq symbol local) (setq local-seen t))
+                           (when (eq symbol inherited) (setq inherited-seen t)))))"#,
+            expected: "(T T T T)",
+        },
+        Probe {
+            name: "do-symbols-accepts-symbol-package-designator",
+            source: r#"(let* ((pkg (make-package "NCL-B4-DS-SYMBOL" :use nil))
+                            (target (intern "TARGET" pkg))
+                            (seen nil))
+                       (do-symbols (symbol 'NCL-B4-DS-SYMBOL
+                                           (and (eq seen target) (null symbol)))
+                         (setq seen symbol)))"#,
+            expected: "T",
+        },
+        Probe {
+            name: "do-external-symbols-accepts-package-object",
+            source: r#"(let* ((pkg (make-package "NCL-B4-DO-EXTERNAL" :use nil))
+                            (internal (intern "INTERNAL" pkg))
+                            (external (intern "EXTERNAL" pkg))
+                            (seen nil)
+                            (count 0))
+                       (export (list external) pkg)
+                       (do-external-symbols (symbol pkg
+                                               (list (eq seen external) (= count 1) (null symbol)))
+                         (setq seen symbol)
+                         (setq count (1+ count))))"#,
+            expected: "(T T T)",
+        },
+        Probe {
+            name: "do-all-symbols-counts-a-local-symbol",
+            source: r#"(let* ((pkg (make-package "NCL-B4-DO-ALL" :use nil))
+                            (target (intern "ONLY-HERE" pkg))
+                            (found nil)
+                            (count 0))
+                       (do-all-symbols (symbol (list found (= count 1) (null symbol)))
+                         (when (eq symbol target)
+                           (setq found t)
+                           (setq count (1+ count)))))"#,
+            expected: "(T T T)",
+        },
+        Probe {
+            name: "do-symbols-return-preserves-values",
+            source: r#"(let* ((pkg (make-package "NCL-B4-DO-RETURN" :use nil))
+                            (entry (intern "ENTRY" pkg)))
+                       (multiple-value-list
+                         (do-symbols (symbol pkg)
+                           (return (values :EARLY :EXIT)))))"#,
+            expected: "(:EARLY :EXIT)",
+        },
+    ];
+
+    for probe in probes {
+        let output = run_ncl(probe.source);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}: {:?}",
+            probe.name,
+            output
+        );
+        assert!(output.stderr.is_empty(), "{}: {:?}", probe.name, output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            probe.expected,
+            "{}",
+            probe.name
+        );
+    }
+}
+
+#[test]
 fn macro_forms_that_must_error_do_error() {
     for case in ERROR_CASES {
         let output = run_ncl(case.source);

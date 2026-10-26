@@ -181,6 +181,154 @@ fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Resul
     })
 }
 
+fn held_named_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    name: &str,
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let value = symbol(ctx, runtime, name)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
+}
+
+fn symbols_loop(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+    helper: &str,
+    mode: &str,
+    all_packages: bool,
+) -> Result {
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        let spec_max = if all_packages { 2 } else { 3 };
+        if !(1..=spec_max).contains(&spec.len()) {
+            return Err(ObjectError::TypeError);
+        }
+
+        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let variable = held.len();
+        held.push(spec[0]);
+        symbol_name(ctx, held_get(&held, variable)?)?;
+
+        let package = if all_packages {
+            held.len()
+        } else if let Some(package) = spec.get(1) {
+            let index = held.len();
+            held.push(*package);
+            index
+        } else {
+            held_named_symbol(ctx, runtime, &mut held, "COMMON-LISP::*PACKAGE*")?
+        };
+        if all_packages {
+            held.push(Word::NIL);
+        }
+
+        let result = held.len();
+        held.push(if all_packages {
+            spec.get(1).copied().unwrap_or(Word::NIL)
+        } else {
+            spec.get(2).copied().unwrap_or(Word::NIL)
+        });
+        let kind = held_named_symbol(
+            ctx,
+            runtime,
+            &mut held,
+            match mode {
+                "ALL" => "KEYWORD::ALL",
+                "EXTERNAL" => "KEYWORD::EXTERNAL",
+                _ => "KEYWORD::SYMBOLS",
+            },
+        )?;
+        let symbols = held_form(ctx, runtime, &mut held, helper, &[kind, package])?;
+        let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let loop_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let end_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let endp = held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?;
+        let go_end = held_form(ctx, runtime, &mut held, "GO", &[end_tag])?;
+        let test = held_form(ctx, runtime, &mut held, "IF", &[endp, go_end])?;
+        let car = held_form(ctx, runtime, &mut held, "CAR", &[cursor])?;
+        let set_variable = held_form(ctx, runtime, &mut held, "SETQ", &[variable, car])?;
+        let cdr = held_form(ctx, runtime, &mut held, "CDR", &[cursor])?;
+        let advance = held_form(ctx, runtime, &mut held, "SETQ", &[cursor, cdr])?;
+        let jump = held_form(ctx, runtime, &mut held, "GO", &[loop_tag])?;
+
+        let declare = held_named_symbol(ctx, runtime, &mut held, "DECLARE")?;
+        let mut body_start = 1;
+        let mut declarations = Vec::new();
+        while let Some(body_form) = roots.get(body_start).map(|root| **root) {
+            if !body_form.is_cons() || ncl_object::car(ctx, body_form)? != held_get(&held, declare)?
+            {
+                break;
+            }
+            declarations.push(body_start);
+            body_start += 1;
+        }
+
+        let mut tagbody = vec![loop_tag, test, set_variable];
+        tagbody.extend(body_start..roots.len());
+        tagbody.extend([advance, jump, end_tag]);
+        let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
+        let nil = held.len();
+        held.push(Word::NIL);
+        let clear = held_form(ctx, runtime, &mut held, "SETQ", &[variable, nil])?;
+        let variable_binding = held_list(ctx, runtime, &mut held, &[variable, nil])?;
+        let cursor_binding = held_list(ctx, runtime, &mut held, &[cursor, symbols])?;
+        let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, cursor_binding])?;
+        let mut body = vec![bindings];
+        body.extend(declarations);
+        body.extend([tagbody, clear, result]);
+        let body = held_form(ctx, runtime, &mut held, "LET", &body)?;
+        let block_name = held.len();
+        held.push(Word::NIL);
+        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[block_name, body])?;
+        held_get(&held, block)
+    })
+}
+
+fn expand_do_symbols(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+    symbols_loop(
+        ctx,
+        runtime,
+        values,
+        "NCL-EXT::%PACKAGE-ITERATION-SYMBOLS",
+        "SYMBOLS",
+        false,
+    )
+}
+
+fn expand_do_external_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+) -> Result {
+    symbols_loop(
+        ctx,
+        runtime,
+        values,
+        "NCL-EXT::%PACKAGE-ITERATION-SYMBOLS",
+        "EXTERNAL",
+        false,
+    )
+}
+
+fn expand_do_all_symbols(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
+    symbols_loop(
+        ctx,
+        runtime,
+        values,
+        "NCL-EXT::%PACKAGE-ITERATION-SYMBOLS",
+        "ALL",
+        true,
+    )
+}
+
 fn args(ctx: &mut ThreadContext, form_word: Word) -> Result<Vec<Word>> {
     let mut values = elements(ctx, form_word)?;
     if values.is_empty() {
@@ -206,5 +354,8 @@ macro_rules! callbacks {
 callbacks! {
     expand_destructuring_bind, expand_destructuring_bind_adapter, destructuring_bind_call;
     expand_dolist, expand_dolist_adapter, dolist;
-    expand_dotimes, expand_dotimes_adapter, dotimes
+    expand_dotimes, expand_dotimes_adapter, dotimes;
+    do_symbols, expand_do_symbols_adapter, expand_do_symbols;
+    do_external_symbols, expand_do_external_symbols_adapter, expand_do_external_symbols;
+    do_all_symbols, expand_do_all_symbols_adapter, expand_do_all_symbols
 }

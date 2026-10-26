@@ -1,12 +1,139 @@
 use super::{
-    Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, NAME, ONE_FIND_PACKAGE_NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE,
-    ONE_SYMBOLS, ObjectError, PACKAGE_ITERATION_PARAMETERS, Parameter, Runtime, ThreadContext,
-    export, find_all_symbols, find_package, find_symbol, import, intern, list_all_packages,
-    package_error_package, package_iteration_symbols, package_management, package_name,
-    package_nicknames, package_shadowing_symbols, package_use_list, package_used_by_list, packagep,
-    shadow, unexport, unintern, unuse_package, use_package,
+    NAME, ONE_FIND_PACKAGE_NAME, ONE_NAME, ONE_OBJECT, ONE_PACKAGE, ONE_SYMBOLS, export,
+    find_all_symbols, find_package, find_symbol, import, intern, list_all_packages, list_items,
+    package_arg, package_error_package, package_management, package_name, package_nicknames,
+    package_shadowing_symbols, package_use_list, package_used_by_list, packagep, shadow, unexport,
+    unintern, unuse_package, use_package, with_rooted_words,
 };
+use ncl_object::{
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, FindStatus, LambdaList, MultipleValues, ObjectError, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, symbol_name,
+};
+
+const ITERATION_MODE: Parameter = Parameter {
+    name: BuiltinName::new("MODE"),
+    ty: ParameterType::Any,
+};
+const ITERATION_PACKAGE: Parameter = Parameter {
+    name: BuiltinName::new("PACKAGE"),
+    ty: ParameterType::Any,
+};
+const PACKAGE_ITERATION_PARAMETERS: &[Parameter] = &[ITERATION_MODE, ITERATION_PACKAGE];
+
+fn string_word_equals(
+    ctx: &ThreadContext,
+    word: Word,
+    expected: &str,
+) -> Result<bool, ObjectError> {
+    let characters = expected.chars().collect::<Vec<_>>();
+    if ncl_object::string_length(ctx, word)? != characters.len() {
+        return Ok(false);
+    }
+    for (index, character) in characters.into_iter().enumerate() {
+        if ncl_object::string_ref(ctx, word, index)? != character {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn symbol_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    mut symbols: Vec<Word>,
+) -> Result<Word, ObjectError> {
+    let list_index = symbols.len();
+    symbols.push(Word::NIL);
+    with_rooted_words(ctx, &mut symbols, |ctx, roots| {
+        for index in (0..list_index).rev() {
+            let symbol = roots[index]; // check-added-lines: allow(index) index comes from the symbol range.
+            let tail = roots[list_index]; // check-added-lines: allow(index) NIL tail is appended above.
+            roots[list_index] = ncl_object::make_cons(ctx, runtime, symbol, tail)?; // check-added-lines: allow(index) NIL tail is appended above.
+        }
+        Ok(roots[list_index]) // check-added-lines: allow(index) NIL tail is appended above.
+    })
+}
+
+fn all_package_iteration_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<Word, ObjectError> {
+    let mut symbols = Vec::new();
+    for package in runtime.all_packages(ctx)? {
+        Package::from_word(package).for_each_symbol(ctx, |symbol| symbols.push(symbol))?;
+    }
+    symbol_list(ctx, runtime, symbols)
+}
+
+fn package_iteration_symbols_for(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    package: Package,
+    external_only: bool,
+) -> Result<Word, ObjectError> {
+    let mut package_root = [package.as_word()];
+    with_rooted_words(ctx, &mut package_root, |ctx, package_root| {
+        let package = Package::from_word(package_root[0]); // check-added-lines: allow(index) package_root has one slot.
+        let mut symbols = Vec::new();
+        if external_only {
+            let mut local = Vec::new();
+            package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
+            for symbol in local.iter().copied() {
+                let name = symbol_name(ctx, symbol)?;
+                if let Some((_, FindStatus::External)) = package.find_symbol(ctx, name)? {
+                    symbols.push(symbol);
+                }
+            }
+        } else {
+            let use_list = package.use_list(ctx)?;
+            let mut local = Vec::new();
+            package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
+            symbols.extend(local.iter().copied());
+            for used in list_items(ctx, use_list)? {
+                let used = Package::from_word(used);
+                let mut candidates = Vec::new();
+                used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
+                for candidate in candidates {
+                    let name = symbol_name(ctx, candidate)?;
+                    let Some((_, FindStatus::External)) = used.find_symbol(ctx, name)? else {
+                        continue;
+                    };
+                    let Some((visible, FindStatus::Inherited)) = package.find_symbol(ctx, name)?
+                    else {
+                        continue;
+                    };
+                    if visible == candidate {
+                        symbols.push(candidate);
+                    }
+                }
+            }
+        }
+        // Lookups above do not allocate Lisp objects; root the collected symbols before consing.
+        symbol_list(ctx, runtime, symbols)
+    })
+}
+
+pub(super) fn package_iteration_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mode = symbol_name(ctx, args.required(0)?)?;
+    if string_word_equals(ctx, mode, "ALL")? {
+        return all_package_iteration_symbols(ctx, runtime);
+    }
+    let external_only = if string_word_equals(ctx, mode, "EXTERNAL")? {
+        true
+    } else if string_word_equals(ctx, mode, "SYMBOLS")? {
+        false
+    } else {
+        return Err(ObjectError::TypeError);
+    };
+    let package = package_arg(ctx, runtime, args, 1)?;
+    package_iteration_symbols_for(ctx, runtime, package, external_only)
+}
 
 const NO_PARAMETERS: &[Parameter] = &[];
 type BuiltinRegistration = (
@@ -100,57 +227,68 @@ const fn descriptor(required: &'static [Parameter], optional: &'static [Paramete
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    for &(name, required, optional, function) in REGISTRATIONS {
-        runtime.register_builtin(
-            &mut ctx,
-            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
-            BuiltinImplementation::direct(descriptor(required, optional), function),
-        )?;
-    }
-    runtime.register_builtin(
-        &mut ctx,
-        BuiltinIdentifier::new(
-            BuiltinPackage::NclExt,
-            BuiltinName::new("%PACKAGE-ITERATION-SYMBOLS"),
-        ),
-        BuiltinImplementation::direct(
-            Builtin {
-                lambda_list: LambdaList::fixed(PACKAGE_ITERATION_PARAMETERS),
-                convention: BuiltinConvention::Adapted,
-            },
-            package_iteration_symbols,
-        ),
-    )?;
-    runtime.register_builtin(
-        &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-PACKAGE")),
-        BuiltinImplementation::direct(
-            Builtin {
-                lambda_list: LambdaList::with_rest(
-                    &[NAME],
-                    package_management::MAKE_PACKAGE_OPTIONS,
+    let mut registrations = REGISTRATIONS
+        .iter()
+        .map(|&(name, required, optional, function)| {
+            (
+                BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+                BuiltinImplementation::direct(descriptor(required, optional), function),
+            )
+        })
+        .chain([
+            (
+                BuiltinIdentifier::new(
+                    BuiltinPackage::NclExt,
+                    BuiltinName::new("%PACKAGE-ITERATION-SYMBOLS"),
                 ),
-                convention: BuiltinConvention::Adapted,
-            },
-            package_management::make_package,
-        ),
-    )?;
-    runtime.register_builtin(
-        &mut ctx,
-        BuiltinIdentifier::new(
-            BuiltinPackage::CommonLisp,
-            BuiltinName::new("RENAME-PACKAGE"),
-        ),
-        BuiltinImplementation::direct(
-            Builtin {
-                lambda_list: LambdaList::with_optional(
-                    package_management::RENAME_PACKAGE_PARAMETERS,
-                    &[package_management::NEW_NICKNAMES],
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::fixed(PACKAGE_ITERATION_PARAMETERS),
+                        convention: BuiltinConvention::Adapted,
+                    },
+                    package_iteration_symbols,
                 ),
-                convention: BuiltinConvention::Adapted,
-            },
-            package_management::rename_package,
-        ),
-    )?;
-    Ok(())
+            ),
+            (
+                BuiltinIdentifier::new(
+                    BuiltinPackage::CommonLisp,
+                    BuiltinName::new("MAKE-PACKAGE"),
+                ),
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::with_rest(
+                            &[NAME],
+                            package_management::MAKE_PACKAGE_OPTIONS,
+                        ),
+                        convention: BuiltinConvention::Adapted,
+                    },
+                    package_management::make_package,
+                ),
+            ),
+            (
+                BuiltinIdentifier::new(
+                    BuiltinPackage::CommonLisp,
+                    BuiltinName::new("RENAME-PACKAGE"),
+                ),
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::with_optional(
+                            package_management::RENAME_PACKAGE_PARAMETERS,
+                            &[package_management::NEW_NICKNAMES],
+                        ),
+                        convention: BuiltinConvention::Adapted,
+                    },
+                    package_management::rename_package,
+                ),
+            ),
+        ]);
+    registrations.try_for_each(|(identifier, implementation)| {
+        runtime
+            .register_builtin(&mut ctx, identifier, implementation)
+            .map(|_| ())
+    })
 }
+
+#[cfg(test)]
+#[path = "../tests/introspection_register.rs"]
+mod tests;

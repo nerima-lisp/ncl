@@ -913,3 +913,55 @@ fn lowers_return_from_inside_a_lambda_with_a_catch_region() {
     )));
     assert_verifies(&lowered.nested[0]);
 }
+
+#[test]
+fn lowers_multiple_value_call_return_with_value_restoration() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let multiple_value_call = fx.cl("MULTIPLE-VALUE-CALL");
+    let function = fx.cl("FUNCTION");
+    let lambda = fx.cl("LAMBDA");
+    let values = fx.cl("VALUES");
+    let return_from = fx.cl("RETURN-FROM");
+    let value = fx.user("VALUE");
+    let status = fx.user("STATUS");
+    let lambda_list = fx.list(&[value, status]);
+    let returned_values = fx.list(&[values, value, status]);
+    let return_form = fx.list(&[return_from, Word::NIL, returned_values]);
+    let lambda_form = fx.list(&[lambda, lambda_list, return_form]);
+    let function_designator = fx.list(&[function, lambda_form]);
+    let initial_values = fx.list(&[values, Word::fixnum(1), Word::fixnum(2)]);
+    let multiple_value_call_form =
+        fx.list(&[multiple_value_call, function_designator, initial_values]);
+    let block_form = fx.list(&[block, Word::NIL, multiple_value_call_form]);
+    let list = fx.cl("LIST");
+    let list_designator = fx.list(&[function, list]);
+    let form = fx.list(&[multiple_value_call, list_designator, block_form]);
+
+    let expr = fx.expand(form).expect("expand multiple-value-call return");
+    let lowered = lower_toplevel_for_eval(&expr).expect("lower multiple-value-call return");
+    assert_verifies(&lowered.entry);
+    for nested in &lowered.nested {
+        assert_verifies(nested);
+    }
+
+    let handler_region = lowered
+        .entry
+        .handler_regions
+        .iter()
+        .find(|region| region.kind == HandlerKind::Catch)
+        .expect("escaping block catch region");
+    let handler = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == handler_region.handler)
+        .expect("escaping block handler");
+    assert!(
+        handler.ops.iter().any(|op| matches!(
+            &op.kind,
+            OpKind::CallClosure { args, .. } if args.len() == 2
+        )),
+        "the catch handler restores the multiple-value list"
+    );
+}

@@ -12,6 +12,29 @@ use super::Context;
 use super::NonLocalTarget;
 
 impl Context<'_> {
+    fn lower_escaping_block_handler(
+        &mut self,
+        f: &mut FunctionLowerer,
+        region_id: HandlerRegionId,
+        exit: ncl_ir::BlockId,
+        handler_value: ValueId,
+        handler_values: &[(Ty, ValueId)],
+    ) -> Result<(), LowerError> {
+        self.leave(f, region_id)?;
+        let handler_value = if self.preserve_multiple_values {
+            Self::restore_multiple_values(f, handler_value)?
+        } else {
+            handler_value
+        };
+        f.terminate(Terminator::Jump {
+            target: exit,
+            args: std::iter::once(handler_value)
+                .chain(handler_values.iter().map(|(_, value)| *value))
+                .collect(),
+        })?;
+        Ok(())
+    }
+
     pub(super) fn lower_escaping_block(
         &mut self,
         f: &mut FunctionLowerer,
@@ -80,18 +103,7 @@ impl Context<'_> {
                 .chain(handler_values.iter().copied())
                 .collect(),
         );
-        self.leave(f, region_id)?;
-        let handler_value = if self.preserve_multiple_values {
-            Self::restore_multiple_values(f, handler_value)?
-        } else {
-            handler_value
-        };
-        f.terminate(Terminator::Jump {
-            target: exit,
-            args: std::iter::once(handler_value)
-                .chain(handler_values.iter().map(|(_, value)| *value))
-                .collect(),
-        })?;
+        self.lower_escaping_block_handler(f, region_id, exit, handler_value, &handler_values)?;
         self.regions.push(HandlerRegion {
             id: region_id,
             kind: HandlerKind::Catch,

@@ -176,6 +176,106 @@ fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn package_iteration_symbols_cover_accessible_external_and_all_symbols() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+
+    let target = Package::from_word(runtime.ensure_package(&mut ctx, "N25-ITERATION-TARGET")?);
+    let source = Package::from_word(runtime.ensure_package(&mut ctx, "N25-ITERATION-SOURCE")?);
+    let (local, _) = target.intern(&mut ctx, &runtime, "LOCAL")?;
+    let (external, _) = target.intern(&mut ctx, &runtime, "EXTERNAL")?;
+    let external_name = ncl_object::symbol_name(&ctx, external)?;
+    target.export(&mut ctx, &runtime, external_name)?;
+
+    let (inherited, _) = source.intern(&mut ctx, &runtime, "INHERITED")?;
+    let inherited_name = ncl_object::symbol_name(&ctx, inherited)?;
+    source.export(&mut ctx, &runtime, inherited_name)?;
+    let (imported, _) = source.intern(&mut ctx, &runtime, "IMPORTED")?;
+    let imported_name = ncl_object::symbol_name(&ctx, imported)?;
+    source.export(&mut ctx, &runtime, imported_name)?;
+    let (hidden, _) = source.intern(&mut ctx, &runtime, "SHADOWED")?;
+    let hidden_name = ncl_object::symbol_name(&ctx, hidden)?;
+    source.export(&mut ctx, &runtime, hidden_name)?;
+    let (source_internal, _) = source.intern(&mut ctx, &runtime, "SOURCE-INTERNAL")?;
+    let shadowed_name =
+        ncl_object::make_string(&mut ctx, &runtime, &"SHADOWED".chars().collect::<Vec<_>>())?;
+    target.shadow(&mut ctx, &runtime, shadowed_name)?;
+    let (shadowed_local, _) = target
+        .find_symbol(&mut ctx, shadowed_name)?
+        .ok_or(ObjectError::Layout)?;
+    target.use_package(&mut ctx, &runtime, source.as_word())?;
+    target.import(&mut ctx, &runtime, imported_name, imported)?;
+
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "%PACKAGE-ITERATION-SYMBOLS")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let keyword = Package::from_word(runtime.ensure_package(&mut ctx, "KEYWORD")?);
+    let mode_symbols = keyword.intern(&mut ctx, &runtime, "SYMBOLS")?.0;
+    let mode_external = keyword.intern(&mut ctx, &runtime, "EXTERNAL")?.0;
+    let mode_all = keyword.intern(&mut ctx, &runtime, "ALL")?.0;
+    let mode_invalid = keyword.intern(&mut ctx, &runtime, "INVALID")?.0;
+
+    let accessible = runtime.call_builtin(&mut ctx, function, &[mode_symbols, target.as_word()])?;
+    let accessible = list_items(&ctx, accessible)?;
+    assert!(accessible.contains(&local));
+    assert!(accessible.contains(&external));
+    assert!(accessible.contains(&inherited));
+    assert!(accessible.contains(&imported));
+    assert_eq!(
+        accessible
+            .iter()
+            .filter(|candidate| **candidate == imported)
+            .count(),
+        1
+    );
+    assert!(accessible.contains(&shadowed_local));
+    assert!(!accessible.contains(&hidden));
+    assert!(!accessible.contains(&source_internal));
+
+    let externals = runtime.call_builtin(&mut ctx, function, &[mode_external, target.as_word()])?;
+    let externals = list_items(&ctx, externals)?;
+    assert_eq!(externals, vec![external]);
+
+    let all = runtime.call_builtin(&mut ctx, function, &[mode_all, Word::NIL])?;
+    let all = list_items(&ctx, all)?;
+    for symbol in [local, external, inherited, hidden, source_internal] {
+        assert_eq!(
+            all.iter().filter(|candidate| **candidate == symbol).count(),
+            1
+        );
+    }
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[mode_invalid, target.as_word()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[Word::fixnum(1), target.as_word()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[mode_symbols, Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+    let no_arguments = BuiltinArgs::new(&[]);
+    let mut values = MultipleValues::new();
+    assert_eq!(
+        package_iteration_symbols(&mut ctx, &runtime, &no_arguments, &mut values),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
 fn use_and_unuse_package_accept_package_list_designators() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

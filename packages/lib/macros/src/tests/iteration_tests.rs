@@ -64,7 +64,6 @@ fn iteration_macros_validate_specs_and_build_blocks() -> Result<(), ObjectError>
     assert_eq!(parts[0], symbol(&mut ctx, &runtime, "BLOCK")?);
     Ok(())
 }
-
 fn assert_declaration_placement(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -195,5 +194,63 @@ fn dotimes_keeps_declarations_after_a_leading_string_in_tagbody() -> Result<(), 
     assert_eq!(tagbody_parts[0], symbol(&mut ctx, &runtime, "TAGBODY")?);
     assert_eq!(tagbody_parts[3], string_form);
     assert_eq!(tagbody_parts[4], declaration);
+    Ok(())
+}
+#[test]
+fn do_symbols_macros_expand_with_declarations_and_blocks() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let variable = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let declare = symbol(&mut ctx, &runtime, "DECLARE")?;
+    let special = symbol(&mut ctx, &runtime, "SPECIAL")?;
+    let special_spec = list(&mut ctx, &runtime, &[special, variable])?;
+    let declaration = list(&mut ctx, &runtime, &[declare, special_spec])?;
+    let block = symbol(&mut ctx, &runtime, "BLOCK")?;
+    let let_symbol = symbol(&mut ctx, &runtime, "LET")?;
+
+    for name in ["DO-SYMBOLS", "DO-EXTERNAL-SYMBOLS", "DO-ALL-SYMBOLS"] {
+        let operator = symbol(&mut ctx, &runtime, name)?;
+        let spec = list(&mut ctx, &runtime, &[variable])?;
+        let input = list(&mut ctx, &runtime, &[operator, spec, declaration, variable])?;
+        let expansion = expand(&mut ctx, &runtime, name, input)?;
+        let parts = elements(&mut ctx, expansion)?;
+        assert_eq!(parts[0], block, "{name}");
+        let body = elements(&mut ctx, parts[2])?;
+        assert_eq!(body[0], let_symbol, "{name}");
+        assert_eq!(body[2], declaration, "{name}");
+
+        let no_spec = list(&mut ctx, &runtime, &[operator])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, no_spec),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+
+        let malformed_input = list(&mut ctx, &runtime, &[operator, Word::fixnum(1)])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, malformed_input),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+
+        let bad_spec = list(&mut ctx, &runtime, &[])?;
+        let bad_input = list(&mut ctx, &runtime, &[operator, bad_spec])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, bad_input),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+
+        let invalid_variable = list(&mut ctx, &runtime, &[Word::fixnum(1)])?;
+        let invalid_input = list(&mut ctx, &runtime, &[operator, invalid_variable])?;
+        assert_eq!(
+            expand(&mut ctx, &runtime, name, invalid_input),
+            Err(ObjectError::TypeError),
+            "{name}"
+        );
+    }
     Ok(())
 }

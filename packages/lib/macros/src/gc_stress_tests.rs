@@ -158,6 +158,8 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     root!(&mut do_variable);
     let mut do_variables = list(&mut ctx, &runtime, &[do_variable])?;
     root!(&mut do_variables);
+    let mut do_symbols_spec = list(&mut ctx, &runtime, &[x, t])?;
+    root!(&mut do_symbols_spec);
     let mut do_end = list(&mut ctx, &runtime, &[t, x])?;
     root!(&mut do_end);
     let mut prog_variable = list(&mut ctx, &runtime, &[x, Word::fixnum(0)])?;
@@ -239,6 +241,13 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
     case!("DO*", "DO*", [do_variables, do_end, x]);
     case!("DOLIST", "DOLIST", [dolist_spec, x]);
     case!("DOTIMES", "DOTIMES", [dotimes_spec, x]);
+    case!("DO-SYMBOLS", "DO-SYMBOLS", [do_symbols_spec]);
+    case!(
+        "DO-EXTERNAL-SYMBOLS",
+        "DO-EXTERNAL-SYMBOLS",
+        [do_symbols_spec]
+    );
+    case!("DO-ALL-SYMBOLS", "DO-ALL-SYMBOLS", [do_symbols_spec]);
     case!("ECASE", "ECASE", [x, clause]);
     case!("ETYPECASE", "ETYPECASE", [x, type_clause]);
     case!("IN-PACKAGE", "IN-PACKAGE", [x]);

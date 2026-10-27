@@ -49,6 +49,21 @@ fn function(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionO
     FunctionObject::try_from(runtime.function(ctx, "COMMON-LISP", name).unwrap()).unwrap()
 }
 
+fn runtime_with_dynamic_space_size(bytes: usize) -> Result<Runtime, ObjectError> {
+    let mut config = Runtime::new()?.gc_config();
+    config.dynamic_space_size = bytes;
+    Runtime::with_config(config)
+}
+
+fn exhaust_heap(ctx: &mut ThreadContext, runtime: &Runtime, chain: &mut Word) -> ObjectError {
+    loop {
+        match make_cons(ctx, runtime, Word::NIL, *chain) {
+            Ok(next) => *chain = next,
+            Err(error) => return error,
+        }
+    }
+}
+
 fn call(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
     let function = function(runtime, ctx, name);
     runtime.call_builtin(ctx, function, args).unwrap()
@@ -191,6 +206,150 @@ fn copy_pprint_dispatch_rejects_bad_arity_and_non_tables() {
     assert_eq!(
         runtime.call_builtin(&mut ctx, copy_function, &[Word::fixnum(1)]),
         Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn printer_registration_propagates_heap_capacity_failure() {
+    let mut found_capacity_error = false;
+    'capacities: for bytes in [64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024] {
+        let runtime = match runtime_with_dynamic_space_size(bytes) {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                assert!(
+                    matches!(error, ObjectError::Storage(_)),
+                    "unexpected runtime setup error: {error:?}"
+                );
+                continue 'capacities;
+            }
+        };
+        let mut ctx = ThreadContext::new();
+        match ctx.register(&runtime) {
+            Ok(()) => {}
+            Err(error) => {
+                assert!(
+                    matches!(error, ObjectError::Storage(_)),
+                    "unexpected context registration error: {error:?}"
+                );
+                continue 'capacities;
+            }
+        }
+        for name in ["COMMON-LISP", "NCL-EXT"] {
+            match runtime.ensure_package(&mut ctx, name) {
+                Ok(_) => {}
+                Err(error) => {
+                    assert!(
+                        matches!(error, ObjectError::Storage(_)),
+                        "unexpected package setup error: {error:?}"
+                    );
+                    continue 'capacities;
+                }
+            }
+        }
+        let common_lisp = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+        match Package::from_word(common_lisp).intern(&mut ctx, &runtime, "COPY-PPRINT-DISPATCH") {
+            Ok(_) => {}
+            Err(error) => {
+                assert!(
+                    matches!(error, ObjectError::Storage(_)),
+                    "unexpected symbol setup error: {error:?}"
+                );
+                continue 'capacities;
+            }
+        }
+
+        let mut retained = Word::NIL;
+        let token = ncl_object::push_root(&mut ctx, &mut retained);
+        let allocation_error = exhaust_heap(&mut ctx, &runtime, &mut retained);
+        assert!(matches!(allocation_error, ObjectError::Storage(_)));
+        let mut saw_registration_failure = false;
+        let mut copy_registered = false;
+        for _ in 0..256 {
+            let registration_result = ncl_printer::register(&mut ctx, &runtime);
+            if runtime
+                .function(&mut ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
+                .is_some()
+            {
+                copy_registered = true;
+                break;
+            }
+            assert_eq!(registration_result, Err(allocation_error));
+            saw_registration_failure = true;
+            retained = ncl_object::cdr(&ctx, retained).unwrap();
+        }
+        assert!(saw_registration_failure);
+        assert!(
+            copy_registered,
+            "capacity sweep never reached COPY registration"
+        );
+        assert!(ncl_object::pop_root(&mut ctx, token));
+        found_capacity_error = true;
+        break;
+    }
+    assert!(
+        found_capacity_error,
+        "no configured heap reached the registration path"
+    );
+}
+
+#[test]
+fn copy_pprint_dispatch_propagates_default_table_allocation_failure() {
+    let mut found_capacity_error = false;
+    'capacities: for bytes in [
+        128 * 1024,
+        256 * 1024,
+        512 * 1024,
+        1024 * 1024,
+        2 * 1024 * 1024,
+    ] {
+        let runtime = match runtime_with_dynamic_space_size(bytes) {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                assert!(
+                    matches!(error, ObjectError::Storage(_)),
+                    "unexpected runtime setup error: {error:?}"
+                );
+                continue 'capacities;
+            }
+        };
+        let mut ctx = ThreadContext::new();
+        if let Err(error) = ctx.register(&runtime) {
+            assert!(
+                matches!(error, ObjectError::Storage(_)),
+                "unexpected context registration error: {error:?}"
+            );
+            continue 'capacities;
+        }
+        match ncl_printer::register(&mut ctx, &runtime) {
+            Ok(()) => {}
+            Err(error) => {
+                assert!(
+                    matches!(error, ObjectError::Storage(_)),
+                    "unexpected printer registration error: {error:?}"
+                );
+                continue 'capacities;
+            }
+        }
+        let copy_function = function(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH");
+        let mut retained = Word::NIL;
+        let token = ncl_object::push_root(&mut ctx, &mut retained);
+        let allocation_error = exhaust_heap(&mut ctx, &runtime, &mut retained);
+        assert!(matches!(allocation_error, ObjectError::Storage(_)));
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, copy_function, &[]),
+            Err(allocation_error)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, copy_function, &[Word::NIL]),
+            Err(allocation_error)
+        );
+        assert!(ncl_object::pop_root(&mut ctx, token));
+        found_capacity_error = true;
+        break;
+    }
+    assert!(
+        found_capacity_error,
+        "no configured heap reached COPY-PPRINT-DISPATCH"
     );
 }
 

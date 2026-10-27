@@ -230,3 +230,39 @@ fn upgraded_array_element_type_handles_non_class_designators() {
         );
     }
 }
+
+#[test]
+fn registered_class_specifiers_parse_in_nested_type_positions() {
+    for compile in [false, true] {
+        let mut runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+        let source = "(progn
+            (defclass ncl-array-type-position-test () ())
+            (let ((class (find-class 'ncl-array-type-position-test)))
+              (list
+                (subtypep '(and ncl-array-type-position-test t) (list 'and class t))
+                (subtypep '(or ncl-array-type-position-test null) (list 'or class 'null))
+                (subtypep '(not ncl-array-type-position-test) (list 'not class))
+                (subtypep '(cons ncl-array-type-position-test null) (list 'cons class 'null))
+                (subtypep '(values ncl-array-type-position-test) (list 'values class))
+                (subtypep '(array ncl-array-type-position-test *) (list 'array class '*))
+                (subtypep '(simple-array ncl-array-type-position-test (*))
+                          (list 'simple-array class '(*)))
+                (subtypep '(vector ncl-array-type-position-test 1) (list 'vector class 1))
+                (subtypep '(function (ncl-array-type-position-test)
+                                      ncl-array-type-position-test)
+                          (list 'function (list class) class)))))";
+        let result = if compile {
+            runtime.compile(source)
+        } else {
+            runtime.eval(source)
+        }
+        .unwrap_or_else(|error| panic!("nested class type specifiers failed: {error}"));
+
+        assert_eq!(
+            runtime.format_result(result),
+            "(T T T T T T T T T)",
+            "compile={compile}"
+        );
+    }
+}

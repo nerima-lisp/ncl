@@ -11,6 +11,9 @@ use crate::ast::{Expr, FunctionDesignator, LambdaExpr, Operator, TagbodyItem};
 use crate::lambda_list::{LambdaList, ParamName};
 use crate::symbols::SymbolRef;
 
+mod parameter_init;
+use self::parameter_init::collect_parameter_init_free;
+
 /// The assignments and captures a body performs.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Analysis {
@@ -84,11 +87,17 @@ fn lambda_bindings(list: &LambdaList) -> Vec<SymbolRef> {
     names
 }
 
-/// The free variables of a lambda expression.
+fn add_parameter_binding(name: &ParamName, bound_variables: &mut Vec<SymbolRef>) {
+    if let ParamName::Symbol(symbol) = name {
+        bound_variables.push(symbol.clone());
+    }
+}
+
 pub(super) fn free_names(lambda: &LambdaExpr) -> FreeNames {
+    let mut free = FreeNames::default();
+    collect_parameter_init_free(lambda, &mut free);
     let mut bound_variables = lambda_bindings(&lambda.lambda_list);
     let bound_functions = Vec::new();
-    let mut free = FreeNames::default();
     for form in &lambda.body {
         collect_free(form, &mut bound_variables, &bound_functions, &mut free);
     }
@@ -299,7 +308,37 @@ fn scan_lambda(lambda: &LambdaExpr, bound: &mut Vec<SymbolRef>, analysis: &mut A
     }
     let mark = bound.len();
     analysis.lambda_depth += 1;
-    bound.extend(lambda_bindings(&lambda.lambda_list));
+    let list = &lambda.lambda_list;
+    for name in &list.required {
+        add_parameter_binding(name, bound);
+    }
+    for optional in &list.optional {
+        if let Some(default) = &optional.default {
+            scan(default, bound, analysis);
+        }
+        add_parameter_binding(&optional.name, bound);
+        if let Some(supplied_p) = &optional.supplied_p {
+            add_parameter_binding(supplied_p, bound);
+        }
+    }
+    if let Some(rest) = &list.rest {
+        add_parameter_binding(rest, bound);
+    }
+    for key in &list.keys {
+        if let Some(default) = &key.default {
+            scan(default, bound, analysis);
+        }
+        add_parameter_binding(&key.name, bound);
+        if let Some(supplied_p) = &key.supplied_p {
+            add_parameter_binding(supplied_p, bound);
+        }
+    }
+    for aux in &list.aux {
+        if let Some(default) = &aux.default {
+            scan(default, bound, analysis);
+        }
+        add_parameter_binding(&aux.name, bound);
+    }
     for form in &lambda.body {
         scan(form, bound, analysis);
     }

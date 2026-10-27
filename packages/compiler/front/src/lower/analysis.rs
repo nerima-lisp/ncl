@@ -35,3 +35,7 @@ pub(super) fn mentions_exit(forms: &[Expr], name: &SymbolRef) -> bool {
             || go::contains_go(form, name)
     })
 }
+
+pub(super) fn lambda_mentions_exit(lambda: &crate::ast::LambdaExpr, name: &SymbolRef) -> bool {
+    returns::lambda_forms(lambda).any(|form| mentions_exit(std::slice::from_ref(form), name))
+}

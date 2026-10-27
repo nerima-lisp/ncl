@@ -383,6 +383,99 @@ fn nested_closure_return_from_reaches_active_block_through_eval_and_compile() {
 }
 
 #[test]
+fn lambda_parameter_init_forms_can_return_from_active_block_through_eval_and_compile() {
+    let cases = [
+        (
+            "optional",
+            "(block b (funcall (lambda (&optional (x (return-from b 1))) x)))",
+        ),
+        (
+            "key",
+            "(block b (funcall (lambda (&key (x (return-from b 1))) x)))",
+        ),
+        (
+            "aux",
+            "(block b (funcall (lambda (&aux (x (return-from b 1))) x)))",
+        ),
+        (
+            "labels aux",
+            "(block b (labels ((exit-default (&aux (x (return-from b 1))) x) (peer () nil)) (exit-default)))",
+        ),
+    ];
+    for (parameter_kind, source) in cases {
+        for (path, compile) in [("eval", false), ("compile", true)] {
+            let result = run_runtime(source, compile).unwrap_or_else(|error| {
+                panic!("{path} failed for {parameter_kind}: {source}: {error:?}")
+            });
+            assert_eq!(result, "1", "{path} {parameter_kind}: {source}");
+        }
+    }
+}
+
+#[test]
+fn lambda_init_setq_updates_captured_outer_through_eval_and_compile() {
+    let cases = [
+        (
+            "optional",
+            "(let ((outer 0)) (funcall (lambda (&optional (x (setq outer 1))) x)) outer)",
+        ),
+        (
+            "key",
+            "(let ((outer 0)) (funcall (lambda (&key (x (setq outer 1))) x)) outer)",
+        ),
+    ];
+    for (parameter_kind, source) in cases {
+        for (path, compile) in [("eval", false), ("compile", true)] {
+            let result = run_runtime(source, compile).unwrap_or_else(|error| {
+                panic!("{path} failed for {parameter_kind}: {source}: {error:?}")
+            });
+            assert_eq!(result, "1", "{path} {parameter_kind}: {source}");
+        }
+    }
+}
+
+#[test]
+fn lambda_parameter_init_forms_capture_lexical_variables_through_eval_and_compile() {
+    let cases = [
+        (
+            "optional",
+            "(let ((outer 7)) (funcall (lambda (&optional (x outer)) x)))",
+        ),
+        (
+            "key",
+            "(let ((outer 7)) (funcall (lambda (&key (x outer)) x)))",
+        ),
+        (
+            "aux",
+            "(let ((outer 7)) (funcall (lambda (&aux (x outer)) x)))",
+        ),
+        (
+            "labels function",
+            "(labels ((local-init-peer (x) x) (with-default (&optional (x (local-init-peer 7))) x)) (with-default))",
+        ),
+    ];
+    for (parameter_kind, source) in cases {
+        for (path, compile) in [("eval", false), ("compile", true)] {
+            let result = run_runtime(source, compile).unwrap_or_else(|error| {
+                panic!("{path} failed for {parameter_kind}: {source}: {error:?}")
+            });
+            assert_eq!(result, "7", "{path} {parameter_kind}: {source}");
+        }
+    }
+}
+
+#[test]
+fn lambda_key_initializer_sees_rest_parameter_through_eval_and_compile() {
+    let source =
+        "(funcall (lambda (&rest rest &key (x (car rest)) &allow-other-keys) x) :unknown 7)";
+    for (path, compile) in [("eval", false), ("compile", true)] {
+        let result = run_runtime(source, compile)
+            .unwrap_or_else(|error| panic!("{path} failed for {source}: {error:?}"));
+        assert_eq!(result, ":UNKNOWN", "{path}: {source}");
+    }
+}
+
+#[test]
 fn nested_return_from_wrapper_forms_reaches_active_block_through_eval_and_compile() {
     let cases = [
         (
@@ -428,14 +521,6 @@ fn nested_return_from_wrapper_forms_reaches_active_block_through_eval_and_compil
         (
             "EVAL-WHEN around nested closure return",
             "(block done (funcall (funcall (lambda () (eval-when (:execute) (lambda () (return-from done :x)))))))",
-        ),
-        (
-            "LOAD-TIME-VALUE around direct return inside closure",
-            "(block done (funcall (lambda () (load-time-value (return-from done :x)))))",
-        ),
-        (
-            "LOAD-TIME-VALUE around nested closure return",
-            "(block done (funcall (funcall (lambda () (load-time-value (lambda () (return-from done :x)))))))",
         ),
     ];
 

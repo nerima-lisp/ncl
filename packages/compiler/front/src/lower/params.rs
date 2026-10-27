@@ -84,11 +84,13 @@ impl Context<'_> {
                 Some(form) => self.lower_expr(f, form)?,
                 None => f.nil()?,
             };
-            let absent = f.nil()?;
-            f.terminate(Terminator::Jump {
-                target: merge,
-                args: vec![default_value, absent],
-            })?;
+            if !f.is_terminated() {
+                let absent = f.nil()?;
+                f.terminate(Terminator::Jump {
+                    target: merge,
+                    args: vec![default_value, absent],
+                })?;
+            }
             f.position(supplied)?;
             let parameter = param_index(base + list.required.len() + offset)?;
             let supplied_value = f.one(OpKind::LoadArg { index: parameter }, Ty::Word)?;
@@ -120,6 +122,16 @@ impl Context<'_> {
         } else {
             None
         };
+        if let Some(rest_name) = &list.rest {
+            let rest_name = param_name(rest_name)?;
+            f.env().bind_variable(
+                rest_name.clone(),
+                Slot::Value(rest.ok_or_else(|| LowerError::Ir {
+                    detail: "rest parameter has no argument list".to_owned(),
+                })?),
+            );
+            self.push_declarations_shadowing(&[], std::slice::from_ref(&rest_name));
+        }
         if !list.keys.is_empty() {
             let rest = rest.ok_or_else(|| LowerError::Ir {
                 detail: "keyword parameters have no argument list".to_owned(),
@@ -190,16 +202,6 @@ impl Context<'_> {
                 self.push_declarations_shadowing(&[], &shadowed);
             }
         }
-        if let Some(rest_name) = &list.rest {
-            let rest_name = param_name(rest_name)?;
-            f.env().bind_variable(
-                rest_name.clone(),
-                Slot::Value(rest.ok_or_else(|| LowerError::Ir {
-                    detail: "rest parameter has no argument list".to_owned(),
-                })?),
-            );
-            self.push_declarations_shadowing(&[], std::slice::from_ref(&rest_name));
-        }
         Ok(())
     }
 
@@ -213,6 +215,9 @@ impl Context<'_> {
                 Some(form) => self.lower_expr(f, form)?,
                 None => f.nil()?,
             };
+            if f.is_terminated() {
+                return Ok(());
+            }
             f.env()
                 .bind_variable(param_name(&aux.name)?, Slot::Value(value));
             let name = param_name(&aux.name)?;
@@ -286,10 +291,12 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
-        f.terminate(Terminator::Jump {
-            target: merge,
-            args: vec![default_value],
-        })?;
+        if !f.is_terminated() {
+            f.terminate(Terminator::Jump {
+                target: merge,
+                args: vec![default_value],
+            })?;
+        }
         f.position(merge)?;
         Ok(result)
     }

@@ -3,6 +3,8 @@ use crate::word::Word;
 use std::ptr;
 mod access;
 mod control;
+mod gc_state;
+mod layout;
 mod native;
 mod root_token;
 mod stack;
@@ -10,38 +12,12 @@ pub use access::ThreadAccess;
 pub use control::{
     ControlFrameKind, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
 };
+pub use gc_state::{NativeState, SafepointState};
+use gc_state::{PublishedRootSlot, PublishedThreadGcStateHandle};
+pub use layout::{ThreadLayout, thread_layout};
 pub use root_token::RootToken;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
-
-/// Native transition state.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NativeState {
-    /// The mutator is executing Lisp code.
-    Lisp,
-    /// The mutator is executing outside the managed heap.
-    Native,
-}
-/// Cooperative safepoint state.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SafepointState {
-    /// The mutator may continue running.
-    Running,
-    /// A collector has requested a safepoint.
-    PollRequested,
-    /// The mutator has published its root snapshot.
-    Published,
-    /// The collector is scanning this mutator.
-    Collecting,
-    /// The mutator is outside the managed heap and safe to stop.
-    Safe,
-    /// This thread owns the heap slow-path collection gate.
-    Collector = 5,
-    /// This thread has published roots and is waiting for the collection gate.
-    Parked = 6,
-}
 /// Machine-visible mutator context.
 ///
 /// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
@@ -78,46 +54,8 @@ pub struct Thread {
     native_error: Option<NativeError>,
     native_context: Option<ptr::NonNull<()>>,
     runtime_error_flags: u64,
-}
-/// Native offsets consumed by the code generator when addressing a thread context.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ThreadLayout {
-    /// Offset of the TLAB allocation cursor.
-    pub tlab_bump: usize,
-    /// Offset of the TLAB allocation limit.
-    pub tlab_limit: usize,
-    /// Offset of the eight-byte safepoint request word read by generated code.
-    pub safepoint_request: usize,
-    /// Offset of the eight-byte pending interrupt word.
-    pub pending: usize,
-    /// Offset of the multiple-value return vector.
-    pub mv: usize,
-    /// Offset of the handler chain.
-    pub handler: usize,
-    /// Offset of the cleanup chain.
-    pub cleanup: usize,
-    /// Offset of the catch chain.
-    pub catch: usize,
-    /// Offset of the multiple-value count word.
-    pub mv_count: usize,
-    /// Offset of the Rust-side runtime-error source flags.
-    pub runtime_error_flags: usize,
-}
-/// Return byte offsets for the machine-visible part of [`Thread`].
-#[must_use]
-pub const fn thread_layout() -> ThreadLayout {
-    ThreadLayout {
-        tlab_bump: std::mem::offset_of!(Thread, tlab_bump),
-        tlab_limit: std::mem::offset_of!(Thread, tlab_limit),
-        safepoint_request: std::mem::offset_of!(Thread, safepoint_request),
-        pending: std::mem::offset_of!(Thread, pending),
-        mv: std::mem::offset_of!(Thread, mv),
-        handler: std::mem::offset_of!(Thread, handler),
-        cleanup: std::mem::offset_of!(Thread, cleanup),
-        catch: std::mem::offset_of!(Thread, catch),
-        mv_count: std::mem::offset_of!(Thread, mv_count),
-        runtime_error_flags: std::mem::offset_of!(Thread, runtime_error_flags),
-    }
+    stack_scan_start: Option<usize>,
+    gc_state: std::sync::OnceLock<PublishedThreadGcStateHandle>,
 }
 impl Default for Thread {
     fn default() -> Self {
@@ -157,6 +95,8 @@ impl Thread {
             native_error: None,
             native_context: None,
             runtime_error_flags: 0,
+            stack_scan_start: None,
+            gc_state: std::sync::OnceLock::new(),
         }
     }
     /// Return the heap this thread is registered with.
@@ -234,8 +174,57 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
-        self.stack_bounds = stack::current_stack_bounds();
+        self.publish_stack_interval();
         self.callee_saved = crate::snapshot_callee_saved();
+    }
+    pub(crate) fn gc_state_handle(&self) -> PublishedThreadGcStateHandle {
+        self.gc_state
+            .get_or_init(PublishedThreadGcStateHandle::new)
+            .clone()
+    }
+    pub(crate) fn publish_gc_state(&self, epoch: u64) {
+        let gc_state = self.gc_state_handle();
+        let roots = self
+            .roots
+            .iter()
+            .copied()
+            .map(|slot| {
+                // SAFETY: both root APIs create pointers from non-null mutable references.
+                unsafe { PublishedRootSlot::new(slot) }
+            })
+            .collect();
+        let mut published = match gc_state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        published.is_native = self.native == NativeState::Native;
+        published.roots = roots;
+        published.multiple_values = self.mv;
+        published.mv_count = self.mv_count;
+        published
+            .conservative_roots
+            .clone_from(&self.conservative_roots);
+        published.stack_bounds = self.stack_bounds;
+        published.stack_scan_start = self.stack_scan_start;
+        published.callee_saved = self.callee_saved;
+        published.frame_chain.clone_from(&self.frame_chain);
+        published.frame_registers.clone_from(&self.frame_registers);
+        published.frame_address = self.frame_address;
+        published.frame_snapshot_failed = self.frame_snapshot_failed;
+        published.published_epoch = epoch;
+    }
+    pub(crate) fn publish_stack_interval(&mut self) {
+        self.stack_bounds = stack::current_stack_bounds();
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let stack_pointer = Some(stack::current_stack_pointer());
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let stack_pointer = stack::current_stack_pointer();
+        self.stack_scan_start =
+            self.stack_bounds
+                .zip(stack_pointer)
+                .and_then(|(bounds, stack_pointer)| {
+                    gc_state::valid_stack_interval(bounds, stack_pointer).then_some(stack_pointer)
+                });
     }
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();

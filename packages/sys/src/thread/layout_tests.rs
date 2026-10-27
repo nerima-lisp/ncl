@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 fn layout_matches_c_struct_offsets() {
+    let thread = Thread::new();
     let layout = thread_layout();
     assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
     assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
@@ -21,6 +22,10 @@ fn layout_matches_c_struct_offsets() {
     );
     assert_eq!(
         layout.runtime_error_flags + 8,
+        std::mem::offset_of!(Thread, stack_scan_start)
+    );
+    assert_eq!(
+        std::mem::offset_of!(Thread, gc_state) + std::mem::size_of_val(&thread.gc_state),
         std::mem::size_of::<Thread>()
     );
 }

@@ -6,7 +6,7 @@ use ncl_object::{
 };
 
 /// Expands standardized cons selectors and ordinal list accessors from their names.
-pub(crate) fn standard_cons_place(
+pub fn standard_cons_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     operator: Word,

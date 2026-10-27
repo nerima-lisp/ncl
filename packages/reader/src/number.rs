@@ -117,7 +117,8 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
             index += 1;
         }
         if exp_digits == 0 {
-            return (index == n && (digits_before > 0 || has_dot)).then_some(NumberShape::Float);
+            // A bare exponent marker after integer digits is also used in symbol names.
+            return (index == n && has_dot).then_some(NumberShape::Float);
         }
         if index != n {
             return None;

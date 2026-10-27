@@ -479,8 +479,8 @@ fn macro_expansion_detail(error: &RuntimeError) -> &str {
 
 #[test]
 fn macro_expansion_preserves_simple_error_report() {
-    let mut runtime = Runtime::new()
-        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
     let error = runtime
         .eval("(loop for symbol being the widgets)")
         .expect_err("unsupported LOOP clauses must fail during macro expansion");
@@ -492,8 +492,8 @@ fn macro_expansion_preserves_simple_error_report() {
 
 #[test]
 fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
-    let mut runtime = Runtime::new()
-        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
     let error = runtime
         .eval("(loop for index from)")
         .expect_err("an incomplete FOR clause must fail during macro expansion");
@@ -502,8 +502,8 @@ fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
 
 #[test]
 fn compiled_macro_expansion_preserves_native_load_report() {
-    let mut runtime = Runtime::new()
-        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
     let path = std::env::temp_dir().join(format!(
         "ncl-r6-b5-macro-invalid-utf8-{}.lisp",
         std::process::id()
@@ -521,13 +521,16 @@ fn compiled_macro_expansion_preserves_native_load_report() {
     fs::remove_file(path)
         .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
     let error = result.expect_err("the compiled macro's LOAD must fail");
-    assert_eq!(macro_expansion_detail(&error), "source file is not valid UTF-8");
+    assert_eq!(
+        macro_expansion_detail(&error),
+        "source file is not valid UTF-8"
+    );
 }
 
 #[test]
 fn compiled_macro_expansion_restores_non_simple_condition() {
-    let mut runtime = Runtime::new()
-        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
     let path = std::env::temp_dir().join(format!(
         "ncl-r6-b5-macro-missing-{}.lisp",
         std::process::id()

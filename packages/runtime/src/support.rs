@@ -5,8 +5,8 @@ use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FrontError, MacroCaller, SymbolRef};
 use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
-    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code,
-    function_entry, make_closure, make_cons, make_value_cell, symbol_function,
+    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
+    make_closure, make_cons, make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 

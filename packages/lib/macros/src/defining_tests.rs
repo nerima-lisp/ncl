@@ -56,6 +56,24 @@ fn function_definitions_preserve_lambda_body() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn function_definitions_allow_an_empty_body() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "F")?;
+    let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
+    let form = list(&mut ctx, &runtime, &[operator, name, Word::NIL])?;
+    let expanded = call(&runtime, &mut ctx, "DEFUN", form)?;
+    let expanded_parts = elements(&mut ctx, expanded)?;
+    let setf = elements(&mut ctx, expanded_parts[1])?;
+    let function = elements(&mut ctx, setf[2])?;
+    let lambda = elements(&mut ctx, function[1])?;
+    let block = elements(&mut ctx, lambda[2])?;
+    assert_eq!(block[0], symbol(&mut ctx, &runtime, "BLOCK")?);
+    assert_eq!(block[1], name);
+    assert_eq!(block.len(), 2);
+    Ok(())
+}
+
+#[test]
 fn function_definitions_keep_declarations_and_docstrings_before_the_block()
 -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;

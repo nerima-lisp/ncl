@@ -47,6 +47,25 @@ fn native_poll_and_conservative_snapshot_cover_unregistered_paths() {
 }
 
 #[test]
+fn publish_gc_state_recovers_poisoned_mutex() {
+    let thread = Thread::new();
+    let gc_state = thread.gc_state_handle();
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Ok(_guard) = gc_state.lock() {
+            panic!("poison GC-state mutex");
+        }
+    }));
+    assert!(panic.is_err());
+
+    thread.publish_gc_state(42);
+
+    let published = gc_state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(published.published_epoch, 42);
+}
+
+#[test]
 fn native_frame_capture_reads_registered_layout_and_writes_back() {
     let heap = crate::Heap::new(crate::HeapConfig::default());
     let mut thread = Thread::new();

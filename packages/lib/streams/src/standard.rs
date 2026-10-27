@@ -118,3 +118,7 @@ pub fn lookup(
         })
     })
 }
+
+#[cfg(test)]
+#[path = "../tests/support/standard_registration_coverage.rs"]
+mod tests;

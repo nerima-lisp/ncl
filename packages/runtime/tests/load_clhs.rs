@@ -50,7 +50,7 @@ fn r5_compile_file_reads_in_the_dynamic_package_and_restores_it() {
         std::process::id()
     ));
     let contents = "(eval-when (:compile-toplevel) (setq *r5-compile-outer-marker* 'outer-marker)) \
-                    (in-package \"R5-COMPILE-INNER\") \
+                    (eval-when (:compile-toplevel) (setq *package* (find-package \"R5-COMPILE-INNER\"))) \
                     (eval-when (:compile-toplevel) (setq *r5-compile-inner-marker* 'inner-marker))";
     if let Err(error) = fs::write(&source, contents) {
         panic!("COMPILE-FILE package regression source creation failed: {error}");
@@ -222,6 +222,38 @@ fn load_preserves_the_original_simple_error_condition() {
     );
     if let Err(error) = fs::remove_file(&source) {
         panic!("LOAD condition identity fixture cleanup failed: {error}");
+    }
+}
+
+#[test]
+fn load_preserves_direct_simple_error_format_arguments() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-direct-simple-error-{}.lisp",
+        std::process::id()
+    ));
+    if let Err(error) = fs::write(&source, "(error \"x ~a\" 1)") {
+        panic!("LOAD direct SIMPLE-ERROR fixture creation failed: {error}");
+    }
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!(
+        concat!(
+            "(handler-case (progn (load {}) :no-error) ",
+            "(simple-error (condition) ",
+            "(and (string= (simple-condition-format-control condition) \"x ~a\") ",
+            "(equal (simple-condition-format-arguments condition) '(1)))))",
+        ),
+        lisp_string(&source)
+    );
+    assert_load_condition_probe(
+        &mut runtime,
+        "eval",
+        false,
+        &form,
+        "did not retain direct SIMPLE-ERROR format arguments",
+    );
+    if let Err(error) = fs::remove_file(&source) {
+        panic!("LOAD direct SIMPLE-ERROR fixture cleanup failed: {error}");
     }
 }
 

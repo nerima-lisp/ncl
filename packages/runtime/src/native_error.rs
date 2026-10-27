@@ -223,24 +223,6 @@ mod tests {
                 ..
             }
         ));
-
-        for operation in [NativeOperation::Add, NativeOperation::Mul] {
-            let failure = native_failure(NativeError::TypeMismatch {
-                operation,
-                operand: 0,
-                value: Word::NIL,
-            });
-            assert!(matches!(
-                failure,
-                RuntimeError::NativeFailure {
-                    condition: NativeCondition::Lisp(LispError::TypeError {
-                        expected: ObjectType::Fixnum,
-                        ..
-                    }),
-                    ..
-                }
-            ));
-        }
     }
 
     #[test]

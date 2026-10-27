@@ -296,7 +296,10 @@ fn defun_return_from_in_let_initializers_works_across_routes() {
             "29",
         ),
     ];
-    let mut runtime = Runtime::new().expect("runtime initialization should succeed");
+    let mut runtime = match Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime initialization failed: {error}"),
+    };
 
     for (route, compile) in [("eval", false), ("compile", true)] {
         for (case, source, expected) in CASES {
@@ -305,7 +308,10 @@ fn defun_return_from_in_let_initializers_works_across_routes() {
             } else {
                 runtime.eval(source)
             };
-            let value = result.expect("DEFUN RETURN-FROM case should succeed");
+            let value = match result {
+                Ok(value) => value,
+                Err(error) => panic!("{route}/{case} should succeed: {error}"),
+            };
             assert_eq!(runtime.format_result(value), expected, "{route}/{case}");
         }
     }

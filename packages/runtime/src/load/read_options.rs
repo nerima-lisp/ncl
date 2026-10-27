@@ -133,14 +133,15 @@ mod tests {
                 FloatFormat::DoubleFloat,
             ),
         ] {
-            let mut runtime = Runtime::new().expect("runtime initialization failed");
-            runtime.eval(binding).expect(&format!(
-                "setting *READ-DEFAULT-FLOAT-FORMAT* {format} failed"
-            ));
+            let mut runtime = Runtime::new()
+                .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+            runtime.eval(binding).unwrap_or_else(|error| {
+                panic!("setting *READ-DEFAULT-FLOAT-FORMAT* {format} failed: {error}")
+            });
 
-            let options = current_read_options(&mut runtime, None).expect(&format!(
-                "reading *READ-DEFAULT-FLOAT-FORMAT* {format} failed"
-            ));
+            let options = current_read_options(&mut runtime, None).unwrap_or_else(|error| {
+                panic!("reading *READ-DEFAULT-FLOAT-FORMAT* {format} failed: {error}")
+            });
             assert_eq!(options.default_float_format(), expected, "{format}");
         }
     }
@@ -162,7 +163,8 @@ mod tests {
                 "(setq *read-default-float-format* 'rational)",
             ),
         ] {
-            let mut runtime = Runtime::new().expect("runtime initialization failed");
+            let mut runtime = Runtime::new()
+                .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
             if let Err(error) = runtime.eval(binding) {
                 assert!(
                     matches!(error, RuntimeError::Object(ObjectError::TypeError)),
@@ -170,8 +172,9 @@ mod tests {
                 );
             }
 
-            let error = current_read_options(&mut runtime, None)
-                .expect_err("invalid dynamic reader value was accepted");
+            let Err(error) = current_read_options(&mut runtime, None) else {
+                panic!("invalid dynamic reader value was accepted");
+            };
             assert!(
                 matches!(error, RuntimeError::Object(ObjectError::TypeError)),
                 "{name} returned the wrong error: {error:?}"
@@ -181,21 +184,24 @@ mod tests {
 
     #[test]
     fn current_read_options_rejects_a_deleted_dynamic_package() {
-        let mut runtime = Runtime::new().expect("runtime initialization failed");
-        let options = current_read_options(&mut runtime, None)
-            .expect("initial dynamic reader options should be valid");
+        let mut runtime =
+            Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+        let options = current_read_options(&mut runtime, None).unwrap_or_else(|error| {
+            panic!("initial dynamic reader options should be valid: {error}")
+        });
         runtime
             .eval(
                 "(setq *package* (make-package \"NCL-READ-OPTIONS-DELETED\" \
                  :use (list (find-package \"COMMON-LISP\"))))",
             )
-            .expect("dynamic package setup should succeed");
+            .unwrap_or_else(|error| panic!("dynamic package setup should succeed: {error}"));
         runtime
             .eval("(delete-package *package*)")
-            .expect("deleting the current package should succeed");
+            .unwrap_or_else(|error| panic!("deleting the current package should succeed: {error}"));
 
-        let error = current_read_options(&mut runtime, Some(options))
-            .expect_err("a deleted dynamic package should not supply a reader package name");
+        let Err(error) = current_read_options(&mut runtime, Some(options)) else {
+            panic!("a deleted dynamic package should not supply a reader package name");
+        };
         assert!(
             matches!(
                 error,

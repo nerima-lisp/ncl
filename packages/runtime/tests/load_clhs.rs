@@ -780,9 +780,9 @@ fn load_signals_type_error_for_invalid_dynamic_reader_values() {
         ),
     ] {
         let form = format!("(let ({binding}) (load {}))", lisp_string(&source));
-        let error = runtime
-            .eval(&form)
-            .expect_err("LOAD accepted an invalid dynamic reader value");
+        let Err(error) = runtime.eval(&form) else {
+            panic!("LOAD accepted an invalid dynamic reader value");
+        };
         assert!(
             matches!(
                 &error,
@@ -802,9 +802,9 @@ fn source_eval_returns_type_error_for_dotted_in_package_form() {
     let mut runtime =
         Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
 
-    let error = runtime
-        .eval("(in-package . 42)")
-        .expect_err("dotted IN-PACKAGE arguments were accepted");
+    let Err(error) = runtime.eval("(in-package . 42)") else {
+        panic!("dotted IN-PACKAGE arguments were accepted");
+    };
     assert!(
         matches!(
             error,

@@ -186,31 +186,25 @@ fn place(
                         parts.get(2).ok_or(ObjectError::TypeError)?.get(),
                     );
                 }
-                let expansion = if let Some(expander) = registry.get(ctx, operator)? {
-                    let arguments = parts
-                        .iter()
-                        .skip(1)
-                        .map(HeapRootedWord::get)
-                        .collect::<Vec<_>>();
+                let expander = registry.get(ctx, operator)?;
+                let arguments = parts
+                    .iter()
+                    .skip(1)
+                    .map(HeapRootedWord::get)
+                    .collect::<Vec<_>>();
+                let expansion = if let Some(expander) = expander {
                     expander(ctx, runtime, &arguments)?
+                } else if let Some(expansion) = defsetf_place(ctx, runtime, operator, &arguments)? {
+                    expansion
                 } else {
+                    let operator = parts.first().ok_or(ObjectError::TypeError)?.get();
                     let arguments = parts
                         .iter()
                         .skip(1)
                         .map(HeapRootedWord::get)
                         .collect::<Vec<_>>();
-                    if let Some(expansion) = defsetf_place(ctx, runtime, operator, &arguments)? {
-                        expansion
-                    } else {
-                        let operator = parts.first().ok_or(ObjectError::TypeError)?.get();
-                        let arguments = parts
-                            .iter()
-                            .skip(1)
-                            .map(HeapRootedWord::get)
-                            .collect::<Vec<_>>();
-                        crate::setf_places::standard_cons_place(ctx, runtime, operator, &arguments)?
-                            .ok_or(ObjectError::UndefinedFunction)?
-                    }
+                    crate::setf_places::standard_cons_place(ctx, runtime, operator, &arguments)?
+                        .ok_or(ObjectError::UndefinedFunction)?
                 };
                 validate_expansion(&expansion)?;
                 Ok(expansion)
@@ -219,7 +213,7 @@ fn place(
     })
 }
 
-pub(super) fn place_value(
+pub fn place_value(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     place: Word,
@@ -308,7 +302,7 @@ fn store_place(
     })
 }
 
-pub(super) fn store_place_prebound(
+pub fn store_place_prebound(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     expansion: &SetfExpansion,

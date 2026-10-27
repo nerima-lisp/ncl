@@ -165,7 +165,7 @@ fn standardized_cons_places_expand_for_setf_and_incf() -> Result<(), ObjectError
 
     let registry = PlaceRegistry::new(&runtime);
     let variable = symbol(&mut ctx, &runtime, "X")?;
-    let variable = HeapRootedWord::new(&mut ctx, variable)?;
+    let variable = HeapRootedWord::new(&ctx, variable)?;
     let mut cases = Vec::<(String, HeapRootedWord)>::new();
     for name in compound_accessor_names()
         .into_iter()
@@ -185,11 +185,11 @@ fn standardized_cons_places_expand_for_setf_and_incf() -> Result<(), ObjectError
         cases.push((name, place));
     }
     let documentation = symbol(&mut ctx, &runtime, "DOCUMENTATION")?;
-    let documentation = HeapRootedWord::new(&mut ctx, documentation)?;
+    let documentation = HeapRootedWord::new(&ctx, documentation)?;
     let kind = symbol(&mut ctx, &runtime, "T")?;
-    let kind = HeapRootedWord::new(&mut ctx, kind)?;
+    let kind = HeapRootedWord::new(&ctx, kind)?;
     let package = symbol(&mut ctx, &runtime, "P")?;
-    let package = HeapRootedWord::new(&mut ctx, package)?;
+    let package = HeapRootedWord::new(&ctx, package)?;
     let documentation_place = list(
         &mut ctx,
         &runtime,
@@ -197,7 +197,7 @@ fn standardized_cons_places_expand_for_setf_and_incf() -> Result<(), ObjectError
     )?;
     cases.push((
         "(DOCUMENTATION P T)".to_owned(),
-        HeapRootedWord::new(&mut ctx, documentation_place)?,
+        HeapRootedWord::new(&ctx, documentation_place)?,
     ));
 
     for (name, place) in cases {
@@ -210,13 +210,13 @@ fn standardized_cons_places_expand_for_setf_and_incf() -> Result<(), ObjectError
     }
 
     let second = symbol(&mut ctx, &runtime, "SECOND")?;
-    let second = HeapRootedWord::new(&mut ctx, second)?;
+    let second = HeapRootedWord::new(&ctx, second)?;
     let malformed_place = list(
         &mut ctx,
         &runtime,
         &[second.get(), variable.get(), Word::fixnum(0)],
     )?;
-    let malformed_place = HeapRootedWord::new(&mut ctx, malformed_place)?;
+    let malformed_place = HeapRootedWord::new(&ctx, malformed_place)?;
     let result = expand_setf(
         &mut ctx,
         &runtime,
@@ -244,16 +244,12 @@ fn standardized_cons_places_expand_for_setf_and_incf() -> Result<(), ObjectError
 }
 
 #[test]
-fn modifying_operators_reject_malformed_arity_and_pushnew_keys() -> Result<(), ObjectError> {
+fn incf_decf_push_reject_extra_arguments() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     registry_with_builtins(&runtime, &mut ctx)?;
     let registry = PlaceRegistry::new(&runtime);
     let place = symbol(&mut ctx, &runtime, "X")?;
-    let key = symbol(&mut ctx, &runtime, "KEYWORD::KEY")?;
-    let test = symbol(&mut ctx, &runtime, "KEYWORD::TEST")?;
-    let test_not = symbol(&mut ctx, &runtime, "KEYWORD::TEST-NOT")?;
-    let unknown = symbol(&mut ctx, &runtime, "KEYWORD::UNKNOWN")?;
 
     assert!(
         matches!(
@@ -292,6 +288,21 @@ fn modifying_operators_reject_malformed_arity_and_pushnew_keys() -> Result<(), O
         ),
         "PUSH must reject extra arguments",
     );
+    Ok(())
+}
+
+#[test]
+fn pushnew_rejects_malformed_keyword_arguments() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "X")?;
+    let key = symbol(&mut ctx, &runtime, "KEYWORD::KEY")?;
+    let test = symbol(&mut ctx, &runtime, "KEYWORD::TEST")?;
+    let test_not = symbol(&mut ctx, &runtime, "KEYWORD::TEST-NOT")?;
+    let unknown = symbol(&mut ctx, &runtime, "KEYWORD::UNKNOWN")?;
+
     assert!(
         matches!(
             expand_push(
@@ -331,6 +342,17 @@ fn modifying_operators_reject_malformed_arity_and_pushnew_keys() -> Result<(), O
         ),
         "PUSHNEW must reject TEST and TEST-NOT together",
     );
+    Ok(())
+}
+
+#[test]
+fn pop_remf_reject_extra_arguments() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let place = symbol(&mut ctx, &runtime, "X")?;
+
     assert!(
         matches!(
             expand_pop(&mut ctx, &runtime, &registry, &[place, Word::NIL]),
@@ -363,7 +385,7 @@ fn synthesized_cons_and_ordinal_places_expand_under_gc_stress() -> Result<(), Ob
 
     let registry = PlaceRegistry::new(&runtime);
     let variable = symbol(&mut ctx, &runtime, "X")?;
-    let variable = HeapRootedWord::new(&mut ctx, variable)?;
+    let variable = HeapRootedWord::new(&ctx, variable)?;
     for name in ["CDDDDR", "TENTH"] {
         let place = make_place(&mut ctx, &runtime, name, variable.get())?;
         let setf_arguments = [place.get(), Word::fixnum(41)];
@@ -386,25 +408,25 @@ fn nested_the_is_preserved_by_setf_expansion_and_modification_operators() -> Res
 
     let registry = PlaceRegistry::new(&runtime);
     let variable = symbol(&mut ctx, &runtime, "X")?;
-    let variable = HeapRootedWord::new(&mut ctx, variable)?;
+    let variable = HeapRootedWord::new(&ctx, variable)?;
     let the = symbol(&mut ctx, &runtime, "THE")?;
-    let the = HeapRootedWord::new(&mut ctx, the)?;
+    let the = HeapRootedWord::new(&ctx, the)?;
     let outer_type = symbol(&mut ctx, &runtime, "FIXNUM")?;
-    let outer_type = HeapRootedWord::new(&mut ctx, outer_type)?;
+    let outer_type = HeapRootedWord::new(&ctx, outer_type)?;
     let inner_type = symbol(&mut ctx, &runtime, "INTEGER")?;
-    let inner_type = HeapRootedWord::new(&mut ctx, inner_type)?;
+    let inner_type = HeapRootedWord::new(&ctx, inner_type)?;
     let inner = list(
         &mut ctx,
         &runtime,
         &[the.get(), inner_type.get(), variable.get()],
     )?;
-    let inner = HeapRootedWord::new(&mut ctx, inner)?;
+    let inner = HeapRootedWord::new(&ctx, inner)?;
     let place = list(
         &mut ctx,
         &runtime,
         &[the.get(), outer_type.get(), inner.get()],
     )?;
-    let place = HeapRootedWord::new(&mut ctx, place)?;
+    let place = HeapRootedWord::new(&ctx, place)?;
 
     let setf_expansion = expand_get_setf_expansion(&mut ctx, &runtime, &registry, place.get())?;
     crate::setf_support::with_expansion_roots(
@@ -430,11 +452,9 @@ fn nested_the_is_preserved_by_setf_expansion_and_modification_operators() -> Res
     ];
     for operator in operators {
         let args = match operator {
-            "SETF" | "PSETF" => vec![place.get(), Word::fixnum(7)],
+            "SETF" | "PSETF" | "SHIFTF" | "REMF" => vec![place.get(), Word::fixnum(7)],
             "INCF" | "DECF" | "POP" | "ROTATEF" => vec![place.get()],
             "PUSH" | "PUSHNEW" => vec![Word::fixnum(7), place.get()],
-            "SHIFTF" => vec![place.get(), Word::fixnum(7)],
-            "REMF" => vec![place.get(), Word::fixnum(7)],
             _ => unreachable!(),
         };
         let result = match operator {
@@ -459,7 +479,7 @@ fn nested_the_is_preserved_by_setf_expansion_and_modification_operators() -> Res
         let Some(expansion) = result.ok() else {
             continue;
         };
-        let expansion = HeapRootedWord::new(&mut ctx, expansion)?;
+        let expansion = HeapRootedWord::new(&ctx, expansion)?;
         assert!(
             contains_nested_the(
                 &mut ctx,

@@ -24,6 +24,7 @@ pub(crate) const INTERNAL: usize = 6;
 pub(crate) const EXTERNAL: usize = 7;
 pub(crate) const SHADOWING: usize = 8;
 pub(crate) const LOCAL_NICKNAMES: usize = 9;
+pub(crate) const DOCUMENTATION: usize = 10;
 pub(crate) fn reference_words() -> Vec<usize> {
     vec![
         NAME,
@@ -34,6 +35,7 @@ pub(crate) fn reference_words() -> Vec<usize> {
         EXTERNAL,
         SHADOWING,
         LOCAL_NICKNAMES,
+        DOCUMENTATION,
     ]
 }
 impl Package {
@@ -57,7 +59,7 @@ impl Package {
                 let mut external =
                     HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
                 crate::with_root(ctx, &mut external, |ctx, external| {
-                    let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
+                    let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 11)?;
                     for (slot, value) in [
                         (LOCK, Word::fixnum(0)),
                         (GENSYM, Word::fixnum(0)),
@@ -69,6 +71,7 @@ impl Package {
                         (EXTERNAL, *external),
                         (SHADOWING, Word::NIL),
                         (LOCAL_NICKNAMES, Word::NIL),
+                        (DOCUMENTATION, Word::NIL),
                     ] {
                         put(ctx, object, slot, value)?;
                     }

@@ -21,6 +21,73 @@ fn string_text(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
+#[test]
+fn package_documentation_round_trips() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let package = Package::new(&mut ctx, &runtime, "DOCUMENTATION")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+    assert_eq!(
+        package
+            .documentation(&ctx)
+            .unwrap_or_else(|error| panic!("package documentation: {error:?}")),
+        Word::NIL
+    );
+    let documentation = string(&mut ctx, &runtime, "package docs");
+    package
+        .set_documentation(&mut ctx, documentation)
+        .unwrap_or_else(|error| panic!("set package documentation: {error:?}"));
+    assert_eq!(
+        string_text(
+            &ctx,
+            package
+                .documentation(&ctx)
+                .unwrap_or_else(|error| panic!("package documentation: {error:?}"))
+        ),
+        "package docs"
+    );
+}
+
+#[test]
+fn package_documentation_survives_full_collection() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ctx.set_strict_forwarding(true);
+
+    let mut package_word = Package::new(&mut ctx, &runtime, "DOCUMENTATION-GC")
+        .unwrap_or_else(|error| panic!("package: {error:?}"))
+        .as_word();
+    let package_root = push_root(&mut ctx, &mut package_word);
+    let expected = {
+        let documentation = string(&mut ctx, &runtime, "docs retained by package slot");
+        Package::from_word(package_word)
+            .set_documentation(&mut ctx, documentation)
+            .unwrap_or_else(|error| panic!("set package documentation: {error:?}"));
+        string_text(
+            &ctx,
+            Package::from_word(package_word)
+                .documentation(&ctx)
+                .unwrap_or_else(|error| panic!("package documentation before GC: {error:?}")),
+        )
+    };
+
+    ctx.collect(true)
+        .unwrap_or_else(|error| panic!("full collection: {error:?}"));
+    let actual = string_text(
+        &ctx,
+        Package::from_word(package_word)
+            .documentation(&ctx)
+            .unwrap_or_else(|error| panic!("package documentation after GC: {error:?}")),
+    );
+    assert_eq!(actual, expected);
+    assert!(pop_root(&mut ctx, package_root));
+}
+
 const SB_PACKAGES: [(BuiltinPackage, &str); 16] = [
     (BuiltinPackage::SbExt, "SB-EXT"),
     (BuiltinPackage::SbThread, "SB-THREAD"),

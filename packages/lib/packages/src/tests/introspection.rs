@@ -189,6 +189,7 @@ struct PackageIterationFixture {
     function: FunctionObject,
     mode_symbols: Word,
     mode_external: Word,
+    mode_present: Word,
     mode_all: Word,
     mode_invalid: Word,
     empty: Word,
@@ -246,6 +247,7 @@ fn package_iteration_fixture(
     let keyword = Package::from_word(runtime.ensure_package(ctx, "KEYWORD")?);
     let mode_symbols = keyword.intern(ctx, runtime, "SYMBOLS")?.0;
     let mode_external = keyword.intern(ctx, runtime, "EXTERNAL")?.0;
+    let mode_present = keyword.intern(ctx, runtime, "PRESENT")?.0;
     let mode_all = keyword.intern(ctx, runtime, "ALL")?.0;
     let mode_invalid = keyword.intern(ctx, runtime, "INVALID")?.0;
     let empty = runtime.ensure_package(ctx, "N25-ITERATION-EMPTY")?;
@@ -264,6 +266,7 @@ fn package_iteration_fixture(
         function,
         mode_symbols,
         mode_external,
+        mode_present,
         mode_all,
         mode_invalid,
         empty,
@@ -308,6 +311,22 @@ fn package_iteration_symbols_cover_accessible_external_and_all_symbols() -> Resu
     )?;
     let externals = list_items(&ctx, externals)?;
     assert_eq!(externals, vec![fixture.external]);
+
+    let present = runtime.call_builtin(
+        &mut ctx,
+        fixture.function,
+        &[fixture.mode_present, fixture.target.as_word()],
+    )?;
+    let present = list_items(&ctx, present)?;
+    assert!(present.contains(&fixture.local));
+    assert!(present.contains(&fixture.external));
+    assert!(present.contains(&fixture.imported));
+    assert!(present.contains(&fixture.shadowed_local));
+    assert!(!present.contains(&fixture.inherited));
+    assert!(!present.contains(&fixture.hidden));
+    assert!(!present.contains(&fixture.source_internal));
+    assert!(!present.contains(&fixture.conflict_symbol_a));
+    assert!(!present.contains(&fixture.conflict_symbol_b));
 
     for mode in [fixture.mode_symbols, fixture.mode_external] {
         let empty_symbols =

@@ -164,3 +164,110 @@ impl crate::Runtime {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CodeObject, EvaluatorService, NativeInvocation, Word};
+    use crate::evaluator::EntryCodeLookup;
+    use ncl_object::Function;
+    use std::collections::BTreeMap;
+    use std::ptr::NonNull;
+
+    #[test]
+    fn evaluator_service_debug_reports_its_type() {
+        let evaluator = EvaluatorService::new(Vec::new(), 0);
+
+        assert_eq!(format!("{evaluator:?}"), "EvaluatorService { .. }");
+    }
+
+    #[test]
+    fn evaluator_service_looks_up_rooted_entry_codes() {
+        let mut context = ncl_object::ThreadContext::new();
+        let evaluator = EvaluatorService::new(Vec::new(), 0);
+        evaluator.root_entry_code(&mut context, 17, Word::TRUE);
+        evaluator.root_function(&mut context, Word::NIL);
+
+        assert_eq!(evaluator.code_object_word(17), Some(Word::TRUE));
+        assert_eq!(evaluator.code_object_word(18), None);
+
+        evaluator.clear_roots(&mut context);
+    }
+
+    #[test]
+    fn legacy_entry_code_lookup_reads_rooted_entries() {
+        let mut context = ncl_object::ThreadContext::new();
+        let mut word = Box::new(Word::TRUE);
+        let token = ncl_object::push_root(&mut context, &mut word);
+        let entries = BTreeMap::from([(17, (word, token))]);
+
+        assert_eq!(entries.code_object_word(17), Some(Word::TRUE));
+        assert_eq!(entries.code_object_word(18), None);
+        assert!(ncl_object::pop_root(&mut context, token));
+    }
+
+    #[test]
+    fn native_make_closure_uses_legacy_entry_code_after_service_miss() {
+        let mut runtime = crate::Runtime::new().expect("runtime");
+        let entry = 0x1000_usize;
+        let fallback_code = ncl_object::make_code_object(
+            &mut runtime.context,
+            &runtime.object,
+            entry,
+            0,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("fallback code object");
+        let mut fallback_word = Box::new(fallback_code.as_word());
+        let fallback_token = ncl_object::push_root(&mut runtime.context, &mut fallback_word);
+        let caller_code = ncl_object::make_code_object(
+            &mut runtime.context,
+            &runtime.object,
+            entry + 1,
+            0,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("caller code object");
+        let mut caller_word = Box::new(caller_code.as_word());
+        let caller_token = ncl_object::push_root(&mut runtime.context, &mut caller_word);
+        let entries = BTreeMap::from([(entry, (fallback_word, fallback_token))]);
+
+        runtime
+            .with_evaluator_access(|runtime| {
+                let closure = {
+                    let mut invocation = NativeInvocation {
+                        object: &runtime.object,
+                        context: &mut runtime.context,
+                        code: CodeObject::from_word(*caller_word),
+                        entry_codes: &entries,
+                    };
+                    let thread = invocation.context.thread_access().as_non_null();
+                    let invocation_pointer = NonNull::from(&mut invocation).cast();
+                    let previous =
+                        ncl_sys::replace_native_context(thread, Some(invocation_pointer));
+                    let closure = crate::support::native_make_closure(
+                        thread,
+                        Word::fixnum(0),
+                        Word::from_bits(u64::try_from(entry).expect("entry fits in a word")),
+                    );
+                    assert_eq!(
+                        ncl_sys::replace_native_context(thread, previous),
+                        Some(invocation_pointer)
+                    );
+                    closure
+                };
+                let function = Function::from_word(closure);
+                let closure_code = ncl_object::function_code(&runtime.context, function)
+                    .expect("closure code object");
+                assert_eq!(closure_code.as_word(), *entries[&entry].0);
+                Ok(())
+            })
+            .expect("evaluator access");
+
+        assert!(ncl_object::pop_root(&mut runtime.context, caller_token));
+        assert!(ncl_object::pop_root(&mut runtime.context, fallback_token));
+    }
+}

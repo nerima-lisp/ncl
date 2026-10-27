@@ -48,6 +48,19 @@ mod tests {
     use std::rc::Rc;
 
     use super::super::ThreadContext;
+    use super::EvaluatorAccessSlot;
+
+    #[test]
+    fn evaluator_access_slot_debug_reports_its_state() {
+        assert_eq!(
+            format!("{:?}", EvaluatorAccessSlot::default()),
+            "EvaluatorAccessSlot(None)"
+        );
+        assert_eq!(
+            format!("{:?}", EvaluatorAccessSlot(Some(Rc::new(1_u8)))),
+            "EvaluatorAccessSlot(Some)"
+        );
+    }
 
     #[test]
     fn evaluator_access_is_typed_and_restorable() {

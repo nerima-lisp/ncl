@@ -711,3 +711,66 @@ fn remove_matches_option_names_only_in_the_keyword_package() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }
+
+#[test]
+fn selection_rejects_non_symbol_keyword_arguments_as_program_error() {
+    let (runtime, mut ctx, functions) = setup();
+    ncl_conditions::register(&runtime).unwrap_or_else(|error| panic!("conditions: {error:?}"));
+    let mut root_tokens = Vec::new();
+    let mut sequence = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LIST",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    root_tokens.push(ncl_object::push_root(&mut ctx, &mut sequence));
+    let mut allow_other_keys = keyword(&mut ctx, &runtime, "ALLOW-OTHER-KEYS");
+    root_tokens.push(ncl_object::push_root(&mut ctx, &mut allow_other_keys));
+
+    for (name, args) in [
+        (
+            "REMOVE",
+            vec![
+                Word::fixnum(1),
+                sequence,
+                Word::fixnum(3),
+                Word::fixnum(4),
+                allow_other_keys,
+                Word::TRUE,
+            ],
+        ),
+        (
+            "SUBST",
+            vec![
+                Word::fixnum(9),
+                Word::fixnum(1),
+                sequence,
+                Word::fixnum(3),
+                Word::fixnum(4),
+                allow_other_keys,
+                Word::TRUE,
+            ],
+        ),
+    ] {
+        assert_eq!(
+            call_result(&runtime, &mut ctx, &functions, name, &args),
+            Err(ObjectError::TypeError),
+            "{name} should reject a non-symbol keyword argument",
+        );
+        let mut condition = ctx
+            .take_pending_condition()
+            .unwrap_or_else(|| panic!("{name} did not signal a PROGRAM-ERROR condition"));
+        let condition_token = ncl_object::push_root(&mut ctx, &mut condition);
+        let class = ncl_conditions::condition_class_of(&ctx, condition)
+            .unwrap_or_else(|error| panic!("condition class: {error:?}"));
+        let program_error = ncl_conditions::condition_class(&mut ctx, &runtime, "PROGRAM-ERROR")
+            .unwrap_or_else(|| panic!("missing PROGRAM-ERROR class"));
+        assert_eq!(class, program_error, "{name} condition class");
+        assert!(ncl_object::pop_root(&mut ctx, condition_token));
+    }
+
+    for token in root_tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}

@@ -691,6 +691,14 @@ fn package_iteration_parser_rejects_malformed_and_unknown_clauses() -> Result<()
         ("missing article", vec![for_word, variable, being, symbols]),
         ("missing kind", vec![for_word, variable, being, the]),
         (
+            "non-symbol kind",
+            vec![for_word, variable, being, the, Word::fixnum(1)],
+        ),
+        (
+            "non-symbol variable",
+            vec![for_word, Word::fixnum(1), being, the, symbols],
+        ),
+        (
             "missing IN package",
             vec![for_word, variable, being, the, symbols, in_word],
         ),
@@ -728,5 +736,56 @@ fn package_iteration_parser_rejects_malformed_and_unknown_clauses() -> Result<()
         .map(|index| ncl_object::string_ref(&ctx, format_control, index))
         .collect::<std::result::Result<String, _>>()?;
     assert_eq!(message, "Unsupported LOOP clause: WIDGETS");
+    Ok(())
+}
+
+#[test]
+fn package_iteration_expansion_propagates_heap_capacity_failures() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let variable = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = variable;
+    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let mut next_root = 1;
+        for words in [65_536, 4_096, 256, 16, 1] {
+            loop {
+                if next_root == roots.len() {
+                    return Err(ObjectError::Layout);
+                }
+                match ncl_object::allocate(ctx, &runtime, 0x7f, words) {
+                    Ok(value) => {
+                        roots[next_root] = value;
+                        next_root += 1;
+                    }
+                    Err(error) => {
+                        if format!("{error:?}") != "Storage(CapacityExceeded)" {
+                            return Err(error);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        expand_loop_ast(
+            ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![LoopClause::Package(PackageClause {
+                    variable: roots[0],
+                    type_spec: None,
+                    kind: PackageIterationKind::Symbols,
+                    package: Some(Word::NIL),
+                })],
+            },
+        )
+    });
+    assert!(
+        matches!(
+            &result,
+            Err(ObjectError::Storage(error)) if format!("{error:?}") == "CapacityExceeded"
+        ),
+        "unexpected capacity expansion result: {result:?}"
+    );
     Ok(())
 }

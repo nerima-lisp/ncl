@@ -66,38 +66,12 @@ fn typed_placeholder_with_candidates(
     type_spec: usize,
     candidates: &[Word],
 ) -> Result<usize> {
-    let mut invalid_type = false;
-    let direct_match = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let type_word = roots
-            .get(type_spec)
-            .map(|root| **root)
-            .ok_or(ObjectError::TypeError)?;
-        let specifier = ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| {
-            invalid_type = true;
-            ObjectError::TypeError
-        })?;
-        let mut candidate = None;
-        for value in candidates.iter().copied() {
-            if ncl_types::typep(ctx, value, &specifier).map_err(|_| ObjectError::TypeError)? {
-                candidate = Some(value);
-                break;
-            }
+    for candidate in candidates.iter().copied() {
+        if let Some(candidate) = typed_candidate_matches(ctx, runtime, held, type_spec, candidate)?
+        {
+            held.push(candidate);
+            return Ok(held.len() - 1);
         }
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((candidate, refreshed))
-    });
-    let (candidate, refreshed) = match direct_match {
-        Ok(result) => result,
-        Err(ObjectError::TypeError) if invalid_type => {
-            return Err(invalid_type_specifier(ctx, runtime));
-        }
-        Err(ObjectError::TypeError) => return Err(unsupported_type_default(ctx, runtime)),
-        Err(error) => return Err(error),
-    };
-    *held = refreshed;
-    if let Some(candidate) = candidate {
-        held.push(candidate);
-        return Ok(held.len() - 1);
     }
 
     let (float, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
@@ -109,37 +83,60 @@ fn typed_placeholder_with_candidates(
     let float_index = held.len();
     held.push(float);
 
-    invalid_type = false;
-    let float_match = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let type_word = roots
-            .get(type_spec)
-            .map(|root| **root)
-            .ok_or(ObjectError::TypeError)?;
-        let specifier = ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| {
-            invalid_type = true;
-            ObjectError::TypeError
-        })?;
-        let value = roots
-            .get(float_index)
-            .map(|root| **root)
-            .ok_or(ObjectError::TypeError)?;
-        let matches =
-            ncl_types::typep(ctx, value, &specifier).map_err(|_| ObjectError::TypeError)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((matches, refreshed))
-    });
-    let (matches, refreshed) = match float_match {
-        Ok(result) => result,
-        Err(ObjectError::TypeError) if invalid_type => {
-            return Err(invalid_type_specifier(ctx, runtime));
-        }
-        Err(ObjectError::TypeError) => return Err(unsupported_type_default(ctx, runtime)),
-        Err(error) => return Err(error),
-    };
-    *held = refreshed;
-    if matches {
+    let float = held
+        .get(float_index)
+        .copied()
+        .ok_or(ObjectError::TypeError)?;
+    if typed_candidate_matches(ctx, runtime, held, type_spec, float)?.is_some() {
         Ok(float_index)
     } else {
         Err(unsupported_type_default(ctx, runtime))
+    }
+}
+
+fn typed_candidate_matches(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    type_spec: usize,
+    candidate: Word,
+) -> Result<Option<Word>> {
+    let candidate_index = held.len();
+    held.push(candidate);
+    let mut invalid_type = false;
+    let check = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let check = (|| {
+            let type_word = roots
+                .get(type_spec)
+                .map(|root| **root)
+                .ok_or(ObjectError::TypeError)?;
+            let specifier = ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| {
+                invalid_type = true;
+                ObjectError::TypeError
+            })?;
+            let candidate = roots
+                .get(candidate_index)
+                .map(|root| **root)
+                .ok_or(ObjectError::TypeError)?;
+            ncl_types::typep(ctx, candidate, &specifier).map_err(|_| ObjectError::TypeError)
+        })();
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((check, refreshed))
+    });
+    let (check, refreshed) = match check {
+        Ok(result) => result,
+        Err(error) => {
+            held.pop();
+            return Err(error);
+        }
+    };
+    *held = refreshed;
+    let candidate = held.pop().ok_or(ObjectError::TypeError)?;
+    match check {
+        Ok(true) => Ok(Some(candidate)),
+        Ok(false) => Ok(None),
+        Err(ObjectError::TypeError) if invalid_type => Err(invalid_type_specifier(ctx, runtime)),
+        Err(ObjectError::TypeError) => Err(unsupported_type_default(ctx, runtime)),
+        Err(error) => Err(error),
     }
 }

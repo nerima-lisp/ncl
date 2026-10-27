@@ -493,6 +493,24 @@ fn standard_macro_probes_assert_compiled_results() {
 }
 
 #[test]
+fn cl_bench_hash_strings_typed_loop_evaluates_end_to_end() {
+    let source = r#"(let ((table (make-hash-table :test 'equal)))
+                    (loop for i fixnum from 2 downto 0
+                          with q fixnum = 17 and r fixnum = 0
+                          do (multiple-value-setq (q r) (floor q 4))
+                             (setf (gethash (if (evenp i) "even" "odd") table)
+                                   (list i q r)))
+                    (list (gethash "even" table) (gethash "odd" table)))"#;
+    let output = run_ncl(source);
+    assert_eq!(output.status.code(), Some(0), "{source}: {output:?}");
+    assert!(output.stderr.is_empty(), "{source}: {output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "((0 0 1) (1 1 0))"
+    );
+}
+
+#[test]
 fn do_symbols_probes_assert_clhs_results() {
     let probes = [
         Probe {

@@ -169,12 +169,12 @@ fn place(
     ncl_object::with_heap_rooted_slice(ctx, &[place_word], |ctx, rooted_place| {
         let parts = elements(
             ctx,
-            rooted_place.first().ok_or(ObjectError::TypeError)?.get(),
+            rooted_place[0].get(), // check-added-lines: allow(index) the rooted slice contains the single place form above.
         )?;
         ncl_object::with_heap_rooted_slice(ctx, &parts, |ctx, parts| {
             let mut the = symbol(ctx, runtime, "THE")?;
             ncl_object::with_root(ctx, &mut the, |ctx, the| {
-                let operator = parts.first().ok_or(ObjectError::TypeError)?.get();
+                let operator = parts[0].get(); // check-added-lines: allow(index) elements received a cons form, so parts is nonempty.
                 if operator == *the {
                     if parts.len() != 3 {
                         return Err(ObjectError::TypeError);
@@ -183,7 +183,7 @@ fn place(
                         ctx,
                         runtime,
                         registry,
-                        parts.get(2).ok_or(ObjectError::TypeError)?.get(),
+                        parts[2].get(), // check-added-lines: allow(index) the THE form passed the exact three-element check above.
                     );
                 }
                 let expander = registry.get(ctx, operator)?;
@@ -197,7 +197,7 @@ fn place(
                 } else if let Some(expansion) = defsetf_place(ctx, runtime, operator, &arguments)? {
                     expansion
                 } else {
-                    let operator = parts.first().ok_or(ObjectError::TypeError)?.get();
+                    let operator = parts[0].get(); // check-added-lines: allow(index) elements received a cons form, so parts is nonempty.
                     let arguments = parts
                         .iter()
                         .skip(1)
@@ -220,10 +220,8 @@ pub fn place_value(
     value: Word,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_heap_rooted_slice(ctx, &[place, value], |ctx, roots| {
-        let mut current =
-            HeapRootedWord::new(ctx, roots.first().ok_or(ObjectError::TypeError)?.get())?;
-        let mut result =
-            HeapRootedWord::new(ctx, roots.get(1).ok_or(ObjectError::TypeError)?.get())?;
+        let mut current = HeapRootedWord::new(ctx, roots[0].get())?; // check-added-lines: allow(index) the rooted slice contains place and value.
+        let mut result = HeapRootedWord::new(ctx, roots[1].get())?; // check-added-lines: allow(index) the rooted slice contains place and value.
         let mut types = Vec::<HeapRootedWord>::new();
         loop {
             let form_word = current.get();
@@ -234,20 +232,15 @@ pub fn place_value(
             let found = ncl_object::with_heap_rooted_slice(ctx, &parts, |ctx, parts| {
                 let mut the = symbol(ctx, runtime, "THE")?;
                 ncl_object::with_root(ctx, &mut the, |ctx, the| {
-                    if parts.first().ok_or(ObjectError::TypeError)?.get() != *the {
+                    // check-added-lines: allow(index) elements received a cons form, so parts is nonempty.
+                    if parts[0].get() != *the {
                         return Ok(false);
                     }
                     if parts.len() != 3 {
                         return Err(ObjectError::TypeError);
                     }
-                    let type_form = HeapRootedWord::new(
-                        ctx,
-                        parts.get(1).ok_or(ObjectError::TypeError)?.get(),
-                    )?;
-                    current = HeapRootedWord::new(
-                        ctx,
-                        parts.get(2).ok_or(ObjectError::TypeError)?.get(),
-                    )?;
+                    let type_form = HeapRootedWord::new(ctx, parts[1].get())?; // check-added-lines: allow(index) the THE form passed the exact three-element check above.
+                    current = HeapRootedWord::new(ctx, parts[2].get())?; // check-added-lines: allow(index) the THE form passed the exact three-element check above.
                     types.push(type_form);
                     Ok(true)
                 })
@@ -343,8 +336,8 @@ fn setf_pairs(
             let mut evaluation_bindings = Vec::<HeapRootedWord>::new();
             let mut stores = Vec::new();
             for pair in arguments.chunks_exact(2) {
-                let place_word = pair.first().ok_or(ObjectError::TypeError)?;
-                let value = pair.get(1).ok_or(ObjectError::TypeError)?;
+                let place_word = &pair[0]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
+                let value = &pair[1]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 for (variable, value_form) in expansion
@@ -388,8 +381,8 @@ fn setf_pairs(
         } else {
             let mut forms = Vec::<HeapRootedWord>::new();
             for pair in arguments.chunks_exact(2) {
-                let place_word = pair.first().ok_or(ObjectError::TypeError)?;
-                let value = pair.get(1).ok_or(ObjectError::TypeError)?;
+                let place_word = &pair[0]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
+                let value = &pair[1]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 let value = place_value(ctx, runtime, place_word.get(), value.get())?;

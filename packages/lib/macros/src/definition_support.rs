@@ -138,7 +138,7 @@ fn set_plist_property(
     value: Word,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, &[plist, property, value], |ctx, roots| {
-        let mut current = **roots.first().ok_or(ObjectError::TypeError)?;
+        let mut current = roots[0].get(); // check-added-lines: allow(index) roots has the three fixed inputs above.
         while current != Word::NIL {
             if !current.is_cons() {
                 return Err(ObjectError::TypeError);
@@ -148,23 +148,24 @@ fn set_plist_property(
             if !rest.is_cons() {
                 return Err(ObjectError::TypeError);
             }
-            if key == **roots.get(1).ok_or(ObjectError::TypeError)? {
-                rplaca(ctx, rest, **roots.get(2).ok_or(ObjectError::TypeError)?)?;
-                return Ok(**roots.first().ok_or(ObjectError::TypeError)?);
+            // check-added-lines: allow(index) roots has the three fixed inputs above.
+            if key == roots[1].get() {
+                rplaca(ctx, rest, roots[2].get())?; // check-added-lines: allow(index) roots has the three fixed inputs above.
+                return Ok(roots[0].get()); // check-added-lines: allow(index) roots has the three fixed inputs above.
             }
             current = ncl_object::cdr(ctx, current)?;
         }
         let mut value_cell = make_cons(
             ctx,
             runtime,
-            **roots.get(2).ok_or(ObjectError::TypeError)?,
-            **roots.first().ok_or(ObjectError::TypeError)?,
+            roots[2].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
+            roots[0].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
         )?;
         ncl_object::with_root(ctx, &mut value_cell, |ctx, value_cell| {
             make_cons(
                 ctx,
                 runtime,
-                **roots.get(1).ok_or(ObjectError::TypeError)?,
+                roots[1].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
                 *value_cell,
             )
         })
@@ -180,17 +181,17 @@ fn set_property(
 ) -> Result<(), ObjectError> {
     checked_symbol(ctx, name)?;
     ncl_object::with_roots(ctx, &[name, property, value], |ctx, roots| {
-        let plist = symbol_plist(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        let plist = symbol_plist(ctx, roots[0].get())?; // check-added-lines: allow(index) roots has the three fixed inputs above.
         let mut plist = set_plist_property(
             ctx,
             runtime,
             plist,
-            **roots.get(1).ok_or(ObjectError::TypeError)?,
-            **roots.get(2).ok_or(ObjectError::TypeError)?,
+            roots[1].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
+            roots[2].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
         )?;
         ncl_object::with_root(ctx, &mut plist, |ctx, plist| {
             ctx.write_object_slot(
-                **roots.first().ok_or(ObjectError::TypeError)?,
+                roots[0].get(), // check-added-lines: allow(index) roots has the three fixed inputs above.
                 ncl_object::symbol_offset::PLIST,
                 *plist,
             )
@@ -233,10 +234,10 @@ fn set_get_builtin(
     }
     let old_plist = symbol_plist(ctx, name)?;
     ncl_object::with_roots(ctx, &[name, property, value, old_plist], |ctx, roots| {
-        let name = **roots.first().ok_or(ObjectError::TypeError)?;
-        let property = **roots.get(1).ok_or(ObjectError::TypeError)?;
-        let value = **roots.get(2).ok_or(ObjectError::TypeError)?;
-        let old_plist = **roots.get(3).ok_or(ObjectError::TypeError)?;
+        let name = roots[0].get(); // check-added-lines: allow(index) roots has the four fixed inputs above.
+        let property = roots[1].get(); // check-added-lines: allow(index) roots has the four fixed inputs above.
+        let value = roots[2].get(); // check-added-lines: allow(index) roots has the four fixed inputs above.
+        let old_plist = roots[3].get(); // check-added-lines: allow(index) roots has the four fixed inputs above.
         let mut value_cell = make_cons(ctx, runtime, value, old_plist)?;
         ncl_object::with_root(ctx, &mut value_cell, |ctx, value_cell| {
             let next = make_cons(ctx, runtime, property, *value_cell)?;
@@ -259,30 +260,34 @@ fn place_form(
     })
 }
 
-fn fdefinition_place(
+fn single_argument_definition_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
+    accessor: &str,
+    setter: &str,
 ) -> Result<ncl_object::SetfExpansion, ObjectError> {
     if args.len() != 1 {
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut store = symbol(ctx, runtime, "NCL-EXT::FDEFINITION-SET")?;
-        ncl_object::with_root(ctx, &mut store, |ctx, store| {
-            let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
-            ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                let mut store_form = list(ctx, runtime, &[*store, first, *variable])?;
-                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                    let access_form = place_form(ctx, runtime, "FDEFINITION", &[first])?;
-                    Ok(ncl_object::SetfExpansion {
-                        temporary_variables: Vec::new(),
-                        value_forms: Vec::new(),
-                        store_variables: vec![*variable],
-                        store_form: *store_form,
-                        access_form,
+        let mut temporary = crate::fresh_symbol(ctx, runtime)?;
+        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+            let mut setter = symbol(ctx, runtime, setter)?;
+            ncl_object::with_root(ctx, &mut setter, |ctx, setter| {
+                let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
+                ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
+                    let mut store_form =
+                        list(ctx, runtime, &[*setter, temporary.get(), *variable])?;
+                    ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
+                        let access_form = place_form(ctx, runtime, accessor, &[temporary.get()])?;
+                        Ok(ncl_object::SetfExpansion {
+                            temporary_variables: vec![temporary.get()],
+                            value_forms: vec![roots[0].get()], // check-added-lines: allow(index) args has exactly one input.
+                            store_variables: vec![*variable],
+                            store_form: *store_form,
+                            access_form,
+                        })
                     })
                 })
             })
@@ -290,35 +295,32 @@ fn fdefinition_place(
     })
 }
 
+fn fdefinition_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<ncl_object::SetfExpansion, ObjectError> {
+    single_argument_definition_place(
+        ctx,
+        runtime,
+        args,
+        "FDEFINITION",
+        "NCL-EXT::FDEFINITION-SET",
+    )
+}
+
 fn macro_function_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<ncl_object::SetfExpansion, ObjectError> {
-    if args.len() != 1 {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut store = symbol(ctx, runtime, "NCL-EXT::MACRO-FUNCTION-SET")?;
-        ncl_object::with_root(ctx, &mut store, |ctx, store| {
-            let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
-            ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-                let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                let mut store_form = list(ctx, runtime, &[*store, first, *variable])?;
-                ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                    let first = **roots.first().ok_or(ObjectError::TypeError)?;
-                    let access_form = place_form(ctx, runtime, "MACRO-FUNCTION", &[first])?;
-                    Ok(ncl_object::SetfExpansion {
-                        temporary_variables: Vec::new(),
-                        value_forms: Vec::new(),
-                        store_variables: vec![*variable],
-                        store_form: *store_form,
-                        access_form,
-                    })
-                })
-            })
-        })
-    })
+    single_argument_definition_place(
+        ctx,
+        runtime,
+        args,
+        "MACRO-FUNCTION",
+        "NCL-EXT::MACRO-FUNCTION-SET",
+    )
 }
 
 fn get_place(
@@ -339,8 +341,8 @@ fn get_place(
                     .map(|_| crate::fresh_symbol(ctx, runtime))
                     .collect::<Result<Vec<_>, _>>()?;
                 ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
-                    let first = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                    let second = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                    let first = temporaries[0].get(); // check-added-lines: allow(index) args has two inputs and creates two temporaries.
+                    let second = temporaries[1].get(); // check-added-lines: allow(index) args has two inputs and creates two temporaries.
                     let mut store_form = list(ctx, runtime, &[*store, first, second, *variable])?;
                     ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
                         let mut get = symbol(ctx, runtime, "GET")?;
@@ -447,3 +449,7 @@ pub fn register_runtime_support(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "definition_support_tests.rs"]
+mod tests;

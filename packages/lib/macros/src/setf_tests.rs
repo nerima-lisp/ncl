@@ -41,6 +41,19 @@ fn place_form(
     list(ctx, runtime, &[operator, value])
 }
 
+fn scope_list<'scope>(
+    scope: &mut ncl_object::Scope<'scope>,
+    runtime: &Runtime,
+    parts: &[ncl_object::Handle<'scope, Word>],
+) -> Result<ncl_object::Handle<'scope, Word>, ObjectError> {
+    let words = parts
+        .iter()
+        .map(|part| scope.get(*part).as_word())
+        .collect::<Vec<_>>();
+    let form = list(scope.context_mut(), runtime, &words)?;
+    Ok(scope.root(ncl_object::Local::from_word(form)))
+}
+
 #[test]
 fn place_subforms_are_expanded_once_per_place() -> Result<(), ObjectError> {
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
@@ -139,6 +152,65 @@ fn psetf_keeps_each_place_and_value_in_source_order() -> Result<(), ObjectError>
 }
 
 #[test]
+fn setf_forms_validate_pairs_and_empty_psetf_expands_to_progn() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+
+    assert!(matches!(
+        expand_setf(&mut ctx, &runtime, &registry, &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(matches!(
+        expand_psetf(&mut ctx, &runtime, &registry, &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    ));
+
+    let expansion = expand_psetf(&mut ctx, &runtime, &registry, &[])?;
+    let parts = elements(&mut ctx, expansion)?;
+    assert_eq!(parts.len(), 2);
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "PROGN")?);
+    assert_eq!(parts[1], Word::NIL);
+    Ok(())
+}
+
+#[test]
+fn place_value_preserves_the_type_chain_and_rejects_malformed_the() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let the = symbol(&mut ctx, &runtime, "THE")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let variable = symbol(&mut ctx, &runtime, "VALUE")?;
+    let inner = list(&mut ctx, &runtime, &[the, integer, variable])?;
+    let place = list(&mut ctx, &runtime, &[the, fixnum, inner])?;
+    let replacement = symbol(&mut ctx, &runtime, "REPLACEMENT")?;
+
+    let value = super::place_value(&mut ctx, &runtime, place, replacement)?;
+    let outer_parts = elements(&mut ctx, value)?;
+    assert_eq!(outer_parts.len(), 3);
+    assert_eq!(outer_parts[0], the);
+    assert_eq!(outer_parts[1], integer);
+    let inner_parts = elements(&mut ctx, outer_parts[2])?;
+    assert_eq!(inner_parts, vec![the, fixnum, replacement]);
+
+    let malformed = list(&mut ctx, &runtime, &[the, fixnum])?;
+    assert!(matches!(
+        super::place_value(&mut ctx, &runtime, malformed, replacement),
+        Err(ObjectError::TypeError)
+    ));
+
+    let registry = PlaceRegistry::new(&runtime);
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
+    ));
+    Ok(())
+}
+
+#[test]
 fn setf_construction_survives_moving_gc_between_places() -> Result<(), ObjectError> {
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
     let runtime = Runtime::new()?;
@@ -216,5 +288,80 @@ fn defsetf_vector_quasiquote_roots_elements_during_allocation() -> Result<(), Ob
         elements(scope.context_mut(), actual)?,
         elements(scope.context_mut(), expected)?
     );
+    Ok(())
+}
+
+#[test]
+fn quasiquote_handles_nested_unquote_list_splicing_and_top_level_error() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let mut scope = ncl_object::Scope::new(&mut ctx);
+    let unquote = scope.intern(&runtime, "COMMON-LISP", "UNQUOTE")?;
+    let unquote_splicing = scope.intern(&runtime, "COMMON-LISP", "UNQUOTE-SPLICING")?;
+    let quasiquote = scope.intern(&runtime, "COMMON-LISP", "QUASIQUOTE")?;
+    let variable = scope.intern(&runtime, "NCL", "QQ-VALUE")?;
+    let splice_variable = scope.intern(&runtime, "NCL", "QQ-SPLICE")?;
+    let value = scope.root(ncl_object::Local::from_word(Word::fixnum(42)));
+    let first = scope.intern(&runtime, "NCL", "QQ-FIRST")?;
+    let second = scope.intern(&runtime, "NCL", "QQ-SECOND")?;
+    let tail = scope.intern(&runtime, "NCL", "QQ-TAIL")?;
+    let splice_values = scope_list(&mut scope, &runtime, &[first, second])?;
+    let environment = vec![(variable, value), (splice_variable, splice_values)];
+
+    let unquote_form = scope_list(&mut scope, &runtime, &[unquote, variable])?;
+    let value_form = super::eval_quasiquote(&mut scope, &runtime, unquote_form, &environment, 1)?;
+    assert_eq!(scope.get(value_form).as_word(), Word::fixnum(42));
+
+    let nested_unquote = scope_list(&mut scope, &runtime, &[quasiquote, unquote_form])?;
+    let nested_result =
+        super::eval_quasiquote(&mut scope, &runtime, nested_unquote, &environment, 1)?;
+    let nested_result_word = scope.get(nested_result).as_word();
+    let nested_parts = elements(scope.context_mut(), nested_result_word)?;
+    assert_eq!(nested_parts.len(), 2);
+    assert_eq!(nested_parts[0], scope.get(quasiquote).as_word());
+    let unquote_parts = elements(scope.context_mut(), nested_parts[1])?;
+    assert_eq!(
+        unquote_parts,
+        vec![scope.get(unquote).as_word(), scope.get(variable).as_word()]
+    );
+
+    let nested_splice = scope_list(&mut scope, &runtime, &[unquote_splicing, splice_variable])?;
+    let nested_splice_form = scope_list(&mut scope, &runtime, &[quasiquote, nested_splice])?;
+    let nested_splice_result =
+        super::eval_quasiquote(&mut scope, &runtime, nested_splice_form, &environment, 1)?;
+    let nested_splice_result_word = scope.get(nested_splice_result).as_word();
+    let nested_splice_parts = elements(scope.context_mut(), nested_splice_result_word)?;
+    assert_eq!(nested_splice_parts.len(), 2);
+    assert_eq!(nested_splice_parts[0], scope.get(quasiquote).as_word());
+    let preserved_splice = elements(scope.context_mut(), nested_splice_parts[1])?;
+    assert_eq!(
+        preserved_splice,
+        vec![
+            scope.get(unquote_splicing).as_word(),
+            scope.get(splice_variable).as_word(),
+        ]
+    );
+
+    let list_splice = scope_list(&mut scope, &runtime, &[unquote_splicing, splice_variable])?;
+    let spliced_datum = scope_list(&mut scope, &runtime, &[list_splice, tail])?;
+    let spliced_result =
+        super::eval_quasiquote(&mut scope, &runtime, spliced_datum, &environment, 1)?;
+    let spliced_result_word = scope.get(spliced_result).as_word();
+    let spliced_elements = elements(scope.context_mut(), spliced_result_word)?;
+    assert_eq!(
+        spliced_elements,
+        vec![
+            scope.get(first).as_word(),
+            scope.get(second).as_word(),
+            scope.get(tail).as_word(),
+        ]
+    );
+
+    assert!(matches!(
+        super::eval_quasiquote(&mut scope, &runtime, list_splice, &environment, 1),
+        Err(ObjectError::TypeError)
+    ));
     Ok(())
 }

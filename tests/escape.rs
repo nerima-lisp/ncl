@@ -22,6 +22,16 @@ fn run_ncl(source: &str) -> Output {
     wait_with_timeout(child, source)
 }
 
+fn run_runtime(source: &str, compile: bool) -> Result<String, ncl_runtime::RuntimeError> {
+    let mut runtime = ncl_runtime::Runtime::new()?;
+    let value = if compile {
+        runtime.compile(source)?
+    } else {
+        runtime.eval(source)?
+    };
+    Ok(runtime.format_result(value))
+}
+
 fn wait_with_timeout(mut child: Child, source: &str) -> Output {
     let deadline = Instant::now() + CHILD_TIMEOUT;
     loop {
@@ -360,4 +370,105 @@ fn multiple_value_bind_return_from_nil_through_lambda_preserves_multiple_values(
         String::from_utf8_lossy(&output.stdout).trim_end(),
         "(COMMON-LISP-USER:NCL-B3-SYMBOL :INTERNAL)"
     );
+}
+
+#[test]
+fn nested_closure_return_from_reaches_active_block_through_eval_and_compile() {
+    let source = "(block done (funcall (lambda () (funcall (lambda () (return-from done :nested))))) :unreachable)";
+    for (path, compile) in [("eval", false), ("compile", true)] {
+        let result = run_runtime(source, compile)
+            .unwrap_or_else(|error| panic!("{path} failed for {source}: {error:?}"));
+        assert_eq!(result, ":NESTED", "{path}: {source}");
+    }
+}
+
+#[test]
+fn nested_return_from_wrapper_forms_reaches_active_block_through_eval_and_compile() {
+    let cases = [
+        (
+            "THROW around closure call",
+            "(block done (catch 'tag (throw 'tag (funcall (lambda () (return-from done :x))))) :after)",
+        ),
+        (
+            "THROW around direct return inside closure",
+            "(block done (funcall (lambda () (catch 'tag (throw 'tag (return-from done :x))))))",
+        ),
+        (
+            "MULTIPLE-VALUE-PROG1 around closure call",
+            "(block done (multiple-value-prog1 (funcall (lambda () (return-from done :x))) :ignored) :after)",
+        ),
+        (
+            "MULTIPLE-VALUE-PROG1 around direct return inside closure",
+            "(block done (funcall (lambda () (multiple-value-prog1 (return-from done :x) :ignored))))",
+        ),
+        (
+            "THE around closure call",
+            "(block done (the t (funcall (lambda () (return-from done :x)))) :after)",
+        ),
+        (
+            "THE around direct return inside closure",
+            "(block done (funcall (lambda () (the t (return-from done :x)))))",
+        ),
+        (
+            "SETQ value around direct return inside closure",
+            "(let ((x 0)) (block done (funcall (lambda () (setq x (return-from done :x)))) :after))",
+        ),
+        (
+            "FLET body around direct return inside closure",
+            "(block done (funcall (lambda () (flet ((noop () nil)) (return-from done :x)))) :after)",
+        ),
+        (
+            "MULTIPLE-VALUE-CALL argument around closure call",
+            "(block done (multiple-value-call #'list (funcall (lambda () (return-from done :x)))) :after)",
+        ),
+        (
+            "EVAL-WHEN around direct return inside closure",
+            "(block done (funcall (lambda () (eval-when (:execute) (return-from done :x)))))",
+        ),
+        (
+            "EVAL-WHEN around nested closure return",
+            "(block done (funcall (funcall (lambda () (eval-when (:execute) (lambda () (return-from done :x)))))))",
+        ),
+        (
+            "LOAD-TIME-VALUE around direct return inside closure",
+            "(block done (funcall (lambda () (load-time-value (return-from done :x)))))",
+        ),
+        (
+            "LOAD-TIME-VALUE around nested closure return",
+            "(block done (funcall (funcall (lambda () (load-time-value (lambda () (return-from done :x)))))))",
+        ),
+    ];
+
+    for (wrapper, source) in cases {
+        for (path, compile) in [("eval", false), ("compile", true)] {
+            let result = run_runtime(source, compile)
+                .unwrap_or_else(|error| panic!("{wrapper}; {path} failed for {source}: {error:?}"));
+            assert_eq!(result, ":X", "{wrapper}; {path}: {source}");
+        }
+    }
+}
+
+#[test]
+fn nested_closure_return_from_after_block_extent_reports_control_error_through_eval_and_compile() {
+    let source = "(let ((f nil)) (block done (setq f (funcall (lambda () (lambda () (return-from done :late)))))) (funcall f))";
+    for (path, compile) in [("eval", false), ("compile", true)] {
+        let error = match run_runtime(source, compile) {
+            Err(error) => error,
+            Ok(value) => panic!("{path} unexpectedly returned {value} for {source}"),
+        };
+        assert!(
+            format!("{error:?}").contains("ControlError"),
+            "{path}: expected CONTROL-ERROR for {source}, got {error:?}"
+        );
+    }
+}
+
+#[test]
+fn nested_closure_return_from_runs_unwind_protect_cleanup_through_eval_and_compile() {
+    let source = "(let ((cleanup nil)) (list (block done (unwind-protect (funcall (lambda () (funcall (lambda () (return-from done :nested))))) (setq cleanup :ran))) cleanup))";
+    for (path, compile) in [("eval", false), ("compile", true)] {
+        let result = run_runtime(source, compile)
+            .unwrap_or_else(|error| panic!("{path} failed for {source}: {error:?}"));
+        assert_eq!(result, "(:NESTED :RAN)", "{path}: {source}");
+    }
 }

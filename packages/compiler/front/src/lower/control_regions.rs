@@ -175,7 +175,13 @@ impl Context<'_> {
         value: &Expr,
     ) -> Result<ValueId, LowerError> {
         let tag = self.lower_expr(f, tag)?;
+        if f.is_terminated() {
+            return Ok(tag);
+        }
         let value = self.lower_expr(f, value)?;
+        if f.is_terminated() {
+            return Ok(value);
+        }
         f.safepoint()?;
         let thrown = f.one(
             OpKind::Builtin {

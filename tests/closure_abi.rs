@@ -224,3 +224,46 @@ fn closure_calls_preserve_multiple_values() {
         assert_eval(source, expected);
     }
 }
+
+#[test]
+fn recursive_labels_capture_outer_cells_through_eval_compile_and_gc_stress() {
+    let source = concat!(
+        "(let ((counter 0) (items nil)) ",
+        "(labels ((record (n) ",
+        "(setq counter (1+ counter)) (push n items) ",
+        "(if (= n 0) (list counter items) (record (1- n)))) ",
+        "(idle (n) (if (= n 0) nil (idle (1- n))))) ",
+        "(list (record 3) counter items)))",
+    );
+    let expected = "((4 (0 1 2 3)) 4 (0 1 2 3))";
+    let stress_source = concat!(
+        "(let ((counter 0)) ",
+        "(labels ((record (n) (setq counter (1+ counter)) ",
+        "(if (= n 0) counter (record (1- n)))) ",
+        "(idle (n) (if (= n 0) nil (idle (1- n))))) ",
+        "(list (record 3) counter)))",
+    );
+
+    let mut evaluated_runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    let evaluated = evaluated_runtime
+        .eval(source)
+        .unwrap_or_else(|error| panic!("eval failed for {source}: {error:?}"));
+    assert_eq!(evaluated_runtime.format_result(evaluated), expected);
+
+    let mut compiled_runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    let compiled = compiled_runtime
+        .compile(source)
+        .unwrap_or_else(|error| panic!("compile failed for {source}: {error:?}"));
+    assert_eq!(compiled_runtime.format_result(compiled), expected);
+
+    let mut stressed_runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    stressed_runtime.set_gc_stress(true);
+    stressed_runtime.set_strict_forwarding(true);
+    let stressed = stressed_runtime
+        .compile(stress_source)
+        .unwrap_or_else(|error| panic!("stress compile failed for {stress_source}: {error:?}"));
+    assert_eq!(stressed_runtime.format_result(stressed), "(4 4)");
+}

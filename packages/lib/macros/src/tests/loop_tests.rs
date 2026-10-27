@@ -464,3 +464,246 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     );
     Ok(())
 }
+
+struct PackageExpansionCase {
+    case_id: &'static str,
+    kind: PackageIterationKind,
+    mode_name: &'static str,
+    package_name: Option<&'static str>,
+    type_name: Option<&'static str>,
+}
+
+fn assert_package_expansion_case(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    case: &PackageExpansionCase,
+) -> Result<(), ObjectError> {
+    let variable = symbol(ctx, runtime, "SYMBOL")?;
+    let package = case
+        .package_name
+        .map(|name| symbol(ctx, runtime, name))
+        .transpose()?;
+    let type_spec = case
+        .type_name
+        .map(|name| symbol(ctx, runtime, name))
+        .transpose()?;
+    let ast = LoopAst {
+        name: None,
+        clauses: vec![LoopClause::Package(PackageClause {
+            variable,
+            type_spec,
+            kind: case.kind,
+            package,
+        })],
+    };
+    let expansion = expand_loop_ast(ctx, runtime, &ast)?;
+    let outer = elements(ctx, expansion)?;
+    assert_eq!(
+        outer[0],
+        symbol(ctx, runtime, "LET")?,
+        "{}: outer form",
+        case.case_id
+    );
+
+    let bindings = elements(ctx, outer[1])?;
+    assert_eq!(bindings.len(), 2, "{}: package bindings", case.case_id);
+    let cursor_binding = elements(ctx, bindings[0])?;
+    let sequence = elements(ctx, cursor_binding[1])?;
+    let iterator = symbol(ctx, runtime, "NCL-EXT::%PACKAGE-ITERATION-SYMBOLS")?;
+    let mode = symbol(ctx, runtime, case.mode_name)?;
+    let package = match package {
+        Some(package) => package,
+        None => symbol(ctx, runtime, "COMMON-LISP::*PACKAGE*")?,
+    };
+    assert_eq!(
+        sequence,
+        vec![iterator, mode, package],
+        "{}: iterator call",
+        case.case_id
+    );
+
+    let block_index = if let Some(type_spec) = type_spec {
+        let declaration = elements(ctx, outer[2])?;
+        let declare = symbol(ctx, runtime, "DECLARE")?;
+        let type_operator = symbol(ctx, runtime, "TYPE")?;
+        let declaration_form = list(ctx, runtime, &[type_operator, type_spec, variable])?;
+        assert_eq!(
+            declaration,
+            vec![declare, declaration_form],
+            "{}: type declaration",
+            case.case_id
+        );
+        3
+    } else {
+        2
+    };
+    let block = elements(ctx, outer[block_index])?;
+    assert_eq!(
+        block[0],
+        symbol(ctx, runtime, "BLOCK")?,
+        "{}: loop block",
+        case.case_id
+    );
+    Ok(())
+}
+
+#[test]
+fn package_iteration_expansion_covers_modes_packages_and_declarations() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let cases = [
+        PackageExpansionCase {
+            case_id: "symbols-explicit-package",
+            kind: PackageIterationKind::Symbols,
+            mode_name: "KEYWORD::SYMBOLS",
+            package_name: Some("EXPANSION-PACKAGE"),
+            type_name: None,
+        },
+        PackageExpansionCase {
+            case_id: "present-symbols-default-package",
+            kind: PackageIterationKind::PresentSymbols,
+            mode_name: "KEYWORD::PRESENT",
+            package_name: None,
+            type_name: Some("INTEGER"),
+        },
+        PackageExpansionCase {
+            case_id: "external-symbols-explicit-package",
+            kind: PackageIterationKind::ExternalSymbols,
+            mode_name: "KEYWORD::EXTERNAL",
+            package_name: Some("EXPANSION-PACKAGE"),
+            type_name: Some("INTEGER"),
+        },
+    ];
+    for case in cases {
+        assert_package_expansion_case(&mut ctx, &runtime, &case)?;
+    }
+    Ok(())
+}
+
+fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let package = symbol(&mut ctx, &runtime, "EXPANSION-PACKAGE")?;
+    let symbol_variable = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let status = symbol(&mut ctx, &runtime, "STATUS")?;
+    let init = Word::fixnum(17);
+    let step = Word::fixnum(29);
+    let cases = [
+        ("then-omitted", None, init),
+        ("then-present", Some(step), step),
+    ];
+
+    for (case_id, then, expected_update) in cases {
+        let expansion = expand_loop_ast(
+            &mut ctx,
+            &runtime,
+            &LoopAst {
+                name: None,
+                clauses: vec![
+                    LoopClause::Package(PackageClause {
+                        variable: symbol_variable,
+                        type_spec: None,
+                        kind: PackageIterationKind::Symbols,
+                        package: Some(package),
+                    }),
+                    LoopClause::EqualsThen {
+                        variable: status,
+                        init,
+                        then,
+                    },
+                ],
+            },
+        )?;
+        let outer = elements(&mut ctx, expansion)?;
+        let bindings = elements(&mut ctx, outer[1])?;
+        assert_eq!(bindings.len(), 3, "{case_id}: generated bindings");
+        let cursor = elements(&mut ctx, bindings[0])?[0];
+        let block = elements(&mut ctx, outer[2])?;
+        let progn = elements(&mut ctx, block[2])?;
+        let setq = symbol(&mut ctx, &runtime, "SETQ")?;
+        let car = symbol(&mut ctx, &runtime, "CAR")?;
+        let cdr = symbol(&mut ctx, &runtime, "CDR")?;
+        let car_cursor = list(&mut ctx, &runtime, &[car, cursor])?;
+        let cdr_cursor = list(&mut ctx, &runtime, &[cdr, cursor])?;
+
+        assert_eq!(
+            elements(&mut ctx, progn[1])?,
+            vec![setq, symbol_variable, car_cursor],
+            "{case_id}: package initial value"
+        );
+        assert_eq!(
+            elements(&mut ctx, progn[2])?,
+            vec![setq, status, init],
+            "{case_id}: equals initial value"
+        );
+        let tagbody = elements(&mut ctx, progn[3])?;
+        assert_eq!(
+            elements(&mut ctx, tagbody[3])?,
+            vec![
+                setq,
+                cursor,
+                cdr_cursor,
+                symbol_variable,
+                car_cursor,
+                status,
+                expected_update
+            ],
+            "{case_id}: package and equals updates"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn package_iteration_parser_rejects_malformed_and_unknown_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let variable = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let being = symbol(&mut ctx, &runtime, "BEING")?;
+    let the = symbol(&mut ctx, &runtime, "THE")?;
+    let symbols = symbol(&mut ctx, &runtime, "SYMBOLS")?;
+    let in_word = symbol(&mut ctx, &runtime, "IN")?;
+    let of_word = symbol(&mut ctx, &runtime, "OF")?;
+    let package = symbol(&mut ctx, &runtime, "PACKAGE")?;
+
+    let malformed = [
+        ("missing article", vec![for_word, variable, being, symbols]),
+        ("missing kind", vec![for_word, variable, being, the]),
+        (
+            "missing IN package",
+            vec![for_word, variable, being, the, symbols, in_word],
+        ),
+        (
+            "missing OF package",
+            vec![for_word, variable, being, the, symbols, of_word],
+        ),
+    ];
+    for (case_id, input) in malformed {
+        assert_eq!(
+            parse_loop(&mut ctx, &runtime, &input),
+            Err(ObjectError::TypeError),
+            "{case_id}"
+        );
+        assert!(
+            ctx.take_pending_lisp_error().is_none(),
+            "{case_id}: malformed input has no unsupported-clause diagnostic"
+        );
+    }
+
+    let widgets = symbol(&mut ctx, &runtime, "WIDGETS")?;
+    let continuation = [
+        for_word, variable, being, the, symbols, in_word, package, widgets,
+    ];
+    assert_eq!(
+        parse_loop(&mut ctx, &runtime, &continuation),
+        Err(ObjectError::TypeError)
+    );
+    let Some(ncl_object::LispError::SimpleError { format_control, .. }) =
+        ctx.take_pending_lisp_error()
+    else {
+        panic!("unknown continuation should set a simple error");
+    };
+    let message = (0..ncl_object::string_length(&ctx, format_control)?)
+        .map(|index| ncl_object::string_ref(&ctx, format_control, index))
+        .collect::<std::result::Result<String, _>>()?;
+    assert_eq!(message, "Unsupported LOOP clause: WIDGETS");
+    Ok(())
+}

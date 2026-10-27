@@ -145,7 +145,7 @@ pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) ->
                 typed_being.map_or((None, next), |clause_word| (Some(next), clause_word));
             match word_name(ctx, clause_word)?.as_str() {
                 "IN" => {
-                    cursor += if type_spec.is_some() { 3 } else { 2 };
+                    cursor += 2;
                     clauses.push(iteration::parse_sequence_for(
                         ctx,
                         input,
@@ -155,7 +155,7 @@ pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) ->
                     )?);
                 }
                 "ON" => {
-                    cursor += if type_spec.is_some() { 3 } else { 2 };
+                    cursor += 2;
                     clauses.push(iteration::parse_sequence_for(
                         ctx,
                         input,
@@ -165,7 +165,7 @@ pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) ->
                     )?);
                 }
                 "ACROSS" => {
-                    cursor += if type_spec.is_some() { 3 } else { 2 };
+                    cursor += 2;
                     clauses.push(LoopClause::Across {
                         variable,
                         vector: required(input, &mut cursor)?,

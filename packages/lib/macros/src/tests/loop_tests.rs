@@ -526,10 +526,15 @@ fn assert_package_expansion_case(
         let declaration = elements(ctx, outer[2])?;
         let declare = symbol(ctx, runtime, "DECLARE")?;
         let type_operator = symbol(ctx, runtime, "TYPE")?;
-        let declaration_form = list(ctx, runtime, &[type_operator, type_spec, variable])?;
+        assert_eq!(declaration.len(), 2, "{}: declaration form", case.case_id);
         assert_eq!(
-            declaration,
-            vec![declare, declaration_form],
+            declaration[0], declare,
+            "{}: declaration operator",
+            case.case_id
+        );
+        assert_eq!(
+            elements(ctx, declaration[1])?,
+            vec![type_operator, type_spec, variable],
             "{}: type declaration",
             case.case_id
         );
@@ -622,12 +627,16 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
         let setq = symbol(&mut ctx, &runtime, "SETQ")?;
         let car = symbol(&mut ctx, &runtime, "CAR")?;
         let cdr = symbol(&mut ctx, &runtime, "CDR")?;
-        let car_cursor = list(&mut ctx, &runtime, &[car, cursor])?;
-        let next_cursor = list(&mut ctx, &runtime, &[cdr, cursor])?;
 
+        let package_initial = elements(&mut ctx, progn[1])?;
         assert_eq!(
-            elements(&mut ctx, progn[1])?,
-            vec![setq, symbol_variable, car_cursor],
+            &package_initial[..2],
+            &[setq, symbol_variable],
+            "{case_id}: package initial assignment"
+        );
+        assert_eq!(
+            elements(&mut ctx, package_initial[2])?,
+            vec![car, cursor],
             "{case_id}: package initial value"
         );
         assert_eq!(
@@ -636,18 +645,31 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
             "{case_id}: equals initial value"
         );
         let tagbody = elements(&mut ctx, progn[3])?;
+        let updates = elements(&mut ctx, tagbody[2])?;
+        assert_eq!(updates.len(), 7, "{case_id}: combined update form");
         assert_eq!(
-            elements(&mut ctx, tagbody[3])?,
-            vec![
-                setq,
-                cursor,
-                next_cursor,
-                symbol_variable,
-                car_cursor,
-                status,
-                expected_update
-            ],
-            "{case_id}: package and equals updates"
+            &updates[..2],
+            &[setq, cursor],
+            "{case_id}: package cursor update"
+        );
+        assert_eq!(
+            elements(&mut ctx, updates[2])?,
+            vec![cdr, cursor],
+            "{case_id}: next package cursor"
+        );
+        assert_eq!(
+            updates[3], symbol_variable,
+            "{case_id}: iteration variable update"
+        );
+        assert_eq!(
+            elements(&mut ctx, updates[4])?,
+            vec![car, cursor],
+            "{case_id}: next package symbol"
+        );
+        assert_eq!(updates[5], status, "{case_id}: equals variable update");
+        assert_eq!(
+            updates[6], expected_update,
+            "{case_id}: equals update value"
         );
     }
     Ok(())

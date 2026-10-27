@@ -1,8 +1,17 @@
-use super::{SetfExpansion, binding, form, place, sequence, store_place, wrap_let};
+use super::{
+    SetfExpansion, binding, form, place, place_value, sequence, store_place_prebound, wrap_let,
+};
 use crate::{PlaceRegistry, fresh_symbol};
-use ncl_object::{HeapRootedWord, ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{
+    HeapRootedWord, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,
+    string_length, string_ref, symbol_name, symbol_package,
+};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
+
+#[path = "setf_ops_remf.rs"]
+mod remf;
+pub use remf::expand_remf;
 
 pub(super) struct RootedExpansion {
     pub(super) temporary_variables: Vec<HeapRootedWord>,
@@ -64,6 +73,89 @@ impl RootedExpansion {
     }
 }
 
+fn add_place_bindings(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    expansion: &RootedExpansion,
+    bindings: &mut Vec<HeapRootedWord>,
+) -> Result<()> {
+    for (variable, value_form) in expansion
+        .temporary_variables
+        .iter()
+        .zip(&expansion.value_forms)
+    {
+        let binding = binding(ctx, runtime, variable.get(), value_form.get())?;
+        bindings.push(HeapRootedWord::new(ctx, binding)?);
+    }
+    Ok(())
+}
+
+fn add_binding(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    bindings: &mut Vec<HeapRootedWord>,
+    variable: Word,
+    value: Word,
+) -> Result<()> {
+    let binding = binding(ctx, runtime, variable, value)?;
+    bindings.push(HeapRootedWord::new(ctx, binding)?);
+    Ok(())
+}
+
+fn wrap_bindings(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    bindings: &[HeapRootedWord],
+    body: Word,
+) -> Result {
+    if bindings.is_empty() {
+        return Ok(body);
+    }
+    let bindings = bindings.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
+    wrap_let(ctx, runtime, "LET*", &bindings, body)
+}
+
+fn pushnew_option_pairs(
+    ctx: &ThreadContext,
+    runtime: &Runtime,
+    args: &[HeapRootedWord],
+) -> Result<Vec<(usize, usize)>> {
+    if !args.len().is_multiple_of(2) {
+        return Err(ObjectError::TypeError);
+    }
+    let keyword_package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::TypeError)?;
+    let mut test_seen = false;
+    let mut test_not_seen = false;
+    let mut pairs = Vec::with_capacity(args.len() / 2);
+    for index in (0..args.len()).step_by(2) {
+        let keyword = args.get(index).ok_or(ObjectError::TypeError)?.get();
+        let ObjectRef::Symbol(symbol) = classify_object(ctx, keyword) else {
+            return Err(ObjectError::TypeError);
+        };
+        if symbol_package(ctx, symbol)? != keyword_package {
+            return Err(ObjectError::TypeError);
+        }
+        let name_word = symbol_name(ctx, symbol)?;
+        let name = (0..string_length(ctx, name_word)?)
+            .map(|character| string_ref(ctx, name_word, character))
+            .collect::<std::result::Result<String, _>>()?;
+        if name == "TEST" {
+            test_seen = true;
+        } else if name == "TEST-NOT" {
+            test_not_seen = true;
+        } else if name != "KEY" {
+            return Err(ObjectError::TypeError);
+        }
+        if test_seen && test_not_seen {
+            return Err(ObjectError::TypeError);
+        }
+        pairs.push((index, index.checked_add(1).ok_or(ObjectError::TypeError)?));
+    }
+    Ok(pairs)
+}
+
 fn modify(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -71,16 +163,37 @@ fn modify(
     arguments: &[Word],
     operator: &str,
 ) -> Result {
+    if !(1..=2).contains(&arguments.len()) {
+        return Err(ObjectError::TypeError);
+    }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?.get();
-        let delta = arguments
+        let place_word = arguments.first().ok_or(ObjectError::TypeError)?;
+        let expansion = place(ctx, runtime, registry, place_word.get())?;
+        let expansion = RootedExpansion::new(ctx, expansion)?;
+        let mut bindings = Vec::new();
+        add_place_bindings(ctx, runtime, &expansion, &mut bindings)?;
+
+        let delta = fresh_symbol(ctx, runtime)?;
+        let delta = HeapRootedWord::new(ctx, delta)?;
+        let delta_form = arguments
             .get(1)
             .map_or(Word::fixnum(1), HeapRootedWord::get);
-        let expansion = place(ctx, runtime, registry, place_word)?;
-        let expansion = RootedExpansion::new(ctx, expansion)?;
-        let access = expansion.access_form.get();
-        let arithmetic = form(ctx, runtime, operator, &[access, delta])?;
-        store_place(ctx, runtime, &expansion.current(), arithmetic)
+        add_binding(ctx, runtime, &mut bindings, delta.get(), delta_form)?;
+
+        let old = fresh_symbol(ctx, runtime)?;
+        let old = HeapRootedWord::new(ctx, old)?;
+        add_binding(
+            ctx,
+            runtime,
+            &mut bindings,
+            old.get(),
+            expansion.access_form.get(),
+        )?;
+        let arithmetic = form(ctx, runtime, operator, &[old.get(), delta.get()])?;
+        let value = place_value(ctx, runtime, place_word.get(), arithmetic)?;
+        let value = HeapRootedWord::new(ctx, value)?;
+        let store = store_place_prebound(ctx, runtime, &expansion.current(), value.get())?;
+        wrap_bindings(ctx, runtime, &bindings, store)
     })
 }
 
@@ -109,18 +222,54 @@ pub fn expand_push(
     arguments: &[Word],
     new_only: bool,
 ) -> Result {
+    if (!new_only && arguments.len() != 2) || (new_only && arguments.len() < 2) {
+        return Err(ObjectError::TypeError);
+    }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let item = arguments.first().ok_or(ObjectError::TypeError)?.get();
-        let place_word = arguments.get(1).ok_or(ObjectError::TypeError)?.get();
-        let expansion = place(ctx, runtime, registry, place_word)?;
+        let item = arguments.first().ok_or(ObjectError::TypeError)?;
+        let place_word = arguments.get(1).ok_or(ObjectError::TypeError)?;
+        let option_arguments = arguments.get(2..).ok_or(ObjectError::TypeError)?;
+        let option_pairs = if new_only {
+            pushnew_option_pairs(ctx, runtime, option_arguments)?
+        } else {
+            Vec::new()
+        };
+        let expansion = place(ctx, runtime, registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
+        let mut bindings = Vec::new();
+        let item_variable = fresh_symbol(ctx, runtime)?;
+        let item_variable = HeapRootedWord::new(ctx, item_variable)?;
+        add_binding(ctx, runtime, &mut bindings, item_variable.get(), item.get())?;
+        add_place_bindings(ctx, runtime, &expansion, &mut bindings)?;
+
         let operator = if new_only { "ADJOIN" } else { "CONS" };
-        let mut values = vec![item, expansion.access_form.get()];
-        if new_only {
-            values.extend(arguments.iter().skip(2).map(HeapRootedWord::get));
+        let mut values = vec![item_variable.get(), expansion.access_form.get()];
+        for (keyword_index, value_index) in option_pairs {
+            let keyword = option_arguments
+                .get(keyword_index)
+                .ok_or(ObjectError::TypeError)?
+                .get();
+            let value_form = option_arguments
+                .get(value_index)
+                .ok_or(ObjectError::TypeError)?
+                .get();
+            let value_variable = fresh_symbol(ctx, runtime)?;
+            let value_variable = HeapRootedWord::new(ctx, value_variable)?;
+            add_binding(
+                ctx,
+                runtime,
+                &mut bindings,
+                value_variable.get(),
+                value_form,
+            )?;
+            values.push(keyword);
+            values.push(value_variable.get());
         }
         let value = form(ctx, runtime, operator, &values)?;
-        store_place(ctx, runtime, &expansion.current(), value)
+        let value = place_value(ctx, runtime, place_word.get(), value)?;
+        let value = HeapRootedWord::new(ctx, value)?;
+        let store = store_place_prebound(ctx, runtime, &expansion.current(), value.get())?;
+        wrap_bindings(ctx, runtime, &bindings, store)
     })
 }
 
@@ -130,23 +279,37 @@ pub fn expand_pop(
     registry: &PlaceRegistry,
     arguments: &[Word],
 ) -> Result {
+    if arguments.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?.get();
-        let expansion = place(ctx, runtime, registry, place_word)?;
+        let place_word = arguments.first().ok_or(ObjectError::TypeError)?;
+        let expansion = place(ctx, runtime, registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
+        let mut bindings = Vec::new();
+        add_place_bindings(ctx, runtime, &expansion, &mut bindings)?;
         let old = fresh_symbol(ctx, runtime)?;
         let old = HeapRootedWord::new(ctx, old)?;
+        add_binding(
+            ctx,
+            runtime,
+            &mut bindings,
+            old.get(),
+            expansion.access_form.get(),
+        )?;
         let car = form(ctx, runtime, "CAR", &[old.get()])?;
         let car = HeapRootedWord::new(ctx, car)?;
+        let car_value = fresh_symbol(ctx, runtime)?;
+        let car_value = HeapRootedWord::new(ctx, car_value)?;
+        add_binding(ctx, runtime, &mut bindings, car_value.get(), car.get())?;
         let cdr = form(ctx, runtime, "CDR", &[old.get()])?;
         let cdr = HeapRootedWord::new(ctx, cdr)?;
-        let store = store_place(ctx, runtime, &expansion.current(), cdr.get())?;
+        let value = place_value(ctx, runtime, place_word.get(), cdr.get())?;
+        let value = HeapRootedWord::new(ctx, value)?;
+        let store = store_place_prebound(ctx, runtime, &expansion.current(), value.get())?;
         let store = HeapRootedWord::new(ctx, store)?;
-        let body = sequence(ctx, runtime, &[store.get(), car.get()])?;
-        let body = HeapRootedWord::new(ctx, body)?;
-        let old_binding = binding(ctx, runtime, old.get(), expansion.access_form.get())?;
-        let body = wrap_let(ctx, runtime, "LET", &[old_binding], body.get())?;
-        wrap_let(ctx, runtime, "LET*", &[], body)
+        let body = sequence(ctx, runtime, &[store.get(), car_value.get()])?;
+        wrap_bindings(ctx, runtime, &bindings, body)
     })
 }
 
@@ -193,21 +356,36 @@ fn rotate_like(
         for place_word in arguments.iter().take(place_count) {
             let expansion = place(ctx, runtime, registry, place_word.get())?;
             let expansion = RootedExpansion::new(ctx, expansion)?;
+            add_place_bindings(ctx, runtime, &expansion, &mut bindings)?;
+            expansions.push(expansion);
+        }
+
+        let shift_value = if rotate {
+            None
+        } else {
+            let variable = fresh_symbol(ctx, runtime)?;
+            let variable = HeapRootedWord::new(ctx, variable)?;
+            let value = arguments
+                .get(place_count)
+                .ok_or(ObjectError::TypeError)?
+                .get();
+            add_binding(ctx, runtime, &mut bindings, variable.get(), value)?;
+            Some(variable)
+        };
+
+        for expansion in &expansions {
             let old = fresh_symbol(ctx, runtime)?;
             let old = HeapRootedWord::new(ctx, old)?;
-            for (variable, value_form) in expansion
-                .temporary_variables
-                .iter()
-                .zip(&expansion.value_forms)
-            {
-                let binding = binding(ctx, runtime, variable.get(), value_form.get())?;
-                bindings.push(HeapRootedWord::new(ctx, binding)?);
-            }
-            let old_binding = binding(ctx, runtime, old.get(), expansion.access_form.get())?;
-            bindings.push(HeapRootedWord::new(ctx, old_binding)?);
-            expansions.push(expansion);
+            add_binding(
+                ctx,
+                runtime,
+                &mut bindings,
+                old.get(),
+                expansion.access_form.get(),
+            )?;
             old_values.push(old);
         }
+
         let mut stores = Vec::<HeapRootedWord>::new();
         for index in 0..place_count {
             let source = if index + 1 < place_count {
@@ -218,13 +396,13 @@ fn rotate_like(
             } else if rotate {
                 old_values.first().ok_or(ObjectError::TypeError)?.get()
             } else {
-                arguments
-                    .get(place_count)
-                    .ok_or(ObjectError::TypeError)?
-                    .get()
+                shift_value.as_ref().ok_or(ObjectError::TypeError)?.get()
             };
             let expansion = expansions.get(index).ok_or(ObjectError::TypeError)?;
-            let store = store_place(ctx, runtime, &expansion.current(), source)?;
+            let target = arguments.get(index).ok_or(ObjectError::TypeError)?.get();
+            let source = place_value(ctx, runtime, target, source)?;
+            let source = HeapRootedWord::new(ctx, source)?;
+            let store = store_place_prebound(ctx, runtime, &expansion.current(), source.get())?;
             stores.push(HeapRootedWord::new(ctx, store)?);
         }
         let mut store_forms = stores.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
@@ -234,39 +412,6 @@ fn rotate_like(
             old_values.first().ok_or(ObjectError::TypeError)?.get()
         });
         let body = sequence(ctx, runtime, &store_forms)?;
-        let binding_forms = bindings.iter().map(HeapRootedWord::get).collect::<Vec<_>>();
-        wrap_let(ctx, runtime, "LET*", &binding_forms, body)
-    })
-}
-
-pub fn expand_remf(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    registry: &PlaceRegistry,
-    arguments: &[Word],
-) -> Result {
-    if arguments.len() < 2 {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?.get();
-        let property = arguments.get(1).ok_or(ObjectError::TypeError)?.get();
-        let expansion = place(ctx, runtime, registry, place_word)?;
-        let expansion = RootedExpansion::new(ctx, expansion)?;
-        let property_list = fresh_symbol(ctx, runtime)?;
-        let property_list = HeapRootedWord::new(ctx, property_list)?;
-        let removed = form(ctx, runtime, "REMF", &[property_list.get(), property])?;
-        let removed = HeapRootedWord::new(ctx, removed)?;
-        let store = store_place(ctx, runtime, &expansion.current(), property_list.get())?;
-        let store = HeapRootedWord::new(ctx, store)?;
-        let body = form(ctx, runtime, "IF", &[removed.get(), store.get(), Word::NIL])?;
-        let body = HeapRootedWord::new(ctx, body)?;
-        let property_binding = binding(
-            ctx,
-            runtime,
-            property_list.get(),
-            expansion.access_form.get(),
-        )?;
-        wrap_let(ctx, runtime, "LET", &[property_binding], body.get())
+        wrap_bindings(ctx, runtime, &bindings, body)
     })
 }

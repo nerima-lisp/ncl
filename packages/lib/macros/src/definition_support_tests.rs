@@ -225,17 +225,48 @@ fn definition_and_get_places_bind_their_arguments_once() -> Result<(), ObjectErr
     assert_eq!(definition.temporary_variables.len(), 1);
     assert_eq!(definition.value_forms, vec![name]);
     assert_eq!(definition.store_variables.len(), 1);
+    let definition_temporary = definition.temporary_variables[0];
+    let definition_accessor = symbol(&mut ctx, &runtime, "FDEFINITION")?;
+    let definition_setter = symbol(&mut ctx, &runtime, "NCL-EXT::FDEFINITION-SET")?;
+    assert_eq!(
+        crate::elements(&mut ctx, definition.access_form)?,
+        vec![definition_accessor, definition_temporary]
+    );
+    assert_eq!(
+        crate::elements(&mut ctx, definition.store_form)?,
+        vec![
+            definition_setter,
+            definition_temporary,
+            definition.store_variables[0]
+        ]
+    );
     assert!(matches!(
         fdefinition_place(&mut ctx, &runtime, &[]),
         Err(ObjectError::TypeError)
     ));
 
-    let macro_function = macro_function_place(&mut ctx, &runtime, &[name])?;
-    assert_eq!(macro_function.temporary_variables.len(), 1);
-    assert_eq!(macro_function.value_forms, vec![name]);
+    let environment = Word::NIL;
+    let macro_function = macro_function_place(&mut ctx, &runtime, &[name, environment])?;
+    assert_eq!(macro_function.temporary_variables.len(), 2);
+    assert_eq!(macro_function.value_forms, vec![name, environment]);
     assert_eq!(macro_function.store_variables.len(), 1);
+    let macro_temporary = macro_function.temporary_variables[0];
+    let macro_accessor = symbol(&mut ctx, &runtime, "MACRO-FUNCTION")?;
+    let macro_setter = symbol(&mut ctx, &runtime, "NCL-EXT::MACRO-FUNCTION-SET")?;
+    assert_eq!(
+        crate::elements(&mut ctx, macro_function.access_form)?,
+        vec![macro_accessor, macro_temporary]
+    );
+    assert_eq!(
+        crate::elements(&mut ctx, macro_function.store_form)?,
+        vec![
+            macro_setter,
+            macro_temporary,
+            macro_function.store_variables[0]
+        ]
+    );
     assert!(matches!(
-        macro_function_place(&mut ctx, &runtime, &[name, property]),
+        macro_function_place(&mut ctx, &runtime, &[name, property, name]),
         Err(ObjectError::TypeError)
     ));
 

@@ -40,3 +40,36 @@ pub(super) fn current_stack_bounds() -> Option<(usize, usize)> {
 pub(super) const fn current_stack_bounds() -> Option<(usize, usize)> {
     None
 }
+
+#[cfg(target_arch = "x86_64")]
+pub(super) fn current_stack_pointer() -> usize {
+    let stack_pointer: usize;
+    // SAFETY: this reads the current stack pointer without accessing memory or changing state.
+    unsafe {
+        core::arch::asm!(
+            "mov {}, rsp",
+            out(reg) stack_pointer,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    stack_pointer
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(super) fn current_stack_pointer() -> usize {
+    let stack_pointer: usize;
+    // SAFETY: this reads the current stack pointer without accessing memory or changing state.
+    unsafe {
+        core::arch::asm!(
+            "mov {}, sp",
+            out(reg) stack_pointer,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    stack_pointer
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+pub(super) const fn current_stack_pointer() -> Option<usize> {
+    None
+}

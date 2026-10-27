@@ -119,7 +119,7 @@ fn mod_element(value: Word, modulus: Word, ctx: &ThreadContext) -> Result<bool, 
     }
 }
 
-fn element_type_designator(
+fn fast_element_type_designator(
     ctx: &ThreadContext,
     designator: Word,
 ) -> Result<(ArrayElementType, Option<Word>), ObjectError> {
@@ -165,6 +165,102 @@ fn element_type_designator(
     }
 }
 
+fn element_type_designator(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    designator: Word,
+) -> Result<(ArrayElementType, Option<Word>), ObjectError> {
+    let designator = ncl_object::HeapRootedWord::new(ctx, designator)?;
+    if let Ok(element_type) = fast_element_type_designator(ctx, designator.get()) {
+        return Ok(element_type);
+    }
+    let expanded = ncl_types::expand_deftype_specifier(ctx, runtime, designator.get())
+        .map_err(|_| ObjectError::TypeError)?;
+    let expanded = ncl_object::HeapRootedWord::new(ctx, expanded)?;
+    if let Ok(element_type) = fast_element_type_designator(ctx, expanded.get()) {
+        return Ok(element_type);
+    }
+    let specifier = ncl_types::parse_type_specifier_with_runtime(ctx, runtime, expanded.get())
+        .map_err(|_| ObjectError::TypeError)?;
+
+    if let Some(element_type) = array_element_type_from_specifier(&specifier) {
+        return Ok((element_type, None));
+    }
+    if contains_unexpanded_deftype(&specifier) {
+        return Err(ObjectError::TypeError);
+    }
+    Ok((ArrayElementType::T, None))
+}
+
+const fn array_element_type_from_specifier(
+    specifier: &ncl_types::TypeSpecifier,
+) -> Option<ArrayElementType> {
+    match specifier {
+        ncl_types::TypeSpecifier::Class(_) => Some(ArrayElementType::T),
+        ncl_types::TypeSpecifier::Named(named) => Some(match named {
+            ncl_types::NamedType::Character => ArrayElementType::Character,
+            ncl_types::NamedType::BaseChar => ArrayElementType::BaseChar,
+            ncl_types::NamedType::Fixnum => ArrayElementType::Fixnum,
+            ncl_types::NamedType::Integer => ArrayElementType::Signed,
+            ncl_types::NamedType::Float
+            | ncl_types::NamedType::ShortFloat
+            | ncl_types::NamedType::SingleFloat => ArrayElementType::SingleFloat,
+            ncl_types::NamedType::DoubleFloat | ncl_types::NamedType::LongFloat => {
+                ArrayElementType::DoubleFloat
+            }
+            _ => ArrayElementType::T, // check-added-lines: allow(wildcard) other named types upgrade to T
+        }),
+        _ => None, // check-added-lines: allow(wildcard) other parsed specifiers use T
+    }
+}
+
+fn contains_unexpanded_deftype(specifier: &ncl_types::TypeSpecifier) -> bool {
+    match specifier {
+        ncl_types::TypeSpecifier::Deftype { name, args } => match name.as_str() {
+            "MOD" => {
+                !matches!(args.as_slice(), [ncl_types::Value::Integer(modulus)] if *modulus > 0)
+            }
+            "SIGNED-BYTE" | "UNSIGNED-BYTE" => {
+                !args.is_empty()
+                    && !matches!(args.as_slice(), [ncl_types::Value::Integer(size)] if *size >= 0)
+            }
+            _ => true, // check-added-lines: allow(wildcard) unknown deftype names still need expansion
+        },
+        ncl_types::TypeSpecifier::Or(specifiers)
+        | ncl_types::TypeSpecifier::And(specifiers)
+        | ncl_types::TypeSpecifier::Values(specifiers) => {
+            specifiers.iter().any(contains_unexpanded_deftype)
+        }
+        ncl_types::TypeSpecifier::Not(specifier) => contains_unexpanded_deftype(specifier),
+        ncl_types::TypeSpecifier::Array { element_type, .. }
+        | ncl_types::TypeSpecifier::Vector { element_type, .. } => element_type
+            .as_deref()
+            .is_some_and(contains_unexpanded_deftype),
+        ncl_types::TypeSpecifier::Cons { car, cdr } => {
+            contains_unexpanded_deftype(car) || contains_unexpanded_deftype(cdr)
+        }
+        ncl_types::TypeSpecifier::Function {
+            lambda_list,
+            return_type,
+        } => {
+            lambda_list.iter().any(contains_unexpanded_deftype)
+                || contains_unexpanded_deftype(return_type)
+        }
+        _ => false, // check-added-lines: allow(wildcard) remaining forms have no nested specifiers
+    }
+}
+
+pub(super) fn upgraded_array_element_type_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let designator = args.required(0)?;
+    let (element_type, _) = element_type_designator(ctx, runtime, designator)?;
+    super::helpers::array_element_type_symbol(ctx, runtime, element_type)
+}
+
 pub(super) fn make_array_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -191,7 +287,7 @@ pub(super) fn make_array_builtin(
             .trim_start_matches(':')
         {
             "ELEMENT-TYPE" => {
-                (element_type, modulus) = element_type_designator(ctx, value)?;
+                (element_type, modulus) = element_type_designator(ctx, runtime, value)?;
             }
             "INITIAL-ELEMENT" => {
                 initial_element = value;

@@ -115,7 +115,7 @@ fn to_type_form_with_runtime(
                 Some("OR" | "AND" | "VALUES" | "NOT" | "CONS") => true,
                 Some("ARRAY" | "SIMPLE-ARRAY" | "VECTOR") if index == 0 => true,
                 Some("FUNCTION") if index == 1 => true,
-                _ => false,
+                _ => false, // check-added-lines: allow(wildcard) class resolution applies only to type operand positions
             };
             let form = if operator.as_deref() == Some("FUNCTION")
                 && index == 0

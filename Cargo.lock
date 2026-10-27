@@ -150,6 +150,7 @@ dependencies = [
 name = "ncl-lib-hash-arrays"
 version = "0.1.0"
 dependencies = [
+ "ncl-clos",
  "ncl-conditions",
  "ncl-object",
  "ncl-types",

@@ -579,6 +579,7 @@ fn package_iteration_expansion_covers_modes_packages_and_declarations() -> Resul
     Ok(())
 }
 
+#[test]
 fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let package = symbol(&mut ctx, &runtime, "EXPANSION-PACKAGE")?;
@@ -622,7 +623,7 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
         let car = symbol(&mut ctx, &runtime, "CAR")?;
         let cdr = symbol(&mut ctx, &runtime, "CDR")?;
         let car_cursor = list(&mut ctx, &runtime, &[car, cursor])?;
-        let cdr_cursor = list(&mut ctx, &runtime, &[cdr, cursor])?;
+        let next_cursor = list(&mut ctx, &runtime, &[cdr, cursor])?;
 
         assert_eq!(
             elements(&mut ctx, progn[1])?,
@@ -640,7 +641,7 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
             vec![
                 setq,
                 cursor,
-                cdr_cursor,
+                next_cursor,
                 symbol_variable,
                 car_cursor,
                 status,

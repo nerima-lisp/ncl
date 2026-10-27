@@ -224,3 +224,55 @@ pub(super) fn lower_prim(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests_x86_64_fixture::X86_64FixtureAbi;
+
+    fn empty_slots() -> ValueSlots {
+        let function = ncl_ir::FunctionBuilder::new(
+            ncl_ir::FunctionId(120),
+            "malformed-primitive",
+            Vec::new(),
+            Vec::new(),
+        )
+        .finish();
+        let allocation = crate::allocate(&function, crate::AllocationTarget::X86_64);
+        super::super::slots(&function, 0, allocation, 0).0
+    }
+
+    #[test]
+    fn malformed_primitive_operands_return_their_specific_errors() {
+        let slots = empty_slots();
+        let abi = X86_64FixtureAbi;
+        let mut assembler = Assembler::new();
+        assert_eq!(
+            lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &slots, &abi,).unwrap_err(),
+            CodegenError::Unsupported("primitive has no operands".into()),
+        );
+
+        assert_eq!(
+            lower_simple_vector_reference(&mut assembler, &[ValueId(0)], None, &slots,)
+                .unwrap_err(),
+            CodegenError::Unsupported("simple-vector reference has no index operand".into()),
+        );
+        assert_eq!(
+            lower_simple_vector_set(&mut assembler, ValueId(0), &[], None, &slots, &abi,)
+                .unwrap_err(),
+            CodegenError::Unsupported("aset has no index operand".into()),
+        );
+        assert_eq!(
+            lower_simple_vector_set(
+                &mut assembler,
+                ValueId(0),
+                &[ValueId(0), ValueId(1)],
+                None,
+                &slots,
+                &abi,
+            )
+            .unwrap_err(),
+            CodegenError::Unsupported("aset has no value operand".into()),
+        );
+    }
+}

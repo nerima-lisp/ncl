@@ -288,6 +288,254 @@ fn assert_code_contains_aarch64(code: &[u8], expected: &[u8], behavior: &str) {
     );
 }
 
+fn compile_aarch64_primitive(id: u32, prim: Prim, argument_count: usize) -> Vec<u8> {
+    let returns_unit = matches!(prim, Prim::Rplaca | Prim::Rplacd);
+    let numeric = matches!(
+        prim,
+        Prim::FixnumAdd
+            | Prim::FixnumSub
+            | Prim::FixnumMul
+            | Prim::FixnumEq
+            | Prim::FixnumLt
+            | Prim::FixnumLe
+    );
+    let result_type = if returns_unit {
+        Ty::Unit
+    } else if matches!(prim, Prim::FixnumEq | Prim::FixnumLt | Prim::FixnumLe) {
+        Ty::Bool
+    } else if numeric {
+        Ty::I64
+    } else {
+        Ty::Word
+    };
+    let argument_type = if numeric { Ty::I64 } else { Ty::Word };
+    let params = (0..argument_count)
+        .map(|index| Param {
+            name: format!("arg{index}"),
+            ty: argument_type,
+        })
+        .collect();
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(id),
+        "aarch64-primitive",
+        params,
+        if returns_unit {
+            Vec::new()
+        } else {
+            vec![result_type]
+        },
+    );
+    let mut args = Vec::with_capacity(argument_count);
+    for index in 0..argument_count {
+        args.push(
+            builder
+                .push_op(
+                    OpKind::LoadArg {
+                        index: u8::try_from(index).unwrap(),
+                    },
+                    &[argument_type],
+                )
+                .unwrap()[0],
+        );
+    }
+    let result_types = vec![result_type];
+    let results = builder
+        .push_op(
+            OpKind::Prim {
+                op: prim,
+                args,
+                condition: None,
+            },
+            &result_types,
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return {
+            values: if returns_unit { Vec::new() } else { results },
+        })
+        .unwrap();
+    compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+        .unwrap()
+        .code
+}
+
+#[test]
+fn aarch64_primitive_lowering_emits_integer_comparison_and_cons_operations() {
+    for (id, prim, expected) in [
+        (
+            97,
+            Prim::FixnumAdd,
+            ncl_asm_aarch64::Inst::Add {
+                rd: ncl_asm_aarch64::Reg(16).into(),
+                rn: ncl_asm_aarch64::Reg(16).into(),
+                rm: ncl_asm_aarch64::Reg(17),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            },
+        ),
+        (
+            98,
+            Prim::FixnumSub,
+            ncl_asm_aarch64::Inst::Sub {
+                rd: ncl_asm_aarch64::Reg(16).into(),
+                rn: ncl_asm_aarch64::Reg(16).into(),
+                rm: ncl_asm_aarch64::Reg(17),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            },
+        ),
+        (
+            99,
+            Prim::FixnumMul,
+            ncl_asm_aarch64::Inst::Mul {
+                rd: ncl_asm_aarch64::Reg(16),
+                rn: ncl_asm_aarch64::Reg(16),
+                rm: ncl_asm_aarch64::Reg(17),
+            },
+        ),
+    ] {
+        let code = compile_aarch64_primitive(id, prim, 2);
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([expected]),
+            "fixnum arithmetic uses the requested operation",
+        );
+    }
+
+    for (id, prim, condition) in [
+        (100, Prim::FixnumEq, ncl_asm_aarch64::Cond::Eq),
+        (101, Prim::FixnumLt, ncl_asm_aarch64::Cond::Lt),
+        (102, Prim::FixnumLe, ncl_asm_aarch64::Cond::Le),
+    ] {
+        let code = compile_aarch64_primitive(id, prim, 2);
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([ncl_asm_aarch64::Inst::Cmp {
+                rn: ncl_asm_aarch64::Reg(16),
+                rm: ncl_asm_aarch64::Reg(17),
+                shift: ncl_asm_aarch64::Shift::Lsl(0),
+            }]),
+            "fixnum comparison compares both operands",
+        );
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([ncl_asm_aarch64::Inst::Csel {
+                rd: ncl_asm_aarch64::Reg(16),
+                rn: ncl_asm_aarch64::Reg(16),
+                rm: ncl_asm_aarch64::Reg(17),
+                cond: condition,
+            }]),
+            "fixnum comparison materializes its Lisp boolean with the matching condition",
+        );
+    }
+
+    for (id, prim, offset) in [(103, Prim::Car, 0), (104, Prim::Cdr, 8)] {
+        let code = compile_aarch64_primitive(id, prim, 1);
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([
+                ncl_asm_aarch64::Inst::AndImm {
+                    rd: ncl_asm_aarch64::Reg(16),
+                    rn: ncl_asm_aarch64::Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+                ncl_asm_aarch64::Inst::Ldr {
+                    rt: ncl_asm_aarch64::Reg(16),
+                    mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                        base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(16)),
+                        offset,
+                    },
+                },
+            ]),
+            "car and cdr load their respective cons fields after removing the lowtag",
+        );
+    }
+
+    for (id, prim, offset, barrier_slot) in
+        [(105, Prim::Rplaca, 0, 0_u64), (106, Prim::Rplacd, 8, 1_u64)]
+    {
+        let code = compile_aarch64_primitive(id, prim, 2);
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([
+                ncl_asm_aarch64::Inst::AndImm {
+                    rd: ncl_asm_aarch64::Reg(16),
+                    rn: ncl_asm_aarch64::Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+                ncl_asm_aarch64::Inst::Str {
+                    rt: ncl_asm_aarch64::Reg(17),
+                    mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                        base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(16)),
+                        offset,
+                    },
+                },
+            ]),
+            "rplaca and rplacd store into their respective cons fields",
+        );
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64(ncl_asm_aarch64::mov_imm64(
+                ncl_asm_aarch64::Reg(1),
+                barrier_slot,
+            )),
+            "cons mutation passes the changed field to the write barrier",
+        );
+        assert_code_contains_aarch64(
+            &code,
+            &encode_aarch64([ncl_asm_aarch64::Inst::Blr {
+                rn: ncl_asm_aarch64::Reg(17),
+            }]),
+            "cons mutation calls the write barrier",
+        );
+    }
+}
+
+#[test]
+fn aarch64_load_capture_reads_the_indexed_closure_slot() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(107),
+        "aarch64-load-capture",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let capture = builder
+        .push_op(OpKind::LoadCapture { index: 2 }, &[Ty::Word])
+        .unwrap()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![capture],
+        })
+        .unwrap();
+    let code = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+        .unwrap()
+        .code;
+    let capture_offset = i16::try_from((ncl_object::function_offset::CAPTURES + 3) * 8).unwrap();
+    assert_code_contains_aarch64(
+        &code,
+        &encode_aarch64([
+            ncl_asm_aarch64::Inst::Ldr {
+                rt: ncl_asm_aarch64::Reg(16),
+                mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                    base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(29)),
+                    offset: 16,
+                },
+            },
+            ncl_asm_aarch64::Inst::AndImm {
+                rd: ncl_asm_aarch64::Reg(16),
+                rn: ncl_asm_aarch64::Reg(16),
+                imm: !ncl_sys::LOWTAG_MASK,
+            },
+            ncl_asm_aarch64::Inst::Ldr {
+                rt: ncl_asm_aarch64::Reg(16),
+                mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                    base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(16)),
+                    offset: capture_offset,
+                },
+            },
+        ]),
+        "load-capture untags the closure and loads capture index two",
+    );
+}
+
 #[test]
 fn lowers_ir_v2_closure_and_handler_ops_aarch64() -> Result<(), String> {
     let mut builder = ncl_ir::FunctionBuilder::new(

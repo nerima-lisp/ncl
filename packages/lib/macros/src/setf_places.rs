@@ -31,7 +31,7 @@ fn fresh_temporaries(
 
 #[path = "setf_places_cons.rs"]
 mod cons;
-pub(super) use cons::standard_cons_place;
+pub use cons::standard_cons_place;
 
 /// Build `(operator arg0 arg1 ... argN)` as a fresh list, rooting `args` for
 /// the duration of the allocation.
@@ -190,6 +190,67 @@ fn nth_place(
     })
 }
 
+fn elt_store_branch(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    list_test: Word,
+    nthcdr_form: Word,
+    sequence: Word,
+    index: Word,
+    variable: Word,
+) -> Result<Word, ObjectError> {
+    ncl_object::with_heap_rooted_slice(
+        ctx,
+        &[list_test, nthcdr_form, sequence, index, variable],
+        |ctx, roots| {
+            let mut mutate_form = call_form(
+                ctx,
+                runtime,
+                "RPLACA",
+                &[
+                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                    roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                ],
+            )?;
+            ncl_object::with_root(ctx, &mut mutate_form, |ctx, mutate_form| {
+                let mut list_store_form = call_form(
+                    ctx,
+                    runtime,
+                    "PROGN",
+                    &[
+                        *mutate_form,
+                        roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                    ],
+                )?;
+                ncl_object::with_root(ctx, &mut list_store_form, |ctx, list_store_form| {
+                    let mut vector_store_form = call_form(
+                        ctx,
+                        runtime,
+                        "NCL-EXT::AREF-SET",
+                        &[
+                            roots.get(2).ok_or(ObjectError::TypeError)?.get(),
+                            roots.get(3).ok_or(ObjectError::TypeError)?.get(),
+                            roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                        ],
+                    )?;
+                    ncl_object::with_root(ctx, &mut vector_store_form, |ctx, vector_store_form| {
+                        call_form(
+                            ctx,
+                            runtime,
+                            "IF",
+                            &[
+                                roots.first().ok_or(ObjectError::TypeError)?.get(),
+                                *list_store_form,
+                                *vector_store_form,
+                            ],
+                        )
+                    })
+                })
+            })
+        },
+    )
+}
+
 fn elt_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -225,72 +286,28 @@ fn elt_place(
                         let mut nthcdr_form =
                             call_form(ctx, runtime, "NTHCDR", &[index, sequence])?;
                         ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
-                            let mut mutate_form =
-                                call_form(ctx, runtime, "RPLACA", &[*nthcdr_form, *variable])?;
-                            ncl_object::with_root(ctx, &mut mutate_form, |ctx, mutate_form| {
-                                let mut list_store_form =
-                                    call_form(ctx, runtime, "PROGN", &[*mutate_form, *variable])?;
-                                ncl_object::with_root(
-                                    ctx,
-                                    &mut list_store_form,
-                                    |ctx, list_store_form| {
-                                        let mut vector_store_form = call_form(
-                                            ctx,
-                                            runtime,
-                                            "NCL-EXT::AREF-SET",
-                                            &[
-                                                **temporaries
-                                                    .first()
-                                                    .ok_or(ObjectError::TypeError)?,
-                                                **temporaries
-                                                    .get(1)
-                                                    .ok_or(ObjectError::TypeError)?,
-                                                *variable,
-                                            ],
-                                        )?;
-                                        ncl_object::with_root(
-                                            ctx,
-                                            &mut vector_store_form,
-                                            |ctx, vector_store_form| {
-                                                let mut branch = call_form(
-                                                    ctx,
-                                                    runtime,
-                                                    "IF",
-                                                    &[
-                                                        *list_test,
-                                                        *list_store_form,
-                                                        *vector_store_form,
-                                                    ],
-                                                )?;
-                                                ncl_object::with_root(
-                                                    ctx,
-                                                    &mut branch,
-                                                    |ctx, branch| {
-                                                        let store_form = call_form(
-                                                            ctx,
-                                                            runtime,
-                                                            "PROGN",
-                                                            &[*access_form, *branch],
-                                                        )?;
-                                                        Ok(SetfExpansion {
-                                                            temporary_variables: temporaries
-                                                                .iter()
-                                                                .map(|value| **value)
-                                                                .collect(),
-                                                            value_forms: roots
-                                                                .iter()
-                                                                .map(|value| **value)
-                                                                .collect(),
-                                                            store_variables: vec![*variable],
-                                                            store_form,
-                                                            access_form: *access_form,
-                                                        })
-                                                    },
-                                                )
-                                            },
-                                        )
-                                    },
-                                )
+                            let mut branch = elt_store_branch(
+                                ctx,
+                                runtime,
+                                *list_test,
+                                *nthcdr_form,
+                                **temporaries.first().ok_or(ObjectError::TypeError)?,
+                                **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                                *variable,
+                            )?;
+                            ncl_object::with_root(ctx, &mut branch, |ctx, branch| {
+                                let store_form =
+                                    call_form(ctx, runtime, "PROGN", &[*access_form, *branch])?;
+                                Ok(SetfExpansion {
+                                    temporary_variables: temporaries
+                                        .iter()
+                                        .map(|value| **value)
+                                        .collect(),
+                                    value_forms: roots.iter().map(|value| **value).collect(),
+                                    store_variables: vec![*variable],
+                                    store_form,
+                                    access_form: *access_form,
+                                })
                             })
                         })
                     })

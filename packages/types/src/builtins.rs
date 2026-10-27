@@ -190,7 +190,7 @@ fn subtypep_builtin(
         }
         (Err(_), _) | (_, Err(_)) => (false, false),
     };
-    values.set(&[bool_word(definite)]);
+    values.set(&[bool_word(is_sub), bool_word(definite)]);
     Ok(bool_word(is_sub))
 }
 
@@ -219,6 +219,7 @@ fn coerce_to(
 ) -> Result<Word, ObjectError> {
     match spec {
         TypeSpecifier::Named(named) => coerce_to_named(ctx, runtime, object, *named),
+        TypeSpecifier::Class(_) => coerce_to_named_fallback(ctx, object, spec),
         TypeSpecifier::Vector { .. } => coerce_to_vector(ctx, runtime, object),
         TypeSpecifier::Array { .. }
         | TypeSpecifier::IntegerRange { .. }

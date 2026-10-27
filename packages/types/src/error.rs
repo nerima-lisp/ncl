@@ -17,6 +17,8 @@ pub enum TypeError {
     CannotInvoke(String),
     /// A `deftype` name that must be expanded before it can be used.
     UnexpandedDeftype(String),
+    /// A class type that needs the runtime class graph to answer `typep`.
+    ClassRequiresRuntime(String),
     /// A value cannot be serialized into the runtime object representation.
     CannotSerialize,
 }
@@ -29,6 +31,7 @@ impl fmt::Display for TypeError {
             Self::Object(error) => write!(f, "object error: {error}"),
             Self::CannotInvoke(word) => write!(f, "cannot invoke predicate: {word}"),
             Self::UnexpandedDeftype(word) => write!(f, "unexpanded deftype: {word}"),
+            Self::ClassRequiresRuntime(name) => write!(f, "class type requires a runtime: {name}"),
             Self::CannotSerialize => f.write_str("cannot serialize type-specifier value"),
         }
     }
@@ -42,6 +45,7 @@ impl std::error::Error for TypeError {
             | Self::InvalidForm
             | Self::CannotInvoke(_)
             | Self::UnexpandedDeftype(_)
+            | Self::ClassRequiresRuntime(_)
             | Self::CannotSerialize => None,
         }
     }

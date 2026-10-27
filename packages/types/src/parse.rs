@@ -107,14 +107,20 @@ fn to_type_form_with_runtime(
         classify_object(scope.context(), word_value),
         ObjectRef::Symbol(_)
     ) {
-        return Ok(TypeForm::Symbol(string_to_upper(
-            scope.context(),
-            symbol_name(scope.context(), word_value)?,
-        )?));
+        let name = string_to_upper(scope.context(), symbol_name(scope.context(), word_value)?)?;
+        if crate::NamedType::from_name(&name).is_none()
+            && runtime.class(scope.context_mut(), &name).is_some()
+        {
+            return Ok(TypeForm::Class(name));
+        }
+        return Ok(TypeForm::Symbol(name));
     }
     let object_word = scope.get(word).as_word();
     if let Some(name) = registered_class_name(scope.context_mut(), runtime, object_word)? {
-        return Ok(TypeForm::Symbol(name));
+        if crate::NamedType::from_name(&name).is_some() {
+            return Ok(TypeForm::Symbol(name));
+        }
+        return Ok(TypeForm::Class(name));
     }
     let object_word = scope.get(word).as_word();
     Ok(TypeForm::Value(from_word(scope.context(), object_word)?))

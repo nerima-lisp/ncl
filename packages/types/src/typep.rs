@@ -28,6 +28,7 @@ pub fn typep(
 ) -> Result<bool, TypeError> {
     match spec {
         TypeSpecifier::Named(named) => typep_named(ctx, object, *named),
+        TypeSpecifier::Class(name) => Err(TypeError::ClassRequiresRuntime(name.clone())),
         TypeSpecifier::IntegerRange { low, high } => typep_integer_range(ctx, object, *low, *high),
         TypeSpecifier::Or(specs) => any_match(ctx, object, specs),
         TypeSpecifier::And(specs) => all_match(ctx, object, specs),

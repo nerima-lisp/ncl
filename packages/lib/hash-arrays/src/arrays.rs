@@ -18,7 +18,7 @@ mod helpers;
 mod make_array_builtin;
 
 use adjust::adjust_array_builtin;
-use make_array_builtin::make_array_builtin;
+use make_array_builtin::{make_array_builtin, upgraded_array_element_type_builtin};
 
 const ARRAY: Parameter = Parameter {
     name: BuiltinName::new("ARRAY"),
@@ -34,6 +34,14 @@ const DIMENSIONS: Parameter = Parameter {
 };
 const OPTIONS: Parameter = Parameter {
     name: BuiltinName::new("OPTIONS"),
+    ty: ParameterType::Any,
+};
+const TYPE_SPECIFIER: Parameter = Parameter {
+    name: BuiltinName::new("TYPE-SPECIFIER"),
+    ty: ParameterType::Any,
+};
+const ENVIRONMENT: Parameter = Parameter {
+    name: BuiltinName::new("ENVIRONMENT"),
     ty: ParameterType::Any,
 };
 const ELEMENT: Parameter = Parameter {

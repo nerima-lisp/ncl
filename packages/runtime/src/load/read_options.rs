@@ -102,3 +102,108 @@ pub(super) fn common_lisp_variable_value(
         with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FloatFormat, current_read_options};
+    use crate::{Runtime, RuntimeError};
+    use ncl_object::ObjectError;
+
+    #[test]
+    fn current_read_options_maps_dynamic_float_format_aliases() {
+        for (format, binding, expected) in [
+            (
+                "SHORT-FLOAT",
+                "(setq *read-default-float-format* 'short-float)",
+                FloatFormat::SingleFloat,
+            ),
+            (
+                "SINGLE-FLOAT",
+                "(setq *read-default-float-format* 'single-float)",
+                FloatFormat::SingleFloat,
+            ),
+            (
+                "DOUBLE-FLOAT",
+                "(setq *read-default-float-format* 'double-float)",
+                FloatFormat::DoubleFloat,
+            ),
+            (
+                "LONG-FLOAT",
+                "(setq *read-default-float-format* 'long-float)",
+                FloatFormat::DoubleFloat,
+            ),
+        ] {
+            let mut runtime = Runtime::new().expect("runtime initialization failed");
+            runtime.eval(binding).expect(&format!(
+                "setting *READ-DEFAULT-FLOAT-FORMAT* {format} failed"
+            ));
+
+            let options = current_read_options(&mut runtime, None).expect(&format!(
+                "reading *READ-DEFAULT-FLOAT-FORMAT* {format} failed"
+            ));
+            assert_eq!(options.default_float_format(), expected, "{format}");
+        }
+    }
+
+    #[test]
+    fn current_read_options_rejects_invalid_dynamic_values() {
+        for (name, binding) in [
+            ("*PACKAGE*", "(setq *package* nil)"),
+            ("*READTABLE*", "(setq *readtable* nil)"),
+            ("*READ-BASE* type", "(setq *read-base* nil)"),
+            ("*READ-BASE* negative", "(setq *read-base* -1)"),
+            ("*READ-BASE* range", "(setq *read-base* 1)"),
+            (
+                "*READ-DEFAULT-FLOAT-FORMAT* type",
+                "(setq *read-default-float-format* 42)",
+            ),
+            (
+                "*READ-DEFAULT-FLOAT-FORMAT* unsupported symbol",
+                "(setq *read-default-float-format* 'rational)",
+            ),
+        ] {
+            let mut runtime = Runtime::new().expect("runtime initialization failed");
+            if let Err(error) = runtime.eval(binding) {
+                assert!(
+                    matches!(error, RuntimeError::Object(ObjectError::TypeError)),
+                    "setting {name} returned the wrong error: {error:?}"
+                );
+            }
+
+            let error = current_read_options(&mut runtime, None)
+                .expect_err("invalid dynamic reader value was accepted");
+            assert!(
+                matches!(error, RuntimeError::Object(ObjectError::TypeError)),
+                "{name} returned the wrong error: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn current_read_options_rejects_a_deleted_dynamic_package() {
+        let mut runtime = Runtime::new().expect("runtime initialization failed");
+        let options = current_read_options(&mut runtime, None)
+            .expect("initial dynamic reader options should be valid");
+        runtime
+            .eval(
+                "(setq *package* (make-package \"NCL-READ-OPTIONS-DELETED\" \
+                 :use (list (find-package \"COMMON-LISP\"))))",
+            )
+            .expect("dynamic package setup should succeed");
+        runtime
+            .eval("(delete-package *package*)")
+            .expect("deleting the current package should succeed");
+
+        let error = current_read_options(&mut runtime, Some(options))
+            .expect_err("a deleted dynamic package should not supply a reader package name");
+        assert!(
+            matches!(
+                error,
+                RuntimeError::Front(ncl_compiler_front::FrontError::Object(
+                    ObjectError::TypeError
+                ))
+            ),
+            "deleted *PACKAGE* returned the wrong error: {error:?}"
+        );
+    }
+}

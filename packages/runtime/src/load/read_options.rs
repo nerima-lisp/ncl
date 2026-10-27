@@ -55,7 +55,7 @@ pub(super) fn apply_current_read_flags(
     let Ok(read_base) = ReadBase::new(read_base) else {
         return Err(RuntimeError::Object(ObjectError::TypeError));
     };
-    options.set_read_base(read_base);
+    options.set_read_base(read_base.dynamic());
 
     let default_float_format = common_lisp_variable_value(
         &mut runtime.context,
@@ -84,11 +84,8 @@ pub(super) fn apply_current_read_flags(
 
     let read_suppress =
         common_lisp_variable_value(&mut runtime.context, &runtime.object, "*READ-SUPPRESS*")?;
-    options.set_read_suppression(if read_suppress == Word::NIL {
-        ReadSuppression::Keep
-    } else {
-        ReadSuppression::Discard
-    });
+    options.set_read_suppression(ReadSuppression::Dynamic);
+    options.set_dynamic_read_suppression(read_suppress != Word::NIL);
     Ok(())
 }
 

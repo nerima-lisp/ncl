@@ -6,9 +6,8 @@ use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    Package, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, classify_object, make_string, symbol_name, symbol_package, symbol_value,
-    with_root,
+    Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
+    ThreadContext, Word, classify_object, make_string, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -461,4 +460,3 @@ fn source_forms_with_print(
         .map_err(|_| RuntimeError::Native("load: result root stack corrupted".to_owned()))?;
     loaded
 }
-

@@ -1,13 +1,14 @@
 //! Token reading: symbol and number tokens, escapes, and package prefixes.
 
 use ncl_object::{
-    Package, Runtime, StringObject, ThreadContext, Word, make_string, pop_root, push_root,
-    string_length, string_ref, symbol_name, symbol_package,
+    ObjectError, ObjectRef, Package, Runtime, StringObject, ThreadContext, Word, classify_object,
+    make_string, pop_root, push_root, string_length, string_ref, symbol_name, symbol_package,
+    symbol_value,
 };
 
 use crate::error::ReadError;
 use crate::number::parse_number;
-use crate::reader::ReadOptions;
+use crate::reader::{ReadBase, ReadOptions, ReadSuppression};
 use crate::readtable::{ReadtableCase, SyntaxKind, readtable_from_word, syntax_kind};
 
 /// One character in a token and whether it was introduced by an escape.
@@ -186,23 +187,89 @@ pub fn read_token(
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Ok(None);
     };
-    if opts.read_suppression() == crate::reader::ReadSuppression::Discard {
-        return Ok(Some(ncl_object::Word::NIL));
+    if is_read_suppressed(ctx, runtime, opts)? {
+        return Ok(Some(Word::NIL));
     }
     let raw_chars: Vec<char> = token.characters().iter().map(|c| c.character()).collect();
     let any_escaped = token.any_escaped();
+    let read_base = opts.read_base();
+    let base = if read_base.is_dynamic() {
+        let default_base = read_base.value();
+        opts.cached_read_base().unwrap_or(default_base)
+    } else {
+        read_base.value()
+    };
     if !any_escaped
-        && let Some(number) = parse_number(
-            ctx,
-            runtime,
-            &raw_chars,
-            opts.read_base().value(),
-            opts.default_float_format(),
-        )?
+        && let Some(number) =
+            parse_number(ctx, runtime, &raw_chars, base, opts.default_float_format())?
     {
         return Ok(Some(number));
     }
     intern_symbol(ctx, runtime, runtime, &token, opts, rt).map(Some)
+}
+
+pub fn is_read_suppressed(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    opts: &ReadOptions,
+) -> Result<bool, ReadError> {
+    match opts.read_suppression() {
+        ReadSuppression::Keep => Ok(false),
+        ReadSuppression::Discard => Ok(true),
+        ReadSuppression::Dynamic => {
+            if let Some(suppressed) = opts.cached_read_suppression() {
+                Ok(suppressed)
+            } else {
+                let suppressed = current_read_suppression(ctx, runtime)?;
+                opts.cache_read_suppression(suppressed);
+                Ok(suppressed)
+            }
+        }
+    }
+}
+
+pub fn refresh_read_suppression(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    opts: &ReadOptions,
+) -> Result<(), ReadError> {
+    if opts.read_suppression() == ReadSuppression::Dynamic {
+        opts.cache_read_suppression(current_read_suppression(ctx, runtime)?);
+    }
+    Ok(())
+}
+
+pub fn refresh_dynamic_reader_options(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    opts: &ReadOptions,
+) -> Result<(), ReadError> {
+    if opts.read_base().is_dynamic() {
+        opts.cache_read_base(current_read_base(ctx, runtime)?);
+    }
+    refresh_read_suppression(ctx, runtime, opts)
+}
+
+fn current_read_suppression(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<bool, ReadError> {
+    let symbol = intern_common_lisp(ctx, runtime, "*READ-SUPPRESS*")?;
+    let symbol = ncl_object::HeapRootedWord::new(ctx, symbol)?;
+    Ok(symbol_value(ctx, symbol.get())? != Word::NIL)
+}
+
+fn current_read_base(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<u32, ReadError> {
+    let symbol = intern_common_lisp(ctx, runtime, "*READ-BASE*")?;
+    let symbol = ncl_object::HeapRootedWord::new(ctx, symbol)?;
+    let value = symbol_value(ctx, symbol.get())?;
+    let ObjectRef::Fixnum(value) = classify_object(ctx, value) else {
+        return Err(ReadError::Object(ObjectError::TypeError));
+    };
+    let Ok(value) = u32::try_from(value) else {
+        return Err(ReadError::Object(ObjectError::TypeError));
+    };
+    let Ok(base) = ReadBase::new(value) else {
+        return Err(ReadError::Object(ObjectError::TypeError));
+    };
+    Ok(base.value())
 }
 
 /// Split a raw token on its unescaped colon package marker.

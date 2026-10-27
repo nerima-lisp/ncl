@@ -19,7 +19,7 @@ use crate::input::CharSource;
 use crate::number::{digit_value, parse_integer_chars};
 use crate::reader::{ReadOptions, ReadSuppression, read_form, read_list};
 use crate::readtable::readtable_from_word;
-use crate::token::{intern_common_lisp, read_token_chars};
+use crate::token::{intern_common_lisp, read_token_chars, refresh_dynamic_reader_options};
 
 pub fn read_sharp(
     ctx: &mut ThreadContext,
@@ -290,6 +290,7 @@ fn read_feature_conditional(
     let Some(expression) = read_form(ctx, runtime, source, &feature_options, rt, labels)? else {
         return Err(ReadError::InvalidFeatureExpression);
     };
+    refresh_dynamic_reader_options(ctx, runtime, opts)?;
     let present = eval_feature_expr(ctx, runtime, expression, &features)?;
     if present != positive {
         let mut suppressed = opts.clone();

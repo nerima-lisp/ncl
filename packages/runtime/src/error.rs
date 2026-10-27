@@ -1,7 +1,7 @@
 //! Errors raised while setting up or executing one compilation unit.
 
 use crate::NativeCondition;
-use ncl_object::ObjectError;
+use ncl_object::{HeapRootedWord, ObjectError};
 use ncl_sys::NativeError;
 
 /// Errors raised while setting up or executing one compilation unit.
@@ -24,6 +24,13 @@ pub enum RuntimeError {
     Lower(ncl_compiler_front::LowerError),
     /// Code generation or executable-memory failure.
     Native(String),
+    /// A SIMPLE-ERROR condition preserved across a nested runtime invocation.
+    PendingCondition {
+        /// The original condition object, kept alive until it is signaled.
+        condition: HeapRootedWord,
+        /// The condition report, when it could be rendered.
+        report: Option<String>,
+    },
     /// An unbound function cell was called.
     UndefinedFunction {
         /// Printed function symbol name.
@@ -46,6 +53,10 @@ impl std::fmt::Display for RuntimeError {
             Self::Front(error) => write!(f, "front-end error: {error:?}"),
             Self::Lower(error) => write!(f, "lowering error: {error:?}"),
             Self::Native(error) => write!(f, "native error: {error}"),
+            Self::PendingCondition { report, .. } => match report {
+                Some(report) => write!(f, "native error: {report}"),
+                None => write!(f, "pending SIMPLE-ERROR condition"),
+            },
             Self::UndefinedFunction { name } => {
                 write!(f, "undefined function UNDEFINED-FUNCTION: {name}")
             }

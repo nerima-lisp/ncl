@@ -55,15 +55,53 @@ pub fn signal_native_failure(
     ctx: &mut ThreadContext,
     object: &ObjectRuntime,
     condition: NativeCondition,
-) -> Result<Word, ObjectError> {
+) -> ObjectError {
     match condition {
-        NativeCondition::Object(error) => Err(error),
+        NativeCondition::Object(error) => error,
         NativeCondition::Lisp(error) => {
-            let converter = object.lisp_error_converter().ok_or(ObjectError::Layout)?;
-            let condition = converter(ctx, object, error)?;
-            ctx.set_pending_condition(condition);
-            Err(ObjectError::TypeError)
+            let Some(converter) = object.lisp_error_converter() else {
+                return ObjectError::Layout;
+            };
+            match converter(ctx, object, error) {
+                Ok(condition) => {
+                    ctx.set_pending_condition(condition);
+                    ObjectError::TypeError
+                }
+                Err(error) => error,
+            }
         }
+    }
+}
+
+/// Convert runtime failures shared by LOAD and EVAL into object errors.
+pub fn runtime_error_to_object_error(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    error: RuntimeError,
+    pending_undefined_function_condition: Option<Word>,
+) -> ObjectError {
+    match error {
+        RuntimeError::Object(error)
+        | RuntimeError::Front(ncl_compiler_front::FrontError::Object(error)) => error,
+        RuntimeError::UndefinedFunction { .. } => {
+            let Some(condition) = pending_undefined_function_condition else {
+                return ObjectError::Layout;
+            };
+            ctx.set_pending_condition(condition);
+            ObjectError::TypeError
+        }
+        RuntimeError::NativeFailure { condition, .. } => {
+            signal_native_failure(ctx, object, condition)
+        }
+        RuntimeError::PendingCondition { condition, .. } => {
+            ctx.set_pending_condition(condition.get());
+            ObjectError::TypeError
+        }
+        RuntimeError::Io { .. }
+        | RuntimeError::Read(_)
+        | RuntimeError::Front(_)
+        | RuntimeError::Lower(_)
+        | RuntimeError::Native(_) => ObjectError::Layout,
     }
 }
 
@@ -102,10 +140,9 @@ pub fn pending_object_error(
             }
         };
         let simple_error = ncl_conditions::ConditionIdentifier::SimpleError.class(context, object);
-        if ncl_conditions::condition_class_of(context, condition.get()).ok() == simple_error
-            && let Some(report) = ncl_conditions::condition_report(context, condition.get())
-        {
-            return Ok(RuntimeError::Native(report));
+        if ncl_conditions::condition_class_of(context, condition.get()).ok() == simple_error {
+            let report = ncl_conditions::condition_report(context, condition.get());
+            return Ok(RuntimeError::PendingCondition { condition, report });
         }
         context.set_pending_condition(condition.get());
     }
@@ -186,6 +223,24 @@ mod tests {
                 ..
             }
         ));
+
+        for operation in [NativeOperation::Add, NativeOperation::Mul] {
+            let failure = native_failure(NativeError::TypeMismatch {
+                operation,
+                operand: 0,
+                value: Word::NIL,
+            });
+            assert!(matches!(
+                failure,
+                RuntimeError::NativeFailure {
+                    condition: NativeCondition::Lisp(LispError::TypeError {
+                        expected: ObjectType::Fixnum,
+                        ..
+                    }),
+                    ..
+                }
+            ));
+        }
     }
 
     #[test]
@@ -220,10 +275,15 @@ mod tests {
             &mut runtime.pending_undefined_function_condition,
         )
         .unwrap_or_else(|error| panic!("mapped runtime error failed: {error}"));
-        assert!(matches!(
-            runtime_error,
-            RuntimeError::Native(report) if report == message
-        ));
+        let RuntimeError::PendingCondition {
+            condition: rooted_condition,
+            report,
+        } = runtime_error
+        else {
+            panic!("LOAD condition was not preserved in the runtime error");
+        };
+        assert_eq!(rooted_condition.get(), condition);
+        assert_eq!(report.as_deref(), Some(message));
     }
 
     #[test]
@@ -290,14 +350,10 @@ mod tests {
             Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
 
         let result = runtime.eval(&source);
-        assert!(
-            matches!(
-                &result,
-                Err(RuntimeError::Native(message))
-                    if message == "source file is not valid UTF-8"
-            ),
-            "unexpected LOAD error: {result:?}"
-        );
+        let Err(RuntimeError::PendingCondition { report, .. }) = &result else {
+            panic!("invalid UTF-8 LOAD error was not preserved: {result:?}");
+        };
+        assert_eq!(report.as_deref(), Some("source file is not valid UTF-8"));
 
         std::fs::remove_file(path)
             .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));

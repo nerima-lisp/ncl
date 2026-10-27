@@ -53,18 +53,11 @@ fn eval_builtin(
             values.set(&evaluated_values);
             Ok(value)
         }
-        Err(
-            RuntimeError::Object(error)
-            | RuntimeError::Front(ncl_compiler_front::FrontError::Object(error)),
-        ) => Err(error),
-        Err(RuntimeError::UndefinedFunction { .. }) => {
-            let condition = undefined_function_condition.ok_or(ObjectError::Layout)?;
-            ctx.set_pending_condition(condition);
-            Err(ObjectError::TypeError)
-        }
-        Err(RuntimeError::NativeFailure { condition, .. }) => {
-            crate::native_error::signal_native_failure(ctx, object, condition)
-        }
-        Err(_) => Err(ObjectError::Layout),
+        Err(error) => Err(crate::native_error::runtime_error_to_object_error(
+            ctx,
+            object,
+            error,
+            undefined_function_condition,
+        )),
     }
 }

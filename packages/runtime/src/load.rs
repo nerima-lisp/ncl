@@ -224,19 +224,17 @@ fn load_with_runtime(
             signal_load_error(ctx, object, &message)
         }
         Err(FileLoadError::Runtime(
-            RuntimeError::Object(error)
-            | RuntimeError::Front(ncl_compiler_front::FrontError::Object(error)),
-        )) => Err(error),
-        Err(FileLoadError::Runtime(RuntimeError::UndefinedFunction { .. })) => {
-            let condition = runtime
-                .pending_undefined_function_condition()
-                .ok_or(ObjectError::Layout)?;
-            ctx.set_pending_condition(condition);
-            Err(ObjectError::TypeError)
-        }
-        Err(FileLoadError::Runtime(RuntimeError::NativeFailure { condition, .. })) => {
-            crate::native_error::signal_native_failure(ctx, object, condition)
-        }
+            error @ (RuntimeError::Object(_)
+            | RuntimeError::Front(ncl_compiler_front::FrontError::Object(_))
+            | RuntimeError::UndefinedFunction { .. }
+            | RuntimeError::NativeFailure { .. }
+            | RuntimeError::PendingCondition { .. }),
+        )) => Err(crate::native_error::runtime_error_to_object_error(
+            ctx,
+            object,
+            error,
+            runtime.pending_undefined_function_condition(),
+        )),
         Err(FileLoadError::Runtime(error @ (RuntimeError::Front(_) | RuntimeError::Lower(_)))) => {
             signal_load_error(ctx, object, &error.to_string())
         }

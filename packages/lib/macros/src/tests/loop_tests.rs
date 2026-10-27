@@ -333,7 +333,7 @@ fn typed_with_defaults_match_type_specs() -> Result<(), ObjectError> {
         &[integer, Word::fixnum(0), Word::fixnum(10)],
     )?;
     let with_variable = symbol(&mut ctx, &runtime, "WITH-VALUE")?;
-    for type_name in ["FIXNUM", "FLOAT", "T", "NULL"] {
+    for type_name in ["FIXNUM", "FLOAT", "T"] {
         let type_spec = symbol(&mut ctx, &runtime, type_name)?;
         let ast = parse_loop(&mut ctx, &runtime, &[with_word, with_variable, type_spec])?;
         assert!(matches!(
@@ -351,7 +351,7 @@ fn typed_with_defaults_match_type_specs() -> Result<(), ObjectError> {
                 initial_binding(&mut ctx, expansion, with_variable)?,
                 Word::fixnum(0)
             ),
-            "T" | "NULL" => assert_eq!(
+            "T" => assert_eq!(
                 initial_binding(&mut ctx, expansion, with_variable)?,
                 Word::NIL
             ),
@@ -408,7 +408,83 @@ fn typed_with_defaults_match_type_specs() -> Result<(), ObjectError> {
 }
 
 #[test]
-fn typed_unsupported_with_default_is_rejected() -> Result<(), ObjectError> {
+fn unqualified_loop_type_specs_are_clhs_simple_types() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let with_word = symbol(&mut ctx, &runtime, "WITH")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let from = symbol(&mut ctx, &runtime, "FROM")?;
+    let variable = symbol(&mut ctx, &runtime, "TYPE-VALUE")?;
+
+    for type_name in ["FIXNUM", "FLOAT", "T", "NIL"] {
+        let type_spec = symbol(&mut ctx, &runtime, type_name)?;
+        let ast = parse_loop(&mut ctx, &runtime, &[with_word, variable, type_spec])?;
+        assert!(matches!(
+            ast.clauses.as_slice(),
+            [LoopClause::With {
+                type_spec: Some(parsed),
+                ..
+            }] if *parsed == type_spec
+        ));
+    }
+
+    for type_name in ["NULL", "STRING"] {
+        let type_spec = symbol(&mut ctx, &runtime, type_name)?;
+        assert_eq!(
+            parse_loop(&mut ctx, &runtime, &[with_word, variable, type_spec]),
+            Err(ObjectError::TypeError),
+            "{type_name}"
+        );
+        assert!(ctx.take_pending_lisp_error().is_some(), "{type_name}");
+    }
+
+    let string_type = symbol(&mut ctx, &runtime, "STRING")?;
+    let explicit_with = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, variable, of_type, string_type],
+    )?;
+    assert!(matches!(
+        explicit_with.clauses.as_slice(),
+        [LoopClause::With {
+            type_spec: Some(parsed),
+            ..
+        }] if *parsed == string_type
+    ));
+    let explicit_for = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            variable,
+            of_type,
+            string_type,
+            from,
+            Word::fixnum(1),
+        ],
+    )?;
+    assert!(matches!(
+        explicit_for.clauses.as_slice(),
+        [LoopClause::For(ForClause {
+            type_spec: Some(parsed),
+            ..
+        })] if *parsed == string_type
+    ));
+    assert_eq!(
+        parse_loop(
+            &mut ctx,
+            &runtime,
+            &[for_word, variable, string_type, from, Word::fixnum(1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert!(ctx.take_pending_lisp_error().is_some());
+    Ok(())
+}
+
+#[test]
+fn typed_type_errors_distinguish_invalid_specs_from_unsupported_defaults() -> Result<(), ObjectError>
+{
     let (runtime, mut ctx) = fixture()?;
     let with_word = symbol(&mut ctx, &runtime, "WITH")?;
     let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
@@ -428,7 +504,38 @@ fn typed_unsupported_with_default_is_rejected() -> Result<(), ObjectError> {
         expand_loop_ast(&mut ctx, &runtime, &unsupported_ast),
         Err(ObjectError::TypeError)
     ));
-    assert!(ctx.take_pending_lisp_error().is_some());
+    let Some(ncl_object::LispError::SimpleError { format_control, .. }) =
+        ctx.take_pending_lisp_error()
+    else {
+        panic!("unsupported default should set a simple error");
+    };
+    let unsupported_message = (0..ncl_object::string_length(&ctx, format_control)?)
+        .map(|index| ncl_object::string_ref(&ctx, format_control, index))
+        .collect::<std::result::Result<String, _>>()?;
+    assert_eq!(
+        unsupported_message,
+        "Unsupported LOOP type default: no supported initial value satisfies the type specifier"
+    );
+
+    let invalid_variable = symbol(&mut ctx, &runtime, "INVALID-TYPE")?;
+    let invalid_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, invalid_variable, of_type, Word::fixnum(42)],
+    )?;
+    assert!(matches!(
+        expand_loop_ast(&mut ctx, &runtime, &invalid_ast),
+        Err(ObjectError::TypeError)
+    ));
+    let Some(ncl_object::LispError::SimpleError { format_control, .. }) =
+        ctx.take_pending_lisp_error()
+    else {
+        panic!("invalid type specifier should set a simple error");
+    };
+    let invalid_message = (0..ncl_object::string_length(&ctx, format_control)?)
+        .map(|index| ncl_object::string_ref(&ctx, format_control, index))
+        .collect::<std::result::Result<String, _>>()?;
+    assert_eq!(invalid_message, "Invalid LOOP type specifier");
     Ok(())
 }
 
@@ -560,6 +667,7 @@ fn typed_sequence_across_and_package_bindings_match_types() -> Result<(), Object
     let in_word = symbol(&mut ctx, &runtime, "IN")?;
     let on_word = symbol(&mut ctx, &runtime, "ON")?;
     let across_word = symbol(&mut ctx, &runtime, "ACROSS")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
     let being = symbol(&mut ctx, &runtime, "BEING")?;
     let each = symbol(&mut ctx, &runtime, "EACH")?;
     let symbol_word = symbol(&mut ctx, &runtime, "SYMBOL")?;
@@ -582,7 +690,7 @@ fn typed_sequence_across_and_package_bindings_match_types() -> Result<(), Object
     let on_ast = parse_loop(
         &mut ctx,
         &runtime,
-        &[for_word, on_variable, list_type, on_word, sequence],
+        &[for_word, on_variable, of_type, list_type, on_word, sequence],
     )?;
     assert!(matches!(
         on_ast.clauses.as_slice(),
@@ -612,6 +720,7 @@ fn typed_sequence_across_and_package_bindings_match_types() -> Result<(), Object
         &[
             for_word,
             package_variable,
+            of_type,
             symbol_type,
             being,
             each,
@@ -889,6 +998,7 @@ fn assert_package_iteration_case(
     let mut input = vec![for_word, variable];
     let expected_type_spec = if let Some(type_name) = case.type_name {
         let type_spec = symbol(ctx, runtime, type_name)?;
+        input.push(symbol(ctx, runtime, "OF-TYPE")?);
         input.push(type_spec);
         Some(type_spec)
     } else {

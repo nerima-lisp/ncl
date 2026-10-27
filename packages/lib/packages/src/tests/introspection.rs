@@ -167,6 +167,83 @@ fn make_package_stores_documentation() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn make_package_validates_option_pairs_and_documentation_type() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-PACKAGE")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let string = |ctx: &mut ThreadContext, value: &str| {
+        ncl_object::make_string(ctx, &runtime, &value.chars().collect::<Vec<_>>())
+    };
+
+    let invalid_documentation_name = string(&mut ctx, "N25-BAD-DOC-TYPE")?;
+    let documentation_key = string(&mut ctx, "DOCUMENTATION")?;
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            function,
+            &[
+                invalid_documentation_name,
+                documentation_key,
+                Word::fixnum(25),
+            ],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert!(runtime.find_package(&ctx, "N25-BAD-DOC-TYPE").is_none());
+
+    let missing_value_name = string(&mut ctx, "N25-MISSING-OPTION-VALUE")?;
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[missing_value_name, documentation_key],),
+        Err(ObjectError::TypeError)
+    );
+    assert!(
+        runtime
+            .find_package(&ctx, "N25-MISSING-OPTION-VALUE")
+            .is_none()
+    );
+
+    let unknown_option_name = string(&mut ctx, "N25-UNKNOWN-OPTION")?;
+    let unknown_key = string(&mut ctx, "UNKNOWN-OPTION")?;
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            function,
+            &[unknown_option_name, unknown_key, Word::NIL],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert!(runtime.find_package(&ctx, "N25-UNKNOWN-OPTION").is_none());
+
+    let package_name = string(&mut ctx, "N25-OPTION-ALIAS-PACKAGE")?;
+    let nicknames_key = string(&mut ctx, "NICKNAMES")?;
+    let nickname = string(&mut ctx, "N25-OPTION-ALIAS")?;
+    let nicknames = ncl_object::make_cons(&mut ctx, &runtime, nickname, Word::NIL)?;
+    let size_key = string(&mut ctx, "SIZE")?;
+    let package = runtime.call_builtin(
+        &mut ctx,
+        function,
+        &[
+            package_name,
+            nicknames_key,
+            nicknames,
+            size_key,
+            Word::fixnum(25),
+        ],
+    )?;
+    assert_eq!(
+        runtime.find_package(&ctx, "N25-OPTION-ALIAS"),
+        Some(package)
+    );
+    Ok(())
+}
+
+#[test]
 fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
     fn function(
         runtime: &Runtime,

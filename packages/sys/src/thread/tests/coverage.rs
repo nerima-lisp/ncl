@@ -22,8 +22,25 @@ fn native_poll_and_conservative_snapshot_cover_unregistered_paths() {
     assert_eq!(thread.native_state(), NativeState::Native);
     thread.leave_native();
     thread.publish_conservative_root(Word::TRUE);
+    let mut root = Word::fixnum(7);
+    let root_pointer = std::ptr::from_mut(&mut root);
+    let root_token = thread.push_root(&mut root);
+    thread.mv[0] = Word::TRUE;
+    thread.mv_count = 1;
     let values = thread.conservative_snapshot();
     assert!(values.contains(&Word::TRUE));
+    thread.publish_gc_state(0);
+    let gc_state = thread.gc_state_handle();
+    let published = gc_state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert!(published.conservative_roots.contains(&Word::TRUE));
+    assert_eq!(published.roots.len(), 1);
+    assert_eq!(published.roots[0].as_ref().as_ptr(), root_pointer);
+    assert_eq!(published.multiple_values[0], Word::TRUE);
+    assert_eq!(published.mv_count, 1);
+    drop(published);
+    assert!(thread.pop_root(root_token));
     assert!(!thread.has_native_frame_snapshot());
     thread.heap_collect(false);
     assert!(!thread.frame_snapshot_failed());

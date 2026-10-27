@@ -1,6 +1,29 @@
 use crate::ast::{EvalSituation, Expr, FunctionDesignator, Operator, TagbodyItem};
 use crate::symbols::SymbolRef;
 
+pub(super) fn lambda_forms(lambda: &crate::ast::LambdaExpr) -> impl Iterator<Item = &Expr> {
+    lambda
+        .lambda_list
+        .optional
+        .iter()
+        .filter_map(|parameter| parameter.default.as_ref())
+        .chain(
+            lambda
+                .lambda_list
+                .keys
+                .iter()
+                .filter_map(|parameter| parameter.default.as_ref()),
+        )
+        .chain(
+            lambda
+                .lambda_list
+                .aux
+                .iter()
+                .filter_map(|parameter| parameter.default.as_ref()),
+        )
+        .chain(lambda.body.iter())
+}
+
 pub(super) fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
     match expr {
         Expr::ReturnFrom {
@@ -61,7 +84,7 @@ pub(super) fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
             operator,
             arguments,
         } => {
-            let in_lambda = matches!(operator, Operator::Lambda(lambda) if lambda.body.iter().any(|form| contains_return(form, name)));
+            let in_lambda = matches!(operator, Operator::Lambda(lambda) if lambda_forms(lambda).any(|form| contains_return(form, name)));
             in_lambda || arguments.iter().any(|form| contains_return(form, name))
         }
         Expr::MultipleValueCall {
@@ -87,30 +110,26 @@ pub(super) fn contains_return(expr: &Expr, name: &SymbolRef) -> bool {
                 .any(|situation| matches!(situation, EvalSituation::Execute | EvalSituation::Eval))
                 && body.iter().any(|form| contains_return(form, name))
         }
-        Expr::LoadTimeValue { form, .. } => contains_return(form, name),
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Lambda(_)
         | Expr::Function(_)
+        | Expr::LoadTimeValue { .. }
         | Expr::Go { .. } => false,
     }
 }
 pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
     match expr {
-        Expr::Lambda(lambda) => lambda
-            .body
-            .iter()
+        Expr::Lambda(lambda) => lambda_forms(lambda)
             .any(|form| contains_return(form, name) || nested_return(form, name)),
         Expr::Call {
             operator,
             arguments,
         } => {
-            matches!(operator, Operator::Lambda(lambda) if lambda.body.iter().any(|form| contains_return(form, name) || nested_return(form, name)))
+            matches!(operator, Operator::Lambda(lambda) if lambda_forms(lambda).any(|form| contains_return(form, name) || nested_return(form, name)))
                 || arguments.iter().any(|form| nested_return(form, name))
         }
-        Expr::Function(FunctionDesignator::Lambda(lambda)) => lambda
-            .body
-            .iter()
+        Expr::Function(FunctionDesignator::Lambda(lambda)) => lambda_forms(lambda)
             .any(|form| contains_return(form, name) || nested_return(form, name)),
         Expr::Let { bindings, body, .. } => {
             bindings
@@ -161,10 +180,7 @@ pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
             definitions, body, ..
         } => {
             definitions.iter().any(|definition| {
-                definition
-                    .lambda
-                    .body
-                    .iter()
+                lambda_forms(&definition.lambda)
                     .any(|form| contains_return(form, name) || nested_return(form, name))
             }) || body.iter().any(|form| nested_return(form, name))
         }
@@ -182,6 +198,7 @@ pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
         Expr::Constant(_)
         | Expr::Variable(_)
         | Expr::Function(_)
+        | Expr::LoadTimeValue { .. }
         | Expr::ReturnFrom { .. }
         | Expr::Go { .. } => false,
         Expr::EvalWhen { situations, body } => {
@@ -190,7 +207,6 @@ pub(super) fn nested_return(expr: &Expr, name: &SymbolRef) -> bool {
                 .any(|situation| matches!(situation, EvalSituation::Execute | EvalSituation::Eval))
                 && body.iter().any(|form| nested_return(form, name))
         }
-        Expr::LoadTimeValue { form, .. } => nested_return(form, name),
         Expr::UnwindProtect { protected, cleanup } => {
             nested_return(protected, name) || cleanup.iter().any(|form| nested_return(form, name))
         }

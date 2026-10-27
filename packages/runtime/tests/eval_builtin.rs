@@ -134,6 +134,28 @@ fn eval_undefined_function_is_caught_by_handler_case() {
 }
 
 #[test]
+fn direct_undefined_function_is_caught_by_handler_case() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval("(handler-case (ncl-direct-missing-function) (error () 17))")
+        .unwrap_or_else(|error| {
+            panic!("HANDLER-CASE did not catch direct undefined function: {error}")
+        });
+    assert_eq!(runtime.format_result(value), "17");
+}
+
+#[test]
+fn handled_direct_undefined_function_does_not_leak_condition() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let value = runtime
+        .eval(
+            "(handler-case\n             (progn\n               (handler-case (ncl-direct-missing-function) (error () 17))\n               (copy-readtable *readtable* 17))\n             (type-error () 23))",
+        )
+        .unwrap_or_else(|error| panic!("condition leaked from handled undefined function: {error}"));
+    assert_eq!(runtime.format_result(value), "23");
+}
+
+#[test]
 fn handler_bind_evaluates_a_function_form_once() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let value = runtime

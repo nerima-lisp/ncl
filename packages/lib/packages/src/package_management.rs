@@ -122,7 +122,7 @@ pub(super) fn make_package(
                 {
                     return Err(ObjectError::TypeError);
                 }
-                *package_data.get_mut(1).ok_or(ObjectError::Layout)? = value;
+                package_data[1] = value; // check-added-lines: allow(index) package_data is the fixed two-slot array above.
             } else if key != "NICKNAMES" && key != "SIZE" {
                 return Err(ObjectError::TypeError);
             }
@@ -137,7 +137,7 @@ pub(super) fn make_package(
                 append_package_nicknames(
                     ctx,
                     runtime,
-                    std::slice::from_mut(package_data.get_mut(0).ok_or(ObjectError::Layout)?),
+                    std::slice::from_mut(&mut package_data[0]), // check-added-lines: allow(index) package_data is the fixed two-slot array above.
                     value,
                 )?;
             } else if key != "USE" && key != "DOCUMENTATION" && key != "SIZE" {
@@ -147,9 +147,9 @@ pub(super) fn make_package(
         }
         let mut package = runtime.ensure_package(ctx, &name)?;
         with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
-            let package_word = *package.first().ok_or(ObjectError::Layout)?;
-            let nicknames = *package_data.first().ok_or(ObjectError::Layout)?;
-            let documentation = *package_data.get(1).ok_or(ObjectError::Layout)?;
+            let package_word = package[0]; // check-added-lines: allow(index) from_mut above roots exactly one package word.
+            let nicknames = package_data[0]; // check-added-lines: allow(index) package_data is the fixed two-slot array above.
+            let documentation = package_data[1]; // check-added-lines: allow(index) package_data is the fixed two-slot array above.
             let mut roots = [package_word, nicknames, documentation];
             with_rooted_words(ctx, &mut roots, |ctx, roots| {
                 let name_word =
@@ -159,10 +159,10 @@ pub(super) fn make_package(
                     ctx,
                     std::slice::from_mut(&mut name_word),
                     |ctx, name_word| {
-                        let package = *roots.first().ok_or(ObjectError::Layout)?;
-                        let nicknames = *roots.get(1).ok_or(ObjectError::Layout)?;
-                        let documentation = *roots.get(2).ok_or(ObjectError::Layout)?;
-                        let name = *name_word.first().ok_or(ObjectError::Layout)?;
+                        let package = roots[0]; // check-added-lines: allow(index) roots has these three values above.
+                        let nicknames = roots[1]; // check-added-lines: allow(index) roots has these three values above.
+                        let documentation = roots[2]; // check-added-lines: allow(index) roots has these three values above.
+                        let name = name_word[0]; // check-added-lines: allow(index) from_mut above roots exactly one name word.
                         runtime.rename_package(
                             ctx,
                             Package::from_word(package),

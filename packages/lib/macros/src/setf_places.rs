@@ -158,13 +158,13 @@ fn nth_place(
                     runtime,
                     "NTH",
                     &[
-                        **temporaries.first().ok_or(ObjectError::TypeError)?,
-                        **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                        temporaries[0].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
+                        temporaries[1].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
                     ],
                 )?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
-                    let index = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                    let list_arg = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                    let index = temporaries[0].get(); // check-added-lines: allow(index) args has two values and creates two temporaries.
+                    let list_arg = temporaries[1].get(); // check-added-lines: allow(index) args has two values and creates two temporaries.
                     let mut nthcdr_form = call_form(ctx, runtime, "NTHCDR", &[index, list_arg])?;
                     ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
                         let mut mutate_form =
@@ -208,8 +208,8 @@ fn elt_store_branch(
                 runtime,
                 "RPLACA",
                 &[
-                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
-                    roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                    roots[1].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
+                    roots[4].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
                 ],
             )?;
             ncl_object::with_root(ctx, &mut mutate_form, |ctx, mutate_form| {
@@ -219,7 +219,7 @@ fn elt_store_branch(
                     "PROGN",
                     &[
                         *mutate_form,
-                        roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                        roots[4].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
                     ],
                 )?;
                 ncl_object::with_root(ctx, &mut list_store_form, |ctx, list_store_form| {
@@ -228,9 +228,9 @@ fn elt_store_branch(
                         runtime,
                         "NCL-EXT::AREF-SET",
                         &[
-                            roots.get(2).ok_or(ObjectError::TypeError)?.get(),
-                            roots.get(3).ok_or(ObjectError::TypeError)?.get(),
-                            roots.get(4).ok_or(ObjectError::TypeError)?.get(),
+                            roots[2].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
+                            roots[3].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
+                            roots[4].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
                         ],
                     )?;
                     ncl_object::with_root(ctx, &mut vector_store_form, |ctx, vector_store_form| {
@@ -239,7 +239,7 @@ fn elt_store_branch(
                             runtime,
                             "IF",
                             &[
-                                roots.first().ok_or(ObjectError::TypeError)?.get(),
+                                roots[0].get(), // check-added-lines: allow(index) the rooted slice is the five inputs above.
                                 *list_store_form,
                                 *vector_store_form,
                             ],
@@ -273,16 +273,16 @@ fn elt_place(
                     runtime,
                     "ELT",
                     &[
-                        **temporaries.first().ok_or(ObjectError::TypeError)?,
-                        **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                        temporaries[0].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
+                        temporaries[1].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
                     ],
                 )?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
-                    let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                    let sequence = temporaries[0].get(); // check-added-lines: allow(index) args has two values and creates two temporaries.
                     let mut list_test = call_form(ctx, runtime, "LISTP", &[sequence])?;
                     ncl_object::with_root(ctx, &mut list_test, |ctx, list_test| {
-                        let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                        let index = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
+                        let sequence = temporaries[0].get(); // check-added-lines: allow(index) args has two values and creates two temporaries.
+                        let index = temporaries[1].get(); // check-added-lines: allow(index) args has two values and creates two temporaries.
                         let mut nthcdr_form =
                             call_form(ctx, runtime, "NTHCDR", &[index, sequence])?;
                         ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
@@ -291,8 +291,8 @@ fn elt_place(
                                 runtime,
                                 *list_test,
                                 *nthcdr_form,
-                                **temporaries.first().ok_or(ObjectError::TypeError)?,
-                                **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                                temporaries[0].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
+                                temporaries[1].get(), // check-added-lines: allow(index) args has two values and creates two temporaries.
                                 *variable,
                             )?;
                             ncl_object::with_root(ctx, &mut branch, |ctx, branch| {

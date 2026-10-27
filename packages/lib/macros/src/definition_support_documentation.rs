@@ -297,6 +297,23 @@ mod tests {
             long_doc
         );
 
+        let long_definition_without_doc = list(
+            &mut ctx,
+            &runtime,
+            &[Word::NIL, Word::NIL, declaration, declaration],
+        )?;
+        super::super::set_property(
+            &mut ctx,
+            &runtime,
+            name,
+            definition_key,
+            long_definition_without_doc,
+        )?;
+        assert_eq!(
+            call_documentation(&mut ctx, &runtime, &[name, setf_kind])?,
+            Word::NIL
+        );
+
         let non_declaration = symbol(&mut ctx, &runtime, "NOT-A-DECLARATION")?;
         let ignored_doc = string(&mut ctx, &runtime, "not leading")?;
         let trailing_definition = list(

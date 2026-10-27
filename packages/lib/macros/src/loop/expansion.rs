@@ -3,6 +3,7 @@ use super::conditional::{bind_for_variable, expand_selectable_clause, find_it_wo
 use super::hash::wrap_hash_iteration;
 use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list, held_symbol};
 use super::holding::hold_clauses;
+use super::typed::{type_declaration, typed_numeric_placeholder, typed_placeholder};
 use super::{
     AccumulatorKind, LimitDirection, LoopAst, ObjectError, Result, Runtime, StepDirection,
     ThreadContext, Word,
@@ -51,18 +52,49 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
 
     for clause in &clauses {
         match *clause {
-            HeldLoopClause::With { variable, init } => {
+            HeldLoopClause::With {
+                variable,
+                type_spec,
+                has_init,
+                init,
+            } => {
+                let init = if has_init {
+                    init
+                } else if let Some(type_spec) = type_spec {
+                    typed_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    init
+                };
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
+                if let Some(type_spec) = type_spec {
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
+                    )?);
+                }
             }
             HeldLoopClause::For {
                 variable,
+                type_spec,
+                has_init,
                 init,
                 step: spec_step,
                 direction,
                 limit,
             } => {
                 has_iteration_driver = true;
+                let init = if has_init {
+                    init
+                } else if let Some(type_spec) = type_spec {
+                    typed_numeric_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    init
+                };
                 bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
+                if let Some(type_spec) = type_spec {
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
+                    )?);
+                }
                 let step = if spec_step.is_some() {
                     spec_step.ok_or(ObjectError::TypeError)?
                 } else {
@@ -107,6 +139,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
             }
             HeldLoopClause::Hash {
                 variable,
+                type_spec,
                 kind,
                 table,
                 using,
@@ -119,7 +152,10 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 }) {
                     return Err(ObjectError::TypeError);
                 }
-                hash_iteration = Some((variable, kind, table, using));
+                let declaration = type_spec
+                    .map(|type_spec| type_declaration(ctx, runtime, &mut held, type_spec, variable))
+                    .transpose()?;
+                hash_iteration = Some((variable, kind, table, using, declaration));
             }
             HeldLoopClause::Package {
                 variable,
@@ -151,12 +187,20 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     &[mode, package],
                 )?;
                 let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
-                let nil = held.len();
-                held.push(Word::NIL);
+                let initial_value = if let Some(type_spec) = type_spec {
+                    typed_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    nil
+                };
                 bindings.push(held_list(ctx, runtime, &mut held, &[cursor, sequence])?);
                 tests.push(held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?);
                 let current = held_form(ctx, runtime, &mut held, "CAR", &[cursor])?;
-                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                bindings.push(held_list(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &[variable, initial_value],
+                )?);
                 initial_settings.push(held_form(
                     ctx,
                     runtime,
@@ -167,31 +211,34 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 let next = held_form(ctx, runtime, &mut held, "CDR", &[cursor])?;
                 updates.extend([cursor, next, variable, current]);
                 if let Some(type_spec) = type_spec {
-                    let type_operator = held_symbol(ctx, runtime, &mut held, "COMMON-LISP::TYPE")?;
-                    let type_declaration = held_list(
-                        ctx,
-                        runtime,
-                        &mut held,
-                        &[type_operator, type_spec, variable],
-                    )?;
-                    let declare = held_symbol(ctx, runtime, &mut held, "COMMON-LISP::DECLARE")?;
-                    type_declarations.push(held_list(
-                        ctx,
-                        runtime,
-                        &mut held,
-                        &[declare, type_declaration],
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
                     )?);
                 }
             }
             HeldLoopClause::EqualsThen {
                 variable,
+                type_spec,
                 init,
                 then,
             } => {
                 has_iteration_driver = true;
-                let nil = held.len();
-                held.push(Word::NIL);
-                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                let initial_value = if let Some(type_spec) = type_spec {
+                    typed_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    nil
+                };
+                bindings.push(held_list(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &[variable, initial_value],
+                )?);
+                if let Some(type_spec) = type_spec {
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
+                    )?);
+                }
                 initial_settings.push(held_form(
                     ctx,
                     runtime,
@@ -203,14 +250,23 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
             }
             HeldLoopClause::In {
                 variable,
+                type_spec,
                 sequence,
                 on,
                 by,
             } => {
                 has_iteration_driver = true;
+                if let Some(type_spec) = type_spec {
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
+                    )?);
+                }
                 let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
-                let nil_index = held.len();
-                held.push(Word::NIL);
+                let initial_value = if let Some(type_spec) = type_spec {
+                    typed_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    nil
+                };
                 bindings.push(held_list(ctx, runtime, &mut held, &[cursor, sequence])?);
                 tests.push(held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?);
                 let current = if on {
@@ -224,7 +280,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     &mut held,
                     variable,
                     current,
-                    nil_index,
+                    initial_value,
                     &mut bindings,
                     &mut body,
                 )?;
@@ -235,8 +291,17 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 };
                 updates.extend([cursor, next]);
             }
-            HeldLoopClause::Across { variable, vector } => {
+            HeldLoopClause::Across {
+                variable,
+                type_spec,
+                vector,
+            } => {
                 has_iteration_driver = true;
+                if let Some(type_spec) = type_spec {
+                    type_declarations.push(type_declaration(
+                        ctx, runtime, &mut held, type_spec, variable,
+                    )?);
+                }
                 let index = held_fresh_symbol(ctx, runtime, &mut held)?;
                 let vector_binding = held_fresh_symbol(ctx, runtime, &mut held)?;
                 bindings.push(held_list(
@@ -247,10 +312,18 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 )?);
                 let zero = held.len();
                 held.push(Word::fixnum(0));
-                let nil_index = held.len();
-                held.push(Word::NIL);
+                let initial_value = if let Some(type_spec) = type_spec {
+                    typed_placeholder(ctx, runtime, &mut held, type_spec)?
+                } else {
+                    nil
+                };
                 bindings.push(held_list(ctx, runtime, &mut held, &[index, zero])?);
-                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
+                bindings.push(held_list(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    &[variable, initial_value],
+                )?);
                 let length = held_form(
                     ctx,
                     runtime,

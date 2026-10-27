@@ -8,6 +8,38 @@ fn fixture() -> Result<(Runtime, ThreadContext), ObjectError> {
     Ok((runtime, ctx))
 }
 
+fn initial_binding(
+    ctx: &mut ThreadContext,
+    expansion: Word,
+    variable: Word,
+) -> Result<Word, ObjectError> {
+    let outer = elements(ctx, expansion)?;
+    let bindings = elements(ctx, outer.get(1).copied().ok_or(ObjectError::TypeError)?)?;
+    for binding in bindings {
+        let binding = elements(ctx, binding)?;
+        if binding.first() == Some(&variable) {
+            return binding.get(1).copied().ok_or(ObjectError::TypeError);
+        }
+    }
+    Err(ObjectError::TypeError)
+}
+
+fn assert_initial_binding_matches_type(
+    ctx: &mut ThreadContext,
+    expansion: Word,
+    variable: Word,
+    type_spec: Word,
+) -> Result<(), ObjectError> {
+    let value = initial_binding(ctx, expansion, variable)?;
+    let specifier =
+        ncl_types::parse_type_specifier(ctx, type_spec).map_err(|_| ObjectError::TypeError)?;
+    assert!(
+        ncl_types::typep(ctx, value, &specifier).map_err(|_| ObjectError::TypeError)?,
+        "generated placeholder does not satisfy the declared LOOP type"
+    );
+    Ok(())
+}
+
 #[test]
 fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
@@ -34,6 +66,571 @@ fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> 
             ..
         }
     ));
+    Ok(())
+}
+
+#[test]
+fn expands_clhs_typed_with_and_for_variables() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let with_variable = symbol(&mut ctx, &runtime, "Q")?;
+    let for_variable = symbol(&mut ctx, &runtime, "I")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let with_word = symbol(&mut ctx, &runtime, "WITH")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let from = symbol(&mut ctx, &runtime, "FROM")?;
+    let to = symbol(&mut ctx, &runtime, "TO")?;
+    let do_word = symbol(&mut ctx, &runtime, "DO")?;
+    let ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            with_word,
+            with_variable,
+            fixnum,
+            equals,
+            Word::fixnum(1),
+            for_word,
+            for_variable,
+            fixnum,
+            from,
+            Word::fixnum(0),
+            to,
+            Word::fixnum(1),
+            do_word,
+            with_variable,
+        ],
+    )?;
+
+    assert!(matches!(
+        ast.clauses.as_slice(),
+        [
+            LoopClause::With {
+                variable,
+                type_spec: Some(with_type),
+                has_init: true,
+                init,
+            },
+            LoopClause::For(ForClause {
+                variable: parsed_for,
+                type_spec: Some(for_type),
+                ..
+            }),
+            LoopClause::Do(_),
+        ] if *variable == with_variable
+            && *with_type == fixnum
+            && *init == Word::fixnum(1)
+            && *parsed_for == for_variable
+            && *for_type == fixnum
+    ));
+
+    let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+    let let_form = elements(&mut ctx, expansion)?;
+    let declare = symbol(&mut ctx, &runtime, "DECLARE")?;
+    let type_operator = symbol(&mut ctx, &runtime, "TYPE")?;
+    for (index, variable) in [(2, with_variable), (3, for_variable)] {
+        let declaration = elements(&mut ctx, let_form[index])?;
+        assert_eq!(declaration[0], declare);
+        assert_eq!(
+            elements(&mut ctx, declaration[1])?,
+            vec![type_operator, fixnum, variable]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn parses_typed_in_and_across_iteration_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let in_word = symbol(&mut ctx, &runtime, "IN")?;
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let across_word = symbol(&mut ctx, &runtime, "ACROSS")?;
+    let vector = symbol(&mut ctx, &runtime, "VECTOR")?;
+    let integer_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(0), Word::fixnum(10)],
+    )?;
+    let sequence_variable = symbol(&mut ctx, &runtime, "ITEM")?;
+    let sequence_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            sequence_variable,
+            of_type,
+            integer_range,
+            in_word,
+            sequence,
+        ],
+    )?;
+    assert!(matches!(
+        sequence_ast.clauses.as_slice(),
+        [LoopClause::In {
+            variable,
+            type_spec: Some(type_spec),
+            on: false,
+            ..
+        }] if *variable == sequence_variable && *type_spec == integer_range
+    ));
+
+    let across_variable = symbol(&mut ctx, &runtime, "ELEMENT")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let across_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[for_word, across_variable, fixnum, across_word, vector],
+    )?;
+    assert!(matches!(
+        across_ast.clauses.as_slice(),
+        [LoopClause::Across {
+            variable,
+            type_spec: Some(type_spec),
+            ..
+        }] if *variable == across_variable && *type_spec == fixnum
+    ));
+    Ok(())
+}
+
+#[test]
+fn parses_typed_package_and_hash_iteration_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let being = symbol(&mut ctx, &runtime, "BEING")?;
+    let each = symbol(&mut ctx, &runtime, "EACH")?;
+    let symbol_word = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let of = symbol(&mut ctx, &runtime, "OF")?;
+    let package = symbol(&mut ctx, &runtime, "PACKAGE")?;
+    let hash_key = symbol(&mut ctx, &runtime, "HASH-KEY")?;
+    let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let integer_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(0), Word::fixnum(10)],
+    )?;
+    let package_variable = symbol(&mut ctx, &runtime, "PACKAGE-SYMBOL")?;
+    let package_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            package_variable,
+            of_type,
+            integer_range,
+            being,
+            each,
+            symbol_word,
+            of,
+            package,
+        ],
+    )?;
+    assert!(matches!(
+        package_ast.clauses.as_slice(),
+        [LoopClause::Package(PackageClause {
+            variable,
+            type_spec: Some(type_spec),
+            ..
+        })] if *variable == package_variable && *type_spec == integer_range
+    ));
+
+    let key_variable = symbol(&mut ctx, &runtime, "KEY")?;
+    let hash_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            key_variable,
+            of_type,
+            integer_range,
+            being,
+            each,
+            hash_key,
+            of,
+            table,
+        ],
+    )?;
+    assert!(matches!(
+        hash_ast.clauses.as_slice(),
+        [LoopClause::Hash(HashClause {
+            variable,
+            type_spec: Some(type_spec),
+            ..
+        })] if *variable == key_variable && *type_spec == integer_range
+    ));
+    Ok(())
+}
+
+#[test]
+fn parses_typed_with_and_equals_then_forms() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let with_word = symbol(&mut ctx, &runtime, "WITH")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let then = symbol(&mut ctx, &runtime, "THEN")?;
+    let integer_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(0), Word::fixnum(10)],
+    )?;
+    let with_variable = symbol(&mut ctx, &runtime, "Q")?;
+    let with_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, with_variable, of_type, integer_range],
+    )?;
+    assert!(matches!(
+        with_ast.clauses.as_slice(),
+        [LoopClause::With {
+            variable,
+            type_spec: Some(type_spec),
+            has_init: false,
+            init: Word::NIL,
+        }] if *variable == with_variable && *type_spec == integer_range
+    ));
+
+    let equals_variable = symbol(&mut ctx, &runtime, "VALUE")?;
+    let equals_then_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            equals_variable,
+            of_type,
+            integer_range,
+            equals,
+            Word::fixnum(1),
+            then,
+            Word::fixnum(2),
+        ],
+    )?;
+    assert!(matches!(
+        equals_then_ast.clauses.as_slice(),
+        [LoopClause::EqualsThen {
+            variable,
+            type_spec: Some(type_spec),
+            ..
+        }] if *variable == equals_variable && *type_spec == integer_range
+    ));
+    Ok(())
+}
+
+#[test]
+fn typed_with_defaults_match_type_specs() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let with_word = symbol(&mut ctx, &runtime, "WITH")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let integer_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(0), Word::fixnum(10)],
+    )?;
+    let with_variable = symbol(&mut ctx, &runtime, "WITH-VALUE")?;
+    for type_name in ["FIXNUM", "FLOAT", "T", "NULL"] {
+        let type_spec = symbol(&mut ctx, &runtime, type_name)?;
+        let ast = parse_loop(&mut ctx, &runtime, &[with_word, with_variable, type_spec])?;
+        assert!(matches!(
+            ast.clauses.as_slice(),
+            [LoopClause::With {
+                has_init: false,
+                type_spec: Some(parsed),
+                ..
+            }] if *parsed == type_spec
+        ));
+        let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
+        assert_initial_binding_matches_type(&mut ctx, expansion, with_variable, type_spec)?;
+        match type_name {
+            "FIXNUM" => assert_eq!(
+                initial_binding(&mut ctx, expansion, with_variable)?,
+                Word::fixnum(0)
+            ),
+            "T" | "NULL" => assert_eq!(
+                initial_binding(&mut ctx, expansion, with_variable)?,
+                Word::NIL
+            ),
+            _ => {}
+        }
+    }
+
+    let empty_type_variable = symbol(&mut ctx, &runtime, "EMPTY-TYPE-VALUE")?;
+    let empty_type = symbol(&mut ctx, &runtime, "NIL")?;
+    let empty_type_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, empty_type_variable, empty_type],
+    )?;
+    assert!(matches!(
+        empty_type_ast.clauses.as_slice(),
+        [LoopClause::With {
+            has_init: false,
+            type_spec: Some(parsed_type),
+            ..
+        }] if *parsed_type == empty_type
+    ));
+    assert!(matches!(
+        expand_loop_ast(&mut ctx, &runtime, &empty_type_ast),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(ctx.take_pending_lisp_error().is_some());
+
+    let complex_variable = symbol(&mut ctx, &runtime, "COMPLEX-TYPE")?;
+    let complex_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, complex_variable, of_type, integer_range],
+    )?;
+    let complex_expansion = expand_loop_ast(&mut ctx, &runtime, &complex_ast)?;
+    assert_initial_binding_matches_type(
+        &mut ctx,
+        complex_expansion,
+        complex_variable,
+        integer_range,
+    )?;
+    let outer = elements(&mut ctx, complex_expansion)?;
+    let declaration = elements(&mut ctx, outer[2])?;
+    assert_eq!(declaration[0], symbol(&mut ctx, &runtime, "DECLARE")?);
+    assert_eq!(
+        elements(&mut ctx, declaration[1])?,
+        vec![
+            symbol(&mut ctx, &runtime, "TYPE")?,
+            integer_range,
+            complex_variable
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn typed_unsupported_with_default_is_rejected() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let with_word = symbol(&mut ctx, &runtime, "WITH")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let unsupported_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(5), Word::fixnum(10)],
+    )?;
+    let unsupported_variable = symbol(&mut ctx, &runtime, "UNSUPPORTED-TYPE")?;
+    let unsupported_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[with_word, unsupported_variable, of_type, unsupported_range],
+    )?;
+    assert!(matches!(
+        expand_loop_ast(&mut ctx, &runtime, &unsupported_ast),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(ctx.take_pending_lisp_error().is_some());
+    Ok(())
+}
+
+#[test]
+fn typed_equals_then_and_numeric_defaults_match_type_specs() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let then = symbol(&mut ctx, &runtime, "THEN")?;
+    let to_word = symbol(&mut ctx, &runtime, "TO")?;
+    let equals_variable = symbol(&mut ctx, &runtime, "EQUALS-VALUE")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let equals_then_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            equals_variable,
+            fixnum,
+            equals,
+            Word::fixnum(1),
+            then,
+            Word::fixnum(2),
+        ],
+    )?;
+    let equals_then_expansion = expand_loop_ast(&mut ctx, &runtime, &equals_then_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, equals_then_expansion, equals_variable, fixnum)?;
+    assert_eq!(
+        initial_binding(&mut ctx, equals_then_expansion, equals_variable)?,
+        Word::fixnum(0)
+    );
+
+    let float_variable = symbol(&mut ctx, &runtime, "FLOAT-VALUE")?;
+    let float_type = symbol(&mut ctx, &runtime, "FLOAT")?;
+    let float_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            float_variable,
+            float_type,
+            to_word,
+            Word::fixnum(3),
+        ],
+    )?;
+    assert!(matches!(
+        float_ast.clauses.as_slice(),
+        [LoopClause::For(ForClause {
+            has_init: false,
+            type_spec: Some(parsed_type),
+            ..
+        })] if *parsed_type == float_type
+    ));
+    let float_expansion = expand_loop_ast(&mut ctx, &runtime, &float_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, float_expansion, float_variable, float_type)?;
+
+    let truth_variable = symbol(&mut ctx, &runtime, "TRUTH-VALUE")?;
+    let truth_type = symbol(&mut ctx, &runtime, "T")?;
+    let truth_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            truth_variable,
+            truth_type,
+            to_word,
+            Word::fixnum(3),
+        ],
+    )?;
+    let truth_expansion = expand_loop_ast(&mut ctx, &runtime, &truth_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, truth_expansion, truth_variable, truth_type)?;
+    assert_eq!(
+        initial_binding(&mut ctx, truth_expansion, truth_variable)?,
+        Word::fixnum(0)
+    );
+    Ok(())
+}
+
+#[test]
+fn typed_numeric_incompatible_defaults_are_rejected() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let of_type = symbol(&mut ctx, &runtime, "OF-TYPE")?;
+    let to_word = symbol(&mut ctx, &runtime, "TO")?;
+    let integer = symbol(&mut ctx, &runtime, "INTEGER")?;
+    let nil_variable = symbol(&mut ctx, &runtime, "NIL-VALUE")?;
+    let nil_type = symbol(&mut ctx, &runtime, "NIL")?;
+    let nil_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[for_word, nil_variable, nil_type, to_word, Word::fixnum(3)],
+    )?;
+    assert!(matches!(
+        expand_loop_ast(&mut ctx, &runtime, &nil_ast),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(ctx.take_pending_lisp_error().is_some());
+
+    let unsupported_for_range = list(
+        &mut ctx,
+        &runtime,
+        &[integer, Word::fixnum(5), Word::fixnum(10)],
+    )?;
+    let unsupported_for_variable = symbol(&mut ctx, &runtime, "UNSUPPORTED-FOR-TYPE")?;
+    let unsupported_for_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            unsupported_for_variable,
+            of_type,
+            unsupported_for_range,
+            to_word,
+            Word::fixnum(10),
+        ],
+    )?;
+    assert!(matches!(
+        expand_loop_ast(&mut ctx, &runtime, &unsupported_for_ast),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(ctx.take_pending_lisp_error().is_some());
+    Ok(())
+}
+
+#[test]
+fn typed_sequence_across_and_package_bindings_match_types() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let in_word = symbol(&mut ctx, &runtime, "IN")?;
+    let on_word = symbol(&mut ctx, &runtime, "ON")?;
+    let across_word = symbol(&mut ctx, &runtime, "ACROSS")?;
+    let being = symbol(&mut ctx, &runtime, "BEING")?;
+    let each = symbol(&mut ctx, &runtime, "EACH")?;
+    let symbol_word = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let of = symbol(&mut ctx, &runtime, "OF")?;
+    let package = symbol(&mut ctx, &runtime, "PACKAGE")?;
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let vector = symbol(&mut ctx, &runtime, "VECTOR")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let sequence_variable = symbol(&mut ctx, &runtime, "SEQUENCE-VALUE")?;
+    let sequence_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[for_word, sequence_variable, fixnum, in_word, sequence],
+    )?;
+    let sequence_expansion = expand_loop_ast(&mut ctx, &runtime, &sequence_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, sequence_expansion, sequence_variable, fixnum)?;
+
+    let on_variable = symbol(&mut ctx, &runtime, "ON-VALUE")?;
+    let list_type = symbol(&mut ctx, &runtime, "LIST")?;
+    let on_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[for_word, on_variable, list_type, on_word, sequence],
+    )?;
+    assert!(matches!(
+        on_ast.clauses.as_slice(),
+        [LoopClause::In {
+            on: true,
+            type_spec: Some(parsed_type),
+            ..
+        }] if *parsed_type == list_type
+    ));
+    let on_expansion = expand_loop_ast(&mut ctx, &runtime, &on_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, on_expansion, on_variable, list_type)?;
+
+    let across_variable = symbol(&mut ctx, &runtime, "ACROSS-VALUE")?;
+    let across_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[for_word, across_variable, fixnum, across_word, vector],
+    )?;
+    let across_expansion = expand_loop_ast(&mut ctx, &runtime, &across_ast)?;
+    assert_initial_binding_matches_type(&mut ctx, across_expansion, across_variable, fixnum)?;
+
+    let package_variable = symbol(&mut ctx, &runtime, "PACKAGE-VALUE")?;
+    let symbol_type = symbol(&mut ctx, &runtime, "SYMBOL")?;
+    let package_ast = parse_loop(
+        &mut ctx,
+        &runtime,
+        &[
+            for_word,
+            package_variable,
+            symbol_type,
+            being,
+            each,
+            symbol_word,
+            of,
+            package,
+        ],
+    )?;
+    let package_expansion = expand_loop_ast(&mut ctx, &runtime, &package_ast)?;
+    assert_initial_binding_matches_type(
+        &mut ctx,
+        package_expansion,
+        package_variable,
+        symbol_type,
+    )?;
+    assert_eq!(
+        initial_binding(&mut ctx, package_expansion, package_variable)?,
+        Word::NIL
+    );
     Ok(())
 }
 
@@ -86,6 +683,8 @@ fn expansion_has_block_tagbody_and_lexical_bindings() -> Result<(), ObjectError>
         clauses: vec![
             LoopClause::With {
                 variable: x,
+                type_spec: None,
+                has_init: true,
                 init: Word::fixnum(1),
             },
             LoopClause::Do(vec![x]),
@@ -191,6 +790,7 @@ fn parses_hash_key_iteration_with_using_value() -> Result<(), ObjectError> {
         ast.clauses.as_slice(),
         [LoopClause::Hash(HashClause {
             variable,
+            type_spec: None,
             kind: HashIterationKind::Key,
             table: parsed_table,
             using: Some((HashIterationKind::Value, parsed_value)),
@@ -432,6 +1032,7 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     let key = symbol(&mut ctx, &runtime, "KEY")?;
     let value = symbol(&mut ctx, &runtime, "VALUE")?;
     let table = symbol(&mut ctx, &runtime, "TABLE")?;
+    let type_spec = symbol(&mut ctx, &runtime, "T")?;
     let do_form = list(&mut ctx, &runtime, &[key, value])?;
     let expansion = expand_loop_ast(
         &mut ctx,
@@ -441,6 +1042,7 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
             clauses: vec![
                 LoopClause::Hash(HashClause {
                     variable: key,
+                    type_spec: Some(type_spec),
                     kind: HashIterationKind::Key,
                     table,
                     using: Some((HashIterationKind::Value, value)),
@@ -458,8 +1060,14 @@ fn expands_hash_iteration_through_maphash() -> Result<(), ObjectError> {
     let lambda = elements(&mut ctx, maphash[1])?;
     assert_eq!(lambda[0], symbol(&mut ctx, &runtime, "LAMBDA")?);
     assert_eq!(elements(&mut ctx, lambda[1])?, vec![key, value]);
+    let declaration = elements(&mut ctx, lambda[2])?;
+    assert_eq!(declaration[0], symbol(&mut ctx, &runtime, "DECLARE")?);
     assert_eq!(
-        elements(&mut ctx, lambda[2])?[0],
+        elements(&mut ctx, declaration[1])?,
+        vec![symbol(&mut ctx, &runtime, "TYPE")?, type_spec, key]
+    );
+    assert_eq!(
+        elements(&mut ctx, lambda[3])?[0],
         symbol(&mut ctx, &runtime, "TAGBODY")?
     );
     Ok(())
@@ -612,6 +1220,7 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
                     }),
                     LoopClause::EqualsThen {
                         variable: status,
+                        type_spec: None,
                         init,
                         then,
                     },

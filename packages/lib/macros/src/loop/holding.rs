@@ -5,6 +5,12 @@
 use super::clause::HeldLoopClause;
 use super::{LoopClause, Result, ThreadContext, Word, symbol_name};
 
+fn hold_type_spec(held: &mut Vec<Word>, type_spec: Word) -> usize {
+    let index = held.len();
+    held.push(type_spec);
+    index
+}
+
 /// Convert one parsed [`LoopClause`] into a [`HeldLoopClause`]. Recurses for
 /// the selectable clauses nested inside a `when`/`unless`/`if` conditional
 /// clause.
@@ -15,19 +21,30 @@ fn hold_clause(
     clause: &LoopClause,
 ) -> Result<HeldLoopClause> {
     Ok(match *clause {
-        LoopClause::With { variable, init } => {
+        LoopClause::With {
+            variable,
+            type_spec,
+            has_init,
+            init,
+        } => {
             let variable_index = held.len();
             held.push(variable);
+            let type_spec = type_spec.map(|type_spec| hold_type_spec(held, type_spec));
             let init_index = held.len();
             held.push(init);
             HeldLoopClause::With {
                 variable: variable_index,
+                type_spec,
+                has_init,
                 init: init_index,
             }
         }
         LoopClause::For(spec) => {
             let variable = held.len();
             held.push(spec.variable);
+            let type_spec = spec
+                .type_spec
+                .map(|type_spec| hold_type_spec(held, type_spec));
             let init = held.len();
             held.push(spec.init);
             let step = spec.step.map(|step| {
@@ -42,6 +59,8 @@ fn hold_clause(
             });
             HeldLoopClause::For {
                 variable,
+                type_spec,
+                has_init: spec.has_init,
                 init,
                 step,
                 direction: spec.direction,
@@ -52,6 +71,9 @@ fn hold_clause(
             symbol_name(ctx, spec.variable)?;
             let variable = held.len();
             held.push(spec.variable);
+            let type_spec = spec
+                .type_spec
+                .map(|type_spec| hold_type_spec(held, type_spec));
             let table = held.len();
             held.push(spec.table);
             let using = spec.using.map(|(kind, variable)| {
@@ -61,6 +83,7 @@ fn hold_clause(
             });
             HeldLoopClause::Hash {
                 variable,
+                type_spec,
                 kind: spec.kind,
                 table,
                 using,
@@ -70,11 +93,9 @@ fn hold_clause(
             symbol_name(ctx, spec.variable)?;
             let variable = held.len();
             held.push(spec.variable);
-            let type_spec = spec.type_spec.map(|type_spec| {
-                let index = held.len();
-                held.push(type_spec);
-                index
-            });
+            let type_spec = spec
+                .type_spec
+                .map(|type_spec| hold_type_spec(held, type_spec));
             let package = spec.package.map(|package| {
                 let index = held.len();
                 held.push(package);
@@ -89,12 +110,14 @@ fn hold_clause(
         }
         LoopClause::EqualsThen {
             variable,
+            type_spec,
             init,
             then,
         } => {
             symbol_name(ctx, variable)?;
             let variable_index = held.len();
             held.push(variable);
+            let type_spec = type_spec.map(|type_spec| hold_type_spec(held, type_spec));
             let init_index = held.len();
             held.push(init);
             let then_index = then.map(|then| {
@@ -104,12 +127,14 @@ fn hold_clause(
             });
             HeldLoopClause::EqualsThen {
                 variable: variable_index,
+                type_spec,
                 init: init_index,
                 then: then_index,
             }
         }
         LoopClause::In {
             variable,
+            type_spec,
             sequence,
             on,
             by,
@@ -119,6 +144,7 @@ fn hold_clause(
             // during body expansion.
             let variable_index = held.len();
             held.push(variable);
+            let type_spec = type_spec.map(|type_spec| hold_type_spec(held, type_spec));
             let sequence_index = held.len();
             held.push(sequence);
             let by = by.map(|by| {
@@ -128,19 +154,26 @@ fn hold_clause(
             });
             HeldLoopClause::In {
                 variable: variable_index,
+                type_spec,
                 sequence: sequence_index,
                 on,
                 by,
             }
         }
-        LoopClause::Across { variable, vector } => {
+        LoopClause::Across {
+            variable,
+            type_spec,
+            vector,
+        } => {
             symbol_name(ctx, variable)?;
             let variable_index = held.len();
             held.push(variable);
+            let type_spec = type_spec.map(|type_spec| hold_type_spec(held, type_spec));
             let vector_index = held.len();
             held.push(vector);
             HeldLoopClause::Across {
                 variable: variable_index,
+                type_spec,
                 vector: vector_index,
             }
         }

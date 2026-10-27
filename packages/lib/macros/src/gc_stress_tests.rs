@@ -23,10 +23,14 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
         clauses: vec![
             r#loop::LoopClause::With {
                 variable: x,
+                type_spec: None,
+                has_init: true,
                 init: Word::fixnum(0),
             },
             r#loop::LoopClause::For(r#loop::ForClause {
                 variable: y,
+                type_spec: None,
+                has_init: true,
                 init: Word::fixnum(0),
                 step: Some(Word::fixnum(1)),
                 direction: Some(r#loop::StepDirection::UpFrom),
@@ -34,6 +38,7 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
             }),
             r#loop::LoopClause::Hash(r#loop::HashClause {
                 variable: key,
+                type_spec: None,
                 kind: r#loop::HashIterationKind::Key,
                 table,
                 using: Some((r#loop::HashIterationKind::Value, value)),
@@ -380,6 +385,8 @@ fn loop_conditional_clause_expansion_survives_gc_stress_and_strict_forwarding()
         clauses: vec![
             r#loop::LoopClause::For(r#loop::ForClause {
                 variable: i,
+                type_spec: None,
+                has_init: true,
                 init: Word::fixnum(1),
                 step: None,
                 direction: Some(r#loop::StepDirection::From),

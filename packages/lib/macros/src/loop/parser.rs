@@ -76,6 +76,7 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "HASH-VALUE"
                 | "HASH-VALUES"
                 | "OF"
+                | "OF-TYPE"
                 | "USING"
                 | "WHEN"
                 | "UNLESS"
@@ -85,6 +86,53 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "END"
         )
     })
+}
+
+fn is_for_clause_word(name: &str) -> bool {
+    matches!(
+        name,
+        "=" | "FROM"
+            | "UPFROM"
+            | "DOWNFROM"
+            | "THEN"
+            | "BY"
+            | "TO"
+            | "UPTO"
+            | "BELOW"
+            | "DOWNTO"
+            | "ABOVE"
+            | "IN"
+            | "ON"
+            | "ACROSS"
+            | "BEING"
+    )
+}
+
+fn is_for_clause(ctx: &ThreadContext, word: Word) -> bool {
+    word_name(ctx, word).is_ok_and(|name| is_for_clause_word(&name))
+}
+
+fn parse_optional_type_spec(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+) -> Result<Option<Word>> {
+    let Some(word) = input.get(*cursor).copied() else {
+        return Ok(None);
+    };
+    let name = word_name(ctx, word).ok();
+    if name.as_deref() == Some("OF-TYPE") {
+        *cursor += 1;
+        return required(input, cursor).map(Some);
+    }
+    if name
+        .as_deref()
+        .is_some_and(|name| name != "=" && !is_keyword(ctx, word))
+    {
+        *cursor += 1;
+        return Ok(Some(word));
+    }
+    Ok(None)
 }
 
 fn take_forms(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Vec<Word> {
@@ -121,59 +169,75 @@ pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) ->
         } else if keyword == "WITH" {
             let variable = required(input, &mut cursor)?;
             symbol_name(ctx, variable)?;
-            let init = if input
+            let type_spec = parse_optional_type_spec(ctx, input, &mut cursor)?;
+            let has_init = input
                 .get(cursor)
-                .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "="))
-            {
+                .is_some_and(|word| matches!(word_name(ctx, *word), Ok(name) if name == "="));
+            let init = if has_init {
                 cursor += 1;
                 required(input, &mut cursor)?
             } else {
                 Word::NIL
             };
-            clauses.push(LoopClause::With { variable, init });
+            clauses.push(LoopClause::With {
+                variable,
+                type_spec,
+                has_init,
+                init,
+            });
         } else if keyword == "FOR" || keyword == "AS" {
             let variable = input.get(cursor).copied().ok_or(ObjectError::TypeError)?;
             let next = input
                 .get(cursor + 1)
                 .copied()
                 .ok_or(ObjectError::TypeError)?;
-            let typed_being = input
-                .get(cursor + 2)
+            let mut clause_cursor = cursor + 1;
+            let parsed_type_spec = parse_optional_type_spec(ctx, input, &mut clause_cursor)?;
+            let (type_spec, clause_word, clause_index) = if is_for_clause(ctx, next) {
+                (None, next, cursor + 1)
+            } else if let Some(clause_word) = input
+                .get(clause_cursor)
                 .copied()
-                .filter(|word| matches!(word_name(ctx, *word), Ok(name) if name == "BEING"));
-            let (type_spec, clause_word) =
-                typed_being.map_or((None, next), |clause_word| (Some(next), clause_word));
+                .filter(|word| is_for_clause(ctx, *word))
+            {
+                (parsed_type_spec, clause_word, clause_cursor)
+            } else {
+                (None, next, cursor + 1)
+            };
             match word_name(ctx, clause_word)?.as_str() {
                 "IN" => {
-                    cursor += 2;
+                    cursor = clause_index + 1;
                     clauses.push(iteration::parse_sequence_for(
                         ctx,
                         input,
                         &mut cursor,
                         variable,
+                        type_spec,
                         false,
                     )?);
                 }
                 "ON" => {
-                    cursor += 2;
+                    cursor = clause_index + 1;
                     clauses.push(iteration::parse_sequence_for(
                         ctx,
                         input,
                         &mut cursor,
                         variable,
+                        type_spec,
                         true,
                     )?);
                 }
                 "ACROSS" => {
-                    cursor += 2;
+                    cursor = clause_index + 1;
                     clauses.push(LoopClause::Across {
                         variable,
+                        type_spec,
                         vector: required(input, &mut cursor)?,
                     });
                     symbol_name(ctx, variable)?;
                 }
                 "BEING" => {
-                    cursor += if type_spec.is_some() { 3 } else { 2 };
+                    cursor = clause_index + 1;
                     clauses.push(iteration::parse_being_for(
                         ctx,
                         runtime,
@@ -185,7 +249,7 @@ pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) ->
                 }
                 "=" | "FROM" | "UPFROM" | "DOWNFROM" | "BY" | "THEN" | "TO" | "UPTO" | "BELOW"
                 | "DOWNTO" | "ABOVE" => {
-                    clauses.push(iteration::parse_for(ctx, input, &mut cursor)?);
+                    clauses.push(iteration::parse_for(ctx, input, &mut cursor, type_spec)?);
                 }
                 other => return Err(unsupported_clause(ctx, runtime, &format!("FOR {other}"))),
             }

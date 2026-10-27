@@ -10,9 +10,13 @@ pub(super) fn parse_for(
     ctx: &ThreadContext,
     input: &[Word],
     cursor: &mut usize,
+    type_spec: Option<Word>,
 ) -> Result<LoopClause> {
     let variable = required(input, cursor)?;
     symbol_name(ctx, variable)?;
+    if type_spec.is_some() && word_name(ctx, required(input, cursor)?)? == "OF-TYPE" {
+        required(input, cursor)?;
+    }
     let mut init = Word::NIL;
     let mut has_init = false;
     let mut equals_then = false;
@@ -105,6 +109,7 @@ pub(super) fn parse_for(
         }
         Ok(LoopClause::EqualsThen {
             variable,
+            type_spec,
             init,
             then,
         })
@@ -116,6 +121,8 @@ pub(super) fn parse_for(
         }
         Ok(LoopClause::For(ForClause {
             variable,
+            type_spec,
+            has_init,
             init,
             step,
             direction,
@@ -129,8 +136,12 @@ pub(super) fn parse_sequence_for(
     input: &[Word],
     cursor: &mut usize,
     variable: Word,
+    type_spec: Option<Word>,
     on: bool,
 ) -> Result<LoopClause> {
+    if type_spec.is_some() {
+        symbol_name(ctx, variable)?;
+    }
     let sequence = required(input, cursor)?;
     let by = if input
         .get(*cursor)
@@ -143,6 +154,7 @@ pub(super) fn parse_sequence_for(
     };
     Ok(LoopClause::In {
         variable,
+        type_spec,
         sequence,
         on,
         by,
@@ -177,10 +189,11 @@ pub(super) fn parse_being_for(
         kind_cursor += 1;
     }
     let kind_name = word_name(ctx, required(input, &mut kind_cursor)?)?;
-    if let Some(kind) = package_iteration_kind(&kind_name) {
-        if article.is_none() {
-            return Err(ObjectError::TypeError);
-        }
+    let package_kind = package_iteration_kind(&kind_name);
+    if package_kind.is_some() && article.is_none() {
+        return Err(ObjectError::TypeError);
+    }
+    if let Some(kind) = package_kind {
         symbol_name(ctx, variable)?;
         *cursor = kind_cursor;
         let package = if input.get(*cursor).is_some_and(
@@ -199,7 +212,7 @@ pub(super) fn parse_being_for(
         }));
     }
     if hash_kind(&kind_name).is_some() {
-        return parse_hash_for(ctx, input, cursor, variable);
+        return parse_hash_for(ctx, input, cursor, variable, type_spec);
     }
     let article = article.as_deref().unwrap_or("");
     Err(super::unsupported_clause(
@@ -226,6 +239,7 @@ pub(super) fn parse_hash_for(
     input: &[Word],
     cursor: &mut usize,
     variable: Word,
+    type_spec: Option<Word>,
 ) -> Result<LoopClause> {
     symbol_name(ctx, variable)?;
     if input.get(*cursor).is_some_and(
@@ -271,6 +285,7 @@ pub(super) fn parse_hash_for(
     };
     Ok(LoopClause::Hash(HashClause {
         variable,
+        type_spec,
         kind,
         table,
         using,

@@ -10,10 +10,11 @@ pub(super) fn wrap_hash_iteration(
         HashIterationKind,
         usize,
         Option<(HashIterationKind, usize)>,
+        Option<usize>,
     ),
     body: usize,
 ) -> Result<usize> {
-    let (variable, kind, table, using) = iteration;
+    let (variable, kind, table, using, type_declaration) = iteration;
     let (key_variable, value_variable) = if let Some((using_kind, using_variable)) = using {
         if using_kind == HashIterationKind::Key {
             (using_variable, variable)
@@ -30,6 +31,16 @@ pub(super) fn wrap_hash_iteration(
     };
     let parameter_indexes = vec![key_variable, value_variable];
     let parameters = held_list(ctx, runtime, held, &parameter_indexes)?;
-    let lambda = held_form(ctx, runtime, held, "LAMBDA", &[parameters, body])?;
+    let lambda = if let Some(type_declaration) = type_declaration {
+        held_form(
+            ctx,
+            runtime,
+            held,
+            "LAMBDA",
+            &[parameters, type_declaration, body],
+        )?
+    } else {
+        held_form(ctx, runtime, held, "LAMBDA", &[parameters, body])?
+    };
     held_form(ctx, runtime, held, "MAPHASH", &[lambda, table])
 }

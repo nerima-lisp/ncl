@@ -7,10 +7,14 @@ use super::{
 pub(super) enum HeldLoopClause {
     With {
         variable: usize,
+        type_spec: Option<usize>,
+        has_init: bool,
         init: usize,
     },
     For {
         variable: usize,
+        type_spec: Option<usize>,
+        has_init: bool,
         init: usize,
         step: Option<usize>,
         direction: Option<StepDirection>,
@@ -18,6 +22,7 @@ pub(super) enum HeldLoopClause {
     },
     Hash {
         variable: usize,
+        type_spec: Option<usize>,
         kind: HashIterationKind,
         table: usize,
         using: Option<(HashIterationKind, usize)>,
@@ -30,17 +35,20 @@ pub(super) enum HeldLoopClause {
     },
     EqualsThen {
         variable: usize,
+        type_spec: Option<usize>,
         init: usize,
         then: Option<usize>,
     },
     In {
         variable: usize,
+        type_spec: Option<usize>,
         sequence: usize,
         on: bool,
         by: Option<usize>,
     },
     Across {
         variable: usize,
+        type_spec: Option<usize>,
         vector: usize,
     },
     Repeat(usize),

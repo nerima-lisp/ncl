@@ -53,6 +53,26 @@ fn make_typed_array(
     )
 }
 
+fn assert_upgraded_element_type(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    element_type: Word,
+    expected: Word,
+) -> Result<(), ObjectError> {
+    assert_eq!(
+        call(runtime, ctx, "UPGRADED-ARRAY-ELEMENT-TYPE", &[element_type])?,
+        expected
+    );
+    Ok(())
+}
+
+fn assert_rejected_element_type(runtime: &Runtime, ctx: &mut ThreadContext, element_type: Word) {
+    assert_eq!(
+        call(runtime, ctx, "UPGRADED-ARRAY-ELEMENT-TYPE", &[element_type]),
+        Err(ObjectError::TypeError)
+    );
+}
+
 #[test]
 fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -616,6 +636,93 @@ fn make_array_accepts_ansi_element_type_designators_and_rank_zero() -> Result<()
         Word::NIL
     );
     assert_eq!(array_row_major_ref(&ctx, rank_zero, 0)?, Word::fixnum(14));
+    Ok(())
+}
+
+#[test]
+fn class_and_compound_element_types_upgrade_and_reject_nested_deftypes() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_clos::register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let common_lisp_package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let symbol = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(common_lisp_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let list = |ctx: &mut ThreadContext, values: &[Word]| {
+        values.iter().rev().try_fold(Word::NIL, |tail, value| {
+            make_cons(ctx, &runtime, *value, tail)
+        })
+    };
+    let standard_object = runtime
+        .class(&mut ctx, "STANDARD-OBJECT")
+        .ok_or(ObjectError::PackageConflict)?;
+    let general_type = symbol(&mut ctx, "T")?;
+    let star = symbol(&mut ctx, "*")?;
+    let unknown = symbol(&mut ctx, "NCL-UNKNOWN-ELEMENT-TYPE-FOR-TEST")?;
+
+    assert_upgraded_element_type(&runtime, &mut ctx, standard_object, general_type)?;
+    let class_array = make_typed_array(&runtime, &mut ctx, standard_object, Word::fixnum(1))?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-ELEMENT-TYPE", &[class_array])?,
+        general_type
+    );
+
+    let and = symbol(&mut ctx, "AND")?;
+    let or = symbol(&mut ctx, "OR")?;
+    let values = symbol(&mut ctx, "VALUES")?;
+    let not = symbol(&mut ctx, "NOT")?;
+    let cons = symbol(&mut ctx, "CONS")?;
+    let array = symbol(&mut ctx, "ARRAY")?;
+    let simple_array = symbol(&mut ctx, "SIMPLE-ARRAY")?;
+    let vector = symbol(&mut ctx, "VECTOR")?;
+    let function = symbol(&mut ctx, "FUNCTION")?;
+    let function_arguments = list(&mut ctx, &[standard_object])?;
+    let function_type = list(&mut ctx, &[function, function_arguments, standard_object])?;
+    let compounds = [
+        list(&mut ctx, &[and, standard_object, general_type])?,
+        list(&mut ctx, &[or, standard_object, general_type])?,
+        list(&mut ctx, &[values, standard_object])?,
+        list(&mut ctx, &[not, standard_object])?,
+        list(&mut ctx, &[cons, standard_object, general_type])?,
+        list(&mut ctx, &[array, standard_object, star])?,
+        list(&mut ctx, &[simple_array, standard_object, star])?,
+        list(&mut ctx, &[vector, standard_object, star])?,
+        function_type,
+    ];
+    for compound in compounds {
+        assert_upgraded_element_type(&runtime, &mut ctx, compound, general_type)?;
+    }
+
+    let invalid = [
+        list(&mut ctx, &[and, standard_object, unknown])?,
+        list(&mut ctx, &[or, standard_object, unknown])?,
+        list(&mut ctx, &[values, standard_object, unknown])?,
+        list(&mut ctx, &[not, unknown])?,
+        list(&mut ctx, &[cons, standard_object, unknown])?,
+        list(&mut ctx, &[cons, unknown, standard_object])?,
+        list(&mut ctx, &[array, unknown, star])?,
+        list(&mut ctx, &[simple_array, unknown, star])?,
+        list(&mut ctx, &[vector, unknown, star])?,
+        {
+            let invalid_function_arguments = list(&mut ctx, &[unknown])?;
+            list(
+                &mut ctx,
+                &[function, invalid_function_arguments, standard_object],
+            )?
+        },
+        list(&mut ctx, &[function, function_arguments, unknown])?,
+    ];
+    for compound in invalid {
+        assert_rejected_element_type(&runtime, &mut ctx, compound);
+    }
     Ok(())
 }
 

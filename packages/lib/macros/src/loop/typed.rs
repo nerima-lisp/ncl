@@ -15,9 +15,7 @@ pub(super) fn type_declaration(
     held_list(ctx, runtime, held, &[declare, type_declaration])
 }
 
-fn unsupported_type_default(ctx: &mut ThreadContext, runtime: &Runtime) -> ObjectError {
-    let message =
-        "Unsupported LOOP type default: no supported initial value satisfies the type specifier";
+fn loop_type_error(ctx: &mut ThreadContext, runtime: &Runtime, message: &str) -> ObjectError {
     let characters = message.chars().collect::<Vec<_>>();
     match ncl_object::make_string(ctx, runtime, &characters) {
         Ok(format_control) => {
@@ -29,6 +27,18 @@ fn unsupported_type_default(ctx: &mut ThreadContext, runtime: &Runtime) -> Objec
         }
         Err(error) => error,
     }
+}
+
+fn invalid_type_specifier(ctx: &mut ThreadContext, runtime: &Runtime) -> ObjectError {
+    loop_type_error(ctx, runtime, "Invalid LOOP type specifier")
+}
+
+fn unsupported_type_default(ctx: &mut ThreadContext, runtime: &Runtime) -> ObjectError {
+    loop_type_error(
+        ctx,
+        runtime,
+        "Unsupported LOOP type default: no supported initial value satisfies the type specifier",
+    )
 }
 
 pub(super) fn typed_placeholder(
@@ -56,13 +66,16 @@ fn typed_placeholder_with_candidates(
     type_spec: usize,
     candidates: &[Word],
 ) -> Result<usize> {
+    let mut invalid_type = false;
     let direct_match = ncl_object::with_roots(ctx, held, |ctx, roots| {
         let type_word = roots
             .get(type_spec)
             .map(|root| **root)
             .ok_or(ObjectError::TypeError)?;
-        let specifier =
-            ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| ObjectError::TypeError)?;
+        let specifier = ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| {
+            invalid_type = true;
+            ObjectError::TypeError
+        })?;
         let mut candidate = None;
         for value in candidates.iter().copied() {
             if ncl_types::typep(ctx, value, &specifier).map_err(|_| ObjectError::TypeError)? {
@@ -75,6 +88,9 @@ fn typed_placeholder_with_candidates(
     });
     let (candidate, refreshed) = match direct_match {
         Ok(result) => result,
+        Err(ObjectError::TypeError) if invalid_type => {
+            return Err(invalid_type_specifier(ctx, runtime));
+        }
         Err(ObjectError::TypeError) => return Err(unsupported_type_default(ctx, runtime)),
         Err(error) => return Err(error),
     };
@@ -93,13 +109,16 @@ fn typed_placeholder_with_candidates(
     let float_index = held.len();
     held.push(float);
 
+    invalid_type = false;
     let float_match = ncl_object::with_roots(ctx, held, |ctx, roots| {
         let type_word = roots
             .get(type_spec)
             .map(|root| **root)
             .ok_or(ObjectError::TypeError)?;
-        let specifier =
-            ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| ObjectError::TypeError)?;
+        let specifier = ncl_types::parse_type_specifier(ctx, type_word).map_err(|_| {
+            invalid_type = true;
+            ObjectError::TypeError
+        })?;
         let value = roots
             .get(float_index)
             .map(|root| **root)
@@ -111,6 +130,9 @@ fn typed_placeholder_with_candidates(
     });
     let (matches, refreshed) = match float_match {
         Ok(result) => result,
+        Err(ObjectError::TypeError) if invalid_type => {
+            return Err(invalid_type_specifier(ctx, runtime));
+        }
         Err(ObjectError::TypeError) => return Err(unsupported_type_default(ctx, runtime)),
         Err(error) => return Err(error),
     };

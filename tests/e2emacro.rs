@@ -331,6 +331,11 @@ const PROBES: &[Probe] = &[
         expected: "((1 7))",
     },
     Probe {
+        name: "cl-bench-hash-strings-typed-loop",
+        source: "(loop for i fixnum from 2 downto 0 with q fixnum = 17 and r fixnum = 0 do (multiple-value-setq (q r) (floor q 4)) collect (list i q r))",
+        expected: "((2 4 1) (1 1 0) (0 0 1))",
+    },
+    Probe {
         name: "loop-sum",
         source: "(loop for x in '(1 2 3) sum x)",
         expected: "6",

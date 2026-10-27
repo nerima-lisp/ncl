@@ -10,13 +10,10 @@ pub(super) fn parse_for(
     ctx: &ThreadContext,
     input: &[Word],
     cursor: &mut usize,
+    variable: Word,
     type_spec: Option<Word>,
 ) -> Result<LoopClause> {
-    let variable = required(input, cursor)?;
     symbol_name(ctx, variable)?;
-    if type_spec.is_some() && word_name(ctx, required(input, cursor)?)? == "OF-TYPE" {
-        required(input, cursor)?;
-    }
     let mut init = Word::NIL;
     let mut has_init = false;
     let mut equals_then = false;

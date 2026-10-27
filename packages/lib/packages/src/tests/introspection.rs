@@ -132,6 +132,41 @@ fn make_package_builtin_creates_and_rejects_duplicate() -> Result<(), ObjectErro
 }
 
 #[test]
+fn make_package_stores_documentation() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-PACKAGE")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let name = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"N25-DOC-PACKAGE".chars().collect::<Vec<_>>(),
+    )?;
+    let key = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"DOCUMENTATION".chars().collect::<Vec<_>>(),
+    )?;
+    let documentation = ncl_object::make_string(
+        &mut ctx,
+        &runtime,
+        &"package docs".chars().collect::<Vec<_>>(),
+    )?;
+
+    let package = runtime.call_builtin(&mut ctx, function, &[name, key, documentation])?;
+    assert_eq!(
+        Package::try_from_word(&ctx, package)?.documentation(&ctx)?,
+        documentation
+    );
+    Ok(())
+}
+
+#[test]
 fn package_lists_and_symbol_search_are_registered() -> Result<(), ObjectError> {
     fn function(
         runtime: &Runtime,

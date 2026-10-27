@@ -229,6 +229,11 @@ mod tests {
             package_layout().reference_words,
             reference_words(&crate::package::reference_words())
         );
+        assert!(
+            package_layout()
+                .reference_words
+                .contains(&(crate::package::DOCUMENTATION + 1))
+        );
         assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
         assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
     }

@@ -1,4 +1,4 @@
-use super::{LOCAL_NICKNAMES, LOCK, Package};
+use super::{DOCUMENTATION, LOCAL_NICKNAMES, LOCK, Package};
 use crate::object_access::{get, put};
 use crate::widetag;
 use crate::{
@@ -106,5 +106,25 @@ impl Package {
     ) -> Result<(), ObjectError> {
         self.ensure_unlocked(ctx)?;
         put(ctx, self.as_word(), LOCAL_NICKNAMES, nicknames)
+    }
+
+    /// Return the documentation string associated with this package.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
+    pub fn documentation(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.as_word(), widetag::PACKAGE, DOCUMENTATION)
+    }
+
+    /// Replace the documentation string associated with this package.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
+    pub fn set_documentation(
+        self,
+        ctx: &mut ThreadContext,
+        documentation: Word,
+    ) -> Result<(), ObjectError> {
+        put(ctx, self.as_word(), DOCUMENTATION, documentation)
     }
 }

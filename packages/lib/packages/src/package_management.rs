@@ -3,8 +3,8 @@ use super::{
     with_rooted_words,
 };
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, classify_object,
+    BuiltinArgs, HeapRootedWord, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, classify_object,
 };
 
 pub(super) const MAKE_PACKAGE_OPTIONS: Parameter = Parameter {
@@ -99,73 +99,85 @@ pub(super) fn make_package(
     if runtime.find_package(ctx, &name).is_some() {
         return Err(ObjectError::PackageConflict);
     }
-    let mut nicknames = Word::NIL;
-    let mut use_packages = Vec::new();
-    let mut index = 1;
-    while index < args.len() {
-        let key = args.get(index).ok_or(ObjectError::TypeError)?;
-        let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
-        let key = string_designator_text(ctx, key)?;
-        match key.as_str() {
-            "USE" => {
-                for used in list_items(ctx, value)? {
-                    use_packages.push(package_designator(ctx, runtime, used)?.as_word());
-                }
-            }
-            "NICKNAMES" | "DOCUMENTATION" | "SIZE" => {}
-            _ => return Err(ObjectError::TypeError),
-        }
-        index += 2;
-    }
-    with_rooted_words(ctx, &mut use_packages, |ctx, use_packages| {
-        with_rooted_words(
-            ctx,
-            std::slice::from_mut(&mut nicknames),
-            |ctx, nicknames| {
-                let mut index = 1;
-                while index < args.len() {
-                    let key = args.get(index).ok_or(ObjectError::TypeError)?;
-                    let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
-                    let key = string_designator_text(ctx, key)?;
-                    match key.as_str() {
-                        "NICKNAMES" => {
-                            append_package_nicknames(ctx, runtime, nicknames, value)?;
-                        }
-                        "USE" | "DOCUMENTATION" | "SIZE" => {}
-                        _ => return Err(ObjectError::TypeError),
+    let mut package_data = [Word::NIL, Word::NIL];
+    with_rooted_words(ctx, &mut package_data, |ctx, package_data| {
+        let mut use_packages = Vec::<HeapRootedWord>::new();
+        let mut index = 1;
+        while index < args.len() {
+            let key = args.get(index).ok_or(ObjectError::TypeError)?;
+            let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
+            let key = string_designator_text(ctx, key)?;
+            if key == "USE" {
+                let mut used_words = list_items(ctx, value)?;
+                with_rooted_words(ctx, &mut used_words, |ctx, used_words| {
+                    for used in used_words.iter().copied() {
+                        let package = package_designator(ctx, runtime, used)?.as_word();
+                        use_packages.push(HeapRootedWord::new(ctx, package)?);
                     }
-                    index += 2;
+                    Ok(())
+                })?;
+            } else if key == "DOCUMENTATION" {
+                if value != Word::NIL
+                    && !matches!(classify_object(ctx, value), ObjectRef::String(_))
+                {
+                    return Err(ObjectError::TypeError);
                 }
-                let mut package = runtime.ensure_package(ctx, &name)?;
-                with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
-                    let mut roots = [package[0], nicknames[0]];
-                    with_rooted_words(ctx, &mut roots, |ctx, roots| {
-                        let name_word = ncl_object::make_string(
+                *package_data.get_mut(1).ok_or(ObjectError::Layout)? = value;
+            } else if key != "NICKNAMES" && key != "SIZE" {
+                return Err(ObjectError::TypeError);
+            }
+            index += 2;
+        }
+        let mut index = 1;
+        while index < args.len() {
+            let key = args.get(index).ok_or(ObjectError::TypeError)?;
+            let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
+            let key = string_designator_text(ctx, key)?;
+            if key == "NICKNAMES" {
+                append_package_nicknames(
+                    ctx,
+                    runtime,
+                    std::slice::from_mut(package_data.get_mut(0).ok_or(ObjectError::Layout)?),
+                    value,
+                )?;
+            } else if key != "USE" && key != "DOCUMENTATION" && key != "SIZE" {
+                return Err(ObjectError::TypeError);
+            }
+            index += 2;
+        }
+        let mut package = runtime.ensure_package(ctx, &name)?;
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            let package_word = *package.first().ok_or(ObjectError::Layout)?;
+            let nicknames = *package_data.first().ok_or(ObjectError::Layout)?;
+            let documentation = *package_data.get(1).ok_or(ObjectError::Layout)?;
+            let mut roots = [package_word, nicknames, documentation];
+            with_rooted_words(ctx, &mut roots, |ctx, roots| {
+                let name_word =
+                    ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+                let mut name_word = name_word;
+                with_rooted_words(
+                    ctx,
+                    std::slice::from_mut(&mut name_word),
+                    |ctx, name_word| {
+                        let package = *roots.first().ok_or(ObjectError::Layout)?;
+                        let nicknames = *roots.get(1).ok_or(ObjectError::Layout)?;
+                        let documentation = *roots.get(2).ok_or(ObjectError::Layout)?;
+                        let name = *name_word.first().ok_or(ObjectError::Layout)?;
+                        runtime.rename_package(
                             ctx,
-                            runtime,
-                            &name.chars().collect::<Vec<_>>(),
+                            Package::from_word(package),
+                            name,
+                            nicknames,
                         )?;
-                        let mut name_word = name_word;
-                        with_rooted_words(
-                            ctx,
-                            std::slice::from_mut(&mut name_word),
-                            |ctx, name_word| {
-                                runtime.rename_package(
-                                    ctx,
-                                    Package::from_word(roots[0]),
-                                    name_word[0],
-                                    roots[1],
-                                )?;
-                                for used in use_packages.iter().copied() {
-                                    Package::from_word(roots[0]).use_package(ctx, runtime, used)?;
-                                }
-                                Ok(roots[0])
-                            },
-                        )
-                    })
-                })
-            },
-        )
+                        Package::from_word(package).set_documentation(ctx, documentation)?;
+                        for used in &use_packages {
+                            Package::from_word(package).use_package(ctx, runtime, used.get())?;
+                        }
+                        Ok(package)
+                    },
+                )
+            })
+        })
     })
 }
 

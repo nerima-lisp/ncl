@@ -341,21 +341,40 @@ fn registered_incf_adapter_preserves_the_place_and_delta() -> Result<(), ObjectE
     let expansion = runtime.call_builtin(&mut ctx, function, &[form])?;
 
     let parts = elements(&mut ctx, expansion)?;
-    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET")?);
+    assert_eq!(parts.len(), 3);
+    assert_eq!(parts[0], symbol(&mut ctx, &runtime, "LET*")?);
     let bindings = elements(&mut ctx, parts[1])?;
-    assert_eq!(bindings.len(), 1);
-    let binding = elements(&mut ctx, bindings[0])?;
-    assert_eq!(binding.len(), 2);
-    assert_ne!(binding[0], variable);
-    let value = elements(&mut ctx, binding[1])?;
+    assert_eq!(bindings.len(), 2);
+    let delta = elements(&mut ctx, bindings[0])?;
+    assert_eq!(delta.len(), 2);
+    assert_ne!(delta[0], variable);
+    assert_eq!(delta[1], Word::fixnum(5));
+    let old = elements(&mut ctx, bindings[1])?;
+    assert_eq!(old.len(), 2);
+    assert_ne!(old[0], variable);
+    assert_ne!(old[0], delta[0]);
+    assert_eq!(old[1], variable);
+
+    let store = elements(&mut ctx, parts[2])?;
+    assert_eq!(store.len(), 3);
+    assert_eq!(store[0], symbol(&mut ctx, &runtime, "LET")?);
+    let store_bindings = elements(&mut ctx, store[1])?;
+    assert_eq!(store_bindings.len(), 1);
+    let store_binding = elements(&mut ctx, store_bindings[0])?;
+    assert_eq!(store_binding.len(), 2);
+    let value = elements(&mut ctx, store_binding[1])?;
     assert_eq!(
         value,
-        vec![symbol(&mut ctx, &runtime, "+")?, variable, Word::fixnum(5),]
+        vec![symbol(&mut ctx, &runtime, "+")?, old[0], delta[0]]
     );
-    let store = elements(&mut ctx, parts[2])?;
+    let assignment = elements(&mut ctx, store[2])?;
     assert_eq!(
-        store,
-        vec![symbol(&mut ctx, &runtime, "SETQ")?, variable, binding[0]]
+        assignment,
+        vec![
+            symbol(&mut ctx, &runtime, "SETQ")?,
+            variable,
+            store_binding[0]
+        ]
     );
     Ok(())
 }

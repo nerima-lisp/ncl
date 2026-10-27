@@ -18,10 +18,50 @@ The scoreboard runner requires caller-supplied commands for both
 `--ansi-command` and `--cl-bench-command`; it has no default suite commands.
 The ANSI command must print a JSON object with `passed`, `failed`, and
 `unexecuted` counts, for example `{"passed": 1, "failed": 0, "unexecuted": 0}`.
-The cl-bench command must print a JSON object with a positive `times` array in
-seconds, for example `{"times": [1.25]}`. The runner executes each command
-from its pinned suite checkout. Assertion failures remain measurement results;
-timeouts and signal termination remain harness failures.
+The cl-bench command must print a JSON object containing `status`, `times`, and
+`benchmarks`. Each benchmark entry records its `status`, `stage`, `times`, and
+`condition`; for example:
+
+```json
+{
+  "status": "failed",
+  "times": [1.25],
+  "benchmarks": {
+    "EXAMPLE/PASSED": {
+      "status": "passed",
+      "stage": "finish",
+      "times": [1.25],
+      "condition": null
+    },
+    "EXAMPLE/FAILED": {
+      "status": "failed",
+      "stage": "load",
+      "times": [],
+      "condition": "load error details"
+    }
+  }
+}
+```
+
+Stages are `load`, `register`, `execute`, and `finish`. A passed entry reaches
+`finish` and has positive sample times; a failed entry keeps the stage and
+condition that stopped it. The flat `times` array contains the samples from
+passed entries. Disabled entries remain in `benchmarks` without sample times.
+The runner executes each command from its pinned suite checkout. Assertion
+failures remain measurement results; timeouts and signal termination remain
+harness failures.
+
+`ncl-driver.sh` and the paired SBCL baseline use
+`conformance/cl-bench/driver_supervisor.py` in per-benchmark mode. The supervisor
+bootstraps package declarations from every source file, preflights each source
+in its own runner process, then starts one runner for each selected benchmark.
+A failed source marks its benchmarks as failed while workers for other sources
+continue. NCL and SBCL use the same source and benchmark process boundaries.
+For the scoreboard command, `--cl-bench-command` can invoke
+`conformance/cl-bench/ncl-driver.sh` with absolute paths to the repository and
+NCL executable, followed by the optimization mode, as in
+`.github/workflows/scoreboard.yml`.
+
 The command below is a template: replace both placeholders with commands that
 satisfy these output contracts.
 
@@ -46,11 +86,12 @@ remain in the cache checkout.
 ## Paired optimization baseline
 
 Build the release binary, then run the paired baseline to measure NCL and SBCL
-on the current machine. This command runs both benchmark processes; `--sbcl`
-selects the SBCL 2.6.0 executable. The
-suggested output filename is `conformance/scoreboard/u04-optimization.json`;
-the name is not required. `--output` is optional, so omit it to print the JSON
-report to standard output or replace the path if needed:
+on the current machine. The paired runner is
+`scripts/optimization_baseline.py`; it invokes the shared supervisor for both
+engines. The command runs both benchmark processes, and `--sbcl` selects the
+SBCL 2.6.0 executable. The suggested output filename is
+`conformance/scoreboard/u04-optimization.json`. Omit `--output` to print the JSON
+report to standard output or choose another path:
 
 ```sh
 nix develop --command cargo build --locked --release -p ncl
@@ -100,9 +141,8 @@ This command requires exactly SBCL 2.6.0 and the pinned ansi-test commit. The
 `--output-prefix` value is a filename stem: the runner adds `.txt`, `.tsv`, and
 `.md`. The `.txt` file lists passing test names in sorted order; `.tsv` maps
 each name to its source chapter; `.md` records the date, platform, runtime,
-registration and result counts, and the removed test names. The runner
-identifies SBCL-disabled tests from ANSI-Test source notes; the checked-in
-baseline reports four, and its `.md` file lists their names. When comparison
+registration and result counts, and names the four tests marked disabled by
+SBCL in the source. When comparison
 reads the `.txt` baseline, it also reads the matching `.tsv` and `.md` files.
 On Linux, omit `--output-prefix`; the command chooses a
 `linux-x86_64` filename automatically. Other platforms use their own platform
@@ -132,8 +172,8 @@ loaders. The report lists every baseline-passing test that NCL fails, times
 out, cannot run because the harness fails, or leaves unexecuted. A `partial`
 measurement means one or more chapter loaders did not finish; the affected
 tests are still listed with their timeout or harness-error status. The report
-labels a test T-ANSI when it passes in the SBCL baseline but does not pass
-under NCL. The command returns exit status 1 when that set is nonempty, but
+calls the set `T-ANSI`; it contains tests that pass in the SBCL baseline but
+not under NCL. The command returns exit status 1 when that set is nonempty, but
 still prints the Markdown report. Interpreter startup failure classifies all
 baseline names as harness errors and preserves the first diagnostic.
 

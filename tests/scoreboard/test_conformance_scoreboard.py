@@ -288,7 +288,18 @@ class ScoreboardTests(unittest.TestCase):
             "status": "unmeasured",
             "reason": "No same-day Linux baseline.",
         })
-        bench_output = json.dumps({"times": [0.001]})
+        bench_output = json.dumps({
+            "status": "passed",
+            "times": [0.001],
+            "benchmarks": {
+                "ACKERMANN": {
+                    "status": "passed",
+                    "stage": "finish",
+                    "times": [0.001],
+                    "condition": None,
+                },
+            },
+        })
         with TemporaryDirectory() as directory:
             with patch.object(scoreboard, "checkout_source", return_value=Path(directory)):
                 with patch.object(
@@ -312,7 +323,24 @@ class ScoreboardTests(unittest.TestCase):
 
     def test_main_reads_driver_json_for_success_and_failure_results(self):
         ansi_output = json.dumps({"passed": 1, "failed": 0, "unexecuted": 0})
-        bench_output = json.dumps({"times": [0.001, 0.002]})
+        bench_output = json.dumps({
+            "status": "failed",
+            "times": [0.001, 0.002],
+            "benchmarks": {
+                "ACKERMANN": {
+                    "status": "passed",
+                    "stage": "finish",
+                    "times": [0.001, 0.002],
+                    "condition": None,
+                },
+                "CLOS/defclass": {
+                    "status": "failed",
+                    "stage": "load",
+                    "times": [],
+                    "condition": "TypeError: class-0-0 is not a type specifier",
+                },
+            },
+        })
         with TemporaryDirectory() as directory:
             with patch.object(scoreboard, "checkout_source", return_value=Path(directory)):
                 with patch.object(
@@ -333,6 +361,56 @@ class ScoreboardTests(unittest.TestCase):
         self.assertEqual(report["ansi-test"]["status"], "passed")
         self.assertEqual(report["cl-bench"]["status"], "failed")
         self.assertEqual(report["cl-bench"]["samples"], 2)
+        self.assertEqual(report["cl-bench"]["driver_status"], "failed")
+        self.assertEqual(
+            report["cl-bench"]["benchmarks"]["CLOS/defclass"],
+            {
+                "status": "failed",
+                "stage": "load",
+                "times": [],
+                "condition": "TypeError: class-0-0 is not a type specifier",
+            },
+        )
+        self.assertEqual(
+            report["cl-bench"]["benchmarks"]["ACKERMANN"]["status"],
+            "passed",
+        )
+
+    def test_malformed_driver_stage_is_a_harness_failure(self):
+        ansi_output = json.dumps({"passed": 1, "failed": 0, "unexecuted": 0})
+        bench_output = json.dumps({
+            "status": "passed",
+            "times": [0.001],
+            "benchmarks": {
+                "ACKERMANN": {
+                    "status": "passed",
+                    "stage": "load-file",
+                    "times": [0.001],
+                    "condition": None,
+                },
+            },
+        })
+        with TemporaryDirectory() as directory:
+            with patch.object(scoreboard, "checkout_source", return_value=Path(directory)):
+                with patch.object(
+                    scoreboard,
+                    "run_command",
+                    side_effect=[
+                        scoreboard.ProcessResult("passed", 0, ansi_output),
+                        scoreboard.ProcessResult("passed", 0, bench_output),
+                    ],
+                ):
+                    with patch.object(sys, "stdout") as stdout:
+                        status = scoreboard.main([
+                            "--ansi-command", "ansi",
+                            "--cl-bench-command", "bench",
+                        ])
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+
+        self.assertEqual(status, 1)
+        self.assertEqual(report["cl-bench"]["status"], "failed")
+        self.assertIn("invalid stage", report["cl-bench"]["driver_error"])
+        self.assertNotIn("benchmarks", report["cl-bench"])
 
 
 if __name__ == "__main__":

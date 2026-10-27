@@ -50,7 +50,18 @@ class ConformanceScoreboardDiagnosticsTests(unittest.TestCase):
                 + f"\nfile-uri={absolute_path.as_uri()}"
                 + f"\nhost={hostname}\nstderr-tail-marker\n"
             )
-            bench_stdout = json.dumps({"times": []}) + "\n"
+            bench_stdout = json.dumps({
+                "status": "failed",
+                "times": [],
+                "benchmarks": {
+                    "CLOS/defclass": {
+                        "status": "failed",
+                        "stage": "load",
+                        "times": [],
+                        "condition": "TypeError: class-0-0 is not a type specifier",
+                    },
+                },
+            }) + "\n"
             bench_script.write_text(
                 "import sys\n"
                 f"sys.stdout.write({bench_stdout!r})\n"
@@ -82,6 +93,15 @@ class ConformanceScoreboardDiagnosticsTests(unittest.TestCase):
             bench = report["cl-bench"]
             self.assertEqual(report["ansi-test"]["status"], "passed")
             self.assertEqual(bench["status"], "failed")
+            self.assertEqual(bench["driver_status"], "failed")
+            self.assertEqual(
+                bench["benchmarks"]["CLOS/defclass"]["stage"],
+                "load",
+            )
+            self.assertEqual(
+                bench["benchmarks"]["CLOS/defclass"]["condition"],
+                "TypeError: class-0-0 is not a type specifier",
+            )
             self.assertEqual(bench["return_code"], 23)
             self.assertNotIn("signal_number", bench)
             self.assertEqual(bench["samples"], 0)

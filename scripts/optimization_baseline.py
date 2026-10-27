@@ -24,6 +24,7 @@ import conformance_scoreboard as scoreboard
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NCL_DRIVER = REPO_ROOT / "conformance/cl-bench/ncl-driver.sh"
 SBCL_DRIVER = REPO_ROOT / "conformance/cl-bench/sbcl-driver.lisp"
+DRIVER_SUPERVISOR = REPO_ROOT / "conformance/cl-bench/driver_supervisor.py"
 INFO_TIMEOUT = 30.0
 SBCL_VERSION = "2.6.0"
 MAX_RUNNER_OUTPUT_CHARS = 1_000_000
@@ -266,40 +267,109 @@ def _normalize_times(
     return times, None
 
 
-def _failed_benchmark(error: str) -> dict[str, Any]:
-    return {"status": "failed", "times": [], "error": error, "reason": None}
+def _failed_benchmark(
+    error: str,
+    *,
+    stage: str | None = None,
+    condition: str | None = None,
+    times: list[Any] | None = None,
+) -> dict[str, Any]:
+    diagnostic = _safe_error(error) or "benchmark runner reported failure"
+    return {
+        "status": "failed",
+        "stage": stage,
+        "times": times or [],
+        "condition": _safe_error(condition) or diagnostic,
+        "error": diagnostic,
+        "reason": None,
+    }
 
 
 def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         return _failed_benchmark("benchmark record must be an object")
-    if set(value) != {"status", "times", "error"}:
-        return _failed_benchmark("benchmark record has an unexpected shape")
+    raw_stage = value.get("stage")
+    stage = raw_stage if isinstance(raw_stage, str) and raw_stage in scoreboard.CL_BENCH_STAGES else None
+    raw_condition = value.get("condition")
+    condition = _safe_error(raw_condition) if isinstance(raw_condition, str) else None
+    if set(value) != {"status", "stage", "times", "condition"}:
+        return _failed_benchmark(
+            "benchmark record has an unexpected shape",
+            stage=stage,
+            condition=condition,
+        )
     status = value.get("status")
     times, time_error = _normalize_times(value.get("times"))
-    raw_error = value.get("error")
-    if raw_error is not None and not isinstance(raw_error, str):
-        return _failed_benchmark("benchmark error must be a string or null")
-    error = _safe_error(raw_error)
+    if stage is None:
+        return _failed_benchmark(
+            "benchmark stage is missing or invalid",
+            condition=condition,
+            times=times,
+        )
+    if raw_condition is not None and not isinstance(raw_condition, str):
+        return _failed_benchmark(
+            "benchmark condition must be a string or null",
+            stage=stage,
+            times=times,
+        )
     if not isinstance(status, str) or status not in RUNNER_STATUSES:
-        return _failed_benchmark("benchmark status is missing or invalid")
+        return _failed_benchmark(
+            "benchmark status is missing or invalid",
+            stage=stage,
+            condition=condition,
+            times=times,
+        )
     if time_error:
-        status = "failed"
-        error = error or time_error
-    if status == "passed" and (not times or any(item is None or item <= 0 for item in times)):
-        status = "failed"
-        error = error or "passed benchmark has no positive times"
-    if status == "failed" and error is None:
-        error = "benchmark runner reported failure"
+        return _failed_benchmark(
+            time_error,
+            stage=stage,
+            condition=condition,
+            times=times,
+        )
+    if status == "passed":
+        if stage != "finish":
+            return _failed_benchmark(
+                "passed benchmark did not reach finish",
+                stage=stage,
+                condition=condition,
+                times=times,
+            )
+        if condition is not None:
+            return _failed_benchmark(
+                "passed benchmark has a condition",
+                stage=stage,
+                condition=condition,
+                times=times,
+            )
+        if not times or any(item is None or item <= 0 for item in times):
+            return _failed_benchmark(
+                "passed benchmark has no positive times",
+                stage=stage,
+                times=times,
+            )
+    if status == "failed" and not condition:
+        condition = "benchmark runner reported failure"
+    error = condition if status == "failed" else None
     reason = None
     if status == "disabled":
         if times:
-            status = "failed"
-            error = error or "disabled benchmark has sample times"
+            return _failed_benchmark(
+                "disabled benchmark has sample times",
+                stage=stage,
+                condition=condition,
+                times=times,
+            )
         else:
-            reason = error or DISABLED_BENCHMARK_REASONS.get(name)
+            reason = condition or DISABLED_BENCHMARK_REASONS.get(name)
             error = None
-    return {"status": status, "times": times, "error": error, "reason": reason}
+    return {
+        "status": status,
+        "stage": stage,
+        "times": times,
+        "condition": condition,
+        "error": error,
+        "reason": reason,
+    }
 
 
 def _driver_data(
@@ -334,6 +404,11 @@ def _driver_data(
         else _failed_benchmark("benchmark missing from driver output")
         for name in benchmark_names
     }
+    if driver_status == "passed" and any(
+        benchmark["status"] == "failed" for benchmark in benchmarks.values()
+    ):
+        driver_status = "failed"
+        driver_error = driver_error or "driver reported passed status with failed benchmarks"
     unexpected = sorted(
         _safe_error(name) or "" for name in reported.keys() if name not in benchmark_names
     )
@@ -596,22 +671,26 @@ def _ncl_command(
 def _sbcl_command(
     binary: str,
     benchmark_names: Sequence[str] = BENCHMARKS,
+    *,
+    cwd: Path,
 ) -> list[str]:
-    command = [binary, "--noinform", "--userinit", "/dev/null"]
-    if tuple(benchmark_names) != BENCHMARKS:
-        selection = " ".join(f'"{name}"' for name in benchmark_names)
-        command.extend([
-            "--eval",
-            '(setf common-lisp-user::*cl-bench-selection* '
-            f"'({selection})))",
-        ])
-    command.extend([
-        "--load",
+    return [
+        sys.executable,
+        str(DRIVER_SUPERVISOR),
+        "--engine",
+        "sbcl",
+        "--runner",
+        binary,
+        "--mode",
+        "default",
+        "--driver",
         str(SBCL_DRIVER),
-        "--eval",
-        "(sb-ext:exit)",
-    ])
-    return command
+        "--cwd",
+        str(cwd),
+        "--process-mode",
+        "per-benchmark",
+        *benchmark_names,
+    ]
 
 
 def run_baseline(
@@ -664,7 +743,7 @@ def run_baseline(
                 benchmark_names=benchmark_names,
             ))
 
-    sbcl_command = _sbcl_command(sbcl, benchmark_names)
+    sbcl_command = _sbcl_command(sbcl, benchmark_names, cwd=source)
     for sample in range(1, warmups + 1):
         runs.append(_run_benchmark_process(
             phase="warmup",

@@ -18,36 +18,29 @@ esac
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 shift 2
-selection=
-if [ "$#" -gt 0 ]; then
-    selection="("
-    for benchmark in "$@"; do
-        case "$benchmark" in
-            ''|*[!a-zA-Z0-9/-]*)
-                printf '%s\n' 'benchmark names may contain only letters, digits, slash, or hyphen' >&2
-                exit 2
-                ;;
-        esac
-        selection="$selection \"$benchmark\""
-    done
-    selection="$selection )"
-fi
+process_mode=${CL_BENCH_PROCESS_MODE:-per-benchmark}
+case "$process_mode" in
+    per-benchmark|single) ;;
+    *)
+        printf '%s\n' 'CL_BENCH_PROCESS_MODE must be per-benchmark or single' >&2
+        exit 2
+        ;;
+esac
 
-# Run the complete harness in the checkout supplied by the scoreboard runner.
-# ncl-driver.lisp loads every pinned benchmark file and calls BENCH-RUN after
-# TESTS.LISP has registered the benchmark functions, so the emitted times are
-# actual benchmark samples rather than source-load timings.
-output=$(mktemp)
-trap 'rm -f "$output"' EXIT HUP INT TERM
+for benchmark in "$@"; do
+    case "$benchmark" in
+        ''|*[!a-zA-Z0-9/-]*)
+            printf '%s\n' 'benchmark names may contain only letters, digits, slash, or hyphen' >&2
+            exit 2
+            ;;
+    esac
+done
 
-set +e
-if [ -n "$selection" ]; then
-    form="(progn (setf *cl-bench-selection* '$selection) (load \"$script_dir/ncl-driver.lisp\"))"
-else
-    form="(load \"$script_dir/ncl-driver.lisp\")"
-fi
-"$ncl" "--optimization=$mode" --eval "$form" >"$output"
-status=$?
-set -e
-cat "$output"
-exit "$status"
+exec python3 "$script_dir/driver_supervisor.py" \
+    --engine ncl \
+    --runner "$ncl" \
+    --mode "$mode" \
+    --driver "$script_dir/ncl-driver.lisp" \
+    --cwd "$PWD" \
+    --process-mode "$process_mode" \
+    "$@"

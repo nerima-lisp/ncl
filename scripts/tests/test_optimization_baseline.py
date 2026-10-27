@@ -47,7 +47,7 @@ class FakeRunner:
             else:
                 value = {"off": [2.0, 4.0, 8.0], "default": [1.0, 2.0, 3.0]}[mode][call - 1]
             runtime = "ncl"
-        elif command[0] == "sbcl":
+        elif command[:2] == [sys.executable, str(baseline.DRIVER_SUPERVISOR)]:
             call = self.sbcl_count
             self.sbcl_count += 1
             value = [100.0, 0.5, 1.0, 1.5][call]
@@ -61,8 +61,9 @@ class FakeRunner:
         for name in self.benchmark_names:
             disabled = runtime == "sbcl" and name == baseline.DISABLED_BENCHMARK
             status = "disabled" if disabled else "passed"
+            stage = "finish"
             times = [] if disabled else [value]
-            error = None
+            condition = None
             failed = (
                 self.fail_one_benchmark
                 and runtime == "ncl"
@@ -72,9 +73,15 @@ class FakeRunner:
             )
             if failed:
                 status = "failed"
+                stage = "execute"
                 times = [999.0]
-                error = f"failed at {self.path_text} host={self.hostname} user={self.username}"
-            benchmarks[name] = {"status": status, "times": times, "error": error}
+                condition = f"failed at {self.path_text} host={self.hostname} user={self.username}"
+            benchmarks[name] = {
+                "status": status,
+                "stage": stage,
+                "times": times,
+                "condition": condition,
+            }
         payload = {
             "status": "failed" if any(row["status"] == "failed" for row in benchmarks.values()) else "passed",
             "times": [
@@ -207,6 +214,10 @@ class OptimizationBaselineTests(unittest.TestCase):
                 set(),
             )
             self.assertTrue(all(isinstance(record["times"], list) for record in run["benchmarks"].values()))
+            self.assertTrue(all(
+                record["stage"] in scoreboard.CL_BENCH_STAGES
+                for record in run["benchmarks"].values()
+            ))
             disabled_record = run["benchmarks"][baseline.DISABLED_BENCHMARK]
             if disabled_record["status"] == "disabled":
                 self.assertEqual(
@@ -235,18 +246,14 @@ class OptimizationBaselineTests(unittest.TestCase):
             if call[0] == "ncl":
                 self.assertEqual(call[3][3:], expected)
             else:
-                evaluations = [
-                    call[3][index + 1]
-                    for index, argument in enumerate(call[3][:-1])
-                    if argument == "--eval"
-                ]
-                selection_eval = next(
-                    evaluation
-                    for evaluation in evaluations
-                    if "*cl-bench-selection*" in evaluation.lower()
+                self.assertEqual(call[3][:2], [sys.executable, str(baseline.DRIVER_SUPERVISOR)])
+                self.assertEqual(call[3][call[3].index("--engine") + 1], "sbcl")
+                self.assertEqual(call[3][call[3].index("--cwd") + 1], str(call[4]))
+                self.assertEqual(
+                    call[3][call[3].index("--process-mode") + 1],
+                    "per-benchmark",
                 )
-                for name in expected:
-                    self.assertIn(f'"{name}"', selection_eval)
+                self.assertEqual(call[3][-len(expected):], expected)
 
     def test_selected_benchmarks_reject_unknown_and_duplicate_names(self):
         for names, message in (
@@ -298,6 +305,11 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertNotIn("driver_error", failed_run)
         self.assertNotIn(999.0, failed_run["driver_times"])
         self.assertIn("<absolute-path>", failed_run["benchmarks"]["ACKERMANN"]["error"])
+        self.assertEqual(failed_run["benchmarks"]["ACKERMANN"]["stage"], "execute")
+        self.assertEqual(
+            failed_run["benchmarks"]["ACKERMANN"]["condition"],
+            failed_run["benchmarks"]["ACKERMANN"]["error"],
+        )
         self.assertNotIn(runner.path_text, rendered)
         self.assertNotIn(str(Path.home()), rendered)
         self.assertNotIn(runner.hostname, rendered)
@@ -321,6 +333,48 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertEqual(len(benchmarks), 65)
         self.assertEqual({value["status"] for value in benchmarks.values()}, {"failed"})
+
+    def test_malformed_stage_record_is_kept_as_failed_benchmark(self):
+        result = scoreboard.ProcessResult(
+            "passed",
+            0,
+            json.dumps({
+                "status": "passed",
+                "times": [0.5],
+                "benchmarks": {
+                    "ACKERMANN": {
+                        "status": "passed",
+                        "stage": "load-file",
+                        "times": [0.5],
+                        "condition": None,
+                    },
+                },
+            }),
+        )
+
+        driver_status, _, benchmarks, error, _ = baseline._driver_data(
+            result,
+            ("ACKERMANN",),
+        )
+
+        self.assertEqual(driver_status, "failed")
+        self.assertIsNotNone(error)
+        self.assertEqual(benchmarks["ACKERMANN"]["status"], "failed")
+        self.assertIsNone(benchmarks["ACKERMANN"]["stage"])
+        self.assertIn("stage", benchmarks["ACKERMANN"]["condition"])
+
+    def test_load_failure_condition_and_stage_survive_driver_normalization(self):
+        record = baseline._benchmark_record({
+            "status": "failed",
+            "stage": "load",
+            "times": [],
+            "condition": "TypeError: class-0-0 is not a type specifier",
+        }, name="CLOS/defclass")
+
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["stage"], "load")
+        self.assertEqual(record["condition"], "TypeError: class-0-0 is not a type specifier")
+        self.assertEqual(record["error"], record["condition"])
 
     def test_revision_lookup_failure_is_reported_as_committed_source_error(self):
         cases = (

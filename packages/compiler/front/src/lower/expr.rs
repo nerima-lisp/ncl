@@ -134,36 +134,6 @@ impl Context<'_> {
         }
     }
 
-    fn lower_multiple_value_prog1(
-        &mut self,
-        f: &mut FunctionLowerer,
-        first: &Expr,
-        forms: &[Expr],
-    ) -> Result<ValueId, LowerError> {
-        let value = self.lower_expr(f, first)?;
-        if f.is_terminated() {
-            return Ok(value);
-        }
-        let saved_values = self
-            .preserve_multiple_values
-            .then(|| Self::capture_multiple_values(f, value))
-            .transpose()?;
-        for form in forms {
-            self.lower_expr(f, form)?;
-            if f.is_terminated() {
-                return Ok(value);
-            }
-        }
-        if let Some(saved_values) = saved_values {
-            Self::restore_multiple_values(f, saved_values)
-        } else {
-            f.none(OpKind::SetMultipleValues {
-                values: vec![value],
-            })?;
-            Ok(value)
-        }
-    }
-
     fn lower_declared_body(
         &mut self,
         f: &mut FunctionLowerer,

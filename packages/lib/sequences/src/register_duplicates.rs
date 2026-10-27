@@ -50,7 +50,7 @@ pub fn remove_duplicates_entry(
     let handles = root_args(&mut scope, args)?;
     let rooted = words(&scope, &handles);
     let (positional, options) =
-        domain::selection::parse_options_single(scope.context(), runtime, &rooted)?;
+        domain::selection::parse_options_single(scope.context_mut(), runtime, &rooted)?;
     if positional.len() != 1 {
         return Err(ObjectError::TypeError);
     }

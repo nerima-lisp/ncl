@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
+use ncl_object::{
+    LispError, ObjectError, ObjectRef, ProgramError, Runtime, ThreadContext, Word, classify_object,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SelectionOptions {
@@ -38,7 +40,7 @@ pub enum SelectionOptionMode {
 }
 
 pub fn parse_options(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
@@ -48,7 +50,7 @@ pub fn parse_options(
 }
 
 pub fn parse_options_single(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
@@ -58,7 +60,7 @@ pub fn parse_options_single(
 }
 
 pub fn parse_pair_options(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, PairSelectionOptions), ObjectError> {
@@ -135,7 +137,7 @@ fn apply_option(
 }
 
 pub fn parse_options_with_minimum(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
     minimum: usize,
@@ -150,17 +152,17 @@ pub fn parse_options_with_minimum(
     let mut index = minimum;
     while index < args.len() {
         let argument = *args.get(index).ok_or(ObjectError::Layout)?;
+        let ObjectRef::Symbol(symbol) = classify_object(ctx, argument) else {
+            ctx.set_pending_lisp_error(LispError::ProgramError(ProgramError::UnknownKeyword));
+            return Err(ObjectError::TypeError);
+        };
         let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
-        let keyword = if let ObjectRef::Symbol(symbol) = classify_object(ctx, argument) {
-            let package = ncl_object::symbol_package(ctx, symbol)?;
-            if keyword_package == Some(package) {
-                let name = ncl_object::symbol_name(ctx, symbol)?;
-                (0..ncl_object::string_length(ctx, name)?)
-                    .map(|i| ncl_object::string_ref(ctx, name, i))
-                    .collect::<Result<String, _>>()?
-            } else {
-                String::new()
-            }
+        let package = ncl_object::symbol_package(ctx, symbol)?;
+        let keyword = if keyword_package == Some(package) {
+            let name = ncl_object::symbol_name(ctx, symbol)?;
+            (0..ncl_object::string_length(ctx, name)?)
+                .map(|i| ncl_object::string_ref(ctx, name, i))
+                .collect::<Result<String, _>>()?
         } else {
             String::new()
         };
@@ -174,11 +176,6 @@ pub fn parse_options_with_minimum(
             }
             apply_option(&mut options, &keyword, value, &mut allow_other_keys)?;
         } else {
-            if mode == SelectionOptionMode::Pair
-                && !matches!(classify_object(ctx, argument), ObjectRef::Symbol(_))
-            {
-                return Err(ObjectError::TypeError);
-            }
             has_unrecognized_keyword = true;
         }
         index += 2;

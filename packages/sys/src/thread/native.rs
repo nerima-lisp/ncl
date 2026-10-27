@@ -77,6 +77,7 @@ impl Thread {
                 self.publish_snapshot();
                 self.native = NativeState::Native;
                 self.state = SafepointState::Safe;
+                self.publish_gc_state(stop_world.epoch);
                 drop(stop_world);
                 heap.stop_world_ready.notify_all();
                 return;
@@ -142,6 +143,22 @@ mod tests {
         let mut thread = Thread::new();
         assert_eq!(heap.register_thread(&mut thread), Ok(()));
         thread.enter_native();
+        let gc_state = thread.gc_state_handle();
+        let published = gc_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(published.is_native);
+        assert_eq!(published.stack_bounds, thread.stack_bounds);
+        assert_eq!(published.stack_scan_start, thread.stack_scan_start);
+        assert!(
+            published
+                .stack_bounds
+                .zip(published.stack_scan_start)
+                .is_some_and(
+                    |((start, end), stack_pointer)| start <= stack_pointer && stack_pointer < end
+                )
+        );
+        drop(published);
 
         let mut stop_world = heap
             .stop_world

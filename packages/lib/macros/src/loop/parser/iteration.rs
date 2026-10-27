@@ -1,6 +1,7 @@
 use super::super::{
-    ForClause, HashClause, HashIterationKind, LimitDirection, LoopClause, ObjectError, Result,
-    StepDirection, ThreadContext, Word, elements, symbol_name,
+    ForClause, HashClause, HashIterationKind, LimitDirection, LoopClause, ObjectError,
+    PackageClause, PackageIterationKind, Result, Runtime, StepDirection, ThreadContext, Word,
+    elements, symbol_name,
 };
 use super::{required, word_name};
 
@@ -14,6 +15,7 @@ pub(super) fn parse_for(
     symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
     let mut has_init = false;
+    let mut equals_then = false;
     let mut step = None;
     let mut then = None;
     let mut direction = None;
@@ -27,6 +29,7 @@ pub(super) fn parse_for(
             "=" => {
                 init = next;
                 has_init = true;
+                equals_then = true;
                 *cursor += 2;
             }
             "FROM" | "UPFROM" | "DOWNFROM" => {
@@ -96,7 +99,7 @@ pub(super) fn parse_for(
             _other => return Err(ObjectError::TypeError),
         }
     }
-    if let Some(then) = then {
+    if then.is_some() || equals_then {
         if step.is_some() || direction.is_some() || limit.is_some() {
             return Err(ObjectError::TypeError);
         }
@@ -151,6 +154,68 @@ fn hash_kind(name: &str) -> Option<HashIterationKind> {
         Some(HashIterationKind::Key)
     } else if name == "HASH-VALUE" || name == "HASH-VALUES" {
         Some(HashIterationKind::Value)
+    } else {
+        None
+    }
+}
+
+pub(super) fn parse_being_for(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+    type_spec: Option<Word>,
+) -> Result<LoopClause> {
+    let article = input
+        .get(*cursor)
+        .copied()
+        .and_then(|word| word_name(ctx, word).ok())
+        .filter(|name| name == "EACH" || name == "THE");
+    let mut kind_cursor = *cursor;
+    if article.is_some() {
+        kind_cursor += 1;
+    }
+    let kind_name = word_name(ctx, required(input, &mut kind_cursor)?)?;
+    if let Some(kind) = package_iteration_kind(&kind_name) {
+        if article.is_none() {
+            return Err(ObjectError::TypeError);
+        }
+        symbol_name(ctx, variable)?;
+        *cursor = kind_cursor;
+        let package = if input.get(*cursor).is_some_and(
+            |word| matches!(word_name(ctx, *word), Ok(name) if name == "IN" || name == "OF"),
+        ) {
+            *cursor += 1;
+            Some(required(input, cursor)?)
+        } else {
+            None
+        };
+        return Ok(LoopClause::Package(PackageClause {
+            variable,
+            type_spec,
+            kind,
+            package,
+        }));
+    }
+    if hash_kind(&kind_name).is_some() {
+        return parse_hash_for(ctx, input, cursor, variable);
+    }
+    let article = article.as_deref().unwrap_or("");
+    Err(super::unsupported_clause(
+        ctx,
+        runtime,
+        &format!("BEING {article} {kind_name}"),
+    ))
+}
+
+fn package_iteration_kind(name: &str) -> Option<PackageIterationKind> {
+    if name == "SYMBOL" || name == "SYMBOLS" {
+        Some(PackageIterationKind::Symbols)
+    } else if name == "PRESENT-SYMBOL" || name == "PRESENT-SYMBOLS" {
+        Some(PackageIterationKind::PresentSymbols)
+    } else if name == "EXTERNAL-SYMBOL" || name == "EXTERNAL-SYMBOLS" {
+        Some(PackageIterationKind::ExternalSymbols)
     } else {
         None
     }

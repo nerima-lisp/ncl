@@ -25,7 +25,7 @@ fn parses_typed_iteration_and_accumulation_clauses() -> Result<(), ObjectError> 
         collect,
         x,
     ];
-    let ast = parse_loop(&mut ctx, &input)?;
+    let ast = parse_loop(&mut ctx, &runtime, &input)?;
     assert!(matches!(ast.clauses[0], LoopClause::For(ForClause { .. })));
     assert!(matches!(
         ast.clauses[1],
@@ -55,7 +55,7 @@ fn parses_and_expands_thereis_once() -> Result<(), ObjectError> {
     let plus = symbol(&mut ctx, &runtime, "+")?;
     let form = list(&mut ctx, &runtime, &[plus, x, Word::fixnum(1)])?;
     let thereis = symbol(&mut ctx, &runtime, "THEREIS")?;
-    let ast = parse_loop(&mut ctx, &[thereis, form])?;
+    let ast = parse_loop(&mut ctx, &runtime, &[thereis, form])?;
     assert!(matches!(ast.clauses.as_slice(), [LoopClause::Thereis(value)] if *value == form));
 
     let expansion = expand_loop_ast(&mut ctx, &runtime, &ast)?;
@@ -69,7 +69,7 @@ fn parses_always_and_never_termination_clauses() -> Result<(), ObjectError> {
     let form = symbol(&mut ctx, &runtime, "P")?;
     let always = symbol(&mut ctx, &runtime, "ALWAYS")?;
     let never = symbol(&mut ctx, &runtime, "NEVER")?;
-    let ast = parse_loop(&mut ctx, &[always, form, never, form])?;
+    let ast = parse_loop(&mut ctx, &runtime, &[always, form, never, form])?;
     assert!(matches!(
         ast.clauses.as_slice(),
         [LoopClause::Always(first), LoopClause::Never(second)] if *first == form && *second == form
@@ -130,6 +130,7 @@ fn parses_arithmetic_boundaries_and_equals_then() -> Result<(), ObjectError> {
     let then = symbol(&mut ctx, &runtime, "THEN")?;
     let ast = parse_loop(
         &mut ctx,
+        &runtime,
         &[for_word, x, equals, Word::fixnum(1), then, Word::fixnum(2)],
     )?;
     assert!(matches!(ast.clauses[0], LoopClause::EqualsThen { .. }));
@@ -157,7 +158,7 @@ fn parses_list_and_vector_iteration_clauses() -> Result<(), ObjectError> {
         symbol(&mut ctx, &runtime, "ACROSS")?,
         symbol(&mut ctx, &runtime, "VECTOR")?,
     ];
-    let ast = parse_loop(&mut ctx, &input)?;
+    let ast = parse_loop(&mut ctx, &runtime, &input)?;
     assert!(matches!(ast.clauses[0], LoopClause::In { on: false, .. }));
     assert!(matches!(ast.clauses[1], LoopClause::In { on: true, .. }));
     assert!(matches!(ast.clauses[2], LoopClause::Across { .. }));
@@ -181,6 +182,7 @@ fn parses_hash_key_iteration_with_using_value() -> Result<(), ObjectError> {
     let using = list(&mut ctx, &runtime, &[hash_value, value])?;
     let ast = parse_loop(
         &mut ctx,
+        &runtime,
         &[
             for_word, key, being, each, hash_key, of, table, using_word, using,
         ],
@@ -198,6 +200,7 @@ fn parses_hash_key_iteration_with_using_value() -> Result<(), ObjectError> {
     let hash_values = symbol(&mut ctx, &runtime, "HASH-VALUES")?;
     let value_ast = parse_loop(
         &mut ctx,
+        &runtime,
         &[for_word, value, being, the, hash_values, of, table],
     )?;
     assert!(matches!(
@@ -226,12 +229,13 @@ fn hash_iteration_rejects_malformed_and_same_kind_using_clauses() -> Result<(), 
     let using_key = list(&mut ctx, &runtime, &[hash_key, value])?;
 
     assert_eq!(
-        parse_loop(&mut ctx, &[for_word, key, being, hash_key, table]),
+        parse_loop(&mut ctx, &runtime, &[for_word, key, being, hash_key, table]),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
         parse_loop(
             &mut ctx,
+            &runtime,
             &[
                 for_word, key, being, hash_key, of, table, using_word, using_key,
             ],
@@ -242,6 +246,7 @@ fn hash_iteration_rejects_malformed_and_same_kind_using_clauses() -> Result<(), 
     assert_eq!(
         parse_loop(
             &mut ctx,
+            &runtime,
             &[
                 for_word,
                 value,
@@ -255,6 +260,169 @@ fn hash_iteration_rejects_malformed_and_same_kind_using_clauses() -> Result<(), 
         ),
         Err(ObjectError::TypeError)
     );
+    Ok(())
+}
+
+struct PackageIterationCase {
+    case_id: &'static str,
+    article_name: &'static str,
+    kind_name: &'static str,
+    package_preposition: Option<&'static str>,
+    expected_kind: PackageIterationKind,
+    type_name: Option<&'static str>,
+    following_for: bool,
+}
+
+fn assert_package_iteration_case(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    case: &PackageIterationCase,
+) -> Result<(), ObjectError> {
+    let for_word = symbol(ctx, runtime, "FOR")?;
+    let variable = symbol(ctx, runtime, "SYMBOL")?;
+    let status = symbol(ctx, runtime, "STATUS")?;
+    let being = symbol(ctx, runtime, "BEING")?;
+    let package = symbol(ctx, runtime, "PACKAGE")?;
+    let equals = symbol(ctx, runtime, "=")?;
+    let status_form = symbol(ctx, runtime, "STATUS-FORM")?;
+
+    let mut input = vec![for_word, variable];
+    let expected_type_spec = if let Some(type_name) = case.type_name {
+        let type_spec = symbol(ctx, runtime, type_name)?;
+        input.push(type_spec);
+        Some(type_spec)
+    } else {
+        None
+    };
+    input.extend([
+        being,
+        symbol(ctx, runtime, case.article_name)?,
+        symbol(ctx, runtime, case.kind_name)?,
+    ]);
+    let expected_package = if let Some(preposition) = case.package_preposition {
+        input.push(symbol(ctx, runtime, preposition)?);
+        input.push(package);
+        Some(package)
+    } else {
+        None
+    };
+    if case.following_for {
+        input.extend([for_word, status, equals, status_form]);
+    }
+
+    let ast = parse_loop(ctx, runtime, &input)?;
+    let LoopClause::Package(parsed) = &ast.clauses[0] else {
+        panic!("{}: expected package iteration clause", case.case_id);
+    };
+    assert_eq!(parsed.kind, case.expected_kind, "{}", case.case_id);
+    assert_eq!(parsed.package, expected_package, "{}", case.case_id);
+    assert_eq!(parsed.type_spec, expected_type_spec, "{}", case.case_id);
+    if case.following_for {
+        assert!(matches!(
+            ast.clauses.as_slice(),
+            [
+                LoopClause::Package(_),
+                LoopClause::EqualsThen {
+                    variable: parsed_status,
+                    then: None,
+                    ..
+                }
+            ] if *parsed_status == status
+        ));
+    } else {
+        assert_eq!(ast.clauses.len(), 1, "{}", case.case_id);
+    }
+    Ok(())
+}
+
+#[test]
+fn parses_symbol_package_iteration_aliases_and_following_for_binding() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let cases = [
+        PackageIterationCase {
+            case_id: "each-symbol-of",
+            article_name: "EACH",
+            kind_name: "SYMBOL",
+            package_preposition: Some("OF"),
+            expected_kind: PackageIterationKind::Symbols,
+            type_name: None,
+            following_for: true,
+        },
+        PackageIterationCase {
+            case_id: "the-symbols-in",
+            article_name: "THE",
+            kind_name: "SYMBOLS",
+            package_preposition: Some("IN"),
+            expected_kind: PackageIterationKind::Symbols,
+            type_name: None,
+            following_for: false,
+        },
+        PackageIterationCase {
+            case_id: "each-present-symbol-in",
+            article_name: "EACH",
+            kind_name: "PRESENT-SYMBOL",
+            package_preposition: Some("IN"),
+            expected_kind: PackageIterationKind::PresentSymbols,
+            type_name: None,
+            following_for: false,
+        },
+        PackageIterationCase {
+            case_id: "the-present-symbols-default-package",
+            article_name: "THE",
+            kind_name: "PRESENT-SYMBOLS",
+            package_preposition: None,
+            expected_kind: PackageIterationKind::PresentSymbols,
+            type_name: Some("INTEGER"),
+            following_for: false,
+        },
+        PackageIterationCase {
+            case_id: "each-external-symbol-in",
+            article_name: "EACH",
+            kind_name: "EXTERNAL-SYMBOL",
+            package_preposition: Some("IN"),
+            expected_kind: PackageIterationKind::ExternalSymbols,
+            type_name: None,
+            following_for: false,
+        },
+        PackageIterationCase {
+            case_id: "the-external-symbols-of",
+            article_name: "THE",
+            kind_name: "EXTERNAL-SYMBOLS",
+            package_preposition: Some("OF"),
+            expected_kind: PackageIterationKind::ExternalSymbols,
+            type_name: None,
+            following_for: false,
+        },
+    ];
+    for case in cases {
+        assert_package_iteration_case(&mut ctx, &runtime, &case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_package_iteration_reports_the_clause() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let input = [
+        symbol(&mut ctx, &runtime, "FOR")?,
+        symbol(&mut ctx, &runtime, "SYMBOL")?,
+        symbol(&mut ctx, &runtime, "BEING")?,
+        symbol(&mut ctx, &runtime, "THE")?,
+        symbol(&mut ctx, &runtime, "WIDGETS")?,
+    ];
+    assert_eq!(
+        parse_loop(&mut ctx, &runtime, &input),
+        Err(ObjectError::TypeError)
+    );
+    let Some(ncl_object::LispError::SimpleError { format_control, .. }) =
+        ctx.take_pending_lisp_error()
+    else {
+        panic!("unsupported clause should set a simple error");
+    };
+    let message = (0..ncl_object::string_length(&ctx, format_control)?)
+        .map(|index| ncl_object::string_ref(&ctx, format_control, index))
+        .collect::<std::result::Result<String, _>>()?;
+    assert!(message.contains("BEING THE WIDGETS"));
     Ok(())
 }
 

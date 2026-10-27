@@ -66,6 +66,27 @@ fn hold_clause(
                 using,
             }
         }
+        LoopClause::Package(spec) => {
+            symbol_name(ctx, spec.variable)?;
+            let variable = held.len();
+            held.push(spec.variable);
+            let type_spec = spec.type_spec.map(|type_spec| {
+                let index = held.len();
+                held.push(type_spec);
+                index
+            });
+            let package = spec.package.map(|package| {
+                let index = held.len();
+                held.push(package);
+                index
+            });
+            HeldLoopClause::Package {
+                variable,
+                type_spec,
+                kind: spec.kind,
+                package,
+            }
+        }
         LoopClause::EqualsThen {
             variable,
             init,
@@ -76,8 +97,11 @@ fn hold_clause(
             held.push(variable);
             let init_index = held.len();
             held.push(init);
-            let then_index = held.len();
-            held.push(then);
+            let then_index = then.map(|then| {
+                let index = held.len();
+                held.push(then);
+                index
+            });
             HeldLoopClause::EqualsThen {
                 variable: variable_index,
                 init: init_index,

@@ -1,4 +1,7 @@
-use super::{AccumulatorKind, ConditionalKind, HashIterationKind, LimitDirection, StepDirection};
+use super::{
+    AccumulatorKind, ConditionalKind, HashIterationKind, LimitDirection, PackageIterationKind,
+    StepDirection,
+};
 
 #[derive(Clone, Debug)]
 pub(super) enum HeldLoopClause {
@@ -19,10 +22,16 @@ pub(super) enum HeldLoopClause {
         table: usize,
         using: Option<(HashIterationKind, usize)>,
     },
+    Package {
+        variable: usize,
+        type_spec: Option<usize>,
+        kind: PackageIterationKind,
+        package: Option<usize>,
+    },
     EqualsThen {
         variable: usize,
         init: usize,
-        then: usize,
+        then: Option<usize>,
     },
     In {
         variable: usize,

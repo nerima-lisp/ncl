@@ -66,45 +66,56 @@ fn all_package_iteration_symbols(
     symbol_list(ctx, runtime, symbols)
 }
 
+#[derive(Clone, Copy)]
+enum PackageIterationMode {
+    Accessible,
+    Present,
+    External,
+}
+
 fn package_iteration_symbols_for(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     package: Package,
-    external_only: bool,
+    mode: PackageIterationMode,
 ) -> Result<Word, ObjectError> {
     let mut package_root = [package.as_word()];
     with_rooted_words(ctx, &mut package_root, |ctx, package_root| {
         let package = Package::from_word(package_root[0]); // check-added-lines: allow(index) package_root has one slot.
         let mut symbols = Vec::new();
-        if external_only {
-            let mut local = Vec::new();
-            package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
-            for symbol in local.iter().copied() {
-                let name = symbol_name(ctx, symbol)?;
-                if let Some((_, FindStatus::External)) = package.find_symbol(ctx, name)? {
-                    symbols.push(symbol);
+        let mut local = Vec::new();
+        package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
+
+        match mode {
+            PackageIterationMode::External => {
+                for symbol in local.iter().copied() {
+                    let name = symbol_name(ctx, symbol)?;
+                    if let Some((_, FindStatus::External)) = package.find_symbol(ctx, name)? {
+                        symbols.push(symbol);
+                    }
                 }
             }
-        } else {
-            let use_list = package.use_list(ctx)?;
-            let mut local = Vec::new();
-            package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
-            symbols.extend(local.iter().copied());
-            for used in list_items(ctx, use_list)? {
-                let used = Package::from_word(used);
-                let mut candidates = Vec::new();
-                used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
-                for candidate in candidates {
-                    let name = symbol_name(ctx, candidate)?;
-                    let Some((_, FindStatus::External)) = used.find_symbol(ctx, name)? else {
-                        continue;
-                    };
-                    let Some((visible, FindStatus::Inherited)) = package.find_symbol(ctx, name)?
-                    else {
-                        continue;
-                    };
-                    if visible == candidate {
-                        symbols.push(candidate);
+            PackageIterationMode::Present => symbols.extend(local),
+            PackageIterationMode::Accessible => {
+                symbols.extend(local);
+                let use_list = package.use_list(ctx)?;
+                for used in list_items(ctx, use_list)? {
+                    let used = Package::from_word(used);
+                    let mut candidates = Vec::new();
+                    used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
+                    for candidate in candidates {
+                        let name = symbol_name(ctx, candidate)?;
+                        let Some((_, FindStatus::External)) = used.find_symbol(ctx, name)? else {
+                            continue;
+                        };
+                        let Some((visible, FindStatus::Inherited)) =
+                            package.find_symbol(ctx, name)?
+                        else {
+                            continue;
+                        };
+                        if visible == candidate {
+                            symbols.push(candidate);
+                        }
                     }
                 }
             }
@@ -124,15 +135,17 @@ pub(super) fn package_iteration_symbols(
     if string_word_equals(ctx, mode, "ALL")? {
         return all_package_iteration_symbols(ctx, runtime);
     }
-    let external_only = if string_word_equals(ctx, mode, "EXTERNAL")? {
-        true
+    let iteration_mode = if string_word_equals(ctx, mode, "EXTERNAL")? {
+        PackageIterationMode::External
+    } else if string_word_equals(ctx, mode, "PRESENT")? {
+        PackageIterationMode::Present
     } else if string_word_equals(ctx, mode, "SYMBOLS")? {
-        false
+        PackageIterationMode::Accessible
     } else {
         return Err(ObjectError::TypeError);
     };
     let package = package_arg(ctx, runtime, args, 1)?;
-    package_iteration_symbols_for(ctx, runtime, package, external_only)
+    package_iteration_symbols_for(ctx, runtime, package, iteration_mode)
 }
 
 const NO_PARAMETERS: &[Parameter] = &[];

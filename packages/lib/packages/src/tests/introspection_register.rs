@@ -73,16 +73,29 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
             &mut ctx,
             &runtime,
             Package::from_word(Word::fixnum(0)),
-            false,
+            PackageIterationMode::Accessible,
         ),
         Err(ObjectError::TypeError)
     );
 
     let malformed = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-TABLE")?;
     ctx.write_object_slot(malformed.as_word(), PACKAGE_INTERNAL_SLOT, Word::fixnum(0))?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, malformed, false).is_err());
+    assert!(
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            malformed,
+            PackageIterationMode::Accessible
+        )
+        .is_err()
+    );
     assert_eq!(
-        package_iteration_symbols_for(&mut ctx, &runtime, malformed, true),
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            malformed,
+            PackageIterationMode::External
+        ),
         Err(ObjectError::TypeError)
     );
     assert!(all_package_iteration_symbols(&mut ctx, &runtime).is_err());
@@ -92,7 +105,12 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
     let table = table_with_entry(&mut ctx, &runtime, key, Word::fixnum(0))?;
     ctx.write_object_slot(bad_symbol.as_word(), PACKAGE_INTERNAL_SLOT, table.as_word())?;
     assert_eq!(
-        package_iteration_symbols_for(&mut ctx, &runtime, bad_symbol, true),
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            bad_symbol,
+            PackageIterationMode::External
+        ),
         Err(ObjectError::TypeError)
     );
 
@@ -103,7 +121,15 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
     let table = table_with_entry(&mut ctx, &runtime, name, symbol)?;
     ctx.write_object_slot(table.as_word(), HASH_TABLE_TEST_SLOT, Word::fixnum(99))?;
     ctx.write_object_slot(bad_lookup.as_word(), PACKAGE_EXTERNAL_SLOT, table.as_word())?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, bad_lookup, true).is_err());
+    assert!(
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            bad_lookup,
+            PackageIterationMode::External
+        )
+        .is_err()
+    );
     Ok(())
 }
 
@@ -117,7 +143,15 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
         PACKAGE_USE_LIST_SLOT,
         Word::fixnum(0),
     )?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, bad_use_list, false).is_err());
+    assert!(
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            bad_use_list,
+            PackageIterationMode::Accessible
+        )
+        .is_err()
+    );
 
     let bad_used_table = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-USED-TABLE")?;
     ctx.write_object_slot(
@@ -127,7 +161,10 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     )?;
     let target = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-USED-TABLE")?;
     set_use_list(&mut ctx, &runtime, target, bad_used_table.as_word())?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, target, false).is_err());
+    assert!(
+        package_iteration_symbols_for(&mut ctx, &runtime, target, PackageIterationMode::Accessible)
+            .is_err()
+    );
 
     let bad_candidate = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-CANDIDATE")?;
     let key = ncl_object::make_string(&mut ctx, &runtime, &['B', 'A', 'D'])?;
@@ -140,7 +177,7 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     let target = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-BAD-CANDIDATE")?;
     set_use_list(&mut ctx, &runtime, target, bad_candidate.as_word())?;
     assert_eq!(
-        package_iteration_symbols_for(&mut ctx, &runtime, target, false),
+        package_iteration_symbols_for(&mut ctx, &runtime, target, PackageIterationMode::Accessible),
         Err(ObjectError::TypeError)
     );
 
@@ -157,7 +194,10 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     )?;
     let target = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-BAD-USED-LOOKUP")?;
     set_use_list(&mut ctx, &runtime, target, bad_used_lookup.as_word())?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, target, false).is_err());
+    assert!(
+        package_iteration_symbols_for(&mut ctx, &runtime, target, PackageIterationMode::Accessible)
+            .is_err()
+    );
 
     let bad_target_lookup = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-TARGET-LOOKUP")?;
     let table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)?;
@@ -172,7 +212,55 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     let name = ncl_object::symbol_name(&ctx, symbol)?;
     used.export(&mut ctx, &runtime, name)?;
     set_use_list(&mut ctx, &runtime, bad_target_lookup, used.as_word())?;
-    assert!(package_iteration_symbols_for(&mut ctx, &runtime, bad_target_lookup, false).is_err());
+    assert!(
+        package_iteration_symbols_for(
+            &mut ctx,
+            &runtime,
+            bad_target_lookup,
+            PackageIterationMode::Accessible
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn package_iteration_modes_distinguish_present_accessible_and_external_symbols()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = registered_runtime()?;
+    let package = ensure_package(&mut ctx, &runtime, "N25-ITERATION-MODES")?;
+    let used = ensure_package(&mut ctx, &runtime, "N25-ITERATION-MODES-USED")?;
+
+    let (internal, _) = package.intern(&mut ctx, &runtime, "INTERNAL")?;
+    let (external, _) = package.intern(&mut ctx, &runtime, "EXTERNAL")?;
+    let external_name = ncl_object::symbol_name(&ctx, external)?;
+    package.export(&mut ctx, &runtime, external_name)?;
+    let (inherited, _) = used.intern(&mut ctx, &runtime, "INHERITED")?;
+    let inherited_name = ncl_object::symbol_name(&ctx, inherited)?;
+    used.export(&mut ctx, &runtime, inherited_name)?;
+    set_use_list(&mut ctx, &runtime, package, used.as_word())?;
+
+    let present_symbols =
+        package_iteration_symbols_for(&mut ctx, &runtime, package, PackageIterationMode::Present)?;
+    let present = list_items(&ctx, present_symbols)?;
+    let accessible_symbols = package_iteration_symbols_for(
+        &mut ctx,
+        &runtime,
+        package,
+        PackageIterationMode::Accessible,
+    )?;
+    let accessible = list_items(&ctx, accessible_symbols)?;
+    let external_symbols =
+        package_iteration_symbols_for(&mut ctx, &runtime, package, PackageIterationMode::External)?;
+    let external_only = list_items(&ctx, external_symbols)?;
+
+    assert!(present.contains(&internal));
+    assert!(present.contains(&external));
+    assert!(!present.contains(&inherited));
+    assert!(accessible.contains(&inherited));
+    assert!(external_only.contains(&external));
+    assert!(!external_only.contains(&internal));
+    assert!(!external_only.contains(&inherited));
     Ok(())
 }
 
@@ -185,7 +273,7 @@ fn package_iteration_mode_comparisons_report_layout_errors() -> Result<(), Objec
             .ok_or(ObjectError::Layout)?,
     );
 
-    for name in ["ALL", "EXTERNAL", "SYMBOLS"] {
+    for name in ["ALL", "EXTERNAL", "PRESENT", "SYMBOLS"] {
         let (mode, _) = keyword.intern(&mut ctx, &runtime, name)?;
         let string = ncl_object::symbol_name(&ctx, mode)?;
         ctx.write_object_slot(string, string_offset::DATA, Word::fixnum(0))?;

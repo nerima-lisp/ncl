@@ -35,9 +35,11 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     let start = held_fresh_symbol(ctx, runtime, &mut held)?;
     let mut bindings = Vec::new();
     let mut updates = Vec::new();
+    let mut initial_settings = Vec::new();
     let mut tests = Vec::new();
     let mut body = Vec::new();
-    let mut initially = Vec::new();
+    let mut type_declarations = Vec::new();
+    let mut initially: Vec<usize> = Vec::new();
     let mut finally: Vec<usize> = Vec::new();
     let nil = held.len();
     held.push(Word::NIL);
@@ -119,14 +121,85 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                 }
                 hash_iteration = Some((variable, kind, table, using));
             }
+            HeldLoopClause::Package {
+                variable,
+                type_spec,
+                kind,
+                package,
+            } => {
+                has_iteration_driver = true;
+                let package = if let Some(package) = package {
+                    package
+                } else {
+                    held_symbol(ctx, runtime, &mut held, "COMMON-LISP::*PACKAGE*")?
+                };
+                let mode = held_symbol(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    match kind {
+                        super::PackageIterationKind::Symbols => "KEYWORD::SYMBOLS",
+                        super::PackageIterationKind::PresentSymbols => "KEYWORD::PRESENT",
+                        super::PackageIterationKind::ExternalSymbols => "KEYWORD::EXTERNAL",
+                    },
+                )?;
+                let sequence = held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "NCL-EXT::%PACKAGE-ITERATION-SYMBOLS",
+                    &[mode, package],
+                )?;
+                let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let nil = held.len();
+                held.push(Word::NIL);
+                bindings.push(held_list(ctx, runtime, &mut held, &[cursor, sequence])?);
+                tests.push(held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?);
+                let current = held_form(ctx, runtime, &mut held, "CAR", &[cursor])?;
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                initial_settings.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "SETQ",
+                    &[variable, current],
+                )?);
+                let next = held_form(ctx, runtime, &mut held, "CDR", &[cursor])?;
+                updates.extend([cursor, next, variable, current]);
+                if let Some(type_spec) = type_spec {
+                    let type_operator = held_symbol(ctx, runtime, &mut held, "COMMON-LISP::TYPE")?;
+                    let type_declaration = held_list(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        &[type_operator, type_spec, variable],
+                    )?;
+                    let declare = held_symbol(ctx, runtime, &mut held, "COMMON-LISP::DECLARE")?;
+                    type_declarations.push(held_list(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        &[declare, type_declaration],
+                    )?);
+                }
+            }
             HeldLoopClause::EqualsThen {
                 variable,
                 init,
                 then,
             } => {
                 has_iteration_driver = true;
-                bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
-                updates.extend([variable, then]);
+                let nil = held.len();
+                held.push(Word::NIL);
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil])?);
+                initial_settings.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "SETQ",
+                    &[variable, init],
+                )?);
+                updates.extend([variable, then.unwrap_or(init)]);
             }
             HeldLoopClause::In {
                 variable,
@@ -297,7 +370,8 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     } else {
         result
     };
-    let mut block_body = initially;
+    let mut block_body = initial_settings;
+    block_body.extend(initially);
     block_body.push(loop_body);
     block_body.extend(finally);
     block_body.push(value);
@@ -310,6 +384,9 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
         &[name.unwrap_or(nil), block_progn],
     )?;
     let binding_list = held_list(ctx, runtime, &mut held, &bindings)?;
-    let expansion = held_form(ctx, runtime, &mut held, "LET", &[binding_list, block])?;
+    let mut let_body = vec![binding_list];
+    let_body.extend(type_declarations);
+    let_body.push(block);
+    let expansion = held_form(ctx, runtime, &mut held, "LET", &let_body)?;
     held_get(&held, expansion)
 }

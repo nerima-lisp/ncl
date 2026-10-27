@@ -62,6 +62,21 @@ pub struct HashClause {
     pub using: Option<(HashIterationKind, Word)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageIterationKind {
+    Symbols,
+    PresentSymbols,
+    ExternalSymbols,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PackageClause {
+    pub variable: Word,
+    pub type_spec: Option<Word>,
+    pub kind: PackageIterationKind,
+    pub package: Option<Word>,
+}
+
 /// Which conditional-clause keyword introduced a [`LoopClause::Conditional`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConditionalKind {
@@ -78,10 +93,11 @@ pub enum LoopClause {
     },
     For(ForClause),
     Hash(HashClause),
+    Package(PackageClause),
     EqualsThen {
         variable: Word,
         init: Word,
-        then: Word,
+        then: Option<Word>,
     },
     In {
         variable: Word,

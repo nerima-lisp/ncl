@@ -11,6 +11,6 @@ pub fn expand_loop_callback(
     let form = args.get(0).ok_or(ObjectError::TypeError)?;
     let input = elements(ctx, form)?;
     let input = input.get(1..).ok_or(ObjectError::TypeError)?;
-    let ast = parse_loop(ctx, input)?;
+    let ast = parse_loop(ctx, runtime, input)?;
     expand_loop_ast(ctx, runtime, &ast)
 }

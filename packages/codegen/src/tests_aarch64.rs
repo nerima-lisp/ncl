@@ -360,7 +360,7 @@ fn compile_aarch64_primitive(id: u32, prim: Prim, argument_count: usize) -> Vec<
 }
 
 #[test]
-fn aarch64_primitive_lowering_emits_integer_comparison_and_cons_operations() {
+fn aarch64_primitive_lowering_emits_integer_arithmetic() {
     for (id, prim, expected) in [
         (
             97,
@@ -399,7 +399,10 @@ fn aarch64_primitive_lowering_emits_integer_comparison_and_cons_operations() {
             "fixnum arithmetic uses the requested operation",
         );
     }
+}
 
+#[test]
+fn aarch64_primitive_lowering_emits_integer_comparisons() {
     for (id, prim, condition) in [
         (100, Prim::FixnumEq, ncl_asm_aarch64::Cond::Eq),
         (101, Prim::FixnumLt, ncl_asm_aarch64::Cond::Lt),
@@ -426,7 +429,10 @@ fn aarch64_primitive_lowering_emits_integer_comparison_and_cons_operations() {
             "fixnum comparison materializes its Lisp boolean with the matching condition",
         );
     }
+}
 
+#[test]
+fn aarch64_primitive_lowering_emits_cons_field_loads() {
     for (id, prim, offset) in [(103, Prim::Car, 0), (104, Prim::Cdr, 8)] {
         let code = compile_aarch64_primitive(id, prim, 1);
         assert_code_contains_aarch64(
@@ -448,7 +454,10 @@ fn aarch64_primitive_lowering_emits_integer_comparison_and_cons_operations() {
             "car and cdr load their respective cons fields after removing the lowtag",
         );
     }
+}
 
+#[test]
+fn aarch64_primitive_lowering_emits_cons_mutations_and_write_barriers() {
     for (id, prim, offset, barrier_slot) in
         [(105, Prim::Rplaca, 0, 0_u64), (106, Prim::Rplacd, 8, 1_u64)]
     {

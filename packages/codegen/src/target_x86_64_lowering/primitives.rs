@@ -247,22 +247,20 @@ mod tests {
         let slots = empty_slots();
         let abi = X86_64FixtureAbi;
         let mut assembler = Assembler::new();
-        assert_eq!(
-            lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &slots, &abi,).unwrap_err(),
-            CodegenError::Unsupported("primitive has no operands".into()),
-        );
+        assert!(matches!(
+            lower_prim(&mut assembler, &Prim::FixnumAdd, &[], None, &slots, &abi,),
+            Err(CodegenError::Unsupported(message)) if message == "primitive has no operands"
+        ));
 
-        assert_eq!(
-            lower_simple_vector_reference(&mut assembler, &[ValueId(0)], None, &slots,)
-                .unwrap_err(),
-            CodegenError::Unsupported("simple-vector reference has no index operand".into()),
-        );
-        assert_eq!(
-            lower_simple_vector_set(&mut assembler, ValueId(0), &[], None, &slots, &abi,)
-                .unwrap_err(),
-            CodegenError::Unsupported("aset has no index operand".into()),
-        );
-        assert_eq!(
+        assert!(matches!(
+            lower_simple_vector_reference(&mut assembler, &[ValueId(0)], None, &slots,),
+            Err(CodegenError::Unsupported(message)) if message == "simple-vector reference has no index operand"
+        ));
+        assert!(matches!(
+            lower_simple_vector_set(&mut assembler, ValueId(0), &[], None, &slots, &abi,),
+            Err(CodegenError::Unsupported(message)) if message == "aset has no index operand"
+        ));
+        assert!(matches!(
             lower_simple_vector_set(
                 &mut assembler,
                 ValueId(0),
@@ -270,9 +268,8 @@ mod tests {
                 None,
                 &slots,
                 &abi,
-            )
-            .unwrap_err(),
-            CodegenError::Unsupported("aset has no value operand".into()),
-        );
+            ),
+            Err(CodegenError::Unsupported(message)) if message == "aset has no value operand"
+        ));
     }
 }

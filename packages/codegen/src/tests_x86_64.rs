@@ -253,18 +253,13 @@ fn x86_64_primitive_lowering_emits_multiply_and_cons_field_operations() {
 
 #[test]
 fn x86_64_primitive_lowering_reports_malformed_or_unsupported_primitives() {
-    for (id, prim, argument_count, message) in [(
-        115,
-        Prim::FixnumDiv,
-        2,
-        "primitive is not available: FixnumDiv",
-    )] {
-        assert_eq!(
-            compile_x86_64_primitive(id, prim, argument_count).err(),
-            Some(crate::CodegenError::Unsupported(message.into())),
-            "unexpected result for primitive with {argument_count} arguments",
-        );
-    }
+    assert_eq!(
+        compile_x86_64_primitive(115, Prim::FixnumDiv, 2).err(),
+        Some(crate::CodegenError::Unsupported(
+            "primitive is not available: FixnumDiv".into()
+        )),
+        "unexpected result for primitive with 2 arguments",
+    );
 }
 
 #[test]

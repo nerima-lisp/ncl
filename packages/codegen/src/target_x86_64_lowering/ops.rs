@@ -1,13 +1,13 @@
 use super::{
-    ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT,
-    ValueSlots, emit, emit_call, load_heap_constant, load_immediate, load_slot, lower_alloc,
-    lower_load_capture, lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
+    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, VALUE_COUNT, ValueSlots, emit, emit_call,
+    load_heap_constant, load_immediate, load_slot, lower_alloc, lower_load_capture,
+    lower_runtime_builtin, lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::isa_x86_64::THREAD_CONTEXT;
 use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem, Scale, Shift};
-use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem};
+use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, ValueId};
 use std::collections::HashMap;
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
@@ -56,18 +56,18 @@ const fn compare_condition(op: Compare) -> Cond {
     }
 }
 /// Materialises a boolean byte into a full word, since `setcc` leaves the upper bits stale.
-fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
+pub(super) fn materialise_boolean(
+    assembler: &mut Assembler,
+    condition: Cond,
+) -> Result<(), CodegenError> {
     emit(assembler, Inst::Setcc(condition, FUNCTION_OBJECT))?;
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
 }
-fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
+pub(super) fn untag_function_object(assembler: &mut Assembler) -> Result<(), CodegenError> {
     let mask = i32::try_from(i64::from_ne_bytes((!ncl_sys::LOWTAG_MASK).to_ne_bytes()))
         .map_err(|_| CodegenError::FrameOverflow)?;
     emit(assembler, Inst::BinRI(BinOp::And, FUNCTION_OBJECT, mask))
 }
-
-const SIMPLE_VECTOR_DATA_OFFSET: i32 =
-    ((ncl_object::simple_vector_offset::DATA + 1) * std::mem::size_of::<ncl_sys::Word>()) as i32;
 
 pub(super) fn lower_write_barrier(
     assembler: &mut Assembler,
@@ -85,169 +85,6 @@ pub(super) fn lower_write_barrier(
         abi,
     )?;
     emit_call(assembler).map(|_| ())
-}
-
-fn emit_sequence(
-    assembler: &mut Assembler,
-    instructions: impl IntoIterator<Item = Inst>,
-) -> Result<(), CodegenError> {
-    instructions
-        .into_iter()
-        .try_for_each(|instruction| emit(assembler, instruction))
-}
-
-fn lower_indexed_write_barrier(
-    assembler: &mut Assembler,
-    owner: ValueId,
-    index: ValueId,
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    load_slot(assembler, slots, index, RETURN_VALUE)
-        .and_then(|()| {
-            emit_sequence(
-                assembler,
-                [
-                    Inst::ShiftImm(Shift::Sar, RETURN_VALUE, ncl_sys::FIXNUM_TAG_BITS as u8),
-                    Inst::BinRI(
-                        BinOp::Add,
-                        RETURN_VALUE,
-                        ncl_object::simple_vector_offset::DATA as i32,
-                    ),
-                ],
-            )
-        })
-        .and_then(|()| {
-            lower_runtime_builtin(
-                assembler,
-                RuntimeFunction::WriteBarrier,
-                &[0],
-                &[owner],
-                slots,
-                abi,
-            )
-        })
-        .and_then(|()| emit(assembler, Inst::MovRR(ARGUMENT_REGISTERS[0], RETURN_VALUE)))
-        .and_then(|()| emit_call(assembler).map(|_| ()))
-}
-
-#[allow(clippy::too_many_lines)]
-fn lower_prim(
-    assembler: &mut Assembler,
-    prim: &Prim,
-    args: &[ValueId],
-    result: Option<ValueId>,
-    slots: &ValueSlots,
-    abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
-    let Some(first) = args.first() else {
-        // check-added-lines: allow(unsupported) existing codegen error variant
-        return Err(CodegenError::Unsupported(
-            "primitive has no operands".into(),
-        ));
-    };
-    load_slot(assembler, slots, *first, FUNCTION_OBJECT)?;
-    if let Some(second) = args.get(1) {
-        load_slot(assembler, slots, *second, ENTRY)?;
-    }
-    match prim {
-        Prim::FixnumAdd => emit(assembler, Inst::BinRR(BinOp::Add, FUNCTION_OBJECT, ENTRY))?,
-        Prim::FixnumSub => emit(assembler, Inst::BinRR(BinOp::Sub, FUNCTION_OBJECT, ENTRY))?,
-        Prim::FixnumMul => emit(assembler, Inst::ImulRR(FUNCTION_OBJECT, ENTRY))?,
-        Prim::FixnumEq | Prim::Eq | Prim::Eql => {
-            emit(assembler, Inst::CmpRR(FUNCTION_OBJECT, ENTRY))?;
-            materialise_boolean(assembler, Cond::E)?;
-        }
-        Prim::FixnumLt => {
-            emit(assembler, Inst::CmpRR(FUNCTION_OBJECT, ENTRY))?;
-            materialise_boolean(assembler, Cond::L)?;
-        }
-        Prim::FixnumLe => {
-            emit(assembler, Inst::CmpRR(FUNCTION_OBJECT, ENTRY))?;
-            materialise_boolean(assembler, Cond::Le)?;
-        }
-        Prim::Car | Prim::Cdr => {
-            untag_function_object(assembler)?;
-            let offset = if matches!(prim, Prim::Cdr) { 8 } else { 0 };
-            emit(
-                assembler,
-                Inst::MovRM(FUNCTION_OBJECT, Mem::base(FUNCTION_OBJECT, offset)),
-            )?;
-        }
-        Prim::Svref | Prim::Aref => {
-            return emit_sequence(
-                assembler,
-                [
-                    Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8),
-                    Inst::MovRM(
-                        FUNCTION_OBJECT,
-                        Mem::indexed(
-                            FUNCTION_OBJECT,
-                            ENTRY,
-                            Scale::Four,
-                            SIMPLE_VECTOR_DATA_OFFSET,
-                        ),
-                    ),
-                ],
-            )
-            .and_then(|()| {
-                result.map_or(Ok(()), |result| {
-                    store_slot(assembler, slots, result, FUNCTION_OBJECT)
-                })
-            });
-        }
-        Prim::Rplaca | Prim::Rplacd => {
-            untag_function_object(assembler)?;
-            let offset = if matches!(prim, Prim::Rplacd) { 8 } else { 0 };
-            emit(
-                assembler,
-                Inst::MovMR(Mem::base(FUNCTION_OBJECT, offset), ENTRY),
-            )?;
-            lower_write_barrier(
-                assembler,
-                *first,
-                i64::from(u8::from(matches!(prim, Prim::Rplacd))),
-                slots,
-                abi,
-            )?;
-        }
-        Prim::Aset => {
-            return load_slot(assembler, slots, args[2], RETURN_VALUE)
-                .and_then(|()| {
-                    emit_sequence(
-                        assembler,
-                        [
-                            Inst::BinRI(BinOp::And, FUNCTION_OBJECT, -8),
-                            Inst::MovMR(
-                                Mem::indexed(
-                                    FUNCTION_OBJECT,
-                                    ENTRY,
-                                    Scale::Four,
-                                    SIMPLE_VECTOR_DATA_OFFSET,
-                                ),
-                                RETURN_VALUE,
-                            ),
-                        ],
-                    )
-                })
-                .and_then(|()| lower_indexed_write_barrier(assembler, *first, args[1], slots, abi))
-                .and_then(|()| {
-                    result.map_or(Ok(()), |result| {
-                        store_slot(assembler, slots, result, FUNCTION_OBJECT)
-                    })
-                });
-        }
-        Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
-            // check-added-lines: allow(unsupported) existing codegen error variant
-            return Err(CodegenError::Unsupported(format!(
-                "primitive is not available: {prim:?}"
-            )));
-        }
-    }
-    if let Some(result) = result {
-        store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
-    }
-    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -363,7 +200,9 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
-        OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, slots, abi)?,
+        OpKind::Prim { op, args, .. } => {
+            super::primitives::lower_prim(assembler, op, args, result, slots, abi)?;
+        }
         OpKind::Compare { op, left, right } => {
             load_slot(assembler, slots, *left, FUNCTION_OBJECT)?;
             load_slot(assembler, slots, *right, ENTRY)?;

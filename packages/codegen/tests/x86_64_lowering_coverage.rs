@@ -65,7 +65,7 @@ fn assert_call_safepoint(
 }
 
 #[test]
-fn fixed_templates_use_simple_vector_indices_and_aset_values() {
+fn fixed_template_array_references_use_simple_vector_indices() {
     for (index, prim) in [Prim::Aref, Prim::Svref].into_iter().enumerate() {
         let mut builder = FunctionBuilder::new(
             ncl_ir::FunctionId(850 + u32::try_from(index).expect("primitive index fits")),
@@ -125,7 +125,10 @@ fn fixed_templates_use_simple_vector_indices_and_aset_values() {
             "x86-64 simple-vector reference uses its index and payload offset",
         );
     }
+}
 
+#[test]
+fn fixed_template_array_set_uses_indexed_simple_vector_slots() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(852),
         "fixed-template-array-set",

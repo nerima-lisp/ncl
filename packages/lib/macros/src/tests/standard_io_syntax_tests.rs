@@ -196,6 +196,69 @@ fn standard_io_syntax_expansion_binds_standard_values() -> Result<(), ObjectErro
     result
 }
 
+fn standard_io_fill_until_capacity(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    roots: &mut [Word],
+    start: usize,
+    words: usize,
+) -> Result<usize, ObjectError> {
+    let mut next_root = start;
+    loop {
+        if next_root == roots.len() {
+            return Err(ObjectError::Layout);
+        }
+        match ncl_object::allocate(ctx, runtime, 0x7f, words) {
+            Ok(value) => {
+                roots[next_root] = value;
+                next_root += 1;
+            }
+            Err(error) => {
+                if format!("{error:?}") != "Storage(CapacityExceeded)" {
+                    return Err(error);
+                }
+                return Ok(next_root);
+            }
+        }
+    }
+}
+
+fn standard_io_reserve_heap_cells(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    roots: &mut [Word],
+    initial_root: usize,
+    released_cells: usize,
+) -> Result<(), ObjectError> {
+    let mut next_root = initial_root;
+    let mut reserve_root = None;
+    for words in [65_536, 4_096, 256] {
+        let stage_start = next_root;
+        next_root = standard_io_fill_until_capacity(ctx, runtime, roots, next_root, words)?;
+        if words == 4_096 {
+            if next_root == stage_start {
+                return Err(ObjectError::Layout);
+            }
+            reserve_root = Some(next_root - 1);
+        }
+    }
+
+    let reserve_root = reserve_root.ok_or(ObjectError::Layout)?;
+    roots[reserve_root] = Word::NIL;
+    ctx.collect(true)?;
+
+    let single_cell_start = next_root;
+    next_root = standard_io_fill_until_capacity(ctx, runtime, roots, next_root, 0)?;
+    if next_root - single_cell_start < released_cells {
+        return Err(ObjectError::Layout);
+    }
+
+    for root in &mut roots[next_root - released_cells..next_root] {
+        *root = Word::NIL;
+    }
+    ctx.collect(true)
+}
+
 fn standard_io_expansion_with_released_cells(
     released_cells: usize,
     preinterned_symbols: usize,
@@ -250,77 +313,23 @@ fn standard_io_expansion_with_released_cells(
         .collect::<Result<Vec<_>, _>>()?;
     let mut roots = vec![Word::NIL; 8_192];
     roots[0] = input;
-    roots[1..1 + preinterned.len()].copy_from_slice(&preinterned);
+    roots[1..=preinterned.len()].copy_from_slice(&preinterned);
 
-    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
-        let mut next_root = 1 + preinterned.len();
-        let mut reserve_root = None;
-        for words in [65_536, 4_096, 256] {
-            let stage_start = next_root;
-            loop {
-                if next_root == roots.len() {
-                    return Err(ObjectError::Layout);
-                }
-                match ncl_object::allocate(ctx, &runtime, 0x7f, words) {
-                    Ok(value) => {
-                        roots[next_root] = value;
-                        next_root += 1;
-                    }
-                    Err(error) => {
-                        if format!("{error:?}") != "Storage(CapacityExceeded)" {
-                            return Err(error);
-                        }
-                        break;
-                    }
-                }
-            }
-            if words == 4_096 {
-                if next_root == stage_start {
-                    return Err(ObjectError::Layout);
-                }
-                reserve_root = Some(next_root - 1);
-            }
-        }
-
-        let reserve_root = reserve_root.ok_or(ObjectError::Layout)?;
-        roots[reserve_root] = Word::NIL;
-        ctx.collect(true)?;
-
-        let single_cell_start = next_root;
-        loop {
-            if next_root == roots.len() {
-                return Err(ObjectError::Layout);
-            }
-            match ncl_object::allocate(ctx, &runtime, 0x7f, 0) {
-                Ok(value) => {
-                    roots[next_root] = value;
-                    next_root += 1;
-                }
-                Err(error) => {
-                    if format!("{error:?}") != "Storage(CapacityExceeded)" {
-                        return Err(error);
-                    }
-                    break;
-                }
-            }
-        }
-
-        if next_root - single_cell_start < released_cells {
-            return Err(ObjectError::Layout);
-        }
-        for root in &mut roots[next_root - released_cells..next_root] {
-            *root = Word::NIL;
-        }
-        ctx.collect(true)?;
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        standard_io_reserve_heap_cells(
+            ctx,
+            &runtime,
+            roots,
+            1 + preinterned.len(),
+            released_cells,
+        )?;
 
         let input_args = [roots[0]];
         let args = ncl_object::BuiltinArgs::new(&input_args);
         let expand =
             callback_for("WITH-STANDARD-IO-SYNTAX").ok_or(ObjectError::UndefinedFunction)?;
         expand(ctx, &runtime, &args, &mut ncl_object::MultipleValues::new()).map(|_| ())
-    });
-
-    result
+    })
 }
 
 #[test]

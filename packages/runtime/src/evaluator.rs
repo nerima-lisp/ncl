@@ -206,9 +206,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn native_make_closure_uses_legacy_entry_code_after_service_miss() {
-        let mut runtime = crate::Runtime::new()
-            .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+        let mut runtime = crate::Runtime::new().expect("runtime initialization");
         let entry = 0x1000_usize;
         let fallback_code = ncl_object::make_code_object(
             &mut runtime.context,
@@ -219,7 +219,7 @@ mod tests {
             Word::NIL,
             Word::NIL,
         )
-        .unwrap_or_else(|error| panic!("fallback code object creation failed: {error}"));
+        .expect("fallback code object creation");
         let mut fallback_word = Box::new(fallback_code.as_word());
         let fallback_token = ncl_object::push_root(&mut runtime.context, &mut fallback_word);
         let caller_code = ncl_object::make_code_object(
@@ -231,7 +231,7 @@ mod tests {
             Word::NIL,
             Word::NIL,
         )
-        .unwrap_or_else(|error| panic!("caller code object creation failed: {error}"));
+        .expect("caller code object creation");
         let mut caller_word = Box::new(caller_code.as_word());
         let caller_token = ncl_object::push_root(&mut runtime.context, &mut caller_word);
         let entries = BTreeMap::from([(entry, (fallback_word, fallback_token))]);
@@ -252,9 +252,9 @@ mod tests {
                     let closure = crate::support::native_make_closure(
                         thread,
                         Word::fixnum(0),
-                        Word::from_bits(u64::try_from(entry).unwrap_or_else(|error| {
-                            panic!("entry address does not fit in a word: {error}")
-                        })),
+                        Word::from_bits(
+                            u64::try_from(entry).expect("entry address fits in a word"),
+                        ),
                     );
                     assert_eq!(
                         ncl_sys::replace_native_context(thread, previous),
@@ -264,11 +264,11 @@ mod tests {
                 };
                 let function = Function::from_word(closure);
                 let closure_code = ncl_object::function_code(&runtime.context, function)
-                    .unwrap_or_else(|error| panic!("closure code lookup failed: {error}"));
+                    .expect("closure code lookup");
                 assert_eq!(closure_code.as_word(), *entries[&entry].0);
                 Ok(())
             })
-            .unwrap_or_else(|error| panic!("evaluator access failed: {error}"));
+            .expect("evaluator access");
 
         assert!(ncl_object::pop_root(&mut runtime.context, caller_token));
         assert!(ncl_object::pop_root(&mut runtime.context, fallback_token));

@@ -36,7 +36,8 @@ fn definition_expansions_have_a_progn_and_quoted_name() -> Result<(), ObjectErro
 fn function_definitions_preserve_lambda_body() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = symbol(&mut ctx, &runtime, "F")?;
-    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let body_operator = symbol(&mut ctx, &runtime, "BODY")?;
+    let body = list(&mut ctx, &runtime, &[body_operator])?;
     let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
     let form = list(&mut ctx, &runtime, &[operator, name, Word::NIL, body])?;
     let expanded = call(&runtime, &mut ctx, "DEFUN", form)?;

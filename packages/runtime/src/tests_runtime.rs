@@ -469,7 +469,7 @@ fn jit_storefield_keeps_a_young_value_in_a_weak_only_old_cell() {
 }
 
 fn assert_macro_expansion_detail<T: std::fmt::Debug>(
-    result: Result<T, RuntimeError>,
+    result: &Result<T, RuntimeError>,
     expected: &str,
 ) {
     let debug = format!("{result:?}");
@@ -484,7 +484,7 @@ fn assert_macro_expansion_detail<T: std::fmt::Debug>(
 fn macro_expansion_preserves_simple_error_report() {
     let mut runtime = Runtime::new().expect("runtime initialization");
     assert_macro_expansion_detail(
-        runtime.eval("(loop for symbol being the widgets)"),
+        &runtime.eval("(loop for symbol being the widgets)"),
         "Unsupported LOOP clause: BEING THE WIDGETS",
     );
 }
@@ -493,7 +493,7 @@ fn macro_expansion_preserves_simple_error_report() {
 #[allow(clippy::expect_used)]
 fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
     let mut runtime = Runtime::new().expect("runtime initialization");
-    assert_macro_expansion_detail(runtime.eval("(loop for index from)"), "TypeError");
+    assert_macro_expansion_detail(&runtime.eval("(loop for index from)"), "TypeError");
 }
 
 #[test]
@@ -514,7 +514,7 @@ fn compiled_macro_expansion_preserves_native_load_report() {
     );
     let result = runtime.eval(&source);
     fs::remove_file(path).expect("invalid UTF-8 source cleanup");
-    assert_macro_expansion_detail(result, "source file is not valid UTF-8");
+    assert_macro_expansion_detail(&result, "source file is not valid UTF-8");
 }
 
 #[test]
@@ -533,7 +533,7 @@ fn compiled_macro_expansion_restores_non_simple_condition() {
     let source = format!(
         "(defmacro ncl-r6-b5-missing-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-missing-load)"
     );
-    assert_macro_expansion_detail(runtime.eval(&source), "TypeError");
+    assert_macro_expansion_detail(&runtime.eval(&source), "TypeError");
     assert!(
         runtime.context.take_pending_condition().is_some(),
         "non-SimpleError conditions must remain pending after macro expansion fails"

@@ -330,3 +330,45 @@ fn r5_load_uses_the_shadowed_handler_case_macro_in_the_dynamic_package() {
         panic!("LOAD shadowed HANDLER-CASE source cleanup failed: {error}");
     }
 }
+
+#[test]
+fn r5_load_preserves_macrolet_and_symbol_macrolet_for_each_top_level_form() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-r5-load-top-level-macrolet-{}.lisp",
+        std::process::id()
+    ));
+    let contents = "(defparameter *r5-load-top-level-macro-value* nil) \
+                    (macrolet ((r5-load-remember (value) \
+                                (list 'setq '*r5-load-top-level-macro-value* value))) \
+                      (r5-load-remember :first) \
+                      (r5-load-remember :second)) \
+                    (defparameter *r5-load-top-level-symbol-value* 10) \
+                    (defparameter *r5-load-top-level-symbol-first* nil) \
+                    (defparameter *r5-load-top-level-symbol-second* nil) \
+                    (symbol-macrolet ((r5-load-top-level-symbol-alias \
+                                       *r5-load-top-level-symbol-value*)) \
+                      (setq *r5-load-top-level-symbol-first* \
+                            (+ r5-load-top-level-symbol-alias 1)) \
+                      (setq *r5-load-top-level-symbol-second* \
+                            (+ r5-load-top-level-symbol-alias 2)))";
+    if let Err(error) = fs::write(&source, contents) {
+        panic!("LOAD top-level macrolet source creation failed: {error}");
+    }
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+    runtime
+        .load_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD top-level macrolet forms failed: {error}"));
+    let observed = runtime
+        .eval(
+            "(and (eq *r5-load-top-level-macro-value* :second) \
+                  (= *r5-load-top-level-symbol-first* 11) \
+                  (= *r5-load-top-level-symbol-second* 12))",
+        )
+        .unwrap_or_else(|error| panic!("LOAD top-level macrolet results failed: {error}"));
+    assert_eq!(runtime.format_result(observed), "T");
+    if let Err(error) = fs::remove_file(&source) {
+        panic!("LOAD top-level macrolet source cleanup failed: {error}");
+    }
+}

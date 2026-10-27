@@ -109,7 +109,10 @@ fn fill_heap_with_rooted_objects(
             }
             match ncl_object::allocate(ctx, runtime, 0x7f, words) {
                 Ok(value) => {
-                    roots[next_root] = value;
+                    let root = roots
+                        .get_mut(next_root)
+                        .ok_or(ncl_object::ObjectError::Layout)?;
+                    *root = value;
                     next_root += 1;
                 }
                 Err(error) if format!("{error:?}") == "Storage(CapacityExceeded)" => break,
@@ -986,14 +989,16 @@ fn bounded_heap_failure_propagates_from_read_eval_form() {
     ctx.register(&runtime).unwrap();
     let mut opts = standard(&runtime, &mut ctx);
     opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
-    let mut roots = vec![Word::NIL; 1_024];
-    roots[0] = opts.readtable().object().as_word();
+    let mut roots = vec![opts.readtable().object().as_word()];
+    roots.resize(1_024, Word::NIL);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(roots[0]),
+            ncl_object::Readtable::from_word(
+                *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+            ),
         ));
 
         let error = read_from_string(ctx, &runtime, "#.(1)", &opts).unwrap_err();
@@ -1021,14 +1026,16 @@ fn bounded_heap_failure_propagates_from_read_eval_symbol_lookup() {
     );
     let mut opts = standard(&runtime, &mut ctx);
     opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
-    let mut roots = vec![Word::NIL; 1_024];
-    roots[0] = opts.readtable().object().as_word();
+    let mut roots = vec![opts.readtable().object().as_word()];
+    roots.resize(1_024, Word::NIL);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(roots[0]),
+            ncl_object::Readtable::from_word(
+                *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+            ),
         ));
 
         let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();
@@ -1049,14 +1056,16 @@ fn bounded_heap_failure_propagates_from_dynamic_read_eval_lookup() {
     ctx.register(&runtime).unwrap();
     let mut opts = standard(&runtime, &mut ctx);
     opts.set_read_evaluation(ncl_reader::ReadEvaluation::Dynamic);
-    let mut roots = vec![Word::NIL; 1_024];
-    roots[0] = opts.readtable().object().as_word();
+    let mut roots = vec![opts.readtable().object().as_word()];
+    roots.resize(1_024, Word::NIL);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(roots[0]),
+            ncl_object::Readtable::from_word(
+                *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+            ),
         ));
 
         let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();
@@ -1077,14 +1086,16 @@ fn bounded_heap_failure_propagates_from_dynamic_read_suppression_lookup() {
     ctx.register(&runtime).unwrap();
     let mut opts = standard(&runtime, &mut ctx);
     opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
-    let mut roots = vec![Word::NIL; 1_024];
-    roots[0] = opts.readtable().object().as_word();
+    let mut roots = vec![opts.readtable().object().as_word()];
+    roots.resize(1_024, Word::NIL);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(roots[0]),
+            ncl_object::Readtable::from_word(
+                *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+            ),
         ));
 
         let error = read_from_string(ctx, &runtime, "41", &opts).unwrap_err();
@@ -1105,14 +1116,16 @@ fn bounded_heap_failure_propagates_from_suppression_lookup_in_read_eval() {
     ctx.register(&runtime).unwrap();
     let mut opts = standard(&runtime, &mut ctx);
     opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
-    let mut roots = vec![Word::NIL; 1_024];
-    roots[0] = opts.readtable().object().as_word();
+    let mut roots = vec![opts.readtable().object().as_word()];
+    roots.resize(1_024, Word::NIL);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(roots[0]),
+            ncl_object::Readtable::from_word(
+                *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
+            ),
         ));
 
         let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();

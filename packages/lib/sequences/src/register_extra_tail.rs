@@ -169,39 +169,6 @@ pub fn substitute_if_not_entry(
     selection_transform_if_entry(ctx, runtime, args, values, true, true)
 }
 
-pub fn subst_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let mut scope = Scope::new(ctx);
-    let handles = root_args(&mut scope, args)?;
-    let rooted = words(&scope, &handles);
-    let replacement = word_at(&scope, &handles, 0)?;
-    let (positional, options) = domain::selection::parse_options_with_minimum(
-        scope.context_mut(),
-        runtime,
-        rooted.get(1..).ok_or(ObjectError::TypeError)?,
-        2,
-        domain::selection::SelectionOptionMode::Tree,
-    )?;
-    let old = *positional.first().ok_or(ObjectError::TypeError)?;
-    let tree = *positional.get(1).ok_or(ObjectError::TypeError)?;
-    let mut caller = BuiltinFunctionCaller;
-    let result = domain::list_substitution::subst(
-        scope.context_mut(),
-        runtime,
-        &mut caller,
-        replacement,
-        old,
-        tree,
-        options.selection,
-    )?;
-    values.clear();
-    keep_result(&mut scope, Ok(result))
-}
-
 pub fn set_difference_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

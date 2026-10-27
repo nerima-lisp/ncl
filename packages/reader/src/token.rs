@@ -1,7 +1,5 @@
 //! Token reading: symbol and number tokens, escapes, and package prefixes.
 
-use std::cell::Cell;
-
 use ncl_object::{
     Package, Runtime, StringObject, ThreadContext, Word, make_string, pop_root, push_root,
     string_length, string_ref, symbol_name, symbol_package,
@@ -132,7 +130,7 @@ impl TokenParts {
 pub fn read_token_chars(
     ctx: &ThreadContext,
     source: &mut dyn crate::input::CharSource,
-    rt: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
 ) -> Result<Option<Token>, ReadError> {
     let mut chars: Vec<char> = Vec::new();
     let mut escaped: Vec<bool> = Vec::new();
@@ -183,7 +181,7 @@ pub fn read_token(
     runtime: &Runtime,
     source: &mut dyn crate::input::CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
 ) -> Result<Option<Word>, ReadError> {
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Ok(None);
@@ -331,7 +329,7 @@ fn intern_symbol(
     resolver: &impl PackageResolver,
     token: &Token,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     let case = readtable_from_word(rt.get())?.case_mode(ctx)?;
     let parts = token.split()?;

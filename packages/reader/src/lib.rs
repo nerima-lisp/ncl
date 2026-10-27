@@ -8,10 +8,9 @@
 //!
 //! The readtable wraps the `ncl_object` readtable descriptor; its syntax and
 //! dispatch tables are 256-entry simple vectors indexed by character code.
-//! Dynamic variables (`*read-base*`, `*read-eval*`, `*read-suppress*`,
-//! `*read-default-float-format*`, and the active readtable) are passed
-//! explicitly through [`ReadOptions`] because special-variable rebinding is not
-//! wired in this phase.
+//! Runtime `#.` dispatch reads the live `*read-eval*` value. Other reader
+//! settings pass through [`ReadOptions`]; dynamic `*readtable*` rebinding is not
+//! wired into lower-level reader calls.
 
 #![allow(
     clippy::cast_possible_truncation,
@@ -62,8 +61,6 @@ enum SymbolKind {
     Function,
     /// A class: interned and registered with [`Runtime::define_class`].
     Class,
-    /// A macro: interned only.
-    Macro,
 }
 
 /// Every Phase 1 symbol owned by `ncl-reader`.
@@ -78,7 +75,6 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
     ("COMMON-LISP", "*READ-SUPPRESS*", SymbolKind::Variable),
     ("COMMON-LISP", "*READTABLE*", SymbolKind::Variable),
     ("COMMON-LISP", "READTABLE", SymbolKind::Class),
-    ("COMMON-LISP", "WITH-STANDARD-IO-SYNTAX", SymbolKind::Macro),
     ("COMMON-LISP", "COPY-READTABLE", SymbolKind::Function),
     (
         "COMMON-LISP",
@@ -111,6 +107,24 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
     ("COMMON-LISP", "SET-SYNTAX-FROM-CHAR", SymbolKind::Function),
 ];
 
+fn set_common_lisp_variable_value(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &str,
+    value: ncl_object::Word,
+) -> Result<(), ObjectError> {
+    let value = ncl_object::HeapRootedWord::new(ctx, value)?;
+    let mut common_lisp = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::Layout)?;
+    with_root(ctx, &mut common_lisp, |ctx, common_lisp| {
+        let (mut symbol, _) = Package::from_word(common_lisp.get()).intern(ctx, runtime, name)?;
+        with_root(ctx, &mut symbol, |ctx, symbol| {
+            set_symbol_value(ctx, symbol.get(), value.get())
+        })
+    })
+}
+
 /// Intern every owned symbol and install metadata for implemented entries.
 ///
 /// `COPY-READTABLE` is callable. Other reader functions and the `READTABLE`
@@ -129,7 +143,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         match kind {
             SymbolKind::Variable => ncl_object::set_symbol_special(&mut ctx, symbol, true)?,
             SymbolKind::Function | SymbolKind::Class => {}
-            SymbolKind::Macro => ncl_object::set_symbol_macro(&mut ctx, symbol, true)?,
         }
     }
     let mut standard_readtable = readtable::standard_readtable_object(&mut ctx, runtime)?
@@ -151,6 +164,36 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             })
         },
     )?;
+    set_common_lisp_variable_value(
+        &mut ctx,
+        runtime,
+        "*READ-BASE*",
+        ncl_object::Word::fixnum(10),
+    )?;
+    let mut common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::Layout)?;
+    with_root(&mut ctx, &mut common_lisp, |ctx, common_lisp| {
+        let (mut default_float_format, _) =
+            Package::from_word(common_lisp.get()).intern(ctx, runtime, "SINGLE-FLOAT")?;
+        with_root(
+            ctx,
+            &mut default_float_format,
+            |ctx, default_float_format| {
+                set_common_lisp_variable_value(
+                    ctx,
+                    runtime,
+                    "*READ-DEFAULT-FLOAT-FORMAT*",
+                    default_float_format.get(),
+                )
+            },
+        )?;
+        let (mut truth, _) = Package::from_word(common_lisp.get()).intern(ctx, runtime, "T")?;
+        with_root(ctx, &mut truth, |ctx, truth| {
+            set_common_lisp_variable_value(ctx, runtime, "*READ-EVAL*", truth.get())
+        })
+    })?;
+    set_common_lisp_variable_value(&mut ctx, runtime, "*READ-SUPPRESS*", ncl_object::Word::NIL)?;
     copy_readtable_builtin::register(&mut ctx, runtime)?;
     Ok(())
 }

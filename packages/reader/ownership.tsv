@@ -19,4 +19,3 @@ COMMON-LISP	READTABLEP	function	ncl-reader	1	no	reclassified by subsystem owners
 COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	SET-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	SET-SYNTAX-FROM-CHAR	function	ncl-reader	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-reader	1	no	macro expansion/setf surface

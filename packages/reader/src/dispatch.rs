@@ -1,5 +1,7 @@
 //! Dispatch macro character (`#`) handling.
 
+mod read_eval;
+
 use std::cell::Cell;
 use std::path::Path;
 
@@ -19,15 +21,13 @@ use crate::reader::{ReadOptions, ReadSuppression, read_form, read_list};
 use crate::readtable::readtable_from_word;
 use crate::token::{intern_common_lisp, read_token_chars};
 
-/// Handle the `#` dispatch macro character, returning the sub-form or `None`
-/// when nothing was produced (a block comment).
 pub fn read_sharp(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Option<Word>, ReadError> {
     let Some(sub) = source.read_char() else {
         return Err(ReadError::UnexpectedEof);
@@ -51,13 +51,7 @@ pub fn read_sharp(
         }
         '*' => read_bit_vector(ctx, runtime, source).map(Some),
         ':' => read_uninterned(ctx, runtime, source, rt).map(Some),
-        '.' => {
-            if matches!(opts.read_evaluation(), crate::ReadEvaluation::Enabled) {
-                Err(ReadError::ReadEvalUnavailable)
-            } else {
-                Err(ReadError::ReadEvalDisabled)
-            }
-        }
+        '.' => read_eval::read_eval_dispatch(ctx, runtime, source, opts, rt, labels).map(Some),
         '+' => read_feature_conditional(ctx, runtime, source, opts, rt, labels, true),
         '-' => read_feature_conditional(ctx, runtime, source, opts, rt, labels, false),
         '|' => {
@@ -106,8 +100,8 @@ fn read_pathname(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     let Some(namestring) = read_form(ctx, runtime, source, opts, rt, labels)? else {
         return Err(ReadError::UnexpectedEof);
@@ -127,8 +121,8 @@ fn read_structure(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     if source.read_char() != Some('(') {
         return Err(ReadError::StructureSyntax);
@@ -267,7 +261,7 @@ fn read_uninterned(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
-    rt: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Err(ReadError::UnexpectedEof);
@@ -286,8 +280,8 @@ fn read_feature_conditional(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
     positive: bool,
 ) -> Result<Option<Word>, ReadError> {
     let features = runtime.features();
@@ -401,8 +395,8 @@ fn read_complex(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     if source.read_char() != Some('(') {
         return Err(ReadError::InvalidNumber(
@@ -427,8 +421,8 @@ fn read_label(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
     label: i64,
 ) -> Result<Option<Word>, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;
@@ -447,7 +441,7 @@ fn read_label(
 /// Read a `#n#` reference to a previously read labelled form.
 fn read_label_ref(
     ctx: &mut ThreadContext,
-    labels: &Cell<Word>,
+    labels: &ncl_object::HeapRootedWord,
     label: i64,
 ) -> Result<Option<Word>, ReadError> {
     if labels.get() == Word::NIL {
@@ -468,7 +462,7 @@ fn read_label_ref(
 fn ensure_labels_table(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    labels: &Cell<Word>,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {
     if labels.get() == Word::NIL {
         let table = HashTable::new(ctx, runtime, HashTest::Eq, Weakness::None)?.as_word();

@@ -10,6 +10,11 @@ use ncl_object::{
 };
 use ncl_reader::{ReadOptions, ReadtableCase, read, read_from_string};
 
+const EVAL_PARAMETERS: &[ncl_object::Parameter] = &[ncl_object::Parameter {
+    name: ncl_object::BuiltinName::new("FORM"),
+    ty: ncl_object::ParameterType::Any,
+}];
+
 fn standard(runtime: &Runtime, ctx: &mut ThreadContext) -> ReadOptions {
     ReadOptions::standard(ctx, runtime).unwrap()
 }
@@ -121,6 +126,10 @@ fn reads_ratios_and_floats() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
+    assert_eq!(
+        standard(&runtime, &mut ctx).default_float_format(),
+        ncl_reader::FloatFormat::SingleFloat
+    );
     let ratio = read_one(&runtime, &mut ctx, "3/4");
     assert!(matches!(classify_object(&ctx, ratio), ObjectRef::Ratio(_)));
     let float = read_one(&runtime, &mut ctx, "3.14");
@@ -609,8 +618,75 @@ fn read_eval_is_rejected() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let opts = standard(&runtime, &mut ctx);
-    let error = read_from_string(&mut ctx, &runtime, "#.", &opts).unwrap_err();
+    let error = read_from_string(&mut ctx, &runtime, "#.1", &opts).unwrap_err();
     assert!(matches!(error, ncl_reader::ReadError::ReadEvalUnavailable));
+}
+
+#[test]
+fn read_eval_uses_the_evaluator_when_enabled() {
+    fn increment_form(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        args: &ncl_object::BuiltinArgs<'_>,
+        _values: &mut ncl_object::MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        let form = args
+            .required(0)?
+            .as_fixnum()
+            .ok_or(ncl_object::ObjectError::TypeError)?;
+        Ok(Word::fixnum(form + 1))
+    }
+
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let evaluator = ncl_object::Builtin {
+        lambda_list: ncl_object::LambdaList::new(EVAL_PARAMETERS, &[], None, &[], false),
+        convention: ncl_object::BuiltinConvention::Direct(ncl_object::Arity::exact(1)),
+    };
+    runtime
+        .register_builtin(
+            &mut ctx,
+            ncl_object::BuiltinIdentifier::new(
+                ncl_object::BuiltinPackage::CommonLisp,
+                ncl_object::BuiltinName::new("EVAL"),
+            ),
+            ncl_object::BuiltinImplementation::direct(evaluator, increment_form),
+        )
+        .unwrap();
+
+    // The reader checks for an active evaluator before calling the EVAL stub above.
+    let mut evaluator_sentinel = ();
+    ctx.set_evaluator_runtime(std::ptr::from_mut(&mut evaluator_sentinel));
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
+
+    let value = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap();
+    assert_eq!(value, Some(Word::fixnum(42)));
+}
+
+#[test]
+fn read_eval_disabled_is_rejected() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Disabled);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.1", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::ReadEvalDisabled));
+}
+
+#[test]
+fn read_eval_is_skipped_when_read_suppressed() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Discard);
+
+    let value = read_from_string(&mut ctx, &runtime, "#.(+ 1 2)", &opts).unwrap();
+    assert_eq!(value, Some(ncl_object::Word::NIL));
 }
 
 #[test]

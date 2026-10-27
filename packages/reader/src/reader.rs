@@ -1,10 +1,6 @@
 //! The recursive reader and its public entry points.
 
-use std::cell::Cell;
-
-use ncl_object::{
-    HeapRootedWord, Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root,
-};
+use ncl_object::{HeapRootedWord, Runtime, ThreadContext, Word, make_cons, make_string};
 
 use crate::error::ReadError;
 use crate::input::{CharSource, StringSource};
@@ -18,9 +14,9 @@ pub use list::read_list;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum FloatFormat {
-    /// Single-float; not representable by the object layer yet.
+    /// Single-float (the default).
     SingleFloat,
-    /// Double-float (the default).
+    /// Double-float.
     DoubleFloat,
 }
 
@@ -55,6 +51,8 @@ pub enum ReadEvaluation {
     Enabled,
     /// Reject the `#.` syntax.
     Disabled,
+    /// Read the live `*READ-EVAL*` value at each runtime `#.` dispatch.
+    Dynamic,
 }
 
 /// Whether forms are constructed or discarded while reading.
@@ -93,10 +91,9 @@ impl PackageName {
 
 /// Options controlling a single [`read`] call.
 ///
-/// The fields mirror the reader dynamic variables `*read-base*`,
-/// `*read-eval*`, `*read-suppress*`, `*read-default-float-format*`, and the
-/// active readtable. `*readtable*` dynamic rebinding is not wired yet, so the
-/// readtable is passed explicitly.
+/// Runtime reads the live `*read-eval*` value at each `#.` dispatch. Other
+/// reader settings pass through these options. `*readtable*` dynamic rebinding
+/// is not wired yet, so the readtable is passed explicitly.
 #[derive(Clone, Debug)]
 pub struct ReadOptions {
     readtable: Readtable,
@@ -118,7 +115,7 @@ impl ReadOptions {
             read_base: ReadBase::new(10)?,
             read_eval: ReadEvaluation::Enabled,
             read_suppress: ReadSuppression::Keep,
-            read_default_float_format: FloatFormat::DoubleFloat,
+            read_default_float_format: FloatFormat::SingleFloat,
             current_package: None,
         })
     }
@@ -194,34 +191,27 @@ impl ReadOptions {
     }
 }
 
-/// Read the next form from `source`, skipping leading whitespace and comments.
+/// Reads the next form from `source` using the supplied reader options.
 ///
-/// Returns `None` at end of input. The readtable word and the labels table are
-/// rooted for the duration of the call so a collection cannot leave a stale
-/// value.
+/// Returns `None` when the source has no more forms.
 ///
 /// # Errors
-/// Returns a [`ReadError`] describing the lexical or dispatch failure.
+/// Returns a reader error for malformed input or read-time evaluation that is disabled or unavailable.
 pub fn read(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
 ) -> Result<Option<Word>, ReadError> {
-    let mut rt = Cell::new(opts.readtable.object().as_word());
-    let rt_token = push_root(ctx, rt.get_mut());
-    let mut labels = Cell::new(Word::NIL);
-    let labels_token = push_root(ctx, labels.get_mut());
-    let result = read_form(ctx, runtime, source, opts, &rt, &labels).and_then(|form| {
+    let rt = ncl_object::HeapRootedWord::new(ctx, opts.readtable.object().as_word())?;
+    let labels = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
+    read_form(ctx, runtime, source, opts, &rt, &labels).and_then(|form| {
         if form.is_none() && source.peek_char() == Some(')') {
             Err(ReadError::UnmatchedRightParen)
         } else {
             Ok(form)
         }
-    });
-    let _ = pop_root(ctx, labels_token);
-    let _ = pop_root(ctx, rt_token);
-    result
+    })
 }
 
 /// Read the next form, preserving any trailing whitespace.
@@ -254,27 +244,19 @@ pub fn read_from_string(
     read(ctx, runtime, &mut source, opts)
 }
 
-/// Read a list of forms terminated by a `)`, returning the proper list.
-///
-/// The opening parenthesis is not consumed by this function; it reads forms
-/// until an unmatched `)`.
+/// Reads a list from `source` through its closing right parenthesis.
 ///
 /// # Errors
-/// Returns [`ReadError::UnexpectedEof`] when input ends before the `)`.
+/// Returns a reader error for malformed list syntax or end of input before the delimiter.
 pub fn read_delimited_list(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
 ) -> Result<Word, ReadError> {
-    let mut rt = Cell::new(opts.readtable.object().as_word());
-    let rt_token = push_root(ctx, rt.get_mut());
-    let mut labels = Cell::new(Word::NIL);
-    let labels_token = push_root(ctx, labels.get_mut());
-    let result = read_list(ctx, runtime, source, opts, &rt, &labels);
-    let _ = pop_root(ctx, labels_token);
-    let _ = pop_root(ctx, rt_token);
-    result
+    let rt = ncl_object::HeapRootedWord::new(ctx, opts.readtable.object().as_word())?;
+    let labels = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
+    read_list(ctx, runtime, source, opts, &rt, &labels)
 }
 
 /// Read one form, recursing past comments and suppressed forms.
@@ -287,8 +269,8 @@ pub fn read_form(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
 ) -> Result<Option<Word>, ReadError> {
     loop {
         skip_whitespace(ctx, source, opts, rt)?;
@@ -331,7 +313,7 @@ fn skip_whitespace(
     ctx: &ThreadContext,
     source: &mut dyn CharSource,
     _opts: &ReadOptions,
-    rt: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
 ) -> Result<(), ReadError> {
     loop {
         let Some(c) = source.peek_char() else {
@@ -367,8 +349,8 @@ fn read_macro_char(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
     c: char,
 ) -> Result<Option<Word>, ReadError> {
     match c {
@@ -396,8 +378,8 @@ fn read_quoted(
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
-    rt: &Cell<Word>,
-    labels: &Cell<Word>,
+    rt: &ncl_object::HeapRootedWord,
+    labels: &ncl_object::HeapRootedWord,
     name: &str,
 ) -> Result<Word, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;

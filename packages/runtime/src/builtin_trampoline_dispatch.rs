@@ -82,28 +82,36 @@ pub(super) fn dispatch_with_context(
         }
         Err(error) => {
             if let Some(condition) = context.take_pending_condition() {
-                match ncl_conditions::error(context, condition) {
-                    Ok(()) => {
-                        let values = context.values().to_vec();
-                        let value = values.first().copied().unwrap_or(Word::NIL);
-                        return publish_values(context, value, &values);
-                    }
-                    Err(ncl_conditions::ConditionError::Unhandled) => {
-                        context.set_pending_condition(condition);
-                        record_boundary_error(context, error);
-                        return error_result();
-                    }
-                    Err(condition_error) => {
-                        let error = match condition_error {
-                            ncl_conditions::ConditionError::Object(error) => error,
-                            // check-added-lines: allow(wildcard) preserve the original error.
-                            _ => error,
-                        };
-                        record_boundary_error(context, error);
-                        return error_result();
-                    }
-                }
+                return signal_condition_error(context, condition, error);
             }
+            record_boundary_error(context, error);
+            error_result()
+        }
+    }
+}
+
+pub(super) fn signal_condition_error(
+    context: &mut ThreadContext,
+    condition: Word,
+    original_error: ncl_object::ObjectError,
+) -> NativeCallResult {
+    match ncl_conditions::error(context, condition) {
+        Ok(()) => {
+            let values = context.values().to_vec();
+            let value = values.first().copied().unwrap_or(Word::NIL);
+            publish_values(context, value, &values)
+        }
+        Err(ncl_conditions::ConditionError::Unhandled) => {
+            context.set_pending_condition(condition);
+            record_boundary_error(context, original_error);
+            error_result()
+        }
+        Err(condition_error) => {
+            let error = match condition_error {
+                ncl_conditions::ConditionError::Object(error) => error,
+                // check-added-lines: allow(wildcard) preserve the original error.
+                _ => original_error,
+            };
             record_boundary_error(context, error);
             error_result()
         }

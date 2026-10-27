@@ -330,15 +330,25 @@ extern "C" fn undefined_function_dispatch(
     };
     #[allow(clippy::option_if_let_else)]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        invocation
-            .context
-            .set_pending_lisp_error(LispError::CellError(CellError::UndefinedFunction {
-                name: Word::from_bits(symbol),
-            }));
-        invocation
-            .context
-            .set_pending(ncl_object::ObjectError::UndefinedFunction);
-        error_result()
+        let error = LispError::CellError(CellError::UndefinedFunction {
+            name: Word::from_bits(symbol),
+        });
+        let condition = match ncl_conditions::condition_from_lisp_error(
+            invocation.context,
+            invocation.object,
+            error,
+        ) {
+            Ok(condition) => condition,
+            Err(error) => {
+                record_boundary_error(invocation.context, error);
+                return error_result();
+            }
+        };
+        dispatch_impl::signal_condition_error(
+            invocation.context,
+            condition,
+            ncl_object::ObjectError::UndefinedFunction,
+        )
     }) {
         Some(result) => result,
         None => error_result(),

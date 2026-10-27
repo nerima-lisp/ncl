@@ -330,6 +330,7 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
         "WITH-OUTPUT-TO-STRING",
         [output_stream_spec, x]
     );
+    case!("WITH-STANDARD-IO-SYNTAX", "WITH-STANDARD-IO-SYNTAX", [x]);
     assert_eq!(cases.len(), MACROS.len());
     ctx.set_gc_stress(true);
     let case_words: Vec<_> = cases.iter().map(|(_, input)| **input).collect();

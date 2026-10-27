@@ -69,6 +69,7 @@ pub const MACROS: &[&str] = &[
     "WITH-INPUT-FROM-STRING",
     "WITH-OPEN-FILE",
     "WITH-OUTPUT-TO-STRING",
+    "WITH-STANDARD-IO-SYNTAX",
 ];
 
 pub const OWNED_MACROS: &[&str] = &[
@@ -155,4 +156,5 @@ pub const OWNED_MACROS: &[&str] = &[
     "WITH-PACKAGE-ITERATOR",
     "WITH-SIMPLE-RESTART",
     "WITH-SLOTS",
+    "WITH-STANDARD-IO-SYNTAX",
 ];

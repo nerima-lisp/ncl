@@ -155,37 +155,24 @@ fn function_definition(
     body: &[HeapRootedWord],
 ) -> Result<Word, ObjectError> {
     let body_prefix = lambda_body_prefix(ctx, runtime, body)?;
-    let preserved_body = body
-        .get(..body_prefix.len())
-        .ok_or(ObjectError::TypeError)?;
-    let block_body = body
-        .get(body_prefix.len()..)
-        .ok_or(ObjectError::TypeError)?;
+    let (preserved_body, block_body) = body.split_at(body_prefix.len());
     let mut lambda_symbol = symbol(ctx, runtime, "LAMBDA")?;
     ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
-        let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list.get()])?;
-        ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-            let preserved_body = preserved_body
-                .iter()
-                .map(HeapRootedWord::get)
-                .collect::<Vec<_>>();
-            let mut lambda = append(ctx, runtime, *lambda, &preserved_body)?;
-            ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                let mut block_symbol = symbol(ctx, runtime, "BLOCK")?;
-                ncl_object::with_root(ctx, &mut block_symbol, |ctx, block_symbol| {
-                    let mut block = list(ctx, runtime, &[block_symbol.get(), name.get()])?;
-                    ncl_object::with_root(ctx, &mut block, |ctx, block| {
-                        let block_body = block_body
-                            .iter()
-                            .map(HeapRootedWord::get)
-                            .collect::<Vec<_>>();
-                        let mut block = append(ctx, runtime, *block, &block_body)?;
-                        ncl_object::with_root(ctx, &mut block, |ctx, block| {
-                            let lambda = append(ctx, runtime, lambda.get(), &[block.get()])?;
-                            finish_function_definition(ctx, runtime, name.get(), accessor, lambda)
-                        })
-                    })
-                })
+        let mut block_symbol = symbol(ctx, runtime, "BLOCK")?;
+        ncl_object::with_root(ctx, &mut block_symbol, |ctx, block_symbol| {
+            let mut block_elements = Vec::with_capacity(block_body.len() + 2);
+            block_elements.push(block_symbol.get());
+            block_elements.push(name.get());
+            block_elements.extend(block_body.iter().map(HeapRootedWord::get));
+            let mut block = list(ctx, runtime, &block_elements)?;
+            ncl_object::with_root(ctx, &mut block, |ctx, block| {
+                let mut lambda_elements = Vec::with_capacity(preserved_body.len() + 3);
+                lambda_elements.push(lambda_symbol.get());
+                lambda_elements.push(lambda_list.get());
+                lambda_elements.extend(preserved_body.iter().map(HeapRootedWord::get));
+                lambda_elements.push(block.get());
+                let lambda = list(ctx, runtime, &lambda_elements)?;
+                finish_function_definition(ctx, runtime, name.get(), accessor, lambda)
             })
         })
     })
@@ -243,21 +230,6 @@ fn property_definition(
             })
         })
     })
-}
-
-fn append(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    mut head: Word,
-    tail: &[Word],
-) -> Result<Word, ObjectError> {
-    if tail.is_empty() {
-        return Ok(head);
-    }
-    let mut values = form_elements(ctx, head)?;
-    values.extend_from_slice(tail);
-    head = list(ctx, runtime, &values)?;
-    Ok(head)
 }
 
 fn defun(

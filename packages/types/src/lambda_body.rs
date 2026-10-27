@@ -75,6 +75,7 @@ mod tests {
         let prefix = split_lambda_body_prefix(&[LambdaBodyElement::String]);
 
         assert_eq!(prefix.len(), 0);
+        assert!(prefix.is_empty());
         assert_eq!(prefix.docstring_index(), None);
     }
 
@@ -87,6 +88,7 @@ mod tests {
         ]);
 
         assert_eq!(prefix.len(), 2);
+        assert!(!prefix.is_empty());
         assert_eq!(prefix.docstring_index(), Some(0));
     }
 

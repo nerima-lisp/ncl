@@ -182,6 +182,33 @@ fn a_let_body_keeps_its_declarations() {
 }
 
 #[test]
+fn lambda_body_prefix_allows_declarations_around_docstrings() {
+    let mut f = Fixture::new();
+    let special = f.cl("SPECIAL");
+    let variable = f.user("X");
+    let specifier = f.list(&[special, variable]);
+    let declaration = declare(&mut f, &[specifier]);
+    let docstring = f.string("doc");
+    let body_form = f.user("BODY");
+
+    for forms in [
+        &[docstring, declaration, body_form][..],
+        &[declaration, docstring, body_form][..],
+    ] {
+        let body = f.expand_body(forms).unwrap();
+        assert_eq!(body.declarations.len(), 1);
+        assert_eq!(body.docstring.as_deref(), Some("doc"));
+        assert_eq!(body.forms.len(), 1);
+    }
+
+    let terminal_string = f.string("value");
+    let body = f.expand_body(&[terminal_string]).unwrap();
+    assert!(body.declarations.is_empty());
+    assert_eq!(body.docstring, None);
+    assert_eq!(body.forms.len(), 1);
+}
+
+#[test]
 fn the_environment_reports_special_and_typed_variables() {
     let mut env = LexicalEnv::new();
     let x = ncl_compiler_front::SymbolRef::interned("COMMON-LISP-USER", "X");

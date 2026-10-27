@@ -7,7 +7,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, dead_code)]
 
 use ncl_compiler_front::{
-    Declaration, Expr, FormExpander, FrontError, LambdaList, LambdaListKind, MacroCaller,
+    Body, Declaration, Expr, FormExpander, FrontError, LambdaList, LambdaListKind, MacroCaller,
     MacroRegistry,
 };
 use ncl_object::{Package, Runtime, ThreadContext, Word, make_cons, make_string};
@@ -93,6 +93,13 @@ impl Fixture {
         let registry = MacroRegistry::new();
         let mut expander = FormExpander::new(&mut self.ctx, &self.runtime, &registry);
         expander.expand(form)
+    }
+
+    /// Expand lambda body forms into declarations, documentation, and expressions.
+    pub fn expand_body(&mut self, forms: &[Word]) -> Result<Body, FrontError> {
+        let registry = MacroRegistry::new();
+        let mut expander = FormExpander::new(&mut self.ctx, &self.runtime, &registry);
+        expander.expand_body(forms)
     }
 
     /// Expand one form with a macro caller installed.

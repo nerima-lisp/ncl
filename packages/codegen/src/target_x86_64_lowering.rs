@@ -250,6 +250,8 @@ mod closure;
 pub(super) mod ops;
 #[path = "target_x86_64_lowering/ops_support.rs"]
 mod ops_support;
+#[path = "target_x86_64_lowering/primitives.rs"]
+mod primitives;
 pub(super) use closure::closure_capture_count;
 pub(super) use ops_support::{load_heap_constant, store_closure_capture};
 

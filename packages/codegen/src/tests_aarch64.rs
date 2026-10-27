@@ -78,7 +78,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
 }
 
 #[test]
-fn aarch64_array_primitives_use_indexed_simple_vector_slots() {
+fn aarch64_array_references_use_indexed_simple_vector_slots() {
     for (id, prim) in [(90, Prim::Aref), (91, Prim::Svref)] {
         let mut builder = FunctionBuilder::new(
             ncl_ir::FunctionId(id),
@@ -144,7 +144,10 @@ fn aarch64_array_primitives_use_indexed_simple_vector_slots() {
             "array reference uses the tagged index and simple-vector payload offset",
         );
     }
+}
 
+#[test]
+fn aarch64_array_set_uses_indexed_simple_vector_slots() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(92),
         "aarch64-array-set",
@@ -261,12 +264,11 @@ fn aarch64_array_set_reports_a_missing_write_barrier() {
             missing_write_barrier: true,
         },
     );
-    let error = result.expect_err("AArch64 Aset must fail without a write barrier");
     assert_eq!(
-        error,
-        crate::CodegenError::Unsupported(
+        result.err(),
+        Some(crate::CodegenError::Unsupported(
             crate::AbiError::UnsupportedRuntimeFunction(RuntimeFunction::WriteBarrier).to_string()
-        )
+        ))
     );
 }
 

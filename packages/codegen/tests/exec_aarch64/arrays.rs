@@ -113,14 +113,14 @@ fn store_then_reference_function() -> ncl_ir::Function {
     builder.finish()
 }
 
-fn simple_vector() -> Box<[u64; 5]> {
-    Box::new([
+const fn simple_vector() -> [u64; 5] {
+    [
         0,
         Word::fixnum(3).bits(),
         Word::fixnum(10).bits(),
         Word::fixnum(20).bits(),
         Word::fixnum(30).bits(),
-    ])
+    ]
 }
 
 fn execute(function: &ncl_ir::Function, abi: &dyn RuntimeAbi, arguments: &[Word]) -> Word {

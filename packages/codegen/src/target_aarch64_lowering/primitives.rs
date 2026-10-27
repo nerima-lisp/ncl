@@ -3,8 +3,13 @@ use crate::{Allocation, CodegenError, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Prim, ValueId};
 
-const SIMPLE_VECTOR_DATA_OFFSET: i16 =
-    ((ncl_object::simple_vector_offset::DATA + 1) * std::mem::size_of::<ncl_sys::Word>()) as i16;
+fn simple_vector_data_offset() -> Result<i16, CodegenError> {
+    ncl_object::simple_vector_offset::DATA
+        .checked_add(1)
+        .and_then(|slot| slot.checked_mul(std::mem::size_of::<ncl_sys::Word>()))
+        .and_then(|offset| i16::try_from(offset).ok())
+        .ok_or(CodegenError::FrameOverflow)
+}
 
 fn emit_sequence(
     assembler: &mut Assembler,
@@ -30,12 +35,14 @@ fn lower_indexed_write_barrier(
                     Inst::AsrImm {
                         rd: Reg(1),
                         rn: Reg(1),
-                        amount: ncl_sys::FIXNUM_TAG_BITS as u8,
+                        amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
+                            .map_err(|_| CodegenError::FrameOverflow)?,
                     },
                     Inst::AddImm {
                         rd: RegOrSp::Reg(Reg(1)),
                         rn: RegOrSp::Reg(Reg(1)),
-                        imm: ncl_object::simple_vector_offset::DATA as u16,
+                        imm: u16::try_from(ncl_object::simple_vector_offset::DATA)
+                            .map_err(|_| CodegenError::FrameOverflow)?,
                         shift: false,
                     },
                     Inst::Mov {
@@ -48,6 +55,7 @@ fn lower_indexed_write_barrier(
         .and_then(|()| load_value(assembler, allocation, owner, Reg(2)))
         .and_then(|()| {
             abi.runtime_address(RuntimeFunction::WriteBarrier)
+                // check-added-lines: allow(unsupported) preserve runtime ABI lookup failures.
                 .map_err(|error| CodegenError::Unsupported(error.to_string()))
         })
         .and_then(|address| emit_sequence(assembler, ncl_asm_aarch64::mov_imm64(Reg(17), address)))
@@ -273,8 +281,14 @@ pub(super) fn lower_prim(
             )?;
         }
         Prim::Svref | Prim::Aref => {
+            let Some(index) = args.get(1).copied() else {
+                // check-added-lines: allow(unsupported) report malformed simple-vector operands.
+                return Err(CodegenError::Unsupported(
+                    "simple-vector reference has no index operand".into(),
+                ));
+            };
             return load_value(assembler, allocation, *first, Reg(1))
-                .and_then(|()| load_value(assembler, allocation, args[1], Reg(2)))
+                .and_then(|()| load_value(assembler, allocation, index, Reg(2)))
                 .and_then(|()| {
                     emit_sequence(
                         assembler,
@@ -294,7 +308,7 @@ pub(super) fn lower_prim(
                                 rt: Reg(16),
                                 mem: MemOperand::Unscaled {
                                     base: RegOrSp::Reg(Reg(1)),
-                                    offset: SIMPLE_VECTOR_DATA_OFFSET,
+                                    offset: simple_vector_data_offset()?,
                                 },
                             },
                         ],
@@ -330,9 +344,21 @@ pub(super) fn lower_prim(
             super::ops::lower_write_barrier_call(assembler, *first, slot, allocation, abi)?;
         }
         Prim::Aset => {
-            return load_value(assembler, allocation, args[2], Reg(0))
+            let Some(index) = args.get(1).copied() else {
+                // check-added-lines: allow(unsupported) report malformed aset operands.
+                return Err(CodegenError::Unsupported(
+                    "aset has no index operand".into(),
+                ));
+            };
+            let Some(value) = args.get(2).copied() else {
+                // check-added-lines: allow(unsupported) report malformed aset operands.
+                return Err(CodegenError::Unsupported(
+                    "aset has no value operand".into(),
+                ));
+            };
+            return load_value(assembler, allocation, value, Reg(0))
                 .and_then(|()| load_value(assembler, allocation, *first, Reg(1)))
-                .and_then(|()| load_value(assembler, allocation, args[1], Reg(2)))
+                .and_then(|()| load_value(assembler, allocation, index, Reg(2)))
                 .and_then(|()| {
                     emit_sequence(
                         assembler,
@@ -352,14 +378,14 @@ pub(super) fn lower_prim(
                                 rt: Reg(0),
                                 mem: MemOperand::Unscaled {
                                     base: RegOrSp::Reg(Reg(1)),
-                                    offset: SIMPLE_VECTOR_DATA_OFFSET,
+                                    offset: simple_vector_data_offset()?,
                                 },
                             },
                         ],
                     )
                 })
                 .and_then(|()| {
-                    lower_indexed_write_barrier(assembler, *first, args[1], allocation, abi)
+                    lower_indexed_write_barrier(assembler, *first, index, allocation, abi)
                 })
                 .and_then(|()| {
                     result.map_or(Ok(()), |result| {

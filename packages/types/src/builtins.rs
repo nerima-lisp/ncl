@@ -190,7 +190,7 @@ fn subtypep_builtin(
         }
         (Err(_), _) | (_, Err(_)) => (false, false),
     };
-    values.set(&[bool_word(definite)]);
+    values.set(&[bool_word(is_sub), bool_word(definite)]);
     Ok(bool_word(is_sub))
 }
 

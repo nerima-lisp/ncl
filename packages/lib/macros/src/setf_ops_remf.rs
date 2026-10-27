@@ -134,8 +134,8 @@ pub fn expand_remf(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?;
-        let property = arguments.get(1).ok_or(ObjectError::TypeError)?;
+        let place_word = &arguments[0]; // check-added-lines: allow(index) expand_remf requires exactly two arguments above.
+        let property = &arguments[1]; // check-added-lines: allow(index) expand_remf requires exactly two arguments above.
         let expansion = place(ctx, runtime, registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
 

@@ -5,8 +5,8 @@ use ncl_object::{
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
-    make_cons, pop_root, push_root, set_symbol_special, set_symbol_value, symbol_value, with_root,
-    with_roots,
+    make_cons, pop_root, push_root, rplacd, set_symbol_special, set_symbol_value, symbol_value,
+    with_root, with_roots,
 };
 
 use crate::{PrintError, PrintOptions, write_to_string};
@@ -47,6 +47,10 @@ const STREAM_PARAMETER: Parameter = Parameter {
     name: BuiltinName::new("OUTPUT-STREAM"),
     ty: ParameterType::Any,
 };
+const PPRINT_DISPATCH_TABLE_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("TABLE"),
+    ty: ParameterType::Any,
+};
 
 /// The `(package, name)` special variables `ncl-printer` owns.
 const VARIABLES: [(&str, &str); 4] = [
@@ -58,9 +62,9 @@ const VARIABLES: [(&str, &str); 4] = [
 
 /// Register every symbol `ncl-printer` owns with `runtime`.
 ///
-/// Each function symbol is interned in its package and registered with an
-/// unbound placeholder until the runtime supplies a callable function object.
-/// The owned variables are interned, marked special, and initialised:
+/// Implemented functions are registered as callable builtins; the remaining
+/// function symbols keep unbound placeholders. The owned variables are
+/// interned, marked special, and initialised:
 /// `*PRINT-PPRINT-DISPATCH*` to an empty dispatch table, the rest to `NIL`.
 ///
 /// # Errors
@@ -74,7 +78,9 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     for (package, name) in FUNCTIONS {
         let package_word = runtime.ensure_package(ctx, package)?;
         Package::from_word(package_word).intern(ctx, runtime, name)?;
-        if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
+        if package == "COMMON-LISP" && name == "COPY-PPRINT-DISPATCH" {
+            register_copy_pprint_dispatch_builtin(ctx, runtime)?;
+        } else if package == "COMMON-LISP" && matches!(name, "PRINC" | "PRIN1" | "PRINT") {
             register_print_builtin(ctx, runtime, name)?;
         } else if package == "COMMON-LISP"
             && matches!(
@@ -131,6 +137,58 @@ fn register_print_builtin(
         BuiltinImplementation::adapted(descriptor, function, print_arguments),
     )?;
     Ok(())
+}
+
+fn register_copy_pprint_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<(), ObjectError> {
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("COPY-PPRINT-DISPATCH"),
+        ),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[], &[PPRINT_DISPATCH_TABLE_PARAMETER]),
+                convention: BuiltinConvention::Adapted,
+            },
+            copy_pprint_dispatch_builtin,
+            print_arguments,
+        ),
+    )?;
+    Ok(())
+}
+
+fn copy_pprint_dispatch_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut table = match args.get(0) {
+        Some(Word::NIL) => default_table(ctx, runtime)?,
+        Some(table) => table,
+        None => current_pprint_dispatch_table(ctx, runtime)?,
+    };
+    with_root(ctx, &mut table, |ctx, table| {
+        copy_pprint_dispatch(ctx, runtime, table.get())
+    })
+}
+
+fn current_pprint_dispatch_table(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<Word, ObjectError> {
+    let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
+    with_root(ctx, &mut package.clone(), |ctx, package| {
+        let (mut symbol, _) =
+            Package::from_word(package.get()).intern(ctx, runtime, "*PRINT-PPRINT-DISPATCH*")?;
+        with_root(ctx, &mut symbol, |ctx, symbol| {
+            symbol_value(ctx, symbol.get())
+        })
+    })
 }
 
 fn print_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
@@ -336,7 +394,8 @@ fn initialise_variable(
 ///
 /// # Errors
 ///
-/// Returns an [`ObjectError`] when an entry cannot be allocated.
+/// Returns an [`ObjectError`] when `table` is not a proper list or an entry
+/// cannot be allocated.
 pub fn default_table(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
     let mut entry = make_cons(ctx, runtime, Word::TRUE, Word::NIL)?;
     let token = push_root(ctx, &mut entry);
@@ -413,11 +472,25 @@ pub fn copy_pprint_dispatch(
     let mut copied = Word::NIL;
     let source_token = push_root(ctx, &mut source);
     let copied_token = push_root(ctx, &mut copied);
-    let result = copy_entries(ctx, runtime, &mut source, &mut copied);
+    let result = copy_entries(ctx, runtime, &mut source, &mut copied)
+        .and_then(|()| reverse_copied_entries(ctx, &mut copied));
     let _ = pop_root(ctx, copied_token);
     let _ = pop_root(ctx, source_token);
     result?;
     Ok(copied)
+}
+
+fn reverse_copied_entries(ctx: &mut ThreadContext, copied: &mut Word) -> Result<(), ObjectError> {
+    let mut cursor = *copied;
+    let mut reversed = Word::NIL;
+    while cursor != Word::NIL {
+        let next = cdr(ctx, cursor)?;
+        rplacd(ctx, cursor, reversed)?;
+        reversed = cursor;
+        cursor = next;
+    }
+    *copied = reversed;
+    Ok(())
 }
 
 include!("pprint_dispatch.rs");

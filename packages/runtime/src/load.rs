@@ -1,14 +1,14 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::evalwhen::TopLevelMode;
 use crate::{Runtime, RuntimeError, compile, file_environment};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FileError, FunctionObject, HeapRootedWord, LambdaList, LispError,
-    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
-    Readtable as ObjectReadtable, Runtime as ObjectRuntime, ThreadContext, Word, car, cdr,
-    classify_object, make_string, symbol_name, symbol_package, symbol_value, with_root,
+    BuiltinPackage, FunctionObject, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
+    Package, Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
+    ThreadContext, Word, car, cdr, classify_object, make_string, symbol_name, symbol_package, symbol_value,
+    with_root,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
@@ -160,7 +160,118 @@ fn load_with_runtime(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let path = ncl_lib_pathnames::resolve_pathname(ctx, object, args.required(0)?)?;
+    let ParsedLoadArguments {
+        pathname,
+        path,
+        if_missing,
+        options,
+    } = parse_load_arguments(ctx, object, args)?;
+    match file_with_options(runtime, &path, options) {
+        Ok(_) => {
+            values.set(&[Word::TRUE]);
+            Ok(Word::TRUE)
+        }
+        Err(FileLoadError::UnsupportedExternalFormat) => {
+            signal_load_error(ctx, object, "unsupported source external format")
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Io { error, .. }))
+            if error.kind() == std::io::ErrorKind::NotFound && !if_missing =>
+        {
+            values.set(&[Word::NIL]);
+            Ok(Word::NIL)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Io { .. })) => {
+            let condition = ncl_conditions::make_typed_condition(
+                ctx,
+                object,
+                ncl_conditions::ConditionIdentifier::FileError,
+                &[ncl_conditions::ConditionSlotValue::from_word(
+                    pathname.get(),
+                )],
+            )
+            .map_err(condition_error_to_object_error)?;
+            ctx.set_pending_condition(condition.as_word());
+            Err(ObjectError::TypeError)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Read(ncl_reader::ReadError::UnexpectedEof))) => {
+            ctx.set_pending_lisp_error(LispError::EndOfFile);
+            Err(ObjectError::TypeError)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Read(ncl_reader::ReadError::Object(error)))) => {
+            Err(error)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Read(error))) => {
+            let diagnostic =
+                make_string(ctx, object, &error.to_string().chars().collect::<Vec<_>>())?;
+            let diagnostic = HeapRootedWord::new(ctx, diagnostic)?;
+            // LOAD has no Lisp stream for slot 0; slot 1 retains the reader diagnostic.
+            let condition = ncl_conditions::make_typed_condition(
+                ctx,
+                object,
+                ncl_conditions::ConditionIdentifier::ReaderError,
+                &[
+                    ncl_conditions::ConditionSlotValue::from_word(Word::NIL),
+                    ncl_conditions::ConditionSlotValue::from_word(diagnostic.get()),
+                ],
+            )
+            .map_err(condition_error_to_object_error)?;
+            ctx.set_pending_condition(condition.as_word());
+            Err(ObjectError::TypeError)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::Native(message))) => {
+            signal_load_error(ctx, object, &message)
+        }
+        Err(FileLoadError::Runtime(
+            RuntimeError::Object(error)
+            | RuntimeError::Front(ncl_compiler_front::FrontError::Object(error)),
+        )) => Err(error),
+        Err(FileLoadError::Runtime(RuntimeError::UndefinedFunction { .. })) => {
+            let condition = runtime
+                .pending_undefined_function_condition()
+                .ok_or(ObjectError::Layout)?;
+            ctx.set_pending_condition(condition);
+            Err(ObjectError::TypeError)
+        }
+        Err(FileLoadError::Runtime(RuntimeError::NativeFailure { condition, .. })) => {
+            crate::native_error::signal_native_failure(ctx, object, condition)
+        }
+        Err(FileLoadError::Runtime(error @ (RuntimeError::Front(_) | RuntimeError::Lower(_)))) => {
+            signal_load_error(ctx, object, &error.to_string())
+        }
+    }
+}
+
+fn signal_load_error(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    message: &str,
+) -> Result<Word, ObjectError> {
+    crate::native_error::signal_native_load_error(ctx, object, message)?;
+    Err(ObjectError::TypeError)
+}
+
+const fn condition_error_to_object_error(error: ncl_conditions::ConditionError) -> ObjectError {
+    match error {
+        ncl_conditions::ConditionError::Object(error) => error,
+        // check-added-lines: allow(wildcard) ConditionError is non-exhaustive.
+        _ => ObjectError::Layout,
+    }
+}
+
+struct ParsedLoadArguments {
+    pathname: HeapRootedWord,
+    path: PathBuf,
+    if_missing: bool,
+    options: FileLoadOptions,
+}
+
+fn parse_load_arguments(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    args: &BuiltinArgs<'_>,
+) -> Result<ParsedLoadArguments, ObjectError> {
+    let pathname = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let path = ncl_lib_pathnames::resolve_pathname(ctx, object, pathname.get())?;
     let mut if_missing = true;
     let mut print = None;
     let mut verbose = None;
@@ -194,49 +305,16 @@ fn load_with_runtime(
         print.unwrap_or(common_lisp_variable_value(ctx, object, "*LOAD-PRINT*")? != Word::NIL);
     let verbose =
         verbose.unwrap_or(common_lisp_variable_value(ctx, object, "*LOAD-VERBOSE*")? != Word::NIL);
-    match file_with_options(
-        runtime,
-        &path,
-        FileLoadOptions {
+    Ok(ParsedLoadArguments {
+        pathname,
+        path,
+        if_missing,
+        options: FileLoadOptions {
             print_results,
             verbose,
             external_format_supported,
         },
-    ) {
-        Ok(_) => {
-            values.set(&[Word::TRUE]);
-            Ok(Word::TRUE)
-        }
-        Err(FileLoadError::UnsupportedExternalFormat) => Err(ObjectError::TypeError),
-        Err(FileLoadError::Runtime(RuntimeError::Io { error, .. }))
-            if error.kind() == std::io::ErrorKind::NotFound && !if_missing =>
-        {
-            values.set(&[Word::NIL]);
-            Ok(Word::NIL)
-        }
-        Err(FileLoadError::Runtime(RuntimeError::Io { error, .. }))
-            if error.kind() == std::io::ErrorKind::NotFound =>
-        {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::NotFound));
-            Err(ObjectError::TypeError)
-        }
-        Err(FileLoadError::Runtime(RuntimeError::Native(message))) => {
-            crate::native_error::signal_native_load_error(ctx, object, &message)?;
-            Err(ObjectError::TypeError)
-        }
-        Err(FileLoadError::Runtime(
-            RuntimeError::Io { .. }
-            | RuntimeError::Object(_)
-            | RuntimeError::Read(_)
-            | RuntimeError::Front(_)
-            | RuntimeError::Lower(_)
-            | RuntimeError::UndefinedFunction { .. }
-            | RuntimeError::NativeFailure { .. },
-        )) => {
-            ctx.set_pending_lisp_error(LispError::FileError(FileError::InvalidPath));
-            Err(ObjectError::TypeError)
-        }
-    }
+    })
 }
 
 pub fn keyword_name(
@@ -456,7 +534,7 @@ fn call_output_builtin(
 }
 
 fn in_package_name(
-    ctx: &ncl_object::ThreadContext,
+    ctx: &ThreadContext,
     form: Word,
 ) -> Result<Option<String>, RuntimeError> {
     if !matches!(classify_object(ctx, form), ObjectRef::Cons(_)) {

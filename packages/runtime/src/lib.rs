@@ -386,7 +386,6 @@ impl Runtime {
         metadata: &CodeObjectMetadata,
         function: Word,
     ) -> Result<(Word, Vec<Word>), RuntimeError> {
-        let _ = self.context.take_pending_runtime_errors();
         let code_object = function_code(&self.context, Function::from_word(function))?;
         let entry_codes = &self.entry_codes;
         let context = &mut self.context;
@@ -401,6 +400,10 @@ impl Runtime {
             thread,
             Some(NonNull::from(&mut native_context).cast()),
         );
+        if previous.is_none() {
+            // Nested invocations must retain pending errors for their caller.
+            let _ = native_context.context.take_pending_runtime_errors();
+        }
         let result = invoke_entry_with_function(
             code,
             metadata.entry_offset,
@@ -439,6 +442,11 @@ impl Runtime {
             )?);
         }
         if context.take_non_local_exit() {
+            // Nested evaluation can pass the exit to its compiled caller.
+            if previous.is_some() {
+                context.set_non_local_exit(true);
+                return Err(ObjectError::NonLocalExit.into());
+            }
             return Err(ObjectError::ControlError.into());
         }
         let value_count = usize::try_from(value_count).map_err(|_| ObjectError::Layout)?;

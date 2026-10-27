@@ -7,7 +7,7 @@ use ncl_sys::{NativeError, NativeOperation, OverflowSemantics, StorageCondition}
 use crate::RuntimeError;
 
 /// The typed condition category corresponding to a direct native failure.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum NativeCondition {
     /// An object-layer failure, such as storage exhaustion or an invalid object.
     Object(ObjectError),
@@ -49,6 +49,22 @@ pub const fn native_failure(error: NativeError) -> RuntimeError {
         NativeError::TypeMismatch { .. } => NativeCondition::Object(ObjectError::TypeError),
     };
     RuntimeError::NativeFailure { error, condition }
+}
+
+pub fn signal_native_failure(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    condition: NativeCondition,
+) -> Result<Word, ObjectError> {
+    match condition {
+        NativeCondition::Object(error) => Err(error),
+        NativeCondition::Lisp(error) => {
+            let converter = object.lisp_error_converter().ok_or(ObjectError::Layout)?;
+            let condition = converter(ctx, object, error)?;
+            ctx.set_pending_condition(condition);
+            Err(ObjectError::TypeError)
+        }
+    }
 }
 
 /// Map an unhandled object error to its user-facing runtime error.

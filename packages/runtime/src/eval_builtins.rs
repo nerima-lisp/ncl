@@ -1,7 +1,7 @@
-use crate::{NativeCondition, Runtime, RuntimeError};
+use crate::{Runtime, RuntimeError};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError, Parameter,
+    BuiltinPackage, HeapRootedWord, LambdaList, MultipleValues, ObjectError, Parameter,
     ParameterType, Runtime as ObjectRuntime, ThreadContext, Word,
 };
 
@@ -55,10 +55,6 @@ fn eval_builtin(
         }
         Err(
             RuntimeError::Object(error)
-            | RuntimeError::NativeFailure {
-                condition: NativeCondition::Object(error),
-                ..
-            }
             | RuntimeError::Front(ncl_compiler_front::FrontError::Object(error)),
         ) => Err(error),
         Err(RuntimeError::UndefinedFunction { .. }) => {
@@ -66,21 +62,9 @@ fn eval_builtin(
             ctx.set_pending_condition(condition);
             Err(ObjectError::TypeError)
         }
-        Err(RuntimeError::NativeFailure {
-            condition: NativeCondition::Lisp(error),
-            ..
-        }) => signal_lisp_error(ctx, object, error),
+        Err(RuntimeError::NativeFailure { condition, .. }) => {
+            crate::native_error::signal_native_failure(ctx, object, condition)
+        }
         Err(_) => Err(ObjectError::Layout),
     }
-}
-
-fn signal_lisp_error(
-    ctx: &mut ThreadContext,
-    object: &ObjectRuntime,
-    error: LispError,
-) -> Result<Word, ObjectError> {
-    let converter = object.lisp_error_converter().ok_or(ObjectError::Layout)?;
-    let condition = converter(ctx, object, error)?;
-    ctx.set_pending_condition(condition);
-    Err(ObjectError::TypeError)
 }

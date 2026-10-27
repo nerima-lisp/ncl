@@ -17,6 +17,16 @@ fn eval_builtin_evaluates_a_form() {
 }
 
 #[test]
+fn eval_builtin_preserves_native_type_error_condition() {
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let value = runtime
+        .eval("(handler-case (eval '(car 1)) (type-error () t))")
+        .unwrap_or_else(|error| panic!("EVAL type-error probe failed: {error}"));
+    assert_eq!(runtime.format_result(value), "T");
+}
+
+#[test]
 fn progv_assert_preserves_lexical_value_after_handler_region() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let value = runtime

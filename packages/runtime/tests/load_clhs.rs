@@ -404,3 +404,125 @@ fn r5_load_rejects_macrolet_without_a_definition_list() {
         panic!("LOAD malformed MACROLET source cleanup failed: {error}");
     }
 }
+
+fn assert_load_condition_probe(
+    runtime: &mut Runtime,
+    route: &str,
+    compile: bool,
+    form: &str,
+    failure: &str,
+) {
+    let result = if compile {
+        runtime.compile(form)
+    } else {
+        runtime.eval(form)
+    };
+    let value = result.unwrap_or_else(|error| {
+        panic!("LOAD {route} condition probe failed unexpectedly: {error}")
+    });
+    assert_eq!(runtime.format_result(value), "T", "LOAD {route} {failure}");
+}
+
+#[test]
+fn load_builtin_classifies_errors_in_eval_and_compile_paths() {
+    let stem = format!("ncl-load-error-class-{}", std::process::id());
+    let missing = std::env::temp_dir().join(format!("{stem}-missing.lisp"));
+    let reader_error = std::env::temp_dir().join(format!("{stem}-reader.lisp"));
+    let lowering_error = std::env::temp_dir().join(format!("{stem}-lowering.lisp"));
+    let unsupported_format = std::env::temp_dir().join(format!("{stem}-format.lisp"));
+    let simple_error = std::env::temp_dir().join(format!("{stem}-simple.lisp"));
+    let type_error = std::env::temp_dir().join(format!("{stem}-type.lisp"));
+    if missing.exists() {
+        fs::remove_file(&missing)
+            .unwrap_or_else(|error| panic!("stale missing LOAD fixture cleanup failed: {error}"));
+    }
+    fs::write(&reader_error, ")")
+        .unwrap_or_else(|error| panic!("LOAD reader fixture creation failed: {error}"));
+    fs::write(&lowering_error, "(go ncl-load-error-class-missing-tag)")
+        .unwrap_or_else(|error| panic!("LOAD lowering fixture creation failed: {error}"));
+    fs::write(&unsupported_format, "(values)")
+        .unwrap_or_else(|error| panic!("LOAD format fixture creation failed: {error}"));
+    fs::write(&simple_error, "(error \"boom\")")
+        .unwrap_or_else(|error| panic!("LOAD simple-error fixture creation failed: {error}"));
+    fs::write(&type_error, "(car 1)")
+        .unwrap_or_else(|error| panic!("LOAD type-error fixture creation failed: {error}"));
+
+    let missing_form = format!(
+        concat!(
+            "(handler-case (progn (load {path}) :no-error) ",
+            "(error (condition) ",
+            "(and (typep condition 'file-error) ",
+            "(stringp (ncl-ext::condition-slot-ref condition 0)) ",
+            "(string= (ncl-ext::condition-slot-ref condition 0) {path}))))",
+        ),
+        path = lisp_string(&missing),
+    );
+    let reader_form = format!(
+        concat!(
+            "(handler-case (progn (load {}) :no-error) ",
+            "(error (condition) ",
+            "(and (typep condition 'reader-error) ",
+            "(null (ncl-ext::condition-slot-ref condition 0)) ",
+            "(string= (ncl-ext::condition-slot-ref condition 1) ",
+            "\"unmatched right parenthesis\"))))",
+        ),
+        lisp_string(&reader_error),
+    );
+    let lowering_form = format!(
+        concat!(
+            "(handler-case (progn (load {}) :no-error) ",
+            "(simple-error () t))",
+        ),
+        lisp_string(&lowering_error),
+    );
+    let unsupported_format_form = format!(
+        concat!(
+            "(handler-case (progn (load {} :external-format :utf-8) :no-error) ",
+            "(simple-error () t))",
+        ),
+        lisp_string(&unsupported_format),
+    );
+    let simple_error_form = format!(
+        "(handler-case (progn (load {}) :no-error) (simple-error () t))",
+        lisp_string(&simple_error),
+    );
+    let type_error_form = format!(
+        "(handler-case (progn (load {}) :no-error) (type-error () t))",
+        lisp_string(&type_error),
+    );
+
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    for (route, compile) in [("eval", false), ("compile", true)] {
+        for (form, failure) in [
+            (
+                &missing_form,
+                "FILE-ERROR did not retain its pathname in slot 0",
+            ),
+            (&reader_form, "did not preserve READER-ERROR detail"),
+            (
+                &lowering_form,
+                "lowering failure was not preserved as SIMPLE-ERROR",
+            ),
+            (
+                &unsupported_format_form,
+                "unsupported external format was not preserved as SIMPLE-ERROR",
+            ),
+            (&simple_error_form, "source SIMPLE-ERROR was not preserved"),
+            (&type_error_form, "source TYPE-ERROR was not preserved"),
+        ] {
+            assert_load_condition_probe(&mut runtime, route, compile, form, failure);
+        }
+    }
+
+    for path in [
+        &reader_error,
+        &lowering_error,
+        &unsupported_format,
+        &simple_error,
+        &type_error,
+    ] {
+        fs::remove_file(path)
+            .unwrap_or_else(|error| panic!("LOAD condition fixture cleanup failed: {error}"));
+    }
+}

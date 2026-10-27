@@ -211,7 +211,6 @@ def _eval_form(
     cwd: Path,
     selection: tuple[str, ...],
     skip_files: tuple[str, ...] = (),
-    skip_benchmarks: tuple[str, ...] = (),
     preflight_file: str | None = None,
 ) -> str:
     assignments = [
@@ -219,7 +218,6 @@ def _eval_form(
         "common-lisp-user::*cl-bench-selection* " + _lisp_list(selection),
         "common-lisp-user::*cl-bench-source-files* " + _lisp_list(SOURCE_FILES),
         "common-lisp-user::*cl-bench-skip-files* " + _lisp_list(skip_files),
-        "common-lisp-user::*cl-bench-skip-benchmarks* " + _lisp_list(skip_benchmarks),
         "common-lisp-user::*cl-bench-preflight-file* "
         + (_lisp_string(preflight_file) if preflight_file else "nil"),
     ]
@@ -228,7 +226,6 @@ def _eval_form(
         "*cl-bench-selection*",
         "*cl-bench-source-files*",
         "*cl-bench-skip-files*",
-        "*cl-bench-skip-benchmarks*",
         "*cl-bench-preflight-file*",
     )
     declarations = " ".join(
@@ -261,7 +258,6 @@ def _command(
     cwd: Path,
     selection: tuple[str, ...],
     skip_files: tuple[str, ...] = (),
-    skip_benchmarks: tuple[str, ...] = (),
     preflight_file: str | None = None,
 ) -> list[str]:
     form = _eval_form(
@@ -270,7 +266,6 @@ def _command(
         cwd=cwd,
         selection=selection,
         skip_files=skip_files,
-        skip_benchmarks=skip_benchmarks,
         preflight_file=preflight_file,
     )
     if engine == "ncl":
@@ -341,50 +336,6 @@ def _source_owner(function: str, cwd: Path) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def _merge_source_failures(
-    result: dict[str, Any],
-    failures: dict[str, str],
-    registered: dict[str, tuple[str, ...]],
-    selection: tuple[str, ...],
-    cwd: Path,
-) -> dict[str, Any]:
-    benchmarks = result["benchmarks"]
-    selected_rows = selection or tuple(registered)
-    for name in selected_rows:
-        for function in registered.get(name, ()):
-            owner = _source_owner(function, cwd)
-            if owner in failures:
-                benchmarks[name] = {
-                    "status": "failed",
-                    "stage": "load",
-                    "times": [],
-                    "condition": failures[owner],
-                }
-                break
-    existing = {name.casefold() for name in benchmarks}
-    for name in selection:
-        if name.casefold() not in existing:
-            benchmarks[name] = {
-                "status": "failed",
-                "stage": "register",
-                "times": [],
-                "condition": "benchmark was not registered",
-            }
-    result["times"] = [
-        sample
-        for benchmark in benchmarks.values()
-        if benchmark.get("status") == "passed"
-        for sample in benchmark.get("times", [])
-    ]
-    if result.get("status") == "failed" or any(
-        benchmark.get("status") == "failed" for benchmark in benchmarks.values()
-    ):
-        result["status"] = "failed"
-    else:
-        result["status"] = "passed"
-    return result
-
-
 def run_supervisor(
     *,
     engine: str,
@@ -393,7 +344,6 @@ def run_supervisor(
     driver: Path,
     selection: tuple[str, ...],
     cwd: Path,
-    process_mode: str,
 ) -> int:
     failures: dict[str, str] = {}
     for source in SOURCE_FILES:
@@ -416,51 +366,16 @@ def run_supervisor(
     registered = _registered_functions(cwd)
     requested_rows = selection or _comparison_benchmarks()
     selected_rows = _canonical_rows(requested_rows, registered)
-    if process_mode == "single":
-        skip_benchmarks = tuple(
-            name
-            for name in selected_rows
-            if any(
-                _source_owner(function, cwd) == source
-                for source in failures
-                for function in registered.get(name, ())
-            )
-        )
-        process = _run_child(
-            _command(
-                engine=engine,
-                runner=runner,
-                mode=mode,
-                driver=driver,
-                cwd=cwd,
-                selection=requested_rows,
-                skip_files=tuple(failures),
-                skip_benchmarks=skip_benchmarks,
-            ),
-            cwd,
-        )
-        result = _json_result(process.stdout)
-        if result is None:
-            print(process.stdout, end="", file=sys.stderr)
-            print(process.stderr, end="", file=sys.stderr)
-            print(_failure_detail(process), file=sys.stderr)
-            return process.returncode or 1
-        result = _merge_source_failures(
-            result, failures, registered, selected_rows, cwd
-        )
-        if process.returncode != 0 and process.stderr:
-            print(_without_stage_markers(process.stderr), end="", file=sys.stderr)
-    else:
-        result = _run_benchmark_workers(
-            engine=engine,
-            runner=runner,
-            mode=mode,
-            driver=driver,
-            selected_rows=selected_rows,
-            registered=registered,
-            failures=failures,
-            cwd=cwd,
-        )
+    result = _run_benchmark_workers(
+        engine=engine,
+        runner=runner,
+        mode=mode,
+        driver=driver,
+        selected_rows=selected_rows,
+        registered=registered,
+        failures=failures,
+        cwd=cwd,
+    )
     result = {
         "status": result["status"],
         "times": result["times"],
@@ -635,9 +550,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("default", "off"), default="default")
     parser.add_argument("--driver", type=Path, required=True)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
-    parser.add_argument(
-        "--process-mode", choices=("per-benchmark", "single"), default="per-benchmark"
-    )
     parser.add_argument("benchmarks", nargs="*")
     args = parser.parse_args(argv)
     return run_supervisor(
@@ -647,7 +559,6 @@ def main(argv: list[str] | None = None) -> int:
         driver=args.driver.resolve(),
         selection=tuple(args.benchmarks),
         cwd=args.cwd.resolve(),
-        process_mode=args.process_mode,
     )
 
 

@@ -249,10 +249,7 @@ class OptimizationBaselineTests(unittest.TestCase):
                 self.assertEqual(call[3][:2], [sys.executable, str(baseline.DRIVER_SUPERVISOR)])
                 self.assertEqual(call[3][call[3].index("--engine") + 1], "sbcl")
                 self.assertEqual(call[3][call[3].index("--cwd") + 1], str(call[4]))
-                self.assertEqual(
-                    call[3][call[3].index("--process-mode") + 1],
-                    "per-benchmark",
-                )
+                self.assertNotIn("--process-mode", call[3])
                 self.assertEqual(call[3][-len(expected):], expected)
 
     def test_selected_benchmarks_reject_unknown_and_duplicate_names(self):

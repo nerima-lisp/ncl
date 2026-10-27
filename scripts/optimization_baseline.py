@@ -687,8 +687,6 @@ def _sbcl_command(
         str(SBCL_DRIVER),
         "--cwd",
         str(cwd),
-        "--process-mode",
-        "per-benchmark",
         *benchmark_names,
     ]
 

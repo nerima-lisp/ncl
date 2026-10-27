@@ -18,14 +18,6 @@ esac
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 shift 2
-process_mode=${CL_BENCH_PROCESS_MODE:-per-benchmark}
-case "$process_mode" in
-    per-benchmark|single) ;;
-    *)
-        printf '%s\n' 'CL_BENCH_PROCESS_MODE must be per-benchmark or single' >&2
-        exit 2
-        ;;
-esac
 
 for benchmark in "$@"; do
     case "$benchmark" in
@@ -42,5 +34,4 @@ exec python3 "$script_dir/driver_supervisor.py" \
     --mode "$mode" \
     --driver "$script_dir/ncl-driver.lisp" \
     --cwd "$PWD" \
-    --process-mode "$process_mode" \
     "$@"

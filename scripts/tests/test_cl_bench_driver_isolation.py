@@ -89,7 +89,7 @@ class DriverIsolationTests(unittest.TestCase):
             (cwd / "files" / "broken.lisp").write_text(
                 """(defpackage :cl-bench.fixture
   (:use :cl)
-  (:export :broken-load :broken-execute :later-finish))
+  (:export :broken-load :broken-execute :later-finish :exit-without-json))
 (in-package :cl-bench.fixture)
 (defun broken-load () nil)
 (error "synthetic source load failure")
@@ -100,6 +100,7 @@ class DriverIsolationTests(unittest.TestCase):
                 """(in-package :cl-bench.fixture)
 (defun broken-execute () (error "synthetic execution failure"))
 (defun later-finish () t)
+(defun exit-without-json () (sb-ext:exit :code 23))
 """,
                 encoding="utf-8",
             )
@@ -125,6 +126,10 @@ class DriverIsolationTests(unittest.TestCase):
   :short "fixture/later-alias"
   :function 'cl-bench.fixture:later-finish
   :runs 1)
+(defbench exits-without-json
+  :short "fixture/exit"
+  :function 'cl-bench.fixture:exit-without-json
+  :runs 1)
 ;; EOF
 """,
                 encoding="utf-8",
@@ -136,6 +141,7 @@ class DriverIsolationTests(unittest.TestCase):
                 "fixture/execute",
                 "fixture/later",
                 "fixture/later-alias",
+                "fixture/exit",
             )
             stdout = io.StringIO()
             stderr = io.StringIO()
@@ -156,8 +162,6 @@ class DriverIsolationTests(unittest.TestCase):
                         str(DRIVER_DIR / "sbcl-driver.lisp"),
                         "--cwd",
                         str(cwd),
-                        "--process-mode",
-                        "per-benchmark",
                         *selection,
                     ]
                 )
@@ -173,6 +177,7 @@ class DriverIsolationTests(unittest.TestCase):
             "fixture/execute": ("failed", "execute"),
             "fixture/later": ("passed", "finish"),
             "fixture/later-alias": ("passed", "finish"),
+            "fixture/exit": ("failed", "execute"),
         }
         for name, (status, stage) in expected.items():
             row = report["benchmarks"][name]
@@ -250,8 +255,6 @@ class DriverIsolationTests(unittest.TestCase):
                         str(DRIVER_DIR / "sbcl-driver.lisp"),
                         "--cwd",
                         str(cwd),
-                        "--process-mode",
-                        "per-benchmark",
                         *selection,
                     ]
                 )

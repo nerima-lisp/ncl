@@ -30,10 +30,6 @@
   (if (boundp 'common-lisp-user::*cl-bench-skip-files*)
       common-lisp-user::*cl-bench-skip-files*
       nil))
-(defvar *skip-benchmarks*
-  (if (boundp 'common-lisp-user::*cl-bench-skip-benchmarks*)
-      common-lisp-user::*cl-bench-skip-benchmarks*
-      nil))
 (defvar *disabled-benchmarks* nil)
 
 (defmacro defbench (name &rest options)
@@ -157,9 +153,8 @@
       (load-benchmark-file file))))
 
 (defun benchmark-selected-p (name)
-  (and (or (null *benchmark-selection*)
-           (member name *benchmark-selection* :test #'string-equal))
-       (not (member name *skip-benchmarks* :test #'string-equal))))
+  (or (null *benchmark-selection*)
+      (member name *benchmark-selection* :test #'string-equal)))
 
 (defun benchmark-function-text (function)
   (and function (princ-to-string function)))

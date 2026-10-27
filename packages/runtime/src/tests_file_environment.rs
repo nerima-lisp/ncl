@@ -668,19 +668,23 @@ fn r5_load_restores_package_and_readtable_after_unwind() {
                   (eq *readtable* *r5-load-unwind-readtable*))",
     ));
     assert_eq!(runtime.format_result(restored), "T");
-    assert!(runtime
-        .eval(&format!(
-            "(progv (list '*package*) '(nil) (load {}))",
-            lisp_string(&source)
-        ))
-        .is_err());
+    assert!(
+        runtime
+            .eval(&format!(
+                "(progv (list '*package*) '(nil) (load {}))",
+                lisp_string(&source)
+            ))
+            .is_err()
+    );
     let _ = runtime.context.take_non_local_exit();
-    assert!(runtime
-        .eval(&format!(
-            "(progv (list '*readtable*) '(nil) (load {}))",
-            lisp_string(&source)
-        ))
-        .is_err());
+    assert!(
+        runtime
+            .eval(&format!(
+                "(progv (list '*readtable*) '(nil) (load {}))",
+                lisp_string(&source)
+            ))
+            .is_err()
+    );
     let _ = runtime.context.take_non_local_exit();
 
     let common_lisp = runtime

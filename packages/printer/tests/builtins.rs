@@ -96,6 +96,104 @@ fn string_contents(ctx: &ThreadContext, string: Word) -> String {
         .collect()
 }
 
+#[test]
+fn copy_pprint_dispatch_is_callable_and_copies_the_selected_table() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    ctx.set_gc_stress(true);
+
+    let common_lisp = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
+    let dispatch_variable = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "*PRINT-PPRINT-DISPATCH*")
+        .unwrap()
+        .0;
+    let copy_function = function(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH");
+    let key = Word::fixnum(17);
+    let dispatch_function = Word::fixnum(92);
+    let mut source =
+        ncl_printer::set_pprint_dispatch(&mut ctx, &runtime, key, Word::fixnum(93), Word::NIL)
+            .unwrap();
+    let source_root = ncl_object::push_root(&mut ctx, &mut source);
+    source = ncl_printer::set_pprint_dispatch(&mut ctx, &runtime, key, dispatch_function, source)
+        .unwrap();
+    ncl_object::set_symbol_value(&mut ctx, dispatch_variable, source).unwrap();
+
+    let mut current_copy = runtime.call_builtin(&mut ctx, copy_function, &[]).unwrap();
+    let current_copy_root = ncl_object::push_root(&mut ctx, &mut current_copy);
+    assert_ne!(current_copy, source);
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, key, current_copy).unwrap(),
+        dispatch_function
+    );
+    assert_eq!(
+        ncl_object::car(&ctx, current_copy).unwrap(),
+        ncl_object::car(&ctx, source).unwrap(),
+        "the copy shares entry objects"
+    );
+
+    let mut initial_copy = runtime
+        .call_builtin(&mut ctx, copy_function, &[Word::NIL])
+        .unwrap();
+    let initial_copy_root = ncl_object::push_root(&mut ctx, &mut initial_copy);
+    assert_ne!(initial_copy, source);
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, key, initial_copy).unwrap(),
+        Word::NIL,
+        "explicit NIL copies the initial table, not the current table"
+    );
+    assert_ne!(
+        ncl_object::car(&ctx, initial_copy).unwrap(),
+        ncl_object::car(&ctx, source).unwrap()
+    );
+
+    let mut provided_copy = runtime
+        .call_builtin(&mut ctx, copy_function, &[source])
+        .unwrap();
+    let provided_copy_root = ncl_object::push_root(&mut ctx, &mut provided_copy);
+    assert_ne!(provided_copy, source);
+    assert_eq!(
+        ncl_printer::pprint_dispatch(&mut ctx, key, provided_copy).unwrap(),
+        dispatch_function
+    );
+    assert_eq!(
+        ncl_object::car(&ctx, provided_copy).unwrap(),
+        ncl_object::car(&ctx, source).unwrap(),
+        "the provided table is copied shallowly"
+    );
+    let another_copy = runtime
+        .call_builtin(&mut ctx, copy_function, &[source])
+        .unwrap();
+    assert_ne!(
+        another_copy, provided_copy,
+        "each call returns a fresh table"
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, provided_copy_root));
+    assert!(ncl_object::pop_root(&mut ctx, initial_copy_root));
+    assert!(ncl_object::pop_root(&mut ctx, current_copy_root));
+    assert!(ncl_object::pop_root(&mut ctx, source_root));
+}
+
+#[test]
+fn copy_pprint_dispatch_rejects_bad_arity_and_non_tables() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_printer::register(&mut ctx, &runtime).unwrap();
+    let copy_function = function(&runtime, &mut ctx, "COPY-PPRINT-DISPATCH");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, copy_function, &[Word::fixnum(1), Word::NIL]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, copy_function, &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+}
+
 fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Word {
     let package = runtime.ensure_package(ctx, "KEYWORD").unwrap();
     Package::from_word(package)

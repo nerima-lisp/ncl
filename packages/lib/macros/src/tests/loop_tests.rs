@@ -645,7 +645,7 @@ fn equals_then_expansion_uses_then_or_initial_value_for_updates() -> Result<(), 
             "{case_id}: equals initial value"
         );
         let tagbody = elements(&mut ctx, progn[3])?;
-        let updates = elements(&mut ctx, tagbody[2])?;
+        let updates = elements(&mut ctx, tagbody[3])?;
         assert_eq!(updates.len(), 7, "{case_id}: combined update form");
         assert_eq!(
             &updates[..2],

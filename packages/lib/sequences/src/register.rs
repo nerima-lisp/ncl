@@ -349,14 +349,14 @@ pub use register_selection_if::{
 };
 
 fn selection_parse(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, domain::selection::SelectionOptions), ObjectError> {
     domain::selection::parse_options(ctx, runtime, args)
 }
 fn selection_pair_parse(
-    ctx: &ThreadContext,
+    ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, domain::selection::PairSelectionOptions), ObjectError> {

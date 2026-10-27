@@ -81,6 +81,9 @@ pub fn reduce_entry(
     keep_result(&mut scope, result)
 }
 
+/// Shared implementation for `REMOVE-IF`/`REMOVE-IF-NOT` (`has_replacement`
+/// false) and `SUBSTITUTE-IF`/`SUBSTITUTE-IF-NOT` (`has_replacement` true).
+/// `negate` selects the `-IF-NOT` sense.
 pub fn selection_transform_if_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -177,7 +180,7 @@ pub fn subst_entry(
     let rooted = words(&scope, &handles);
     let replacement = word_at(&scope, &handles, 0)?;
     let (positional, options) = domain::selection::parse_options_with_minimum(
-        scope.context(),
+        scope.context_mut(),
         runtime,
         rooted.get(1..).ok_or(ObjectError::TypeError)?,
         2,

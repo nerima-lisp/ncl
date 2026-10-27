@@ -448,12 +448,12 @@ fn load_missing_file_signals_file_error() {
     );
 }
 
-fn test_value<T, E: std::fmt::Debug>(result: Result<T, E>) -> Result<T, String> {
-    result.map_err(|error| format!("{error:?}"))
+fn test_value<T, E: std::fmt::Debug>(result: Result<T, E>) -> T {
+    result.unwrap()
 }
 
 #[test]
-fn r5_load_in_package_changes_later_reads_and_restores_the_caller_package() -> Result<(), String> {
+fn r5_load_in_package_changes_later_reads_and_restores_the_caller_package() {
     let source = std::env::temp_dir().join(format!(
         "ncl-r5-load-in-package-{}.lisp",
         std::process::id()
@@ -461,29 +461,29 @@ fn r5_load_in_package_changes_later_reads_and_restores_the_caller_package() -> R
     let contents = "(|IN-PACKAGE| \"R5-LOAD-IN-PACKAGE\") \
                     (|SETQ| |*READTABLE*| |*R5-LOAD-IN-PACKAGE-UPCASE-READTABLE*|) \
                     'MiXeD";
-    test_value(fs::write(&source, contents))?;
-    let mut runtime = test_value(Runtime::new())?;
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
     test_value(runtime.eval(
         "(make-package \"R5-LOAD-IN-PACKAGE\" \
                 :use (list (find-package \"COMMON-LISP\"))) \
              (defparameter *r5-load-in-package-caller-package* *package*) \
              (defparameter *r5-load-in-package-upcase-readtable* *readtable*) \
              (defparameter *r5-load-in-package-downcase-readtable* (copy-readtable))",
-    ))?;
+    ));
     test_value(runtime.eval(
         "(import (list (find-symbol \"*R5-LOAD-IN-PACKAGE-UPCASE-READTABLE*\" \
                                 \"COMMON-LISP-USER\")) \
                     (find-package \"R5-LOAD-IN-PACKAGE\"))",
-    ))?;
-    let downcase = test_value(runtime.eval("*r5-load-in-package-downcase-readtable*"))?;
+    ));
+    let downcase = test_value(runtime.eval("*r5-load-in-package-downcase-readtable*"));
     test_value(runtime.context.write_object_slot(
         downcase,
         ncl_object::readtable_offset::CASE,
         ncl_object::Word::fixnum(1),
-    ))?;
-    test_value(runtime.eval("(setq *readtable* *r5-load-in-package-downcase-readtable*)"))?;
+    ));
+    test_value(runtime.eval("(setq *readtable* *r5-load-in-package-downcase-readtable*)"));
 
-    let loaded = test_value(runtime.eval(&format!("(load {})", lisp_string(&source))))?;
+    let loaded = test_value(runtime.eval(&format!("(load {})", lisp_string(&source))));
     assert_eq!(runtime.format_result(loaded), "T");
     let observed = test_value(runtime.eval(
         "(let ((symbol (find-symbol \"MIXED\" \"R5-LOAD-IN-PACKAGE\"))) \
@@ -492,39 +492,38 @@ fn r5_load_in_package_changes_later_reads_and_restores_the_caller_package() -> R
                     (eq (symbol-package symbol) (find-package \"R5-LOAD-IN-PACKAGE\")) \
                     (eq *package* *r5-load-in-package-caller-package*) \
                     (eq *readtable* *r5-load-in-package-downcase-readtable*)))",
-    ))?;
+    ));
     assert_eq!(runtime.format_result(observed), "T");
-    test_value(fs::remove_file(&source))?;
-    Ok(())
+    test_value(fs::remove_file(&source));
 }
 
 #[test]
-fn r5_load_uses_and_restores_the_dynamic_readtable() -> Result<(), String> {
+fn r5_load_uses_and_restores_the_dynamic_readtable() {
     let source =
         std::env::temp_dir().join(format!("ncl-r5-load-readtable-{}.lisp", std::process::id()));
     let contents = "(|SETQ| |*R5-LOAD-READTABLE-BEFORE*| 'MiXeD) \
                     (|SETQ| |*READTABLE*| |*R5-LOAD-UPCASE-READTABLE*|) \
                     (|SETQ| |*R5-LOAD-READTABLE-AFTER*| 'MiXeD)";
-    test_value(fs::write(&source, contents))?;
-    let mut runtime = test_value(Runtime::new())?;
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
     test_value(runtime.eval(
         "(defparameter *r5-load-upcase-readtable* *readtable*) \
              (defparameter *r5-load-downcase-readtable* (copy-readtable)) \
              (defparameter *r5-load-readtable-before* nil) \
              (defparameter *r5-load-readtable-after* nil)",
-    ))?;
-    let downcase = test_value(runtime.eval("*r5-load-downcase-readtable*"))?;
+    ));
+    let downcase = test_value(runtime.eval("*r5-load-downcase-readtable*"));
     test_value(runtime.context.write_object_slot(
         downcase,
         ncl_object::readtable_offset::CASE,
         ncl_object::Word::fixnum(1),
-    ))?;
-    test_value(runtime.eval("(setq *readtable* *r5-load-downcase-readtable*)"))?;
+    ));
+    test_value(runtime.eval("(setq *readtable* *r5-load-downcase-readtable*)"));
 
-    test_value(runtime.load_file(&source))?;
-    let before = test_value(runtime.eval("(symbol-name *r5-load-readtable-before*)"))?;
-    let after = test_value(runtime.eval("(symbol-name *r5-load-readtable-after*)"))?;
-    let restored = test_value(runtime.eval("(eq *readtable* *r5-load-downcase-readtable*)"))?;
+    test_value(runtime.load_file(&source));
+    let before = test_value(runtime.eval("(symbol-name *r5-load-readtable-before*)"));
+    let after = test_value(runtime.eval("(symbol-name *r5-load-readtable-after*)"));
+    let restored = test_value(runtime.eval("(eq *readtable* *r5-load-downcase-readtable*)"));
     assert_eq!(runtime.format_result(before), "\"mixed\"");
     assert_eq!(runtime.format_result(after), "\"MIXED\"");
     assert_eq!(runtime.format_result(restored), "T");
@@ -535,22 +534,21 @@ fn r5_load_uses_and_restores_the_dynamic_readtable() -> Result<(), String> {
                (with-output-to-string (stream) \
                  (let ((*standard-output* stream)) (load {}))))",
         lisp_string(&source)
-    )))?;
+    )));
     let output = runtime.format_result(output);
     assert!(output.contains("MIXED"));
     assert!(output.contains("ncl-r5-load-readtable"));
     let relative_fixture =
         PathBuf::from(format!("ncl-r5-relative-load-{}.lisp", std::process::id()));
-    let current_dir = test_value(std::env::current_dir())?;
-    test_value(fs::write(current_dir.join(&relative_fixture), "42"))?;
-    test_value(runtime.load_file(&relative_fixture))?;
-    test_value(fs::remove_file(&relative_fixture))?;
-    test_value(fs::remove_file(&source))?;
-    Ok(())
+    let current_dir = test_value(std::env::current_dir());
+    test_value(fs::write(current_dir.join(&relative_fixture), "42"));
+    test_value(runtime.load_file(&relative_fixture));
+    test_value(fs::remove_file(&relative_fixture));
+    test_value(fs::remove_file(&source));
 }
 
 #[test]
-fn r5_compile_file_uses_and_restores_the_dynamic_readtable() -> Result<(), String> {
+fn r5_compile_file_uses_and_restores_the_dynamic_readtable() {
     let source = std::env::temp_dir().join(format!(
         "ncl-r5-compile-file-readtable-{}.lisp",
         std::process::id()
@@ -558,37 +556,35 @@ fn r5_compile_file_uses_and_restores_the_dynamic_readtable() -> Result<(), Strin
     let contents = "(|EVAL-WHEN| (:|COMPILE-TOPLEVEL|) (|SETQ| |*R5-COMPILE-READTABLE-BEFORE*| 'MiXeD)) \
                     (|EVAL-WHEN| (:|COMPILE-TOPLEVEL|) (|SETQ| |*READTABLE*| |*R5-COMPILE-UPCASE-READTABLE*|)) \
                     (|EVAL-WHEN| (:|COMPILE-TOPLEVEL|) (|SETQ| |*R5-COMPILE-READTABLE-AFTER*| 'MiXeD))";
-    test_value(fs::write(&source, contents))?;
-    let mut runtime = test_value(Runtime::new())?;
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
     test_value(runtime.eval(
         "(defparameter *r5-compile-upcase-readtable* *readtable*) \
              (defparameter *r5-compile-downcase-readtable* (copy-readtable)) \
              (defparameter *r5-compile-readtable-before* nil) \
              (defparameter *r5-compile-readtable-after* nil)",
-    ))?;
-    let downcase = test_value(runtime.eval("*r5-compile-downcase-readtable*"))?;
+    ));
+    let downcase = test_value(runtime.eval("*r5-compile-downcase-readtable*"));
     test_value(runtime.context.write_object_slot(
         downcase,
         ncl_object::readtable_offset::CASE,
         ncl_object::Word::fixnum(1),
-    ))?;
-    test_value(runtime.eval("(setq *readtable* *r5-compile-downcase-readtable*)"))?;
+    ));
+    test_value(runtime.eval("(setq *readtable* *r5-compile-downcase-readtable*)"));
 
-    test_value(runtime.compile_file(&source))?;
-    let before = test_value(runtime.eval("(symbol-name *r5-compile-readtable-before*)"))?;
-    let after = test_value(runtime.eval("(symbol-name *r5-compile-readtable-after*)"))?;
-    let restored = test_value(runtime.eval("(eq *readtable* *r5-compile-downcase-readtable*)"))?;
+    test_value(runtime.compile_file(&source));
+    let before = test_value(runtime.eval("(symbol-name *r5-compile-readtable-before*)"));
+    let after = test_value(runtime.eval("(symbol-name *r5-compile-readtable-after*)"));
+    let restored = test_value(runtime.eval("(eq *readtable* *r5-compile-downcase-readtable*)"));
     assert_eq!(runtime.format_result(before), "\"mixed\"");
     assert_eq!(runtime.format_result(after), "\"MIXED\"");
     assert_eq!(runtime.format_result(restored), "T");
-    test_value(fs::remove_file(&source))?;
-    test_value(fs::remove_file(source.with_extension("fasl")))?;
-    Ok(())
+    test_value(fs::remove_file(&source));
+    test_value(fs::remove_file(source.with_extension("fasl")));
 }
 
 #[test]
-fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() -> Result<(), String>
-{
+fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() {
     let source = std::env::temp_dir().join(format!(
         "ncl-r5-load-fasl-package-{}.lisp",
         std::process::id()
@@ -596,8 +592,8 @@ fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() -
     let contents = "(|SETQ| |*R5-FASL-INITIAL-READTABLE-RESULT*| 'MiXeD \
                     |*READTABLE*| |*R5-FASL-UPCASE-READTABLE*|) \
                     'MiXeD 'R5-FASL-PACKAGE-MARKER";
-    test_value(fs::write(&source, contents))?;
-    let mut runtime = test_value(Runtime::new())?;
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
     test_value(runtime.eval(
         "(make-package \"R5-FASL-LOAD-TARGET\" \
                 :use (list (find-package \"COMMON-LISP\"))) \
@@ -606,21 +602,21 @@ fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() -
              (defparameter *r5-fasl-upcase-readtable* *readtable*) \
              (defparameter *r5-fasl-downcase-readtable* (copy-readtable)) \
              (setq *package* (find-package \"R5-FASL-LOAD-TARGET\"))",
-    ))?;
-    test_value(runtime.eval("(defparameter |*R5-FASL-INITIAL-READTABLE-RESULT*| nil)"))?;
-    test_value(runtime.eval("(setq *package* (find-package \"COMMON-LISP-USER\"))"))?;
+    ));
+    test_value(runtime.eval("(defparameter |*R5-FASL-INITIAL-READTABLE-RESULT*| nil)"));
+    test_value(runtime.eval("(setq *package* (find-package \"COMMON-LISP-USER\"))"));
     test_value(runtime.eval(
         "(import (list (find-symbol \"*R5-FASL-UPCASE-READTABLE*\" \
                                 \"COMMON-LISP-USER\")) \
                     (find-package \"R5-FASL-LOAD-TARGET\"))",
-    ))?;
-    let downcase = test_value(runtime.eval("*r5-fasl-downcase-readtable*"))?;
+    ));
+    let downcase = test_value(runtime.eval("*r5-fasl-downcase-readtable*"));
     test_value(runtime.context.write_object_slot(
         downcase,
         ncl_object::readtable_offset::CASE,
         ncl_object::Word::fixnum(1),
-    ))?;
-    test_value(runtime.compile_file(&source))?;
+    ));
+    test_value(runtime.compile_file(&source));
     let fasl = source.with_extension("fasl");
     let form = format!(
         "(let ((*package* (find-package \"R5-FASL-LOAD-TARGET\")) \
@@ -630,7 +626,7 @@ fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() -
                 (eq *readtable* *r5-fasl-downcase-readtable*)))",
         lisp_string(&fasl)
     );
-    let load_bindings_restored = test_value(runtime.eval(&form))?;
+    let load_bindings_restored = test_value(runtime.eval(&form));
     assert_eq!(runtime.format_result(load_bindings_restored), "T");
     let observed = test_value(runtime.eval(
         "(and (find-symbol \"mixed\" \"R5-FASL-LOAD-TARGET\") \
@@ -642,65 +638,103 @@ fn r5_load_fasl_reads_in_the_dynamic_package_and_restores_the_caller_package() -
                           \"R5-FASL-LOAD-TARGET\"))) \"mixed\") \
                   (eq *package* *r5-fasl-caller-package*) \
                   (eq *readtable* *r5-fasl-caller-readtable*))",
-    ))?;
+    ));
     assert_eq!(runtime.format_result(observed), "T");
-    test_value(fs::remove_file(&source))?;
-    test_value(fs::remove_file(fasl))?;
-    Ok(())
+    test_value(fs::remove_file(&source));
+    test_value(fs::remove_file(fasl));
 }
 
 #[test]
-fn r5_load_restores_package_and_readtable_after_unwind() -> Result<(), String> {
+fn r5_load_restores_package_and_readtable_after_unwind() {
     let source =
         std::env::temp_dir().join(format!("ncl-r5-load-unwind-{}.lisp", std::process::id()));
     let contents = "(setq *readtable* (copy-readtable)) \
                     (setq *package* (find-package \"R5-LOAD-UNWIND-INNER\")) \
                     (throw 'r5-load-unmatched-tag :payload)";
-    test_value(fs::write(&source, contents))?;
-    let mut runtime = test_value(Runtime::new())?;
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
     test_value(runtime.eval(
         "(make-package \"R5-LOAD-UNWIND-OUTER\" :use (list (find-package \"COMMON-LISP\"))) \
              (make-package \"R5-LOAD-UNWIND-INNER\" :use (list (find-package \"COMMON-LISP\"))) \
              (defparameter *r5-load-unwind-package* (find-package \"R5-LOAD-UNWIND-OUTER\")) \
              (defparameter *r5-load-unwind-readtable* *readtable*) \
              (setq *package* *r5-load-unwind-package*)",
-    ))?;
+    ));
 
     assert!(runtime.load_file(&source).is_err());
     let _ = runtime.context.take_non_local_exit();
     let restored = test_value(runtime.eval(
         "(and (eq *package* *r5-load-unwind-package*) \
                   (eq *readtable* *r5-load-unwind-readtable*))",
-    ))?;
+    ));
     assert_eq!(runtime.format_result(restored), "T");
-    assert!(
-        runtime
-            .eval(&format!(
-                "(progv (list '*package*) '(nil) (load {}))",
-                lisp_string(&source)
-            ))
-            .is_err()
-    );
+    assert!(runtime
+        .eval(&format!(
+            "(progv (list '*package*) '(nil) (load {}))",
+            lisp_string(&source)
+        ))
+        .is_err());
     let _ = runtime.context.take_non_local_exit();
-    assert!(
-        runtime
-            .eval(&format!(
-                "(progv (list '*readtable*) '(nil) (load {}))",
-                lisp_string(&source)
-            ))
-            .is_err()
-    );
+    assert!(runtime
+        .eval(&format!(
+            "(progv (list '*readtable*) '(nil) (load {}))",
+            lisp_string(&source)
+        ))
+        .is_err());
     let _ = runtime.context.take_non_local_exit();
 
     let common_lisp = runtime
         .object
         .find_package(&runtime.context, "COMMON-LISP")
-        .ok_or_else(|| "COMMON-LISP package is missing".to_owned())?;
+        .expect("COMMON-LISP package is missing");
     let common_lisp = ncl_object::Package::from_word(common_lisp);
-    test_value(common_lisp.set_locked(&mut runtime.context, true))?;
+    test_value(common_lisp.set_locked(&mut runtime.context, true));
     assert!(crate::file_environment::register(&mut runtime.context, &runtime.object).is_err());
     assert!(runtime.load_file(&source).is_err());
-    test_value(common_lisp.set_locked(&mut runtime.context, false))?;
-    test_value(fs::remove_file(&source))?;
-    Ok(())
+    test_value(common_lisp.set_locked(&mut runtime.context, false));
+    test_value(fs::remove_file(&source));
+}
+
+#[test]
+fn load_evaluates_top_level_forms_and_honors_eval_when_situations() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-top-level-forms-{}.lisp",
+        std::process::id()
+    ));
+    let contents = "(progn \
+                      (setq *r5-load-progn-first* :first) \
+                      (setq *r5-load-progn-second* :second)) \
+                    (locally \
+                      (declare (special *r5-load-locally*)) \
+                      (setq *r5-load-locally* :locally)) \
+                    (eval-when (:load-toplevel) \
+                      (setq *r5-load-active-eval-when* :loaded)) \
+                    (eval-when (:compile-toplevel) \
+                      (setq *r5-load-inactive-eval-when* :unexpected))";
+    fs::write(&source, contents).expect("LOAD top-level source creation failed");
+    let mut runtime = Runtime::new().expect("runtime initialization failed");
+    runtime
+        .eval(
+            "(defparameter *r5-load-progn-first* nil) \
+             (defparameter *r5-load-progn-second* nil) \
+             (defparameter *r5-load-locally* nil) \
+             (defparameter *r5-load-active-eval-when* nil) \
+             (defparameter *r5-load-inactive-eval-when* nil)",
+        )
+        .expect("LOAD top-level setup failed");
+
+    runtime
+        .load_file(&source)
+        .expect("LOAD top-level forms failed");
+    let observed = runtime
+        .eval(
+            "(and (eq *r5-load-progn-first* :first) \
+                  (eq *r5-load-progn-second* :second) \
+                  (eq *r5-load-locally* :locally) \
+                  (eq *r5-load-active-eval-when* :loaded) \
+                  (null *r5-load-inactive-eval-when*))",
+        )
+        .expect("LOAD top-level results were not observable");
+    assert_eq!(runtime.format_result(observed), "T");
+    fs::remove_file(&source).expect("LOAD top-level source cleanup failed");
 }

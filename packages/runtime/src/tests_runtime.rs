@@ -258,6 +258,65 @@ fn compile_and_load_share_the_native_pipeline() {
 }
 
 #[test]
+fn defun_return_from_in_let_initializers_works_across_routes() {
+    const CASES: [(&str, &str, &str); 5] = [
+        (
+            "let-no-or",
+            "(defun r6-b6-let (value) (let ((result (return-from r6-b6-let 11))) result)) (r6-b6-let t)",
+            "11",
+        ),
+        (
+            "let*-no-or",
+            "(defun r6-b6-let-star (value) (let* ((result (return-from r6-b6-let-star 13))) result)) (r6-b6-let-star t)",
+            "13",
+        ),
+        (
+            "let*-or",
+            "(defun r6-b6-or (value) (let* ((result (or nil (return-from r6-b6-or 17)))) result)) (r6-b6-or t)",
+            "17",
+        ),
+        (
+            "key-parameter",
+            "(defun r6-b6-key (&key (enabled t)) (let* ((result (or nil (return-from r6-b6-key 19)))) (if enabled result nil))) (r6-b6-key)",
+            "19",
+        ),
+        (
+            "eval-when",
+            "(eval-when (:load-toplevel :compile-toplevel :execute) (defun r6-b6-eval-when (value) (let* ((result (or value (return-from r6-b6-eval-when 23)))) result))) (r6-b6-eval-when nil)",
+            "23",
+        ),
+    ];
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut failures = Vec::new();
+
+    for (route, compile) in [("eval", false), ("compile", true)] {
+        for (case, source, expected) in CASES {
+            let result = if compile {
+                runtime.compile(source)
+            } else {
+                runtime.eval(source)
+            };
+            match result {
+                Ok(value) => {
+                    let actual = runtime.format_result(value);
+                    if actual != expected {
+                        failures.push(format!("{route}/{case}: expected {expected}, got {actual}"));
+                    }
+                }
+                Err(error) => failures.push(format!("{route}/{case}: {error}")),
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "DEFUN RETURN-FROM cases failed: {}",
+        failures.join("; ")
+    );
+}
+
+#[test]
 fn load_file_executes_source_and_reports_missing_files() {
     let path = std::env::temp_dir().join(format!("ncl-runtime-{}.lisp", std::process::id()));
     if let Err(error) = fs::write(&path, "43") {

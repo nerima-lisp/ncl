@@ -48,8 +48,58 @@ fn function_definitions_preserve_lambda_body() -> Result<(), ObjectError> {
     let function = elements(&mut ctx, setf[2])?;
     let lambda = elements(&mut ctx, function[1])?;
     assert_eq!(lambda[1], Word::NIL);
-    assert_eq!(lambda[2], body);
+    let block = elements(&mut ctx, lambda[2])?;
+    assert_eq!(block[0], symbol(&mut ctx, &runtime, "BLOCK")?);
+    assert_eq!(block[1], name);
+    assert_eq!(block[2], body);
     Ok(())
+}
+
+#[test]
+fn function_definitions_keep_declarations_and_docstrings_before_the_block()
+-> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "F")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
+    let declare = symbol(&mut ctx, &runtime, "DECLARE")?;
+    let block_symbol = symbol(&mut ctx, &runtime, "BLOCK")?;
+    let ignore = symbol(&mut ctx, &runtime, "IGNORE")?;
+    let variable = symbol(&mut ctx, &runtime, "VALUE")?;
+    let mut declaration_spec = list(&mut ctx, &runtime, &[ignore, variable])?;
+
+    ncl_object::with_root(&mut ctx, &mut declaration_spec, |ctx, declaration_spec| {
+        let mut declaration = list(ctx, &runtime, &[declare, declaration_spec.get()])?;
+        ncl_object::with_root(ctx, &mut declaration, |ctx, declaration| {
+            let mut docstring = ncl_object::make_string(ctx, &runtime, &['d', 'o', 'c'])?;
+            ncl_object::with_root(ctx, &mut docstring, |ctx, docstring| {
+                let form = list(
+                    ctx,
+                    &runtime,
+                    &[
+                        operator,
+                        name,
+                        Word::NIL,
+                        declaration.get(),
+                        docstring.get(),
+                        body,
+                    ],
+                )?;
+                let expanded = call(&runtime, ctx, "DEFUN", form)?;
+                let expanded_parts = elements(ctx, expanded)?;
+                let setf = elements(ctx, expanded_parts[1])?;
+                let function = elements(ctx, setf[2])?;
+                let lambda = elements(ctx, function[1])?;
+                assert_eq!(lambda[2], declaration.get());
+                assert_eq!(lambda[3], docstring.get());
+                let block = elements(ctx, lambda[4])?;
+                assert_eq!(block[0], block_symbol);
+                assert_eq!(block[1], name);
+                assert_eq!(block[2], body);
+                Ok(())
+            })
+        })
+    })
 }
 
 #[test]

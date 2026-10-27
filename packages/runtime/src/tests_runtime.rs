@@ -467,3 +467,85 @@ fn runtimes_can_be_created_and_dropped_repeatedly() {
 fn jit_storefield_keeps_a_young_value_in_a_weak_only_old_cell() {
     tests_write_barrier::run();
 }
+
+fn macro_expansion_detail(error: &RuntimeError) -> &str {
+    match error {
+        RuntimeError::Front(ncl_compiler_front::FrontError::MacroExpansion { detail, .. }) => {
+            detail
+        }
+        other => panic!("expected macro expansion error, got {other:?}"),
+    }
+}
+
+#[test]
+fn macro_expansion_preserves_simple_error_report() {
+    let mut runtime = Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let error = runtime
+        .eval("(loop for symbol being the widgets)")
+        .expect_err("unsupported LOOP clauses must fail during macro expansion");
+    assert_eq!(
+        macro_expansion_detail(&error),
+        "Unsupported LOOP clause: BEING THE WIDGETS"
+    );
+}
+
+#[test]
+fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
+    let mut runtime = Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let error = runtime
+        .eval("(loop for index from)")
+        .expect_err("an incomplete FOR clause must fail during macro expansion");
+    assert_eq!(macro_expansion_detail(&error), "TypeError");
+}
+
+#[test]
+fn compiled_macro_expansion_preserves_native_load_report() {
+    let mut runtime = Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let path = std::env::temp_dir().join(format!(
+        "ncl-r6-b5-macro-invalid-utf8-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&path, [0xff])
+        .unwrap_or_else(|error| panic!("invalid UTF-8 source creation failed: {error}"));
+    let escaped_path = path
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let source = format!(
+        "(defmacro ncl-r6-b5-invalid-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-invalid-load)"
+    );
+    let result = runtime.eval(&source);
+    fs::remove_file(path)
+        .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
+    let error = result.expect_err("the compiled macro's LOAD must fail");
+    assert_eq!(macro_expansion_detail(&error), "source file is not valid UTF-8");
+}
+
+#[test]
+fn compiled_macro_expansion_restores_non_simple_condition() {
+    let mut runtime = Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let path = std::env::temp_dir().join(format!(
+        "ncl-r6-b5-macro-missing-{}.lisp",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&path);
+    let escaped_path = path
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let source = format!(
+        "(defmacro ncl-r6-b5-missing-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-missing-load)"
+    );
+    let error = runtime
+        .eval(&source)
+        .expect_err("the compiled macro's LOAD must fail");
+    assert_eq!(macro_expansion_detail(&error), "TypeError");
+    assert!(
+        runtime.context.take_pending_condition().is_some(),
+        "non-SimpleError conditions must remain pending after macro expansion fails"
+    );
+}

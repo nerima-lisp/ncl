@@ -4,8 +4,8 @@ use std::ptr::NonNull;
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FrontError, MacroCaller, SymbolRef};
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, LispError,
-    ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code,
+    BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
+    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code,
     function_entry, make_closure, make_cons, make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
@@ -363,29 +363,6 @@ fn pending_simple_error_message(
     runtime: &ObjectRuntime,
     fallback: impl FnOnce() -> String,
 ) -> String {
-    if let Some(error) = ctx.take_pending_lisp_error() {
-        let LispError::SimpleError {
-            format_control,
-            format_arguments: Word::NIL,
-        } = error
-        else {
-            ctx.set_pending_lisp_error(error);
-            return fallback();
-        };
-        let Some(message) = ncl_object::string_length(ctx, format_control)
-            .ok()
-            .and_then(|length| {
-                (0..length)
-                    .map(|index| ncl_object::string_ref(ctx, format_control, index))
-                    .collect::<Result<String, _>>()
-                    .ok()
-            })
-        else {
-            ctx.set_pending_lisp_error(error);
-            return fallback();
-        };
-        return message;
-    }
     let Some(condition) = ctx.take_pending_condition() else {
         return fallback();
     };

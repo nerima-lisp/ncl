@@ -160,6 +160,7 @@ pub fn condition_from_lisp_error(
             },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),
+        LispError::ReaderError => (ConditionIdentifier::ReaderError, Vec::new()),
         LispError::StreamError(_) => (ConditionIdentifier::StreamError, Vec::new()),
         LispError::EndOfFile => (ConditionIdentifier::EndOfFile, Vec::new()),
         LispError::FileError(_) => (ConditionIdentifier::FileError, Vec::new()),

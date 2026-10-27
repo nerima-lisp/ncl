@@ -12,9 +12,12 @@ use ncl_object::{
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
 
+mod read_options;
 mod support;
 mod top_level;
 
+pub use read_options::current_read_options;
+use read_options::{apply_current_read_flags, common_lisp_variable_value};
 use support::{host_architecture, in_package_name, print_loaded_value, write_standard_output};
 use top_level::eval_top_level;
 
@@ -418,6 +421,16 @@ fn source_forms_with_print(
                     None => ReadOptions::standard(&mut runtime.context, &runtime.object)?,
                 }
             };
+            if !use_dynamic_reader {
+                let readtable_root = HeapRootedWord::new(
+                    &runtime.context,
+                    current_options.readtable().object().as_word(),
+                )?;
+                apply_current_read_flags(runtime, &mut current_options)?;
+                current_options.set_readtable(Readtable::from_object(ObjectReadtable::from_word(
+                    readtable_root.get(),
+                )));
+            }
             let Some(form) = read(
                 &mut runtime.context,
                 &runtime.object,
@@ -449,48 +462,3 @@ fn source_forms_with_print(
     loaded
 }
 
-pub fn current_read_options(
-    runtime: &mut Runtime,
-    previous: Option<ReadOptions>,
-) -> Result<ReadOptions, RuntimeError> {
-    let mut options = match previous {
-        Some(options) => options,
-        None => ReadOptions::standard(&mut runtime.context, &runtime.object)?,
-    };
-    let package_word =
-        common_lisp_variable_value(&mut runtime.context, &runtime.object, "*PACKAGE*")?;
-    let ObjectRef::Package(package) = classify_object(&runtime.context, package_word) else {
-        return Err(RuntimeError::Object(ObjectError::TypeError));
-    };
-    let package_name = word_string(
-        &runtime.context,
-        Package::from_word(package).name(&runtime.context)?,
-    )?;
-    let readtable_word =
-        common_lisp_variable_value(&mut runtime.context, &runtime.object, "*READTABLE*")?;
-    if !matches!(
-        classify_object(&runtime.context, readtable_word),
-        ObjectRef::Readtable(_)
-    ) {
-        return Err(RuntimeError::Object(ObjectError::TypeError));
-    }
-    options.set_current_package(package_name)?;
-    options.set_readtable(Readtable::from_object(ObjectReadtable::from_word(
-        readtable_word,
-    )));
-    Ok(options)
-}
-
-fn common_lisp_variable_value(
-    ctx: &mut ThreadContext,
-    object: &ObjectRuntime,
-    name: &str,
-) -> Result<Word, ObjectError> {
-    let mut common_lisp = object
-        .find_package(ctx, "COMMON-LISP")
-        .ok_or(ObjectError::Layout)?;
-    with_root(ctx, &mut common_lisp, |ctx, common_lisp| {
-        let (mut symbol, _) = Package::from_word(*common_lisp).intern(ctx, object, name)?;
-        with_root(ctx, &mut symbol, |ctx, symbol| symbol_value(ctx, *symbol))
-    })
-}

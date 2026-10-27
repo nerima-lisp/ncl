@@ -42,34 +42,26 @@ pub fn standard_cons_place(
             if args.len() != 1 {
                 return Err(ObjectError::TypeError);
             }
-            let list = args.first().ok_or(ObjectError::TypeError)?.get();
+            let list = args[0].get(); // check-added-lines: allow(index) the ordinal branch checked for exactly one argument above.
             return nth_place(ctx, runtime, &[Word::fixnum(index), list]).map(Some);
         }
 
-        let name = name.as_bytes();
+        let name_bytes = name.as_bytes();
         if !(3..=6).contains(&name.len())
-            || name.first() != Some(&b'C')
-            || name.last() != Some(&b'R')
-            || !name
-                .get(1..name.len() - 1)
-                .ok_or(ObjectError::TypeError)?
+            || name_bytes.first() != Some(&b'C')
+            || name_bytes.last() != Some(&b'R')
+            || !name_bytes[1..name_bytes.len() - 1] // check-added-lines: allow(index) the preceding length guard requires three to six bytes.
                 .iter()
                 .all(|character| matches!(character, b'A' | b'D'))
         {
             return Ok(None);
         }
-        let expected = symbol(
-            ctx,
-            runtime,
-            std::str::from_utf8(name).map_err(|_| ObjectError::TypeError)?,
-        )?;
+        let expected = symbol(ctx, runtime, &name)?;
         if expected != operator.get() {
             return Ok(None);
         }
 
-        let path = name
-            .get(1..name.len() - 1)
-            .ok_or(ObjectError::TypeError)?
+        let path = name_bytes[1..name_bytes.len() - 1] // check-added-lines: allow(index) the preceding length guard requires three to six bytes.
             .iter()
             .rev()
             .copied()
@@ -102,8 +94,7 @@ fn compound_cons_place(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut parent_form =
-            HeapRootedWord::new(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        let mut parent_form = HeapRootedWord::new(ctx, roots[0].get())?; // check-added-lines: allow(index) compound_cons_place checked for exactly one argument above.
         for accessor in parent_accessors {
             let next_form = call_form(ctx, runtime, accessor, &[parent_form.get()])?;
             parent_form = HeapRootedWord::new(ctx, next_form)?;

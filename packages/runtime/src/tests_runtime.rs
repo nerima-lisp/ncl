@@ -481,9 +481,9 @@ fn macro_expansion_detail(error: &RuntimeError) -> &str {
 fn macro_expansion_preserves_simple_error_report() {
     let mut runtime =
         Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-    let error = runtime
-        .eval("(loop for symbol being the widgets)")
-        .expect_err("unsupported LOOP clauses must fail during macro expansion");
+    let Err(error) = runtime.eval("(loop for symbol being the widgets)") else {
+        panic!("unsupported LOOP clauses must fail during macro expansion");
+    };
     assert_eq!(
         macro_expansion_detail(&error),
         "Unsupported LOOP clause: BEING THE WIDGETS"
@@ -494,9 +494,9 @@ fn macro_expansion_preserves_simple_error_report() {
 fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
     let mut runtime =
         Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-    let error = runtime
-        .eval("(loop for index from)")
-        .expect_err("an incomplete FOR clause must fail during macro expansion");
+    let Err(error) = runtime.eval("(loop for index from)") else {
+        panic!("an incomplete FOR clause must fail during macro expansion");
+    };
     assert_eq!(macro_expansion_detail(&error), "TypeError");
 }
 
@@ -520,7 +520,9 @@ fn compiled_macro_expansion_preserves_native_load_report() {
     let result = runtime.eval(&source);
     fs::remove_file(path)
         .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
-    let error = result.expect_err("the compiled macro's LOAD must fail");
+    let Err(error) = result else {
+        panic!("the compiled macro's LOAD must fail");
+    };
     assert_eq!(
         macro_expansion_detail(&error),
         "source file is not valid UTF-8"
@@ -543,9 +545,9 @@ fn compiled_macro_expansion_restores_non_simple_condition() {
     let source = format!(
         "(defmacro ncl-r6-b5-missing-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-missing-load)"
     );
-    let error = runtime
-        .eval(&source)
-        .expect_err("the compiled macro's LOAD must fail");
+    let Err(error) = runtime.eval(&source) else {
+        panic!("the compiled macro's LOAD must fail");
+    };
     assert_eq!(macro_expansion_detail(&error), "TypeError");
     assert!(
         runtime.context.take_pending_condition().is_some(),

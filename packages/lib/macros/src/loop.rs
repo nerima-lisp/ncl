@@ -42,6 +42,8 @@ pub enum LimitDirection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ForClause {
     pub variable: Word,
+    pub type_spec: Option<Word>,
+    pub has_init: bool,
     pub init: Word,
     pub step: Option<Word>,
     pub direction: Option<StepDirection>,
@@ -57,6 +59,7 @@ pub enum HashIterationKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HashClause {
     pub variable: Word,
+    pub type_spec: Option<Word>,
     pub kind: HashIterationKind,
     pub table: Word,
     pub using: Option<(HashIterationKind, Word)>,
@@ -89,6 +92,8 @@ pub enum ConditionalKind {
 pub enum LoopClause {
     With {
         variable: Word,
+        type_spec: Option<Word>,
+        has_init: bool,
         init: Word,
     },
     For(ForClause),
@@ -96,17 +101,20 @@ pub enum LoopClause {
     Package(PackageClause),
     EqualsThen {
         variable: Word,
+        type_spec: Option<Word>,
         init: Word,
         then: Option<Word>,
     },
     In {
         variable: Word,
+        type_spec: Option<Word>,
         sequence: Word,
         on: bool,
         by: Option<Word>,
     },
     Across {
         variable: Word,
+        type_spec: Option<Word>,
         vector: Word,
     },
     Repeat(Word),
@@ -148,6 +156,7 @@ mod hash;
 mod held;
 mod holding;
 mod parser;
+mod typed;
 pub use callback::expand_loop_callback;
 #[allow(unused_imports)]
 pub use expansion::expand_loop_ast;

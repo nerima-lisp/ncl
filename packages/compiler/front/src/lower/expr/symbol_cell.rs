@@ -1,11 +1,12 @@
 use super::{Context, FunctionLowerer, LowerError, OpKind, SymbolRef, ValueId};
 
 impl Context<'_> {
-    /// Lower a call to `symbol-value`, `set-symbol-value`, or
-    /// `fdefinition-set` into a direct symbol-cell load or store.
+    /// Lower calls to symbol cells into direct loads or stores where the runtime
+    /// value is guaranteed to be a symbol. FDEFINITION-SET intentionally falls
+    /// through to its checked builtin because its function-name argument is dynamic.
     ///
-    /// Returns `Ok(None)` when `name`/`values` do not match one of those
-    /// three forms, so the caller falls through to ordinary call lowering.
+    /// Returns `Ok(None)` when `name`/`values` do not match a symbol-cell
+    /// operation, so the caller falls through to ordinary call lowering.
     pub(super) fn lower_symbol_cell_call(
         &mut self,
         f: &mut FunctionLowerer,
@@ -17,12 +18,6 @@ impl Context<'_> {
                 Some((ncl_object::symbol_offset::VALUE, false))
             } else if name.name == "set-symbol-value" && values.len() == 2 {
                 Some((ncl_object::symbol_offset::VALUE, true))
-            } else if (name.is_named("COMMON-LISP", "NCL::FDEFINITION-SET")
-                || name.is_named("NCL", "FDEFINITION-SET")
-                || name.is_named("NCL-EXT", "FDEFINITION-SET"))
-                && values.len() == 2
-            {
-                Some((ncl_object::symbol_offset::FUNCTION, true))
             } else {
                 None
             };

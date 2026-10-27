@@ -221,9 +221,9 @@ fn fdefinition_and_macro_function_place_arguments_evaluate_once() {
     assert_form(
         &mut runtime,
         "(let ((fdefinition-accesses 0) (macro-accesses 0))
-           (setf (fdefinition
-                   (progn (incf fdefinition-accesses) 'ncl-fdefinition-place-once))
-                 #'identity)
+           (psetf (fdefinition
+                    (progn (incf fdefinition-accesses) 'ncl-fdefinition-place-once))
+                  #'identity)
            (setf (macro-function
                    (progn (incf macro-accesses) 'ncl-macro-function-place-once))
                  #'identity)
@@ -233,5 +233,43 @@ fn fdefinition_and_macro_function_place_arguments_evaluate_once() {
                  (not (null (macro-function 'ncl-macro-function-place-once)))))",
         "(1 7 1 T)",
         "FDEFINITION and MACRO-FUNCTION place argument evaluation once",
+    );
+}
+
+#[test]
+fn macro_function_place_accepts_nil_environment_and_evaluates_it_once() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    assert_form(
+        &mut runtime,
+        "(let ((environment-accesses 0))
+           (setf (macro-function
+                   'ncl-macro-function-place-environment
+                   (progn (incf environment-accesses) nil))
+                 #'identity)
+           (list environment-accesses
+                 (not (null
+                       (macro-function 'ncl-macro-function-place-environment)))))",
+        "(1 T)",
+        "MACRO-FUNCTION place evaluates a NIL environment once",
+    );
+}
+
+#[test]
+fn fdefinition_place_rejects_a_non_symbol_name() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    let result = runtime.eval(
+        "(setf (fdefinition
+                  (cons 'ncl-invalid-fdefinition-place 'ncl-tail))
+              #'identity)",
+    );
+
+    assert!(
+        matches!(
+            result,
+            Err(ncl_runtime::RuntimeError::Object(
+                ncl_object::ObjectError::TypeError
+            ))
+        ),
+        "expected TypeError for a non-symbol function name, got {result:?}"
     );
 }

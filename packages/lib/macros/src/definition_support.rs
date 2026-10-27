@@ -260,30 +260,40 @@ fn place_form(
     })
 }
 
-fn single_argument_definition_place(
+fn definition_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
     accessor: &str,
     setter: &str,
+    optional_second_argument: bool,
 ) -> Result<ncl_object::SetfExpansion, ObjectError> {
-    if args.len() != 1 {
+    if args.len() != 1 && !(optional_second_argument && args.len() == 2) {
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut temporary = crate::fresh_symbol(ctx, runtime)?;
-        ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+        let mut temporary_roots = Vec::with_capacity(roots.len());
+        for _ in roots {
+            let temporary = crate::fresh_symbol(ctx, runtime)?;
+            temporary_roots.push(ncl_object::HeapRootedWord::new(ctx, temporary)?);
+        }
+        let temporary_variables = temporary_roots
+            .iter()
+            .map(ncl_object::HeapRootedWord::get)
+            .collect::<Vec<_>>();
+        ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
             let mut setter = symbol(ctx, runtime, setter)?;
             ncl_object::with_root(ctx, &mut setter, |ctx, setter| {
                 let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
                 ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
                     let mut store_form =
-                        list(ctx, runtime, &[*setter, temporary.get(), *variable])?;
+                        list(ctx, runtime, &[*setter, temporaries[0].get(), *variable])?;
                     ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                        let access_form = place_form(ctx, runtime, accessor, &[temporary.get()])?;
+                        let access_form =
+                            place_form(ctx, runtime, accessor, &[temporaries[0].get()])?;
                         Ok(ncl_object::SetfExpansion {
-                            temporary_variables: vec![temporary.get()],
-                            value_forms: vec![roots[0].get()], // check-added-lines: allow(index) args has exactly one input.
+                            temporary_variables: temporaries.iter().map(|value| **value).collect(),
+                            value_forms: roots.iter().map(|value| **value).collect(),
                             store_variables: vec![*variable],
                             store_form: *store_form,
                             access_form,
@@ -300,12 +310,13 @@ fn fdefinition_place(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<ncl_object::SetfExpansion, ObjectError> {
-    single_argument_definition_place(
+    definition_place(
         ctx,
         runtime,
         args,
         "FDEFINITION",
         "NCL-EXT::FDEFINITION-SET",
+        false,
     )
 }
 
@@ -314,12 +325,13 @@ fn macro_function_place(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<ncl_object::SetfExpansion, ObjectError> {
-    single_argument_definition_place(
+    definition_place(
         ctx,
         runtime,
         args,
         "MACRO-FUNCTION",
         "NCL-EXT::MACRO-FUNCTION-SET",
+        true,
     )
 }
 

@@ -9,10 +9,29 @@
 //! builtins, which return the stored value required by `SETF`.
 #![allow(clippy::missing_errors_doc)]
 
-use ncl_object::{ObjectError, PlaceExpander, Runtime, SetfExpansion, ThreadContext, Word};
+use ncl_object::{
+    HeapRootedWord, ObjectError, PlaceExpander, Runtime, SetfExpansion, ThreadContext, Word,
+};
 
 use crate::form::{list, symbol};
 use crate::fresh_symbol;
+
+fn fresh_temporaries(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    count: usize,
+) -> Result<Vec<HeapRootedWord>, ObjectError> {
+    let mut temporaries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let temporary = fresh_symbol(ctx, runtime)?;
+        temporaries.push(HeapRootedWord::new(ctx, temporary)?);
+    }
+    Ok(temporaries)
+}
+
+#[path = "setf_places_cons.rs"]
+mod cons;
+pub(super) use cons::standard_cons_place;
 
 /// Build `(operator arg0 arg1 ... argN)` as a fresh list, rooting `args` for
 /// the duration of the allocation.
@@ -48,15 +67,17 @@ fn setter_place(
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
         ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-            let temporary_variables = roots
+            let temporary_roots = fresh_temporaries(ctx, runtime, roots.len())?;
+            let temporary_variables = temporary_roots
                 .iter()
-                .map(|_| fresh_symbol(ctx, runtime))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
             ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
-                let arguments = temporaries.iter().map(|value| **value).collect::<Vec<_>>();
-                let mut access_form = call_form(ctx, runtime, access_operator, &arguments)?;
+                let access_arguments = temporaries.iter().map(|value| **value).collect::<Vec<_>>();
+                let mut access_form = call_form(ctx, runtime, access_operator, &access_arguments)?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
-                    let mut store_arguments = arguments;
+                    let mut store_arguments =
+                        temporaries.iter().map(|value| **value).collect::<Vec<_>>();
                     store_arguments.push(*variable);
                     let store_form = call_form(ctx, runtime, setter_operator, &store_arguments)?;
                     Ok(SetfExpansion {
@@ -91,9 +112,9 @@ fn mutator_place(
         ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
             let temporary = fresh_symbol(ctx, runtime)?;
             ncl_object::with_root(ctx, &mut temporary.clone(), |ctx, temporary| {
-                let target = *temporary;
-                let mut access_form = call_form(ctx, runtime, access_operator, &[target])?;
+                let mut access_form = call_form(ctx, runtime, access_operator, &[*temporary])?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                    let target = *temporary;
                     let mut mutate_form =
                         call_form(ctx, runtime, mutator_operator, &[target, *variable])?;
                     ncl_object::with_root(ctx, &mut mutate_form, |ctx, mutate_form| {
@@ -126,15 +147,24 @@ fn nth_place(
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
         ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-            let temporary_variables = roots
+            let temporary_roots = fresh_temporaries(ctx, runtime, roots.len())?;
+            let temporary_variables = temporary_roots
                 .iter()
-                .map(|_| fresh_symbol(ctx, runtime))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
             ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
-                let index = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                let list_arg = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
-                let mut access_form = call_form(ctx, runtime, "NTH", &[index, list_arg])?;
+                let mut access_form = call_form(
+                    ctx,
+                    runtime,
+                    "NTH",
+                    &[
+                        **temporaries.first().ok_or(ObjectError::TypeError)?,
+                        **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                    ],
+                )?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                    let index = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                    let list_arg = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
                     let mut nthcdr_form = call_form(ctx, runtime, "NTHCDR", &[index, list_arg])?;
                     ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
                         let mut mutate_form =
@@ -171,17 +201,27 @@ fn elt_place(
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
         ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-            let temporary_variables = roots
+            let temporary_roots = fresh_temporaries(ctx, runtime, roots.len())?;
+            let temporary_variables = temporary_roots
                 .iter()
-                .map(|_| fresh_symbol(ctx, runtime))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
             ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
-                let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                let index = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
-                let mut access_form = call_form(ctx, runtime, "ELT", &[sequence, index])?;
+                let mut access_form = call_form(
+                    ctx,
+                    runtime,
+                    "ELT",
+                    &[
+                        **temporaries.first().ok_or(ObjectError::TypeError)?,
+                        **temporaries.get(1).ok_or(ObjectError::TypeError)?,
+                    ],
+                )?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
+                    let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
                     let mut list_test = call_form(ctx, runtime, "LISTP", &[sequence])?;
                     ncl_object::with_root(ctx, &mut list_test, |ctx, list_test| {
+                        let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                        let index = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
                         let mut nthcdr_form =
                             call_form(ctx, runtime, "NTHCDR", &[index, sequence])?;
                         ncl_object::with_root(ctx, &mut nthcdr_form, |ctx, nthcdr_form| {
@@ -198,7 +238,15 @@ fn elt_place(
                                             ctx,
                                             runtime,
                                             "NCL-EXT::AREF-SET",
-                                            &[sequence, index, *variable],
+                                            &[
+                                                **temporaries
+                                                    .first()
+                                                    .ok_or(ObjectError::TypeError)?,
+                                                **temporaries
+                                                    .get(1)
+                                                    .ok_or(ObjectError::TypeError)?,
+                                                *variable,
+                                            ],
                                         )?;
                                         ncl_object::with_root(
                                             ctx,
@@ -263,13 +311,12 @@ fn subseq_place(
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
         ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
-            let temporary_variables = roots
+            let temporary_roots = fresh_temporaries(ctx, runtime, roots.len())?;
+            let temporary_variables = temporary_roots
                 .iter()
-                .map(|_| fresh_symbol(ctx, runtime))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
             ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
-                let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
-                let start = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
                 let arguments = temporaries.iter().map(|value| **value).collect::<Vec<_>>();
                 let mut access_form = call_form(ctx, runtime, "SUBSEQ", &arguments)?;
                 ncl_object::with_root(ctx, &mut access_form, |ctx, access_form| {
@@ -277,6 +324,8 @@ fn subseq_place(
                     ncl_object::with_root(ctx, &mut start_key, |ctx, start_key| {
                         let mut end_key = symbol(ctx, runtime, "KEYWORD::END")?;
                         ncl_object::with_root(ctx, &mut end_key, |ctx, end_key| {
+                            let sequence = **temporaries.first().ok_or(ObjectError::TypeError)?;
+                            let start = **temporaries.get(1).ok_or(ObjectError::TypeError)?;
                             let mut replace_args = vec![sequence, *variable, *start_key, start];
                             if let Some(end) = temporaries.get(2) {
                                 replace_args.push(*end_key);
@@ -304,56 +353,6 @@ fn subseq_place(
             })
         })
     })
-}
-
-fn compound_cons_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-    parent_accessors: &[&str],
-    access_operator: &str,
-    mutator_operator: &str,
-) -> Result<SetfExpansion, ObjectError> {
-    if args.len() != 1 {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut parent_form = **roots.first().ok_or(ObjectError::TypeError)?;
-        for accessor in parent_accessors {
-            parent_form = call_form(ctx, runtime, accessor, &[parent_form])?;
-        }
-        mutator_place(
-            ctx,
-            runtime,
-            &[parent_form],
-            access_operator,
-            mutator_operator,
-        )
-    })
-}
-
-fn cadr_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-) -> Result<SetfExpansion, ObjectError> {
-    compound_cons_place(ctx, runtime, args, &["CDR"], "CAR", "RPLACA")
-}
-
-fn caddr_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-) -> Result<SetfExpansion, ObjectError> {
-    compound_cons_place(ctx, runtime, args, &["CDR", "CDR"], "CAR", "RPLACA")
-}
-
-fn cdddr_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-) -> Result<SetfExpansion, ObjectError> {
-    compound_cons_place(ctx, runtime, args, &["CDR", "CDR"], "CDR", "RPLACD")
 }
 
 fn car_place(
@@ -390,6 +389,23 @@ fn symbol_value_place(
     args: &[Word],
 ) -> Result<SetfExpansion, ObjectError> {
     setter_place(ctx, runtime, args, "SYMBOL-VALUE", "SET")
+}
+
+fn documentation_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 2 {
+        return Err(ObjectError::TypeError);
+    }
+    setter_place(
+        ctx,
+        runtime,
+        args,
+        "DOCUMENTATION",
+        "NCL-EXT::DOCUMENTATION-SET",
+    )
 }
 
 fn aref_place(
@@ -439,10 +455,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("NTH", nth_place as PlaceExpander),
         ("ELT", elt_place as PlaceExpander),
         ("SUBSEQ", subseq_place as PlaceExpander),
-        ("CADR", cadr_place as PlaceExpander),
-        ("CADDR", caddr_place as PlaceExpander),
-        ("CDDDR", cdddr_place as PlaceExpander),
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
+        ("DOCUMENTATION", documentation_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),
         ("GETHASH", gethash_place as PlaceExpander),

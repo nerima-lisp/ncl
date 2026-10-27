@@ -84,6 +84,11 @@ fn package_iteration_symbols_for(
         let package = Package::from_word(package_root[0]); // check-added-lines: allow(index) package_root has one slot.
         let mut symbols = Vec::new();
         let mut local = Vec::new();
+        let use_list = if matches!(&mode, PackageIterationMode::Accessible) {
+            package.use_list(ctx)?
+        } else {
+            Word::NIL
+        };
         package.for_each_symbol(ctx, |symbol| local.push(symbol))?;
 
         match mode {
@@ -98,7 +103,6 @@ fn package_iteration_symbols_for(
             PackageIterationMode::Present => symbols.extend(local),
             PackageIterationMode::Accessible => {
                 symbols.extend(local);
-                let use_list = package.use_list(ctx)?;
                 for used in list_items(ctx, use_list)? {
                     let used = Package::from_word(used);
                     let mut candidates = Vec::new();

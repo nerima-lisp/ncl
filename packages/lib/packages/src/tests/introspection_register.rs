@@ -288,5 +288,22 @@ fn package_iteration_mode_comparisons_report_layout_errors() -> Result<(), Objec
             Err(ObjectError::Layout)
         );
     }
+
+    let symbols_name =
+        ncl_object::make_string(&mut ctx, &runtime, &['S', 'Y', 'M', 'B', 'O', 'L', 'S'])?;
+    let symbols_mode = ncl_object::make_symbol(&mut ctx, &runtime, symbols_name)?;
+    let symbols_name = ncl_object::symbol_name(&ctx, symbols_mode)?;
+    ctx.write_object_slot(symbols_name, string_offset::DATA + 1, Word::fixnum(0))?;
+    let args = [symbols_mode, Word::NIL];
+    assert_eq!(
+        package_iteration_symbols(
+            &mut ctx,
+            &runtime,
+            &BuiltinArgs::new(&args),
+            &mut MultipleValues::new(),
+        ),
+        Err(ObjectError::Layout)
+    );
+
     Ok(())
 }

@@ -96,3 +96,4 @@ COMMON-LISP	WITH-OUTPUT-TO-STRING	macro	ncl-lib-macros	1	no	macro expansion/setf
 COMMON-LISP	WITH-PACKAGE-ITERATOR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-SIMPLE-RESTART	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-SLOTS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-lib-macros	1	no	macro expansion/setf surface

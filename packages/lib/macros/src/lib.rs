@@ -20,6 +20,7 @@ mod psetq;
 mod setf;
 mod setf_places;
 mod setf_support;
+mod standard_io_syntax;
 mod string_stream;
 
 use owned_macros::{MACROS, OWNED_MACROS};
@@ -124,7 +125,12 @@ fn call_macro(
     ctx: &mut ThreadContext,
     args: &[Word],
     _values: &mut ncl_object::MultipleValues,
-    expand: fn(&mut ThreadContext, &Runtime, &PlaceRegistry, &[Word]) -> Result<Word, ObjectError>,
+    expand: impl FnOnce(
+        &mut ThreadContext,
+        &Runtime,
+        &PlaceRegistry,
+        &[Word],
+    ) -> Result<Word, ObjectError>,
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
@@ -242,6 +248,26 @@ adapters!
      shiftf_adapter => shiftf_callback,
      rotatef_adapter => rotatef_callback);
 
+fn with_standard_io_syntax_callback(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    call_macro(runtime, ctx, args, values, |ctx, runtime, places, args| {
+        standard_io_syntax::expand(ctx, runtime, *places, args)
+    })
+}
+
+fn with_standard_io_syntax_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    call_legacy(with_standard_io_syntax_callback, ctx, runtime, args, values)
+}
+
 fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
     match name {
         "SETF" => Some(setf_adapter),
@@ -302,6 +328,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
         "WITH-INPUT-FROM-STRING" => Some(string_stream::expand_input_adapter),
         "WITH-OPEN-FILE" => Some(file_stream::expand_with_open_file_adapter),
         "WITH-OUTPUT-TO-STRING" => Some(string_stream::expand_output_adapter),
+        "WITH-STANDARD-IO-SYNTAX" => Some(with_standard_io_syntax_adapter),
         "DESTRUCTURING-BIND" => Some(iteration::expand_destructuring_bind_adapter),
         "DO-ALL-SYMBOLS" => Some(iteration::expand_do_all_symbols_adapter),
         "DO-EXTERNAL-SYMBOLS" => Some(iteration::expand_do_external_symbols_adapter),

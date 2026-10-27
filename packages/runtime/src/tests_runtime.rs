@@ -468,48 +468,43 @@ fn jit_storefield_keeps_a_young_value_in_a_weak_only_old_cell() {
     tests_write_barrier::run();
 }
 
-fn macro_expansion_detail(error: &RuntimeError) -> &str {
-    match error {
-        RuntimeError::Front(ncl_compiler_front::FrontError::MacroExpansion { detail, .. }) => {
-            detail
-        }
-        other => panic!("expected macro expansion error, got {other:?}"),
-    }
-}
-
-#[test]
-fn macro_expansion_preserves_simple_error_report() {
-    let mut runtime =
-        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-    let Err(error) = runtime.eval("(loop for symbol being the widgets)") else {
-        panic!("unsupported LOOP clauses must fail during macro expansion");
-    };
-    assert_eq!(
-        macro_expansion_detail(&error),
-        "Unsupported LOOP clause: BEING THE WIDGETS"
+fn assert_macro_expansion_detail<T: std::fmt::Debug>(
+    result: Result<T, RuntimeError>,
+    expected: &str,
+) {
+    let debug = format!("{result:?}");
+    assert!(
+        debug.contains("MacroExpansion {") && debug.contains(&format!("detail: {expected:?}")),
+        "expected macro expansion detail {expected:?}, got {debug}"
     );
 }
 
 #[test]
-fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
-    let mut runtime =
-        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-    let Err(error) = runtime.eval("(loop for index from)") else {
-        panic!("an incomplete FOR clause must fail during macro expansion");
-    };
-    assert_eq!(macro_expansion_detail(&error), "TypeError");
+#[allow(clippy::expect_used)]
+fn macro_expansion_preserves_simple_error_report() {
+    let mut runtime = Runtime::new().expect("runtime initialization");
+    assert_macro_expansion_detail(
+        runtime.eval("(loop for symbol being the widgets)"),
+        "Unsupported LOOP clause: BEING THE WIDGETS",
+    );
 }
 
 #[test]
+#[allow(clippy::expect_used)]
+fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
+    let mut runtime = Runtime::new().expect("runtime initialization");
+    assert_macro_expansion_detail(runtime.eval("(loop for index from)"), "TypeError");
+}
+
+#[test]
+#[allow(clippy::expect_used)]
 fn compiled_macro_expansion_preserves_native_load_report() {
-    let mut runtime =
-        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime = Runtime::new().expect("runtime initialization");
     let path = std::env::temp_dir().join(format!(
         "ncl-r6-b5-macro-invalid-utf8-{}.lisp",
         std::process::id()
     ));
-    fs::write(&path, [0xff])
-        .unwrap_or_else(|error| panic!("invalid UTF-8 source creation failed: {error}"));
+    fs::write(&path, [0xff]).expect("invalid UTF-8 source creation");
     let escaped_path = path
         .to_string_lossy()
         .replace('\\', "\\\\")
@@ -518,21 +513,14 @@ fn compiled_macro_expansion_preserves_native_load_report() {
         "(defmacro ncl-r6-b5-invalid-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-invalid-load)"
     );
     let result = runtime.eval(&source);
-    fs::remove_file(path)
-        .unwrap_or_else(|error| panic!("invalid UTF-8 source cleanup failed: {error}"));
-    let Err(error) = result else {
-        panic!("the compiled macro's LOAD must fail");
-    };
-    assert_eq!(
-        macro_expansion_detail(&error),
-        "source file is not valid UTF-8"
-    );
+    fs::remove_file(path).expect("invalid UTF-8 source cleanup");
+    assert_macro_expansion_detail(result, "source file is not valid UTF-8");
 }
 
 #[test]
+#[allow(clippy::expect_used)]
 fn compiled_macro_expansion_restores_non_simple_condition() {
-    let mut runtime =
-        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let mut runtime = Runtime::new().expect("runtime initialization");
     let path = std::env::temp_dir().join(format!(
         "ncl-r6-b5-macro-missing-{}.lisp",
         std::process::id()
@@ -545,10 +533,7 @@ fn compiled_macro_expansion_restores_non_simple_condition() {
     let source = format!(
         "(defmacro ncl-r6-b5-missing-load () (load \"{escaped_path}\"))\n(ncl-r6-b5-missing-load)"
     );
-    let Err(error) = runtime.eval(&source) else {
-        panic!("the compiled macro's LOAD must fail");
-    };
-    assert_eq!(macro_expansion_detail(&error), "TypeError");
+    assert_macro_expansion_detail(runtime.eval(&source), "TypeError");
     assert!(
         runtime.context.take_pending_condition().is_some(),
         "non-SimpleError conditions must remain pending after macro expansion fails"

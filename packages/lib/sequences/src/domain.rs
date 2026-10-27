@@ -56,5 +56,6 @@ pub mod equality;
 pub mod filter;
 pub mod higher_order;
 pub mod list;
+pub mod list_substitution;
 pub mod order_sets;
 pub mod selection;

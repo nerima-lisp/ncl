@@ -293,7 +293,7 @@ fn selection_entry(
     values: &mut MultipleValues,
     operation: SelectionOperation,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = domain::selection::parse_options(ctx, args.as_slice())?;
+    let (positional, options) = domain::selection::parse_options(ctx, runtime, args.as_slice())?;
     let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut scope = Scope::new(ctx);
     let sequence_handle = scope.root::<Word>(Local::from_word(sequence));
@@ -350,15 +350,17 @@ pub use register_selection_if::{
 
 fn selection_parse(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, domain::selection::SelectionOptions), ObjectError> {
-    domain::selection::parse_options(ctx, args)
+    domain::selection::parse_options(ctx, runtime, args)
 }
 fn selection_pair_parse(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, domain::selection::PairSelectionOptions), ObjectError> {
-    domain::selection::parse_pair_options(ctx, args)
+    domain::selection::parse_pair_options(ctx, runtime, args)
 }
 fn search_entry(
     ctx: &mut ThreadContext,
@@ -366,7 +368,7 @@ fn search_entry(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = selection_pair_parse(ctx, args.as_slice())?;
+    let (positional, options) = selection_pair_parse(ctx, runtime, args.as_slice())?;
     let left_word = *positional.first().ok_or(ObjectError::TypeError)?;
     let right_word = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut left = domain::selection::sequence_values(
@@ -387,7 +389,7 @@ fn mismatch_entry(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = selection_pair_parse(ctx, args.as_slice())?;
+    let (positional, options) = selection_pair_parse(ctx, runtime, args.as_slice())?;
     let left_word = *positional.first().ok_or(ObjectError::TypeError)?;
     let right_word = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut left = domain::selection::sequence_values(

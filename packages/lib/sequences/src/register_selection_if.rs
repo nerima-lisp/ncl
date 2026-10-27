@@ -25,7 +25,7 @@ fn selection_if_entry(
     operation: SelectionIfOperation,
     negate: bool,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = domain::selection::parse_options(ctx, args.as_slice())?;
+    let (positional, options) = domain::selection::parse_options(ctx, runtime, args.as_slice())?;
     let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut scope = Scope::new(ctx);
     let sequence_handle = scope.root::<Word>(Local::from_word(sequence));

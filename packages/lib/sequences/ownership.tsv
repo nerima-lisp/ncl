@@ -138,7 +138,7 @@ COMMON-LISP	STABLE-SORT	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBLIS	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBSEQ	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSETP	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SUBST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBST	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBST-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBST-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBSTITUTE	function	ncl-lib-sequences	1	no	sequence/list operation

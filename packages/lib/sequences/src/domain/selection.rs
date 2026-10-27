@@ -16,7 +16,10 @@ mod selection_options;
 #[path = "selection_values.rs"]
 mod selection_values;
 pub use self::selection_options::{PairSelectionOptions, parse_pair_options};
-pub use self::selection_options::{SelectionOptions, parse_options, parse_options_single};
+pub use self::selection_options::{
+    SelectionOptionMode, SelectionOptions, parse_options, parse_options_single,
+    parse_options_with_minimum,
+};
 
 pub fn list_from_values(
     ctx: &mut ThreadContext,

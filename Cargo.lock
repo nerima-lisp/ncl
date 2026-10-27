@@ -202,6 +202,7 @@ name = "ncl-lib-sequences"
 version = "0.1.0"
 dependencies = [
  "ncl-conditions",
+ "ncl-lib-numbers",
  "ncl-object",
  "ncl-types",
 ]

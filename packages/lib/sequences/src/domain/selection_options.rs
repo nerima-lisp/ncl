@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use ncl_object::{ObjectError, ObjectRef, ThreadContext, Word, classify_object};
+use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SelectionOptions {
@@ -30,27 +30,39 @@ pub enum End1Bound {
     Index(usize),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SelectionOptionMode {
+    Sequence,
+    Tree,
+    Pair,
+}
+
 pub fn parse_options(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
-    let (positional, options) = parse_options_with_minimum(ctx, args, 2, false)?;
+    let (positional, options) =
+        parse_options_with_minimum(ctx, runtime, args, 2, SelectionOptionMode::Sequence)?;
     Ok((positional, options.selection))
 }
 
 pub fn parse_options_single(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, SelectionOptions), ObjectError> {
-    let (positional, options) = parse_options_with_minimum(ctx, args, 1, false)?;
+    let (positional, options) =
+        parse_options_with_minimum(ctx, runtime, args, 1, SelectionOptionMode::Sequence)?;
     Ok((positional, options.selection))
 }
 
 pub fn parse_pair_options(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
 ) -> Result<(Vec<Word>, PairSelectionOptions), ObjectError> {
-    parse_options_with_minimum(ctx, args, 2, true)
+    parse_options_with_minimum(ctx, runtime, args, 2, SelectionOptionMode::Pair)
 }
 
 fn parse_index(value: Word) -> Result<usize, ObjectError> {
@@ -58,14 +70,16 @@ fn parse_index(value: Word) -> Result<usize, ObjectError> {
         .map_err(|_| ObjectError::TypeError)
 }
 
-fn is_selection_keyword(keyword: &str, pair_operation: bool) -> bool {
-    if pair_operation {
-        matches!(keyword, "FROM-END" | "KEY" | "TEST" | "TEST-NOT")
-    } else {
-        matches!(
+fn is_selection_keyword(keyword: &str, mode: SelectionOptionMode) -> bool {
+    match mode {
+        SelectionOptionMode::Sequence => matches!(
             keyword,
             "START" | "END" | "FROM-END" | "COUNT" | "KEY" | "TEST" | "TEST-NOT"
-        )
+        ),
+        SelectionOptionMode::Tree => matches!(keyword, "KEY" | "TEST" | "TEST-NOT"),
+        SelectionOptionMode::Pair => {
+            matches!(keyword, "FROM-END" | "KEY" | "TEST" | "TEST-NOT")
+        }
     }
 }
 
@@ -120,64 +134,56 @@ fn apply_option(
     Ok(())
 }
 
-fn parse_options_with_minimum(
+pub fn parse_options_with_minimum(
     ctx: &ThreadContext,
+    runtime: &Runtime,
     args: &[Word],
     minimum: usize,
-    pair_operation: bool,
+    mode: SelectionOptionMode,
 ) -> Result<(Vec<Word>, PairSelectionOptions), ObjectError> {
-    let mut positional = Vec::new();
+    let positional = args.get(..minimum).ok_or(ObjectError::TypeError)?.to_vec();
+    let keyword_package = runtime.find_package(ctx, "KEYWORD");
     let mut options = PairSelectionOptions::default();
     let mut allow_other_keys = None;
     let mut has_unrecognized_keyword = false;
-    let mut seen_pair_keywords = HashSet::new();
-    let mut index = 0;
+    let mut seen_keywords = HashSet::new();
+    let mut index = minimum;
     while index < args.len() {
-        let argument = args.get(index).ok_or(ObjectError::Layout)?;
-        if pair_operation && positional.len() < minimum {
-            positional.push(*argument);
-            index += 1;
-            continue;
-        }
-        let name = if let ObjectRef::Symbol(symbol) = classify_object(ctx, *argument) {
-            let name = ncl_object::symbol_name(ctx, symbol)?;
-            (0..ncl_object::string_length(ctx, name)?)
-                .map(|i| ncl_object::string_ref(ctx, name, i))
-                .collect::<Result<String, _>>()?
+        let argument = *args.get(index).ok_or(ObjectError::Layout)?;
+        let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
+        let keyword = if let ObjectRef::Symbol(symbol) = classify_object(ctx, argument) {
+            let package = ncl_object::symbol_package(ctx, symbol)?;
+            if keyword_package == Some(package) {
+                let name = ncl_object::symbol_name(ctx, symbol)?;
+                (0..ncl_object::string_length(ctx, name)?)
+                    .map(|i| ncl_object::string_ref(ctx, name, i))
+                    .collect::<Result<String, _>>()?
+            } else {
+                String::new()
+            }
         } else {
             String::new()
         };
-        let keyword = name.to_ascii_uppercase();
-        let pair_bound = matches!(keyword.as_str(), "START1" | "END1" | "START2" | "END2");
+        let pair_bound = mode == SelectionOptionMode::Pair
+            && matches!(keyword.as_str(), "START1" | "END1" | "START2" | "END2");
         let allow_other_keys_keyword = keyword == "ALLOW-OTHER-KEYS";
-        if pair_bound && !pair_operation {
-            return Err(ObjectError::TypeError);
-        }
-        if is_selection_keyword(&keyword, pair_operation)
-            || pair_bound
-            || pair_operation && allow_other_keys_keyword
-        {
-            if pair_operation && !seen_pair_keywords.insert(keyword.clone()) {
+        if is_selection_keyword(&keyword, mode) || pair_bound || allow_other_keys_keyword {
+            if mode != SelectionOptionMode::Sequence && !seen_keywords.insert(keyword.clone()) {
                 index += 2;
                 continue;
             }
-            let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
             apply_option(&mut options, &keyword, value, &mut allow_other_keys)?;
-            index += 2;
-        } else if pair_operation {
-            if !matches!(classify_object(ctx, *argument), ObjectRef::Symbol(_)) {
+        } else {
+            if mode == SelectionOptionMode::Pair
+                && !matches!(classify_object(ctx, argument), ObjectRef::Symbol(_))
+            {
                 return Err(ObjectError::TypeError);
             }
-            let _value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
             has_unrecognized_keyword = true;
-            index += 2;
-        } else {
-            positional.push(*argument);
-            index += 1;
         }
+        index += 2;
     }
-    if positional.len() < minimum
-        || options.selection.test.is_some() && options.selection.test_not.is_some()
+    if options.selection.test.is_some() && options.selection.test_not.is_some()
         || has_unrecognized_keyword && allow_other_keys != Some(true)
     {
         return Err(ObjectError::TypeError);

@@ -10,7 +10,8 @@ pub use register_duplicates::remove_duplicates_entry;
 pub use register_extra_tail::{
     adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
     rassoc_entry, reduce_entry, remove_if_entry, remove_if_not_entry, set_difference_entry,
-    set_exclusive_or_entry, subsetp_entry, substitute_if_entry, substitute_if_not_entry,
+    set_exclusive_or_entry, subsetp_entry, subst_entry, substitute_if_entry,
+    substitute_if_not_entry,
 };
 
 fn root_args<'ctx>(
@@ -67,6 +68,7 @@ pub(super) fn selection_transform_entry(
         let rooted = words(&scope, &handles);
         let (positional, options) = selection_parse(
             scope.context_mut(),
+            runtime,
             rooted.get(1..).ok_or(ObjectError::TypeError)?,
         )?;
         let object = *positional.first().ok_or(ObjectError::TypeError)?;
@@ -99,7 +101,7 @@ pub(super) fn selection_transform_entry(
         return keep_result(&mut scope, result);
     }
     let rooted = words(&scope, &handles);
-    let (positional, options) = selection_parse(scope.context_mut(), &rooted)?;
+    let (positional, options) = selection_parse(scope.context_mut(), runtime, &rooted)?;
     let object = *positional.first().ok_or(ObjectError::TypeError)?;
     let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let sequence_type = domain::selection::object_sequence(scope.context(), sequence)?;

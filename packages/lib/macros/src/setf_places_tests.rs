@@ -93,6 +93,39 @@ fn contains_nested_the(
     Ok(false)
 }
 
+fn contains_operator(
+    ctx: &mut ThreadContext,
+    form: Word,
+    operator: Word,
+) -> Result<bool, ObjectError> {
+    if !form.is_cons() {
+        return Ok(false);
+    }
+    let parts = elements(ctx, form)?;
+    if parts.first().copied() == Some(operator) {
+        return Ok(true);
+    }
+    for part in parts {
+        if contains_operator(ctx, part, operator)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn place_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    operator: &str,
+    arguments: &[Word],
+) -> Result<Word, ObjectError> {
+    let operator = symbol(ctx, runtime, operator)?;
+    let mut parts = Vec::with_capacity(arguments.len() + 1);
+    parts.push(operator);
+    parts.extend_from_slice(arguments);
+    list(ctx, runtime, &parts)
+}
+
 /// Each generalized place must expand into a non-empty form that survives a
 /// full collection under `gc_stress` + strict forwarding.
 #[test]
@@ -154,6 +187,186 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
         }
         Ok(())
     })
+}
+
+#[test]
+fn nth_and_elt_places_build_their_store_paths_and_validate_arity() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let index = symbol(&mut ctx, &runtime, "INDEX")?;
+    let value = symbol(&mut ctx, &runtime, "VALUE")?;
+
+    let nth = place_form(&mut ctx, &runtime, "NTH", &[index, sequence])?;
+    let nth_expansion = expand_get_setf_expansion(&mut ctx, &runtime, &registry, nth)?;
+    assert_eq!(nth_expansion.temporary_variables.len(), 2);
+    assert_eq!(nth_expansion.value_forms, vec![index, sequence]);
+    let nthcdr = symbol(&mut ctx, &runtime, "NTHCDR")?;
+    let rplaca = symbol(&mut ctx, &runtime, "RPLACA")?;
+    assert!(contains_operator(
+        &mut ctx,
+        nth_expansion.store_form,
+        nthcdr
+    )?);
+    assert!(contains_operator(
+        &mut ctx,
+        nth_expansion.store_form,
+        rplaca
+    )?);
+
+    let elt = place_form(&mut ctx, &runtime, "ELT", &[sequence, index])?;
+    let elt_expansion = expand_get_setf_expansion(&mut ctx, &runtime, &registry, elt)?;
+    assert_eq!(elt_expansion.temporary_variables.len(), 2);
+    assert_eq!(elt_expansion.value_forms, vec![sequence, index]);
+    let sequence_temp = elt_expansion.temporary_variables[0];
+    let index_temp = elt_expansion.temporary_variables[1];
+    let store = elt_expansion.store_variables[0];
+    let store_parts = elements(&mut ctx, elt_expansion.store_form)?;
+    let progn = symbol(&mut ctx, &runtime, "PROGN")?;
+    assert_eq!(store_parts.len(), 3);
+    assert_eq!(store_parts[0], progn);
+    assert_eq!(store_parts[1], elt_expansion.access_form);
+    let branch_parts = elements(&mut ctx, store_parts[2])?;
+    let if_symbol = symbol(&mut ctx, &runtime, "IF")?;
+    assert_eq!(branch_parts.len(), 4);
+    assert_eq!(branch_parts[0], if_symbol);
+    assert_eq!(
+        elements(&mut ctx, branch_parts[1])?,
+        vec![symbol(&mut ctx, &runtime, "LISTP")?, sequence_temp]
+    );
+    let list_store = elements(&mut ctx, branch_parts[2])?;
+    assert_eq!(list_store.len(), 3);
+    assert_eq!(list_store[0], progn);
+    let rplaca_parts = elements(&mut ctx, list_store[1])?;
+    assert_eq!(rplaca_parts.len(), 3);
+    assert_eq!(rplaca_parts[0], symbol(&mut ctx, &runtime, "RPLACA")?);
+    let nthcdr_parts = elements(&mut ctx, rplaca_parts[1])?;
+    assert_eq!(
+        nthcdr_parts,
+        vec![
+            symbol(&mut ctx, &runtime, "NTHCDR")?,
+            index_temp,
+            sequence_temp,
+        ]
+    );
+    assert_eq!(rplaca_parts[2], store);
+    assert_eq!(list_store[2], store);
+    assert_eq!(
+        elements(&mut ctx, branch_parts[3])?,
+        vec![
+            symbol(&mut ctx, &runtime, "NCL-EXT::AREF-SET")?,
+            sequence_temp,
+            index_temp,
+            store,
+        ]
+    );
+
+    let malformed_nth = place_form(&mut ctx, &runtime, "NTH", &[sequence])?;
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, malformed_nth),
+        Err(ObjectError::TypeError)
+    ));
+    let malformed_elt = place_form(&mut ctx, &runtime, "ELT", &[sequence, index, value])?;
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, malformed_elt),
+        Err(ObjectError::TypeError)
+    ));
+    Ok(())
+}
+
+#[test]
+fn svref_and_mutator_places_build_stores_and_validate_arities() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let index = symbol(&mut ctx, &runtime, "INDEX")?;
+
+    let svref = place_form(&mut ctx, &runtime, "SVREF", &[sequence, index])?;
+    let svref_expansion = expand_get_setf_expansion(&mut ctx, &runtime, &registry, svref)?;
+    assert_eq!(svref_expansion.temporary_variables.len(), 2);
+    assert_eq!(svref_expansion.value_forms, vec![sequence, index]);
+    assert_eq!(
+        elements(&mut ctx, svref_expansion.access_form)?,
+        vec![
+            symbol(&mut ctx, &runtime, "SVREF")?,
+            svref_expansion.temporary_variables[0],
+            svref_expansion.temporary_variables[1],
+        ]
+    );
+    assert_eq!(
+        elements(&mut ctx, svref_expansion.store_form)?,
+        vec![
+            symbol(&mut ctx, &runtime, "NCL-EXT::SVREF-SET")?,
+            svref_expansion.temporary_variables[0],
+            svref_expansion.temporary_variables[1],
+            svref_expansion.store_variables[0],
+        ]
+    );
+    let missing_svref_arguments = place_form(&mut ctx, &runtime, "SVREF", &[])?;
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, missing_svref_arguments),
+        Err(ObjectError::TypeError)
+    ));
+
+    let car = place_form(&mut ctx, &runtime, "CAR", &[sequence])?;
+    let car_expansion = expand_get_setf_expansion(&mut ctx, &runtime, &registry, car)?;
+    assert_eq!(car_expansion.temporary_variables.len(), 1);
+    assert_eq!(car_expansion.value_forms, vec![sequence]);
+    let car_store = elements(&mut ctx, car_expansion.store_form)?;
+    assert_eq!(car_store.len(), 3);
+    assert_eq!(car_store[0], symbol(&mut ctx, &runtime, "PROGN")?);
+    assert_eq!(
+        elements(&mut ctx, car_store[1])?,
+        vec![
+            symbol(&mut ctx, &runtime, "RPLACA")?,
+            car_expansion.temporary_variables[0],
+            car_expansion.store_variables[0],
+        ]
+    );
+    assert_eq!(car_store[2], car_expansion.store_variables[0]);
+    for arguments in [&[][..], &[sequence, index][..]] {
+        let malformed_car = place_form(&mut ctx, &runtime, "CAR", arguments)?;
+        assert!(matches!(
+            expand_get_setf_expansion(&mut ctx, &runtime, &registry, malformed_car),
+            Err(ObjectError::TypeError)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn standardized_cons_helper_returns_none_for_other_accessors() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let unrecognized = symbol(&mut ctx, &runtime, "CAXR")?;
+    assert!(matches!(
+        super::standard_cons_place(&mut ctx, &runtime, unrecognized, &[]),
+        Ok(None)
+    ));
+    assert!(matches!(
+        super::standard_cons_place(&mut ctx, &runtime, Word::fixnum(25), &[]),
+        Ok(None)
+    ));
+
+    let foreign_second = symbol(&mut ctx, &runtime, "N25-FOREIGN::SECOND")?;
+    assert!(matches!(
+        super::standard_cons_place(&mut ctx, &runtime, foreign_second, &[]),
+        Ok(None)
+    ));
+
+    let caar = symbol(&mut ctx, &runtime, "CAAR")?;
+    let sequence = symbol(&mut ctx, &runtime, "SEQUENCE")?;
+    let index = symbol(&mut ctx, &runtime, "INDEX")?;
+    assert!(matches!(
+        super::standard_cons_place(&mut ctx, &runtime, caar, &[sequence, index]),
+        Err(ObjectError::TypeError)
+    ));
+    Ok(())
 }
 
 #[test]

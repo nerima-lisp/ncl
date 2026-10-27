@@ -1,5 +1,7 @@
 //! The recursive reader and its public entry points.
 
+use std::cell::Cell;
+
 use ncl_object::{HeapRootedWord, Runtime, ThreadContext, Word, make_cons, make_string};
 
 use crate::error::ReadError;
@@ -22,7 +24,10 @@ pub enum FloatFormat {
 
 /// The radix used to interpret integer tokens.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ReadBase(u32);
+pub struct ReadBase {
+    value: u32,
+    dynamic: bool,
+}
 
 impl ReadBase {
     /// Construct a radix in the Common Lisp range `2..=36`.
@@ -33,14 +38,32 @@ impl ReadBase {
         if base < 2 || base > 36 {
             Err(ReadError::InvalidBase(base))
         } else {
-            Ok(Self(base))
+            Ok(Self {
+                value: base,
+                dynamic: false,
+            })
+        }
+    }
+
+    /// Read the runtime's live `*READ-BASE*` value for each token.
+    #[must_use]
+    pub const fn dynamic(self) -> Self {
+        Self {
+            dynamic: true,
+            ..self
         }
     }
 
     /// Return the numeric radix for the object-layer parser boundary.
     #[must_use]
     pub const fn value(self) -> u32 {
-        self.0
+        self.value
+    }
+
+    /// Whether the radix comes from the runtime's live `*READ-BASE*` value.
+    #[must_use]
+    pub const fn is_dynamic(self) -> bool {
+        self.dynamic
     }
 }
 
@@ -62,6 +85,8 @@ pub enum ReadSuppression {
     Keep,
     /// Read the form for syntax only and return `NIL`.
     Discard,
+    /// Read the live `*READ-SUPPRESS*` value at each form boundary.
+    Dynamic,
 }
 
 /// A package name selected as the current reader package.
@@ -91,15 +116,17 @@ impl PackageName {
 
 /// Options controlling a single [`read`] call.
 ///
-/// Runtime reads the live `*read-eval*` value at each `#.` dispatch. Other
-/// reader settings pass through these options. `*readtable*` dynamic rebinding
-/// is not wired yet, so the readtable is passed explicitly.
+/// Runtime reads the live `*read-eval*`, `*read-base*`, and `*read-suppress*`
+/// values at their use sites. `*readtable*` dynamic rebinding is not wired yet,
+/// so the readtable is passed explicitly.
 #[derive(Clone, Debug)]
 pub struct ReadOptions {
     readtable: Readtable,
     read_base: ReadBase,
+    dynamic_read_base: Cell<Option<u32>>,
     read_eval: ReadEvaluation,
     read_suppress: ReadSuppression,
+    dynamic_read_suppression: Cell<Option<bool>>,
     read_default_float_format: FloatFormat,
     current_package: Option<PackageName>,
 }
@@ -113,8 +140,10 @@ impl ReadOptions {
         Ok(Self {
             readtable: crate::readtable::standard_readtable(ctx, runtime)?,
             read_base: ReadBase::new(10)?,
+            dynamic_read_base: Cell::new(None),
             read_eval: ReadEvaluation::Enabled,
             read_suppress: ReadSuppression::Keep,
+            dynamic_read_suppression: Cell::new(None),
             read_default_float_format: FloatFormat::SingleFloat,
             current_package: None,
         })
@@ -138,6 +167,11 @@ impl ReadOptions {
     /// Set whether forms are suppressed.
     pub const fn set_read_suppression(&mut self, suppression: ReadSuppression) {
         self.read_suppress = suppression;
+    }
+
+    /// Set the current value used when suppression is dynamic.
+    pub fn set_dynamic_read_suppression(&mut self, suppressed: bool) {
+        self.dynamic_read_suppression.set(Some(suppressed));
     }
 
     /// Set the default float format.
@@ -178,6 +212,22 @@ impl ReadOptions {
         self.read_suppress
     }
 
+    pub(crate) const fn cached_read_base(&self) -> Option<u32> {
+        self.dynamic_read_base.get()
+    }
+
+    pub(crate) fn cache_read_base(&self, base: u32) {
+        self.dynamic_read_base.set(Some(base));
+    }
+
+    pub(crate) const fn cached_read_suppression(&self) -> Option<bool> {
+        self.dynamic_read_suppression.get()
+    }
+
+    pub(crate) fn cache_read_suppression(&self, suppressed: bool) {
+        self.dynamic_read_suppression.set(Some(suppressed));
+    }
+
     /// Return the default float format.
     #[must_use]
     pub const fn default_float_format(&self) -> FloatFormat {
@@ -191,18 +241,21 @@ impl ReadOptions {
     }
 }
 
-/// Reads the next form from `source` using the supplied reader options.
+/// Read the next form from `source` using the supplied reader options.
 ///
 /// Returns `None` when the source has no more forms.
 ///
 /// # Errors
-/// Returns a reader error for malformed input or read-time evaluation that is disabled or unavailable.
+/// Returns a reader error for malformed input or disabled or unavailable read-time evaluation.
 pub fn read(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
 ) -> Result<Option<Word>, ReadError> {
+    if opts.read_base().is_dynamic() {
+        opts.cache_read_base(opts.read_base().value());
+    }
     let rt = ncl_object::HeapRootedWord::new(ctx, opts.readtable.object().as_word())?;
     let labels = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
     read_form(ctx, runtime, source, opts, &rt, &labels).and_then(|form| {
@@ -281,12 +334,12 @@ pub fn read_form(
         match kind {
             SyntaxKind::Constituent | SyntaxKind::SingleEscape | SyntaxKind::MultipleEscape => {
                 let form = read_token(ctx, runtime, source, opts, rt)?;
-                return Ok(apply_suppress(form, opts));
+                return apply_suppress(ctx, runtime, form, opts);
             }
             SyntaxKind::TerminatingMacro | SyntaxKind::NonTerminatingMacro => {
                 source.read_char();
                 if let Some(word) = read_macro_char(ctx, runtime, source, opts, rt, labels, c)? {
-                    return Ok(apply_suppress(Some(word), opts));
+                    return apply_suppress(ctx, runtime, Some(word), opts);
                 }
                 if source.peek_char() == Some(')') {
                     return Ok(None);
@@ -300,11 +353,16 @@ pub fn read_form(
     }
 }
 
-/// Honour `*read-suppress*` by returning `NIL` instead of a constructed form.
-const fn apply_suppress(form: Option<Word>, opts: &ReadOptions) -> Option<Word> {
-    match opts.read_suppress {
-        ReadSuppression::Discard => Some(Word::NIL),
-        ReadSuppression::Keep => form,
+fn apply_suppress(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    form: Option<Word>,
+    opts: &ReadOptions,
+) -> Result<Option<Word>, ReadError> {
+    if crate::token::is_read_suppressed(ctx, runtime, opts)? {
+        Ok(Some(Word::NIL))
+    } else {
+        Ok(form)
     }
 }
 

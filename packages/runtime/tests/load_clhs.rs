@@ -542,11 +542,30 @@ fn assert_load_condition_probe(
     assert_eq!(runtime.format_result(value), "T", "LOAD {route} {failure}");
 }
 
+fn assert_load_read_eval_disabled_condition(runtime: &mut Runtime, path: &std::path::Path) {
+    fs::write(path, "#.(+ 1 2)")
+        .unwrap_or_else(|error| panic!("LOAD READ-EVAL fixture creation failed: {error}"));
+    let form = format!(
+        "(let ((*read-eval* nil)) (handler-case (progn (load {}) :no-error) (reader-error () t)))",
+        lisp_string(path),
+    );
+    assert_load_condition_probe(
+        runtime,
+        "eval",
+        false,
+        &form,
+        "ReadEvalDisabled did not reach READER-ERROR",
+    );
+    fs::remove_file(path)
+        .unwrap_or_else(|error| panic!("LOAD READ-EVAL fixture cleanup failed: {error}"));
+}
+
 #[test]
 fn load_builtin_classifies_errors_in_eval_and_compile_paths() {
     let stem = format!("ncl-load-error-class-{}", std::process::id());
     let missing = std::env::temp_dir().join(format!("{stem}-missing.lisp"));
     let reader_error = std::env::temp_dir().join(format!("{stem}-reader.lisp"));
+    let read_eval_disabled = std::env::temp_dir().join(format!("{stem}-read-eval-disabled.lisp"));
     let lowering_error = std::env::temp_dir().join(format!("{stem}-lowering.lisp"));
     let unsupported_format = std::env::temp_dir().join(format!("{stem}-format.lisp"));
     let simple_error = std::env::temp_dir().join(format!("{stem}-simple.lisp"));
@@ -633,6 +652,8 @@ fn load_builtin_classifies_errors_in_eval_and_compile_paths() {
             assert_load_condition_probe(&mut runtime, route, compile, form, failure);
         }
     }
+
+    assert_load_read_eval_disabled_condition(&mut runtime, &read_eval_disabled);
 
     for path in [
         &reader_error,

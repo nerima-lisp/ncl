@@ -26,6 +26,15 @@ fn read_one(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
         .unwrap()
 }
 
+fn bounded_runtime() -> Runtime {
+    let runtime = Runtime::new().unwrap();
+    let mut config = runtime.gc_config();
+    config.dynamic_space_size = 16 * 1024 * 1024;
+    config.bytes_considered_between_gcs = 64 * 1024 * 1024;
+    drop(runtime);
+    Runtime::with_config(config).unwrap()
+}
+
 fn name_of(ctx: &ThreadContext, word: Word) -> String {
     let name = symbol_name(ctx, word).unwrap();
     let length = string_length(ctx, name).unwrap();
@@ -37,6 +46,124 @@ fn name_of(ctx: &ThreadContext, word: Word) -> String {
 fn read_name(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> String {
     let word = read_one(runtime, ctx, text);
     name_of(ctx, word)
+}
+
+fn register_eval_stub(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    evaluator_sentinel: &mut (),
+    function: ncl_object::RustBuiltin,
+) {
+    let evaluator = ncl_object::Builtin {
+        lambda_list: ncl_object::LambdaList::new(EVAL_PARAMETERS, &[], None, &[], false),
+        convention: ncl_object::BuiltinConvention::Direct(ncl_object::Arity::exact(1)),
+    };
+    runtime
+        .register_builtin(
+            ctx,
+            ncl_object::BuiltinIdentifier::new(
+                ncl_object::BuiltinPackage::CommonLisp,
+                ncl_object::BuiltinName::new("EVAL"),
+            ),
+            ncl_object::BuiltinImplementation::direct(evaluator, function),
+        )
+        .unwrap();
+    ctx.set_evaluator_runtime(std::ptr::from_mut(evaluator_sentinel));
+}
+
+fn set_common_lisp_value(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, value: Word) {
+    let common_lisp = runtime.find_package(ctx, "COMMON-LISP").unwrap();
+    let (symbol, _) = Package::from_word(common_lisp)
+        .intern(ctx, runtime, name)
+        .unwrap();
+    let symbol = ncl_object::HeapRootedWord::new(ctx, symbol).unwrap();
+    ncl_object::set_symbol_value(ctx, symbol.get(), value).unwrap();
+}
+
+fn set_read_base_to_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    let form = args.required(0)?;
+    let common_lisp = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ncl_object::ObjectError::Layout)?;
+    let (symbol, _) = Package::from_word(common_lisp).intern(ctx, runtime, "*READ-BASE*")?;
+    let symbol = ncl_object::HeapRootedWord::new(ctx, symbol)?;
+    ncl_object::set_symbol_value(ctx, symbol.get(), form)?;
+    Ok(form)
+}
+
+fn fill_heap_with_rooted_objects(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    roots: &mut [Word],
+) -> Result<usize, ncl_object::ObjectError> {
+    let mut next_root = 1;
+    for words in [65_536, 4_096, 256, 16, 1] {
+        loop {
+            if next_root == roots.len() {
+                return Err(ncl_object::ObjectError::Layout);
+            }
+            match ncl_object::allocate(ctx, runtime, 0x7f, words) {
+                Ok(value) => {
+                    roots[next_root] = value;
+                    next_root += 1;
+                }
+                Err(error) if format!("{error:?}") == "Storage(CapacityExceeded)" => break,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(next_root)
+}
+
+fn fill_heap_into_root_vector(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    root_vector: Word,
+) -> Result<usize, ncl_object::ObjectError> {
+    let mut next_root = 0;
+    for words in [65_536, 4_096, 256, 16, 1] {
+        loop {
+            if next_root == 1_024 {
+                return Err(ncl_object::ObjectError::Layout);
+            }
+            match ncl_object::allocate(ctx, runtime, 0x7f, words) {
+                Ok(value) => {
+                    ncl_object::simple_vector_set(ctx, root_vector, next_root, value)?;
+                    next_root += 1;
+                }
+                Err(error) if format!("{error:?}") == "Storage(CapacityExceeded)" => break,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(next_root)
+}
+
+fn exhaust_heap_and_return_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    let form = args.required(0)?;
+    let common_lisp = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ncl_object::ObjectError::Layout)?;
+    let (suppression, _) =
+        Package::from_word(common_lisp).intern(ctx, runtime, "*READ-SUPPRESS*")?;
+    let suppression = ncl_object::HeapRootedWord::new(ctx, suppression)?;
+    let values = vec![Word::NIL; 1_024];
+    let root_vector = ncl_object::make_simple_vector(ctx, runtime, &values)?;
+    let root_vector = ncl_object::HeapRootedWord::new(ctx, root_vector)?;
+    let root_count = fill_heap_into_root_vector(ctx, runtime, root_vector.get())?;
+    assert!(root_count > 1);
+    ncl_object::set_symbol_value(ctx, suppression.get(), root_vector.get())?;
+    Ok(form)
 }
 
 fn list_names(ctx: &ThreadContext, list: Word) -> Vec<String> {
@@ -590,6 +717,63 @@ fn unmatched_paren_is_an_error() {
 }
 
 #[test]
+fn malformed_dotted_lists_report_missing_cdr_and_trailing_forms() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let opts = standard(&runtime, &mut ctx);
+
+    let error = read_from_string(&mut ctx, &runtime, "(. item)", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::DotWithoutCdr));
+
+    let error = read_from_string(&mut ctx, &runtime, "(item . #|ignored|#)", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::DotWithoutCdr));
+
+    let error = read_from_string(&mut ctx, &runtime, "(item . tail extra)", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::UnmatchedRightParen));
+}
+
+#[test]
+fn lists_propagate_reader_errors_from_elements_and_dotted_cdrs() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let opts = standard(&runtime, &mut ctx);
+
+    let error = read_from_string(&mut ctx, &runtime, "(#q)", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UndefinedDispatchMacro('q')
+    ));
+
+    let error = read_from_string(&mut ctx, &runtime, "(item . #q)", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UndefinedDispatchMacro('q')
+    ));
+}
+
+#[test]
+fn dot_followed_by_a_constituent_is_read_as_a_token() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+
+    assert_eq!(read_names(&runtime, &mut ctx, "(.item)"), vec![".ITEM"]);
+}
+
+#[test]
+fn unterminated_list_reports_eof() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let opts = standard(&runtime, &mut ctx);
+
+    let error = read_from_string(&mut ctx, &runtime, "(item", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::UnexpectedEof));
+}
+
+#[test]
 fn eof_in_string_is_an_error() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
@@ -620,6 +804,420 @@ fn read_eval_is_rejected() {
     let opts = standard(&runtime, &mut ctx);
     let error = read_from_string(&mut ctx, &runtime, "#.1", &opts).unwrap_err();
     assert!(matches!(error, ncl_reader::ReadError::ReadEvalUnavailable));
+}
+
+#[test]
+fn read_eval_requires_a_form_after_the_dispatch_macro() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let opts = standard(&runtime, &mut ctx);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::UnexpectedEof));
+}
+
+#[test]
+fn suppressed_read_eval_still_requires_a_form() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Discard);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::UnexpectedEof));
+
+    let value = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap();
+    assert_eq!(value, Some(Word::NIL));
+
+    let error = read_from_string(&mut ctx, &runtime, "#.#q", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UndefinedDispatchMacro('q')
+    ));
+}
+
+#[test]
+fn dynamic_read_eval_rejects_nil() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    set_common_lisp_value(&mut ctx, &runtime, "*READ-EVAL*", Word::NIL);
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Dynamic);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.#q", &opts).unwrap_err();
+    assert!(matches!(error, ncl_reader::ReadError::ReadEvalDisabled));
+}
+
+#[test]
+fn read_eval_propagates_errors_from_its_form() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.#q", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UndefinedDispatchMacro('q')
+    ));
+}
+
+#[test]
+fn dynamic_read_eval_accepts_a_non_nil_generalized_boolean() {
+    fn return_form(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        args: &ncl_object::BuiltinArgs<'_>,
+        _values: &mut ncl_object::MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        args.required(0)
+    }
+
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(&mut ctx, &runtime, &mut evaluator_sentinel, return_form);
+    set_common_lisp_value(&mut ctx, &runtime, "*READ-EVAL*", Word::fixnum(0));
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Dynamic);
+
+    let value = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap();
+    assert_eq!(value, Some(Word::fixnum(41)));
+}
+
+#[test]
+fn read_eval_propagates_evaluator_errors() {
+    fn fail_eval(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &ncl_object::BuiltinArgs<'_>,
+        _values: &mut ncl_object::MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        Err(ncl_object::ObjectError::TypeError)
+    }
+
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(&mut ctx, &runtime, &mut evaluator_sentinel, fail_eval);
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::Object(ncl_object::ObjectError::TypeError)
+    ));
+}
+
+#[test]
+fn dynamic_read_suppression_refreshes_after_nested_read_eval() {
+    fn enable_read_suppression(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        args: &ncl_object::BuiltinArgs<'_>,
+        _values: &mut ncl_object::MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        let form = args.required(0)?;
+        let common_lisp = runtime
+            .find_package(ctx, "COMMON-LISP")
+            .ok_or(ncl_object::ObjectError::Layout)?;
+        let (symbol, _) =
+            Package::from_word(common_lisp).intern(ctx, runtime, "*READ-SUPPRESS*")?;
+        let symbol = ncl_object::HeapRootedWord::new(ctx, symbol)?;
+        ncl_object::set_symbol_value(ctx, symbol.get(), Word::fixnum(1))?;
+        Ok(form)
+    }
+
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        enable_read_suppression,
+    );
+    set_common_lisp_value(&mut ctx, &runtime, "*READ-SUPPRESS*", Word::NIL);
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
+
+    let value = read_from_string(&mut ctx, &runtime, "#.#.41", &opts).unwrap();
+    assert_eq!(value, Some(Word::NIL));
+    let common_lisp = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
+    let (symbol, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "*READ-SUPPRESS*")
+        .unwrap();
+    assert_eq!(ncl_object::symbol_value(&ctx, symbol), Ok(Word::fixnum(1)));
+}
+
+#[test]
+fn dynamic_read_suppression_override_controls_reads() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
+
+    opts.set_dynamic_read_suppression(true);
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "41", &opts).unwrap(),
+        Some(Word::NIL)
+    );
+
+    opts.set_dynamic_read_suppression(false);
+    assert_eq!(
+        read_from_string(&mut ctx, &runtime, "41", &opts).unwrap(),
+        Some(Word::fixnum(41))
+    );
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_read_eval_form() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = opts.readtable().object().as_word();
+
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
+        assert!(root_count > 1);
+        opts.set_readtable(ncl_reader::Readtable::from_object(
+            ncl_object::Readtable::from_word(roots[0]),
+        ));
+
+        let error = read_from_string(ctx, &runtime, "#.(1)", &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+        ));
+        assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_read_eval_symbol_lookup() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        set_read_base_to_form,
+    );
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Enabled);
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = opts.readtable().object().as_word();
+
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
+        assert!(root_count > 1);
+        opts.set_readtable(ncl_reader::Readtable::from_object(
+            ncl_object::Readtable::from_word(roots[0]),
+        ));
+
+        let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+        ));
+        assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_dynamic_read_eval_lookup() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_evaluation(ncl_reader::ReadEvaluation::Dynamic);
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = opts.readtable().object().as_word();
+
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
+        assert!(root_count > 1);
+        opts.set_readtable(ncl_reader::Readtable::from_object(
+            ncl_object::Readtable::from_word(roots[0]),
+        ));
+
+        let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+        ));
+        assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_dynamic_read_suppression_lookup() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = opts.readtable().object().as_word();
+
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
+        assert!(root_count > 1);
+        opts.set_readtable(ncl_reader::Readtable::from_object(
+            ncl_object::Readtable::from_word(roots[0]),
+        ));
+
+        let error = read_from_string(ctx, &runtime, "41", &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+        ));
+        assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_suppression_lookup_in_read_eval() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
+    let mut roots = vec![Word::NIL; 1_024];
+    roots[0] = opts.readtable().object().as_word();
+
+    ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
+        assert!(root_count > 1);
+        opts.set_readtable(ncl_reader::Readtable::from_object(
+            ncl_object::Readtable::from_word(roots[0]),
+        ));
+
+        let error = read_from_string(ctx, &runtime, "#.41", &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+        ));
+        assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_dynamic_read_suppression_refresh() {
+    let runtime = bounded_runtime();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        exhaust_heap_and_return_form,
+    );
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_suppression(ncl_reader::ReadSuppression::Dynamic);
+    opts.set_dynamic_read_suppression(false);
+
+    let error = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+    ));
+    assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+}
+
+#[test]
+fn bounded_heap_failure_propagates_from_dynamic_read_base_refresh() {
+    let runtime = bounded_runtime();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        exhaust_heap_and_return_form,
+    );
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_base(ncl_reader::ReadBase::new(10).unwrap().dynamic());
+
+    let error = read_from_string(&mut ctx, &runtime, "#.41", &opts).unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::Object(ncl_object::ObjectError::Storage(_))
+    ));
+    assert_eq!(format!("{error:?}"), "Object(Storage(CapacityExceeded))");
+}
+
+#[test]
+fn dynamic_read_base_rejects_invalid_values_after_read_eval() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        set_read_base_to_form,
+    );
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_base(ncl_reader::ReadBase::new(10).unwrap().dynamic());
+
+    for input in ["#.NIL", "#.-1", "#.1"] {
+        let error = read_from_string(&mut ctx, &runtime, input, &opts).unwrap_err();
+        assert!(matches!(
+            error,
+            ncl_reader::ReadError::Object(ncl_object::ObjectError::TypeError)
+        ));
+    }
+}
+
+#[test]
+fn dynamic_read_base_refreshes_after_read_eval() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let mut evaluator_sentinel = ();
+    register_eval_stub(
+        &mut ctx,
+        &runtime,
+        &mut evaluator_sentinel,
+        set_read_base_to_form,
+    );
+    let mut opts = standard(&runtime, &mut ctx);
+    opts.set_read_base(ncl_reader::ReadBase::new(10).unwrap().dynamic());
+
+    let value = read_from_string(&mut ctx, &runtime, "(#.16 FF)", &opts)
+        .unwrap()
+        .unwrap();
+    assert_eq!(classify(car(&ctx, value).unwrap()), ObjectRef::Fixnum(16));
+    let second = cdr(&ctx, value).unwrap();
+    assert_eq!(classify(car(&ctx, second).unwrap()), ObjectRef::Fixnum(255));
 }
 
 #[test]

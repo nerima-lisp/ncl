@@ -214,3 +214,24 @@ fn modifying_place_forms_evaluate_once_in_clhs_order() {
         "REMF property-before-read order",
     );
 }
+
+#[test]
+fn fdefinition_and_macro_function_place_arguments_evaluate_once() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    assert_form(
+        &mut runtime,
+        "(let ((fdefinition-accesses 0) (macro-accesses 0))
+           (setf (fdefinition
+                   (progn (incf fdefinition-accesses) 'ncl-fdefinition-place-once))
+                 #'identity)
+           (setf (macro-function
+                   (progn (incf macro-accesses) 'ncl-macro-function-place-once))
+                 #'identity)
+           (list fdefinition-accesses
+                 (funcall (fdefinition 'ncl-fdefinition-place-once) 7)
+                 macro-accesses
+                 (not (null (macro-function 'ncl-macro-function-place-once)))))",
+        "(1 7 1 T)",
+        "FDEFINITION and MACRO-FUNCTION place argument evaluation once",
+    );
+}

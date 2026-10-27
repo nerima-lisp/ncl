@@ -23,11 +23,6 @@ pub(super) struct RootedExpansion {
 
 impl RootedExpansion {
     pub(super) fn new(ctx: &mut ThreadContext, expansion: SetfExpansion) -> Result<Self> {
-        if expansion.temporary_variables.len() != expansion.value_forms.len()
-            || expansion.store_variables.len() != 1
-        {
-            return Err(ObjectError::TypeError);
-        }
         let temporary_len = expansion.temporary_variables.len();
         let value_len = expansion.value_forms.len();
         let mut words = expansion.temporary_variables;
@@ -130,7 +125,7 @@ fn pushnew_option_pairs(
     let mut test_not_seen = false;
     let mut pairs = Vec::with_capacity(args.len() / 2);
     for index in (0..args.len()).step_by(2) {
-        let keyword = args.get(index).ok_or(ObjectError::TypeError)?.get();
+        let keyword = args[index].get(); // check-added-lines: allow(index) the even-step loop only visits indices below args.len().
         let ObjectRef::Symbol(symbol) = classify_object(ctx, keyword) else {
             return Err(ObjectError::TypeError);
         };
@@ -151,7 +146,7 @@ fn pushnew_option_pairs(
         if test_seen && test_not_seen {
             return Err(ObjectError::TypeError);
         }
-        pairs.push((index, index.checked_add(1).ok_or(ObjectError::TypeError)?));
+        pairs.push((index, index + 1));
     }
     Ok(pairs)
 }
@@ -167,7 +162,7 @@ fn modify(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?;
+        let place_word = &arguments[0]; // check-added-lines: allow(index) modify checked for one or two arguments above.
         let expansion = place(ctx, runtime, registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
         let mut bindings = Vec::new();
@@ -226,9 +221,9 @@ pub fn expand_push(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let item = arguments.first().ok_or(ObjectError::TypeError)?;
-        let place_word = arguments.get(1).ok_or(ObjectError::TypeError)?;
-        let option_arguments = arguments.get(2..).ok_or(ObjectError::TypeError)?;
+        let item = &arguments[0]; // check-added-lines: allow(index) expand_push requires at least two arguments above.
+        let place_word = &arguments[1]; // check-added-lines: allow(index) expand_push requires at least two arguments above.
+        let option_arguments = &arguments[2..]; // check-added-lines: allow(index) expand_push requires at least two arguments above.
         let option_pairs = if new_only {
             pushnew_option_pairs(ctx, runtime, option_arguments)?
         } else {
@@ -245,14 +240,8 @@ pub fn expand_push(
         let operator = if new_only { "ADJOIN" } else { "CONS" };
         let mut values = vec![item_variable.get(), expansion.access_form.get()];
         for (keyword_index, value_index) in option_pairs {
-            let keyword = option_arguments
-                .get(keyword_index)
-                .ok_or(ObjectError::TypeError)?
-                .get();
-            let value_form = option_arguments
-                .get(value_index)
-                .ok_or(ObjectError::TypeError)?
-                .get();
+            let keyword = option_arguments[keyword_index].get(); // check-added-lines: allow(index) indices are emitted from validated option pairs.
+            let value_form = option_arguments[value_index].get(); // check-added-lines: allow(index) indices are emitted from validated option pairs.
             let value_variable = fresh_symbol(ctx, runtime)?;
             let value_variable = HeapRootedWord::new(ctx, value_variable)?;
             add_binding(
@@ -283,7 +272,7 @@ pub fn expand_pop(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let place_word = arguments.first().ok_or(ObjectError::TypeError)?;
+        let place_word = &arguments[0]; // check-added-lines: allow(index) expand_pop requires exactly one argument above.
         let expansion = place(ctx, runtime, registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
         let mut bindings = Vec::new();
@@ -365,10 +354,7 @@ fn rotate_like(
         } else {
             let variable = fresh_symbol(ctx, runtime)?;
             let variable = HeapRootedWord::new(ctx, variable)?;
-            let value = arguments
-                .get(place_count)
-                .ok_or(ObjectError::TypeError)?
-                .get();
+            let value = arguments[place_count].get(); // check-added-lines: allow(index) SHIFTF has place_count plus its required final value.
             add_binding(ctx, runtime, &mut bindings, variable.get(), value)?;
             Some(variable)
         };
@@ -389,17 +375,14 @@ fn rotate_like(
         let mut stores = Vec::<HeapRootedWord>::new();
         for index in 0..place_count {
             let source = if index + 1 < place_count {
-                old_values
-                    .get(index + 1)
-                    .ok_or(ObjectError::TypeError)?
-                    .get()
-            } else if rotate {
-                old_values.first().ok_or(ObjectError::TypeError)?.get()
+                old_values[index + 1].get() // check-added-lines: allow(index) old_values has one entry per place and this index is below place_count.
+            } else if let Some(shift_value) = shift_value.as_ref() {
+                shift_value.get()
             } else {
-                shift_value.as_ref().ok_or(ObjectError::TypeError)?.get()
+                old_values[0].get() // check-added-lines: allow(index) ROTATEF is called only with at least one place.
             };
-            let expansion = expansions.get(index).ok_or(ObjectError::TypeError)?;
-            let target = arguments.get(index).ok_or(ObjectError::TypeError)?.get();
+            let expansion = &expansions[index]; // check-added-lines: allow(index) expansions has one entry per place in this loop.
+            let target = arguments[index].get(); // check-added-lines: allow(index) arguments starts with the places counted by this loop.
             let source = place_value(ctx, runtime, target, source)?;
             let source = HeapRootedWord::new(ctx, source)?;
             let store = store_place_prebound(ctx, runtime, &expansion.current(), source.get())?;
@@ -409,7 +392,7 @@ fn rotate_like(
         store_forms.push(if rotate {
             Word::NIL
         } else {
-            old_values.first().ok_or(ObjectError::TypeError)?.get()
+            old_values[0].get() // check-added-lines: allow(index) the SHIFTF minimum arity or nonempty ROTATEF supplies a place.
         });
         let body = sequence(ctx, runtime, &store_forms)?;
         wrap_bindings(ctx, runtime, &bindings, body)

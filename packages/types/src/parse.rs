@@ -86,20 +86,51 @@ fn to_type_form_with_runtime(
         return Ok(TypeForm::Value(crate::Value::True));
     }
     if word_value.is_list() {
-        let mut forms = Vec::new();
-        let mut rest: Handle<'_, Word> = scope.root(Local::from_word(word_value));
+        let head_word = car(scope.context(), word_value)?;
+        let head: Handle<'_, Word> = scope.root(Local::from_word(head_word));
+        let head_value = scope.get(head).as_word();
+        let operator = if matches!(
+            classify_object(scope.context(), head_value),
+            ObjectRef::Symbol(_)
+        ) {
+            Some(string_to_upper(
+                scope.context(),
+                symbol_name(scope.context(), head_value)?,
+            )?)
+        } else {
+            None
+        };
+        let mut forms = vec![to_type_form(scope.context_mut(), head_value)?];
+        let mut rest: Handle<'_, Word> = scope.root(Local::from_word(cdr(
+            scope.context(),
+            scope.get(word).as_word(),
+        )?));
+        let mut index = 0;
         while scope.get(rest).as_word() != Word::NIL {
             let rest_value = scope.get(rest).as_word();
             let item = car(scope.context(), rest_value)?;
             let item: Handle<'_, Word> = scope.root(Local::from_word(item));
             let item_value = scope.get(item).as_word();
-            forms.push(to_type_form_with_runtime(
-                scope.context_mut(),
-                runtime,
-                item_value,
-            )?);
+            let type_position = match operator.as_deref() {
+                Some("OR" | "AND" | "VALUES" | "NOT" | "CONS") => true,
+                Some("ARRAY" | "SIMPLE-ARRAY" | "VECTOR") if index == 0 => true,
+                Some("FUNCTION") if index == 1 => true,
+                _ => false,
+            };
+            let form = if operator.as_deref() == Some("FUNCTION")
+                && index == 0
+                && item_value.is_list()
+            {
+                to_type_form_type_sequence_with_runtime(scope.context_mut(), runtime, item_value)?
+            } else if type_position {
+                to_type_form_with_runtime(scope.context_mut(), runtime, item_value)?
+            } else {
+                to_type_form(scope.context_mut(), item_value)?
+            };
+            forms.push(form);
             let next = cdr(scope.context(), scope.get(rest).as_word())?;
             rest = scope.root(Local::from_word(next));
+            index += 1;
         }
         return Ok(TypeForm::List(forms));
     }
@@ -107,17 +138,48 @@ fn to_type_form_with_runtime(
         classify_object(scope.context(), word_value),
         ObjectRef::Symbol(_)
     ) {
-        return Ok(TypeForm::Symbol(string_to_upper(
-            scope.context(),
-            symbol_name(scope.context(), word_value)?,
-        )?));
-    }
-    let object_word = scope.get(word).as_word();
-    if let Some(name) = registered_class_name(scope.context_mut(), runtime, object_word)? {
+        let name = string_to_upper(scope.context(), symbol_name(scope.context(), word_value)?)?;
+        if crate::NamedType::from_name(&name).is_none()
+            && runtime.class(scope.context_mut(), &name).is_some()
+        {
+            return Ok(TypeForm::Class(name));
+        }
         return Ok(TypeForm::Symbol(name));
     }
     let object_word = scope.get(word).as_word();
+    if let Some(name) = registered_class_name(scope.context_mut(), runtime, object_word)? {
+        if crate::NamedType::from_name(&name).is_some() {
+            return Ok(TypeForm::Symbol(name));
+        }
+        return Ok(TypeForm::Class(name));
+    }
+    let object_word = scope.get(word).as_word();
     Ok(TypeForm::Value(from_word(scope.context(), object_word)?))
+}
+
+fn to_type_form_type_sequence_with_runtime(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    sequence: Word,
+) -> Result<TypeForm, TypeError> {
+    let mut scope = Scope::new(ctx);
+    let sequence: Handle<'_, Word> = scope.root(Local::from_word(sequence));
+    let mut rest: Handle<'_, Word> = scope.root(Local::from_word(scope.get(sequence).as_word()));
+    let mut forms = Vec::new();
+    while scope.get(rest).as_word() != Word::NIL {
+        let rest_value = scope.get(rest).as_word();
+        let item = car(scope.context(), rest_value)?;
+        let item: Handle<'_, Word> = scope.root(Local::from_word(item));
+        let item_value = scope.get(item).as_word();
+        forms.push(to_type_form_with_runtime(
+            scope.context_mut(),
+            runtime,
+            item_value,
+        )?);
+        let next = cdr(scope.context(), scope.get(rest).as_word())?;
+        rest = scope.root(Local::from_word(next));
+    }
+    Ok(TypeForm::List(forms))
 }
 
 fn registered_class_name(

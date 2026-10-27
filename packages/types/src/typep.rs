@@ -53,6 +53,7 @@ pub fn typep(
         TypeSpecifier::Function { .. } => Ok(is_function(ctx, object)),
         TypeSpecifier::Values(_) => Ok(true),
         TypeSpecifier::Deftype { name, .. } => Err(TypeError::UnexpandedDeftype(name.clone())),
+        TypeSpecifier::Class(_) => Err(TypeError::InvalidForm),
     }
 }
 

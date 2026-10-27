@@ -42,6 +42,88 @@ fn fresh_root(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<HeapRootedWo
     HeapRootedWord::new(ctx, symbol)
 }
 
+fn remf_finder_definition(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    property_variable: &HeapRootedWord,
+) -> Result<(
+    HeapRootedWord,
+    HeapRootedWord,
+    HeapRootedWord,
+    HeapRootedWord,
+    HeapRootedWord,
+)> {
+    let finder = fresh_root(ctx, runtime)?;
+    let parameter = fresh_root(ctx, runtime)?;
+    let found = fresh_root(ctx, runtime)?;
+    let rest = fresh_root(ctx, runtime)?;
+    let new_tail = fresh_root(ctx, runtime)?;
+    let new_plist = fresh_root(ctx, runtime)?;
+
+    let empty = rooted_form(ctx, runtime, "ENDP", &[parameter.get()])?;
+    let key = rooted_form(ctx, runtime, "CAR", &[parameter.get()])?;
+    let matches = rooted_form(ctx, runtime, "EQ", &[key.get(), property_variable.get()])?;
+    let true_symbol = crate::form::symbol(ctx, runtime, "T")?;
+    let true_symbol = HeapRootedWord::new(ctx, true_symbol)?;
+    let mark_found = rooted_form(ctx, runtime, "SETQ", &[found.get(), true_symbol.get()])?;
+    let after_pair = rooted_form(ctx, runtime, "CDDR", &[parameter.get()])?;
+    let remove_pair_branch =
+        rooted_form(ctx, runtime, "PROGN", &[mark_found.get(), after_pair.get()])?;
+
+    let recursive_rest = rooted_form(ctx, runtime, "CDDR", &[parameter.get()])?;
+    let rest_binding_form = binding(ctx, runtime, rest.get(), recursive_rest.get())?;
+    let rest_binding = HeapRootedWord::new(ctx, rest_binding_form)?;
+    let recursive_call = rooted_call(ctx, runtime, finder.get(), &[rest.get()])?;
+    let tail_binding_form = binding(ctx, runtime, new_tail.get(), recursive_call.get())?;
+    let tail_binding = HeapRootedWord::new(ctx, tail_binding_form)?;
+    let tail_bindings = rooted_list(ctx, runtime, &[rest_binding.get(), tail_binding.get()])?;
+    let previous_value = rooted_form(ctx, runtime, "CDR", &[parameter.get()])?;
+    let splice = rooted_form(
+        ctx,
+        runtime,
+        "RPLACD",
+        &[previous_value.get(), new_tail.get()],
+    )?;
+    let splice_and_return = rooted_form(ctx, runtime, "PROGN", &[splice.get(), parameter.get()])?;
+    let after_recursion = rooted_form(
+        ctx,
+        runtime,
+        "IF",
+        &[found.get(), splice_and_return.get(), parameter.get()],
+    )?;
+    let recursive_branch = rooted_form(
+        ctx,
+        runtime,
+        "LET*",
+        &[tail_bindings.get(), after_recursion.get()],
+    )?;
+    let choose_branch = rooted_form(
+        ctx,
+        runtime,
+        "IF",
+        &[
+            matches.get(),
+            remove_pair_branch.get(),
+            recursive_branch.get(),
+        ],
+    )?;
+    let function_body = rooted_form(
+        ctx,
+        runtime,
+        "IF",
+        &[empty.get(), Word::NIL, choose_branch.get()],
+    )?;
+    let parameters = rooted_list(ctx, runtime, &[parameter.get()])?;
+    let definition = rooted_list(
+        ctx,
+        runtime,
+        &[finder.get(), parameters.get(), function_body.get()],
+    )?;
+    let definitions = rooted_list(ctx, runtime, &[definition.get()])?;
+
+    Ok((finder, found, new_plist, definitions, true_symbol))
+}
+
 pub fn expand_remf(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -74,70 +156,8 @@ pub fn expand_remf(
         )?;
         bindings.push(HeapRootedWord::new(ctx, list_binding)?);
 
-        let finder = fresh_root(ctx, runtime)?;
-        let parameter = fresh_root(ctx, runtime)?;
-        let found = fresh_root(ctx, runtime)?;
-        let rest = fresh_root(ctx, runtime)?;
-        let new_tail = fresh_root(ctx, runtime)?;
-        let new_plist = fresh_root(ctx, runtime)?;
-
-        let empty = rooted_form(ctx, runtime, "ENDP", &[parameter.get()])?;
-        let key = rooted_form(ctx, runtime, "CAR", &[parameter.get()])?;
-        let matches = rooted_form(ctx, runtime, "EQ", &[key.get(), property_variable.get()])?;
-        let true_symbol = crate::form::symbol(ctx, runtime, "T")?;
-        let true_symbol = HeapRootedWord::new(ctx, true_symbol)?;
-        let mark_found = rooted_form(ctx, runtime, "SETQ", &[found.get(), true_symbol.get()])?;
-        let after_pair = rooted_form(ctx, runtime, "CDDR", &[parameter.get()])?;
-        let matched = rooted_form(ctx, runtime, "PROGN", &[mark_found.get(), after_pair.get()])?;
-
-        let recursive_rest = rooted_form(ctx, runtime, "CDDR", &[parameter.get()])?;
-        let rest_binding_form = binding(ctx, runtime, rest.get(), recursive_rest.get())?;
-        let rest_binding = HeapRootedWord::new(ctx, rest_binding_form)?;
-        let recursive_call = rooted_call(ctx, runtime, finder.get(), &[rest.get()])?;
-        let tail_binding_form = binding(ctx, runtime, new_tail.get(), recursive_call.get())?;
-        let tail_binding = HeapRootedWord::new(ctx, tail_binding_form)?;
-        let tail_bindings = rooted_list(ctx, runtime, &[rest_binding.get(), tail_binding.get()])?;
-        let previous_value = rooted_form(ctx, runtime, "CDR", &[parameter.get()])?;
-        let splice = rooted_form(
-            ctx,
-            runtime,
-            "RPLACD",
-            &[previous_value.get(), new_tail.get()],
-        )?;
-        let splice_and_return =
-            rooted_form(ctx, runtime, "PROGN", &[splice.get(), parameter.get()])?;
-        let after_recursion = rooted_form(
-            ctx,
-            runtime,
-            "IF",
-            &[found.get(), splice_and_return.get(), parameter.get()],
-        )?;
-        let recursive_branch = rooted_form(
-            ctx,
-            runtime,
-            "LET*",
-            &[tail_bindings.get(), after_recursion.get()],
-        )?;
-        let choose_branch = rooted_form(
-            ctx,
-            runtime,
-            "IF",
-            &[matches.get(), matched.get(), recursive_branch.get()],
-        )?;
-        let function_body = rooted_form(
-            ctx,
-            runtime,
-            "IF",
-            &[empty.get(), Word::NIL, choose_branch.get()],
-        )?;
-        let parameters = rooted_list(ctx, runtime, &[parameter.get()])?;
-        let definition = rooted_list(
-            ctx,
-            runtime,
-            &[finder.get(), parameters.get(), function_body.get()],
-        )?;
-        let definitions = rooted_list(ctx, runtime, &[definition.get()])?;
-
+        let (finder, found, new_plist, definitions, true_symbol) =
+            remf_finder_definition(ctx, runtime, &property_variable)?;
         let find_call = rooted_call(ctx, runtime, finder.get(), &[property_list.get()])?;
         let plist_binding_form = binding(ctx, runtime, new_plist.get(), find_call.get())?;
         let plist_binding = HeapRootedWord::new(ctx, plist_binding_form)?;

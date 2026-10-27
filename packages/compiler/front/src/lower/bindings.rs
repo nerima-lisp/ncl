@@ -1,6 +1,6 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ncl_ir::{
     Constant, Convert, FunctionId, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator,
@@ -78,6 +78,9 @@ impl Context<'_> {
         let mut last = None;
         for (name, form) in pairs {
             let value = self.lower_expr(f, form)?;
+            if f.is_terminated() {
+                return Ok(value);
+            }
             match f.env().lookup_variable(name) {
                 Some(Slot::Cell(cell)) => f.none(OpKind::StoreField {
                     object: cell,
@@ -112,9 +115,15 @@ impl Context<'_> {
         arguments: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let callee = self.lower_expr(f, function)?;
+        if f.is_terminated() {
+            return Ok(callee);
+        }
         let mut values = Vec::with_capacity(arguments.len());
         for argument in arguments {
             let primary = self.lower_expr(f, argument)?;
+            if f.is_terminated() {
+                return Ok(primary);
+            }
             values.push(Self::capture_multiple_values(f, primary)?);
         }
         let helper = f.symbol(&SymbolRef::interned("NCL-EXT", "MULTIPLE-VALUE-CALL-LIST"))?;
@@ -452,28 +461,25 @@ impl Context<'_> {
                 }
             }
         }
-        capture_names
-            .iter()
-            .zip(function_names)
-            .map(|(names, functions)| {
-                (
-                    names
-                        .iter()
-                        .filter_map(|name| {
-                            f.env()
-                                .lookup_variable(name)
-                                .map(|slot| (name.clone(), slot))
-                        })
-                        .collect(),
-                    functions
-                        .into_iter()
-                        .filter(|name| {
-                            !local_indices.contains_key(name)
-                                && f.env().lookup_function(name).is_some()
-                        })
-                        .collect(),
-                )
+        let variable_names = capture_names.into_iter().flatten().collect::<BTreeSet<_>>();
+        let function_names = function_names
+            .into_iter()
+            .flatten()
+            .collect::<BTreeSet<_>>();
+        let variable_captures = variable_names
+            .into_iter()
+            .filter_map(|name| f.env().lookup_variable(&name).map(|slot| (name, slot)))
+            .collect::<Vec<_>>();
+        let function_captures = function_names
+            .into_iter()
+            .filter(|name| {
+                !local_indices.contains_key(name) && f.env().lookup_function(name).is_some()
             })
+            .collect::<Vec<_>>();
+        // Each nested definition builds closures for the whole recursive group.
+        definitions
+            .iter()
+            .map(|_| (variable_captures.clone(), function_captures.clone()))
             .collect()
     }
 }

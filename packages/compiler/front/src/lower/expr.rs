@@ -15,7 +15,7 @@ use super::super::function::FunctionLowerer;
 use super::super::lambda;
 use super::super::literal::lower_literal;
 use super::Context;
-use super::analysis::mentions_exit;
+use super::analysis::lambda_mentions_exit;
 use super::params::{bind_captures, lambda_params};
 
 fn is_closure_designator(expr: &Expr) -> bool {
@@ -101,6 +101,7 @@ impl Context<'_> {
             } => {
                 let value = self.lower_expr(f, value)?;
                 super::scalar_hint(type_specifier.form())
+                    .filter(|_| !f.is_terminated())
                     .map_or(Ok(value), |ty| Self::type_hint(f, value, ty))
             }
             Expr::LoadTimeValue { form: value, .. } => self.lower_expr(f, value),
@@ -133,6 +134,36 @@ impl Context<'_> {
         }
     }
 
+    fn lower_multiple_value_prog1(
+        &mut self,
+        f: &mut FunctionLowerer,
+        first: &Expr,
+        forms: &[Expr],
+    ) -> Result<ValueId, LowerError> {
+        let value = self.lower_expr(f, first)?;
+        if f.is_terminated() {
+            return Ok(value);
+        }
+        let saved_values = self
+            .preserve_multiple_values
+            .then(|| Self::capture_multiple_values(f, value))
+            .transpose()?;
+        for form in forms {
+            self.lower_expr(f, form)?;
+            if f.is_terminated() {
+                return Ok(value);
+            }
+        }
+        if let Some(saved_values) = saved_values {
+            Self::restore_multiple_values(f, saved_values)
+        } else {
+            f.none(OpKind::SetMultipleValues {
+                values: vec![value],
+            })?;
+            Ok(value)
+        }
+    }
+
     fn lower_declared_body(
         &mut self,
         f: &mut FunctionLowerer,
@@ -156,30 +187,6 @@ impl Context<'_> {
         ty: ncl_ir::ScalarTypeHint,
     ) -> Result<ValueId, LowerError> {
         f.one(OpKind::TypeHint { value, ty }, Ty::Word)
-    }
-
-    fn lower_multiple_value_prog1(
-        &mut self,
-        f: &mut FunctionLowerer,
-        first: &Expr,
-        forms: &[Expr],
-    ) -> Result<ValueId, LowerError> {
-        let value = self.lower_expr(f, first)?;
-        if self.preserve_multiple_values {
-            let saved_values = Self::capture_multiple_values(f, value)?;
-            for form in forms {
-                self.lower_expr(f, form)?;
-            }
-            Self::restore_multiple_values(f, saved_values)
-        } else {
-            for form in forms {
-                self.lower_expr(f, form)?;
-            }
-            f.none(OpKind::SetMultipleValues {
-                values: vec![value],
-            })?;
-            Ok(value)
-        }
     }
 
     fn lower_variable(
@@ -398,7 +405,7 @@ impl Context<'_> {
         }
         let function_captures = lambda::collect_function_captures(f, lambda);
         for target in &self.targets {
-            if mentions_exit(&lambda.body, &target.name)
+            if lambda_mentions_exit(lambda, &target.name)
                 && !captures.iter().any(|(name, _)| name == &target.capture)
                 && let Some(slot) = f.env().lookup_variable(&target.capture)
             {
@@ -469,11 +476,13 @@ impl Context<'_> {
         child.bind_rest_and_keys(&mut nested, &lambda.lambda_list)?;
         child.bind_aux(&mut nested, &lambda.lambda_list)?;
         child.push_declarations(&lambda.declarations);
-        let value = child.lower_body(&mut nested, &lambda.body)?;
-        child.pop_declarations();
         if !nested.is_terminated() {
-            nested.return_value(value)?;
+            let value = child.lower_body(&mut nested, &lambda.body)?;
+            if !nested.is_terminated() {
+                nested.return_value(value)?;
+            }
         }
+        child.pop_declarations();
         let mut function = nested.into_function();
         function.handler_regions = child.regions;
         self.module.push_function(function);

@@ -666,3 +666,171 @@ fn load_builtin_classifies_errors_in_eval_and_compile_paths() {
             .unwrap_or_else(|error| panic!("LOAD condition fixture cleanup failed: {error}"));
     }
 }
+
+#[test]
+fn load_uses_dynamic_read_base_and_float_format() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-dynamic-read-options-{}.lisp",
+        std::process::id()
+    ));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+    fs::write(
+        &source,
+        "(setf *ncl-load-read-base-result* 10) (setf *ncl-load-read-base-result* 11)",
+    )
+    .unwrap_or_else(|error| panic!("LOAD read-base fixture creation failed: {error}"));
+    let form = format!("(let ((*read-base* 16)) (load {}))", lisp_string(&source));
+    let loaded = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD with dynamic *READ-BASE* failed: {error}"));
+    assert_eq!(runtime.format_result(loaded), "T");
+    let read_base_result = runtime
+        .eval("*ncl-load-read-base-result*")
+        .unwrap_or_else(|error| panic!("LOAD read-base result lookup failed: {error}"));
+    assert_eq!(runtime.format_result(read_base_result), "17");
+
+    fs::write(&source, "(setf *ncl-load-float-format-result* 1.25)")
+        .unwrap_or_else(|error| panic!("LOAD float-format fixture creation failed: {error}"));
+    for (format, expected_type) in [
+        ("double-float", "DOUBLE-FLOAT"),
+        ("long-float", "DOUBLE-FLOAT"),
+        ("short-float", "DOUBLE-FLOAT"),
+    ] {
+        let form = format!(
+            "(let ((*read-default-float-format* '{format})) (load {}))",
+            lisp_string(&source)
+        );
+        let loaded = runtime
+            .eval(&form)
+            .unwrap_or_else(|error| panic!("LOAD with dynamic float format failed: {error}"));
+        assert_eq!(runtime.format_result(loaded), "T");
+        let actual_type = runtime
+            .eval("(type-of *ncl-load-float-format-result*)")
+            .unwrap_or_else(|error| panic!("LOAD float-format result lookup failed: {error}"));
+        assert_eq!(
+            runtime.format_result(actual_type),
+            expected_type,
+            "*READ-DEFAULT-FLOAT-FORMAT* {format} produced the wrong type"
+        );
+    }
+
+    fs::remove_file(&source).unwrap_or_else(|error| {
+        panic!("LOAD dynamic read-options fixture cleanup failed: {error}")
+    });
+}
+
+#[test]
+fn load_respects_dynamic_read_suppression() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-read-suppression-{}.lisp",
+        std::process::id()
+    ));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    runtime
+        .eval("(setf *ncl-load-read-suppression-result* 0)")
+        .unwrap_or_else(|error| panic!("read-suppression result initialization failed: {error}"));
+    fs::write(&source, "#.(setf *ncl-load-read-suppression-result* 1)")
+        .unwrap_or_else(|error| panic!("LOAD read-suppression fixture creation failed: {error}"));
+
+    let form = format!(
+        "(let ((*read-suppress* t)) (load {}))",
+        lisp_string(&source)
+    );
+    let loaded = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD with dynamic *READ-SUPPRESS* failed: {error}"));
+    assert_eq!(runtime.format_result(loaded), "T");
+    let result = runtime
+        .eval("*ncl-load-read-suppression-result*")
+        .unwrap_or_else(|error| panic!("LOAD read-suppression result lookup failed: {error}"));
+    assert_eq!(runtime.format_result(result), "0");
+
+    fs::remove_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD read-suppression fixture cleanup failed: {error}"));
+}
+
+#[test]
+fn load_signals_type_error_for_invalid_dynamic_reader_values() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-invalid-read-options-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&source, "42").unwrap_or_else(|error| {
+        panic!("LOAD invalid read-options fixture creation failed: {error}")
+    });
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+    for (name, binding) in [
+        ("*PACKAGE*", "(*package* nil)"),
+        ("*READTABLE*", "(*readtable* nil)"),
+        ("*READ-BASE* type", "(*read-base* nil)"),
+        ("*READ-BASE* negative", "(*read-base* -1)"),
+        ("*READ-BASE* range", "(*read-base* 1)"),
+        (
+            "*READ-DEFAULT-FLOAT-FORMAT* type",
+            "(*read-default-float-format* 42)",
+        ),
+        (
+            "*READ-DEFAULT-FLOAT-FORMAT* unsupported symbol",
+            "(*read-default-float-format* 'rational)",
+        ),
+    ] {
+        let form = format!("(let ({binding}) (load {}))", lisp_string(&source));
+        let error = runtime
+            .eval(&form)
+            .expect_err("LOAD accepted an invalid dynamic reader value");
+        assert!(
+            matches!(
+                &error,
+                ncl_runtime::RuntimeError::Object(ncl_object::ObjectError::TypeError)
+            ),
+            "LOAD {name} dynamic value returned the wrong error: {error:?}"
+        );
+    }
+
+    fs::remove_file(&source).unwrap_or_else(|error| {
+        panic!("LOAD invalid read-options fixture cleanup failed: {error}")
+    });
+}
+
+#[test]
+fn source_eval_returns_type_error_for_dotted_in_package_form() {
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+    let error = runtime
+        .eval("(in-package . 42)")
+        .expect_err("dotted IN-PACKAGE arguments were accepted");
+    assert!(
+        matches!(
+            error,
+            ncl_runtime::RuntimeError::Object(ncl_object::ObjectError::TypeError)
+        ),
+        "dotted IN-PACKAGE arguments returned the wrong error: {error:?}"
+    );
+}
+
+#[test]
+fn source_eval_updates_reader_package_after_in_package_form() {
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    runtime
+        .eval(
+            "(make-package \"NCL-SOURCE-IN-PACKAGE\" \
+             :use (list (find-package \"COMMON-LISP\")))",
+        )
+        .unwrap_or_else(|error| panic!("source package creation failed: {error}"));
+
+    let result = runtime
+        .eval(
+            "(in-package \"NCL-SOURCE-IN-PACKAGE\") \
+             (eq (symbol-package 'reader-package-marker) \
+                 (find-package \"NCL-SOURCE-IN-PACKAGE\"))",
+        )
+        .unwrap_or_else(|error| panic!("source IN-PACKAGE form failed: {error}"));
+    assert_eq!(runtime.format_result(result), "T");
+}

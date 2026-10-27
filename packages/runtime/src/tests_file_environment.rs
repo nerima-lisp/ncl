@@ -449,7 +449,10 @@ fn load_missing_file_signals_file_error() {
 }
 
 fn test_value<T, E: std::fmt::Debug>(result: Result<T, E>) -> T {
-    result.unwrap()
+    match result {
+        Ok(value) => value,
+        Err(error) => panic!("test operation failed: {error:?}"),
+    }
 }
 
 #[test]
@@ -687,10 +690,9 @@ fn r5_load_restores_package_and_readtable_after_unwind() {
     );
     let _ = runtime.context.take_non_local_exit();
 
-    let common_lisp = runtime
-        .object
-        .find_package(&runtime.context, "COMMON-LISP")
-        .expect("COMMON-LISP package is missing");
+    let Some(common_lisp) = runtime.object.find_package(&runtime.context, "COMMON-LISP") else {
+        panic!("COMMON-LISP package is missing");
+    };
     let common_lisp = ncl_object::Package::from_word(common_lisp);
     test_value(common_lisp.set_locked(&mut runtime.context, true));
     assert!(crate::file_environment::register(&mut runtime.context, &runtime.object).is_err());
@@ -715,30 +717,24 @@ fn load_evaluates_top_level_forms_and_honors_eval_when_situations() {
                       (setq *r5-load-active-eval-when* :loaded)) \
                     (eval-when (:compile-toplevel) \
                       (setq *r5-load-inactive-eval-when* :unexpected))";
-    fs::write(&source, contents).expect("LOAD top-level source creation failed");
-    let mut runtime = Runtime::new().expect("runtime initialization failed");
-    runtime
-        .eval(
-            "(defparameter *r5-load-progn-first* nil) \
-             (defparameter *r5-load-progn-second* nil) \
-             (defparameter *r5-load-locally* nil) \
-             (defparameter *r5-load-active-eval-when* nil) \
-             (defparameter *r5-load-inactive-eval-when* nil)",
-        )
-        .expect("LOAD top-level setup failed");
+    test_value(fs::write(&source, contents));
+    let mut runtime = test_value(Runtime::new());
+    test_value(runtime.eval(
+        "(defparameter *r5-load-progn-first* nil) \
+         (defparameter *r5-load-progn-second* nil) \
+         (defparameter *r5-load-locally* nil) \
+         (defparameter *r5-load-active-eval-when* nil) \
+         (defparameter *r5-load-inactive-eval-when* nil)",
+    ));
 
-    runtime
-        .load_file(&source)
-        .expect("LOAD top-level forms failed");
-    let observed = runtime
-        .eval(
-            "(and (eq *r5-load-progn-first* :first) \
-                  (eq *r5-load-progn-second* :second) \
-                  (eq *r5-load-locally* :locally) \
-                  (eq *r5-load-active-eval-when* :loaded) \
-                  (null *r5-load-inactive-eval-when*))",
-        )
-        .expect("LOAD top-level results were not observable");
+    test_value(runtime.load_file(&source));
+    let observed = test_value(runtime.eval(
+        "(and (eq *r5-load-progn-first* :first) \
+              (eq *r5-load-progn-second* :second) \
+              (eq *r5-load-locally* :locally) \
+              (eq *r5-load-active-eval-when* :loaded) \
+              (null *r5-load-inactive-eval-when*))",
+    ));
     assert_eq!(runtime.format_result(observed), "T");
-    fs::remove_file(&source).expect("LOAD top-level source cleanup failed");
+    test_value(fs::remove_file(&source));
 }

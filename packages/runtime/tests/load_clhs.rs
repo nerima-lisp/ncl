@@ -337,7 +337,13 @@ fn r5_load_preserves_macrolet_and_symbol_macrolet_for_each_top_level_form() {
         "ncl-r5-load-top-level-macrolet-{}.lisp",
         std::process::id()
     ));
-    let contents = "(defparameter *r5-load-top-level-macro-value* nil) \
+    let contents = "(progn) \
+                    (defparameter *r5-load-top-level-locally-value* nil) \
+                    (locally (declare (special *r5-load-top-level-locally-value*)) \
+                      (setq *r5-load-top-level-locally-value* :locally)) \
+                    (defparameter *r5-load-top-level-lambda-value* nil) \
+                    ((lambda () (setq *r5-load-top-level-lambda-value* :lambda))) \
+                    (defparameter *r5-load-top-level-macro-value* nil) \
                     (macrolet ((r5-load-remember (value) \
                                 (list 'setq '*r5-load-top-level-macro-value* value))) \
                       (r5-load-remember :first) \
@@ -350,19 +356,23 @@ fn r5_load_preserves_macrolet_and_symbol_macrolet_for_each_top_level_form() {
                       (setq *r5-load-top-level-symbol-first* \
                             (+ r5-load-top-level-symbol-alias 1)) \
                       (setq *r5-load-top-level-symbol-second* \
-                            (+ r5-load-top-level-symbol-alias 2)))";
+                            (+ r5-load-top-level-symbol-alias 2))) \
+                    (locally 42)";
     if let Err(error) = fs::write(&source, contents) {
         panic!("LOAD top-level macrolet source creation failed: {error}");
     }
     let mut runtime =
         Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
 
-    runtime
+    let loaded = runtime
         .load_file(&source)
         .unwrap_or_else(|error| panic!("LOAD top-level macrolet forms failed: {error}"));
+    assert_eq!(runtime.format_result(loaded), "42");
     let observed = runtime
         .eval(
-            "(and (eq *r5-load-top-level-macro-value* :second) \
+            "(and (eq *r5-load-top-level-locally-value* :locally) \
+                  (eq *r5-load-top-level-lambda-value* :lambda) \
+                  (eq *r5-load-top-level-macro-value* :second) \
                   (= *r5-load-top-level-symbol-first* 11) \
                   (= *r5-load-top-level-symbol-second* 12))",
         )
@@ -370,5 +380,27 @@ fn r5_load_preserves_macrolet_and_symbol_macrolet_for_each_top_level_form() {
     assert_eq!(runtime.format_result(observed), "T");
     if let Err(error) = fs::remove_file(&source) {
         panic!("LOAD top-level macrolet source cleanup failed: {error}");
+    }
+}
+
+#[test]
+fn r5_load_rejects_macrolet_without_a_definition_list() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-r5-load-macrolet-without-definitions-{}.lisp",
+        std::process::id()
+    ));
+    if let Err(error) = fs::write(&source, "(macrolet)") {
+        panic!("LOAD malformed MACROLET source creation failed: {error}");
+    }
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+
+    let result = runtime.load_file(&source);
+    assert!(
+        result.is_err(),
+        "LOAD accepted MACROLET without a definition list"
+    );
+    if let Err(error) = fs::remove_file(&source) {
+        panic!("LOAD malformed MACROLET source cleanup failed: {error}");
     }
 }

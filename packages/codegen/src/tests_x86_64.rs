@@ -143,6 +143,130 @@ fn assert_code_contains_x86_64(code: &[u8], expected: &[u8], behavior: &str) {
     );
 }
 
+fn compile_x86_64_primitive(
+    id: u32,
+    prim: Prim,
+    argument_count: usize,
+) -> Result<Vec<u8>, crate::CodegenError> {
+    let returns_unit = matches!(prim, Prim::Aset | Prim::Rplaca | Prim::Rplacd);
+    let numeric = matches!(
+        prim,
+        Prim::FixnumAdd
+            | Prim::FixnumSub
+            | Prim::FixnumMul
+            | Prim::FixnumDiv
+            | Prim::FixnumEq
+            | Prim::FixnumLt
+            | Prim::FixnumLe
+    );
+    let argument_type = if numeric { Ty::I64 } else { Ty::Word };
+    let result_type = if returns_unit {
+        Ty::Unit
+    } else if matches!(prim, Prim::FixnumEq | Prim::FixnumLt | Prim::FixnumLe) {
+        Ty::Bool
+    } else if numeric {
+        Ty::I64
+    } else {
+        Ty::Word
+    };
+    let params = (0..argument_count)
+        .map(|index| Param {
+            name: format!("arg{index}"),
+            ty: argument_type,
+        })
+        .collect();
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(id),
+        "x86-64-primitive",
+        params,
+        if returns_unit {
+            Vec::new()
+        } else {
+            vec![result_type]
+        },
+    );
+    let mut args = Vec::with_capacity(argument_count);
+    for index in 0..argument_count {
+        args.push(
+            builder
+                .push_op(
+                    OpKind::LoadArg {
+                        index: u8::try_from(index).unwrap(),
+                    },
+                    &[argument_type],
+                )
+                .unwrap()[0],
+        );
+    }
+    let result_types = vec![result_type];
+    let results = builder
+        .push_op(
+            OpKind::Prim {
+                op: prim,
+                args,
+                condition: None,
+            },
+            &result_types,
+        )
+        .unwrap();
+    builder
+        .terminate(Terminator::Return {
+            values: if returns_unit { Vec::new() } else { results },
+        })
+        .unwrap();
+    compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi).map(|compiled| compiled.code)
+}
+
+#[test]
+fn x86_64_primitive_lowering_emits_multiply_and_cons_field_operations() {
+    let multiply = compile_x86_64_primitive(110, Prim::FixnumMul, 2).unwrap();
+    assert_code_contains_x86_64(
+        &multiply,
+        &encode_x86_64([Inst::ImulRR(Reg::R10, Reg::R11)]),
+        "fixnum multiplication multiplies the two operands",
+    );
+
+    for (id, prim, offset) in [(111, Prim::Car, 0), (112, Prim::Cdr, 8)] {
+        let code = compile_x86_64_primitive(id, prim, 1).unwrap();
+        assert_code_contains_x86_64(
+            &code,
+            &encode_x86_64([
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
+                Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
+            ]),
+            "car and cdr load their respective cons fields after removing the lowtag",
+        );
+    }
+
+    for (id, prim, offset) in [(113, Prim::Rplaca, 0), (114, Prim::Rplacd, 8)] {
+        let code = compile_x86_64_primitive(id, prim, 2).unwrap();
+        assert_code_contains_x86_64(
+            &code,
+            &encode_x86_64([
+                Inst::BinRI(BinOp::And, Reg::R10, -8),
+                Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
+            ]),
+            "rplaca and rplacd store into their respective cons fields",
+        );
+    }
+}
+
+#[test]
+fn x86_64_primitive_lowering_reports_malformed_or_unsupported_primitives() {
+    for (id, prim, argument_count, message) in [(
+        115,
+        Prim::FixnumDiv,
+        2,
+        "primitive is not available: FixnumDiv",
+    )] {
+        assert_eq!(
+            compile_x86_64_primitive(id, prim, argument_count).err(),
+            Some(crate::CodegenError::Unsupported(message.into())),
+            "unexpected result for primitive with {argument_count} arguments",
+        );
+    }
+}
+
 #[test]
 #[cfg(test)]
 fn x86_64_lowering_spills_values_across_safepoints() {

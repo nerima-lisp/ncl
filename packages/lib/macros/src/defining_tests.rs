@@ -68,9 +68,10 @@ fn function_definitions_allow_an_empty_body() -> Result<(), ObjectError> {
     let function = elements(&mut ctx, setf[2])?;
     let lambda = elements(&mut ctx, function[1])?;
     let block = elements(&mut ctx, lambda[2])?;
-    assert_eq!(block[0], symbol(&mut ctx, &runtime, "BLOCK")?);
-    assert_eq!(block[1], name);
-    assert_eq!(block.len(), 2);
+    assert_eq!(
+        (block[0], block[1], block.len()),
+        (symbol(&mut ctx, &runtime, "BLOCK")?, name, 2)
+    );
     Ok(())
 }
 
@@ -112,15 +113,17 @@ fn defun_expansion_survives_gc_stress_and_strict_forwarding() -> Result<(), Obje
             let function = elements(ctx, function_form)?;
             let lambda_form = function.get(1).copied().ok_or(ObjectError::TypeError)?;
             let lambda = elements(ctx, lambda_form)?;
-            assert_eq!(
-                lambda.get(1).copied().ok_or(ObjectError::TypeError)?,
-                roots.get(2).ok_or(ObjectError::TypeError)?.get()
-            );
             let block_form = lambda.get(2).copied().ok_or(ObjectError::TypeError)?;
             let block = elements(ctx, block_form)?;
             assert_eq!(
-                block.get(2).copied().ok_or(ObjectError::TypeError)?,
-                roots.get(1).ok_or(ObjectError::TypeError)?.get()
+                (
+                    lambda.get(1).copied().ok_or(ObjectError::TypeError)?,
+                    block.get(2).copied().ok_or(ObjectError::TypeError)?,
+                ),
+                (
+                    roots.get(2).ok_or(ObjectError::TypeError)?.get(),
+                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                )
             );
             Ok(())
         })
@@ -162,12 +165,11 @@ fn function_definitions_keep_declarations_and_docstrings_before_the_block()
                 let setf = elements(ctx, expanded_parts[1])?;
                 let function = elements(ctx, setf[2])?;
                 let lambda = elements(ctx, function[1])?;
-                assert_eq!(lambda[2], declaration.get());
-                assert_eq!(lambda[3], docstring.get());
                 let block = elements(ctx, lambda[4])?;
-                assert_eq!(block[0], block_symbol);
-                assert_eq!(block[1], name);
-                assert_eq!(block[2], body);
+                assert_eq!(
+                    (lambda[2], lambda[3], block[0], block[1], block[2]),
+                    (declaration.get(), docstring.get(), block_symbol, name, body)
+                );
                 Ok(())
             })
         })

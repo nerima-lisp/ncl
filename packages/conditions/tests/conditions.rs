@@ -520,6 +520,42 @@ fn undefined_function_condition_preserves_name_and_accessor_returns_it() {
         runtime.call_builtin(&mut ctx, function, &[condition]),
         Ok(name)
     );
+    assert_eq!(
+        ncl_conditions::condition_report(&ctx, condition).as_deref(),
+        Some("The function MISSING-FUNCTION is undefined.")
+    );
+
+    let (setf, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "SETF")
+        .unwrap();
+    let setf = HeapRootedWord::new(&ctx, setf).unwrap();
+    let (accessor, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "MISSING-ACCESSOR")
+        .unwrap();
+    let accessor = HeapRootedWord::new(&ctx, accessor).unwrap();
+    let setf_arguments =
+        ncl_object::make_cons(&mut ctx, &runtime, accessor.get(), Word::NIL).unwrap();
+    let setf_arguments = HeapRootedWord::new(&ctx, setf_arguments).unwrap();
+    let setf_name =
+        ncl_object::make_cons(&mut ctx, &runtime, setf.get(), setf_arguments.get()).unwrap();
+    let setf_name = HeapRootedWord::new(&ctx, setf_name).unwrap();
+    let setf_condition = ncl_conditions::condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::CellError(ncl_object::CellError::UndefinedFunction {
+            name: setf_name.get(),
+        }),
+    )
+    .unwrap();
+    let setf_condition = HeapRootedWord::new(&ctx, setf_condition).unwrap();
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[setf_condition.get()]),
+        Ok(setf_name.get())
+    );
+    assert_eq!(
+        ncl_conditions::condition_report(&ctx, setf_condition.get()).as_deref(),
+        Some("The function (SETF MISSING-ACCESSOR) is undefined.")
+    );
 }
 
 #[test]

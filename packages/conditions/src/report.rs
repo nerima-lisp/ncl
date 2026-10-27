@@ -25,6 +25,32 @@ fn describe_word(ctx: &ThreadContext, value: Word) -> String {
     "#<OBJECT>".to_owned()
 }
 
+fn describe_function_name(ctx: &ThreadContext, value: Word) -> String {
+    if !value.is_cons() {
+        return describe_word(ctx, value);
+    }
+    let setf_name = (|| -> Option<Word> {
+        let operator = car(ctx, value).ok()?;
+        if symbol_text(ctx, operator).ok()? != "SETF" {
+            return None;
+        }
+        let arguments = cdr(ctx, value).ok()?;
+        if !arguments.is_cons() {
+            return None;
+        }
+        let name = car(ctx, arguments).ok()?;
+        symbol_text(ctx, name).ok()?;
+        if !matches!(cdr(ctx, arguments), Ok(tail) if tail == Word::NIL) {
+            return None;
+        }
+        Some(name)
+    })();
+    setf_name.map_or_else(
+        || "#<OBJECT>".to_owned(),
+        |name| format!("(SETF {})", describe_word(ctx, name)),
+    )
+}
+
 /// Expand a `SIMPLE-CONDITION`-shaped `(format-control . format-arguments)`
 /// report, honoring the `~a`/`~A` directive.
 fn format_simple_report(ctx: &ThreadContext, control: &str, mut arguments: Word) -> String {
@@ -79,6 +105,13 @@ pub fn condition_report(ctx: &ThreadContext, condition: Word) -> Option<String> 
         let control = string_text(ctx, slot_ref(ctx, instance, 0).ok()?)?;
         let arguments = slot_ref(ctx, instance, 1).unwrap_or(Word::NIL);
         return Some(format_simple_report(ctx, &control, arguments));
+    }
+    if class_named(ctx, class, "UNDEFINED-FUNCTION").unwrap_or(false) {
+        let name = slot_ref(ctx, instance, 0).ok()?;
+        return Some(format!(
+            "The function {} is undefined.",
+            describe_function_name(ctx, name)
+        ));
     }
     if class_named(ctx, class, "TYPE-ERROR").unwrap_or(false) {
         let datum = slot_ref(ctx, instance, 0).ok()?;

@@ -2,8 +2,9 @@ use ncl_object::{HeapRootedWord, Runtime, ThreadContext, Word};
 
 use crate::error::ReadError;
 use crate::input::CharSource;
-use crate::reader::{ReadEvaluation, ReadOptions, ReadSuppression, read_form};
+use crate::reader::{ReadEvaluation, ReadOptions, read_form};
 use crate::token::intern_common_lisp;
+use crate::token::{is_read_suppressed, refresh_dynamic_reader_options};
 
 pub(super) fn read_eval_dispatch(
     ctx: &mut ThreadContext,
@@ -13,7 +14,7 @@ pub(super) fn read_eval_dispatch(
     rt: &HeapRootedWord,
     labels: &HeapRootedWord,
 ) -> Result<Word, ReadError> {
-    if matches!(opts.read_suppression(), ReadSuppression::Discard) {
+    if is_read_suppressed(ctx, runtime, opts)? {
         if read_form(ctx, runtime, source, opts, rt, labels)?.is_none() {
             return Err(ReadError::UnexpectedEof);
         }
@@ -34,6 +35,9 @@ pub(super) fn read_eval_dispatch(
     let Some(form) = read_form(ctx, runtime, source, opts, rt, labels)? else {
         return Err(ReadError::UnexpectedEof);
     };
+    if is_read_suppressed(ctx, runtime, opts)? {
+        return Ok(Word::NIL);
+    }
     if ctx.evaluator_runtime().is_none() {
         return Err(ReadError::ReadEvalUnavailable);
     }
@@ -52,5 +56,6 @@ pub(super) fn read_eval_dispatch(
         &mut values,
     )?;
     let value = HeapRootedWord::new(ctx, value)?;
+    refresh_dynamic_reader_options(ctx, runtime, opts)?;
     Ok(value.get())
 }

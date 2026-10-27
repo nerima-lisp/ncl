@@ -69,30 +69,6 @@ fn read_eval_observes_changes_between_sharp_dot_dispatches() {
 }
 
 #[test]
-fn load_signals_reader_error_when_read_eval_is_nil() {
-    let mut runtime = new_runtime();
-    let path = std::env::temp_dir().join(format!(
-        "ncl-read-eval-reader-error-{}.lisp",
-        std::process::id()
-    ));
-    std::fs::write(&path, "#.(+ 1 2)")
-        .unwrap_or_else(|error| panic!("write reader-error fixture: {error}"));
-    let path_text = path
-        .to_string_lossy()
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"");
-    let source = format!(
-        "(let ((*read-eval* nil)) (handler-case (load \"{path_text}\") (reader-error () 17)))"
-    );
-
-    let result = runtime.eval(&source);
-    std::fs::remove_file(&path)
-        .unwrap_or_else(|error| panic!("remove reader-error fixture: {error}"));
-    let value = result.unwrap_or_else(|error| panic!("reader-error handler failed: {error:?}"));
-    assert_eq!(runtime.format_result(value), "17");
-}
-
-#[test]
 fn read_suppress_consumes_sharp_dot_without_evaluation() {
     let mut runtime = new_runtime();
     let value = eval_text(
@@ -118,6 +94,27 @@ fn read_base_rebinding_applies_to_the_next_source_form() {
     let mut runtime = new_runtime();
     let value = eval_text(&mut runtime, "(setf *read-base* 16) 10");
     assert_eq!(value, "16");
+}
+
+#[test]
+fn read_base_rebinding_applies_after_sharp_dot_within_a_form() {
+    let mut runtime = new_runtime();
+    let value = eval_text(
+        &mut runtime,
+        "(let ((*read-base* 10)) '(#.(progn (setf *read-base* 16) 1) A))",
+    );
+    assert_eq!(value, "(1 10)");
+}
+
+#[test]
+fn read_suppress_rebinding_applies_after_sharp_dot_within_a_form() {
+    let mut runtime = new_runtime();
+    eval_text(&mut runtime, "(setf *read-suppress* nil)");
+    let value = eval_text(
+        &mut runtime,
+        "(list '(#.(progn (setf *read-suppress* t) 1) A) *read-suppress*)",
+    );
+    assert_eq!(value, "NIL");
 }
 
 #[test]

@@ -90,7 +90,6 @@ pub enum LispError {
     ControlError(ControlError),
     CellError(CellError),
     PackageError(PackageError),
-    ReaderError,
     StreamError(StreamError),
     EndOfFile,
     FileError(FileError),

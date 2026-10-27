@@ -1,12 +1,5 @@
-//! GC-stress coverage (forced collection + strict forwarding) for the
-//! allocating P1-lib builtins: `COPY-TREE`, `REMOVE-IF`, `COERCE`
-//! (list -> vector), and `MAKE-ARRAY` `:initial-contents`. Each of these
-//! roots every heap value it touches across allocation, per
-//! `packages/lib/sequences/src/domain/list_copy_tree.rs`,
-//! `packages/lib/sequences/src/domain/selection_if.rs`, and
-//! `packages/lib/hash-arrays/src/arrays/make_array_builtin.rs`; running them
-//! against a long list under forced collection is the regression that would
-//! catch a missed root.
+//! GC-stress coverage for allocating sequence builtins and destructive tree substitutions.
+//! The tree cases retain aliases to conses to catch stale forwarding as well as a lost mutation.
 
 #![allow(missing_docs)]
 
@@ -106,5 +99,34 @@ fn allocating_p1_lib_builtins_survive_gc_stress_on_long_lists() {
         &mut runtime,
         &format!("(make-array {LONG_LIST_LEN} :initial-contents {long_list})"),
         &printed_vector(1..=LONG_LIST_LEN),
+    );
+}
+
+#[test]
+fn destructive_tree_substitution_preserves_cons_mutations_under_gc_stress() {
+    let mut runtime = ncl_runtime::Runtime::new()
+        .unwrap_or_else(|error| panic!("runtime initialization failed: {error:?}"));
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+
+    assert_eval_with_stress_on(
+        &mut runtime,
+        "(let* ((tree (cons 1 (cons 2 nil))) (tail (cdr tree)) (result (nsubst 9 2 tree))) (if (and (eq result tree) (eq (cdr tree) tail) (eql (car tail) 9)) tree nil))",
+        "(1 9)",
+    );
+    assert_eval_with_stress_on(
+        &mut runtime,
+        "(let* ((tree (cons 1 (cons 2 nil))) (tail (cdr tree)) (result (nsubst-if 9 #'numberp tree))) (if (and (eq result tree) (eql (car tree) 9) (eql (car tail) 9)) tree nil))",
+        "(9 9)",
+    );
+    assert_eval_with_stress_on(
+        &mut runtime,
+        "(let* ((tree (cons 1 (cons 2 nil))) (tail (cdr tree)) (result (nsubst-if-not 9 #'listp tree))) (if (and (eq result tree) (eql (car tree) 9) (eql (car tail) 9)) tree nil))",
+        "(9 9)",
+    );
+    assert_eval_with_stress_on(
+        &mut runtime,
+        "(let* ((alist (cons (cons 2 9) nil)) (tree (cons 1 (cons 2 nil))) (tail (cdr tree)) (result (nsublis alist tree))) (if (and (eq result tree) (eq (cdr tree) tail) (eql (car tail) 9)) tree nil))",
+        "(1 9)",
     );
 }

@@ -99,10 +99,10 @@ COMMON-LISP	NRECONC	function	ncl-lib-sequences	1	no	reclassified by subsystem ow
 COMMON-LISP	NREVERSE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NSET-DIFFERENCE	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NSET-EXCLUSIVE-OR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	NSUBLIS	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	NSUBST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	NSUBST-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	NSUBST-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSUBLIS	function	ncl-lib-sequences	1	no	sequence/list operation
+COMMON-LISP	NSUBST	function	ncl-lib-sequences	1	no	sequence/list operation
+COMMON-LISP	NSUBST-IF	function	ncl-lib-sequences	1	no	sequence/list operation
+COMMON-LISP	NSUBST-IF-NOT	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NSUBSTITUTE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NSUBSTITUTE-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NSUBSTITUTE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
@@ -135,12 +135,12 @@ COMMON-LISP	SIXTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SOME	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SORT	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	STABLE-SORT	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SUBLIS	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBLIS	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSEQ	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSETP	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBST	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SUBST-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	SUBST-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBST-IF	function	ncl-lib-sequences	1	no	sequence/list operation
+COMMON-LISP	SUBST-IF-NOT	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSTITUTE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSTITUTE-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBSTITUTE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule

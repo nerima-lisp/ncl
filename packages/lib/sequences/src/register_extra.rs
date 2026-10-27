@@ -6,12 +6,17 @@ use ncl_object::{Handle, HandleVec, Local, Scope};
 #[path = "register_duplicates.rs"]
 mod register_duplicates;
 mod register_extra_tail;
+#[path = "register_tree_substitution.rs"]
+mod register_tree_substitution;
 pub use register_duplicates::remove_duplicates_entry;
 pub use register_extra_tail::{
     adjoin_entry, assoc_entry, mapcan_entry, mapcon_entry, mapl_entry, maplist_entry, member_entry,
     rassoc_entry, reduce_entry, remove_if_entry, remove_if_not_entry, set_difference_entry,
-    set_exclusive_or_entry, subsetp_entry, subst_entry, substitute_if_entry,
-    substitute_if_not_entry,
+    set_exclusive_or_entry, subsetp_entry, substitute_if_entry, substitute_if_not_entry,
+};
+pub use register_tree_substitution::{
+    nsublis_entry, nsubst_entry, nsubst_if_entry, nsubst_if_not_entry, sublis_entry, subst_entry,
+    subst_if_entry, subst_if_not_entry,
 };
 
 fn root_args<'ctx>(

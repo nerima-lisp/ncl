@@ -231,7 +231,8 @@ fn coerce_to(
         | TypeSpecifier::Cons { .. }
         | TypeSpecifier::Function { .. }
         | TypeSpecifier::Values(_)
-        | TypeSpecifier::Deftype { .. } => coerce_to_named_fallback(ctx, object, spec),
+        | TypeSpecifier::Deftype { .. }
+        | TypeSpecifier::Class(_) => coerce_to_named_fallback(ctx, object, spec),
     }
 }
 

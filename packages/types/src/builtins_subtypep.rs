@@ -13,9 +13,13 @@ fn subtypep_with_class_graph(
             registered_class_descriptor(ctx, runtime, sub_name)?,
             registered_class_descriptor(ctx, runtime, sup_name)?,
         )
-        && class_is_subclass(ctx, sub_class, sup_class)?
     {
-        return Ok((true, true));
+        if class_is_subclass(ctx, sub_class, sup_class)? {
+            return Ok((true, true));
+        }
+        if matches!(sub, TypeSpecifier::Class(_)) && matches!(sup, TypeSpecifier::Class(_)) {
+            return Ok((false, true));
+        }
     }
     match (sub, sup) {
         (TypeSpecifier::Or(subs), sup) => {
@@ -83,6 +87,7 @@ fn subtypep_with_class_graph(
 #[allow(clippy::wildcard_enum_match_arm)]
 fn class_name_for_type(spec: &TypeSpecifier) -> Option<&str> {
     match spec {
+        TypeSpecifier::Class(name) => Some(name),
         TypeSpecifier::Named(named) => Some(match named {
             NamedType::T => "T",
             NamedType::Symbol => "SYMBOL",

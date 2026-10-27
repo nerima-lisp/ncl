@@ -11,6 +11,8 @@ pub(crate) enum TypeForm {
     Symbol(String),
     /// A proper list of forms.
     List(Vec<Self>),
+    /// A registered runtime class name.
+    Class(String),
     /// A non-symbol object value.
     Value(Value),
 }
@@ -19,6 +21,7 @@ pub(crate) enum TypeForm {
 pub(crate) fn parse_type_form(form: TypeForm) -> Result<TypeSpecifier, TypeError> {
     match form {
         TypeForm::Symbol(name) => Ok(named_or_deftype(name)),
+        TypeForm::Class(name) => Ok(TypeSpecifier::Class(name)),
         TypeForm::List(items) => parse_list(&items),
         TypeForm::Value(Value::Nil) => Ok(TypeSpecifier::Named(NamedType::Nil)),
         TypeForm::Value(Value::True) => Ok(TypeSpecifier::Named(NamedType::T)),
@@ -220,13 +223,13 @@ fn as_single_integer(items: &[TypeForm]) -> Result<i64, TypeError> {
 fn as_integer(form: &TypeForm) -> Option<i64> {
     match form {
         TypeForm::Value(Value::Integer(value)) => Some(*value),
-        TypeForm::Symbol(_) | TypeForm::List(_) | TypeForm::Value(_) => None,
+        TypeForm::Class(_) | TypeForm::Symbol(_) | TypeForm::List(_) | TypeForm::Value(_) => None,
     }
 }
 fn as_value(form: &TypeForm) -> Result<Value, TypeError> {
     match form {
         TypeForm::Value(value) => Ok(value.clone()),
-        TypeForm::Symbol(_) | TypeForm::List(_) => Err(TypeError::InvalidForm),
+        TypeForm::Class(_) | TypeForm::Symbol(_) | TypeForm::List(_) => Err(TypeError::InvalidForm),
     }
 }
 fn is_star(form: &TypeForm) -> bool {

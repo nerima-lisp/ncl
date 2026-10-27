@@ -12,6 +12,8 @@
 pub enum TypeSpecifier {
     /// An atomic type name such as `integer` or `string`.
     Named(NamedType),
+    /// A registered CLOS class, identified by its name.
+    Class(String),
     /// `(integer low high)`; `None` marks an unbounded (`*`) end.
     IntegerRange {
         /// Lower bound.

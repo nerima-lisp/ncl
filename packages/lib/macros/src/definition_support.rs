@@ -8,11 +8,14 @@ use ncl_object::{
     symbol_plist,
 };
 
-use crate::form::{elements, list, symbol};
+use crate::form::{list, symbol};
 
 #[path = "definition_support_defsetf.rs"]
 mod defsetf;
 use defsetf::declaration_form;
+
+#[path = "definition_support_documentation.rs"]
+mod documentation;
 
 pub fn defsetf_body_forms<'scope>(
     scope: &mut Scope<'scope>,
@@ -100,9 +103,11 @@ fn set_macro_function_builtin(
     Ok(function)
 }
 
-pub fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
-    checked_symbol(ctx, name)?;
-    let mut plist = symbol_plist(ctx, name)?;
+fn plist_property(
+    ctx: &ThreadContext,
+    mut plist: Word,
+    property: Word,
+) -> Result<Option<Word>, ObjectError> {
     while plist != Word::NIL {
         if !plist.is_cons() {
             return Err(ObjectError::TypeError);
@@ -113,11 +118,84 @@ pub fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<W
             return Err(ObjectError::TypeError);
         }
         if key == property {
-            return ncl_object::car(ctx, rest);
+            return ncl_object::car(ctx, rest).map(Some);
         }
         plist = ncl_object::cdr(ctx, rest)?;
     }
-    Ok(Word::NIL)
+    Ok(None)
+}
+
+pub fn get_property(ctx: &ThreadContext, name: Word, property: Word) -> Result<Word, ObjectError> {
+    checked_symbol(ctx, name)?;
+    Ok(plist_property(ctx, symbol_plist(ctx, name)?, property)?.unwrap_or(Word::NIL))
+}
+
+fn set_plist_property(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    plist: Word,
+    property: Word,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    ncl_object::with_roots(ctx, &[plist, property, value], |ctx, roots| {
+        let mut current = **roots.first().ok_or(ObjectError::TypeError)?;
+        while current != Word::NIL {
+            if !current.is_cons() {
+                return Err(ObjectError::TypeError);
+            }
+            let key = ncl_object::car(ctx, current)?;
+            let rest = ncl_object::cdr(ctx, current)?;
+            if !rest.is_cons() {
+                return Err(ObjectError::TypeError);
+            }
+            if key == **roots.get(1).ok_or(ObjectError::TypeError)? {
+                rplaca(ctx, rest, **roots.get(2).ok_or(ObjectError::TypeError)?)?;
+                return Ok(**roots.first().ok_or(ObjectError::TypeError)?);
+            }
+            current = ncl_object::cdr(ctx, current)?;
+        }
+        let mut value_cell = make_cons(
+            ctx,
+            runtime,
+            **roots.get(2).ok_or(ObjectError::TypeError)?,
+            **roots.first().ok_or(ObjectError::TypeError)?,
+        )?;
+        ncl_object::with_root(ctx, &mut value_cell, |ctx, value_cell| {
+            make_cons(
+                ctx,
+                runtime,
+                **roots.get(1).ok_or(ObjectError::TypeError)?,
+                *value_cell,
+            )
+        })
+    })
+}
+
+fn set_property(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+    property: Word,
+    value: Word,
+) -> Result<(), ObjectError> {
+    checked_symbol(ctx, name)?;
+    ncl_object::with_roots(ctx, &[name, property, value], |ctx, roots| {
+        let plist = symbol_plist(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        let mut plist = set_plist_property(
+            ctx,
+            runtime,
+            plist,
+            **roots.get(1).ok_or(ObjectError::TypeError)?,
+            **roots.get(2).ok_or(ObjectError::TypeError)?,
+        )?;
+        ncl_object::with_root(ctx, &mut plist, |ctx, plist| {
+            ctx.write_object_slot(
+                **roots.first().ok_or(ObjectError::TypeError)?,
+                ncl_object::symbol_offset::PLIST,
+                *plist,
+            )
+        })
+    })
 }
 
 fn get_builtin(
@@ -127,87 +205,6 @@ fn get_builtin(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     get_property(ctx, args.required(0)?, args.required(1)?)
-}
-
-fn defsetf_documentation(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    mut name: Word,
-) -> Result<Word, ObjectError> {
-    ncl_object::with_root(ctx, &mut name, |ctx, name| {
-        let mut property = symbol(ctx, runtime, "NCL::DEFINITION")?;
-        ncl_object::with_root(ctx, &mut property, |ctx, property| {
-            let definition = get_property(ctx, *name, *property)?;
-            ncl_object::with_root(ctx, &mut definition.clone(), |ctx, definition| {
-                if *definition == Word::NIL {
-                    return Ok(Word::NIL);
-                }
-                let parts = elements(ctx, *definition)?;
-                ncl_object::with_roots(ctx, &parts, |ctx, roots| {
-                    let first = roots.first().ok_or(ObjectError::TypeError)?.get();
-                    if first != Word::NIL
-                        && matches!(
-                            ncl_object::classify_object(ctx, first),
-                            ncl_object::ObjectRef::Symbol(_)
-                        )
-                    {
-                        return roots.get(1).map_or(Ok(Word::NIL), |doc| {
-                            let word = doc.get();
-                            if matches!(
-                                ncl_object::classify_object(ctx, word),
-                                ncl_object::ObjectRef::String(_)
-                            ) {
-                                Ok(word)
-                            } else {
-                                Ok(Word::NIL)
-                            }
-                        });
-                    }
-                    let mut leading = true;
-                    for form in roots.iter().skip(2) {
-                        let word = form.get();
-                        if leading
-                            && matches!(
-                                ncl_object::classify_object(ctx, word),
-                                ncl_object::ObjectRef::String(_)
-                            )
-                        {
-                            return Ok(word);
-                        }
-                        if leading && declaration_form(ctx, runtime, word)? {
-                            continue;
-                        }
-                        leading = false;
-                    }
-                    Ok(Word::NIL)
-                })
-            })
-        })
-    })
-}
-
-fn documentation_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    let name = checked_symbol(ctx, args.required(0)?)?;
-    let kind = args.required(1)?;
-    ncl_object::with_roots(ctx, &[name, kind], |ctx, roots| {
-        let mut setf = symbol(ctx, runtime, "SETF")?;
-        ncl_object::with_root(ctx, &mut setf, |ctx, setf| {
-            if roots.get(1).ok_or(ObjectError::TypeError)?.get() == *setf {
-                defsetf_documentation(
-                    ctx,
-                    runtime,
-                    roots.first().ok_or(ObjectError::TypeError)?.get(),
-                )
-            } else {
-                Ok(Word::NIL)
-            }
-        })
-    })
 }
 
 fn set_get_builtin(
@@ -408,10 +405,15 @@ pub fn register_runtime_support(
             set_macro_function_builtin,
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
+        (
+            "NCL-EXT::DOCUMENTATION-SET",
+            documentation::set_documentation_builtin,
+            LambdaList::fixed(&[SYMBOL, DOCUMENTATION_TYPE, VALUE]),
+        ),
         ("GET", get_builtin, LambdaList::fixed(&[SYMBOL, PROPERTY])),
         (
             "DOCUMENTATION",
-            documentation_builtin,
+            documentation::documentation_builtin,
             LambdaList::fixed(&[SYMBOL, DOCUMENTATION_TYPE]),
         ),
         (

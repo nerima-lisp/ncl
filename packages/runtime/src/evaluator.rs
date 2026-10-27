@@ -123,3 +123,44 @@ pub struct NativeInvocation<'a> {
     pub(crate) code: CodeObject,
     pub(crate) entry_codes: &'a dyn EntryCodeLookup,
 }
+
+impl NativeInvocation<'_> {
+    pub(crate) fn evaluator_access(&self) -> Option<Rc<EvaluatorAccess>> {
+        self.context.evaluator_access::<EvaluatorAccess>()
+    }
+}
+
+/// Typed services available to native callbacks during an evaluator invocation.
+pub struct EvaluatorAccess {
+    pub(crate) evaluator: EvaluatorService,
+    pub(crate) object: Rc<ObjectRuntime>,
+}
+
+impl EvaluatorAccess {
+    pub(crate) const fn new(evaluator: EvaluatorService, object: Rc<ObjectRuntime>) -> Self {
+        Self { evaluator, object }
+    }
+}
+
+impl crate::Runtime {
+    pub(crate) fn with_evaluator_access<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> Result<T, crate::RuntimeError>,
+    ) -> Result<T, crate::RuntimeError> {
+        self.context
+            .set_condition_handler_invoker(crate::function_call::invoke_condition_handler);
+        let evaluator = std::ptr::from_mut(self).cast();
+        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
+        let previous_access =
+            self.context
+                .replace_evaluator_access(Some(Rc::new(EvaluatorAccess::new(
+                    self.evaluator.clone(),
+                    Rc::clone(&self.object),
+                ))));
+        let result = operation(self);
+        self.clear_pending_undefined_function_condition();
+        self.context.restore_evaluator_runtime(previous_evaluator);
+        self.context.restore_evaluator_access(previous_access);
+        result
+    }
+}

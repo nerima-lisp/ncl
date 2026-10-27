@@ -385,6 +385,7 @@ pub extern "C" fn native_make_closure(
     entry: Word,
 ) -> Word {
     ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        let evaluator_access = invocation.evaluator_access();
         let ctx = &mut *invocation.context;
         let Ok(entry) = usize::try_from(entry.bits()) else {
             ctx.set_pending(ObjectError::Layout);
@@ -403,36 +404,24 @@ pub extern "C" fn native_make_closure(
         // not the caller's. Only fall back to the caller's CODE object for
         // a nested lambda that was compiled as part of the same function
         // (and therefore shares its constants table).
-        let code = invocation
-            .entry_codes
-            .code_object_word(entry)
-            .map_or(invocation.code, CodeObject::from_word);
+        let code_word = evaluator_access
+            .as_ref()
+            .and_then(|access| access.evaluator.entry_code(entry))
+            .or_else(|| invocation.entry_codes.code_object_word(entry));
+        let code = code_word.map_or(invocation.code, CodeObject::from_word);
+        let object = evaluator_access
+            .as_ref()
+            .map_or(invocation.object, |access| access.object.as_ref());
         let captures = vec![Word::NIL; capture_count];
         #[cfg(test)]
         let result = if take_make_closure_capacity_failure(thread, capture_count) {
             // Keep the allocation error path reproducible without changing production behavior.
             Err(ObjectError::Storage(StorageCondition::CapacityExceeded))
         } else {
-            make_closure(
-                ctx,
-                invocation.object,
-                entry,
-                Word::NIL,
-                Word::NIL,
-                code,
-                &captures,
-            )
+            make_closure(ctx, object, entry, Word::NIL, Word::NIL, code, &captures)
         };
         #[cfg(not(test))]
-        let result = make_closure(
-            ctx,
-            invocation.object,
-            entry,
-            Word::NIL,
-            Word::NIL,
-            code,
-            &captures,
-        );
+        let result = make_closure(ctx, object, entry, Word::NIL, Word::NIL, code, &captures);
         match result {
             Ok(function) => function.as_word(),
             Err(error) => {

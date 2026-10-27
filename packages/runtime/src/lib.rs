@@ -1,6 +1,7 @@
 //! Evaluation, compilation, loading, and registration orchestration.
 use std::collections::HashMap;
 use std::ptr::NonNull;
+use std::rc::Rc;
 mod builtin_trampoline;
 mod compile;
 #[cfg(test)]
@@ -56,7 +57,7 @@ pub struct Runtime {
 
     #[cfg(test)]
     pending_undefined_function_condition: Option<HeapRootedWord>,
-    object: ObjectRuntime,
+    object: Rc<ObjectRuntime>,
 }
 #[derive(Debug)]
 pub(crate) struct PublishedFunction {
@@ -75,7 +76,7 @@ impl Runtime {
     /// # Errors
     /// Returns an initialization error from the object or standard-library layers.
     pub fn with_options(options: RuntimeOptions) -> Result<Self, RuntimeError> {
-        let object = ObjectRuntime::new()?;
+        let object = Rc::new(ObjectRuntime::new()?);
         let mut context = ThreadContext::new();
         context.register(&object)?;
         // Every builtin that `ncl_stdlib::register_all` is about to register
@@ -123,28 +124,14 @@ impl Runtime {
     /// # Errors
     /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = load::source_forms(self, source);
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| load::source_forms(runtime, source))
     }
     /// Compile and execute a source string through the native pipeline.
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn compile(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = compile::source(self, source);
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| compile::source(runtime, source))
     }
     /// Compile and execute all forms in a source file.
     ///
@@ -160,22 +147,15 @@ impl Runtime {
             path: pathname.display().to_string(),
             error,
         })?;
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = (|| {
-            file_environment::enter_compile_file(self, &pathname, &truename)?;
-            let compiled = compile::file(self, &pathname);
-            let restored = self.context.leave_progv().map_err(RuntimeError::from);
+        self.with_evaluator_access(|runtime| {
+            file_environment::enter_compile_file(runtime, &pathname, &truename)?;
+            let compiled = compile::file(runtime, &pathname);
+            let restored = runtime.context.leave_progv().map_err(RuntimeError::from);
             match (compiled, restored) {
                 (Err(error), _) | (Ok(_), Err(error)) => Err(error),
                 (Ok(value), Ok(())) => Ok(value),
             }
-        })();
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        })
     }
     /// Load and execute all forms in a source string.
     ///
@@ -189,14 +169,7 @@ impl Runtime {
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = load::file(self, path.as_ref());
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| load::file(runtime, path.as_ref()))
     }
     pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         self.eval_form_with_values(form).map(|(value, _)| value)
@@ -210,7 +183,7 @@ impl Runtime {
     pub(crate) fn pending_undefined_function_condition(&self) -> Option<Word> {
         self.evaluator.pending_undefined_function_condition()
     }
-    fn clear_pending_undefined_function_condition(&mut self) {
+    fn clear_pending_undefined_function_condition(&self) {
         self.evaluator.clear_pending_undefined_function_condition();
     }
     fn compile_form_with_values(&mut self, form: Word) -> Result<(Word, Vec<Word>), RuntimeError> {

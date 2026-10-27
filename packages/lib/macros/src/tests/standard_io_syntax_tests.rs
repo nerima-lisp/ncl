@@ -195,3 +195,170 @@ fn standard_io_syntax_expansion_binds_standard_values() -> Result<(), ObjectErro
     }
     result
 }
+
+fn standard_io_expansion_with_released_cells(
+    released_cells: usize,
+    preinterned_symbols: usize,
+) -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    register(&runtime)?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let operator = symbol(&mut ctx, &runtime, "WITH-STANDARD-IO-SYNTAX")?;
+    let body = symbol(&mut ctx, &runtime, "BODY")?;
+    let input = list(&mut ctx, &runtime, &[operator, body])?;
+    let mut names = vec![
+        "T",
+        "KEYWORD::UPCASE",
+        "SINGLE-FLOAT",
+        "FIND-PACKAGE",
+        "COPY-PPRINT-DISPATCH",
+        "COPY-READTABLE",
+        "QUOTE",
+    ];
+    names.extend([
+        "*PACKAGE*",
+        "*PRINT-ARRAY*",
+        "*PRINT-BASE*",
+        "*PRINT-CASE*",
+        "*PRINT-CIRCLE*",
+        "*PRINT-ESCAPE*",
+        "*PRINT-GENSYM*",
+        "*PRINT-LENGTH*",
+        "*PRINT-LEVEL*",
+        "*PRINT-LINES*",
+        "*PRINT-MISER-WIDTH*",
+        "*PRINT-PPRINT-DISPATCH*",
+        "*PRINT-PRETTY*",
+        "*PRINT-RADIX*",
+        "*PRINT-READABLY*",
+        "*PRINT-RIGHT-MARGIN*",
+        "*READ-BASE*",
+        "*READ-DEFAULT-FLOAT-FORMAT*",
+        "*READ-EVAL*",
+        "*READ-SUPPRESS*",
+        "*READTABLE*",
+        "NCL-EXT::*PRINT-CIRCLE-NOT-SHARED*",
+        "NCL-EXT::*PRINT-VECTOR-LENGTH*",
+    ]);
+    names.push("LET");
+    let preinterned = names
+        .into_iter()
+        .take(preinterned_symbols)
+        .map(|name| symbol(&mut ctx, &runtime, name))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut roots = vec![Word::NIL; 8_192];
+    roots[0] = input;
+    roots[1..1 + preinterned.len()].copy_from_slice(&preinterned);
+
+    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let mut next_root = 1 + preinterned.len();
+        let mut reserve_root = None;
+        for words in [65_536, 4_096, 256] {
+            let stage_start = next_root;
+            loop {
+                if next_root == roots.len() {
+                    return Err(ObjectError::Layout);
+                }
+                match ncl_object::allocate(ctx, &runtime, 0x7f, words) {
+                    Ok(value) => {
+                        roots[next_root] = value;
+                        next_root += 1;
+                    }
+                    Err(error) => {
+                        if format!("{error:?}") != "Storage(CapacityExceeded)" {
+                            return Err(error);
+                        }
+                        break;
+                    }
+                }
+            }
+            if words == 4_096 {
+                if next_root == stage_start {
+                    return Err(ObjectError::Layout);
+                }
+                reserve_root = Some(next_root - 1);
+            }
+        }
+
+        let reserve_root = reserve_root.ok_or(ObjectError::Layout)?;
+        roots[reserve_root] = Word::NIL;
+        ctx.collect(true)?;
+
+        let single_cell_start = next_root;
+        loop {
+            if next_root == roots.len() {
+                return Err(ObjectError::Layout);
+            }
+            match ncl_object::allocate(ctx, &runtime, 0x7f, 0) {
+                Ok(value) => {
+                    roots[next_root] = value;
+                    next_root += 1;
+                }
+                Err(error) => {
+                    if format!("{error:?}") != "Storage(CapacityExceeded)" {
+                        return Err(error);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if next_root - single_cell_start < released_cells {
+            return Err(ObjectError::Layout);
+        }
+        for root in &mut roots[next_root - released_cells..next_root] {
+            *root = Word::NIL;
+        }
+        ctx.collect(true)?;
+
+        let input_args = [roots[0]];
+        let args = ncl_object::BuiltinArgs::new(&input_args);
+        let expand =
+            callback_for("WITH-STANDARD-IO-SYNTAX").ok_or(ObjectError::UndefinedFunction)?;
+        expand(ctx, &runtime, &args, &mut ncl_object::MultipleValues::new()).map(|_| ())
+    });
+
+    result
+}
+
+#[test]
+fn standard_io_syntax_propagates_heap_capacity_boundaries() {
+    let cases = [
+        ("first control symbol", 0, 0),
+        ("KEYWORD::UPCASE symbol", 3, 7),
+        ("SINGLE-FLOAT symbol", 13, 6),
+        ("FIND-PACKAGE symbol", 14, 3),
+        ("CL-USER string", 23, 3),
+        ("CL-USER form list", 32, 3),
+        ("COPY-PPRINT-DISPATCH symbol", 25, 30),
+        ("pprint dispatch list", 68, 3),
+        ("COPY-READTABLE symbol", 91, 3),
+        ("readtable list", 96, 3),
+        ("QUOTE symbol", 100, 3),
+        ("float format list", 116, 3),
+        ("binding symbol", 117, 30),
+        ("aggregate bindings list", 136, 31),
+        ("final binding form list", 145, 29),
+        ("LET symbol", 163, 30),
+        ("outer expansion list", 168, 31),
+    ];
+
+    for (case, released_cells, preinterned_symbols) in cases {
+        let error = standard_io_expansion_with_released_cells(released_cells, preinterned_symbols)
+            .expect_err("the selected allocation must report heap exhaustion");
+        assert!(
+            matches!(error, ObjectError::Storage(_)),
+            "{case}: expected a storage condition, got {error:?}"
+        );
+        assert_eq!(
+            format!("{error:?}"),
+            "Storage(CapacityExceeded)",
+            "{case}: reserve={released_cells}, preinterned_symbols={preinterned_symbols}"
+        );
+    }
+
+    standard_io_expansion_with_released_cells(169, 31)
+        .expect("169 one-word cells must complete the fully pre-interned expansion");
+}

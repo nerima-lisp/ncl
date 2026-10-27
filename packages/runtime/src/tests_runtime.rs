@@ -296,9 +296,7 @@ fn defun_return_from_in_let_initializers_works_across_routes() {
             "29",
         ),
     ];
-    let mut runtime =
-        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
-    let mut failures = Vec::new();
+    let mut runtime = Runtime::new().expect("runtime initialization should succeed");
 
     for (route, compile) in [("eval", false), ("compile", true)] {
         for (case, source, expected) in CASES {
@@ -307,23 +305,10 @@ fn defun_return_from_in_let_initializers_works_across_routes() {
             } else {
                 runtime.eval(source)
             };
-            match result {
-                Ok(value) => {
-                    let actual = runtime.format_result(value);
-                    if actual != expected {
-                        failures.push(format!("{route}/{case}: expected {expected}, got {actual}"));
-                    }
-                }
-                Err(error) => failures.push(format!("{route}/{case}: {error}")),
-            }
+            let value = result.expect("DEFUN RETURN-FROM case should succeed");
+            assert_eq!(runtime.format_result(value), expected, "{route}/{case}");
         }
     }
-
-    assert!(
-        failures.is_empty(),
-        "DEFUN RETURN-FROM cases failed: {}",
-        failures.join("; ")
-    );
 }
 
 #[test]

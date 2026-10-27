@@ -22,15 +22,24 @@ pub(super) fn finish_function_definition(
     lambda: Word,
 ) -> Result {
     ncl_object::with_roots(ctx, &[name, lambda], |ctx, roots| {
-        let name = **roots.first().ok_or(ObjectError::TypeError)?;
-        let lambda = **roots.get(1).ok_or(ObjectError::TypeError)?;
         let mut function_symbol = symbol(ctx, runtime, "FUNCTION")?;
         ncl_object::with_root(ctx, &mut function_symbol, |ctx, function_symbol| {
-            let mut function = list(ctx, runtime, &[*function_symbol, lambda])?;
+            let mut function = list(
+                ctx,
+                runtime,
+                &[
+                    *function_symbol,
+                    roots.get(1).ok_or(ObjectError::TypeError)?.get(),
+                ],
+            )?;
             ncl_object::with_root(ctx, &mut function, |ctx, function| {
                 let mut accessor_symbol = symbol(ctx, runtime, accessor)?;
                 ncl_object::with_root(ctx, &mut accessor_symbol, |ctx, accessor_symbol| {
-                    let mut quoted_name = quote(ctx, runtime, name)?;
+                    let mut quoted_name = quote(
+                        ctx,
+                        runtime,
+                        roots.first().ok_or(ObjectError::TypeError)?.get(),
+                    )?;
                     ncl_object::with_root(ctx, &mut quoted_name, |ctx, quoted_name| {
                         let mut place = list(ctx, runtime, &[*accessor_symbol, *quoted_name])?;
                         ncl_object::with_root(ctx, &mut place, |ctx, place| {
@@ -38,7 +47,12 @@ pub(super) fn finish_function_definition(
                             ncl_object::with_root(ctx, &mut setf_symbol, |ctx, setf_symbol| {
                                 let operation =
                                     list(ctx, runtime, &[*setf_symbol, *place, *function])?;
-                                progn_with_definition(ctx, runtime, name, operation)
+                                progn_with_definition(
+                                    ctx,
+                                    runtime,
+                                    roots.first().ok_or(ObjectError::TypeError)?.get(),
+                                    operation,
+                                )
                             })
                         })
                     })

@@ -5,6 +5,7 @@
 //! reverse-depends on the runtime.
 
 use ncl_object::{HeapRootedWord, HeapRootedWords, ObjectRef, Runtime, ThreadContext, Word, car};
+use ncl_types::lambda_body::{LambdaBodyElement, split_lambda_body_prefix};
 
 use crate::ast::{Expr, LambdaExpr};
 use crate::compiler_macro::MacroRegistry;
@@ -195,7 +196,7 @@ impl<'a> FormExpander<'a> {
         Ok((declarations, remaining))
     }
 
-    /// Expand a body: leading declarations, an optional docstring, then forms.
+    /// Expand a body with declarations and an optional docstring before its forms.
     ///
     /// # Errors
     ///
@@ -209,14 +210,35 @@ impl<'a> FormExpander<'a> {
         &mut self,
         forms: &[HeapRootedWord],
     ) -> Result<Body, FrontError> {
-        let (declarations, remaining) = self.split_rooted_declarations(forms)?;
-        let (forms, docstring) = match remaining.split_first() {
-            Some((word, rest)) => self
-                .docstring(word.get())?
-                .map_or((remaining, None), |text| (rest, Some(text))),
-            None => (remaining, None),
-        };
-        let expanded = self.expand_rooted_all(forms)?;
+        let mut elements = Vec::with_capacity(forms.len());
+        for form in forms {
+            let word = form.get();
+            let element = if self.is_declare_form(word)? {
+                LambdaBodyElement::Declaration
+            } else if self.docstring(word)?.is_some() {
+                LambdaBodyElement::String
+            } else {
+                LambdaBodyElement::Form
+            };
+            elements.push(element);
+        }
+        let prefix = split_lambda_body_prefix(&elements);
+        let mut declarations = Vec::new();
+        for (form, element) in forms.iter().zip(&elements).take(prefix.len()) {
+            if *element == LambdaBodyElement::Declaration {
+                declarations.extend(self.declarations(form.get())?);
+            }
+        }
+        let docstring = prefix
+            .docstring_index()
+            .and_then(|index| forms.get(index))
+            .map(|form| self.docstring(form.get()))
+            .transpose()?
+            .flatten();
+        let body_forms = forms
+            .get(prefix.len()..)
+            .ok_or(ncl_object::ObjectError::TypeError)?;
+        let expanded = self.expand_rooted_all(body_forms)?;
         Ok(Body {
             declarations,
             docstring,

@@ -10,6 +10,7 @@ pub mod builtins;
 mod deftype;
 mod domain;
 pub mod error;
+pub mod lambda_body;
 pub mod parse;
 pub mod register;
 pub mod subtypep;

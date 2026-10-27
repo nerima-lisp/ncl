@@ -259,7 +259,7 @@ fn compile_and_load_share_the_native_pipeline() {
 
 #[test]
 fn defun_return_from_in_let_initializers_works_across_routes() {
-    const CASES: [(&str, &str, &str); 5] = [
+    const CASES: [(&str, &str, &str); 7] = [
         (
             "let-no-or",
             "(defun r6-b6-let (value) (let ((result (return-from r6-b6-let 11))) result)) (r6-b6-let t)",
@@ -284,6 +284,16 @@ fn defun_return_from_in_let_initializers_works_across_routes() {
             "eval-when",
             "(eval-when (:load-toplevel :compile-toplevel :execute) (defun r6-b6-eval-when (value) (let* ((result (or value (return-from r6-b6-eval-when 23)))) result))) (r6-b6-eval-when nil)",
             "23",
+        ),
+        (
+            "terminal-string-body",
+            "(defun r6-b6-terminal-string () \"x\") (string= (r6-b6-terminal-string) \"x\")",
+            "T",
+        ),
+        (
+            "docstring-before-declare",
+            "(defun r6-b6-docstring-declare (value) \"doc\" (declare (ignorable value)) value) (r6-b6-docstring-declare 29)",
+            "29",
         ),
     ];
     let mut runtime =

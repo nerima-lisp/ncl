@@ -75,6 +75,59 @@ fn function_definitions_allow_an_empty_body() -> Result<(), ObjectError> {
 }
 
 #[test]
+fn defun_expansion_survives_gc_stress_and_strict_forwarding() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "F")?;
+    let operator = symbol(&mut ctx, &runtime, "DEFUN")?;
+    let parameter = symbol(&mut ctx, &runtime, "VALUE")?;
+    let mut body = ncl_object::make_string(&mut ctx, &runtime, &['x'])?;
+    ncl_object::with_root(&mut ctx, &mut body, |ctx, body| {
+        let mut lambda_list = list(ctx, &runtime, &[parameter])?;
+        ncl_object::with_root(ctx, &mut lambda_list, |ctx, lambda_list| {
+            let form = list(
+                ctx,
+                &runtime,
+                &[operator, name, lambda_list.get(), body.get()],
+            )?;
+            let roots = HeapRootedWords::new(ctx, &[form, body.get(), lambda_list.get()])?;
+            ctx.set_strict_forwarding(true);
+            ctx.set_gc_stress(true);
+
+            let expanded = call(
+                &runtime,
+                ctx,
+                "DEFUN",
+                roots.first().ok_or(ObjectError::TypeError)?.get(),
+            )?;
+            let expanded = HeapRootedWord::new(ctx, expanded)?;
+            ctx.collect(true)?;
+
+            let expanded_parts = elements(ctx, expanded.get())?;
+            let setf_form = expanded_parts
+                .get(1)
+                .copied()
+                .ok_or(ObjectError::TypeError)?;
+            let setf = elements(ctx, setf_form)?;
+            let function_form = setf.get(2).copied().ok_or(ObjectError::TypeError)?;
+            let function = elements(ctx, function_form)?;
+            let lambda_form = function.get(1).copied().ok_or(ObjectError::TypeError)?;
+            let lambda = elements(ctx, lambda_form)?;
+            assert_eq!(
+                lambda.get(1).copied().ok_or(ObjectError::TypeError)?,
+                roots.get(2).ok_or(ObjectError::TypeError)?.get()
+            );
+            let block_form = lambda.get(2).copied().ok_or(ObjectError::TypeError)?;
+            let block = elements(ctx, block_form)?;
+            assert_eq!(
+                block.get(2).copied().ok_or(ObjectError::TypeError)?,
+                roots.get(1).ok_or(ObjectError::TypeError)?.get()
+            );
+            Ok(())
+        })
+    })
+}
+
+#[test]
 fn function_definitions_keep_declarations_and_docstrings_before_the_block()
 -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;

@@ -6,8 +6,10 @@
 #![allow(missing_docs, clippy::missing_errors_doc)]
 
 use ncl_object::{
-    ObjectError, Runtime, ThreadContext, Word, set_symbol_constant, set_symbol_special,
+    HeapRootedWord, HeapRootedWords, ObjectError, Runtime, ThreadContext, Word,
+    set_symbol_constant, set_symbol_special,
 };
+use ncl_types::lambda_body::{LambdaBodyElement, LambdaBodyPrefix, split_lambda_body_prefix};
 
 use crate::form::{elements, list, symbol};
 
@@ -121,65 +123,66 @@ fn progn_with_definition(
 fn lambda_body_prefix(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    body: &[Word],
-) -> Result<usize, ObjectError> {
+    body: &[HeapRootedWord],
+) -> Result<LambdaBodyPrefix, ObjectError> {
     let mut declaration = symbol(ctx, runtime, "DECLARE")?;
     ncl_object::with_root(ctx, &mut declaration, |ctx, declaration| {
-        let mut prefix = 0;
-        while let Some(form) = body.get(prefix).copied() {
-            if !form.is_cons() {
-                break;
-            }
-            let mut operator = ncl_object::car(ctx, form)?;
-            let is_declaration = ncl_object::with_root(ctx, &mut operator, |_, operator| {
-                Ok(operator.get() == declaration.get())
-            })?;
-            if !is_declaration {
-                break;
-            }
-            prefix += 1;
-        }
-        if body.get(prefix).is_some_and(|form| {
-            matches!(
-                ncl_object::classify_object(ctx, *form),
+        let mut elements = Vec::with_capacity(body.len());
+        for form in body {
+            let word = form.get();
+            let element = if word.is_cons() && ncl_object::car(ctx, word)? == declaration.get() {
+                LambdaBodyElement::Declaration
+            } else if matches!(
+                ncl_object::classify_object(ctx, word),
                 ncl_object::ObjectRef::String(_)
-            )
-        }) {
-            prefix += 1;
+            ) {
+                LambdaBodyElement::String
+            } else {
+                LambdaBodyElement::Form
+            };
+            elements.push(element);
         }
-        Ok(prefix)
+        Ok(split_lambda_body_prefix(&elements))
     })
 }
 
 fn function_definition(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    name: Word,
+    name: &HeapRootedWord,
     accessor: &str,
-    lambda_list: Word,
-    body: &[Word],
+    lambda_list: &HeapRootedWord,
+    body: &[HeapRootedWord],
 ) -> Result<Word, ObjectError> {
     let body_prefix = lambda_body_prefix(ctx, runtime, body)?;
-    let preserved_body = body.get(..body_prefix).ok_or(ObjectError::TypeError)?;
-    let block_body = body.get(body_prefix..).ok_or(ObjectError::TypeError)?;
-    ncl_object::with_roots(ctx, &[name, lambda_list], |ctx, roots| {
-        let name = **roots.first().ok_or(ObjectError::TypeError)?;
-        let lambda_list = **roots.get(1).ok_or(ObjectError::TypeError)?;
-        let mut lambda_symbol = symbol(ctx, runtime, "LAMBDA")?;
-        ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
-            let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list])?;
+    let preserved_body = body
+        .get(..body_prefix.len())
+        .ok_or(ObjectError::TypeError)?;
+    let block_body = body
+        .get(body_prefix.len()..)
+        .ok_or(ObjectError::TypeError)?;
+    let mut lambda_symbol = symbol(ctx, runtime, "LAMBDA")?;
+    ncl_object::with_root(ctx, &mut lambda_symbol, |ctx, lambda_symbol| {
+        let mut lambda = list(ctx, runtime, &[*lambda_symbol, lambda_list.get()])?;
+        ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
+            let preserved_body = preserved_body
+                .iter()
+                .map(HeapRootedWord::get)
+                .collect::<Vec<_>>();
+            let mut lambda = append(ctx, runtime, *lambda, &preserved_body)?;
             ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                let mut lambda = append(ctx, runtime, *lambda, preserved_body)?;
-                ncl_object::with_root(ctx, &mut lambda, |ctx, lambda| {
-                    let mut block_symbol = symbol(ctx, runtime, "BLOCK")?;
-                    ncl_object::with_root(ctx, &mut block_symbol, |ctx, block_symbol| {
-                        let mut block = list(ctx, runtime, &[block_symbol.get(), name])?;
+                let mut block_symbol = symbol(ctx, runtime, "BLOCK")?;
+                ncl_object::with_root(ctx, &mut block_symbol, |ctx, block_symbol| {
+                    let mut block = list(ctx, runtime, &[block_symbol.get(), name.get()])?;
+                    ncl_object::with_root(ctx, &mut block, |ctx, block| {
+                        let block_body = block_body
+                            .iter()
+                            .map(HeapRootedWord::get)
+                            .collect::<Vec<_>>();
+                        let mut block = append(ctx, runtime, *block, &block_body)?;
                         ncl_object::with_root(ctx, &mut block, |ctx, block| {
-                            let mut block = append(ctx, runtime, *block, block_body)?;
-                            ncl_object::with_root(ctx, &mut block, |ctx, block| {
-                                let lambda = append(ctx, runtime, lambda.get(), &[block.get()])?;
-                                finish_function_definition(ctx, runtime, name, accessor, lambda)
-                            })
+                            let lambda = append(ctx, runtime, lambda.get(), &[block.get()])?;
+                            finish_function_definition(ctx, runtime, name.get(), accessor, lambda)
                         })
                     })
                 })
@@ -264,13 +267,17 @@ fn defun(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let parts = form_elements(ctx, required(args, 0)?)?;
-    ncl_object::with_roots(ctx, &parts, |ctx, parts| {
-        let parts = parts.iter().map(|value| **value).collect::<Vec<_>>();
-        ensure_form_operator(ctx, runtime, &parts, "DEFUN")?;
-        let name = ensure_symbol(ctx, parts.get(1).copied().ok_or(ObjectError::TypeError)?)?;
-        let lambda_list = parts.get(2).copied().ok_or(ObjectError::TypeError)?;
-        ensure_list(ctx, lambda_list)?;
-        let body = parts.get(3..).ok_or(ObjectError::TypeError)?;
+    let parts = HeapRootedWords::new(ctx, &parts)?;
+    let mut operator = symbol(ctx, runtime, "DEFUN")?;
+    ncl_object::with_root(ctx, &mut operator, |ctx, operator| {
+        if parts.first().ok_or(ObjectError::TypeError)?.get() != operator.get() {
+            return Err(ObjectError::TypeError);
+        }
+        let name = parts.get(1).ok_or(ObjectError::TypeError)?;
+        ensure_symbol(ctx, name.get())?;
+        let lambda_list = parts.get(2).ok_or(ObjectError::TypeError)?;
+        ensure_list(ctx, lambda_list.get())?;
+        let body = parts.as_slice().get(3..).ok_or(ObjectError::TypeError)?;
         function_definition(ctx, runtime, name, "FDEFINITION", lambda_list, body)
     })
 }

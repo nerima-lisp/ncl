@@ -4,9 +4,9 @@ use std::ptr::NonNull;
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FrontError, MacroCaller, SymbolRef};
 use ncl_object::{
-    BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
-    Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code, function_entry,
-    make_closure, make_cons, make_value_cell, symbol_function,
+    BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, LispError,
+    ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word, cdr, function_code,
+    function_entry, make_closure, make_cons, make_value_cell, symbol_function,
 };
 use ncl_sys::{Thread, invoke_entry_with_function_address, replace_native_context, thread_layout};
 
@@ -235,7 +235,10 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         if runtime.builtin_descriptor(ctx, function).is_some() {
             return runtime
                 .call_builtin(ctx, function, &[form])
-                .map_err(|error| expansion(name, &error.to_string()));
+                .map_err(|error| {
+                    let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
+                    expansion(name, &detail)
+                });
         }
         // A compiled macro function takes exactly one argument: the whole
         // call form. `defmacro` (see `ncl-lib-macros::defining`) compiles
@@ -248,7 +251,10 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         // which is what a `&rest`/`&body` macro previously could trip
         // non-deterministically under GC pressure.
         let result = call_macro_function(ctx, runtime, function, &[form], self.entry_codes);
-        result.map_err(|error| expansion(name, &error.to_string()))
+        result.map_err(|error| {
+            let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
+            expansion(name, &detail)
+        })
     }
 
     fn expand_type_specifier(
@@ -350,6 +356,47 @@ fn expansion(name: &ncl_compiler_front::SymbolRef, detail: &str) -> ncl_compiler
         name: name.clone(),
         detail: detail.to_owned(),
     }
+}
+
+fn pending_simple_error_message(
+    ctx: &mut ThreadContext,
+    runtime: &ObjectRuntime,
+    fallback: impl FnOnce() -> String,
+) -> String {
+    if let Some(error) = ctx.take_pending_lisp_error() {
+        let LispError::SimpleError {
+            format_control,
+            format_arguments: Word::NIL,
+        } = error
+        else {
+            ctx.set_pending_lisp_error(error);
+            return fallback();
+        };
+        let Some(message) = ncl_object::string_length(ctx, format_control)
+            .ok()
+            .and_then(|length| {
+                (0..length)
+                    .map(|index| ncl_object::string_ref(ctx, format_control, index))
+                    .collect::<Result<String, _>>()
+                    .ok()
+            })
+        else {
+            ctx.set_pending_lisp_error(error);
+            return fallback();
+        };
+        return message;
+    }
+    let Some(condition) = ctx.take_pending_condition() else {
+        return fallback();
+    };
+    let simple_error = ncl_conditions::ConditionIdentifier::SimpleError.class(ctx, runtime);
+    if ncl_conditions::condition_class_of(ctx, condition).ok() == simple_error
+        && let Some(report) = ncl_conditions::condition_report(ctx, condition)
+    {
+        return report;
+    }
+    ctx.set_pending_condition(condition);
+    fallback()
 }
 
 pub extern "C" fn native_make_closure(

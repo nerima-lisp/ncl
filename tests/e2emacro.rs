@@ -400,6 +400,13 @@ const XFAILS: &[XFail] = &[XFail {
 }];
 
 const ERROR_CASES: &[ErrorCase] = &[
+    // Unsupported LOOP package iteration clauses name the rejected clause.
+    ErrorCase {
+        name: "loop-unsupported-being-clause-reports-it",
+        source: "(loop for symbol being the widgets)",
+        stderr: "Unsupported LOOP clause: BEING THE WIDGETS",
+        exit_code: 1,
+    },
     // B7: ECASE, unlike CASE, signals when nothing matches.
     ErrorCase {
         name: "ecase-no-match-signals",
@@ -564,6 +571,37 @@ fn do_symbols_probes_assert_clhs_results() {
             probe.name
         );
     }
+}
+
+#[test]
+fn loop_package_iteration_updates_following_for_clause() {
+    let source = r#"(let* ((pkg (make-package "NCL-B5-LOOP-SYMBOLS" :use nil))
+                           (target (intern "TARGET" pkg))
+                           (external (intern "EXTERNAL" pkg))
+                           (ignored (export (list external) pkg))
+                           (count 0)
+                           (evaluations 0)
+                           (initial-values-ready nil)
+                           (status-ok t))
+                      (loop for sym being the symbols in pkg
+                            for status = (if sym
+                                             (progn
+                                               (setq evaluations (1+ evaluations))
+                                               (nth-value 1 (find-symbol (symbol-name sym) pkg)))
+                                             nil)
+                            do (when (= count 0)
+                                 (setq initial-values-ready (= evaluations 1)))
+                               (setq count (1+ count))
+                               (unless (eq status (nth-value 1 (find-symbol (symbol-name sym) pkg)))
+                                 (setq status-ok nil)))
+                      (list (= count 2)
+                            (= evaluations 2)
+                            initial-values-ready
+                            status-ok))"#;
+    let output = run_ncl(source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "(T T T T)");
 }
 
 #[test]

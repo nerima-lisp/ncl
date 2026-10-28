@@ -113,7 +113,44 @@ fn get_set_updates_existing_properties_and_appends_missing_properties() -> Resul
 }
 
 #[test]
-fn function_definition_builtins_set_get_and_validate_function_objects() -> Result<(), ObjectError> {
+fn get_property_rejects_non_list_and_dotted_symbol_plists() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "SETF-GET-MALFORMED-READ")?;
+    let property = symbol(&mut ctx, &runtime, "SETF-GET-MALFORMED-READ-PROPERTY")?;
+
+    ncl_object::set_symbol_plist(&mut ctx, name, Word::fixnum(7))?;
+    assert_eq!(
+        get_property(&ctx, name, property),
+        Err(ObjectError::TypeError)
+    );
+
+    let dotted_plist = make_cons(&mut ctx, &runtime, property, Word::fixnum(7))?;
+    ncl_object::set_symbol_plist(&mut ctx, name, dotted_plist)?;
+    assert_eq!(
+        get_property(&ctx, name, property),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+#[test]
+fn function_definition_builtins_are_registered() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    assert!(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "FDEFINITION")
+            .is_some()
+    );
+    assert!(
+        runtime
+            .function(&mut ctx, "NCL-EXT", "DOCUMENTATION-SET")
+            .is_some()
+    );
+    Ok(())
+}
+
+#[test]
+fn function_definition_builtin_sets_and_gets_function_objects() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = fixture()?;
     let name = symbol(&mut ctx, &runtime, "SETF-FDEFINITION-BUILTIN-TEST")?;
     let function = runtime
@@ -142,18 +179,6 @@ fn function_definition_builtins_set_get_and_validate_function_objects() -> Resul
         )?,
         function
     );
-    let macro_name = symbol(&mut ctx, &runtime, "SETF-MACRO-FUNCTION-BUILTIN-TEST")?;
-    let words = [macro_name];
-    let args = BuiltinArgs::new(&words);
-    assert_eq!(
-        macro_function_builtin(
-            &mut ctx,
-            &runtime,
-            &args,
-            &mut ncl_object::MultipleValues::new(),
-        )?,
-        Word::NIL
-    );
     let unbound = symbol(&mut ctx, &runtime, "SETF-FDEFINITION-UNBOUND")?;
     let words = [unbound];
     let args = BuiltinArgs::new(&words);
@@ -166,6 +191,28 @@ fn function_definition_builtins_set_get_and_validate_function_objects() -> Resul
         ),
         Err(ObjectError::Unbound)
     ));
+    Ok(())
+}
+
+#[test]
+fn macro_function_builtin_sets_and_gets_macro_function_objects() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let macro_name = symbol(&mut ctx, &runtime, "SETF-MACRO-FUNCTION-BUILTIN-TEST")?;
+    let function = runtime
+        .function(&mut ctx, "COMMON-LISP", "GET")
+        .ok_or(ObjectError::Layout)?;
+
+    let words = [macro_name];
+    let args = BuiltinArgs::new(&words);
+    assert_eq!(
+        macro_function_builtin(
+            &mut ctx,
+            &runtime,
+            &args,
+            &mut ncl_object::MultipleValues::new(),
+        )?,
+        Word::NIL
+    );
 
     let words = [macro_name, function];
     let args = BuiltinArgs::new(&words);
@@ -189,6 +236,13 @@ fn function_definition_builtins_set_get_and_validate_function_objects() -> Resul
         )?,
         function
     );
+    Ok(())
+}
+
+#[test]
+fn function_definition_builtins_reject_invalid_names_and_values() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let name = symbol(&mut ctx, &runtime, "SETF-FDEFINITION-BUILTIN-TEST")?;
 
     let words = [name, Word::fixnum(1)];
     let args = BuiltinArgs::new(&words);

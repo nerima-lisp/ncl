@@ -140,8 +140,6 @@ pub(super) fn make_package(
                     std::slice::from_mut(&mut package_data[0]), // check-added-lines: allow(index) package_data is the fixed two-slot array above.
                     value,
                 )?;
-            } else if key != "USE" && key != "DOCUMENTATION" && key != "SIZE" {
-                return Err(ObjectError::TypeError);
             }
             index += 2;
         }

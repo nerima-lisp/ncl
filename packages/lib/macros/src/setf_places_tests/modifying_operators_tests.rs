@@ -62,6 +62,8 @@ fn pushnew_rejects_malformed_keyword_arguments() {
         .unwrap_or_else(super::test_operation_failure);
     let unknown = symbol(&mut ctx, &runtime, "KEYWORD::UNKNOWN")
         .unwrap_or_else(super::test_operation_failure);
+    let non_keyword =
+        symbol(&mut ctx, &runtime, "NCL::TEST").unwrap_or_else(super::test_operation_failure);
 
     assert!(
         matches!(
@@ -76,6 +78,26 @@ fn pushnew_rejects_malformed_keyword_arguments() {
         ),
         "PUSHNEW must reject a missing keyword value",
     );
+    assert!(matches!(
+        expand_push(
+            &mut ctx,
+            &runtime,
+            &registry,
+            &[Word::fixnum(1), place, Word::fixnum(7), Word::NIL],
+            true,
+        ),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(matches!(
+        expand_push(
+            &mut ctx,
+            &runtime,
+            &registry,
+            &[Word::fixnum(1), place, non_keyword, Word::NIL],
+            true,
+        ),
+        Err(ObjectError::TypeError)
+    ));
     assert!(
         matches!(
             expand_push(
@@ -131,6 +153,90 @@ fn pop_remf_reject_extra_arguments() {
         ),
         "REMF must reject extra arguments",
     );
+}
+
+#[test]
+fn pop_returns_the_removed_head_and_shiftf_rotatef_use_the_old_values() {
+    let runtime = Runtime::new().unwrap_or_else(super::test_operation_failure);
+    let mut ctx = ThreadContext::new();
+    registry_with_builtins(&runtime, &mut ctx).unwrap_or_else(super::test_operation_failure);
+    let registry = PlaceRegistry::new(&runtime);
+    let first =
+        symbol(&mut ctx, &runtime, "FIRST-PLACE").unwrap_or_else(super::test_operation_failure);
+    let second =
+        symbol(&mut ctx, &runtime, "SECOND-PLACE").unwrap_or_else(super::test_operation_failure);
+
+    let pop = expand_pop(&mut ctx, &runtime, &registry, &[first])
+        .unwrap_or_else(super::test_operation_failure);
+    let pop_parts = elements(&mut ctx, pop).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(
+        pop_parts[0],
+        symbol(&mut ctx, &runtime, "LET*").unwrap_or_else(super::test_operation_failure)
+    );
+    let pop_bindings =
+        elements(&mut ctx, pop_parts[1]).unwrap_or_else(super::test_operation_failure);
+    let pop_body = elements(&mut ctx, pop_parts[2]).unwrap_or_else(super::test_operation_failure);
+    let pop_value_variable =
+        elements(&mut ctx, pop_bindings[1]).unwrap_or_else(super::test_operation_failure)[0];
+    assert_eq!(pop_body.len(), 3);
+    assert_eq!(
+        pop_body[0],
+        symbol(&mut ctx, &runtime, "PROGN").unwrap_or_else(super::test_operation_failure)
+    );
+    assert_eq!(pop_body[2], pop_value_variable);
+    let car = symbol(&mut ctx, &runtime, "CAR").unwrap_or_else(super::test_operation_failure);
+    let cdr = symbol(&mut ctx, &runtime, "CDR").unwrap_or_else(super::test_operation_failure);
+    assert!(contains_operator(&mut ctx, pop, car).unwrap_or_else(super::test_operation_failure));
+    assert!(contains_operator(&mut ctx, pop, cdr).unwrap_or_else(super::test_operation_failure));
+
+    for arguments in [&[][..], &[first][..]] {
+        assert!(matches!(
+            expand_shiftf(&mut ctx, &runtime, &registry, arguments),
+            Err(ObjectError::TypeError)
+        ));
+    }
+    let shiftf = expand_shiftf(
+        &mut ctx,
+        &runtime,
+        &registry,
+        &[first, second, Word::fixnum(55)],
+    )
+    .unwrap_or_else(super::test_operation_failure);
+    let shiftf_parts = elements(&mut ctx, shiftf).unwrap_or_else(super::test_operation_failure);
+    let shiftf_bindings =
+        elements(&mut ctx, shiftf_parts[1]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(shiftf_bindings.len(), 3);
+    assert_eq!(
+        elements(&mut ctx, shiftf_bindings[0]).unwrap_or_else(super::test_operation_failure)[1],
+        Word::fixnum(55)
+    );
+    let shiftf_old_first =
+        elements(&mut ctx, shiftf_bindings[1]).unwrap_or_else(super::test_operation_failure)[0];
+    let shiftf_body =
+        elements(&mut ctx, shiftf_parts[2]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(shiftf_body.last(), Some(&shiftf_old_first));
+
+    let rotatef = expand_rotatef(&mut ctx, &runtime, &registry, &[first, second])
+        .unwrap_or_else(super::test_operation_failure);
+    let rotatef_parts = elements(&mut ctx, rotatef).unwrap_or_else(super::test_operation_failure);
+    let rotatef_bindings =
+        elements(&mut ctx, rotatef_parts[1]).unwrap_or_else(super::test_operation_failure);
+    let rotatef_body =
+        elements(&mut ctx, rotatef_parts[2]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(rotatef_bindings.len(), 2);
+    assert_eq!(rotatef_body.last().copied(), Some(Word::NIL));
+    let rotatef_old_second =
+        elements(&mut ctx, rotatef_bindings[1]).unwrap_or_else(super::test_operation_failure)[0];
+    let first_store =
+        elements(&mut ctx, rotatef_body[1]).unwrap_or_else(super::test_operation_failure);
+    let first_store_bindings =
+        elements(&mut ctx, first_store[1]).unwrap_or_else(super::test_operation_failure);
+    let first_store_binding =
+        elements(&mut ctx, first_store_bindings[0]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(first_store_binding[1], rotatef_old_second);
+    let first_assignment =
+        elements(&mut ctx, first_store[2]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(first_assignment[1], first);
 }
 
 #[test]
@@ -304,6 +410,24 @@ fn pushnew_accepts_key_test_and_test_not_options() {
     assert!(
         contains_form(&mut ctx, keyed_test, test).unwrap_or_else(super::test_operation_failure)
     );
+    let keyed_parts = elements(&mut ctx, keyed_test).unwrap_or_else(super::test_operation_failure);
+    let keyed_bindings =
+        elements(&mut ctx, keyed_parts[1]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(keyed_bindings.len(), 3);
+    let key_binding =
+        elements(&mut ctx, keyed_bindings[1]).unwrap_or_else(super::test_operation_failure);
+    let test_binding =
+        elements(&mut ctx, keyed_bindings[2]).unwrap_or_else(super::test_operation_failure);
+    assert_eq!(key_binding[1], function);
+    assert_eq!(test_binding[1], function);
+    assert!(
+        contains_form(&mut ctx, keyed_test, key_binding[0])
+            .unwrap_or_else(super::test_operation_failure)
+    );
+    assert!(
+        contains_form(&mut ctx, keyed_test, test_binding[0])
+            .unwrap_or_else(super::test_operation_failure)
+    );
 
     let keyed_test_not = expand_push(
         &mut ctx,
@@ -336,28 +460,4 @@ fn rotatef_without_places_returns_nil() {
         expand_rotatef(&mut ctx, &runtime, &registry, &[]),
         Ok(Word::NIL)
     ));
-}
-
-#[test]
-fn remf_generalized_places_build_a_labelled_finder() {
-    let runtime = Runtime::new().unwrap_or_else(super::test_operation_failure);
-    let mut ctx = ThreadContext::new();
-    registry_with_builtins(&runtime, &mut ctx).unwrap_or_else(super::test_operation_failure);
-    let registry = PlaceRegistry::new(&runtime);
-    let list = symbol(&mut ctx, &runtime, "LIST").unwrap_or_else(super::test_operation_failure);
-    let place = place_form(&mut ctx, &runtime, "CAR", &[list])
-        .unwrap_or_else(super::test_operation_failure);
-    let property =
-        symbol(&mut ctx, &runtime, "PROPERTY").unwrap_or_else(super::test_operation_failure);
-    let expansion = expand_remf(&mut ctx, &runtime, &registry, &[place, property])
-        .unwrap_or_else(super::test_operation_failure);
-
-    for operator in ["LABELS", "CDDR", "RPLACD"] {
-        let operator_symbol =
-            symbol(&mut ctx, &runtime, operator).unwrap_or_else(super::test_operation_failure);
-        assert!(
-            contains_operator(&mut ctx, expansion, operator_symbol)
-                .unwrap_or_else(super::test_operation_failure)
-        );
-    }
 }

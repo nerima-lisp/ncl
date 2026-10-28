@@ -398,3 +398,19 @@ fn rotate_like(
         wrap_bindings(ctx, runtime, &bindings, body)
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_bindings;
+    use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+
+    #[test]
+    fn empty_bindings_preserve_the_body() -> Result<(), ObjectError> {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        let body = Word::fixnum(41);
+
+        assert_eq!(wrap_bindings(&mut ctx, &runtime, &[], body), Ok(body));
+        Ok(())
+    }
+}

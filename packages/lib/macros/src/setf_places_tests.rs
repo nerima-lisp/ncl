@@ -150,3 +150,6 @@ mod standard_places;
 
 #[path = "setf_places_tests/modifying_operators_tests.rs"]
 mod modifying_operators;
+
+#[path = "setf_places_tests/remf_tests.rs"]
+mod remf;

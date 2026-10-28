@@ -145,4 +145,3 @@ pub(super) fn set_documentation_builtin(
     }
     Err(ObjectError::TypeError)
 }
-

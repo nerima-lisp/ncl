@@ -8,7 +8,7 @@ use std::time::Duration;
 use ncl_object::{Runtime, ThreadContext, Word};
 
 use crate::ThreadError;
-use crate::state::{lock, make_named_object, read_handle, read_slot, write_slot};
+use crate::state::{lock, make_named_object, read_handle, read_slot, with_root, write_slot};
 use crate::sync::{
     SemaphoreRecord, SyncHandle, SyncState, WaitQueueRecord, block_until, mutex_handle,
     next_handle, semaphore_handle, sync, waitqueue_handle,
@@ -329,18 +329,20 @@ fn spinlock_handle(ctx: &ThreadContext, spinlock: Word) -> Result<SyncHandle, Th
 /// Returns [`ThreadError::NotAMutex`] for an unknown spinlock,
 /// [`ThreadError::Timeout`] on expiry, and [`ThreadError::Interrupted`] when a
 /// cooperative interrupt is pending.
-pub fn get_spinlock(ctx: &mut ThreadContext, spinlock: Word) -> Result<Word, ThreadError> {
-    let handle = spinlock_handle(ctx, spinlock)?;
-    block_until(ctx, None, |state| {
-        let held = state.spinlocks.get_mut(&handle)?;
-        if *held {
-            return None;
-        }
-        *held = true;
-        Some(())
-    })?;
-    write_slot(ctx, spinlock, SPINLOCK_HELD, Word::TRUE)?;
-    Ok(Word::TRUE)
+pub fn get_spinlock(ctx: &mut ThreadContext, mut spinlock: Word) -> Result<Word, ThreadError> {
+    with_root(ctx, &mut spinlock, |ctx, spinlock| {
+        let handle = spinlock_handle(ctx, *spinlock)?;
+        block_until(ctx, None, |state| {
+            let held = state.spinlocks.get_mut(&handle)?;
+            if *held {
+                return None;
+            }
+            *held = true;
+            Some(())
+        })?;
+        write_slot(ctx, *spinlock, SPINLOCK_HELD, Word::TRUE)?;
+        Ok(Word::TRUE)
+    })
 }
 
 /// Release a spinlock.

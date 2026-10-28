@@ -9,6 +9,8 @@ pub enum StorageCondition {
     InvalidSize,
     /// An operation requiring a mutator was attempted by an unregistered thread.
     ThreadNotRegistered,
+    /// A Native-state allocation needs a caller-owned root slot for its result.
+    NativeAllocationRequiresRoot,
     /// The allocator returned a heap address in the immediate-value range.
     HeapAddressTooLow,
 }

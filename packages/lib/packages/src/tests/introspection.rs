@@ -240,6 +240,34 @@ fn make_package_validates_option_pairs_and_documentation_type() -> Result<(), Ob
         runtime.find_package(&ctx, "N25-OPTION-ALIAS"),
         Some(package)
     );
+    assert_eq!(
+        list_items(
+            &ctx,
+            Package::try_from_word(&ctx, package)?.nicknames(&ctx)?,
+        )?,
+        vec![nickname]
+    );
+    Ok(())
+}
+
+#[test]
+fn shadowing_import_rejects_non_symbol_elements() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let package = runtime.ensure_package(&mut ctx, "N25-SHADOWING-IMPORT-TYPE")?;
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "SHADOWING-IMPORT")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let non_symbol = ncl_object::make_cons(&mut ctx, &runtime, Word::fixnum(25), Word::NIL)?;
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[non_symbol, package]),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 

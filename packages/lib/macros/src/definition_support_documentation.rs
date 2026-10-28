@@ -266,6 +266,10 @@ mod tests {
         let definition_key = symbol(&mut ctx, &runtime, "NCL::DEFINITION")?;
         let setf_kind = symbol(&mut ctx, &runtime, "SETF")?;
         let setf_name = symbol(&mut ctx, &runtime, "SETF-DOC-FUNCTION")?;
+        assert_eq!(
+            call_documentation(&mut ctx, &runtime, &[name, setf_kind])?,
+            Word::NIL
+        );
         let no_doc_definition = list(&mut ctx, &runtime, &[setf_name])?;
         super::super::set_property(&mut ctx, &runtime, name, definition_key, no_doc_definition)?;
         assert_eq!(
@@ -278,6 +282,13 @@ mod tests {
         assert_eq!(
             call_documentation(&mut ctx, &runtime, &[name, setf_kind])?,
             short_doc
+        );
+
+        let non_string_doc = list(&mut ctx, &runtime, &[setf_name, Word::fixnum(17)])?;
+        super::super::set_property(&mut ctx, &runtime, name, definition_key, non_string_doc)?;
+        assert_eq!(
+            call_documentation(&mut ctx, &runtime, &[name, setf_kind])?,
+            Word::NIL
         );
 
         let variable = symbol(&mut ctx, &runtime, "X")?;

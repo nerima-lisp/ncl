@@ -402,56 +402,60 @@ pub fn register_runtime_support(
             runtime.register_place_expander(ctx, *symbol, place)
         })?;
     }
-    let builtins: &[(&str, ncl_object::RustBuiltin, LambdaList)] = &[
+    let builtins: &[(BuiltinPackage, &str, ncl_object::RustBuiltin, LambdaList)] = &[
         (
+            CL,
             "FDEFINITION",
             fdefinition_builtin,
             LambdaList::fixed(&[SYMBOL]),
         ),
         (
-            "NCL-EXT::FDEFINITION-SET",
+            BuiltinPackage::NclExt,
+            "FDEFINITION-SET",
             set_fdefinition_builtin,
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
         (
+            CL,
             "MACRO-FUNCTION",
             macro_function_builtin,
             LambdaList::fixed(&[SYMBOL]),
         ),
         (
-            "NCL-EXT::MACRO-FUNCTION-SET",
+            BuiltinPackage::NclExt,
+            "MACRO-FUNCTION-SET",
             set_macro_function_builtin,
             LambdaList::fixed(&[SYMBOL, VALUE]),
         ),
         (
-            "NCL-EXT::DOCUMENTATION-SET",
+            BuiltinPackage::NclExt,
+            "DOCUMENTATION-SET",
             documentation::set_documentation_builtin,
             LambdaList::fixed(&[SYMBOL, DOCUMENTATION_TYPE, VALUE]),
         ),
-        ("GET", get_builtin, LambdaList::fixed(&[SYMBOL, PROPERTY])),
         (
+            CL,
+            "GET",
+            get_builtin,
+            LambdaList::fixed(&[SYMBOL, PROPERTY]),
+        ),
+        (
+            CL,
             "DOCUMENTATION",
             documentation::documentation_builtin,
             LambdaList::fixed(&[SYMBOL, DOCUMENTATION_TYPE]),
         ),
         (
-            "NCL-EXT::GET-SET",
+            BuiltinPackage::NclExt,
+            "GET-SET",
             set_get_builtin,
             LambdaList::fixed(&[SYMBOL, PROPERTY, VALUE]),
         ),
     ];
-    for (builtin, callback, params) in builtins {
-        let (package, builtin_name) = (*builtin)
-            .split_once("::")
-            .unwrap_or(("COMMON-LISP", *builtin));
-        let package = match package {
-            "COMMON-LISP" => CL,
-            "NCL-EXT" => BuiltinPackage::NclExt,
-            _ => return Err(ObjectError::TypeError),
-        };
+    for (package, builtin_name, callback, params) in builtins {
         runtime.register_builtin(
             ctx,
-            BuiltinIdentifier::new(package, BuiltinName::new(builtin_name)),
+            BuiltinIdentifier::new(*package, BuiltinName::new(builtin_name)),
             BuiltinImplementation::direct(
                 Builtin {
                     lambda_list: *params,

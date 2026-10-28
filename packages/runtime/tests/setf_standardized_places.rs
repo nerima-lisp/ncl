@@ -312,3 +312,18 @@ fn fdefinition_place_rejects_a_non_symbol_name() {
         "expected TypeError for a non-symbol function name, got {result:?}"
     );
 }
+
+#[test]
+fn symbol_value_cell_store_returns_the_stored_value() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    assert_form(
+        &mut runtime,
+        "(progn
+           (defparameter *ncl-symbol-cell-store* 1)
+           (list
+             (|set-symbol-value| '*ncl-symbol-cell-store* 17)
+             (symbol-value '*ncl-symbol-cell-store*)))",
+        "(17 17)",
+        "symbol value cell store",
+    );
+}

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::rc::Rc;
 
@@ -13,6 +13,7 @@ pub struct EvaluatorState {
     pub(crate) undefined_function_stub: usize,
     pub(crate) functions: RefCell<BTreeMap<u32, PublishedFunction>>,
     pub(crate) entry_codes: RefCell<BTreeMap<usize, (Box<Word>, RootToken)>>, // check-added-lines: allow(word-table) each code object remains rooted until Runtime::drop
+    frame_capture_pcs: RefCell<BTreeSet<usize>>,
     rooted_functions: RefCell<Vec<(Box<Word>, RootToken)>>,
     pub(crate) pending_undefined_function_condition: RefCell<Option<HeapRootedWord>>,
 }
@@ -38,6 +39,7 @@ impl EvaluatorService {
                 undefined_function_stub,
                 functions: RefCell::new(BTreeMap::new()),
                 entry_codes: RefCell::new(BTreeMap::new()),
+                frame_capture_pcs: RefCell::new(BTreeSet::new()),
                 rooted_functions: RefCell::new(Vec::new()),
                 pending_undefined_function_condition: RefCell::new(None),
             }),
@@ -56,13 +58,23 @@ impl EvaluatorService {
         *self.state.pending_undefined_function_condition.borrow_mut() = None;
     }
 
-    pub(crate) fn root_entry_code(&self, context: &mut ThreadContext, entry: usize, code: Word) {
+    pub(crate) fn root_entry_code(
+        &self,
+        context: &mut ThreadContext,
+        entry: usize,
+        code: Word,
+        frame_capture_pcs: &[usize],
+    ) {
         let mut rooted = Box::new(code);
         let token = ncl_object::push_root(context, &mut rooted);
         self.state
             .entry_codes
             .borrow_mut()
             .insert(entry, (rooted, token));
+        self.state
+            .frame_capture_pcs
+            .borrow_mut()
+            .extend(frame_capture_pcs.iter().copied());
     }
 
     pub(crate) fn root_function(&self, context: &mut ThreadContext, function: Word) {
@@ -82,18 +94,8 @@ impl EvaluatorService {
             .map(|(word, _)| **word)
     }
 
-    fn contains_pc(&self, context: &ThreadContext, pc: usize) -> bool {
-        let entry_codes = self.state.entry_codes.borrow();
-        let Some((&entry, (word, _))) = entry_codes.range(..=pc).next_back() else {
-            return false;
-        };
-        if code_object_contains_pc(context, **word, pc) {
-            return true;
-        }
-        entry_codes
-            .range(..entry)
-            .rev()
-            .any(|(_, (word, _))| code_object_contains_pc(context, **word, pc))
+    fn has_frame_capture_pc(&self, pc: usize) -> bool {
+        self.state.frame_capture_pcs.borrow().contains(&pc)
     }
 
     pub(crate) fn push_code(&self, code: CodePtr) {
@@ -105,6 +107,7 @@ impl EvaluatorService {
         for (_, (_, token)) in entry_codes {
             let _ = ncl_object::pop_root(context, token);
         }
+        self.state.frame_capture_pcs.borrow_mut().clear();
         let rooted_functions = std::mem::take(&mut *self.state.rooted_functions.borrow_mut());
         for (_, token) in rooted_functions.into_iter().rev() {
             let _ = ncl_object::pop_root(context, token);
@@ -117,8 +120,8 @@ impl EntryCodeLookup for EvaluatorService {
         self.entry_code(entry)
     }
 
-    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool {
-        self.contains_pc(context, pc)
+    fn contains_frame_capture_pc(&self, pc: usize) -> bool {
+        self.has_frame_capture_pc(pc)
     }
 }
 
@@ -127,8 +130,10 @@ pub trait EntryCodeLookup {
     /// Resolve an entry to a copied code-object word before allocation can run.
     fn code_object_word(&self, entry: usize) -> Option<Word>;
 
-    /// Whether a continuation PC belongs to a rooted generated code object.
-    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool;
+    /// Whether a continuation PC has a precise generated frame map.
+    fn contains_frame_capture_pc(&self, _pc: usize) -> bool {
+        false
+    }
 }
 
 // check-added-lines: allow(word-table) legacy callers retain each code object's RootToken
@@ -136,43 +141,6 @@ impl EntryCodeLookup for BTreeMap<usize, (Box<Word>, RootToken)> {
     fn code_object_word(&self, entry: usize) -> Option<Word> {
         self.get(&entry).map(|(word, _)| **word)
     }
-
-    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool {
-        let Some((&entry, (word, _))) = self.range(..=pc).next_back() else {
-            return false;
-        };
-        if code_object_contains_pc(context, **word, pc) {
-            return true;
-        }
-        self.range(..entry)
-            .rev()
-            .any(|(_, (word, _))| code_object_contains_pc(context, **word, pc))
-    }
-}
-
-fn code_object_contains_pc(context: &ThreadContext, word: Word, pc: usize) -> bool {
-    let code = CodeObject::from_word(word);
-    let Ok(entry) = ncl_object::code_entry(context, code) else {
-        return false;
-    };
-    let Ok(size) = ncl_object::code_size(context, code) else {
-        return false;
-    };
-    let Some(entry) = entry
-        .as_fixnum()
-        .and_then(|value| usize::try_from(value).ok())
-    else {
-        return false;
-    };
-    let Some(size) = size
-        .as_fixnum()
-        .and_then(|value| usize::try_from(value).ok())
-    else {
-        return false;
-    };
-    entry
-        .checked_add(size)
-        .is_some_and(|end| entry <= pc && pc < end)
 }
 
 pub struct NativeInvocation<'a> {
@@ -242,7 +210,7 @@ mod tests {
     fn evaluator_service_looks_up_rooted_entry_codes() {
         let mut context = ncl_object::ThreadContext::new();
         let evaluator = EvaluatorService::new(Vec::new(), 0);
-        evaluator.root_entry_code(&mut context, 17, Word::TRUE);
+        evaluator.root_entry_code(&mut context, 17, Word::TRUE, &[]);
         evaluator.root_function(&mut context, Word::NIL);
 
         assert_eq!(evaluator.code_object_word(17), Some(Word::TRUE));
@@ -253,7 +221,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::expect_used)]
-    fn evaluator_service_matches_only_pcs_inside_rooted_code_objects() {
+    fn evaluator_service_matches_only_registered_frame_capture_pcs() {
         let object = ncl_object::Runtime::new().expect("object runtime");
         let mut context = ncl_object::ThreadContext::new();
         context.register(&object).expect("thread registration");
@@ -269,37 +237,10 @@ mod tests {
             Word::NIL,
         )
         .expect("generated code object");
-        evaluator.root_entry_code(&mut context, code_entry, code.as_word());
-        let overlapping_code = ncl_object::make_code_object(
-            &mut context,
-            &object,
-            code_entry + 16,
-            8,
-            Word::NIL,
-            Word::NIL,
-            Word::NIL,
-        )
-        .expect("overlapping generated code object");
-        evaluator.root_entry_code(&mut context, code_entry + 16, overlapping_code.as_word());
-        let next_entry = code_entry + 64;
-        let next_code = ncl_object::make_code_object(
-            &mut context,
-            &object,
-            next_entry,
-            32,
-            Word::NIL,
-            Word::NIL,
-            Word::NIL,
-        )
-        .expect("next generated code object");
-        evaluator.root_entry_code(&mut context, next_entry, next_code.as_word());
-
-        assert!(evaluator.contains_generated_pc(&context, code_entry));
-        assert!(evaluator.contains_generated_pc(&context, code_entry + 31));
-        assert!(!evaluator.contains_generated_pc(&context, code_entry + 32));
-        assert!(evaluator.contains_generated_pc(&context, next_entry));
-        assert!(evaluator.contains_generated_pc(&context, next_entry + 31));
-        assert!(!evaluator.contains_generated_pc(&context, next_entry + 32));
+        evaluator.root_entry_code(&mut context, code_entry, code.as_word(), &[code_entry + 8]);
+        assert!(!evaluator.contains_frame_capture_pc(code_entry + 7));
+        assert!(evaluator.contains_frame_capture_pc(code_entry + 8));
+        assert!(!evaluator.contains_frame_capture_pc(code_entry + 31));
 
         evaluator.clear_roots(&mut context);
     }

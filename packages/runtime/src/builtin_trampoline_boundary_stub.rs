@@ -9,9 +9,7 @@ pub(super) fn with_generated_frame(
     return_pc: usize,
     dispatch: impl FnOnce(&mut NativeInvocation<'_>) -> NativeCallResult,
 ) -> NativeCallResult {
-    let captured_frame = invocation
-        .entry_codes
-        .contains_generated_pc(invocation.context, return_pc);
+    let captured_frame = invocation.entry_codes.contains_frame_capture_pc(return_pc);
     let native_state = invocation.context.native_state();
     if captured_frame && !invocation.context.capture_native_frame(frame_fp, return_pc) {
         invocation

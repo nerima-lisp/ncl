@@ -207,7 +207,7 @@ impl Runtime {
         for function in &module.functions {
             compiled.push((function, self.compile_native(function)?));
         }
-        for (function, (code, metadata)) in &compiled {
+        for (function, (code, metadata, _)) in &compiled {
             let entry = code.address().saturating_add(metadata.entry_offset);
             self.evaluator
                 .state
@@ -216,14 +216,14 @@ impl Runtime {
                 .insert(function.id.0, PublishedFunction { entry });
         }
         let mut uninterned_symbols = HashMap::new();
-        for (function, (code, metadata)) in compiled.iter().skip(1) {
+        for (function, (code, metadata, frame_capture_pcs)) in compiled.iter().skip(1) {
             let entry = code.address().saturating_add(metadata.entry_offset);
             let (_function_object, entry_code) =
                 self.make_function_object(function, &(code, metadata), &mut uninterned_symbols)?;
             self.evaluator
-                .root_entry_code(&mut self.context, entry, entry_code);
+                .root_entry_code(&mut self.context, entry, entry_code, frame_capture_pcs);
         }
-        let (entry_code, entry_metadata) = &compiled
+        let (entry_code, entry_metadata, frame_capture_pcs) = &compiled
             .first()
             .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
             .1;
@@ -235,18 +235,22 @@ impl Runtime {
         let entry_address = entry_code
             .address()
             .saturating_add(entry_metadata.entry_offset);
-        self.evaluator
-            .root_entry_code(&mut self.context, entry_address, entry_constants);
-        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
-        for (_, (code, _)) in compiled {
+        self.evaluator.root_entry_code(
+            &mut self.context,
+            entry_address,
+            entry_constants,
+            frame_capture_pcs,
+        );
+        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function);
+        for (_, (code, _, _)) in compiled {
             self.evaluator.push_code(code);
         }
-        Ok(result)
+        result
     }
     fn compile_native(
         &mut self,
         function: &ncl_ir::Function,
-    ) -> Result<(CodePtr, CodeObjectMetadata), RuntimeError> {
+    ) -> Result<(CodePtr, CodeObjectMetadata, Vec<usize>), RuntimeError> {
         let functions = self.evaluator.state.functions.borrow();
         let abi = NativeAbi {
             object: &self.object,
@@ -264,6 +268,17 @@ impl Runtime {
         write_code(&mut code, 0, &compiled.code)
             .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         publish_code(&mut code).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
+        let frame_capture_pcs = compiled
+            .safepoint_maps
+            .iter()
+            .map(|map| {
+                code.address()
+                    .checked_add(usize::try_from(map.pc_offset).map_err(|_| {
+                        RuntimeError::Native("safepoint PC offset is too large".to_owned())
+                    })?)
+                    .ok_or_else(|| RuntimeError::Native("safepoint PC is too large".to_owned()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let maps = support::encode_maps(&compiled.safepoint_maps)?;
         let safepoint_map = SafepointMap::decode(&maps, compiled.safepoint_maps.len())
             .map_err(|error| RuntimeError::Native(error.to_owned()))?;
@@ -285,7 +300,7 @@ impl Runtime {
                 .register_code(&code, metadata.clone())
                 .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
         }
-        Ok((code, metadata))
+        Ok((code, metadata, frame_capture_pcs))
     }
     fn make_function_object(
         &mut self,

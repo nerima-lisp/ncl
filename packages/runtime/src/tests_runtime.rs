@@ -227,10 +227,12 @@ fn failed_condition_conversion_does_not_poison_the_next_compiled_eval() {
         .object
         .register_lisp_error_converter(failing_lisp_error_converter);
 
+    let retained_code_count = runtime.evaluator.state.code.borrow().len();
     assert!(matches!(
         runtime.eval("(car)"),
         Err(RuntimeError::Object(ObjectError::Layout))
     ));
+    assert!(runtime.evaluator.state.code.borrow().len() > retained_code_count);
     assert!(!runtime.context.thread_access().runtime_error_pending());
 
     let value = runtime

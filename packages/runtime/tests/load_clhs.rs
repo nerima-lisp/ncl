@@ -697,6 +697,7 @@ fn load_uses_dynamic_read_base_and_float_format() {
         ("double-float", "DOUBLE-FLOAT"),
         ("long-float", "DOUBLE-FLOAT"),
         ("short-float", "DOUBLE-FLOAT"),
+        ("single-float", "DOUBLE-FLOAT"),
     ] {
         let form = format!(
             "(let ((*read-default-float-format* '{format})) (load {}))",
@@ -795,6 +796,70 @@ fn load_signals_type_error_for_invalid_dynamic_reader_values() {
     fs::remove_file(&source).unwrap_or_else(|error| {
         panic!("LOAD invalid read-options fixture cleanup failed: {error}")
     });
+}
+
+#[test]
+fn load_signals_type_error_for_nil_dynamic_float_format() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-nil-read-default-float-format-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&source, "42")
+        .unwrap_or_else(|error| panic!("LOAD nil float-format fixture creation failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!(
+        "(let ((*read-default-float-format* nil)) (load {}))",
+        lisp_string(&source)
+    );
+
+    match runtime.eval(&form) {
+        Err(ncl_runtime::RuntimeError::Object(ncl_object::ObjectError::TypeError)) => {}
+        Err(error) => panic!("LOAD NIL float format returned the wrong error: {error:?}"),
+        Ok(value) => panic!(
+            "LOAD accepted NIL *READ-DEFAULT-FLOAT-FORMAT*: {}",
+            runtime.format_result(value)
+        ),
+    }
+
+    fs::remove_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD nil float-format fixture cleanup failed: {error}"));
+}
+
+#[test]
+fn load_rejects_a_deleted_dynamic_package() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-load-deleted-dynamic-package-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&source, "42")
+        .unwrap_or_else(|error| panic!("LOAD deleted-package fixture creation failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    runtime
+        .eval(
+            "(setq *package* (make-package \"NCL-LOAD-DELETED-DYNAMIC\" \
+             :use (list (find-package \"COMMON-LISP\"))))",
+        )
+        .unwrap_or_else(|error| panic!("LOAD deleted-package setup failed: {error}"));
+    let deleted = runtime
+        .eval("(delete-package *package*)")
+        .unwrap_or_else(|error| panic!("LOAD current-package deletion failed: {error}"));
+    assert_eq!(runtime.format_result(deleted), "T");
+
+    match runtime.load_file(&source) {
+        Err(ncl_runtime::RuntimeError::Front(ncl_compiler_front::FrontError::Object(
+            ncl_object::ObjectError::TypeError,
+        ))) => {}
+        Err(error) => panic!("LOAD deleted *PACKAGE* returned the wrong error: {error:?}"),
+        Ok(value) => panic!(
+            "LOAD accepted a deleted *PACKAGE*: {}",
+            runtime.format_result(value)
+        ),
+    }
+
+    fs::remove_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD deleted-package fixture cleanup failed: {error}"));
 }
 
 #[test]

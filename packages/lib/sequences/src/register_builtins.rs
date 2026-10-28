@@ -10,23 +10,28 @@ use super::register_extra::{
 };
 use super::{
     DESTINATION_TYPE, INDEX, LIST, OBJECT, ONE_OBJECT, Parameter, REST, SEQUENCE, TWO_OBJECTS,
-    append_builtin, atom_builtin, car_builtin, cdr_builtin, concatenate_builtin, cons_builtin,
-    cons_p_builtin, copy_list_builtin, copy_seq_builtin, copy_tree_builtin, count_entry,
-    count_if_entry, count_if_not_entry, direct_descriptor, domain, eighth_builtin, elt_builtin,
-    endp_builtin, equal_builtin, equalp_builtin, fifth_builtin, find_entry, find_if_entry,
-    find_if_not_entry, first_builtin, fourth_builtin, getf_builtin, length_builtin, list_builtin,
-    list_length_builtin, list_p_builtin, list_star_builtin, mismatch_entry, nconc_builtin,
-    ninth_builtin, nreverse_builtin, nth_builtin, nthcdr_builtin, position_entry,
-    position_if_entry, position_if_not_entry, register_adapted, register_direct, reverse_builtin,
-    rplaca_builtin, rplacd_builtin, search_entry, second_builtin, seventh_builtin, sixth_builtin,
-    subseq_builtin, tenth_builtin, third_builtin,
+    append_builtin, atom_builtin, butlast_builtin, car_builtin, cdr_builtin, concatenate_builtin,
+    cons_builtin, cons_p_builtin, copy_list_builtin, copy_seq_builtin, copy_tree_builtin,
+    count_entry, count_if_entry, count_if_not_entry, direct_descriptor, domain, eighth_builtin,
+    elt_builtin, endp_builtin, equal_builtin, equalp_builtin, fifth_builtin, find_entry,
+    find_if_entry, find_if_not_entry, first_builtin, fourth_builtin, getf_builtin, last_builtin,
+    length_builtin, list_builtin, list_length_builtin, list_p_builtin, list_star_builtin,
+    mismatch_entry, nconc_builtin, ninth_builtin, nreverse_builtin, nth_builtin, nthcdr_builtin,
+    position_entry, position_if_entry, position_if_not_entry, register_adapted, register_direct,
+    reverse_builtin, rplaca_builtin, rplacd_builtin, search_entry, second_builtin, seventh_builtin,
+    sixth_builtin, subseq_builtin, tenth_builtin, third_builtin,
 };
 use ncl_object::{
     Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, FromLispArg, LambdaList, LispError, List, ObjectError, Runtime, ThreadContext,
+    BuiltinPackage, FromLispArg, LambdaList, LispError, List, ObjectError, ParameterType, Runtime,
+    ThreadContext,
 };
 
 const LIST_PARAMETERS: &[Parameter] = &[LIST];
+const COUNT: Parameter = Parameter {
+    name: BuiltinName::new("count"),
+    ty: ParameterType::Integer,
+};
 
 macro_rules! composed_list_accessor {
     ($name:ident, $($accessor:path),+ $(,)?) => {
@@ -394,6 +399,26 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             convention: BuiltinConvention::Adapted,
         },
         subseq_builtin,
+    )?;
+    register_adapted(
+        runtime,
+        &mut ctx,
+        "LAST",
+        Builtin {
+            lambda_list: LambdaList::with_optional(&[LIST], &[COUNT]),
+            convention: BuiltinConvention::Adapted,
+        },
+        last_builtin,
+    )?;
+    register_adapted(
+        runtime,
+        &mut ctx,
+        "BUTLAST",
+        Builtin {
+            lambda_list: LambdaList::with_optional(&[LIST], &[COUNT]),
+            convention: BuiltinConvention::Adapted,
+        },
+        butlast_builtin,
     )?;
     register_adapted(
         runtime,

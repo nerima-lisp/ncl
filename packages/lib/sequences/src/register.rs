@@ -145,6 +145,57 @@ fn nconc_builtin(
     let result = domain::list::nconc(ctx, runtime, args.as_slice());
     finish(ctx, values, result)
 }
+
+fn nonnegative_count(ctx: &ThreadContext, word: Word) -> Result<usize, ObjectError> {
+    if let Some(value) = word.as_fixnum() {
+        return usize::try_from(value).map_err(|_| ObjectError::TypeError);
+    }
+    let bignum = ncl_object::Bignum::from_word(word);
+    if ncl_object::bignum_sign(ctx, bignum)? {
+        return Err(ObjectError::TypeError);
+    }
+    let value = ncl_object::bignum_limbs(ctx, bignum)?
+        .iter()
+        .rev()
+        .fold(0_u128, |value, limb| {
+            value
+                .saturating_mul(1_u128 << 32)
+                .saturating_add(u128::from(*limb))
+        });
+    Ok(usize::try_from(value).unwrap_or(usize::MAX))
+}
+
+fn last_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let list = args.required(0)?;
+    let count = args
+        .get(1)
+        .map(|word| nonnegative_count(ctx, word))
+        .transpose()?
+        .unwrap_or(1);
+    let result = domain::list::last(ctx, list, count);
+    finish(ctx, values, result)
+}
+
+fn butlast_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let list = args.required(0)?;
+    let count = args
+        .get(1)
+        .map(|word| nonnegative_count(ctx, word))
+        .transpose()?
+        .unwrap_or(1);
+    let result = domain::list::butlast(ctx, runtime, list, count);
+    finish(ctx, values, result)
+}
 fn sequence_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

@@ -17,6 +17,8 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         "EQUAL",
         "LIST",
         "LISTP",
+        "LAST",
+        "BUTLAST",
         "NCONC",
         "NREVERSE",
         "REMOVE",
@@ -1486,6 +1488,110 @@ fn append_returns_an_atomic_last_argument_and_rejects_dotted_prefixes() {
     ));
     assert!(ncl_object::pop_root(&mut ctx, second_root));
     assert!(ncl_object::pop_root(&mut ctx, first_root));
+}
+
+#[test]
+fn last_and_butlast_handle_counts_and_dotted_lists() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let three = Word::fixnum(3);
+    let mut list = call(&runtime, &mut ctx, &functions, "LIST", &[one, two, three]);
+    let list_root = ncl_object::push_root(&mut ctx, &mut list);
+
+    let last_result = call(&runtime, &mut ctx, &functions, "LAST", &[list]);
+    assert_list(&ctx, last_result, &[three]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "LAST",
+            &[list, Word::fixnum(0)]
+        ),
+        Word::NIL
+    );
+    let last_two = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LAST",
+        &[list, Word::fixnum(2)],
+    );
+    assert_list(&ctx, last_two, &[two, three]);
+    let last_too_many = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LAST",
+        &[list, Word::fixnum(4)],
+    );
+    assert_list(&ctx, last_too_many, &[one, two, three]);
+
+    let butlast = call(&runtime, &mut ctx, &functions, "BUTLAST", &[list]);
+    assert_list(&ctx, butlast, &[one, two]);
+    assert_list(&ctx, list, &[one, two, three]);
+    let butlast_zero = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "BUTLAST",
+        &[list, Word::fixnum(0)],
+    );
+    assert_list(&ctx, butlast_zero, &[one, two, three]);
+    assert_ne!(butlast_zero, list);
+    let butlast_two = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "BUTLAST",
+        &[list, Word::fixnum(2)],
+    );
+    assert_list(&ctx, butlast_two, &[one]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "BUTLAST",
+            &[list, Word::fixnum(4)],
+        ),
+        Word::NIL
+    );
+
+    let mut dotted = call(&runtime, &mut ctx, &functions, "CONS", &[one, two]);
+    let dotted_root = ncl_object::push_root(&mut ctx, &mut dotted);
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "LAST", &[dotted]),
+        dotted
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "LAST",
+            &[dotted, Word::fixnum(0)],
+        ),
+        two
+    );
+    assert!(matches!(
+        call_result(&runtime, &mut ctx, &functions, "BUTLAST", &[dotted]),
+        Err(ObjectError::TypeError)
+    ));
+    assert!(matches!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "LAST",
+            &[list, Word::fixnum(-1)],
+        ),
+        Err(ObjectError::TypeError)
+    ));
+
+    assert!(ncl_object::pop_root(&mut ctx, dotted_root));
+    assert!(ncl_object::pop_root(&mut ctx, list_root));
 }
 
 #[test]

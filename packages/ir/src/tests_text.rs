@@ -744,6 +744,108 @@ fn text_round_trips_extended_constant_descriptors() {
 }
 
 #[test]
+fn text_round_trips_specialized_array_element_tags() {
+    let cases = [
+        (
+            SpecializedArrayElementType::Bit,
+            0,
+            [Constant::Fixnum(0), Constant::Fixnum(1)],
+        ),
+        (
+            SpecializedArrayElementType::Character,
+            1,
+            [
+                Constant::Character('A' as u32),
+                Constant::Character('B' as u32),
+            ],
+        ),
+        (
+            SpecializedArrayElementType::BaseChar,
+            2,
+            [
+                Constant::Character('A' as u32),
+                Constant::Character('B' as u32),
+            ],
+        ),
+        (
+            SpecializedArrayElementType::Fixnum,
+            3,
+            [Constant::Fixnum(-7), Constant::Fixnum(29)],
+        ),
+        (
+            SpecializedArrayElementType::Signed,
+            4,
+            [Constant::Fixnum(-7), Constant::Fixnum(29)],
+        ),
+        (
+            SpecializedArrayElementType::Unsigned,
+            5,
+            [Constant::Fixnum(7), Constant::Fixnum(29)],
+        ),
+        (
+            SpecializedArrayElementType::SingleFloat,
+            6,
+            [Constant::SingleFloat(1.25), Constant::SingleFloat(-3.5)],
+        ),
+        (
+            SpecializedArrayElementType::DoubleFloat,
+            7,
+            [Constant::DoubleFloat(1.25), Constant::DoubleFloat(-3.5)],
+        ),
+    ];
+
+    for (element_type, tag, values) in cases {
+        let mut constants = values.to_vec();
+        constants.push(Constant::Structure {
+            kind: StructureKind::SpecializedArray { element_type },
+            elements: vec![ConstantIndex(0), ConstantIndex(1)],
+        });
+        let function = finish(
+            "specialized-array-tags",
+            Vec::new(),
+            Vec::new(),
+            constants,
+            vec![block(
+                0,
+                Vec::new(),
+                Terminator::Return { values: Vec::new() },
+            )],
+            Vec::new(),
+        );
+
+        let dump = function.to_string();
+        let rendered_tag = format!(",b,2,{tag:x},2,0,1,");
+        assert!(
+            dump.contains(&rendered_tag),
+            "wrong serialized tag for {element_type:?}: {dump}"
+        );
+
+        let parsed = parse(&dump);
+        assert_eq!(
+            parsed.as_ref().map(|parsed| &parsed.constants[..2]),
+            Ok(&values[..]),
+            "element values changed for {element_type:?}"
+        );
+        assert_eq!(
+            parsed.as_ref().map(|parsed| parsed.constants.get(2)),
+            Ok(Some(&Constant::Structure {
+                kind: StructureKind::SpecializedArray { element_type },
+                elements: vec![ConstantIndex(0), ConstantIndex(1)],
+            })),
+            "element type or shape changed for {element_type:?}"
+        );
+
+        if element_type == SpecializedArrayElementType::Bit {
+            let invalid_tag = dump.replacen(&rendered_tag, ",b,2,8,2,0,1,", 1);
+            assert_eq!(
+                parse(&invalid_tag),
+                Err(ParseError("bad specialized array element type".into()))
+            );
+        }
+    }
+}
+
+#[test]
 fn text_round_trips_remaining_documented_values() {
     let constants = vec![
         Constant::Character('λ' as u32),

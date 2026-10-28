@@ -21,11 +21,8 @@ const CLASS_DIRECT_SUPERCLASS: usize = 1;
 const CLASS_SLOTS: usize = 2;
 const CLASS_KIND: usize = 3;
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
-const METHOD_QUALIFIER_PRIMARY: i64 = 0;
-const METHOD_QUALIFIER_BEFORE: i64 = 1;
-const METHOD_QUALIFIER_AFTER: i64 = 2;
-const METHOD_QUALIFIER_AROUND: i64 = 3;
 const METHOD_REGISTRY_KEY_NAME: &str = "%CLOS-METHODS";
+const METHOD_COMBINATION_KEY_NAME: &str = "%CLOS-METHOD-COMBINATION";
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
@@ -36,6 +33,8 @@ const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];
 
 include!("lib_helpers.rs");
+mod lib_dispatch_effective_methods;
+mod lib_dispatch_selection;
 include!("lib_dispatch.rs");
 include!("lib_generic_registration.rs");
 include!("lib_find_method.rs");

@@ -126,6 +126,78 @@ fn defclass_macro_builtin(
     Ok(scope.get(result).as_word())
 }
 
+fn defgeneric_method_combination<'ctx>(
+    scope: &mut ncl_object::Scope<'ctx>,
+    runtime: &Runtime,
+    options: &[ncl_object::Handle<'ctx>],
+) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
+    let method_combination_keyword = scope.intern(runtime, "KEYWORD", "METHOD-COMBINATION")?;
+    let most_specific_first = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-FIRST")?;
+    let most_specific_last = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-LAST")?;
+    let mut selected = None;
+
+    for option in options.iter().copied() {
+        if !scope.get(option).as_word().is_cons() {
+            return Err(ObjectError::TypeError);
+        }
+        let fields = macro_list_to_handles(scope, option)?;
+        let Some(option_name) = fields.as_slice().first().copied() else {
+            return Err(ObjectError::TypeError);
+        };
+        if scope.get(option_name).as_word() != scope.get(method_combination_keyword).as_word() {
+            continue;
+        }
+        if selected.is_some() || fields.len() < 2 || fields.len() > 3 {
+            return Err(ObjectError::TypeError);
+        }
+        let combination_name = *fields.as_slice().get(1).ok_or(ObjectError::TypeError)?;
+        if !matches!(
+            ncl_object::classify_object(scope.context(), scope.get(combination_name).as_word()),
+            ObjectRef::Symbol(_)
+        ) {
+            return Err(ObjectError::TypeError);
+        }
+        let name = symbol_name_string(scope.context(), scope.get(combination_name).as_word())?;
+        let normalized = name.to_ascii_uppercase();
+        let is_standard = normalized == "STANDARD";
+        if !is_standard
+            && !matches!(
+                normalized.as_str(),
+                "+" | "AND" | "APPEND" | "LIST" | "MAX" | "MIN" | "NCONC" | "OR" | "PROGN"
+            )
+        {
+            return Err(ObjectError::TypeError);
+        }
+        let canonical_name = scope.intern(runtime, COMMON_LISP, &normalized)?;
+        if scope.get(canonical_name).as_word() != scope.get(combination_name).as_word() {
+            return Err(ObjectError::TypeError);
+        }
+        let order = match fields.as_slice().get(2).copied() {
+            None => most_specific_first,
+            Some(order)
+                if !is_standard
+                    && scope.get(order).as_word() == scope.get(most_specific_last).as_word() =>
+            {
+                most_specific_last
+            }
+            Some(_) => return Err(ObjectError::TypeError),
+        };
+        let mut descriptor = scope.root_many(&[]);
+        macro_push_handle(scope, &mut descriptor, combination_name);
+        macro_push_handle(scope, &mut descriptor, order);
+        selected = Some(scope.make_list(runtime, &descriptor)?);
+    }
+
+    if let Some(descriptor) = selected {
+        return Ok(descriptor);
+    }
+    let standard = scope.intern(runtime, COMMON_LISP, "STANDARD")?;
+    let mut descriptor = scope.root_many(&[]);
+    macro_push_handle(scope, &mut descriptor, standard);
+    macro_push_handle(scope, &mut descriptor, most_specific_first);
+    scope.make_list(runtime, &descriptor)
+}
+
 fn defgeneric_macro_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -143,6 +215,14 @@ fn defgeneric_macro_builtin(
         return defgeneric_error_expansion(&mut scope, runtime, name);
     }
 
+    let Some(options) = parts.as_slice().get(3..) else {
+        return defgeneric_error_expansion(&mut scope, runtime, name);
+    };
+    let Ok(method_combination) =
+        defgeneric_method_combination(&mut scope, runtime, options)
+    else {
+        return defgeneric_error_expansion(&mut scope, runtime, name);
+    };
     let (progn, quoted_name, ensure_generic) =
         defgeneric_setup(&mut scope, runtime, name, generic_lambda_list)?;
 
@@ -160,7 +240,7 @@ fn defgeneric_macro_builtin(
     .collect::<Result<Vec<_>, _>>()?;
     let defmethod = scope.intern(runtime, COMMON_LISP, "DEFMETHOD")?;
     let mut method_forms = scope.root_many(&[]);
-    for option in parts.iter().copied().skip(3) {
+    for option in options.iter().copied() {
         if !scope.get(option).as_word().is_cons() {
             return defgeneric_error_expansion(&mut scope, runtime, name);
         }
@@ -199,14 +279,22 @@ fn defgeneric_macro_builtin(
         }
     }
 
+    let setf = scope.intern(runtime, COMMON_LISP, "SETF")?;
+    let get = scope.intern(runtime, COMMON_LISP, "GET")?;
+    let combination_key = scope.intern(runtime, "NCL", METHOD_COMBINATION_KEY_NAME)?;
+    let quoted_key = quoted(&mut scope, runtime, combination_key)?;
+    let get_place = make_form(&mut scope, runtime, &[get, quoted_name, quoted_key])?;
+    let quoted_combination = quoted(&mut scope, runtime, method_combination)?;
+    let set_method_combination =
+        make_form(&mut scope, runtime, &[setf, get_place, quoted_combination])?;
+
     let mut result = scope.root_many(&[]);
     macro_push_handle(&mut scope, &mut result, progn);
-    // The trailing element is this `progn`'s (and so `defgeneric`'s own)
-    // result: CLHS requires the generic function *name* back, so it must be
-    // the quoted symbol, not a bare one (which would compile as a read of
-    // the variable of that name, which `defgeneric` never binds).
+    // Defgeneric returns its name, so its final form must be the quoted symbol
+    // rather than a variable reference to that symbol.
     // check-added-lines: allow(index) fixed form fields
     macro_push_handle(&mut scope, &mut result, ensure_generic);
+    macro_push_handle(&mut scope, &mut result, set_method_combination);
     for method_form in method_forms.iter().copied() {
         macro_push_handle(&mut scope, &mut result, method_form);
     }

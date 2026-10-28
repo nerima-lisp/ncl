@@ -17,17 +17,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{PublishedFunction, RuntimeError};
 
+pub use crate::evaluator::EntryCodeLookup;
+use crate::evaluator::EvaluatorService;
+pub use crate::evaluator::NativeInvocation;
 mod write_barrier;
-
-pub struct NativeInvocation<'a> {
-    pub(crate) object: &'a ObjectRuntime,
-    pub(crate) context: &'a mut ThreadContext,
-    pub(crate) code: CodeObject,
-    /// Native entry address -> that function's own `CODE` object, so
-    /// `MakeClosure` can attach the callee's code (and constants table)
-    /// rather than always inheriting the currently-executing function's.
-    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) borrowed rooted code entries
-}
 
 #[cfg(test)]
 static MAKE_CLOSURE_FAILURE_THREAD: AtomicUsize = AtomicUsize::new(0);
@@ -170,11 +163,21 @@ impl RuntimeAbi for NativeAbi<'_> {
     }
 }
 
-pub struct RuntimeMacroCaller<'a> {
-    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) entries are rooted code objects
+pub struct RuntimeMacroCaller {
+    evaluator: EvaluatorService,
+    entry_codes: BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) empty compatibility map for unchanged local_macro calls
 }
 
-impl ncl_types::DeftypeExpanderCaller for RuntimeMacroCaller<'_> {
+impl RuntimeMacroCaller {
+    pub(crate) const fn new(evaluator: EvaluatorService) -> Self {
+        Self {
+            evaluator,
+            entry_codes: BTreeMap::new(),
+        }
+    }
+}
+
+impl ncl_types::DeftypeExpanderCaller for RuntimeMacroCaller {
     fn call_expander(
         &mut self,
         ctx: &mut ThreadContext,
@@ -183,11 +186,11 @@ impl ncl_types::DeftypeExpanderCaller for RuntimeMacroCaller<'_> {
         whole_form: Word,
     ) -> Result<Word, ObjectError> {
         let function = FunctionObject::try_from(function)?;
-        call_macro_function(ctx, runtime, function, &[whole_form], self.entry_codes)
+        call_macro_function(ctx, runtime, function, &[whole_form], &self.evaluator)
     }
 }
 
-impl MacroCaller for RuntimeMacroCaller<'_> {
+impl MacroCaller for RuntimeMacroCaller {
     fn call_macro(
         &mut self,
         ctx: &mut ThreadContext,
@@ -250,7 +253,7 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         // in `call_macro_function` for arbitrarily wide argument lists,
         // which is what a `&rest`/`&body` macro previously could trip
         // non-deterministically under GC pressure.
-        let result = call_macro_function(ctx, runtime, function, &[form], self.entry_codes);
+        let result = call_macro_function(ctx, runtime, function, &[form], &self.evaluator);
         result.map_err(|error| {
             let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
             expansion(name, &detail)
@@ -278,7 +281,7 @@ impl MacroCaller for RuntimeMacroCaller<'_> {
         definition: &ncl_compiler_front::ast::LocalMacro,
         form: Word,
     ) -> Result<Word, ncl_compiler_front::FrontError> {
-        crate::local_macro::call_local_macro(ctx, runtime, self.entry_codes, definition, form)
+        crate::local_macro::call_local_macro(ctx, runtime, &self.entry_codes, definition, form)
     }
 }
 
@@ -287,7 +290,7 @@ pub fn call_macro_function(
     runtime: &ObjectRuntime,
     function: FunctionObject,
     arguments: &[Word],
-    entry_codes: &BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) entries are rooted code objects
+    entry_codes: &dyn EntryCodeLookup,
 ) -> Result<Word, ObjectError> {
     ncl_object::with_rooted_slice(ctx, arguments, |ctx, rooted| {
         let function_word = function.as_word();
@@ -382,6 +385,7 @@ pub extern "C" fn native_make_closure(
     entry: Word,
 ) -> Word {
     ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        let evaluator_access = invocation.evaluator_access();
         let ctx = &mut *invocation.context;
         let Ok(entry) = usize::try_from(entry.bits()) else {
             ctx.set_pending(ObjectError::Layout);
@@ -400,36 +404,24 @@ pub extern "C" fn native_make_closure(
         // not the caller's. Only fall back to the caller's CODE object for
         // a nested lambda that was compiled as part of the same function
         // (and therefore shares its constants table).
-        let code = invocation
-            .entry_codes
-            .get(&entry)
-            .map_or(invocation.code, |(word, _)| CodeObject::from_word(**word));
+        let code_word = evaluator_access
+            .as_ref()
+            .and_then(|access| access.evaluator.entry_code(entry))
+            .or_else(|| invocation.entry_codes.code_object_word(entry));
+        let code = code_word.map_or(invocation.code, CodeObject::from_word);
+        let object = evaluator_access
+            .as_ref()
+            .map_or(invocation.object, |access| access.object.as_ref());
         let captures = vec![Word::NIL; capture_count];
         #[cfg(test)]
         let result = if take_make_closure_capacity_failure(thread, capture_count) {
             // Keep the allocation error path reproducible without changing production behavior.
             Err(ObjectError::Storage(StorageCondition::CapacityExceeded))
         } else {
-            make_closure(
-                ctx,
-                invocation.object,
-                entry,
-                Word::NIL,
-                Word::NIL,
-                code,
-                &captures,
-            )
+            make_closure(ctx, object, entry, Word::NIL, Word::NIL, code, &captures)
         };
         #[cfg(not(test))]
-        let result = make_closure(
-            ctx,
-            invocation.object,
-            entry,
-            Word::NIL,
-            Word::NIL,
-            code,
-            &captures,
-        );
+        let result = make_closure(ctx, object, entry, Word::NIL, Word::NIL, code, &captures);
         match result {
             Ok(function) => function.as_word(),
             Err(error) => {

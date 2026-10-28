@@ -1,6 +1,7 @@
 //! Evaluation, compilation, loading, and registration orchestration.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::ptr::NonNull;
+use std::rc::Rc;
 mod builtin_trampoline;
 mod compile;
 #[cfg(test)]
@@ -8,6 +9,7 @@ mod constant_tests;
 mod constants;
 mod error;
 mod eval_builtins;
+mod evaluator;
 mod evalwhen;
 mod file_environment;
 mod function_call;
@@ -26,6 +28,7 @@ mod tests_function_call_drain;
 mod time;
 mod uninterned_symbols;
 pub use error::RuntimeError;
+use evaluator::EvaluatorService;
 pub use function_call::RuntimeFunctionCaller;
 pub use native_error::NativeCondition;
 use native_error::native_failure;
@@ -36,7 +39,7 @@ use ncl_object::{
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 use ncl_sys::{
-    CodeObjectMetadata, CodePtr, RootToken, SafepointMap, SourceLocation, alloc_code,
+    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code,
     invoke_entry_with_function, publish_code, write_code,
 };
 pub use optimization::{OptimizationMode, RuntimeOptions};
@@ -46,14 +49,15 @@ use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
 pub struct Runtime {
     options: RuntimeOptions,
     context: ThreadContext,
-    code: Vec<CodePtr>,
-    undefined_function_stub: usize,
-    functions: BTreeMap<u32, PublishedFunction>,
-    /// Published entry addresses retain their own rooted `CODE` objects.
-    entry_codes: BTreeMap<usize, (Box<Word>, RootToken)>, // check-added-lines: allow(word-table) every code Word has its own root token
-    rooted_functions: Vec<(Box<Word>, RootToken)>,
+    evaluator: EvaluatorService,
+
+    /// The legacy test invocation references this handle; it shares service state.
+    #[cfg(test)]
+    entry_codes: EvaluatorService,
+
+    #[cfg(test)]
     pending_undefined_function_condition: Option<HeapRootedWord>,
-    object: ObjectRuntime,
+    object: Rc<ObjectRuntime>,
 }
 #[derive(Debug)]
 pub(crate) struct PublishedFunction {
@@ -72,7 +76,7 @@ impl Runtime {
     /// # Errors
     /// Returns an initialization error from the object or standard-library layers.
     pub fn with_options(options: RuntimeOptions) -> Result<Self, RuntimeError> {
-        let object = ObjectRuntime::new()?;
+        let object = Rc::new(ObjectRuntime::new()?);
         let mut context = ThreadContext::new();
         context.register(&object)?;
         // Every builtin that `ncl_stdlib::register_all` is about to register
@@ -90,16 +94,21 @@ impl Runtime {
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));
         load::register_builtin(&mut context, &object)?;
+        let evaluator = EvaluatorService::new(
+            vec![builtin_trampoline, undefined_function_stub],
+            undefined_function_stub_address,
+        );
+        #[cfg(test)]
+        let entry_codes = evaluator.clone();
         Ok(Self {
             options,
-            object,
             context,
-            code: vec![builtin_trampoline, undefined_function_stub],
-            undefined_function_stub: undefined_function_stub_address,
-            functions: BTreeMap::new(),
-            entry_codes: BTreeMap::new(),
-            rooted_functions: Vec::new(),
+            evaluator,
+            #[cfg(test)]
+            entry_codes,
+            #[cfg(test)]
             pending_undefined_function_condition: None,
+            object,
         })
     }
     /// Enables or disables collection before each allocation.
@@ -115,28 +124,14 @@ impl Runtime {
     /// # Errors
     /// Returns a reader, front-end, lowering, or native publication error.
     pub fn eval(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = load::source_forms(self, source);
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| load::source_forms(runtime, source))
     }
     /// Compile and execute a source string through the native pipeline.
     ///
     /// # Errors
     /// Returns reader, front-end, lowering, or native execution errors.
     pub fn compile(&mut self, source: &str) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = compile::source(self, source);
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| compile::source(runtime, source))
     }
     /// Compile and execute all forms in a source file.
     ///
@@ -152,22 +147,15 @@ impl Runtime {
             path: pathname.display().to_string(),
             error,
         })?;
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = (|| {
-            file_environment::enter_compile_file(self, &pathname, &truename)?;
-            let compiled = compile::file(self, &pathname);
-            let restored = self.context.leave_progv().map_err(RuntimeError::from);
+        self.with_evaluator_access(|runtime| {
+            file_environment::enter_compile_file(runtime, &pathname, &truename)?;
+            let compiled = compile::file(runtime, &pathname);
+            let restored = runtime.context.leave_progv().map_err(RuntimeError::from);
             match (compiled, restored) {
                 (Err(error), _) | (Ok(_), Err(error)) => Err(error),
                 (Ok(value), Ok(())) => Ok(value),
             }
-        })();
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        })
     }
     /// Load and execute all forms in a source string.
     ///
@@ -181,14 +169,7 @@ impl Runtime {
     /// # Errors
     /// Returns a file, reader, front-end, lowering, or native execution error.
     pub fn load_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Word, RuntimeError> {
-        self.context
-            .set_condition_handler_invoker(function_call::invoke_condition_handler);
-        let evaluator = std::ptr::from_mut(self).cast();
-        let previous_evaluator = self.context.replace_evaluator_runtime(evaluator);
-        let result = load::file(self, path.as_ref());
-        self.clear_pending_undefined_function_condition();
-        self.context.restore_evaluator_runtime(previous_evaluator);
-        result
+        self.with_evaluator_access(|runtime| load::file(runtime, path.as_ref()))
     }
     pub(crate) fn eval_form(&mut self, form: Word) -> Result<Word, RuntimeError> {
         self.eval_form_with_values(form).map(|(value, _)| value)
@@ -200,18 +181,14 @@ impl Runtime {
         self.compile_form_with_values(form)
     }
     pub(crate) fn pending_undefined_function_condition(&self) -> Option<Word> {
-        self.pending_undefined_function_condition
-            .as_ref()
-            .map(HeapRootedWord::get)
+        self.evaluator.pending_undefined_function_condition()
     }
-    fn clear_pending_undefined_function_condition(&mut self) {
-        self.pending_undefined_function_condition = None;
+    fn clear_pending_undefined_function_condition(&self) {
+        self.evaluator.clear_pending_undefined_function_condition();
     }
     fn compile_form_with_values(&mut self, form: Word) -> Result<(Word, Vec<Word>), RuntimeError> {
         let registry = MacroRegistry::new();
-        let mut caller = RuntimeMacroCaller {
-            entry_codes: &self.entry_codes,
-        };
+        let mut caller = RuntimeMacroCaller::new(self.evaluator.clone());
         let mut expander = FormExpander::new(&mut self.context, &self.object, &registry);
         expander.set_caller(&mut caller);
         let expr = expander.expand(form)?;
@@ -232,7 +209,10 @@ impl Runtime {
         }
         for (function, (code, metadata)) in &compiled {
             let entry = code.address().saturating_add(metadata.entry_offset);
-            self.functions
+            self.evaluator
+                .state
+                .functions
+                .borrow_mut()
                 .insert(function.id.0, PublishedFunction { entry });
         }
         let mut uninterned_symbols = HashMap::new();
@@ -240,7 +220,8 @@ impl Runtime {
             let entry = code.address().saturating_add(metadata.entry_offset);
             let (_function_object, entry_code) =
                 self.make_function_object(function, &(code, metadata), &mut uninterned_symbols)?;
-            self.root_entry_code(entry, entry_code);
+            self.evaluator
+                .root_entry_code(&mut self.context, entry, entry_code);
         }
         let (entry_code, entry_metadata) = &compiled
             .first()
@@ -254,10 +235,11 @@ impl Runtime {
         let entry_address = entry_code
             .address()
             .saturating_add(entry_metadata.entry_offset);
-        self.root_entry_code(entry_address, entry_constants);
+        self.evaluator
+            .root_entry_code(&mut self.context, entry_address, entry_constants);
         let result = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
         for (_, (code, _)) in compiled {
-            self.code.push(code);
+            self.evaluator.push_code(code);
         }
         Ok(result)
     }
@@ -265,10 +247,11 @@ impl Runtime {
         &mut self,
         function: &ncl_ir::Function,
     ) -> Result<(CodePtr, CodeObjectMetadata), RuntimeError> {
+        let functions = self.evaluator.state.functions.borrow();
         let abi = NativeAbi {
             object: &self.object,
-            functions: &self.functions,
-            undefined_function_stub: self.undefined_function_stub,
+            functions: &functions,
+            undefined_function_stub: self.evaluator.state.undefined_function_stub,
         };
         let compiled = if cfg!(target_arch = "aarch64") {
             ncl_codegen::compile_function_aarch64_preserving_multiple_values(function, &abi)
@@ -329,15 +312,9 @@ impl Runtime {
             Word::NIL,
             code_object,
         )?;
-        let mut rooted = Box::new(function_object.as_word());
-        let token = ncl_object::push_root(&mut self.context, &mut rooted);
-        self.rooted_functions.push((rooted, token));
+        self.evaluator
+            .root_function(&mut self.context, function_object.as_word());
         Ok((function_object.as_word(), code_object.as_word()))
-    }
-    fn root_entry_code(&mut self, entry: usize, code: Word) {
-        let mut rooted = Box::new(code);
-        let token = ncl_object::push_root(&mut self.context, &mut rooted);
-        self.entry_codes.insert(entry, (rooted, token));
     }
     fn make_constants(
         &mut self,
@@ -349,7 +326,10 @@ impl Runtime {
         for constant in &function.constants {
             let value = if let ncl_ir::Constant::FunctionEntry(id) = constant {
                 let entry = self
+                    .evaluator
+                    .state
                     .functions
+                    .borrow()
                     .get(&id.0)
                     .ok_or_else(|| {
                         RuntimeError::Native(format!("function entry {} is unavailable", id.0))
@@ -387,7 +367,7 @@ impl Runtime {
         function: Word,
     ) -> Result<(Word, Vec<Word>), RuntimeError> {
         let code_object = function_code(&self.context, Function::from_word(function))?;
-        let entry_codes = &self.entry_codes;
+        let entry_codes = &self.evaluator;
         let context = &mut self.context;
         let thread = context.thread_access().as_non_null();
         let mut native_context = NativeInvocation {
@@ -434,12 +414,15 @@ impl Runtime {
             }
         }
         if let Some(error) = pending_errors.object {
-            return Err(native_error::pending_object_error(
-                context,
-                &self.object,
-                error,
-                &mut self.pending_undefined_function_condition,
-            )?);
+            let mapped_error = {
+                let mut pending = self
+                    .evaluator
+                    .state
+                    .pending_undefined_function_condition
+                    .borrow_mut();
+                native_error::pending_object_error(context, &self.object, error, &mut pending)?
+            };
+            return Err(mapped_error);
         }
         if context.take_non_local_exit() {
             // Nested evaluation can pass the exit to its compiled caller.
@@ -482,12 +465,7 @@ impl Runtime {
 }
 impl Drop for Runtime {
     fn drop(&mut self) {
-        for (_, (_, token)) in std::mem::take(&mut self.entry_codes) {
-            let _ = ncl_object::pop_root(&mut self.context, token);
-        }
-        for (_, token) in self.rooted_functions.drain(..).rev() {
-            let _ = ncl_object::pop_root(&mut self.context, token);
-        }
+        self.evaluator.clear_roots(&mut self.context);
     }
 }
 #[cfg(test)]

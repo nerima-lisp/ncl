@@ -7,6 +7,7 @@ import time
 import unittest
 from collections import Counter
 from datetime import date
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -88,6 +89,7 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "finish",
                     "times": [0.25],
                     "condition": None,
+                    "wall_time_seconds": 0.5,
                 },
             },
         ]
@@ -106,6 +108,7 @@ class ScoreboardTests(unittest.TestCase):
         )
         self.assertEqual(set(bench["benchmarks"]), {"ACKERMANN"})
         self.assertEqual(bench["benchmarks"]["ACKERMANN"]["times"], [0.25])
+        self.assertEqual(bench["benchmarks"]["ACKERMANN"]["wall_time_seconds"], 0.5)
         self.assertNotIn("samples", bench)
         self.assertNotIn("geometric_mean", bench)
 
@@ -141,6 +144,7 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "execute",
                     "times": [],
                     "condition": "child exceeded its 20 second timeout",
+                    "wall_time_seconds": 20.1,
                 },
             },
         ]
@@ -163,6 +167,7 @@ class ScoreboardTests(unittest.TestCase):
                 "stage": "execute",
                 "times": [],
                 "condition": "child exceeded its 20 second timeout",
+                "wall_time_seconds": 20.1,
             },
         )
 
@@ -176,17 +181,20 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "finish",
                     "times": [0.25],
                     "condition": None,
+                    "wall_time_seconds": 0.5,
                 },
                 "BIGNUM": {
                     "status": "timeout",
                     "stage": "execute",
                     "times": [],
                     "condition": "child exceeded its 20 second timeout",
+                    "wall_time_seconds": 20.1,
                 },
             },
         })
 
         self.assertEqual(report["benchmarks"]["BIGNUM"]["status"], "timeout")
+        self.assertEqual(report["benchmarks"]["BIGNUM"]["wall_time_seconds"], 20.1)
         self.assertEqual(report["times"], [0.25])
         with self.assertRaisesRegex(ValueError, "timed out benchmark.*sample times"):
             scoreboard.validate_cl_bench_report({
@@ -198,9 +206,35 @@ class ScoreboardTests(unittest.TestCase):
                         "stage": "execute",
                         "times": [0.25],
                         "condition": "too slow",
+                        "wall_time_seconds": 0.5,
                     },
                 },
             })
+
+    def test_driver_report_validates_nonnegative_finite_wall_time(self):
+        base = {
+            "status": "disabled",
+            "stage": "register",
+            "times": [],
+            "condition": None,
+            "wall_time_seconds": 0,
+        }
+        report = scoreboard.validate_cl_bench_report({
+            "status": "failed",
+            "times": [],
+            "benchmarks": {"DISABLED": base},
+        })
+        self.assertEqual(report["benchmarks"]["DISABLED"]["wall_time_seconds"], 0.0)
+        for invalid in (float("nan"), float("inf"), -0.01, True, "0", 10**1000):
+            with self.subTest(wall_time_seconds=repr(invalid)):
+                with self.assertRaisesRegex(ValueError, "wall_time_seconds"):
+                    scoreboard.validate_cl_bench_report({
+                        "status": "failed",
+                        "times": [],
+                        "benchmarks": {
+                            "DISABLED": {**base, "wall_time_seconds": invalid},
+                        },
+                    })
 
     def test_checkpoint_ignores_torn_tail_and_rejects_duplicate_or_unexpected_rows(self):
         header = {"type": "header", "version": 1, "expected": ["ACKERMANN"]}
@@ -212,6 +246,7 @@ class ScoreboardTests(unittest.TestCase):
                 "stage": "finish",
                 "times": [0.25],
                 "condition": None,
+                "wall_time_seconds": 0.5,
             },
         }
         with TemporaryDirectory() as directory:
@@ -308,6 +343,7 @@ class ScoreboardTests(unittest.TestCase):
                                     "stage": "finish",
                                     "times": [1.0],
                                     "condition": None,
+                                    "wall_time_seconds": 0.5,
                                 },
                             },
                         }),
@@ -939,6 +975,7 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "finish",
                     "times": [0.001],
                     "condition": None,
+                    "wall_time_seconds": 0.5,
                 },
             },
         })
@@ -974,12 +1011,14 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "finish",
                     "times": [0.001, 0.002],
                     "condition": None,
+                    "wall_time_seconds": 0.5,
                 },
                 "CLOS/defclass": {
                     "status": "failed",
                     "stage": "load",
                     "times": [],
                     "condition": "TypeError: class-0-0 is not a type specifier",
+                    "wall_time_seconds": 0.25,
                 },
             },
         })
@@ -1011,6 +1050,7 @@ class ScoreboardTests(unittest.TestCase):
                 "stage": "load",
                 "times": [],
                 "condition": "TypeError: class-0-0 is not a type specifier",
+                "wall_time_seconds": 0.25,
             },
         )
         self.assertEqual(
@@ -1029,6 +1069,7 @@ class ScoreboardTests(unittest.TestCase):
                     "stage": "load-file",
                     "times": [0.001],
                     "condition": None,
+                    "wall_time_seconds": 0.5,
                 },
             },
         })
@@ -1064,6 +1105,7 @@ class ClBenchSupervisorTests(unittest.TestCase):
         registered=None,
         failures=None,
         timed_out_sources=None,
+        preflight_wall_times=None,
         checkpoint=None,
     ):
         with patch.object(
@@ -1081,6 +1123,7 @@ class ClBenchSupervisorTests(unittest.TestCase):
                     registered=registered or {name: () for name in names},
                     failures=failures or {},
                     timed_out_sources=timed_out_sources or set(),
+                    preflight_wall_times=preflight_wall_times or {},
                     cwd=Path("."),
                     checkpoint=checkpoint,
                 )
@@ -1199,7 +1242,8 @@ class ClBenchSupervisorTests(unittest.TestCase):
             ["ACKERMANN"], None, "", "CL-BENCH-STAGE execute 1\npartial output"
         )
 
-        result = self._run_workers(names, lambda command, cwd: process)
+        with patch.object(driver.time, "monotonic", side_effect=[0.0, 1.0, 21.1]):
+            result = self._run_workers(names, lambda command, cwd: process)
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(
@@ -1209,8 +1253,70 @@ class ClBenchSupervisorTests(unittest.TestCase):
                 "stage": "execute",
                 "times": [],
                 "condition": "child exceeded its 20 second timeout: partial output",
+                "wall_time_seconds": 20.1,
             },
         )
+
+    def test_future_result_exception_records_elapsed_and_checkpoint(self):
+        names = ("ACKERMANN",)
+
+        class RaisingFuture:
+            def result(self):
+                raise RuntimeError("injected future result failure")
+
+        class RaisingExecutor:
+            def __init__(self, max_workers):
+                self.max_workers = max_workers
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def submit(self, function, name):
+                return RaisingFuture()
+
+        checkpoint = StringIO()
+        with patch.object(driver, "ThreadPoolExecutor", RaisingExecutor):
+            with patch.object(driver, "as_completed", side_effect=lambda futures: futures):
+                with patch.object(driver.time, "monotonic", side_effect=[3.0, 5.25]):
+                    result = self._run_workers(
+                        names,
+                        lambda command, cwd: self.fail("unexpected benchmark child"),
+                        checkpoint=checkpoint,
+                    )
+
+        row = result["benchmarks"]["ACKERMANN"]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(row["status"], "failed")
+        self.assertIn("RuntimeError: injected future result failure", row["condition"])
+        self.assertEqual(row["wall_time_seconds"], 2.25)
+        checkpoint_record = json.loads(checkpoint.getvalue())
+        self.assertEqual(checkpoint_record["name"], "ACKERMANN")
+        self.assertEqual(checkpoint_record["benchmark"], row)
+
+    def test_worker_exception_before_child_start_uses_submit_elapsed(self):
+        class BrokenGroups(dict):
+            def get(self, name, default=None):
+                raise RuntimeError("injected pre-child worker failure")
+
+        checkpoint = StringIO()
+        with patch.object(driver, "SERIALIZED_BENCHMARK_GROUPS", BrokenGroups()):
+            with patch.object(driver.time, "monotonic", side_effect=[2.0, 4.75]):
+                result = self._run_workers(
+                    ("ACKERMANN",),
+                    lambda command, cwd: self.fail("unexpected benchmark child"),
+                    checkpoint=checkpoint,
+                )
+
+        row = result["benchmarks"]["ACKERMANN"]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(row["status"], "failed")
+        self.assertIn("RuntimeError: injected pre-child worker failure", row["condition"])
+        self.assertEqual(row["wall_time_seconds"], 2.75)
+        checkpoint_record = json.loads(checkpoint.getvalue())
+        self.assertEqual(checkpoint_record["benchmark"], row)
 
     def test_source_preflight_timeout_becomes_timeout_rows_at_load(self):
         names = ("ACKERMANN", "BIGNUM")
@@ -1221,12 +1327,16 @@ class ClBenchSupervisorTests(unittest.TestCase):
                 registered={name: (name.lower(),) for name in names},
                 failures={"arrays.lisp": "child exceeded its 20 second timeout"},
                 timed_out_sources={"arrays.lisp"},
+                preflight_wall_times={"arrays.lisp": 20.1},
             )
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(
             tuple((row["status"], row["stage"]) for row in result["benchmarks"].values()),
             (("timeout", "load"), ("timeout", "load")),
+        )
+        self.assertTrue(
+            all(row["wall_time_seconds"] == 20.1 for row in result["benchmarks"].values())
         )
 
     def test_source_preflight_children_are_bounded_and_timeout_rows_are_emitted(self):
@@ -1242,16 +1352,24 @@ class ClBenchSupervisorTests(unittest.TestCase):
             with patch.object(driver, "_command", return_value=["source"]):
                 with patch.object(driver, "_source_owner", return_value=driver.SOURCE_FILES[0]):
                     with patch.object(driver, "_run_child", side_effect=preflight_results) as run_child:
-                        with patch.object(sys, "stdout") as stdout:
-                            exit_status = driver._run_supervisor(
-                                engine="ncl",
-                                runner="ncl",
-                                mode="default",
-                                driver=Path("driver.lisp"),
-                                selection=("ACKERMANN",),
-                                cwd=Path("."),
-                                checkpoint=None,
-                            )
+                        preflight_ticks = [
+                            tick
+                            for index in range(len(driver.SOURCE_FILES))
+                            for tick in (float(index), float(index) + 0.5)
+                        ]
+                        with patch.object(
+                            driver.time, "monotonic", side_effect=preflight_ticks
+                        ):
+                            with patch.object(sys, "stdout") as stdout:
+                                exit_status = driver._run_supervisor(
+                                    engine="ncl",
+                                    runner="ncl",
+                                    mode="default",
+                                    driver=Path("driver.lisp"),
+                                    selection=("ACKERMANN",),
+                                    cwd=Path("."),
+                                    checkpoint=None,
+                                )
 
         report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
         self.assertEqual(exit_status, 1)
@@ -1264,6 +1382,7 @@ class ClBenchSupervisorTests(unittest.TestCase):
                 "stage": "load",
                 "times": [],
                 "condition": "child exceeded its 20 second timeout",
+                "wall_time_seconds": 0.5,
             },
         )
 
@@ -1272,6 +1391,8 @@ class ClBenchSupervisorTests(unittest.TestCase):
         self.assertEqual(len(names), 65)
         timeout_names = {names[index] for index in range(0, len(names), 9)}
         exception_name = names[1]
+        failed_name = names[2]
+        disabled_name = names[3]
         registered = {name: () for name in names}
 
         def command(**arguments):
@@ -1289,6 +1410,21 @@ class ClBenchSupervisorTests(unittest.TestCase):
                 )
             if name == exception_name:
                 raise RuntimeError("injected worker failure")
+            if name in (failed_name, disabled_name):
+                status = "failed" if name == failed_name else "disabled"
+                condition = "benchmark returned failure" if name == failed_name else None
+                row = {
+                    "status": status,
+                    "stage": "execute" if name == failed_name else "register",
+                    "times": [],
+                    "condition": condition,
+                }
+                return subprocess.CompletedProcess(
+                    child_command,
+                    0,
+                    json.dumps({"status": status, "times": [], "benchmarks": {name: row}}),
+                    "",
+                )
             return self._passed_child(child_command, name)
 
         with TemporaryDirectory() as directory:
@@ -1321,7 +1457,19 @@ class ClBenchSupervisorTests(unittest.TestCase):
         self.assertEqual(report["benchmarks"][exception_name]["status"], "failed")
         self.assertEqual(report["benchmarks"][exception_name]["stage"], "load")
         self.assertIn("RuntimeError: injected worker failure", report["benchmarks"][exception_name]["condition"])
+        self.assertEqual(report["benchmarks"][failed_name]["status"], "failed")
+        self.assertEqual(report["benchmarks"][failed_name]["times"], [])
+        self.assertEqual(report["benchmarks"][disabled_name]["status"], "disabled")
+        self.assertEqual(report["benchmarks"][disabled_name]["times"], [])
+        self.assertEqual(report["benchmarks"][names[4]]["times"], [1.0])
+        self.assertTrue(all(
+            isinstance(row["wall_time_seconds"], (int, float))
+            and scoreboard.math.isfinite(row["wall_time_seconds"])
+            and row["wall_time_seconds"] >= 0
+            for row in report["benchmarks"].values()
+        ))
         self.assertEqual(set(checkpoint_report["benchmarks"]), set(names))
+        self.assertEqual(checkpoint_report["benchmarks"], report["benchmarks"])
         self.assertEqual(progress, {"complete": True, "expected": list(names), "completed": 65})
         self.assertEqual(
             checkpoint_report["benchmarks"][exception_name],

@@ -32,15 +32,10 @@ fn defmethod_macro_expansion<'ctx>(
         macro_push_handle(scope, &mut qualifier_handles, value);
         specializer_index += 1;
     }
-    if qualifier_handles.len() > 1 {
-        return Err(ObjectError::TypeError);
-    }
-    let qualifier_word = match qualifier_handles.as_slice().first() {
-        Some(value) => method_qualifier(scope.context(), scope.get(*value).as_word())?
-            .ok_or(ObjectError::TypeError)?,
-        None => Word::fixnum(METHOD_QUALIFIER_PRIMARY),
+    let qualifier = match qualifier_handles.as_slice().first() {
+        Some(value) => scope.root(ncl_object::Local::from_word(scope.get(*value).as_word())),
+        None => scope.root(ncl_object::Local::from_word(Word::NIL)),
     };
-    let qualifier = scope.root(ncl_object::Local::from_word(qualifier_word));
     let qualifier_list = scope.make_list(runtime, &qualifier_handles)?;
     let specializer_form = *parts
         .as_slice()

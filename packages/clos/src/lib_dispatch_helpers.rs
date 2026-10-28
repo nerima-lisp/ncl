@@ -1,3 +1,41 @@
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MethodCombination {
+    Standard,
+    Plus,
+    And,
+    Append,
+    List,
+    Max,
+    Min,
+    Nconc,
+    Or,
+    Progn,
+}
+
+fn method_combination_kind(
+    ctx: &ThreadContext,
+    name: Word,
+) -> Result<MethodCombination, ObjectError> {
+    if !matches!(classify_object(ctx, name), ObjectRef::Symbol(_)) {
+        return Err(ObjectError::TypeError);
+    }
+    let name = symbol_name_string(ctx, name)?;
+    match name.to_ascii_uppercase().as_str() {
+        "STANDARD" => Ok(MethodCombination::Standard),
+        "+" => Ok(MethodCombination::Plus),
+        "AND" => Ok(MethodCombination::And),
+        "APPEND" => Ok(MethodCombination::Append),
+        "LIST" => Ok(MethodCombination::List),
+        "MAX" => Ok(MethodCombination::Max),
+        "MIN" => Ok(MethodCombination::Min),
+        "NCONC" => Ok(MethodCombination::Nconc),
+        "OR" => Ok(MethodCombination::Or),
+        "PROGN" => Ok(MethodCombination::Progn),
+        // check-added-lines: allow(wildcard) unknown built-in combination names are invalid.
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
 type EffectiveMethod<'ctx> = ncl_object::Handle<'ctx>;
 
 fn dispatch_list_to_handles<'ctx>(

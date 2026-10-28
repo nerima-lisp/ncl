@@ -493,47 +493,39 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
-#[inline(never)]
+// Keep dead referents off the collecting thread's stack because conservative scanning can treat stale words as roots.
+
 fn insert_weak_entry(
-    ctx: &mut ThreadContext,
     runtime: &Runtime,
     table: Word,
     weakness: Weakness,
     keep_key: bool,
     keep_value: bool,
 ) -> (Word, Word) {
-    let key_slot = std::sync::atomic::AtomicU64::new(string(ctx, runtime, "weak-key").bits());
-    let value_slot = std::sync::atomic::AtomicU64::new(if weakness == Weakness::KeyOrValue {
-        Word::fixnum(99).bits()
-    } else {
-        string(ctx, runtime, "weak-value").bits()
-    });
-    HashTable::from_word(table)
-        .insert(
-            ctx,
-            runtime,
-            Word::from_bits(key_slot.load(std::sync::atomic::Ordering::Relaxed)),
-            Word::from_bits(value_slot.load(std::sync::atomic::Ordering::Relaxed)),
-        )
-        .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
-    if !keep_key {
-        key_slot.store(Word::NIL.bits(), std::sync::atomic::Ordering::Relaxed);
-    }
-    if !keep_value {
-        value_slot.store(Word::NIL.bits(), std::sync::atomic::Ordering::Relaxed);
-    }
-    (
-        if keep_key {
-            Word::from_bits(key_slot.load(std::sync::atomic::Ordering::Relaxed))
-        } else {
-            Word::NIL
-        },
-        if keep_value {
-            Word::from_bits(value_slot.load(std::sync::atomic::Ordering::Relaxed))
-        } else {
-            Word::NIL
-        },
-    )
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            let mut worker_ctx = ThreadContext::new();
+            worker_ctx
+                .register(runtime)
+                .unwrap_or_else(|error| panic!("worker registration failed: {error:?}"));
+            let key = string(&mut worker_ctx, runtime, "weak-key");
+            let value = if weakness == Weakness::KeyOrValue {
+                Word::fixnum(99)
+            } else {
+                string(&mut worker_ctx, runtime, "weak-value")
+            };
+            HashTable::from_word(table)
+                .insert(&mut worker_ctx, runtime, key, value)
+                .unwrap_or_else(|error| panic!("weak-entry insertion failed: {error:?}"));
+            (
+                if keep_key { key } else { Word::NIL },
+                if keep_value { value } else { Word::NIL },
+            )
+        });
+        worker
+            .join()
+            .unwrap_or_else(|_| panic!("weak-entry worker panicked"))
+    })
 }
 
 fn weak_entry_after_gc(
@@ -548,9 +540,8 @@ fn weak_entry_after_gc(
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    let (mut key_root, mut value_root) = insert_weak_entry(
-        &mut ctx, &runtime, table_word, weakness, keep_key, keep_value,
-    );
+    let (mut key_root, mut value_root) =
+        insert_weak_entry(&runtime, table_word, weakness, keep_key, keep_value);
     let key_token = keep_key.then(|| ncl_object::push_root(&mut ctx, &mut key_root));
     let value_token = keep_value.then(|| ncl_object::push_root(&mut ctx, &mut value_root));
     assert!(ctx.collect(true).is_ok());

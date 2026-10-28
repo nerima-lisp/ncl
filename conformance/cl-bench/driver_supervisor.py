@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import math
 import os
@@ -12,6 +13,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,15 @@ CLOS_JANDERSON_FUNCTIONS = {
     "methodcalls/complex",
 }
 CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
+# 13 source preflights and 65 benchmark workers fit within 78 * 20 = 1,560
+# seconds, leaving 240 seconds of the workflow's 1,800-second budget for setup.
+CHILD_TIMEOUT_SECONDS = 20.0
+MAX_BENCHMARK_WORKERS = 4
+# The pinned suite has two pairs that write shared files: compiler/load-fasl
+# use the same FASL, and the FPRINT benchmarks both write /tmp/fprint.tst.
+SERIALIZED_BENCHMARKS = frozenset({
+    "compiler", "load-fasl", "fprint/pretty", "fprint/ugly",
+})
 
 
 def _lisp_string(value: str) -> str:
@@ -286,21 +297,43 @@ def _command(
     ]
 
 
-def _run_child(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run_child(
+    command: list[str], cwd: Path, timeout: float = CHILD_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     environment.pop(CHECKPOINT_ENV, None)
-    return subprocess.run(
-        command,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=environment,
-    )
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+            start_new_session=os.name == "posix",
+        )
+    except (OSError, ValueError) as error:
+        return subprocess.CompletedProcess(command, 127, "", str(error))
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        stdout, stderr = process.communicate()
+        return subprocess.CompletedProcess(command, None, stdout, stderr)
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _failure_detail(process: subprocess.CompletedProcess[str]) -> str:
     detail = _without_stage_markers(process.stderr or process.stdout).strip()
+    if process.returncode is None:
+        timeout = f"child exceeded its {CHILD_TIMEOUT_SECONDS:g} second timeout"
+        return f"{timeout}: {detail[-4000:]}" if detail else timeout
     if detail:
         return detail[-4000:]
     if process.returncode < 0:
@@ -391,6 +424,7 @@ def _run_supervisor(
     checkpoint: Any,
 ) -> int:
     failures: dict[str, str] = {}
+    timed_out_sources: set[str] = set()
     registered = _registered_functions(cwd)
     requested_rows = selection or _comparison_benchmarks()
     selected_rows = _canonical_rows(requested_rows, registered)
@@ -415,6 +449,8 @@ def _run_supervisor(
         )
         if process.returncode != 0:
             failures[source] = _failure_detail(process)
+            if process.returncode is None:
+                timed_out_sources.add(source)
 
     result = _run_benchmark_workers(
         engine=engine,
@@ -424,6 +460,7 @@ def _run_supervisor(
         selected_rows=selected_rows,
         registered=registered,
         failures=failures,
+        timed_out_sources=timed_out_sources,
         cwd=cwd,
         checkpoint=checkpoint,
     )
@@ -456,12 +493,14 @@ def _write_checkpoint_row(
     stage = benchmark["stage"]
     times = benchmark["times"]
     condition = benchmark["condition"]
-    if status not in ("passed", "failed", "disabled"):
+    if status not in ("passed", "failed", "disabled", "timeout"):
         raise ValueError(f"invalid checkpoint row status for {name}")
     if stage not in ("load", "register", "execute", "finish"):
         raise ValueError(f"invalid checkpoint row stage for {name}")
     if not isinstance(times, list):
         raise ValueError(f"invalid checkpoint row times for {name}")
+    if status == "timeout" and times:
+        raise ValueError(f"invalid timed out checkpoint row times for {name}")
     for sample in times:
         if isinstance(sample, bool) or not isinstance(sample, (int, float)):
             raise ValueError(f"invalid checkpoint row times for {name}")
@@ -479,8 +518,8 @@ def _write_checkpoint_row(
         stage != "finish" or condition is not None or not times
     ):
         raise ValueError(f"invalid passed checkpoint row for {name}")
-    if status == "failed" and not condition:
-        raise ValueError(f"invalid failed checkpoint row for {name}")
+    if status in ("failed", "timeout") and not condition:
+        raise ValueError(f"invalid {status} checkpoint row for {name}")
     if status == "disabled" and times:
         raise ValueError(f"invalid disabled checkpoint row for {name}")
     _write_checkpoint_record(
@@ -506,11 +545,26 @@ def _worker_failure_row(
         re.MULTILINE,
     )
     stage = markers[-1][0] if markers else "load"
+    timed_out = process.returncode is None
+    condition = _without_stage_markers(_failure_detail(process))
     return {
-        "status": "failed",
+        "status": "timeout" if timed_out else "failed",
         "stage": stage,
         "times": [],
-        "condition": _without_stage_markers(_failure_detail(process)),
+        "condition": condition,
+    }
+
+
+def _worker_exception_row(error: Exception) -> dict[str, Any]:
+    detail = f"benchmark worker raised {type(error).__name__}"
+    message = str(error).strip()
+    if message:
+        detail += f": {message}"
+    return {
+        "status": "failed",
+        "stage": "load",
+        "times": [],
+        "condition": detail,
     }
 
 
@@ -523,10 +577,12 @@ def _run_benchmark_workers(
     selected_rows: tuple[str, ...],
     registered: dict[str, tuple[str, ...]],
     failures: dict[str, str],
+    timed_out_sources: set[str],
     cwd: Path,
     checkpoint: Any = None,
 ) -> dict[str, Any]:
     benchmarks: dict[str, dict[str, Any]] = {}
+    commands: dict[str, list[str]] = {}
     for name in selected_rows:
         owner = next(
             (
@@ -538,7 +594,7 @@ def _run_benchmark_workers(
         )
         if owner is not None:
             benchmarks[name] = {
-                "status": "failed",
+                "status": "timeout" if owner in timed_out_sources else "failed",
                 "stage": "load",
                 "times": [],
                 "condition": failures[owner],
@@ -546,46 +602,87 @@ def _run_benchmark_workers(
             if checkpoint is not None:
                 _write_checkpoint_row(checkpoint, name, benchmarks[name])
             continue
-        process = _run_child(
-            _command(
-                engine=engine,
-                runner=runner,
-                mode=mode,
-                driver=driver,
-                cwd=cwd,
-                selection=(name,),
-                skip_files=tuple(failures),
-            ),
-            cwd,
+        commands[name] = _command(
+            engine=engine,
+            runner=runner,
+            mode=mode,
+            driver=driver,
+            cwd=cwd,
+            selection=(name,),
+            skip_files=tuple(failures),
         )
+
+    def run_benchmark(name: str) -> tuple[str, dict[str, Any], subprocess.CompletedProcess[str]]:
+        if name.casefold() in SERIALIZED_BENCHMARKS:
+            with serialized_benchmark_lock:
+                process = _run_child(commands[name], cwd)
+        else:
+            process = _run_child(commands[name], cwd)
         child_result = _json_result(process.stdout)
         child_rows = child_result.get("benchmarks", {}) if child_result else {}
         row = next(
             (value for key, value in child_rows.items() if key.casefold() == name.casefold()),
             None,
         )
-        if row is None:
-            if child_result is None and process.stdout:
-                print(process.stdout[-4000:], end="", file=sys.stderr)
+        if process.returncode is None:
+            row = _worker_failure_row(name, process)
+        elif row is None:
             row = _worker_failure_row(name, process)
             if process.returncode == 0:
                 row["stage"] = "register"
                 row["condition"] = "benchmark was not registered"
         elif process.returncode != 0 and row.get("status") in ("passed", "disabled"):
             row = _worker_failure_row(name, process)
-        benchmarks[name] = {
+        benchmark = {
             "status": row.get("status", "failed"),
             "stage": row.get("stage", "register"),
             "times": row.get("times", []),
             "condition": row.get("condition"),
         }
-        if benchmarks[name]["status"] == "failed" and not benchmarks[name]["condition"]:
-            benchmarks[name]["condition"] = "driver reported failure without a condition"
-        if checkpoint is not None:
-            _write_checkpoint_row(checkpoint, name, benchmarks[name])
+        if benchmark["status"] == "failed" and not benchmark["condition"]:
+            benchmark["condition"] = "driver reported failure without a condition"
+        return name, benchmark, process
+
+    serialized_benchmark_lock = threading.Lock()
+    completed_rows: dict[str, dict[str, Any]] = {}
+    completed_processes: dict[str, subprocess.CompletedProcess[str]] = {}
+    with ThreadPoolExecutor(max_workers=MAX_BENCHMARK_WORKERS) as executor:
+        futures = {
+            executor.submit(run_benchmark, name): name
+            for name in commands
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                name, row, process = future.result()
+            except Exception as error:
+                row = _worker_exception_row(error)
+                completed_rows[name] = row
+                if checkpoint is not None:
+                    _write_checkpoint_row(checkpoint, name, row)
+                continue
+            completed_rows[name] = row
+            completed_processes[name] = process
+            if checkpoint is not None:
+                _write_checkpoint_row(checkpoint, name, row)
+
+    for name in selected_rows:
+        process = completed_processes.get(name)
+        if process is None:
+            continue
+        if _json_result(process.stdout) is None and process.stdout:
+            print(process.stdout[-4000:], end="", file=sys.stderr)
         diagnostic = _without_stage_markers(process.stderr)
-        if diagnostic and (process.returncode != 0 or row.get("status") == "failed"):
+        if diagnostic and (
+            process.returncode != 0
+            or completed_rows[name]["status"] in ("failed", "timeout")
+        ):
             print(diagnostic, end="", file=sys.stderr)
+
+    benchmarks = {
+        name: benchmarks[name] if name in benchmarks else completed_rows[name]
+        for name in selected_rows
+    }
 
     times = [
         sample
@@ -594,7 +691,7 @@ def _run_benchmark_workers(
         for sample in benchmark.get("times", [])
     ]
     failed = any(
-        benchmark.get("status") == "failed" for benchmark in benchmarks.values()
+        benchmark.get("status") in ("failed", "timeout") for benchmark in benchmarks.values()
     )
     return {
         "status": "failed" if failed else "passed",

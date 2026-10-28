@@ -33,7 +33,7 @@ DEFAULT_COMMAND_TIMEOUT = 900.0
 DEFAULT_SOURCE_RETRIES = 2
 MAX_STDERR_TAIL_CHARS = 4000
 CL_BENCH_STAGES = frozenset({"load", "register", "execute", "finish"})
-CL_BENCH_STATUSES = frozenset({"passed", "failed", "disabled"})
+CL_BENCH_STATUSES = frozenset({"passed", "failed", "disabled", "timeout"})
 CL_BENCH_CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
 
 _QUOTED_PATH_PATTERNS = tuple(
@@ -366,16 +366,18 @@ def _validate_cl_bench_benchmark(
     row_times = _driver_times(
         record.get("times"),
         field=f"{name} times",
-        require_positive=row_status != "failed",
+        require_positive=row_status not in ("failed", "timeout"),
     )
 
     if row_status == "passed":
         if stage != "finish" or condition is not None or not row_times:
             raise ValueError(f"cl-bench passed benchmark {name} has invalid result data")
         passed_times = row_times
-    elif row_status == "failed":
+    elif row_status in ("failed", "timeout"):
         if not condition:
-            raise ValueError(f"cl-bench failed benchmark {name} has no condition")
+            raise ValueError(f"cl-bench {row_status} benchmark {name} has no condition")
+        if row_status == "timeout" and row_times:
+            raise ValueError(f"cl-bench timed out benchmark {name} has sample times")
         passed_times = []
     else:
         if row_times:
@@ -409,7 +411,7 @@ def validate_cl_bench_report(value: Mapping[str, Any]) -> dict[str, Any]:
         benchmark, row_passed_times = _validate_cl_bench_benchmark(name, record)
         benchmarks[name] = benchmark
         passed_times.extend(row_passed_times)
-        has_failed = has_failed or benchmark["status"] == "failed"
+        has_failed = has_failed or benchmark["status"] in ("failed", "timeout")
 
     if status == "passed" and (not benchmarks or not passed_times or has_failed):
         raise ValueError("cl-bench report passed with no benchmarks or failed rows")

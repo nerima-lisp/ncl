@@ -190,6 +190,15 @@ fn assert_specialized_constant_arrays(runtime: &Runtime, table: Word) -> Result<
                 .map_err(|error| format!("array float element: {error:?}"))?;
                 // check-added-lines: allow(panic) test-only assertions
                 assert_eq!(actual.to_bits(), 1.25_f64.to_bits());
+                let second_element = specialized_array_ref(&runtime.context, array, 1)
+                    .map_err(|error| format!("array float second element: {error:?}"))?;
+                let second_actual = double_value(
+                    &runtime.context,
+                    ncl_object::DoubleFloat::from_word(second_element),
+                )
+                .map_err(|error| format!("array float second value: {error:?}"))?;
+                // check-added-lines: allow(panic) test-only assertions
+                assert_eq!(second_actual.to_bits(), 2.5_f64.to_bits());
             }
             ArrayElementType::T => {
                 return Err("T is not a specialized array element type".to_owned());

@@ -269,6 +269,11 @@ impl Heap {
             .count()
     }
     fn find_raw(state: &State, value: Word) -> Option<usize> {
+        let is_heap_pointer =
+            value.is_cons() || value.lowtag() == crate::LowTag::OtherPointer as u8;
+        if !is_heap_pointer {
+            return None;
+        }
         let address = value.address();
         let &index = state.object_starts.get(&address)?;
         let object = state.objects.get(index)?;

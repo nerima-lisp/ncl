@@ -229,7 +229,23 @@ impl Thread {
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();
         values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
-        if let Some((start, end)) = self.stack_bounds {
+        if let Some((bounds_start, end)) = self.stack_bounds {
+            let start = if self.native == NativeState::Lisp {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    self.stack_scan_start
+                        .filter(|&stack_pointer| {
+                            gc_state::valid_stack_interval((bounds_start, end), stack_pointer)
+                        })
+                        .unwrap_or(bounds_start)
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    bounds_start
+                }
+            } else {
+                bounds_start
+            };
             let mut address = start.next_multiple_of(8);
             while address.checked_add(8).is_some_and(|next| next <= end) {
                 // SAFETY: the collector reads only a published, stopped stack interval at word alignment.

@@ -21,6 +21,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -33,6 +34,7 @@ DEFAULT_SOURCE_RETRIES = 2
 MAX_STDERR_TAIL_CHARS = 4000
 CL_BENCH_STAGES = frozenset({"load", "register", "execute", "finish"})
 CL_BENCH_STATUSES = frozenset({"passed", "failed", "disabled"})
+CL_BENCH_CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
 
 _QUOTED_PATH_PATTERNS = tuple(
     re.compile(
@@ -83,13 +85,20 @@ def run_command(
     cwd: Path,
     timeout: float,
     runner: Callable[..., Any] = subprocess.run,
+    env: Mapping[str, str] | None = None,
 ) -> ProcessResult:
     """Run a command and preserve enough output to diagnose its classification."""
     try:
-        completed = runner(
-            list(command), cwd=cwd, capture_output=True, text=True,
-            timeout=timeout, check=False,
-        )
+        options = {
+            "cwd": cwd,
+            "capture_output": True,
+            "text": True,
+            "timeout": timeout,
+            "check": False,
+        }
+        if env is not None:
+            options["env"] = dict(env)
+        completed = runner(list(command), **options)
     except subprocess.TimeoutExpired as error:
         stdout = error.stdout or ""
         stderr = error.stderr or ""
@@ -336,6 +345,51 @@ def _driver_times(
     return times
 
 
+def _validate_cl_bench_benchmark(
+    name: str, record: Any
+) -> tuple[dict[str, Any], list[float]]:
+    if not isinstance(name, str) or not name:
+        raise ValueError("cl-bench benchmark names must be non-empty strings")
+    if not isinstance(record, dict) or set(record) != {
+        "status", "stage", "times", "condition",
+    }:
+        raise ValueError(f"cl-bench benchmark {name} has an unexpected shape")
+    row_status = record.get("status")
+    if not isinstance(row_status, str) or row_status not in CL_BENCH_STATUSES:
+        raise ValueError(f"cl-bench benchmark {name} has an invalid status")
+    stage = record.get("stage")
+    if not isinstance(stage, str) or stage not in CL_BENCH_STAGES:
+        raise ValueError(f"cl-bench benchmark {name} has an invalid stage")
+    condition = record.get("condition")
+    if condition is not None and not isinstance(condition, str):
+        raise ValueError(f"cl-bench benchmark {name} condition must be a string or null")
+    row_times = _driver_times(
+        record.get("times"),
+        field=f"{name} times",
+        require_positive=row_status != "failed",
+    )
+
+    if row_status == "passed":
+        if stage != "finish" or condition is not None or not row_times:
+            raise ValueError(f"cl-bench passed benchmark {name} has invalid result data")
+        passed_times = row_times
+    elif row_status == "failed":
+        if not condition:
+            raise ValueError(f"cl-bench failed benchmark {name} has no condition")
+        passed_times = []
+    else:
+        if row_times:
+            raise ValueError(f"cl-bench disabled benchmark {name} has sample times")
+        passed_times = []
+
+    return {
+        "status": row_status,
+        "stage": stage,
+        "times": row_times,
+        "condition": condition,
+    }, passed_times
+
+
 def validate_cl_bench_report(value: Mapping[str, Any]) -> dict[str, Any]:
     """Validate and normalize the shared cl-bench driver JSON contract."""
     if set(value) != {"status", "times", "benchmarks"}:
@@ -352,50 +406,78 @@ def validate_cl_bench_report(value: Mapping[str, Any]) -> dict[str, Any]:
     passed_times: list[float] = []
     has_failed = False
     for name, record in reported.items():
-        if not isinstance(name, str) or not name:
-            raise ValueError("cl-bench benchmark names must be non-empty strings")
-        if not isinstance(record, dict) or set(record) != {
-            "status", "stage", "times", "condition",
-        }:
-            raise ValueError(f"cl-bench benchmark {name} has an unexpected shape")
-        row_status = record.get("status")
-        if not isinstance(row_status, str) or row_status not in CL_BENCH_STATUSES:
-            raise ValueError(f"cl-bench benchmark {name} has an invalid status")
-        stage = record.get("stage")
-        if not isinstance(stage, str) or stage not in CL_BENCH_STAGES:
-            raise ValueError(f"cl-bench benchmark {name} has an invalid stage")
-        condition = record.get("condition")
-        if condition is not None and not isinstance(condition, str):
-            raise ValueError(f"cl-bench benchmark {name} condition must be a string or null")
-        row_times = _driver_times(
-            record.get("times"),
-            field=f"{name} times",
-            require_positive=row_status != "failed",
-        )
-
-        if row_status == "passed":
-            if stage != "finish" or condition is not None or not row_times:
-                raise ValueError(f"cl-bench passed benchmark {name} has invalid result data")
-            passed_times.extend(row_times)
-        elif row_status == "failed":
-            if not condition:
-                raise ValueError(f"cl-bench failed benchmark {name} has no condition")
-            has_failed = True
-        elif row_times:
-            raise ValueError(f"cl-bench disabled benchmark {name} has sample times")
-
-        benchmarks[name] = {
-            "status": row_status,
-            "stage": stage,
-            "times": row_times,
-            "condition": condition,
-        }
+        benchmark, row_passed_times = _validate_cl_bench_benchmark(name, record)
+        benchmarks[name] = benchmark
+        passed_times.extend(row_passed_times)
+        has_failed = has_failed or benchmark["status"] == "failed"
 
     if status == "passed" and (not benchmarks or not passed_times or has_failed):
         raise ValueError("cl-bench report passed with no benchmarks or failed rows")
     if Counter(flat_times) != Counter(passed_times):
         raise ValueError("cl-bench flat times differ from passed benchmark times")
     return {"status": status, "times": flat_times, "benchmarks": benchmarks}
+
+
+def read_cl_bench_checkpoint(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read complete JSONL checkpoint records and ignore a torn final line."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise ValueError("cl-bench checkpoint is unavailable") from error
+    lines = data.splitlines(keepends=True)
+    if lines and not lines[-1].endswith(b"\n"):
+        lines.pop()
+    if not lines:
+        raise ValueError("cl-bench checkpoint has no complete header")
+
+    records: list[Any] = []
+    for line in lines:
+        try:
+            records.append(json.loads(line.decode("utf-8").strip()))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("cl-bench checkpoint contains an invalid complete record") from error
+
+    header = records[0]
+    if (
+        not isinstance(header, dict)
+        or set(header) != {"type", "version", "expected"}
+        or header.get("type") != "header"
+        or header.get("version") != 1
+        or isinstance(header.get("version"), bool)
+    ):
+        raise ValueError("cl-bench checkpoint header is invalid")
+    expected = header.get("expected")
+    if (
+        not isinstance(expected, list)
+        or not all(isinstance(name, str) and name for name in expected)
+        or len(expected) != len(set(expected))
+    ):
+        raise ValueError("cl-bench checkpoint expected IDs are invalid")
+
+    benchmarks: dict[str, dict[str, Any]] = {}
+    for record in records[1:]:
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"type", "name", "benchmark"}
+            or record.get("type") != "row"
+        ):
+            raise ValueError("cl-bench checkpoint row record is invalid")
+        name = record.get("name")
+        if not isinstance(name, str) or name not in expected:
+            raise ValueError("cl-bench checkpoint contains an unexpected benchmark")
+        if name in benchmarks:
+            raise ValueError("cl-bench checkpoint contains a duplicate benchmark")
+        benchmark, _ = _validate_cl_bench_benchmark(name, record.get("benchmark"))
+        benchmarks[name] = benchmark
+
+    return (
+        {"status": "partial", "times": [], "benchmarks": benchmarks},
+        {
+            "complete": set(benchmarks) == set(expected),
+            "expected": list(expected),
+            "completed": len(benchmarks),
+        },
+    )
 
 
 def _stderr_tail(stderr: str) -> tuple[str, bool]:
@@ -427,6 +509,7 @@ def make_scoreboard(
     ansi_report: Mapping[str, Any] | None = None,
     bench_report: Mapping[str, Any] | None = None,
     bench_driver_error: str | None = None,
+    bench_progress: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-serializable scoreboard from two process results."""
     ansi_data: dict[str, Any] = {"status": ansi.status}
@@ -462,6 +545,8 @@ def make_scoreboard(
             }
             for name, row in bench_report["benchmarks"].items()
         }
+    if bench_progress is not None:
+        bench_data["progress"] = dict(bench_progress)
     if bench_driver_error is not None:
         bench_data["driver_error"], _ = _stderr_tail(bench_driver_error)
     if bench_times is not None:
@@ -481,7 +566,7 @@ def make_scoreboard(
         bench_data["signal_number"] = signal_number
     bench_data["stderr_tail"], bench_data["stderr_truncated"] = _stderr_tail(bench.stderr)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "measured_on": date.today().isoformat(),
         "sources": SOURCES,
         "ansi-test": ansi_data,
@@ -548,23 +633,40 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"scoreboard: source acquisition failed: {error}\n")
     ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
-    bench = run_command(bench_command, cwd=bench_source, timeout=args.timeout)
     ansi_counts = None
     ansi_report = None
     bench_times = None
     bench_report = None
     bench_driver_error = None
+    bench_progress = None
+    with tempfile.TemporaryDirectory(prefix="conformance-cl-bench-checkpoint-") as temporary:
+        checkpoint_path = Path(temporary) / "checkpoint.jsonl"
+        bench_environment = os.environ.copy()
+        bench_environment[CL_BENCH_CHECKPOINT_ENV] = str(checkpoint_path)
+        bench = run_command(
+            bench_command,
+            cwd=bench_source,
+            timeout=args.timeout,
+            env=bench_environment,
+        )
+        if bench.status == "timeout":
+            try:
+                bench_report, bench_progress = read_cl_bench_checkpoint(checkpoint_path)
+            except ValueError as error:
+                bench_driver_error = str(error)
+            else:
+                bench_driver_error = None
+        elif bench.stdout:
+            try:
+                bench_report = validate_cl_bench_report(_json_output(bench))
+            except ValueError as error:
+                bench_driver_error = str(error)
+            else:
+                bench_times = bench_report["times"]
     if ansi.stdout:
         ansi_report = _json_output(ansi)
         ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
-    if bench.stdout:
-        try:
-            bench_report = validate_cl_bench_report(_json_output(bench))
-        except ValueError as error:
-            bench_driver_error = str(error)
-        else:
-            bench_times = bench_report["times"]
-    else:
+    if bench.status != "timeout" and not bench.stdout:
         bench_driver_error = "cl-bench runner stdout was empty"
     scoreboard = make_scoreboard(
         ansi,
@@ -574,6 +676,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ansi_report,
         bench_report,
         bench_driver_error,
+        bench_progress,
     )
     output = render_markdown(scoreboard) if args.format == "markdown" else json.dumps(scoreboard, indent=2, sort_keys=True)
     output = output if output.endswith("\n") else output + "\n"

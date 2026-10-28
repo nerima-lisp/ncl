@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import shutil
 import sys
 import subprocess
@@ -99,7 +100,7 @@ class DriverIsolationTests(unittest.TestCase):
             (cwd / "files" / "runners.lisp").write_text(
                 """(in-package :cl-bench.fixture)
 (defun broken-execute () (error "synthetic execution failure"))
-(defun later-finish () t)
+(defun later-finish () (sleep 0.01) t)
 (defun exit-without-json () (sb-ext:exit :code 23))
 """,
                 encoding="utf-8",
@@ -134,6 +135,7 @@ class DriverIsolationTests(unittest.TestCase):
 """,
                 encoding="utf-8",
             )
+            checkpoint = cwd / "checkpoint.jsonl"
 
             selection = (
                 "fixture/load",
@@ -147,6 +149,10 @@ class DriverIsolationTests(unittest.TestCase):
             stderr = io.StringIO()
             with (
                 patch.object(driver_supervisor, "SOURCE_FILES", ("broken.lisp", "runners.lisp")),
+                patch.dict(
+                    os.environ,
+                    {driver_supervisor.CHECKPOINT_ENV: str(checkpoint)},
+                ),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
             ):
@@ -165,6 +171,7 @@ class DriverIsolationTests(unittest.TestCase):
                         *selection,
                     ]
                 )
+            checkpoint_text = checkpoint.read_text(encoding="utf-8")
 
         self.assertEqual(exit_code, 1)
         report = json.loads(stdout.getvalue())
@@ -198,6 +205,19 @@ class DriverIsolationTests(unittest.TestCase):
             report["benchmarks"]["fixture/later"]["times"]
             + report["benchmarks"]["fixture/later-alias"]["times"],
         )
+        checkpoint_records = [
+            json.loads(line) for line in checkpoint_text.splitlines()
+        ]
+        self.assertEqual(
+            checkpoint_records[0],
+            {"type": "header", "version": 1, "expected": list(selection)},
+        )
+        self.assertEqual(
+            {record["name"] for record in checkpoint_records[1:]},
+            set(selection),
+        )
+        self.assertEqual(len(checkpoint_records), len(selection) + 1)
+
 
     def test_global_registration_form_failure_fails_every_selected_worker(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cl-bench-global-register-test-") as temporary:
@@ -269,6 +289,37 @@ class DriverIsolationTests(unittest.TestCase):
             self.assertEqual((row["status"], row["stage"]), ("failed", "register"))
             self.assertEqual(row["times"], [])
             self.assertIn("synthetic global registration failure", row["condition"])
+
+
+class DriverCheckpointEnvironmentTests(unittest.TestCase):
+    def test_checkpoint_path_is_created_exclusively(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary) / "checkpoint.jsonl"
+            checkpoint.write_text("preserve this\n", encoding="utf-8")
+            with patch.dict(os.environ, {driver_supervisor.CHECKPOINT_ENV: str(checkpoint)}):
+                with self.assertRaises(FileExistsError):
+                    driver_supervisor.run_supervisor(
+                        engine="sbcl",
+                        runner="sbcl",
+                        mode="default",
+                        driver=Path("driver.lisp"),
+                        selection=(),
+                        cwd=Path(temporary),
+                    )
+
+            self.assertEqual(checkpoint.read_text(encoding="utf-8"), "preserve this\n")
+
+    def test_checkpoint_environment_is_removed_before_child_launch(self) -> None:
+        with patch.dict(os.environ, {driver_supervisor.CHECKPOINT_ENV: "/tmp/checkpoint.jsonl"}):
+            with patch.object(
+                driver_supervisor.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(["ncl"], 0, "", ""),
+            ) as run:
+                driver_supervisor._run_child(["ncl"], Path("."))
+
+        child_environment = run.call_args.kwargs["env"]
+        self.assertNotIn(driver_supervisor.CHECKPOINT_ENV, child_environment)
 
 
 if __name__ == "__main__":

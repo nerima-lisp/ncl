@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
+import os
 import re
 import signal
 import subprocess
@@ -40,6 +42,7 @@ CLOS_JANDERSON_FUNCTIONS = {
     "methodcalls/simple+after",
     "methodcalls/complex",
 }
+CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
 
 
 def _lisp_string(value: str) -> str:
@@ -284,7 +287,16 @@ def _command(
 
 
 def _run_child(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+    environment = os.environ.copy()
+    environment.pop(CHECKPOINT_ENV, None)
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+    )
 
 
 def _failure_detail(process: subprocess.CompletedProcess[str]) -> str:
@@ -345,7 +357,48 @@ def run_supervisor(
     selection: tuple[str, ...],
     cwd: Path,
 ) -> int:
+    checkpoint_path = os.environ.get(CHECKPOINT_ENV)
+    if checkpoint_path is None:
+        return _run_supervisor(
+            engine=engine,
+            runner=runner,
+            mode=mode,
+            driver=driver,
+            selection=selection,
+            cwd=cwd,
+            checkpoint=None,
+        )
+    with Path(checkpoint_path).open("x", encoding="utf-8") as checkpoint:
+        return _run_supervisor(
+            engine=engine,
+            runner=runner,
+            mode=mode,
+            driver=driver,
+            selection=selection,
+            cwd=cwd,
+            checkpoint=checkpoint,
+        )
+
+
+def _run_supervisor(
+    *,
+    engine: str,
+    runner: str,
+    mode: str,
+    driver: Path,
+    selection: tuple[str, ...],
+    cwd: Path,
+    checkpoint: Any,
+) -> int:
     failures: dict[str, str] = {}
+    registered = _registered_functions(cwd)
+    requested_rows = selection or _comparison_benchmarks()
+    selected_rows = _canonical_rows(requested_rows, registered)
+    if checkpoint is not None:
+        _write_checkpoint_record(
+            checkpoint,
+            {"type": "header", "version": 1, "expected": list(selected_rows)},
+        )
     for source in SOURCE_FILES:
         process = _run_child(
             _command(
@@ -363,9 +416,6 @@ def run_supervisor(
         if process.returncode != 0:
             failures[source] = _failure_detail(process)
 
-    registered = _registered_functions(cwd)
-    requested_rows = selection or _comparison_benchmarks()
-    selected_rows = _canonical_rows(requested_rows, registered)
     result = _run_benchmark_workers(
         engine=engine,
         runner=runner,
@@ -375,6 +425,7 @@ def run_supervisor(
         registered=registered,
         failures=failures,
         cwd=cwd,
+        checkpoint=checkpoint,
     )
     result = {
         "status": result["status"],
@@ -389,6 +440,53 @@ def run_supervisor(
     }
     print(json.dumps(result, separators=(",", ":")))
     return 1 if result["status"] == "failed" else 0
+
+
+def _write_checkpoint_record(checkpoint: Any, record: dict[str, Any]) -> None:
+    checkpoint.write(json.dumps(record, separators=(",", ":")) + "\n")
+    checkpoint.flush()
+
+
+def _write_checkpoint_row(
+    checkpoint: Any, name: str, benchmark: dict[str, Any]
+) -> None:
+    if set(benchmark) != {"status", "stage", "times", "condition"}:
+        raise ValueError(f"invalid checkpoint row shape for {name}")
+    status = benchmark["status"]
+    stage = benchmark["stage"]
+    times = benchmark["times"]
+    condition = benchmark["condition"]
+    if status not in ("passed", "failed", "disabled"):
+        raise ValueError(f"invalid checkpoint row status for {name}")
+    if stage not in ("load", "register", "execute", "finish"):
+        raise ValueError(f"invalid checkpoint row stage for {name}")
+    if not isinstance(times, list):
+        raise ValueError(f"invalid checkpoint row times for {name}")
+    for sample in times:
+        if isinstance(sample, bool) or not isinstance(sample, (int, float)):
+            raise ValueError(f"invalid checkpoint row times for {name}")
+        try:
+            normalized = float(sample)
+        except OverflowError as error:
+            raise ValueError(f"invalid checkpoint row times for {name}") from error
+        if not math.isfinite(normalized) or normalized < 0 or (
+            status != "failed" and normalized == 0
+        ):
+            raise ValueError(f"invalid checkpoint row times for {name}")
+    if condition is not None and not isinstance(condition, str):
+        raise ValueError(f"invalid checkpoint row condition for {name}")
+    if status == "passed" and (
+        stage != "finish" or condition is not None or not times
+    ):
+        raise ValueError(f"invalid passed checkpoint row for {name}")
+    if status == "failed" and not condition:
+        raise ValueError(f"invalid failed checkpoint row for {name}")
+    if status == "disabled" and times:
+        raise ValueError(f"invalid disabled checkpoint row for {name}")
+    _write_checkpoint_record(
+        checkpoint,
+        {"type": "row", "name": name, "benchmark": benchmark},
+    )
 
 
 def _without_stage_markers(stderr: str) -> str:
@@ -426,6 +524,7 @@ def _run_benchmark_workers(
     registered: dict[str, tuple[str, ...]],
     failures: dict[str, str],
     cwd: Path,
+    checkpoint: Any = None,
 ) -> dict[str, Any]:
     benchmarks: dict[str, dict[str, Any]] = {}
     for name in selected_rows:
@@ -444,6 +543,8 @@ def _run_benchmark_workers(
                 "times": [],
                 "condition": failures[owner],
             }
+            if checkpoint is not None:
+                _write_checkpoint_row(checkpoint, name, benchmarks[name])
             continue
         process = _run_child(
             _command(
@@ -480,6 +581,8 @@ def _run_benchmark_workers(
         }
         if benchmarks[name]["status"] == "failed" and not benchmarks[name]["condition"]:
             benchmarks[name]["condition"] = "driver reported failure without a condition"
+        if checkpoint is not None:
+            _write_checkpoint_row(checkpoint, name, benchmarks[name])
         diagnostic = _without_stage_markers(process.stderr)
         if diagnostic and (process.returncode != 0 or row.get("status") == "failed"):
             print(diagnostic, end="", file=sys.stderr)

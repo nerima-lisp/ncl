@@ -23,6 +23,32 @@ inclusion_spec.loader.exec_module(inclusion)
 
 
 class ScoreboardTests(unittest.TestCase):
+    def _run_timeout_scoreboard(self, checkpoint: bytes) -> tuple[int, dict]:
+        ansi_output = json.dumps({"passed": 1, "failed": 0, "unexecuted": 0})
+
+        def run_command(command, *, cwd, timeout, runner=scoreboard.subprocess.run, env=None):
+            if command == ["ansi"]:
+                return scoreboard.ProcessResult("passed", 0, ansi_output)
+            self.assertEqual(command, ["bench"])
+            self.assertEqual(timeout, scoreboard.DEFAULT_COMMAND_TIMEOUT)
+            self.assertIsNotNone(env)
+            checkpoint_path = Path(env[scoreboard.CL_BENCH_CHECKPOINT_ENV])
+            self.assertTrue(checkpoint_path.parent.is_dir())
+            checkpoint_path.write_bytes(checkpoint)
+            return scoreboard.ProcessResult("timeout", None, stderr="timed out")
+
+        with TemporaryDirectory() as directory:
+            source = Path(directory)
+            with patch.object(scoreboard, "checkout_source", return_value=source):
+                with patch.object(scoreboard, "run_command", side_effect=run_command):
+                    with patch.object(sys, "stdout") as stdout:
+                        exit_status = scoreboard.main([
+                            "--ansi-command", "ansi",
+                            "--cl-bench-command", "bench",
+                        ])
+        report_text = "".join(call.args[0] for call in stdout.write.call_args_list)
+        return exit_status, json.loads(report_text)
+
     def test_classifies_success_failure_timeout_and_signal_crash(self):
         self.assertEqual(scoreboard.classify_process(0), "passed")
         self.assertEqual(scoreboard.classify_process(1), "failed")
@@ -34,6 +60,87 @@ class ScoreboardTests(unittest.TestCase):
         result = scoreboard.run_command(["ncl"], cwd=Path("."), timeout=1, runner=runner)
         self.assertEqual(result.status, "timeout")
         self.assertEqual(result.stdout, "partial")
+
+    def test_timeout_checkpoint_keeps_completed_rows_without_a_score(self):
+        records = [
+            {"type": "header", "version": 1, "expected": ["ACKERMANN", "BIGNUM"]},
+            {
+                "type": "row",
+                "name": "ACKERMANN",
+                "benchmark": {
+                    "status": "passed",
+                    "stage": "finish",
+                    "times": [0.25],
+                    "condition": None,
+                },
+            },
+        ]
+        checkpoint = "".join(json.dumps(record) + "\n" for record in records).encode()
+
+        exit_status, report = self._run_timeout_scoreboard(checkpoint)
+
+        bench = report["cl-bench"]
+        self.assertEqual(exit_status, 1)
+        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(bench["status"], "timeout")
+        self.assertEqual(bench["driver_status"], "partial")
+        self.assertEqual(
+            bench["progress"],
+            {"complete": False, "expected": ["ACKERMANN", "BIGNUM"], "completed": 1},
+        )
+        self.assertEqual(set(bench["benchmarks"]), {"ACKERMANN"})
+        self.assertEqual(bench["benchmarks"]["ACKERMANN"]["times"], [0.25])
+        self.assertNotIn("samples", bench)
+        self.assertNotIn("geometric_mean", bench)
+
+    def test_timeout_checkpoint_without_rows_is_explicitly_incomplete(self):
+        checkpoint = json.dumps({
+            "type": "header",
+            "version": 1,
+            "expected": ["ACKERMANN"],
+        }).encode() + b"\n"
+
+        exit_status, report = self._run_timeout_scoreboard(checkpoint)
+
+        bench = report["cl-bench"]
+        self.assertEqual(exit_status, 1)
+        self.assertEqual(bench["status"], "timeout")
+        self.assertEqual(bench["driver_status"], "partial")
+        self.assertEqual(
+            bench["progress"],
+            {"complete": False, "expected": ["ACKERMANN"], "completed": 0},
+        )
+        self.assertEqual(bench["benchmarks"], {})
+        self.assertNotIn("samples", bench)
+        self.assertNotIn("geometric_mean", bench)
+
+    def test_checkpoint_ignores_torn_tail_and_rejects_duplicate_or_unexpected_rows(self):
+        header = {"type": "header", "version": 1, "expected": ["ACKERMANN"]}
+        row = {
+            "type": "row",
+            "name": "ACKERMANN",
+            "benchmark": {
+                "status": "passed",
+                "stage": "finish",
+                "times": [0.25],
+                "condition": None,
+            },
+        }
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "checkpoint.jsonl"
+            path.write_text(json.dumps(header) + "\n" + json.dumps(row) + "\n{\"type\":", encoding="utf-8")
+            report, progress = scoreboard.read_cl_bench_checkpoint(path)
+            self.assertEqual(set(report["benchmarks"]), {"ACKERMANN"})
+            self.assertEqual(progress["completed"], 1)
+            self.assertTrue(progress["complete"])
+
+            for invalid in (
+                json.dumps(row) + "\n",
+                json.dumps({**row, "name": "UNEXPECTED"}) + "\n",
+            ):
+                path.write_text(json.dumps(header) + "\n" + json.dumps(row) + "\n" + invalid, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    scoreboard.read_cl_bench_checkpoint(path)
 
     def test_geometric_mean(self):
         self.assertAlmostEqual(scoreboard.geometric_mean([1, 4, 16]), 4)

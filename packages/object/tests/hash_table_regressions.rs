@@ -87,6 +87,77 @@ fn package_failure_releases_all_roots_before_collection() {
 }
 
 #[test]
+fn hash_table_default_threshold_failure_releases_all_roots() {
+    let heap_config = HeapConfig {
+        dynamic_space_size: 16 * 1024 * 1024,
+        bytes_considered_between_gcs: 4 * 1024 * 1024,
+    };
+    let large_root_count =
+        heap_config.dynamic_space_size / (64 * std::mem::size_of::<Word>()) + 1024;
+    let runtime = Runtime::with_config(heap_config)
+        .unwrap_or_else(|error| panic!("Runtime::with_config failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut sentinel = Word::NIL;
+    let sentinel_token = ncl_object::push_root(&mut ctx, &mut sentinel);
+    let roots = vec![Word::NIL; large_root_count];
+    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let mut allocated = 0;
+        while allocated < roots.len() {
+            match allocate(ctx, &runtime, 0x7f, 64) {
+                Ok(value) => {
+                    roots[allocated] = value;
+                    allocated += 1;
+                }
+                Err(ncl_object::ObjectError::Storage(StorageCondition::CapacityExceeded)) => break,
+                Err(error) => return Err(error),
+            }
+        }
+        assert!(allocated > 0);
+        assert!(allocated < roots.len());
+        let double_start = allocated - 1;
+        roots[double_start] = Word::NIL;
+        ctx.collect(true)?;
+
+        let mut doubles = 0;
+        while double_start + doubles < roots.len() {
+            match ncl_object::make_double(ctx, &runtime, 2.0) {
+                Ok(value) => {
+                    roots[double_start + doubles] = value.as_word();
+                    doubles += 1;
+                }
+                Err(ncl_object::ObjectError::Storage(StorageCondition::CapacityExceeded)) => {
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        assert!(doubles > 0);
+        assert!(double_start + doubles < roots.len());
+        roots[double_start + doubles - 1] = Word::NIL;
+        ctx.collect(true)?;
+
+        Ok(HashTable::new_with_options(
+            ctx,
+            &runtime,
+            HashTest::Eql,
+            Weakness::None,
+            Word::fixnum(8),
+            None,
+            None,
+        ))
+    });
+    assert!(matches!(
+        result,
+        Ok(Err(ncl_object::ObjectError::Storage(
+            StorageCondition::CapacityExceeded
+        )))
+    ));
+    assert!(ncl_object::pop_root(&mut ctx, sentinel_token));
+    assert!(ctx.collect(true).is_ok());
+}
+
+#[test]
 fn moved_registered_context_allows_allocation() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

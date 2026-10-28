@@ -2,8 +2,7 @@ use super::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::{
     Bignum, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, bignum_limbs, bignum_sign,
-    classify_object, double_value, finish_root, make_double, ratio_denominator, ratio_numerator,
-    widetag,
+    classify_object, double_value, make_double, ratio_denominator, ratio_numerator, widetag,
 };
 use ncl_sys::Word;
 
@@ -81,34 +80,29 @@ impl HashTable {
             validate_rehash_threshold(ctx, value)?;
         }
         let mut size = size;
-        let size_token = crate::push_root(ctx, &mut size);
-        let mut rehash_size = match rehash_size {
-            Some(value) => value,
-            None => make_double(ctx, runtime, DEFAULT_REHASH_SIZE)?.as_word(),
-        };
-        let rehash_size_token = crate::push_root(ctx, &mut rehash_size);
-        let mut rehash_threshold = match rehash_threshold {
-            Some(value) => value,
-            None => make_double(ctx, runtime, DEFAULT_REHASH_THRESHOLD)?.as_word(),
-        };
-        let rehash_threshold_token = crate::push_root(ctx, &mut rehash_threshold);
-        let result = crate::with_roots(ctx, &[rehash_size, rehash_threshold], |ctx, values| {
-            let [rehash_size, rehash_threshold] = values else {
-                return Err(ObjectError::RootStackCorrupted);
+        crate::with_root(ctx, &mut size, |ctx, _size| {
+            let mut rehash_size = match rehash_size {
+                Some(value) => value,
+                None => make_double(ctx, runtime, DEFAULT_REHASH_SIZE)?.as_word(),
             };
-            Self::allocate(
-                ctx,
-                runtime,
-                test,
-                weakness,
-                capacity,
-                *rehash_size,
-                *rehash_threshold,
-            )
-        });
-        let result = finish_root(ctx, rehash_threshold_token, result);
-        let result = finish_root(ctx, rehash_size_token, result);
-        finish_root(ctx, size_token, result)
+            crate::with_root(ctx, &mut rehash_size, |ctx, rehash_size| {
+                let mut rehash_threshold = match rehash_threshold {
+                    Some(value) => value,
+                    None => make_double(ctx, runtime, DEFAULT_REHASH_THRESHOLD)?.as_word(),
+                };
+                crate::with_root(ctx, &mut rehash_threshold, |ctx, rehash_threshold| {
+                    Self::allocate(
+                        ctx,
+                        runtime,
+                        test,
+                        weakness,
+                        capacity,
+                        rehash_size,
+                        rehash_threshold,
+                    )
+                })
+            })
+        })
     }
 }
 

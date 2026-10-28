@@ -17,6 +17,105 @@ fn eval_builtin_evaluates_a_form() {
 }
 
 #[test]
+fn compile_builtin_reuses_a_named_function_and_returns_three_values() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defun compile-existing-function (x) (+ x 1))",
+    );
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal
+                (multiple-value-list (compile 'compile-existing-function))
+                '(compile-existing-function nil nil))",
+        ),
+        "T"
+    );
+    runtime.set_gc_stress(false);
+    assert_eq!(
+        eval_text(&mut runtime, "(compile-existing-function 41)"),
+        "42"
+    );
+}
+
+#[test]
+fn compile_builtin_replaces_a_named_macro_function() {
+    let mut runtime = new_runtime();
+    eval_text(&mut runtime, "(defmacro compile-existing-macro () 0)");
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal
+                (multiple-value-list
+                    (compile
+                        'compile-existing-macro
+                        '(lambda (form environment) 42)))
+                '(compile-existing-macro nil nil))",
+        ),
+        "T"
+    );
+    runtime.set_gc_stress(false);
+    assert_eq!(eval_text(&mut runtime, "(compile-existing-macro)"), "42");
+}
+
+#[test]
+fn compile_builtin_reuses_a_named_macro_and_returns_name() {
+    let mut runtime = new_runtime();
+    eval_text(&mut runtime, "(defmacro compile-reused-macro () 0)");
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal
+                (multiple-value-list (compile 'compile-reused-macro))
+                '(compile-reused-macro nil nil))",
+        ),
+        "T"
+    );
+    runtime.set_gc_stress(false);
+    assert_eq!(eval_text(&mut runtime, "(compile-reused-macro)"), "0");
+}
+
+#[test]
+fn compile_builtin_compiles_a_named_lambda() {
+    let mut runtime = new_runtime();
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal
+                (multiple-value-list
+                    (compile 'compile-named-lambda '(lambda (x) (+ x 1))))
+                '(compile-named-lambda nil nil))",
+        ),
+        "T"
+    );
+    assert_eq!(eval_text(&mut runtime, "(compile-named-lambda 41)"), "42");
+}
+
+#[test]
+fn compile_builtin_returns_a_function_for_a_nil_name() {
+    let mut runtime = new_runtime();
+    runtime.set_gc_stress(true);
+    runtime.set_strict_forwarding(true);
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(let ((function (compile nil '(lambda (x) (+ x 2)))))
+                (= (funcall function 40) 42))",
+        ),
+        "T"
+    );
+}
+
+#[test]
 fn specialized_array_literals_preserve_values_types_and_identity() {
     let mut runtime = new_runtime();
     let forms = [

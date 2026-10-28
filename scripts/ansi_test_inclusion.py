@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import platform
 import re
@@ -21,7 +23,7 @@ from typing import Any, Mapping, Sequence
 from conformance_scoreboard import SOURCES, checkout_source
 
 
-RESULT_STATUSES = {"passed", "failed", "timeout", "harness_error", "unexecuted"}
+RESULT_STATUSES = {"passed", "failed", "error", "timeout", "harness_error", "unexecuted"}
 PROTOCOL = "ANSI-TEST-SCOREBOARD"
 REMOVED_TEST_NAMES = ("LOAD-PATHNAME.1", "LOAD-TRUENAME.1")
 REMOVED_TEST_FORMS = "(cl-test::load-pathname.1 cl-test::load-truename.1)"
@@ -44,24 +46,56 @@ def _platform_slug(value: str) -> str:
     return value.lower().replace(" ", "-")
 
 
-def _chapter_runner(chapter: str) -> str:
+def shard_for_test(name: str, shard_count: int) -> int:
+    if shard_count < 1:
+        raise ValueError("shard count must be a positive integer")
+    digest = hashlib.sha256(name.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % shard_count
+
+
+def _validate_shard(shard_index: int | None, shard_count: int | None) -> None:
+    if (shard_index is None) != (shard_count is None):
+        raise ValueError("shard index and shard count must be supplied together")
+    if shard_index is not None and shard_count is not None:
+        if shard_count < 1 or not 0 <= shard_index < shard_count:
+            raise ValueError("shard index must be within a positive shard count")
+
+
+def _in_shard(name: str, shard_index: int | None, shard_count: int | None) -> bool:
+    return shard_index is None or shard_for_test(name, shard_count) == shard_index
+
+
+def _lisp_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _test_runner(test_name: str) -> str:
+    test_symbol = _lisp_string(test_name)
     return f'''(defvar *root-path*
   (make-pathname :name nil :type nil :version nil :defaults (truename "init.lsp")))
 (let ((*default-pathname-defaults* *root-path*))
   (load "gclload1.lsp"))
 (let ((*default-pathname-defaults* *root-path*))
-  (load "{chapter}/load.lsp"))
+  (load "gclload2.lsp"))
 (when *load-pathname*
   (mapc #'regression-test:rem-test '{REMOVED_TEST_FORMS}))
-(format *standard-output* "{PROTOCOL}~CBEGIN~C{chapter}~%" #\\Tab #\\Tab)
-(finish-output *standard-output*)
-(regression-test:do-tests :out (make-broadcast-stream) :exit nil)
-(dolist (name regression-test:*passed-tests*)
-  (format *standard-output* "{PROTOCOL}~CPASS~C~A~%" #\\Tab #\\Tab (symbol-name name)))
-(dolist (name regression-test:*failed-tests*)
-  (format *standard-output* "{PROTOCOL}~CFAIL~C~A~%" #\\Tab #\\Tab (symbol-name name)))
-(format *standard-output* "{PROTOCOL}~CDONE~C{chapter}~%" #\\Tab #\\Tab)
-(finish-output *standard-output*)
+(let ((name (find-symbol {test_symbol} "CL-TEST")))
+  (unless (and name (gethash name regression-test::*entries-table*))
+    (error "No registered ANSI test named ~A" {test_symbol}))
+  (format *standard-output* "{PROTOCOL}~CBEGIN~C~A~%" #\\Tab #\\Tab (symbol-name name))
+  (finish-output *standard-output*)
+  (handler-case
+      (let ((passed
+              (let ((*default-pathname-defaults* regression-test::*sandbox-path*))
+                (regression-test:do-test name :catch-errors nil))))
+        (format *standard-output* "{PROTOCOL}~C~A~C~A~%"
+                #\\Tab (if passed "PASS" "FAIL") #\\Tab (symbol-name name)))
+    (error (condition)
+      (handler-case (format *error-output* "~A~%" condition) (error () nil))
+      (format *standard-output* "{PROTOCOL}~CERROR~C~A~%"
+              #\\Tab #\\Tab (symbol-name name))))
+  (format *standard-output* "{PROTOCOL}~CDONE~C~A~%" #\\Tab #\\Tab (symbol-name name))
+  (finish-output *standard-output*))
 '''
 
 
@@ -83,9 +117,8 @@ def _baseline_runner() -> str:
       (load "gclload2.lsp"))
   (when *load-pathname*
     (mapc #'regression-test:rem-test '{REMOVED_TEST_FORMS}))
-  (format *standard-output* "{PROTOCOL}~CBEGIN~Cbaseline~%" #\\Tab #\\Tab)
+  (format *standard-output* "{PROTOCOL}~CBEGIN~Cinventoried~%" #\\Tab #\\Tab)
   (finish-output *standard-output*)
-    (regression-test:do-tests :out (make-broadcast-stream) :exit nil)
   (dolist (entry (cdr regression-test::*entries*))
     (let ((name (regression-test::name entry))
           (source (gethash (regression-test::name entry) sources)))
@@ -93,11 +126,7 @@ def _baseline_runner() -> str:
           (format *standard-output* "{PROTOCOL}~CDISABLED~C~A~%" #\\Tab #\\Tab (symbol-name name))
           (format *standard-output* "{PROTOCOL}~CENTRY~C~A~C~A~%"
                   #\\Tab #\\Tab (symbol-name name) #\\Tab (namestring (truename source))))))
-  (dolist (name regression-test:*passed-tests*)
-    (format *standard-output* "{PROTOCOL}~CPASS~C~A~%" #\\Tab #\\Tab (symbol-name name)))
-  (dolist (name regression-test:*failed-tests*)
-    (format *standard-output* "{PROTOCOL}~CFAIL~C~A~%" #\\Tab #\\Tab (symbol-name name)))
-  (format *standard-output* "{PROTOCOL}~CDONE~Cbaseline~%" #\\Tab #\\Tab)
+  (format *standard-output* "{PROTOCOL}~CDONE~Cinventoried~%" #\\Tab #\\Tab)
   (finish-output *standard-output*)
   (sb-ext:exit :code 0))
 '''
@@ -123,22 +152,29 @@ def _diagnostic(stderr: str, stdout: str) -> str | None:
     return fallback
 
 
-def _parse_records(stdout: str) -> tuple[dict[str, str], dict[str, str], set[str], bool]:
+def _parse_records(stdout: str) -> dict[str, Any]:
     results: dict[str, str] = {}
     sources: dict[str, str] = {}
     disabled: set[str] = set()
-    done = False
+    begun: set[str] = set()
+    done: set[str] = set()
     for line in stdout.splitlines():
         if not line.startswith(PROTOCOL + "\t"):
             continue
         parts = line.split("\t")
         if len(parts) == 3 and parts[1] == "DONE":
-            done = True
-        elif len(parts) == 3 and parts[1] in ("PASS", "FAIL"):
+            if parts[2] in done:
+                raise ValueError(f"duplicate completion marker: {parts[2]}")
+            done.add(parts[2])
+        elif len(parts) == 3 and parts[1] == "BEGIN":
+            if parts[2] in begun:
+                raise ValueError(f"duplicate begin marker: {parts[2]}")
+            begun.add(parts[2])
+        elif len(parts) == 3 and parts[1] in ("PASS", "FAIL", "ERROR"):
             name = parts[2]
             if name in results:
                 raise ValueError(f"duplicate test result: {name}")
-            results[name] = "passed" if parts[1] == "PASS" else "failed"
+            results[name] = {"PASS": "passed", "FAIL": "failed", "ERROR": "error"}[parts[1]]
         elif len(parts) == 4 and parts[1] == "ENTRY":
             if parts[2] in sources:
                 raise ValueError(f"duplicate test source: {parts[2]}")
@@ -147,7 +183,9 @@ def _parse_records(stdout: str) -> tuple[dict[str, str], dict[str, str], set[str
             if parts[2] in disabled:
                 raise ValueError(f"duplicate disabled test: {parts[2]}")
             disabled.add(parts[2])
-    return results, sources, disabled, done
+        else:
+            raise ValueError(f"invalid ANSI test protocol record: {line[:160]}")
+    return {"results": results, "sources": sources, "disabled": disabled, "begun": begun, "done": done}
 
 
 def _run_process(
@@ -197,35 +235,113 @@ def _chapter_for_source(source: str, root: Path) -> str:
     return relative.parent.as_posix()
 
 
-def measure_baseline(command: Sequence[str], source: Path, timeout: float) -> dict[str, Any]:
-    process_status, stdout, stderr, returncode = _run_process(
-        command, source, _baseline_runner(), timeout=timeout,
-    )
-    if process_status != "process" or returncode != 0:
-        raise RuntimeError(_diagnostic(stderr, stdout) or process_status)
-    results, sources, disabled, done = _parse_records(stdout)
-    if not done:
-        raise RuntimeError(_diagnostic(stderr, stdout) or "SBCL runner did not finish")
-    if set(results) != set(sources) or set(results) & disabled or set(sources) & disabled:
-        raise RuntimeError("SBCL results do not match active registered test names")
-    tests = [
-        {"name": name, "chapter": _chapter_for_source(sources[name], source), "status": status}
-        for name, status in results.items()
+def _copy_suite_tree(source: Path, destination: Path) -> None:
+    source = source.resolve()
+
+    def ignore_artifacts(directory: str, names: list[str]) -> set[str]:
+        ignored = {
+            name for name in names
+            if name == ".git" or name.lower().endswith(".fasl")
+        }
+        if Path(directory).resolve() == (source / "sandbox").resolve():
+            ignored.add("scratch")
+        return ignored
+
+    shutil.copytree(source, destination, ignore=ignore_artifacts)
+
+
+def _run_test_batch(
+    command: Sequence[str],
+    source: Path,
+    tests: Sequence[tuple[str, str]],
+    timeout: float,
+) -> list[dict[str, Any]]:
+    return [
+        _run_test(command, source, name, chapter, timeout)
+        for name, chapter in tests
     ]
+
+
+def _run_test_rows(
+    command: Sequence[str],
+    source: Path,
+    tests: Sequence[tuple[str, str]],
+    timeout: float,
+    jobs: int,
+) -> list[dict[str, Any]]:
+    if jobs < 1:
+        raise ValueError("jobs must be a positive integer")
+    if not tests:
+        return []
+    worker_count = min(jobs, len(tests))
+    with tempfile.TemporaryDirectory(prefix="ansi-test-workers-") as directory:
+        worker_sources = []
+        batches = []
+        for index in range(worker_count):
+            worker_source = Path(directory) / f"worker-{index}"
+            _copy_suite_tree(source, worker_source)
+            worker_sources.append(worker_source)
+            batches.append(tests[index::worker_count])
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = [
+                executor.submit(_run_test_batch, command, worker_source, batch, timeout)
+                for worker_source, batch in zip(worker_sources, batches)
+            ]
+            rows = [row for future in futures for row in future.result()]
+    rows.sort(key=lambda row: (row["chapter"], row["name"]))
+    return rows
+
+
+def measure_baseline(
+    command: Sequence[str], source: Path, timeout: float, jobs: int = 1,
+    shard_index: int | None = None, shard_count: int | None = None,
+) -> dict[str, Any]:
+    _validate_shard(shard_index, shard_count)
+    with tempfile.TemporaryDirectory(prefix="ansi-test-inventory-") as directory:
+        inventory_source = Path(directory) / "ansi-test"
+        _copy_suite_tree(source, inventory_source)
+        process_status, stdout, stderr, returncode = _run_process(
+            command, inventory_source, _baseline_runner(), timeout=timeout,
+        )
+        if process_status != "process" or returncode != 0:
+            raise RuntimeError(_diagnostic(stderr, stdout) or process_status)
+        records = _parse_records(stdout)
+        sources = records["sources"]
+        disabled = records["disabled"]
+        if records["begun"] != {"inventoried"} or records["done"] != {"inventoried"}:
+            raise RuntimeError(_diagnostic(stderr, stdout) or "SBCL runner did not finish")
+        if records["results"] or set(sources) & disabled:
+            raise RuntimeError("SBCL inventory returned test results or duplicate active names")
+        manifest = [
+            {"name": name, "chapter": _chapter_for_source(filename, inventory_source)}
+            for name, filename in sources.items()
+        ]
+        manifest.sort(key=lambda test: (test["chapter"], test["name"]))
+        test_chapters = [
+            (name, _chapter_for_source(filename, inventory_source))
+            for name, filename in sources.items()
+            if _in_shard(name, shard_index, shard_count)
+        ]
+    tests = _run_test_rows(command, source, test_chapters, timeout, jobs)
     tests.sort(key=lambda row: (row["chapter"], row["name"]))
     report = _measurement(
         "sbcl", command, source, tests,
         len(sources) + len(disabled) + len(REMOVED_TEST_NAMES), stdout, stderr,
     )
-    report["active"] = len(sources)
+    report["active"] = len(tests)
+    report["active_total"] = len(sources)
     report["disabled"] = len(disabled)
     report["disabled_tests"] = sorted(disabled)
     report["removed"] = len(REMOVED_TEST_NAMES)
+    report["manifest"] = manifest
     report["process_exit_status"] = returncode
-    report["unexecuted"] = len(sources) - len(results)
+    report["unexecuted"] = sum(test["status"] == "unexecuted" for test in tests)
     report["status"] = "complete"
-    if report["registered"] != report["active"] + report["disabled"] + report["removed"]:
+    if report["registered"] != report["active_total"] + report["disabled"] + report["removed"]:
         raise RuntimeError("SBCL registration counts do not balance")
+    if shard_index is not None:
+        report["shard_index"] = shard_index
+        report["shard_count"] = shard_count
     return report
 
 
@@ -233,7 +349,7 @@ def _measurement(
     implementation: str,
     command: Sequence[str],
     source: Path,
-    tests: list[dict[str, str]],
+    tests: list[dict[str, Any]],
     registered: int,
     stdout: str,
     stderr: str,
@@ -248,14 +364,20 @@ def _measurement(
         "measured_on": date.today().isoformat(),
         "source_commit": SOURCES["ansi-test"]["commit"],
         "registered": registered,
-        "active": registered,
+        "active": len(tests),
         "disabled": 0,
         "passed": counts["passed"],
         "failed": counts["failed"],
+        "error": counts["error"],
+        "timeout": counts["timeout"],
+        "harness_error": counts["harness_error"],
         "unexecuted": max(0, registered - len(tests)),
         "status": "complete",
         "tests": tests,
-        "first_error": _diagnostic(stderr, stdout),
+        "first_error": next(
+            (test.get("reason") for test in tests if test.get("reason")),
+            _diagnostic(stderr, stdout),
+        ),
     }
 
 
@@ -271,84 +393,96 @@ def _runtime_version(command: Sequence[str]) -> str:
     return first_line[:120] if result.returncode == 0 and first_line else "unknown"
 
 
-def measure_chapters(
+def _run_test(
     command: Sequence[str],
     source: Path,
-    expected_chapters: Mapping[str, str],
+    name: str,
+    chapter: str,
+    timeout: float,
+) -> dict[str, Any]:
+    process_status, stdout, stderr, returncode = _run_process(
+        command, source, _test_runner(name), timeout=timeout,
+    )
+    diagnostic = _diagnostic(stderr, stdout)
+    status: str
+    reason: str | None = None
+    if process_status == "timeout":
+        status, reason = "timeout", diagnostic or f"test exceeded {timeout:g} seconds"
+    elif process_status == "harness_error":
+        status, reason = "harness_error", diagnostic or "could not start the interpreter"
+    else:
+        try:
+            records = _parse_records(stdout)
+        except ValueError as error:
+            records = {"results": {}, "begun": set(), "done": set()}
+            parse_error = str(error)
+        else:
+            parse_error = None
+        result = records["results"].get(name)
+        began = name in records["begun"]
+        completed = name in records["done"]
+        if not began:
+            if returncode not in (None, 0) or diagnostic:
+                status = "error"
+                reason = parse_error or diagnostic or f"interpreter exited with status {returncode} before test start"
+            else:
+                status, reason = "harness_error", parse_error or "test runner did not start the requested test"
+        elif returncode != 0:
+            status = "error"
+            reason = diagnostic or f"interpreter exited with status {returncode}"
+        elif parse_error:
+            status, reason = "error", parse_error
+        elif not completed or result is None:
+            status, reason = "error", diagnostic or "test runner stopped before reporting an outcome"
+        elif records["begun"] != {name} or records["done"] != {name} or set(records["results"]) != {name}:
+            status, reason = "error", "test runner returned markers for an unexpected test"
+        else:
+            status = result
+            if status == "error":
+                reason = diagnostic or "ansi-test signaled an error"
+            elif status == "failed":
+                reason = diagnostic or "ansi-test reported a test failure"
+    row: dict[str, Any] = {"name": name, "chapter": chapter, "status": status}
+    if reason:
+        row["reason"] = reason
+    if returncode is not None:
+        row["process_exit_status"] = returncode
+    return row
+
+
+def measure_tests(
+    command: Sequence[str],
+    source: Path,
+    expected_tests: Mapping[str, str],
     timeout: float,
     implementation: str,
+    selected_test: str | None = None,
+    jobs: int = 1,
+    shard_index: int | None = None,
+    shard_count: int | None = None,
 ) -> dict[str, Any]:
-    loaders = sorted({chapter.split("/", 1)[0] for chapter in expected_chapters.values()})
-    observed: dict[str, str] = {}
-    chapter_records: list[dict[str, Any]] = []
-    for loader in loaders:
-        status, stdout, stderr, returncode = _run_process(
-            command, source, _chapter_runner(loader), timeout=timeout,
-        )
-        parsed: dict[str, str] = {}
-        done = False
-        parse_error: str | None = None
-        try:
-            parsed, _, _, done = _parse_records(stdout)
-        except ValueError as error:
-            parse_error = str(error)
-        names = [name for name, chapter in expected_chapters.items() if chapter.split("/", 1)[0] == loader]
-        if status == "timeout":
-            chapter_status = "timeout"
-            error_text = f"chapter exceeded {timeout:g} seconds"
-        elif status == "harness_error":
-            chapter_status = "harness_error"
-            error_text = _diagnostic(stderr, stdout) or "could not start the interpreter"
-        elif returncode != 0 or not done or parse_error:
-            chapter_status = "harness_error"
-            error_text = parse_error or _diagnostic(stderr, stdout) or "chapter runner did not finish successfully"
-        else:
-            chapter_status = "complete"
-            error_text = None
-        for name in names:
-            if chapter_status == "timeout":
-                observed[name] = "timeout"
-            elif chapter_status == "harness_error":
-                observed[name] = "harness_error"
-            else:
-                observed[name] = parsed.get(name, "unexecuted")
-        chapter_records.append({
-            "chapter": loader,
-            "status": chapter_status,
-            "expected": len(names),
-            "first_error": error_text,
-        })
-    tests = [
-        {
-            "name": name,
-            "chapter": chapter,
-            "status": observed.get(name, "unexecuted"),
-        }
-        for name, chapter in expected_chapters.items()
-    ]
-    tests.sort(key=lambda row: (row["chapter"], row["name"]))
-    counts = Counter(test["status"] for test in tests)
-    result = {
-        "schema_version": 1,
-        "suite": "ansi-test",
-        "implementation": implementation,
-        "runtime_version": _runtime_version(command),
-        "platform": _platform_name(),
-        "measured_on": date.today().isoformat(),
-        "source_commit": SOURCES["ansi-test"]["commit"],
-        "registered": len(tests),
-        "active": len(tests),
-        "disabled": 0,
-        "passed": counts["passed"],
-        "failed": counts["failed"],
-        "unexecuted": counts["unexecuted"],
-        "timeout": counts["timeout"],
-        "harness_error": counts["harness_error"],
-        "status": "complete" if all(row["status"] == "complete" for row in chapter_records) else "partial",
-        "chapters": chapter_records,
-        "tests": tests,
-        "first_error": next((row["first_error"] for row in chapter_records if row["first_error"]), None),
+    _validate_shard(shard_index, shard_count)
+    if selected_test is not None and shard_index is not None:
+        raise ValueError("a named test cannot be combined with shard selection")
+    if selected_test is not None and selected_test not in expected_tests:
+        raise ValueError(f"test is not in the SBCL passing baseline: {selected_test}")
+    selected = {selected_test: expected_tests[selected_test]} if selected_test is not None else {
+        name: chapter for name, chapter in expected_tests.items()
+        if _in_shard(name, shard_index, shard_count)
     }
+    tests = _run_test_rows(command, source, list(selected.items()), timeout, jobs)
+    result = _measurement(
+        implementation, command, source, tests, len(selected), "", "",
+    )
+    result["registered"] = len(selected)
+    result["active"] = len(selected)
+    result["unexecuted"] = sum(test["status"] == "unexecuted" for test in tests)
+    result["status"] = "complete"
+    if selected_test is not None:
+        result["selected_test"] = selected_test
+    if shard_index is not None:
+        result["shard_index"] = shard_index
+        result["shard_count"] = shard_count
     return result
 
 
@@ -371,13 +505,25 @@ def load_baseline(path: Path) -> dict[str, str]:
     return chapters
 
 
-def compare_results(baseline: Mapping[str, str], observed: Mapping[str, str]) -> dict[str, Any]:
+def compare_results(
+    baseline: Mapping[str, str],
+    observed: Mapping[str, str | Mapping[str, Any]],
+) -> dict[str, Any]:
     rows = []
     for name, chapter in sorted(baseline.items(), key=lambda item: (item[1], item[0])):
-        status = observed.get(name, "unexecuted")
+        result = observed.get(name, "unexecuted")
+        if isinstance(result, Mapping):
+            status = result.get("status", "unexecuted")
+            reason = result.get("reason")
+        else:
+            status = result
+            reason = None
         if status not in RESULT_STATUSES:
             raise ValueError(f"invalid test result status: {status}")
-        rows.append({"name": name, "chapter": chapter, "status": status})
+        row = {"name": name, "chapter": chapter, "status": status}
+        if reason:
+            row["reason"] = str(reason)
+        rows.append(row)
     t_ansi = [row for row in rows if row["status"] != "passed"]
     by_chapter: dict[str, Counter[str]] = {}
     for row in t_ansi:
@@ -441,11 +587,6 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- ansi-test commit: `{report['source_commit']}`",
         f"- Measurement status: {report['status']}",
     ])
-    if report["status"] == "partial":
-        lines.extend([
-            "",
-            "Partial means one or more chapter loaders did not finish. Tests under those loaders are listed as `harness_error` or `timeout`.",
-        ])
     if comparison is None:
         lines.extend(["", "ANSI inclusion comparison: unmeasured because no same-day SBCL 2.6.0 baseline was supplied."])
         return "\n".join(lines) + "\n"
@@ -457,25 +598,27 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "",
         "## T-ANSI by chapter",
         "",
-        "| Chapter | Failed | Timeout | Harness error | Unexecuted |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| Chapter | Failed | Error | Timeout | Harness error | Unexecuted |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ])
     if comparison["by_chapter"]:
         for chapter, counts in comparison["by_chapter"].items():
             lines.append(
-                f"| {chapter} | {counts.get('failed', 0)} | {counts.get('timeout', 0)} | "
-                f"{counts.get('harness_error', 0)} | {counts.get('unexecuted', 0)} |"
+                f"| {chapter} | {counts.get('failed', 0)} | {counts.get('error', 0)} | "
+                f"{counts.get('timeout', 0)} | {counts.get('harness_error', 0)} | "
+                f"{counts.get('unexecuted', 0)} |"
             )
     else:
-        lines.append("| none | 0 | 0 | 0 | 0 |")
-    lines.extend(["", "## T-ANSI tests", "", "| Test | Chapter | Status |", "| --- | --- | --- |"])
+        lines.append("| none | 0 | 0 | 0 | 0 | 0 |")
+    lines.extend(["", "## T-ANSI tests", "", "| Test | Chapter | Status | Reason |", "| --- | --- | --- | --- |"])
     if comparison["t_ansi"]:
         for row in comparison["t_ansi"]:
-            lines.append(f"| `{row['name']}` | {row['chapter']} | {row['status']} |")
+            reason = str(row.get("reason", "")).replace("|", "\\|").replace("\n", " ")
+            lines.append(f"| `{row['name']}` | {row['chapter']} | {row['status']} | {reason} |")
     else:
-        lines.append("| none | - | - |")
+        lines.append("| none | - | - | - |")
     if report.get("first_error"):
-        lines.extend(["", f"First harness error: {report['first_error']}"])
+        lines.extend(["", f"First recorded error: {report['first_error']}"])
     return "\n".join(lines) + "\n"
 
 
@@ -538,6 +681,9 @@ def _write_baseline_files(report: Mapping[str, Any], output_prefix: Path) -> Non
         f"- Disabled by an ANSI-Test note: {report['disabled']}",
         f"- Passed: {report['passed']}",
         f"- Failed: {report['failed']}",
+        f"- Error: {report['error']}",
+        f"- Timed out: {report['timeout']}",
+        f"- Harness errors: {report['harness_error']}",
         f"- Unexecuted active tests: {report['unexecuted']}",
     ]
     metadata.extend([
@@ -570,11 +716,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         sub.add_argument("--command", required=True, help="interpreter command prefix, for example 'sbcl --script'")
         sub.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
         sub.add_argument("--timeout", type=float, default=900.0, help="process timeout in seconds")
+        sub.add_argument("--jobs", type=int, default=1, help="maximum concurrent per-test processes")
+        sub.add_argument("--shard-index", type=int, help="zero-based deterministic shard index")
+        sub.add_argument("--shard-count", type=int, help="total number of deterministic shards")
         if action == "baseline":
             sub.add_argument("--output-prefix", type=Path)
             sub.add_argument("--report", type=Path, help="write the complete SBCL result JSON")
         if action == "compare":
             sub.add_argument("--baseline", type=Path, required=True, help="SBCL pass-name .txt file")
+            sub.add_argument("--test", help="run one named test from the SBCL passing baseline")
         if action != "baseline":
             sub.add_argument("--format", choices=("json", "markdown"), default="json")
             sub.add_argument("--output", type=Path)
@@ -606,7 +756,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             version = _runtime_version(command)
             if version != "SBCL 2.6.0":
                 raise ValueError(f"baseline generation requires SBCL 2.6.0, got {version}")
-            report = measure_baseline(command, source, args.timeout)
+            report = measure_baseline(
+                command, source, args.timeout, args.jobs,
+                args.shard_index, args.shard_count,
+            )
             prefix = args.output_prefix or Path(
                 f"conformance/baselines/ansi-test-sbcl-2.6.0-{_platform_slug(report['platform'])}"
             )
@@ -616,7 +769,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 print(json.dumps({key: report[key] for key in (
                     "measured_on", "platform", "runtime_version", "registered", "active", "disabled",
-                    "removed", "process_exit_status", "passed", "failed", "unexecuted",
+                    "removed", "process_exit_status", "passed", "failed", "error", "timeout",
+                    "harness_error", "unexecuted",
                 )}, indent=2, sort_keys=True))
             return 0
         expected = load_baseline(args.baseline)
@@ -624,9 +778,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "measured_on": date.today().isoformat(),
             "platform": _platform_name(),
         })
-        report = measure_chapters(command, source, expected, args.timeout, "ncl")
-        observed = {test["name"]: test["status"] for test in report["tests"]}
-        report["comparison"] = compare_results(expected, observed)
+        report = measure_tests(
+            command, source, expected, args.timeout, "ncl", getattr(args, "test", None), args.jobs,
+            args.shard_index, args.shard_count,
+        )
+        observed = {test["name"]: test for test in report["tests"]}
+        comparison_baseline = {name: expected[name] for name in observed}
+        report["comparison"] = compare_results(comparison_baseline, observed)
         _write_output(report, args.output, args.format)
         return comparison_exit_status(report["comparison"])
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:

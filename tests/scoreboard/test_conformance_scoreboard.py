@@ -2,7 +2,10 @@ import importlib.util
 import json
 import subprocess
 import sys
+import threading
 import unittest
+from collections import Counter
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -20,6 +23,12 @@ inclusion = importlib.util.module_from_spec(inclusion_spec)
 assert inclusion_spec.loader is not None
 sys.modules[inclusion_spec.name] = inclusion
 inclusion_spec.loader.exec_module(inclusion)
+MERGE_PATH = Path(__file__).parents[2] / "scripts" / "merge_ansi_test_shards.py"
+merge_spec = importlib.util.spec_from_file_location("merge_ansi_test_shards", MERGE_PATH)
+merge = importlib.util.module_from_spec(merge_spec)
+assert merge_spec.loader is not None
+sys.modules[merge_spec.name] = merge
+merge_spec.loader.exec_module(merge)
 
 
 class ScoreboardTests(unittest.TestCase):
@@ -166,12 +175,77 @@ class ScoreboardTests(unittest.TestCase):
     def test_json_and_markdown_outputs_include_counts_mean_and_commit(self):
         ansi = scoreboard.ProcessResult("passed", 0)
         bench = scoreboard.ProcessResult("passed", 0)
-        result = scoreboard.make_scoreboard(ansi, {"passed": 3, "failed": 1, "unexecuted": 2}, bench, [1, 4])
+        ansi_report = {
+            "error": 1,
+            "tests": [{"name": "A.1", "status": "error", "reason": "type error"}],
+            "comparison": {"t_ansi": [{"name": "A.1", "status": "error"}]},
+        }
+        result = scoreboard.make_scoreboard(
+            ansi, {"passed": 3, "failed": 1, "unexecuted": 2}, bench, [1, 4], ansi_report,
+        )
         self.assertEqual(result["ansi-test"]["failed"], 1)
+        self.assertEqual(result["ansi-test"]["error"], 1)
+        self.assertEqual(result["ansi-test"]["tests"][0]["reason"], "type error")
+        self.assertEqual(result["ansi-test"]["comparison"]["t_ansi"][0]["status"], "error")
         self.assertAlmostEqual(result["cl-bench"]["geometric_mean"], 2)
         markdown = scoreboard.render_markdown(result)
         self.assertIn("3 passed, 1 failed, 2 unexecuted", markdown)
+        self.assertIn("type error", markdown)
         self.assertIn(scoreboard.SOURCES["cl-bench"]["commit"], markdown)
+
+    def test_scoreboard_accepts_merged_ansi_report_directly(self):
+        ansi_report = {
+            "status": "complete",
+            "measured_on": "2026-10-17",
+            "passed": 0,
+            "failed": 0,
+            "error": 1,
+            "timeout": 0,
+            "harness_error": 0,
+            "unexecuted": 0,
+            "tests": [{
+                "name": "A.1", "chapter": "arrays", "status": "error",
+                "reason": "ReadEvalUnavailable", "process_exit_status": 1,
+            }],
+            "comparison": {
+                "expected": 1, "passed": 0, "t_ansi_count": 1,
+                "t_ansi": [{"name": "A.1", "chapter": "arrays", "status": "error", "reason": "ReadEvalUnavailable"}],
+                "by_chapter": {"arrays": {"error": 1}},
+            },
+        }
+        with TemporaryDirectory() as directory:
+            report_path = Path(directory) / "ansi.json"
+            report_path.write_text(json.dumps(ansi_report), encoding="utf-8")
+            with patch.object(scoreboard, "checkout_source", return_value=Path(directory)) as checkout:
+                with patch.object(
+                    scoreboard, "run_command",
+                    return_value=scoreboard.ProcessResult(
+                        "passed", 0, json.dumps({
+                            "status": "passed",
+                            "times": [1.0],
+                            "benchmarks": {
+                                "ACKERMANN": {
+                                    "status": "passed",
+                                    "stage": "finish",
+                                    "times": [1.0],
+                                    "condition": None,
+                                },
+                            },
+                        }),
+                    ),
+                ):
+                    with patch.object(sys, "stdout") as stdout:
+                        status = scoreboard.main([
+                            "--ansi-report", str(report_path), "--cl-bench-command", "bench",
+                        ])
+
+        result = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(status, 0)
+        self.assertEqual(checkout.call_args.args[0], "cl-bench")
+        self.assertEqual(result["measured_on"], "2026-10-17")
+        self.assertEqual(result["ansi-test"]["status"], "failed")
+        self.assertEqual(result["ansi-test"]["tests"][0]["process_exit_status"], 1)
+        self.assertEqual(result["ansi-test"]["comparison"]["t_ansi_count"], 1)
 
     def test_empty_benchmark_samples_are_reported_without_a_mean(self):
         ansi = scoreboard.ProcessResult("passed", 0)
@@ -186,21 +260,294 @@ class ScoreboardTests(unittest.TestCase):
             source_file = source / "printer" / "format" / "format.lsp"
             source_file.parent.mkdir(parents=True)
             source_file.write_text("", encoding="utf-8")
-            stdout = "\n".join((
-                f"{inclusion.PROTOCOL}\tENTRY\tA.1\t{source_file}",
-                f"{inclusion.PROTOCOL}\tPASS\tA.1",
-                f"{inclusion.PROTOCOL}\tDONE\tbaseline",
-            ))
-            with patch.object(inclusion, "_run_process", return_value=("process", stdout, "", 0)):
-                with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.0"):
-                    report = inclusion.measure_baseline(["sbcl", "--script"], source, 1)
+
+            def run_inventory(command, inventory_source, runner_text, *, timeout):
+                del command, runner_text, timeout
+                stdout = "\n".join((
+                    f"{inclusion.PROTOCOL}\tBEGIN\tinventoried",
+                    f"{inclusion.PROTOCOL}\tENTRY\tA.1\t{inventory_source / 'printer' / 'format' / 'format.lsp'}",
+                    f"{inclusion.PROTOCOL}\tDONE\tinventoried",
+                ))
+                return "process", stdout, "", 0
+
+            with patch.object(inclusion, "_run_process", side_effect=run_inventory):
+                with patch.object(
+                    inclusion, "_run_test",
+                    return_value={"name": "A.1", "chapter": "printer/format", "status": "passed", "process_exit_status": 0},
+                ):
+                    with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.0"):
+                        report = inclusion.measure_baseline(["sbcl", "--script"], source, 1)
 
         self.assertEqual(
             report["tests"],
-            [{"name": "A.1", "chapter": "printer/format", "status": "passed"}],
+            [{"name": "A.1", "chapter": "printer/format", "status": "passed", "process_exit_status": 0}],
         )
         self.assertEqual(report["registered"], 3)
         self.assertEqual(report["unexecuted"], 0)
+        self.assertEqual(report["active_total"], 1)
+        self.assertEqual(report["manifest"], [{"name": "A.1", "chapter": "printer/format"}])
+
+    def test_shard_assignment_is_deterministic_and_covers_each_test_once(self):
+        names = [f"ANSI.TEST.{index}" for index in range(200)]
+        shards = [
+            {name for name in names if inclusion.shard_for_test(name, 32) == shard}
+            for shard in range(32)
+        ]
+
+        self.assertEqual(inclusion.shard_for_test("ARRAYS.1", 32), inclusion.shard_for_test("ARRAYS.1", 32))
+        self.assertEqual(set().union(*shards), set(names))
+        self.assertEqual(sum(map(len, shards)), len(names))
+        with self.assertRaisesRegex(ValueError, "positive"):
+            inclusion.shard_for_test("ARRAYS.1", 0)
+
+    def test_test_measurement_selects_only_its_stable_shard(self):
+        expected = {f"T.{index}": "arrays" for index in range(20)}
+        shard_index, shard_count = 3, 7
+        selected = sorted(
+            name for name in expected
+            if inclusion.shard_for_test(name, shard_count) == shard_index
+        )
+        with TemporaryDirectory() as directory:
+            with patch.object(
+                inclusion, "_run_test",
+                side_effect=lambda command, source, name, chapter, timeout: {
+                    "name": name, "chapter": chapter, "status": "passed",
+                    "process_exit_status": 0,
+                },
+            ) as run_test:
+                with patch.object(inclusion, "_runtime_version", return_value="NCL"):
+                    report = inclusion.measure_tests(
+                        ["ncl"], Path(directory), expected, 1, "ncl",
+                        shard_index=shard_index, shard_count=shard_count,
+                    )
+
+        self.assertEqual(run_test.call_count, len(selected))
+        self.assertEqual([row["name"] for row in report["tests"]], selected)
+        self.assertEqual(report["shard_index"], shard_index)
+        self.assertEqual(report["shard_count"], shard_count)
+
+    def _write_shard_fixtures(self, root: Path, shard_count: int = 2):
+        names = [f"T.{index}" for index in range(20)]
+        manifest = [
+            {"name": name, "chapter": "arrays" if index % 2 else "symbols"}
+            for index, name in enumerate(names)
+        ]
+        manifest.sort(key=lambda row: (row["chapter"], row["name"]))
+        manifest_map = {row["name"]: row["chapter"] for row in manifest}
+        baseline_rows = {}
+        for index in range(shard_count):
+            baseline_rows[index] = [
+                {
+                    "name": name,
+                    "chapter": chapter,
+                    "status": "failed" if name == "T.19" else "passed",
+                    "process_exit_status": 0,
+                    **({"reason": "SBCL assertion"} if name == "T.19" else {}),
+                }
+                for name, chapter in manifest_map.items()
+                if inclusion.shard_for_test(name, shard_count) == index
+            ]
+        baseline_passes = {
+            name: chapter for name, chapter in manifest_map.items()
+            if name != "T.19"
+        }
+        for index in range(shard_count):
+            artifact = root / f"ansi-shard-{index}"
+            artifact.mkdir(parents=True)
+            sbcl_rows = baseline_rows[index]
+            sbcl_counts = Counter(row["status"] for row in sbcl_rows)
+            sbcl_report = {
+                "schema_version": 1, "suite": "ansi-test", "implementation": "sbcl",
+                "runtime_version": "SBCL 2.6.0", "platform": inclusion._platform_name(),
+                "measured_on": date.today().isoformat(),
+                "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "registered": len(manifest) + len(inclusion.REMOVED_TEST_NAMES),
+                "active": len(sbcl_rows), "active_total": len(manifest), "disabled": 0,
+                "disabled_tests": [], "removed": len(inclusion.REMOVED_TEST_NAMES),
+                "status": "complete", "tests": sbcl_rows,
+                "manifest": manifest, "process_exit_status": 0,
+                "unexecuted": sbcl_counts["unexecuted"], "shard_index": index,
+                "shard_count": shard_count,
+                **{status: sbcl_counts[status] for status in merge.COUNTED_STATUSES},
+            }
+            ncl_expected = {
+                name: chapter for name, chapter in baseline_passes.items()
+                if inclusion.shard_for_test(name, shard_count) == index
+            }
+            ncl_rows = [
+                {
+                    "name": name, "chapter": chapter,
+                    "status": "error" if name == "T.0" else "passed",
+                    "process_exit_status": -11 if name == "T.0" else 0,
+                    **({"reason": "segmentation fault"} if name == "T.0" else {}),
+                }
+                for name, chapter in ncl_expected.items()
+            ]
+            ncl_counts = Counter(row["status"] for row in ncl_rows)
+            ncl_report = {
+                "schema_version": 1, "suite": "ansi-test", "implementation": "ncl",
+                "runtime_version": "NCL", "platform": inclusion._platform_name(),
+                "measured_on": date.today().isoformat(),
+                "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "registered": len(ncl_rows), "active": len(ncl_rows),
+                "status": "complete", "tests": ncl_rows,
+                "shard_index": index, "shard_count": shard_count,
+                "unexecuted": ncl_counts["unexecuted"],
+                **{status: ncl_counts[status] for status in merge.COUNTED_STATUSES},
+                "comparison": inclusion.compare_results(ncl_expected, {row["name"]: row for row in ncl_rows}),
+            }
+            (artifact / "sbcl-report.json").write_text(json.dumps(sbcl_report), encoding="utf-8")
+            (artifact / "ncl-report.json").write_text(json.dumps(ncl_report), encoding="utf-8")
+            (artifact / "ncl-exit-status").write_text(
+                str(inclusion.comparison_exit_status(ncl_report["comparison"])), encoding="utf-8",
+            )
+        return baseline_passes
+
+    def test_merge_shards_writes_complete_baseline_and_comparison_reports(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = self._write_shard_fixtures(root)
+            baseline_prefix = root / "baseline" / "ansi-test-sbcl-2.6.0-linux-x86_64"
+            baseline_json = root / "baseline-report.json"
+            comparison_json = root / "ncl-report.json"
+
+            baseline, comparison = merge.merge_shards(
+                root, 2, baseline_prefix, baseline_json, comparison_json,
+            )
+            self.assertEqual(inclusion.load_baseline(Path(str(baseline_prefix) + ".txt")), expected)
+            self.assertEqual(baseline["active_total"], 20)
+            self.assertEqual(baseline["failed"], 1)
+            self.assertEqual(comparison["comparison"]["expected"], len(expected))
+            self.assertEqual(comparison["comparison"]["t_ansi_count"], 1)
+            error_row = next(row for row in comparison["tests"] if row["name"] == "T.0")
+            self.assertEqual(error_row["reason"], "segmentation fault")
+            self.assertEqual(error_row["process_exit_status"], -11)
+            self.assertEqual(json.loads(baseline_json.read_text(encoding="utf-8"))["registered"], 22)
+            self.assertEqual(json.loads(comparison_json.read_text(encoding="utf-8"))["passed"], len(expected) - 1)
+
+    def test_merge_shards_rejects_missing_source_date_and_platform_mismatches(self):
+        mutations = (
+            ("source commit", lambda report: report.update(source_commit="wrong")),
+            ("measurement date", lambda report: report.update(measured_on="1900-01-01")),
+            ("platform", lambda report: report.update(platform="different platform")),
+        )
+        for expected_message, mutate in mutations:
+            with self.subTest(expected_message=expected_message), TemporaryDirectory() as directory:
+                root = Path(directory)
+                self._write_shard_fixtures(root)
+                report_path = root / "ansi-shard-1" / "sbcl-report.json"
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                mutate(report)
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    merge.merge_shards(
+                        root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                    )
+
+    def test_merge_shards_rejects_baseline_shard_without_passes(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_shard_fixtures(root)
+            report_path = root / "ansi-shard-0" / "sbcl-report.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            for index, row in enumerate(report["tests"]):
+                row["status"] = "timeout" if index % 2 == 0 else "error"
+            counts = Counter(row["status"] for row in report["tests"])
+            report.update({status: counts[status] for status in merge.COUNTED_STATUSES})
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+
+            baseline_prefix = root / "baseline"
+            with self.assertRaisesRegex(ValueError, "no passed tests"):
+                merge.merge_shards(
+                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json",
+                )
+            self.assertFalse(Path(str(baseline_prefix) + ".txt").exists())
+            self.assertFalse((root / "baseline.json").exists())
+            self.assertFalse((root / "comparison.json").exists())
+
+    def test_merge_shards_rejects_missing_and_duplicate_rows(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_shard_fixtures(root)
+            (root / "ansi-shard-1" / "ncl-report.json").unlink()
+            with self.assertRaises(FileNotFoundError):
+                merge.merge_shards(
+                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                )
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_shard_fixtures(root)
+            report_path = root / "ansi-shard-0" / "sbcl-report.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["tests"].append(report["tests"][0])
+            report["active"] += 1
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                merge.merge_shards(
+                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                )
+
+    def test_merge_shards_checks_comparison_exit_status_before_writing_baseline(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_shard_fixtures(root)
+            error_shard = inclusion.shard_for_test("T.0", 2)
+            (root / f"ansi-shard-{error_shard}" / "ncl-exit-status").write_text("0\n", encoding="utf-8")
+            baseline_prefix = root / "baseline"
+            with self.assertRaisesRegex(ValueError, "process exit status"):
+                merge.merge_shards(
+                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json",
+                )
+            self.assertFalse(Path(str(baseline_prefix) + ".txt").exists())
+
+    def test_parallel_workers_use_clean_copies_and_return_sorted_rows(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "ansi-test"
+            (source / "sandbox" / "scratch").mkdir(parents=True)
+            (source / "sandbox" / "scratch" / "leftover.txt").write_text("stale", encoding="utf-8")
+            (source / "arrays").mkdir()
+            (source / "arrays" / "stale.fasl").write_bytes(b"compiled")
+            (source / "init.lsp").write_text("", encoding="utf-8")
+            tests = [
+                ("Z.1", "zeta"),
+                ("B.2", "beta"),
+                ("A.2", "alpha"),
+                ("A.1", "alpha"),
+            ]
+            source_root = source.resolve()
+            barrier = threading.Barrier(2)
+            seen = []
+            seen_lock = threading.Lock()
+
+            def run_test(command, worker_source, name, chapter, timeout):
+                del command, timeout
+                clean_copy = (
+                    worker_source.resolve() != source_root
+                    and (worker_source / "init.lsp").is_file()
+                    and not (worker_source / "arrays" / "stale.fasl").exists()
+                    and not (worker_source / "sandbox" / "scratch" / "leftover.txt").exists()
+                )
+                (worker_source / "sandbox" / "scratch").mkdir(parents=True, exist_ok=True)
+                (worker_source / "sandbox" / "scratch" / f"{name}.txt").write_text(
+                    name, encoding="utf-8",
+                )
+                with seen_lock:
+                    seen.append((worker_source.resolve(), name, clean_copy))
+                barrier.wait(timeout=2)
+                return {"name": name, "chapter": chapter, "status": "passed"}
+
+            with patch.object(inclusion, "_run_test", side_effect=run_test):
+                rows = inclusion._run_test_rows(["ncl"], source, tests, 1, 2)
+
+        worker_roots = {worker_source for worker_source, _, _ in seen}
+        self.assertEqual(len(worker_roots), 2)
+        self.assertEqual(len(seen), len(tests))
+        self.assertTrue(all(clean_copy for _, _, clean_copy in seen))
+        self.assertEqual(
+            [row["name"] for row in rows],
+            ["A.1", "A.2", "B.2", "Z.1"],
+        )
 
     def test_clean_suite_scratch_removes_files_and_directory(self):
         with TemporaryDirectory() as directory:
@@ -232,6 +579,9 @@ class ScoreboardTests(unittest.TestCase):
                 "disabled_tests": [],
                 "passed": 1,
                 "failed": 0,
+                "error": 0,
+                "timeout": 0,
+                "harness_error": 0,
             }
 
             inclusion._write_baseline_files(report, prefix)
@@ -262,6 +612,9 @@ class ScoreboardTests(unittest.TestCase):
                 "disabled_tests": ["OPEN.IO.30"],
                 "passed": 1,
                 "failed": 0,
+                "error": 0,
+                "timeout": 0,
+                "harness_error": 0,
             }
 
             inclusion._write_baseline_files(report, prefix)
@@ -280,7 +633,7 @@ class ScoreboardTests(unittest.TestCase):
         }
         observed = {
             "A.1": "passed",
-            "A.2": "failed",
+            "A.2": {"status": "failed", "reason": "assertion failed"},
             "CONS.1": "timeout",
             "SYMBOL.1": "harness_error",
         }
@@ -317,6 +670,7 @@ class ScoreboardTests(unittest.TestCase):
             "comparison": result,
         })
         self.assertIn("`A.2` | arrays | failed", markdown)
+        self.assertIn("assertion failed", markdown)
         self.assertIn("`CONS.2` | cons | unexecuted", markdown)
         self.assertIn("`SYMBOL.1` | symbols | harness_error", markdown)
         self.assertEqual(inclusion.comparison_exit_status(result), 1)
@@ -337,25 +691,127 @@ class ScoreboardTests(unittest.TestCase):
         self.assertEqual(diagnostic, "Unhandled SIMPLE-ERROR in thread main thread")
         self.assertIsNone(inclusion._diagnostic("", "STYLE-WARNING: ignored warning\n"))
 
-    def test_partial_inclusion_report_explains_unfinished_chapter_loaders(self):
+    def test_inclusion_report_lists_per_test_reason(self):
         markdown = inclusion.render_markdown({
             "measured_on": "2026-10-17",
             "platform": "macOS arm64",
             "implementation": "ncl",
             "runtime_version": "NCL",
             "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
-            "status": "partial",
+            "status": "complete",
             "comparison": {
                 "expected": 1,
                 "passed": 0,
                 "t_ansi_count": 1,
-                "t_ansi": [{"name": "A.1", "chapter": "arrays", "status": "harness_error"}],
-                "by_chapter": {"arrays": {"harness_error": 1}},
+                "t_ansi": [{"name": "A.1", "chapter": "arrays", "status": "error", "reason": "type error"}],
+                "by_chapter": {"arrays": {"error": 1}},
             },
         })
 
-        self.assertIn("Partial means one or more chapter loaders did not finish", markdown)
-        self.assertIn("Tests under those loaders are listed as `harness_error` or `timeout`", markdown)
+        self.assertIn("| `A.1` | arrays | error | type error |", markdown)
+
+    def test_test_runner_escapes_name_and_requires_explicit_completion(self):
+        name = 'A."1'
+        runner = inclusion._test_runner(name)
+
+        self.assertIn(
+            f'(find-symbol {inclusion._lisp_string(name)} "CL-TEST")',
+            runner,
+        )
+        self.assertIn("regression-test:do-test name :catch-errors nil", runner)
+        self.assertIn(f"{inclusion.PROTOCOL}~CDONE~C~A", runner)
+
+    def test_one_test_error_does_not_stop_later_tests_and_keeps_reasons(self):
+        first = "\n".join((
+            f"{inclusion.PROTOCOL}\tBEGIN\tA.1",
+            f"{inclusion.PROTOCOL}\tERROR\tA.1",
+            f"{inclusion.PROTOCOL}\tDONE\tA.1",
+        ))
+        crashed = f"{inclusion.PROTOCOL}\tBEGIN\tA.2\n"
+        third = "\n".join((
+            f"{inclusion.PROTOCOL}\tBEGIN\tA.3",
+            f"{inclusion.PROTOCOL}\tPASS\tA.3",
+            f"{inclusion.PROTOCOL}\tDONE\tA.3",
+        ))
+        process_output = {"A.1": ("process", first, "SIMPLE-ERROR: failed test\n", 0)}
+        process_output["A.2"] = ("process", crashed, "Segmentation fault\n", -11)
+        process_output["A.3"] = ("process", third, "", 0)
+
+        def run_test_process(command, source, runner_text, *, timeout):
+            del command, source, timeout
+            name = next(name for name in process_output if f'"{name}"' in runner_text)
+            return process_output[name]
+
+        with TemporaryDirectory() as directory:
+            with patch.object(inclusion, "_run_process", side_effect=run_test_process) as run_process:
+                with patch.object(inclusion, "_runtime_version", return_value="NCL"):
+                    report = inclusion.measure_tests(
+                        ["ncl", "--load"], Path(directory),
+                        {"A.1": "arrays", "A.2": "arrays", "A.3": "arrays"}, 1, "ncl",
+                        jobs=2,
+                    )
+
+        self.assertEqual(run_process.call_count, 3)
+        self.assertEqual([row["status"] for row in report["tests"]], ["error", "error", "passed"])
+        self.assertEqual(report["tests"][0]["reason"], "SIMPLE-ERROR: failed test")
+        self.assertEqual(report["tests"][1]["reason"], "Segmentation fault")
+        self.assertEqual(report["tests"][1]["process_exit_status"], -11)
+        self.assertEqual(report["passed"], 1)
+        self.assertEqual(report["error"], 2)
+
+    def test_suite_initialization_error_is_kept_on_the_selected_test(self):
+        with TemporaryDirectory() as directory:
+            with patch.object(
+                inclusion, "_run_process",
+                return_value=("process", "", "ReadEvalUnavailable while loading universe.lsp\n", 1),
+            ):
+                with patch.object(inclusion, "_runtime_version", return_value="NCL"):
+                    report = inclusion.measure_tests(
+                        ["ncl", "--load"], Path(directory),
+                        {"ARRAYS.1": "universe"}, 1, "ncl",
+                    )
+
+        self.assertEqual(report["tests"][0]["status"], "error")
+        self.assertEqual(report["tests"][0]["reason"], "ReadEvalUnavailable while loading universe.lsp")
+        self.assertEqual(report["tests"][0]["process_exit_status"], 1)
+
+    def test_compare_test_option_selects_one_baseline_test(self):
+        with TemporaryDirectory() as directory:
+            baseline = Path(directory) / "baseline.txt"
+            baseline.write_text("A.1\nA.2\n", encoding="utf-8")
+            baseline.with_suffix(".tsv").write_text(
+                "name\tchapter\nA.1\tarrays\nA.2\tarrays\n", encoding="utf-8",
+            )
+            baseline.with_suffix(".md").write_text(
+                f"- Measured: {inclusion.date.today().isoformat()}\n"
+                f"- Platform: {inclusion._platform_name()}\n"
+                "- SBCL: 2.6.0\n"
+                f"- ansi-test commit: `{inclusion.SOURCES['ansi-test']['commit']}`\n",
+                encoding="utf-8",
+            )
+            with patch.object(inclusion, "_load_source", return_value=Path(directory)):
+                with patch.object(inclusion, "_runtime_version", return_value="NCL"):
+                    stdout_records = "\n".join((
+                        f"{inclusion.PROTOCOL}\tBEGIN\tA.1",
+                        f"{inclusion.PROTOCOL}\tPASS\tA.1",
+                        f"{inclusion.PROTOCOL}\tDONE\tA.1",
+                    ))
+                    with patch.object(
+                        inclusion, "_run_process",
+                        return_value=("process", stdout_records, "", 0),
+                    ) as run_process:
+                        with patch.object(sys, "stdout") as stdout:
+                            status = inclusion.main([
+                                "compare", "--command", "ncl --load", "--baseline", str(baseline),
+                                "--test", "A.1", "--jobs", "2", "--cache-dir", directory,
+                            ])
+
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(status, 0)
+        self.assertEqual(run_process.call_count, 1)
+        self.assertEqual(report["selected_test"], "A.1")
+        self.assertEqual(report["comparison"]["expected"], 1)
+        self.assertEqual([row["name"] for row in report["tests"]], ["A.1"])
 
     def test_inclusion_loads_current_baseline_files_and_metadata(self):
         with TemporaryDirectory() as directory:

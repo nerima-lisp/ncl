@@ -43,7 +43,7 @@ use crate::RuntimeError;
 use crate::support::NativeInvocation;
 #[path = "builtin_trampoline_dispatch.rs"]
 mod dispatch_impl;
-use dispatch_impl::dispatch_with_context;
+use dispatch_impl::dispatch;
 pub use dispatch_impl::record_boundary_error;
 #[path = "builtin_trampoline_keywords.rs"]
 mod keyword_impl;
@@ -79,41 +79,6 @@ const fn error_result() -> NativeCallResult {
     NativeCallResult {
         value: Word::NIL.bits(),
         count: 0,
-    }
-}
-/// Registers available to the generic trampoline stub, in the order the
-/// shared `extern "C"` dispatcher receives them. `argc`/`a0..a3`/`rest` mirror
-/// the native Lisp calling convention's own argument-count/argument-list
-/// registers; `function_object`/`thread_ptr` are the two pinned registers the
-/// ISA stub moves into ordinary argument slots before tail-calling this
-/// function.
-#[allow(clippy::similar_names, clippy::too_many_arguments)]
-extern "C" fn dispatch(
-    argc: u64,
-    a0: u64,
-    a1: u64,
-    a2: u64,
-    a3: u64,
-    rest: u64,
-    function_object: u64,
-    thread_ptr: u64,
-) -> NativeCallResult {
-    let Ok(address) = usize::try_from(thread_ptr) else {
-        return error_result();
-    };
-    let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
-        return error_result();
-    };
-    // `unwrap_or_else` is banned project-wide by `check_added_lines.py`
-    // (its one exemption is the `PoisonError::into_inner` idiom), so this
-    // stays a `match` rather than the `Option::map_or_else`/`unwrap_or_else`
-    // form clippy would otherwise prefer.
-    #[allow(clippy::option_if_let_else)]
-    match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
-    }) {
-        Some(result) => result,
-        None => error_result(),
     }
 }
 #[allow(clippy::too_many_arguments)]

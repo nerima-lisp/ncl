@@ -3,6 +3,8 @@ use super::{
     error_result, unregister_heap_roots,
 };
 use ncl_object::MultipleValues;
+use ncl_sys::Thread;
+use std::ptr::NonNull;
 
 /// Record an error at the native boundary without retaining a transient exit.
 pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_object::ObjectError) {
@@ -12,6 +14,42 @@ pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_objec
             context.set_pending(ncl_object::ObjectError::ControlError);
         }
         other => context.set_pending(other),
+    }
+}
+
+/// Registers available to the generic trampoline stub, in the order the
+/// shared `extern "C"` dispatcher receives them. `argc`/`a0..a3`/`rest` mirror
+/// the native Lisp calling convention's own argument-count/argument-list
+/// registers; `function_object`/`thread_ptr` are the two pinned registers the
+/// ISA stub moves into ordinary argument slots before tail-calling this
+/// function.
+#[allow(clippy::similar_names, clippy::too_many_arguments)]
+pub(super) extern "C" fn dispatch(
+    argc: u64,
+    a0: u64,
+    a1: u64,
+    a2: u64,
+    a3: u64,
+    rest: u64,
+    function_object: u64,
+    thread_ptr: u64,
+) -> NativeCallResult {
+    let Ok(address) = usize::try_from(thread_ptr) else {
+        return error_result();
+    };
+    let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
+        return error_result();
+    };
+    // `unwrap_or_else` is banned project-wide by `check_added_lines.py`
+    // (its one exemption is the `PoisonError::into_inner` idiom), so this
+    // stays a `match` rather than the `Option::map_or_else`/`unwrap_or_else`
+    // form clippy would otherwise prefer.
+    #[allow(clippy::option_if_let_else)]
+    match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
+        dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
+    }) {
+        Some(result) => result,
+        None => error_result(),
     }
 }
 

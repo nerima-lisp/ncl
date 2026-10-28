@@ -145,8 +145,8 @@ fn place_form(
     list(ctx, runtime, &parts)
 }
 
-#[path = "setf_places_tests/standard_places.rs"]
+#[path = "setf_places_tests/standard_places_tests.rs"]
 mod standard_places;
 
-#[path = "setf_places_tests/modifying_operators.rs"]
+#[path = "setf_places_tests/modifying_operators_tests.rs"]
 mod modifying_operators;

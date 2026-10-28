@@ -1,14 +1,16 @@
 //! Number token parsing: potential-number recognition and construction.
 
-use ncl_object::{Runtime, ThreadContext, Word, make_bignum_from_i128, make_double, make_ratio};
+use ncl_object::{
+    HeapRootedWord, Runtime, ThreadContext, Word, make_bignum_from_limbs, make_double, make_ratio,
+};
 
 use crate::error::ReadError;
 use crate::reader::FloatFormat;
 
 /// The largest fixnum value (`most-positive-fixnum`).
-const MAX_FIXNUM: i128 = (1_i128 << 62) - 1;
+const MAX_FIXNUM: u64 = (1_u64 << 62) - 1;
 /// The smallest fixnum value (`most-negative-fixnum`).
-const MIN_FIXNUM: i128 = -(1_i128 << 62);
+const MIN_FIXNUM_MAGNITUDE: u64 = 1_u64 << 62;
 
 /// Numeric value of a digit character in a base, or `None`.
 pub fn digit_value(ch: char, base: u32) -> Option<u32> {
@@ -174,6 +176,7 @@ pub fn parse_number(
                     .ok_or_else(|| ReadError::InvalidNumber(collect(token)))?,
                 base,
             )?;
+            let numerator = HeapRootedWord::new(ctx, numerator)?;
             let denominator = parse_integer_chars(
                 ctx,
                 runtime,
@@ -183,7 +186,7 @@ pub fn parse_number(
                 base,
             )?;
             Ok(Some(
-                make_ratio(ctx, runtime, numerator, denominator)?.into(),
+                make_ratio(ctx, runtime, numerator.get(), denominator)?.into(),
             ))
         }
         NumberShape::Integer => {
@@ -209,32 +212,46 @@ pub fn parse_integer_chars(
         negative = first == '-';
         index += 1;
     }
-    let mut value: i128 = 0;
+    let mut limbs = vec![0_u32];
     let mut digits = 0_usize;
     while let Some(&ch) = token.get(index) {
         if ch == '.' {
             break;
         }
         let digit = digit_value(ch, base).ok_or(ReadError::InvalidDigit(ch))?;
-        value = value
-            .checked_mul(i128::from(base))
-            .and_then(|v| v.checked_add(i128::from(digit)))
-            .ok_or(ReadError::NumberOutOfRange)?;
+        let mut carry = u64::from(digit);
+        for limb in &mut limbs {
+            let value = u64::from(*limb) * u64::from(base) + carry;
+            *limb = u32::try_from(value & u64::from(u32::MAX))
+                .map_err(|_| ReadError::NumberOutOfRange)?;
+            carry = value >> 32;
+        }
+        if carry != 0 {
+            limbs.push(u32::try_from(carry).map_err(|_| ReadError::NumberOutOfRange)?);
+        }
         digits += 1;
         index += 1;
     }
     if digits == 0 {
         return Err(ReadError::InvalidNumber(collect(token)));
     }
-    if negative {
-        value = -value;
+    while limbs.len() > 1 && limbs.last() == Some(&0) {
+        limbs.pop();
     }
-    if (MIN_FIXNUM..=MAX_FIXNUM).contains(&value) {
-        let fixnum = i64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)?;
-        Ok(Word::fixnum(fixnum))
-    } else {
-        Ok(make_bignum_from_i128(ctx, runtime, value)?.into())
+    if limbs.len() <= 2 {
+        let magnitude = u64::from(limbs.first().copied().unwrap_or(0))
+            | (u64::from(*limbs.get(1).unwrap_or(&0)) << 32);
+        let fixnum_limit = if negative {
+            MIN_FIXNUM_MAGNITUDE
+        } else {
+            MAX_FIXNUM
+        };
+        if magnitude <= fixnum_limit {
+            let value = i64::try_from(magnitude).map_err(|_| ReadError::NumberOutOfRange)?;
+            return Ok(Word::fixnum(if negative { -value } else { value }));
+        }
     }
+    Ok(make_bignum_from_limbs(ctx, runtime, negative, &limbs)?.into())
 }
 
 fn parse_float(

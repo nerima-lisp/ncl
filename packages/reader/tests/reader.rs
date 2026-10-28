@@ -4,8 +4,9 @@
 //! readtable case, package prefixes, errors, and feature evaluation.
 
 use ncl_object::{
-    ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify, classify_object,
-    make_cons, make_string, string_length, string_ref, symbol_name, symbol_package,
+    Bignum, ObjectRef, Package, Ratio, Runtime, ThreadContext, Word, bignum_limbs, car, cdr,
+    classify, classify_object, make_cons, make_string, ratio_denominator, string_length,
+    string_ref, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, ReadtableCase, read, read_from_string};
 
@@ -75,6 +76,44 @@ fn reads_a_bignum_beyond_fixnum() {
     ctx.register(&runtime).unwrap();
     let big = read_one(&runtime, &mut ctx, "4611686018427387904");
     assert!(matches!(classify_object(&ctx, big), ObjectRef::Bignum(_)));
+}
+
+#[test]
+fn reads_bignums_and_ratios_beyond_i128() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let integer = read_one(
+        &runtime,
+        &mut ctx,
+        "1234678123487612347896123467851234671234",
+    );
+    assert!(matches!(
+        classify_object(&ctx, integer),
+        ObjectRef::Bignum(_)
+    ));
+    assert_eq!(
+        bignum_limbs(&ctx, Bignum::from_word(integer)).unwrap(),
+        [
+            3_806_722_690,
+            1_768_204_404,
+            1_787_948_446,
+            2_698_926_946,
+            3
+        ],
+    );
+
+    let ratio = read_one(
+        &runtime,
+        &mut ctx,
+        "189729874978126783786123/1234678123487612347896123467851234671234",
+    );
+    assert!(matches!(classify_object(&ctx, ratio), ObjectRef::Ratio(_)));
+    let denominator = ratio_denominator(&ctx, Ratio::from_word(ratio)).unwrap();
+    assert!(matches!(
+        classify_object(&ctx, denominator),
+        ObjectRef::Bignum(_)
+    ));
 }
 
 #[test]
@@ -162,6 +201,38 @@ fn reads_keyword_symbols() {
         .map(|i| string_ref(&ctx, pkg_name, i).unwrap())
         .collect();
     assert_eq!(pkg_name, "KEYWORD");
+
+    let empty = read_one(&runtime, &mut ctx, ":||");
+    assert_eq!(name_of(&ctx, empty), "");
+    assert_eq!(
+        symbol_package(&ctx, empty).unwrap(),
+        runtime.find_package(&ctx, "KEYWORD").unwrap()
+    );
+
+    let empty_external = read_one(&runtime, &mut ctx, "COMMON-LISP-USER:||");
+    assert_eq!(name_of(&ctx, empty_external), "");
+    assert_eq!(
+        symbol_package(&ctx, empty_external).unwrap(),
+        runtime.find_package(&ctx, "COMMON-LISP-USER").unwrap()
+    );
+}
+
+#[test]
+fn reads_an_empty_symbol_name() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let empty = read_one(&runtime, &mut ctx, "||");
+    assert_eq!(name_of(&ctx, empty), "");
+    let package = read_one(&runtime, &mut ctx, "COMMON-LISP-USER||:");
+    assert_eq!(
+        package,
+        runtime.find_package(&ctx, "COMMON-LISP-USER").unwrap()
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "||123")),
+        ObjectRef::Fixnum(123)
+    );
 }
 
 #[test]

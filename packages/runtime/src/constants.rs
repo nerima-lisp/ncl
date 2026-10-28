@@ -208,3 +208,119 @@ const fn default_array_element(element_type: ArrayElementType) -> Word {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use ncl_ir::{
+        ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
+        StructureKind,
+    };
+    use ncl_object::{ArrayElementType, HeapRootedWord, array_dimensions, simple_vector_ref};
+
+    use crate::Runtime;
+
+    #[test]
+    fn general_array_constants_cover_element_types_and_empty_defaults() -> Result<(), String> {
+        let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+        let array = |element_type, index| Constant::Structure {
+            kind: StructureKind::Array {
+                dimensions: vec![1],
+                element_type,
+            },
+            elements: vec![ConstantIndex(index)],
+        };
+        let empty_array = |element_type| Constant::Structure {
+            kind: StructureKind::Array {
+                dimensions: vec![0],
+                element_type,
+            },
+            elements: Vec::new(),
+        };
+        let function = Function {
+            id: FunctionId(0),
+            name: "general-array-element-types".to_owned(),
+            params: Vec::new(),
+            return_types: Vec::new(),
+            blocks: Vec::new(),
+            locals: Vec::new(),
+            constants: vec![
+                Constant::Character(u32::from('A')),
+                Constant::Fixnum(1),
+                Constant::Character(u32::from('B')),
+                Constant::Character(u32::from('C')),
+                Constant::Fixnum(7),
+                Constant::Fixnum(-8),
+                Constant::Fixnum(3),
+                Constant::SingleFloat(1.25),
+                Constant::DoubleFloat(2.5),
+                array(IrArrayElementType::T, 0),
+                array(IrArrayElementType::Bit, 1),
+                array(IrArrayElementType::Character, 2),
+                array(IrArrayElementType::BaseChar, 3),
+                array(IrArrayElementType::Fixnum, 4),
+                array(IrArrayElementType::Signed, 5),
+                array(IrArrayElementType::Unsigned, 6),
+                array(IrArrayElementType::SingleFloat, 7),
+                array(IrArrayElementType::DoubleFloat, 8),
+                empty_array(IrArrayElementType::T),
+                empty_array(IrArrayElementType::Fixnum),
+            ],
+            handler_regions: Vec::new(),
+            debug: Vec::new(),
+        };
+        let table = runtime
+            .make_constants(&function, &mut HashMap::new(), &mut HashMap::new())
+            .map_err(|error| format!("constants: {error:?}"))?;
+        let table = HeapRootedWord::new(&runtime.context, table)
+            .map_err(|error| format!("root table: {error:?}"))?;
+        let element_types = [
+            ArrayElementType::T,
+            ArrayElementType::Bit,
+            ArrayElementType::Character,
+            ArrayElementType::BaseChar,
+            ArrayElementType::Fixnum,
+            ArrayElementType::Signed,
+            ArrayElementType::Unsigned,
+            ArrayElementType::SingleFloat,
+            ArrayElementType::DoubleFloat,
+        ];
+        for (index, expected) in element_types.into_iter().enumerate() {
+            let array = simple_vector_ref(&runtime.context, table.get(), index + 9)
+                .map_err(|error| format!("array {index}: {error:?}"))?;
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(
+                ncl_object::array::array_element_type(&runtime.context, array)
+                    .map_err(|error| format!("array element type {index}: {error:?}"))?,
+                expected
+            );
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(
+                array_dimensions(&runtime.context, array)
+                    .map_err(|error| format!("array dimensions {index}: {error:?}"))?,
+                vec![1]
+            );
+        }
+        for (index, expected) in [ArrayElementType::T, ArrayElementType::Fixnum]
+            .into_iter()
+            .enumerate()
+        {
+            let array = simple_vector_ref(&runtime.context, table.get(), index + 18)
+                .map_err(|error| format!("empty array {index}: {error:?}"))?;
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(
+                ncl_object::array::array_element_type(&runtime.context, array)
+                    .map_err(|error| format!("empty array element type {index}: {error:?}"))?,
+                expected
+            );
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(
+                array_dimensions(&runtime.context, array)
+                    .map_err(|error| format!("empty array dimensions {index}: {error:?}"))?,
+                vec![0]
+            );
+        }
+        Ok(())
+    }
+}

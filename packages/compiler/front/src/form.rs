@@ -338,6 +338,7 @@ fn specialized_array_literal(
     let element_type = specialized_array_element_type(ctx, word)?;
     let dimensions = array_dimensions(ctx, word)?;
     // The object layer represents specialized arrays as rank-one arrays.
+    // check-added-lines: allow(index) this object-layer invariant supplies dimensions[0].
     let length = dimensions[0];
     let identity = table.specialized_array_identity(word);
     let mut elements = Vec::with_capacity(length);

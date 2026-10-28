@@ -493,6 +493,7 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
+#[inline(never)]
 fn insert_weak_entry(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -501,18 +502,37 @@ fn insert_weak_entry(
     keep_key: bool,
     keep_value: bool,
 ) -> (Word, Word) {
-    let key = string(ctx, runtime, "weak-key");
-    let value = if weakness == Weakness::KeyOrValue {
-        Word::fixnum(99)
+    let key_slot = std::sync::atomic::AtomicU64::new(string(ctx, runtime, "weak-key").bits());
+    let value_slot = std::sync::atomic::AtomicU64::new(if weakness == Weakness::KeyOrValue {
+        Word::fixnum(99).bits()
     } else {
-        string(ctx, runtime, "weak-value")
-    };
+        string(ctx, runtime, "weak-value").bits()
+    });
     HashTable::from_word(table)
-        .insert(ctx, runtime, key, value)
+        .insert(
+            ctx,
+            runtime,
+            Word::from_bits(key_slot.load(std::sync::atomic::Ordering::Relaxed)),
+            Word::from_bits(value_slot.load(std::sync::atomic::Ordering::Relaxed)),
+        )
         .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    if !keep_key {
+        key_slot.store(Word::NIL.bits(), std::sync::atomic::Ordering::Relaxed);
+    }
+    if !keep_value {
+        value_slot.store(Word::NIL.bits(), std::sync::atomic::Ordering::Relaxed);
+    }
     (
-        if keep_key { key } else { Word::NIL },
-        if keep_value { value } else { Word::NIL },
+        if keep_key {
+            Word::from_bits(key_slot.load(std::sync::atomic::Ordering::Relaxed))
+        } else {
+            Word::NIL
+        },
+        if keep_value {
+            Word::from_bits(value_slot.load(std::sync::atomic::Ordering::Relaxed))
+        } else {
+            Word::NIL
+        },
     )
 }
 

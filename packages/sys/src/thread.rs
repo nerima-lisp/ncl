@@ -231,6 +231,7 @@ impl Thread {
         values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
         if let Some((bounds_start, end)) = self.stack_bounds {
             let start = if self.native == NativeState::Lisp {
+                // Non-x86 targets keep full bounds until their published SP is validated as a scan boundary.
                 #[cfg(target_arch = "x86_64")]
                 {
                     self.stack_scan_start

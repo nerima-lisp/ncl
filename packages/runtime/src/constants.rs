@@ -111,13 +111,7 @@ fn resolve_structure_constant(
         .collect::<Result<Vec<_>, ObjectError>>()?;
     match kind {
         ncl_ir::StructureKind::Cons => {
-            if values.len() != 2 {
-                return Err(ObjectError::Layout);
-            }
-            let Some(car) = values.first() else {
-                return Err(ObjectError::Layout);
-            };
-            let Some(cdr) = values.get(1) else {
+            let [car, cdr] = values.as_slice() else {
                 return Err(ObjectError::Layout);
             };
             make_cons(ctx, runtime, *car, *cdr)

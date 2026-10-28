@@ -261,3 +261,52 @@ pub fn remap_term_values(term: &mut Terminator, replacements: &HashMap<ValueId, 
         Terminator::Unreachable => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::remap_kind;
+    use ncl_ir::{Constant, ConstantIndex, OpKind};
+    use std::collections::HashMap;
+
+    #[test]
+    fn remap_literal_object_recursively_maps_value_and_preserves_identity() {
+        let mut callee = crate::tests_support::leaf();
+        callee.constants = vec![
+            Constant::LiteralObject {
+                identity: 17,
+                value: ConstantIndex(1),
+            },
+            Constant::Fixnum(42),
+        ];
+        let mut caller_constants = vec![Constant::T];
+        let mut constant_remapping = HashMap::new();
+
+        let mapped = remap_kind(
+            &OpKind::Const {
+                result: ConstantIndex(0),
+            },
+            &HashMap::new(),
+            &mut constant_remapping,
+            &mut caller_constants,
+            &callee,
+        );
+
+        assert_eq!(
+            mapped,
+            OpKind::Const {
+                result: ConstantIndex(1),
+            }
+        );
+        assert_eq!(
+            caller_constants,
+            vec![
+                Constant::T,
+                Constant::LiteralObject {
+                    identity: 17,
+                    value: ConstantIndex(2),
+                },
+                Constant::Fixnum(42),
+            ]
+        );
+    }
+}

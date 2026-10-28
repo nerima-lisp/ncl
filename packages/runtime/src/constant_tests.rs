@@ -363,3 +363,169 @@ fn general_array_heap_elements_survive_gc_stress_and_strict_forwarding() -> Resu
     );
     Ok(())
 }
+
+#[test]
+fn general_array_constants_cover_element_types_and_empty_defaults() -> Result<(), String> {
+    let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    let array = |element_type, index| Constant::Structure {
+        kind: StructureKind::Array {
+            dimensions: vec![1],
+            element_type,
+        },
+        elements: vec![ConstantIndex(index)],
+    };
+    let empty_array = |element_type| Constant::Structure {
+        kind: StructureKind::Array {
+            dimensions: vec![0],
+            element_type,
+        },
+        elements: Vec::new(),
+    };
+    let function = Function {
+        id: FunctionId(0),
+        name: "general-array-element-types".to_owned(),
+        params: Vec::new(),
+        return_types: Vec::new(),
+        blocks: Vec::new(),
+        locals: Vec::new(),
+        constants: vec![
+            Constant::Character(u32::from('A')),
+            Constant::Fixnum(1),
+            Constant::Character(u32::from('B')),
+            Constant::Character(u32::from('C')),
+            Constant::Fixnum(7),
+            Constant::Fixnum(-8),
+            Constant::Fixnum(3),
+            Constant::SingleFloat(1.25),
+            Constant::DoubleFloat(2.5),
+            array(IrArrayElementType::T, 0),
+            array(IrArrayElementType::Bit, 1),
+            array(IrArrayElementType::Character, 2),
+            array(IrArrayElementType::BaseChar, 3),
+            array(IrArrayElementType::Fixnum, 4),
+            array(IrArrayElementType::Signed, 5),
+            array(IrArrayElementType::Unsigned, 6),
+            array(IrArrayElementType::SingleFloat, 7),
+            array(IrArrayElementType::DoubleFloat, 8),
+            empty_array(IrArrayElementType::T),
+            empty_array(IrArrayElementType::Fixnum),
+        ],
+        handler_regions: Vec::new(),
+        debug: Vec::new(),
+    };
+    let table = runtime
+        .make_constants(&function, &mut HashMap::new(), &mut HashMap::new())
+        .map_err(|error| format!("constants: {error:?}"))?;
+    let table = HeapRootedWord::new(&runtime.context, table)
+        .map_err(|error| format!("root table: {error:?}"))?;
+    let element_types = [
+        ArrayElementType::T,
+        ArrayElementType::Bit,
+        ArrayElementType::Character,
+        ArrayElementType::BaseChar,
+        ArrayElementType::Fixnum,
+        ArrayElementType::Signed,
+        ArrayElementType::Unsigned,
+        ArrayElementType::SingleFloat,
+        ArrayElementType::DoubleFloat,
+    ];
+    for (index, expected) in element_types.into_iter().enumerate() {
+        let array = simple_vector_ref(&runtime.context, table.get(), index + 9)
+            .map_err(|error| format!("array {index}: {error:?}"))?;
+        // check-added-lines: allow(panic) test-only assertions
+        assert_eq!(
+            ncl_object::array::array_element_type(&runtime.context, array)
+                .map_err(|error| format!("array element type {index}: {error:?}"))?,
+            expected
+        );
+        // check-added-lines: allow(panic) test-only assertions
+        assert_eq!(
+            array_dimensions(&runtime.context, array)
+                .map_err(|error| format!("array dimensions {index}: {error:?}"))?,
+            vec![1]
+        );
+    }
+    for (index, expected) in [ArrayElementType::T, ArrayElementType::Fixnum]
+        .into_iter()
+        .enumerate()
+    {
+        let array = simple_vector_ref(&runtime.context, table.get(), index + 18)
+            .map_err(|error| format!("empty array {index}: {error:?}"))?;
+        // check-added-lines: allow(panic) test-only assertions
+        assert_eq!(
+            ncl_object::array::array_element_type(&runtime.context, array)
+                .map_err(|error| format!("empty array element type {index}: {error:?}"))?,
+            expected
+        );
+        // check-added-lines: allow(panic) test-only assertions
+        assert_eq!(
+            array_dimensions(&runtime.context, array)
+                .map_err(|error| format!("empty array dimensions {index}: {error:?}"))?,
+            vec![0]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_array_constants_return_errors() -> Result<(), String> {
+    let cases = [
+        vec![Constant::Structure {
+            kind: StructureKind::Cons,
+            elements: Vec::new(),
+        }],
+        vec![
+            Constant::Fixnum(1),
+            Constant::Structure {
+                kind: StructureKind::Array {
+                    dimensions: vec![2],
+                    element_type: IrArrayElementType::T,
+                },
+                elements: vec![ConstantIndex(0)],
+            },
+        ],
+        vec![
+            Constant::Fixnum(2),
+            Constant::Structure {
+                kind: StructureKind::Array {
+                    dimensions: vec![1],
+                    element_type: IrArrayElementType::Bit,
+                },
+                elements: vec![ConstantIndex(0)],
+            },
+        ],
+    ];
+    let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    for (index, constants) in cases.into_iter().enumerate() {
+        let id = u32::try_from(index).map_err(|error| format!("test function id: {error}"))?;
+        let function = Function {
+            id: FunctionId(id),
+            name: "malformed-array-constant".to_owned(),
+            params: Vec::new(),
+            return_types: Vec::new(),
+            blocks: Vec::new(),
+            locals: Vec::new(),
+            constants,
+            handler_regions: Vec::new(),
+            debug: Vec::new(),
+        };
+        let result = runtime.make_constants(&function, &mut HashMap::new(), &mut HashMap::new());
+        // check-added-lines: allow(panic) test-only assertions
+        assert!(
+            result.is_err(),
+            "malformed constant case {index} should fail"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn compiled_nested_function_materializes_specialized_array_constants() -> Result<(), String> {
+    let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    let value = runtime
+        .compile("(equalp (funcall (lambda () #*101)) #*101)")
+        .map_err(|error| format!("compile: {error:?}"))?;
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(runtime.format_result(value), "T");
+    Ok(())
+}

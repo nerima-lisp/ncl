@@ -1246,6 +1246,32 @@ fn verifier_reports_each_reachable_error_fixture() {
 }
 
 #[test]
+fn verifier_rejects_literal_object_with_out_of_bounds_value() {
+    let function = finish(
+        "literal-object-value-out-of-bounds",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::LiteralObject {
+            identity: 0,
+            value: ConstantIndex(1),
+        }],
+        vec![block(
+            0,
+            vec![op(
+                &[(0, Ty::Word)],
+                OpKind::Const {
+                    result: ConstantIndex(0),
+                },
+            )],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+
+    verify_has(&function, &VerifyError::ConstantOutOfBounds(BlockId(0)));
+}
+
+#[test]
 fn verifier_reports_duplicate_block() {
     let function = finish(
         "duplicate-block",

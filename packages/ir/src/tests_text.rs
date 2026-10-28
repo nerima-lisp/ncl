@@ -846,6 +846,90 @@ fn text_round_trips_specialized_array_element_tags() {
 }
 
 #[test]
+fn text_round_trips_general_array_element_tags() {
+    let cases = [
+        (ArrayElementType::T, 0, [Constant::Nil, Constant::T]),
+        (
+            ArrayElementType::Bit,
+            1,
+            [Constant::Fixnum(0), Constant::Fixnum(1)],
+        ),
+        (
+            ArrayElementType::Character,
+            2,
+            [
+                Constant::Character('A' as u32),
+                Constant::Character('B' as u32),
+            ],
+        ),
+        (
+            ArrayElementType::BaseChar,
+            3,
+            [
+                Constant::Character('A' as u32),
+                Constant::Character('B' as u32),
+            ],
+        ),
+        (
+            ArrayElementType::Fixnum,
+            4,
+            [Constant::Fixnum(-7), Constant::Fixnum(29)],
+        ),
+        (
+            ArrayElementType::Signed,
+            5,
+            [Constant::Fixnum(-7), Constant::Fixnum(29)],
+        ),
+        (
+            ArrayElementType::Unsigned,
+            6,
+            [Constant::Fixnum(7), Constant::Fixnum(29)],
+        ),
+        (
+            ArrayElementType::SingleFloat,
+            7,
+            [Constant::SingleFloat(1.25), Constant::SingleFloat(-3.5)],
+        ),
+        (
+            ArrayElementType::DoubleFloat,
+            8,
+            [Constant::DoubleFloat(1.25), Constant::DoubleFloat(-3.5)],
+        ),
+    ];
+
+    for (element_type, tag, values) in cases {
+        let mut constants = values.to_vec();
+        constants.push(Constant::Structure {
+            kind: StructureKind::Array {
+                dimensions: vec![2],
+                element_type,
+            },
+            elements: vec![ConstantIndex(0), ConstantIndex(1)],
+        });
+        let function = finish(
+            "general-array-tags",
+            Vec::new(),
+            Vec::new(),
+            constants,
+            vec![block(
+                0,
+                Vec::new(),
+                Terminator::Return { values: Vec::new() },
+            )],
+            Vec::new(),
+        );
+
+        let dump = function.to_string();
+        let rendered_kind = format!(",b,3,{tag:x},1,2,2,0,1,");
+        assert!(
+            dump.contains(&rendered_kind),
+            "wrong serialized tag for {element_type:?}: {dump}"
+        );
+        assert_eq!(parse(&dump), Ok(function));
+    }
+}
+
+#[test]
 fn text_round_trips_remaining_documented_values() {
     let constants = vec![
         Constant::Character('λ' as u32),

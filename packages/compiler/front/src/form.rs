@@ -8,10 +8,10 @@
 use std::collections::HashMap;
 
 use ncl_object::{
-    ArrayElementType, Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime,
-    ThreadContext, Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car,
-    cdr, classify, classify_object, complex_imag, complex_real, double_value, instance_class,
-    ratio_denominator, ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
+    Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime, ThreadContext,
+    Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify,
+    classify_object, complex_imag, complex_real, double_value, instance_class, ratio_denominator,
+    ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
     specialized_array_element_type, string_length, string_ref, symbol_name, symbol_package,
 };
 
@@ -336,17 +336,9 @@ fn specialized_array_literal(
     word: Word,
 ) -> Result<Literal, FrontError> {
     let element_type = specialized_array_element_type(ctx, word)?;
-    if element_type == ArrayElementType::T {
-        return Err(FrontError::UnsupportedLiteral);
-    }
     let dimensions = array_dimensions(ctx, word)?;
-    if dimensions.len() != 1 {
-        return Err(FrontError::UnsupportedLiteral);
-    }
-    let [length] = dimensions.as_slice() else {
-        return Err(FrontError::UnsupportedLiteral);
-    };
-    let length = *length;
+    // The object layer represents specialized arrays as rank-one arrays.
+    let length = dimensions[0];
     let identity = table.specialized_array_identity(word);
     let mut elements = Vec::with_capacity(length);
     for index in 0..length {

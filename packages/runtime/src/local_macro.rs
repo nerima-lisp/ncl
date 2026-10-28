@@ -383,10 +383,14 @@ pub fn call_local_macro(
 mod tests {
     use super::{
         BTreeMap, LambdaList, LocalMacro, Operator, ParamName, SymbolRef, call_local_macro,
+        materialize,
     };
+    use ncl_compiler_front::FrontError;
     use ncl_compiler_front::ast::Expr;
     use ncl_compiler_front::literal::{Literal, NumberLiteral};
-    use ncl_object::{Package, Runtime as ObjectRuntime, ThreadContext, Word, make_cons};
+    use ncl_object::{
+        ArrayElementType, Package, Runtime as ObjectRuntime, ThreadContext, Word, make_cons,
+    };
 
     // check-added-lines: allow(expect_used) test-only setup
     fn setup() -> (ObjectRuntime, ThreadContext) {
@@ -444,5 +448,45 @@ mod tests {
         let result = call_local_macro(&mut ctx, &runtime, &entry_codes, &definition, form)
             .unwrap_or_else(|error| panic!("call_local_macro: {error:?}"));
         assert_eq!(result, Word::fixnum(6));
+    }
+
+    #[test]
+    fn materialize_rejects_array_literal_shapes_in_local_macro_bodies() -> Result<(), String> {
+        let (runtime, mut ctx) = setup();
+        let literals = [
+            Literal::Array {
+                identity: 0,
+                dimensions: vec![2],
+                element_type: ArrayElementType::T,
+                elements: vec![Literal::T, Literal::Nil],
+            },
+            Literal::SpecializedArray {
+                identity: 1,
+                element_type: ArrayElementType::Bit,
+                elements: vec![Literal::fixnum(0), Literal::fixnum(1)],
+            },
+        ];
+
+        for literal in &literals {
+            let error = match materialize(&mut ctx, &runtime, &mut Vec::new(), literal) {
+                Err(error) => error,
+                Ok(index) => {
+                    return Err(format!(
+                        "array literal unexpectedly materialized at held index {index}"
+                    ));
+                }
+            };
+            let FrontError::MacroExpansion { name, detail } = error else {
+                return Err(format!("expected MacroExpansion, got {error:?}"));
+            };
+            if name != SymbolRef::interned("COMMON-LISP", "MACROLET") {
+                return Err(format!("unexpected error name: {name:?}"));
+            }
+            if detail != "macrolet: this literal shape is not supported in a local macro body" {
+                return Err(format!("unexpected error detail: {detail}"));
+            }
+        }
+
+        Ok(())
     }
 }

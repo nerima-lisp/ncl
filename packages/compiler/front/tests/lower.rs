@@ -11,13 +11,14 @@ mod forms;
 
 use forms::Fixture;
 
-use ncl_compiler_front::{lower_toplevel, lower_toplevel_for_eval};
+use ncl_compiler_front::{Expr, Literal, LowerError, lower_toplevel, lower_toplevel_for_eval};
 use ncl_ir::{
-    ArrayElementType, Compare, Constant, Function, HandlerKind, OpKind, StructureKind, Terminator,
-    verify,
+    ArrayElementType, Compare, Constant, Function, HandlerKind, OpKind,
+    SpecializedArrayElementType, StructureKind, Terminator, verify,
 };
 use ncl_object::{
-    ArrayElementType as ObjectArrayElementType, ArrayOptions, Word, array_row_major_set, make_array,
+    ArrayElementType as ObjectArrayElementType, ArrayOptions, Word, array_row_major_set,
+    make_array, make_double, make_specialized_array,
 };
 
 /// Fail with the function's text form when it does not verify.
@@ -41,6 +42,21 @@ fn any_terminator(function: &Function, predicate: impl Fn(&Terminator) -> bool) 
         .blocks
         .iter()
         .any(|block| predicate(&block.terminator))
+}
+
+fn literal_array_descriptor(function: &Function) -> &Constant {
+    let value = function
+        .constants
+        .iter()
+        .find_map(|constant| match constant {
+            Constant::LiteralObject { value, .. } => Some(*value),
+            _ => None,
+        })
+        .expect("array literal identity descriptor");
+    function
+        .constants
+        .get(usize::try_from(value.0).expect("constant index"))
+        .expect("array structure descriptor")
 }
 
 #[test]
@@ -117,6 +133,201 @@ fn lowers_general_array_literal_with_shape_type_and_identity() {
         }
         other => panic!("expected array structure descriptor, found {other:?}"),
     }
+}
+
+#[test]
+fn lowers_general_array_element_type_mappings() {
+    let mut fx = Fixture::new();
+    let float = make_double(&mut fx.ctx, &fx.runtime, 1.25)
+        .expect("double allocation")
+        .as_word();
+    let cases = [
+        (
+            ObjectArrayElementType::T,
+            ArrayElementType::T,
+            Word::fixnum(7),
+            Constant::Fixnum(7),
+        ),
+        (
+            ObjectArrayElementType::Bit,
+            ArrayElementType::Bit,
+            Word::fixnum(1),
+            Constant::Fixnum(1),
+        ),
+        (
+            ObjectArrayElementType::Character,
+            ArrayElementType::Character,
+            Word::character(u32::from(b'A')),
+            Constant::Character(u32::from(b'A')),
+        ),
+        (
+            ObjectArrayElementType::BaseChar,
+            ArrayElementType::BaseChar,
+            Word::character(u32::from(b'A')),
+            Constant::Character(u32::from(b'A')),
+        ),
+        (
+            ObjectArrayElementType::Fixnum,
+            ArrayElementType::Fixnum,
+            Word::fixnum(7),
+            Constant::Fixnum(7),
+        ),
+        (
+            ObjectArrayElementType::Signed,
+            ArrayElementType::Signed,
+            Word::fixnum(-7),
+            Constant::Fixnum(-7),
+        ),
+        (
+            ObjectArrayElementType::Unsigned,
+            ArrayElementType::Unsigned,
+            Word::fixnum(7),
+            Constant::Fixnum(7),
+        ),
+        (
+            ObjectArrayElementType::SingleFloat,
+            ArrayElementType::SingleFloat,
+            float,
+            Constant::DoubleFloat(1.25),
+        ),
+        (
+            ObjectArrayElementType::DoubleFloat,
+            ArrayElementType::DoubleFloat,
+            float,
+            Constant::DoubleFloat(1.25),
+        ),
+    ];
+
+    for (object_type, ir_type, initial_element, expected_element) in cases {
+        let array = make_array(
+            &mut fx.ctx,
+            &fx.runtime,
+            &[1],
+            ArrayOptions {
+                element_type: object_type,
+                initial_element,
+                adjustable: false,
+                fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )
+        .expect("array allocation");
+        let expr = fx.expand(array).expect("expand array literal");
+        let lowered = lower_toplevel(&expr).expect("lower array literal");
+        assert_verifies(&lowered.entry);
+
+        match literal_array_descriptor(&lowered.entry) {
+            Constant::Structure {
+                kind:
+                    StructureKind::Array {
+                        dimensions,
+                        element_type,
+                    },
+                elements,
+            } => {
+                assert_eq!(dimensions, &[1]);
+                assert_eq!(*element_type, ir_type);
+                assert_eq!(elements.len(), 1);
+                let element = &lowered.entry.constants
+                    [usize::try_from(elements[0].0).expect("constant index")];
+                assert_eq!(element, &expected_element);
+            }
+            other => panic!("expected array descriptor, found {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn lowers_specialized_array_element_type_mappings() {
+    let mut fx = Fixture::new();
+    let float = make_double(&mut fx.ctx, &fx.runtime, 1.25)
+        .expect("double allocation")
+        .as_word();
+    let cases = [
+        (
+            ObjectArrayElementType::Bit,
+            SpecializedArrayElementType::Bit,
+            Word::fixnum(1),
+            Constant::Fixnum(1),
+        ),
+        (
+            ObjectArrayElementType::Character,
+            SpecializedArrayElementType::Character,
+            Word::character(u32::from(b'A')),
+            Constant::Character(u32::from(b'A')),
+        ),
+        (
+            ObjectArrayElementType::BaseChar,
+            SpecializedArrayElementType::BaseChar,
+            Word::character(u32::from(b'A')),
+            Constant::Character(u32::from(b'A')),
+        ),
+        (
+            ObjectArrayElementType::Fixnum,
+            SpecializedArrayElementType::Fixnum,
+            Word::fixnum(7),
+            Constant::Fixnum(7),
+        ),
+        (
+            ObjectArrayElementType::Signed,
+            SpecializedArrayElementType::Signed,
+            Word::fixnum(-7),
+            Constant::Fixnum(-7),
+        ),
+        (
+            ObjectArrayElementType::Unsigned,
+            SpecializedArrayElementType::Unsigned,
+            Word::fixnum(7),
+            Constant::Fixnum(7),
+        ),
+        (
+            ObjectArrayElementType::SingleFloat,
+            SpecializedArrayElementType::SingleFloat,
+            float,
+            Constant::DoubleFloat(1.25),
+        ),
+        (
+            ObjectArrayElementType::DoubleFloat,
+            SpecializedArrayElementType::DoubleFloat,
+            float,
+            Constant::DoubleFloat(1.25),
+        ),
+    ];
+
+    for (object_type, ir_type, element, expected_element) in cases {
+        let array = make_specialized_array(&mut fx.ctx, &fx.runtime, object_type, &[element])
+            .expect("specialized array allocation");
+        let expr = fx.expand(array).expect("expand specialized array literal");
+        let lowered = lower_toplevel(&expr).expect("lower specialized array literal");
+        assert_verifies(&lowered.entry);
+
+        match literal_array_descriptor(&lowered.entry) {
+            Constant::Structure {
+                kind: StructureKind::SpecializedArray { element_type },
+                elements,
+            } => {
+                assert_eq!(*element_type, ir_type);
+                assert_eq!(elements.len(), 1);
+                let element = &lowered.entry.constants
+                    [usize::try_from(elements[0].0).expect("constant index")];
+                assert_eq!(element, &expected_element);
+            }
+            other => panic!("expected specialized array descriptor, found {other:?}"),
+        }
+    }
+
+    let unsupported = Expr::Constant(Literal::SpecializedArray {
+        identity: 0,
+        element_type: ObjectArrayElementType::T,
+        elements: Vec::new(),
+    });
+    assert!(matches!(
+        lower_toplevel(&unsupported),
+        Err(LowerError::Unsupported {
+            form: "specialized array with element type T"
+        })
+    ));
 }
 
 /// Rule: a variable captured and assigned by two closures is boxed in one cell.

@@ -105,8 +105,8 @@ impl Heap {
 
     pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-        {
-            // Capture caller frames below the collection entry as part of the collector stack.
+        if !thread.has_native_frame_snapshot() {
+            // Precise frame roots are scanned separately; a conservative scan would pin those slots.
             thread.publish_snapshot();
         }
         {
@@ -166,21 +166,15 @@ mod tests {
             worker_heap.unregister_thread(&thread);
         });
         let pointer = pointer_receiver.recv().unwrap_or(0);
-        {
-            let mut stop_world = heap
-                .stop_world
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            stop_world.requested = true;
-            stop_world.epoch = 1;
-        }
-        ready.wait();
-        heap.stop_world_ready.notify_all();
-
         let mut stop_world = heap
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stop_world.requested = true;
+        stop_world.epoch = 1;
+        // Hold the lock until the worker leaves the barrier so this wait exercises the condvar path.
+        ready.wait();
+        heap.stop_world_ready.notify_all();
         while !stop_world.parked.contains(&pointer) {
             stop_world = heap
                 .stop_world_ready
